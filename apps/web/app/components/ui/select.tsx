@@ -1,6 +1,6 @@
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { Select as Primitive } from "radix-ui";
-import type { ComponentProps, ReactNode } from "react";
+import { type ComponentProps, type ReactNode, useState } from "react";
 
 import { cn } from "../../lib/cn";
 
@@ -155,5 +155,100 @@ export function SelectScrollDownButton({ className, ...props }: ComponentProps<t
     >
       <ChevronDown size={14} />
     </Primitive.ScrollDownButton>
+  );
+}
+
+export type SelectOption = { value: string; label: ReactNode; disabled?: boolean; description?: ReactNode; icon?: ReactNode };
+
+/** Radix items cannot have "" as a value; this stands in for it inside. */
+const EMPTY = "__g1t_empty__";
+const inside = (value: string | undefined) => (value === "" ? EMPTY : value);
+const outside = (value: string) => (value === EMPTY ? "" : value);
+
+/**
+ * A select for what used to be a native <select>: a list of options, posted
+ * by `name` with its form. Options may have "" as their value (Any, None),
+ * which posts "" as a native select would. `onValueChange` sees the new
+ * value at once; `afterChange` runs once the form's fields hold it, so it
+ * can submit the form (filters that apply as they change).
+ */
+export function SelectField({
+  options,
+  name,
+  form,
+  value,
+  defaultValue,
+  onValueChange,
+  afterChange,
+  placeholder,
+  required,
+  disabled,
+  size,
+  id,
+  className,
+  contentClassName,
+  itemClassName,
+  align,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+}: {
+  options: SelectOption[];
+  name?: string;
+  form?: string;
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  afterChange?: (value: string) => void;
+  placeholder?: ReactNode;
+  required?: boolean;
+  disabled?: boolean;
+  size?: "sm" | "default" | "lg";
+  id?: string;
+  className?: string;
+  contentClassName?: string;
+  itemClassName?: string;
+  align?: "start" | "center" | "end";
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+}) {
+  const [own, setOwn] = useState(defaultValue);
+  const current = value !== undefined ? value : own;
+  // With a "" option, a hidden input posts the value, so "" posts as "".
+  const empty = options.some((option) => option.value === "");
+  return (
+    <>
+      <Select
+        value={(empty ? inside(current) : current) ?? ""}
+        onValueChange={(next) => {
+          const chosen = outside(next);
+          setOwn(chosen);
+          onValueChange?.(chosen);
+          if (afterChange) setTimeout(() => afterChange(chosen), 0);
+        }}
+        name={empty ? undefined : name}
+        form={empty ? undefined : form}
+        required={required}
+        disabled={disabled}
+      >
+        <SelectTrigger id={id} size={size} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} className={className}>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent className={contentClassName} align={align}>
+          {options.map((option) => (
+            <SelectItem
+              key={option.value}
+              value={inside(option.value)!}
+              disabled={option.disabled}
+              description={option.description}
+              icon={option.icon}
+              className={itemClassName}
+            >
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {empty && name && <input type="hidden" name={name} form={form} value={current ?? ""} disabled={disabled} />}
+    </>
   );
 }

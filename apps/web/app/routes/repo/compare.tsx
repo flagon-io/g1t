@@ -8,6 +8,7 @@ import { DiffView } from "../../components/diff-view";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { Hint } from "../../components/ui/hint";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { page } from "../../lib/meta";
 import { showCommits } from "../../lib/commit-people.server";
 import { repos } from "../../lib/services.server";
@@ -73,21 +74,23 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 function RefPicker({ name, label, value, branches }: { name: string; label: string; value: string | null; branches: string[] }) {
   const options = value && !branches.includes(value) ? [value, ...branches] : branches;
   return (
-    <label className="inline-flex items-center gap-2 text-sm">
-      <span className="text-muted">{label}</span>
-      <select
-        name={name}
-        defaultValue={value ?? ""}
-        className="h-8 max-w-56 rounded-md border border-line bg-surface px-2 font-mono text-[0.8125rem] outline-none hover:border-line-strong focus:border-accent-dim"
-      >
-        {value == null && <option value="">Choose a branch</option>}
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="inline-flex items-center gap-2 text-sm">
+      <span className="text-muted" id={`${name}-label`}>
+        {label}
+      </span>
+      <Select key={value ?? ""} name={name} defaultValue={value ?? undefined}>
+        <SelectTrigger size="sm" aria-labelledby={`${name}-label`} className="w-auto max-w-56 font-mono">
+          <SelectValue placeholder="Choose a branch" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option} value={option} className="font-mono text-[0.8125rem]">
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 

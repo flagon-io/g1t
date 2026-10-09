@@ -38,7 +38,7 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { Hint } from "../../components/ui/hint";
 import { forgetWorkspace } from "../../lib/workspace-choice";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Select, SelectContent, SelectField, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { inviteLink, inviteState, moreInvitesMailto, workspaceInviteCopy } from "../../lib/invites";
 import { registrationMode } from "../../lib/registration.server";
@@ -397,14 +397,15 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
           </div>
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-muted">Role</span>
-            <select
+            <SelectField
               name="role"
               defaultValue="member"
-              className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none hover:border-line-strong focus:border-accent-dim sm:w-auto"
-            >
-              <option value="member">Member</option>
-              <option value="owner">Owner</option>
-            </select>
+              className="h-auto w-full py-2 sm:w-auto sm:min-w-32"
+              options={[
+                { value: "member", label: "Member" },
+                { value: "owner", label: "Owner" },
+              ]}
+            />
           </label>
           <div className="sm:pt-[1.625rem]">
             <SubmitButton match={{ action: "add" }} pending="Inviting…">

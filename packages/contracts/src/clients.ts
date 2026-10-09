@@ -530,6 +530,7 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("merge_pull", { actor, repo, number, ...options }),
     listActivePulls: (viewer) => call("list_active_pulls", { viewer }),
     byAuthor: (username, viewer, filter = {}) => call("by_author", { username, viewer, ...filter }),
+    contributions: (username, viewer) => call("contributions", { username, viewer }),
     startPlan: (actor, repo, brief) => call("start_plan", { actor, repo, brief }),
     failPlan: (planId, token, error) => call("report_plan", { planId, token, error }),
     getPlan: (repo, viewer, id) => call("get_plan", { repo, viewer, id }),

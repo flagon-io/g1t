@@ -151,6 +151,55 @@ export type EmojiList = {
   can_manage: boolean;
 };
 
+/** Who may do something in a workspace's chat: every member, or only its owners. */
+export type ChatAllowed = "members" | "owners";
+
+/**
+ * Who may rename and archive a channel: its owners (whoever made it) and
+ * the workspace's owners (the default), or the workspace's owners only.
+ */
+export type ChannelManagers = "channel_owners" | "owners";
+
+/**
+ * A workspace's chat settings, which its owners choose (Workspace,
+ * Settings, Chat). The chat service enforces each one; the page only
+ * hides what the viewer may not do.
+ */
+export type ChatSettings = {
+  /** Who may create public channels. */
+  public_channels: ChatAllowed;
+  /** Who may create private channels. */
+  private_channels: ChatAllowed;
+  /** Who may rename, archive and unarchive channels. */
+  manage_channels: ChannelManagers;
+  /** Who may add custom emoji (`admins` is the workspace's owners). */
+  emoji_upload: EmojiUpload;
+  /**
+   * The public channels someone new is put in the first time they open
+   * Chat, by id. #general unless the owners chose otherwise.
+   */
+  default_channels: string[];
+};
+
+/** What the viewer may do in a workspace's chat, from its settings and their role. */
+export type ChatPermissions = {
+  create_public_channels: boolean;
+  create_private_channels: boolean;
+  add_emoji: boolean;
+  /** Whether they may change the workspace's chat settings: owners only. */
+  manage_settings: boolean;
+};
+
+/** The chat settings page: the settings, what the viewer may do, and the public channels to choose defaults from. */
+export type ChatSettingsView = {
+  settings: ChatSettings;
+  can: ChatPermissions;
+  channels: Channel[];
+};
+
+/** A change to a channel: its name, its topic, or whether it is archived. Anything left out stays. */
+export type ChannelChange = { name?: string; topic?: string | null; archived?: boolean };
+
 /** An image for a new emoji, as base64. Its type is read from its bytes, never taken from here. */
 export type EmojiFile = { data: string };
 
@@ -175,6 +224,8 @@ export type ChatSidebar = {
   entries: ChatSidebarEntry[];
   /** Public channels in the workspace the viewer has not joined. */
   browsable: number;
+  /** What the viewer may do, from the workspace's chat settings: the page hides what they may not. */
+  can: ChatPermissions;
 };
 
 export type MessagePage = {
@@ -248,6 +299,7 @@ export type ChatLiveEvent =
   | { type: "message.deleted"; channel_id: string; id: string }
   | { type: "typing"; channel_id: string; member: MemberProfile; until: string }
   | { type: "read"; channel_id: string; principal: Principal; last_read_id: string }
+  | { type: "channel.updated"; channel: Channel }
   | { type: "reaction.added" | "reaction.removed"; channel_id: string; message_id: string; emoji: string; member: MemberProfile };
 
 /**
@@ -258,22 +310,40 @@ export type ChatLiveEvent =
  */
 export const CHAT_VIEWER_HEADER = "x-g1t-chat-viewer";
 
+/** A channel with its members, and whether the viewer may rename or archive it. */
+export type ChannelDetail = { channel: Channel; members: ChannelMember[]; can_manage: boolean };
+
 export type ChatApi = {
   sidebar(workspace: string, viewer: User): Promise<Result<ChatSidebar>>;
   channel(
     workspace: string,
     channelId: string,
     viewer: User,
-  ): Promise<Result<{ channel: Channel; members: ChannelMember[] }>>;
+  ): Promise<Result<ChannelDetail>>;
   /** The same, found by its name in the workspace (`#general` or `general`), as the site's URLs name channels. */
   channelByName(
     workspace: string,
     name: string,
     viewer: User,
-  ): Promise<Result<{ channel: Channel; members: ChannelMember[] }>>;
-  /** Public channels, for Browse channels. */
-  browse(workspace: string, viewer: User): Promise<Result<Channel[]>>;
+  ): Promise<Result<ChannelDetail>>;
+  /**
+   * Browse channels: every public channel, and the private ones the viewer
+   * is in. With `archived`, the archived ones instead.
+   */
+  browse(workspace: string, viewer: User, options?: { archived?: boolean }): Promise<Result<Channel[]>>;
+  /** Makes a channel. Who may make a public or a private one is the workspace's setting. */
   createChannel(workspace: string, viewer: User, input: NewChannel): Promise<Result<Channel>>;
+  /**
+   * Renames, archives or unarchives a channel (the workspace's
+   * `manage_channels` setting says who may), or changes its topic (any
+   * member). #general is never renamed or archived. Everyone looking at it
+   * gets `channel.updated`.
+   */
+  updateChannel(workspace: string, channelId: string, viewer: User, change: ChannelChange): Promise<Result<Channel>>;
+  /** The workspace's chat settings, for any member; only owners may change them. */
+  chatSettings(workspace: string, viewer: User): Promise<Result<ChatSettingsView>>;
+  /** Owners only: changes some of the workspace's chat settings, and answers all of them. */
+  setChatSettings(workspace: string, viewer: User, change: Partial<ChatSettings>): Promise<Result<ChatSettings>>;
   /**
    * The direct message between the viewer and these members, created on
    * first use. The same set of members always gets the same channel.
@@ -317,6 +387,18 @@ export type ChatApi = {
     channelId: string,
     agentId: string,
     message: AgentPostMessage,
+  ): Promise<Result<ChatMessage>>;
+  /**
+   * Changes a message an agent posted: its body, its card, or both. Only
+   * the agents service calls this, to keep a session's live card current.
+   * Changing a message wakes nobody.
+   */
+  updateAsAgent(
+    workspace: string,
+    channelId: string,
+    agentId: string,
+    id: string,
+    change: { body?: string; card?: MessageCard | null },
   ): Promise<Result<ChatMessage>>;
   /** Shows "is typing" for an agent while it works on a reply. */
   agentTyping(workspace: string, channelId: string, agentId: string): Promise<Result<null>>;
@@ -398,8 +480,11 @@ export function chatClient(service: ServiceBinding): ChatApi {
     sidebar: (workspace, viewer) => call("sidebar", { workspace, viewer }),
     channel: (workspace, channelId, viewer) => call("channel", { workspace, channel_id: channelId, viewer }),
     channelByName: (workspace, name, viewer) => call("channel_by_name", { workspace, name, viewer }),
-    browse: (workspace, viewer) => call("browse", { workspace, viewer }),
+    browse: (workspace, viewer, options) => call("browse", { workspace, viewer, archived: options?.archived ?? false }),
     createChannel: (workspace, viewer, input) => call("create_channel", { workspace, viewer, input }),
+    updateChannel: (workspace, channelId, viewer, change) => call("update_channel", { workspace, channel_id: channelId, viewer, change }),
+    chatSettings: (workspace, viewer) => call("chat_settings", { workspace, viewer }),
+    setChatSettings: (workspace, viewer, change) => call("set_chat_settings", { workspace, viewer, change }),
     openDm: (workspace, viewer, members) => call("open_dm", { workspace, viewer, members }),
     join: (workspace, channelId, viewer) => call("join", { workspace, channel_id: channelId, viewer }),
     leave: (workspace, channelId, viewer) => call("leave", { workspace, channel_id: channelId, viewer }),
@@ -423,6 +508,8 @@ export function chatClient(service: ServiceBinding): ChatApi {
       call("set_preferences", { workspace, channel_id: channelId, viewer, prefs }),
     postAsAgent: (workspace, channelId, agentId, message) =>
       call("post_as_agent", { workspace, channel_id: channelId, agent_id: agentId, message }),
+    updateAsAgent: (workspace, channelId, agentId, id, change) =>
+      call("update_as_agent", { workspace, channel_id: channelId, agent_id: agentId, id, change }),
     agentTyping: (workspace, channelId, agentId) =>
       call("agent_typing", { workspace, channel_id: channelId, agent_id: agentId }),
     audience: (workspace, channelId) => call("audience", { workspace, channel_id: channelId }),

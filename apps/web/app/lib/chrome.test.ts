@@ -14,9 +14,6 @@ test("a visitor gets the sidebar on app pages", () => {
     "/acme/web",
     "/acme/web/code",
     "/acme/web/issues/4",
-    "/explore",
-    "/search",
-    "/u/ada",
     "/acme",
     "/nothing/here/at/all",
   ]) {
@@ -28,6 +25,15 @@ test("a visitor gets the marketing frame on the front, pricing and sign-in pages
   for (const path of ["/", "/pricing", "/pricing/", "/login", "/register", "/verify", "/confirm-email", "/forgot", "/reset", "/device", "/oauth/authorize"]) {
     assert.equal(usesAppShell(path, false), false, path);
   }
+});
+
+test("a visitor reads profiles, Explore and Search in the public frame, with no sidebar", () => {
+  for (const path of ["/u/ada", "/u/ada/", "/explore", "/explore/", "/search"]) {
+    assert.equal(usesAppShell(path, false), false, path);
+  }
+  // A workspace named like a page is still a workspace.
+  assert.equal(usesAppShell("/u", false), true);
+  assert.equal(usesAppShell("/explorers", false), true);
 });
 
 test("a visitor reads the policies, security, support and status in the marketing frame", () => {

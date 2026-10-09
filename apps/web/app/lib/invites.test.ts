@@ -245,7 +245,8 @@ test("the invites form keeps the workspace behind an unticked box", () => {
   assert.match(section, /name="also_join"/);
   // The workspace and role fields are drawn only once the box is ticked, so nothing else is sent.
   assert.match(section, /\{alsoJoin && \(\s*<div[^]*?name="join"[^]*?name="join_role"/);
-  assert.match(section, /<option value="" disabled>\s*Choose a workspace/);
+  // No workspace is chosen for them: the select starts on its placeholder, and is required.
+  assert.match(section, /name="join"\s*required\s*placeholder="Choose a workspace"/);
   assert.doesNotMatch(section, /bringInto\.chosen|Bring them into/);
 });
 

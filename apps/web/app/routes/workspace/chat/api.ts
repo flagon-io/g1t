@@ -50,6 +50,7 @@ type Sent = {
   member?: string;
   message_id?: string;
   emoji?: string;
+  archived?: boolean;
 };
 
 export async function action({ params, context, request }: Route.ActionArgs) {
@@ -96,6 +97,22 @@ export async function action({ params, context, request }: Route.ActionArgs) {
         }
         const made = await chat.createChannel(slug, viewer, { name, topic: sent.topic?.trim() || null, private: Boolean(sent.private) });
         return made.ok ? { ok: true, value: { channel: made.value, to: channelPath(slug, made.value) } } : made;
+      }
+      case "update_channel": {
+        // A rename, a new topic, archiving or unarchiving; the chat service checks who may.
+        const change: { name?: string; topic?: string | null; archived?: boolean } = {};
+        if (typeof sent.name === "string") {
+          const name = channelName(sent.name);
+          if (!name) return { ok: false, error: { code: "invalid", message: "Give the channel a name." } };
+          if ((RESERVED_CHANNEL_NAMES as readonly string[]).includes(name)) {
+            return { ok: false, error: { code: "invalid", message: `#${name} is taken by g1t. Try another name.` } };
+          }
+          change.name = name;
+        }
+        if (typeof sent.topic === "string") change.topic = sent.topic.trim() || null;
+        if (typeof sent.archived === "boolean") change.archived = sent.archived;
+        const updated = await chat.updateChannel(slug, channel, viewer, change);
+        return updated.ok ? { ok: true, value: { channel: updated.value, to: channelPath(slug, updated.value) } } : updated;
       }
       case "dm": {
         const members = await principalsFrom(slug, viewer, sent.members ?? []);

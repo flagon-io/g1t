@@ -1066,6 +1066,12 @@ export interface WorkApi extends RulesApi, ChecksApi {
    * on repositories the viewer may read. Not found for no such account.
    */
   byAuthor(username: string, viewer: Viewer, filter?: AuthoredFilter): Promise<Result<Authored>>;
+  /**
+   * What a person did each day of the last year (issues and pull requests
+   * opened, reviews given), only on repositories the viewer may read: the
+   * calendar on their profile. Not found for no such account.
+   */
+  contributions(username: string, viewer: Viewer): Promise<Result<Contributions>>;
 
   /**
    * Records an outcome to plan for. Members only. For the runner service,
@@ -1281,4 +1287,21 @@ export type Authored = {
   counts: AuthoredCounts;
   /** The repositories they worked in that the viewer may read, most work first. */
   repos: { repo: RepoPath; count: number }[];
+};
+
+// Mirrors `Contributions` in `crates/contracts/src/work.rs`.
+
+/** How many days `contributions` covers: today and the 364 before it. */
+export const CONTRIBUTION_DAYS = 365;
+
+/** One day with something on it; days with nothing are left out. */
+export type ContributionDay = { /** `YYYY-MM-DD`, UTC. */ date: string; count: number };
+
+/** A person's year, as far as the viewer may see. */
+export type Contributions = {
+  /** Oldest first. */
+  days: ContributionDay[];
+  total: number;
+  /** The first day counted, `YYYY-MM-DD`; the last is today (UTC). */
+  from: string;
 };

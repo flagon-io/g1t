@@ -704,13 +704,21 @@ requests link to it.
 **What it shows.** Your picture, name, username, pronouns, bio, location,
 website and when you joined; then your work in three tabs:
 
-- **Overview:** pull requests merged, open pull requests and issues
-  opened, and your most recent activity.
+- **Overview:** your contribution calendar, then pull requests merged,
+  open pull requests and issues opened, and your most recent activity.
 - **Pull requests** and **Issues:** everything you opened, and what g1t
   opened for you, newest first,
   with filters beside the list for state (open, closed, merged), type,
   repository and sort order. Add `?tab=pulls&state=merged` and the like to
   link to a filtered list.
+
+**The contribution calendar.** The last year as a square a day, a column a
+week, shaded more strongly the more you did that day, with the total
+above it ("128 contributions in the last year"). A contribution is an
+issue or pull request you opened (or g1t opened for you) and a review you
+gave. Days are counted in UTC. Hover over a square, or tap it, to see its
+day and count. On a narrow screen the calendar scrolls sideways inside
+its card, starting at today.
 
 **Edit it** in [Settings → Profile](https://g1t.sh/settings/profile). Every
 field is optional. The bio takes up to 160 characters and is also what a
@@ -731,12 +739,18 @@ are filtered for whoever is looking:
 | On the profile | Shown to a visitor when |
 | --- | --- |
 | An issue or pull request, and its title | They can read its repository: it is public, or they are a member of its workspace |
-| The counts | Only what they could see is counted |
+| The counts, and the contribution calendar | Only what they could see is counted |
 | A workspace | They are a member of it too, or you made a public project in it, whose page shows that already |
 
 Someone signed out sees your public work and the workspaces where you made
-a public project; nothing else. The link preview for a profile uses only
-public work.
+a public project; nothing else, and their calendar counts only work in
+public repositories. The link preview for a profile uses only public work.
+
+**How it is laid out.** Signed out, a profile, Explore and Search are
+shown with g1t's public top bar (search, Explore, signing in) and the page
+at full width, with no workspace sidebar. Signed in, the rail stays, but
+no mode is lit and no mode's sidebar opens beside these pages: they are
+nobody's workspace, and the profile's own left column says whose it is.
 
 ### The card over a name
 

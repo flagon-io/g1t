@@ -5,6 +5,7 @@ import type { Route } from "./+types/audit";
 import { page } from "../../lib/meta";
 import { AuditTable } from "../../components/audit";
 import { Button, ButtonLink, EmptyState, Field, Input } from "../../components/ui";
+import { SelectField } from "../../components/ui/select";
 import { type AuditFilters, filterHref, parseFilters, toQuery } from "../../lib/audit";
 import { auditPage, auditRetention } from "../../lib/audit.server";
 import { repos } from "../../lib/services.server";
@@ -73,8 +74,8 @@ function FilterField({
   );
 }
 
-const SELECT =
-  "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors hover:border-line-strong focus:border-accent-dim";
+/** As tall as the inputs beside it. */
+const SELECT = "h-auto py-2";
 
 export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
   const { workspace, role, filters, entries, next, projects, retention } = loaderData;
@@ -101,19 +102,31 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
           <FilterField label="Action" name="action" value={filters.action} placeholder="git.push" list="audit-actions" />
           <FilterField label="Project" name="project" value={filters.project} placeholder="Any" list="audit-projects" />
           <Field label="Outcome">
-            <select name="outcome" defaultValue={filters.outcome} className={SELECT}>
-              <option value="">Any</option>
-              <option value="allowed">Allowed</option>
-              <option value="denied">Denied</option>
-            </select>
+            <SelectField
+              key={`outcome-${filters.outcome}`}
+              name="outcome"
+              defaultValue={filters.outcome}
+              className={SELECT}
+              options={[
+                { value: "", label: "Any" },
+                { value: "allowed", label: "Allowed" },
+                { value: "denied", label: "Denied" },
+              ]}
+            />
           </Field>
           <Field label="Who">
-            <select name="kind" defaultValue={filters.kind} className={SELECT}>
-              <option value="">Anyone</option>
-              <option value="agent">Agents</option>
-              <option value="person">People</option>
-              <option value="workspace">Workspace tokens</option>
-            </select>
+            <SelectField
+              key={`kind-${filters.kind}`}
+              name="kind"
+              defaultValue={filters.kind}
+              className={SELECT}
+              options={[
+                { value: "", label: "Anyone" },
+                { value: "agent", label: "Agents" },
+                { value: "person", label: "People" },
+                { value: "workspace", label: "Workspace tokens" },
+              ]}
+            />
           </Field>
           <Field label="From">
             <Input type="date" name="from" defaultValue={filters.from} />

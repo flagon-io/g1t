@@ -95,7 +95,10 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/", "acme"), "home");
   assert.equal(modeOf("/acme", "acme"), "home");
   assert.equal(modeOf("/acme/-/home", "acme"), "home");
-  assert.equal(modeOf("/explore", "acme"), "home");
+  // g1t's own public pages light no mode.
+  assert.equal(modeOf("/explore", "acme"), "site");
+  assert.equal(modeOf("/u/ada", "acme"), "site");
+  assert.equal(modeOf("/search.data", "acme"), "site");
   assert.equal(modeOf("/inbox", "acme"), "inbox");
   assert.equal(modeOf("/settings/emails", "acme"), "account");
   assert.equal(modeOf("/acme/-/chat/general", "acme"), "chat");

@@ -43,7 +43,7 @@ export const SECTIONS: Section[] = [
       { label: "Tags", path: "tags" },
       { label: "Releases", path: "releases" },
       { label: "Compare", path: "compare" },
-      ...soon("Code"),
+      // No Docs tab: code is not docs. Docs is a workspace mode, filtered by project there.
     ],
   },
   {

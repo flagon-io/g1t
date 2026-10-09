@@ -171,10 +171,12 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
  * The rail's modes (docs/WORKSPACE.md, "Shell"). Home, Code, Chat, Docs
  * and Agents are where work happens; the Inbox spans them; Workspace is the
  * workspace itself: its people, money, policies and settings. `account` is
- * your own settings, under the avatar. Each has a sidebar of its own, or
+ * your own settings, under the avatar. `site` is g1t's own public pages
+ * (a profile, Explore, Search): no workspace's, so no mode is lit and no
+ * mode's sidebar sits beside them. Each mode has a sidebar of its own, or
  * none, and which one is lit follows the address.
  */
-export type ModeKey = "home" | "chat" | "docs" | "agents" | "code" | "inbox" | "workspace" | "account";
+export type ModeKey = "home" | "chat" | "docs" | "agents" | "code" | "inbox" | "workspace" | "account" | "site";
 
 /** Workspace pages under `-/`, by the mode they belong to. Anything else of the workspace's is Code's. */
 const PAGE_MODES: Record<string, ModeKey> = {
@@ -206,13 +208,13 @@ const PAGE_MODES: Record<string, ModeKey> = {
   emoji: "workspace",
 };
 
-/** First segments that are g1t's own pages, never a workspace: none is Code's. */
+/** First segments that are g1t's own pages, never a workspace: none is any mode's. */
 const SITE_PAGES = new Set(["explore", "search", "support", "policies", "security", "status", "u", "invite", "workspaces"]);
 
 /**
  * The mode a path is in, for the workspace `slug`. A repository (anyone's)
  * and a new project are Code's; g1t's own pages (Explore, search, a
- * profile) sit under Home, which is never Code.
+ * profile) are `site`: public, and no workspace's mode.
  */
 export function modeOf(pathname: string, slug: string | null): ModeKey {
   const path = pagePath(pathname);
@@ -220,7 +222,7 @@ export function modeOf(pathname: string, slug: string | null): ModeKey {
   if (path === "/inbox" || path.startsWith("/inbox/")) return "inbox";
   if (path === "/settings" || path.startsWith("/settings/")) return "account";
   const parts = path.split("/").filter(Boolean);
-  if (SITE_PAGES.has(parts[0] ?? "")) return "home";
+  if (SITE_PAGES.has(parts[0] ?? "")) return "site";
   if (slug && parts[0]?.toLowerCase() === slug.toLowerCase()) {
     if (parts.length === 1) return "home";
     if (parts[1] === "-") {
@@ -251,6 +253,8 @@ export function modeHome(mode: ModeKey, slug: string): string {
       return `/${slug}/-/workspace`;
     case "account":
       return "/settings";
+    case "site":
+      return "/explore";
   }
 }
 

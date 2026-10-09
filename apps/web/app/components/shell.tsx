@@ -1609,10 +1609,13 @@ export function WorkspaceSidebar({ slug, owner, onClose }: { slug: string; owner
       <BackRow to={`/${slug}/-/workspace`} label="Settings" context={slug} />
       <div className="mt-2 space-y-px">
         {owner && (
-          <SidebarLink to={`/${slug}/-/settings`} icon={<Settings size={15} />}>
+          <SidebarLink to={`/${slug}/-/settings`} icon={<Settings size={15} />} end>
             General
           </SidebarLink>
         )}
+        <SidebarLink to={`/${slug}/-/settings/chat`} icon={<MessagesSquare size={15} />}>
+          Chat
+        </SidebarLink>
         <SidebarLink to={`/${slug}/-/repositories`} icon={<BookMarked size={15} />}>
           Repositories
         </SidebarLink>
@@ -1764,9 +1767,7 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
     return <span className="text-sm font-medium">{words[parts[0]!]}</span>;
   }
   // A person's profile, by their handle.
-  if (parts[0] === "u" && parts[1]) {
-    return <span className="truncate font-mono text-[0.8125rem] font-medium">@{parts[1]}</span>;
-  }
+  if (parts[0] === "u" && parts[1]) return <ProfileCrumb username={parts[1]} />;
   const [owner, second, third, fourth] = parts;
   const trail: Crumb[] = [{ label: owner!, to: `/${owner}`, mono: true }];
   if (second === "-") {
@@ -1790,6 +1791,18 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
     }
   }
   return <Trail trail={trail} />;
+}
+
+/** A profile's place in the top bar: the person's avatar and @handle, from the page once it has loaded. */
+function ProfileCrumb({ username }: { username: string }) {
+  const page = useRouteLoaderData("routes/user") as { profile?: { username: string; avatar: string | null } } | undefined;
+  const profile = page?.profile?.username.toLowerCase() === username.toLowerCase() ? page.profile : null;
+  return (
+    <Link to={`/u/${profile?.username ?? username}`} aria-current="page" className="flex min-w-0 items-center gap-2 rounded px-1 py-0.5 transition-colors hover:bg-raised">
+      <Avatar name={profile?.username ?? username} image={profile?.avatar ?? null} size={20} />
+      <span className="truncate font-mono text-[0.8125rem] font-medium">@{profile?.username ?? username}</span>
+    </Link>
+  );
 }
 
 /** One link of the trail; `short` is what a phone shows when it is the page itself. */
@@ -2032,13 +2045,14 @@ function AskG1tButton({ slug }: { slug: string }) {
 const SIDEBAR_BOX = "h-full border-r border-line bg-[color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))]";
 
 /**
- * Which sidebar sits beside the rail: each mode's own, or none (Docs, and
- * the Inbox, which is a page of its own). Without a workspace (a visitor),
- * the one sidebar there always was.
+ * Which sidebar sits beside the rail: each mode's own, or none (Docs, the
+ * Inbox, which is a page of its own, and g1t's public pages, such as a
+ * profile, which are no workspace's and carry their own left column).
+ * Without a workspace (a visitor), the one sidebar there always was.
  */
 function sidebarFor(mode: ModeKey | null): Panel | null {
   if (mode == null) return "code";
-  if (mode === "docs" || mode === "inbox") return null;
+  if (mode === "docs" || mode === "inbox" || mode === "site") return null;
   return mode;
 }
 

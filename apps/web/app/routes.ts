@@ -119,6 +119,8 @@ export default [
     route("-/packages", "routes/workspace/packages.tsx"),
     route("-/packages/:ecosystem/*", "routes/workspace/package.tsx"),
     route("-/settings", "routes/workspace/settings.tsx"),
+    // What members may do in chat: channels, emoji, default channels.
+    route("-/settings/chat", "routes/workspace/chat-settings.tsx"),
     route("-/repositories", "routes/workspace/repositories.tsx"),
     // Agents mode: the fleet's runs first, then each of the workspace's own
     // agents (docs/WORKSPACE.md). `new` is no agent's handle.

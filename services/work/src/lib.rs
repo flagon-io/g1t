@@ -11,6 +11,7 @@ mod ghost;
 mod codeowners;
 mod commit_checks;
 mod compute;
+mod contributions;
 mod confidence;
 mod guardrails;
 mod inbox;
@@ -2772,6 +2773,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "merge_pull" => reply(&work.merge_pull(args(body)?).await?),
         "list_active_pulls" => reply(&work.list_active_pulls(args(body)?).await?),
         "by_author" => reply(&work.by_author(args(body)?).await?),
+        "contributions" => reply(&work.contributions(args(body)?).await?),
         "start_plan" => reply(&work.start_plan(args(body)?).await?),
         "report_plan" => reply(&work.report_plan(args(body)?).await?),
         "get_plan" => reply(&work.get_plan(args(body)?).await?),

@@ -71,20 +71,8 @@ export const ROADMAP: RoadmapItem[] = [
     ],
   },
   // --- Code ---------------------------------------------------------------
-  {
-    key: "docs",
-    title: "Docs",
-    section: "Code",
-    summary: "Pages about the project that agents keep current as the code changes.",
-    why: "A wiki goes stale the day it is written. g1t's docs live with the code, and when a change makes a page wrong, an agent proposes the fix in the same pull request.",
-    plans: [
-      "Pages written in Markdown, kept in the repository",
-      "Agents update pages a change makes wrong, in the same pull request",
-      "Architecture pages drawn from the code itself",
-      "Search across every project's docs",
-    ],
-    today: { label: "Files", path: "code" },
-  },
+  // Nothing: code is not docs. Docs is its own workspace mode, filterable
+  // by project there, and a project never gets a Docs tab.
 
   // --- Agents -------------------------------------------------------------
   // At work, Sessions and Memory are built (see project-nav.ts), and so is

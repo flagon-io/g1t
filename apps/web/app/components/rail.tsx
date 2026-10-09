@@ -52,15 +52,20 @@ function IconSquare({ current, children }: { current: boolean; children: ReactNo
   );
 }
 
+/** A mode's name under its icon: centred on the rail, whatever its length. */
 function RailLabel({ current, children }: { current: boolean; children: ReactNode }) {
   return (
-    <span className={`text-[0.6875rem] leading-none font-medium transition-colors ${current ? "text-fg" : "text-faint group-hover:text-muted"}`}>
+    <span
+      className={`block w-full truncate text-center text-[0.6875rem] leading-none font-medium transition-colors ${current ? "text-fg" : "text-faint group-hover:text-muted"}`}
+    >
       {children}
     </span>
   );
 }
 
-const RAIL_ITEM = "group flex w-full flex-col items-center gap-1 rounded-lg py-1 outline-none focus-visible:ring-2 focus-visible:ring-accent";
+// Each item fills the rail's width and centres its icon and name on it.
+const RAIL_ITEM =
+  "group flex w-full flex-col items-center justify-center gap-1 rounded-lg py-1 text-center outline-none focus-visible:ring-2 focus-visible:ring-accent";
 
 function RailButton({ mode, to, current }: { mode: Mode; to: string; current: boolean }) {
   return (
@@ -94,9 +99,9 @@ function WorkspaceButton({ user, workspace }: { user: User; workspace: Membershi
       <Hint label={displayName(workspace)} side="right">
         <DropdownMenuTrigger
           aria-label={`${displayName(workspace)}: switch workspace`}
-          className="rounded-[11px] outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
+          className="flex rounded-[10px] outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
         >
-          <Avatar name={workspace.slug} image={workspace.avatar} size={40} square />
+          <Avatar name={workspace.slug} image={workspace.avatar} size={36} square />
         </DropdownMenuTrigger>
       </Hint>
       <DropdownMenuContent side="right" align="start" className="w-72 p-1.5">
@@ -265,18 +270,23 @@ export function Rail({
   ];
   const workspaceMode: Mode = { key: "workspace", label: "Workspace", icon: <Building2 size={19} /> };
   return (
+    // The right-hand rule is an inset shadow, not a border, so the rail's
+    // whole width is its content box and every item centres on it exactly.
     <nav
       aria-label="Modes"
       style={{ width: RAIL_WIDTH, ["--rail-bg" as string]: "#0b0b0d" }}
-      className="flex h-full shrink-0 flex-col items-center overflow-y-auto border-r border-line bg-[var(--rail-bg)] pt-3 pb-3 [scrollbar-width:none]"
+      className="flex h-full shrink-0 flex-col items-center overflow-y-auto bg-[var(--rail-bg)] pb-3 shadow-[inset_-1px_0_0_var(--color-line)] [scrollbar-width:none]"
     >
-      <WorkspaceButton user={user} workspace={workspace} />
-      <div className="mt-4 flex w-full flex-col items-center gap-2 px-2">
+      {/* The top bar's height and rule, so the workspace sits on the same line as the sidebar's heading and the page's top bar. */}
+      <div className="flex h-14 w-full shrink-0 items-center justify-center border-b border-line">
+        <WorkspaceButton user={user} workspace={workspace} />
+      </div>
+      <div className="mt-3 flex w-full flex-col items-center gap-2 px-1.5">
         {modes.map((mode) => (
           <RailButton key={mode.key} mode={mode} to={modeHome(mode.key, workspace.slug)} current={here === mode.key} />
         ))}
       </div>
-      <div className="mt-auto flex w-full flex-col items-center gap-2 px-2 pt-4">
+      <div className="mt-auto flex w-full flex-col items-center gap-2 px-1.5 pt-4">
         <RailButton mode={workspaceMode} to={modeHome("workspace", workspace.slug)} current={here === "workspace"} />
         {help}
         <div className="mt-1.5">{account}</div>

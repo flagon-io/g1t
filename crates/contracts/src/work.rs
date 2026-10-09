@@ -2538,6 +2538,37 @@ pub struct Authored {
     pub repos: Vec<AuthoredRepo>,
 }
 
+/// How many days `contributions` covers: today and the 364 before it.
+pub const CONTRIBUTION_DAYS: u64 = 365;
+
+/// `contributions`: what a person did each day of the last year (issues
+/// and pull requests opened, reviews given), only on repositories `viewer`
+/// may read, for the calendar on their profile. Returns
+/// `Outcome<Contributions>`; not found for an account that does not exist.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ContributionsArgs {
+    pub username: String,
+    pub viewer: Viewer,
+}
+
+/// One day with something on it. Days with nothing are left out.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContributionDay {
+    /// `YYYY-MM-DD`, UTC.
+    pub date: String,
+    pub count: u32,
+}
+
+/// A person's year, as far as the viewer may see.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Contributions {
+    /// Oldest first.
+    pub days: Vec<ContributionDay>,
+    pub total: u32,
+    /// The first day counted, `YYYY-MM-DD`; the last is today.
+    pub from: String,
+}
+
 #[cfg(test)]
 mod required_tests {
     use super::*;

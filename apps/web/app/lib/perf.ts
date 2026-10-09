@@ -108,7 +108,7 @@ export function sessionFor(service: string, bookmarks: Bookmarks, writing: boole
  */
 const READS = new Set(
   (
-    "account active_agents all_ids get list queue pulls_for_repos blame blob branches by_author by_repo catalog check_invite check_limit " +
+    "account active_agents all_ids get list queue pulls_for_repos blame blob branches by_author by_repo contributions catalog check_invite check_limit " +
     "check_workspace_deletion check_workspace_rename collaborator_permission compare counts deleted deliveries " +
     "dependencies domains entitlements entity explore features git_access graph has_feature invoices ledger limit " +
     "limit_requests links log logs managed_pulls memories_by_id memory_context my_repo_invitations " +

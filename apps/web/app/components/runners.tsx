@@ -6,6 +6,7 @@ import { type RegistrationToken, RUNNER_DOWNLOADS, RUNNER_FILES, RUNNER_IMAGE, t
 
 import type { RunnersAction, RunnersData } from "../lib/runners.server";
 import { Button, CopyLine, EmptyState, ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "./ui";
+import { SelectField } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
@@ -152,13 +153,12 @@ function NewRunner({ token, groups, repoScoped }: { token: RegistrationToken | n
           <input type="hidden" name="intent" value="token" />
           {!repoScoped && groups.length > 1 && (
             <Field label="Group">
-              <select name="group" className="h-9 rounded-md border border-line bg-bg px-2.5 text-sm" defaultValue={groups.find((g) => g.default)?.name}>
-                {groups.map((group) => (
-                  <option key={group.id} value={group.name}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
+              <SelectField
+                name="group"
+                defaultValue={groups.find((g) => g.default)?.name ?? groups[0]?.name}
+                className="w-auto min-w-40"
+                options={groups.map((group) => ({ value: group.name, label: group.name }))}
+              />
             </Field>
           )}
           <SubmitButton match={{ intent: "token" }} pending="Making a token…">

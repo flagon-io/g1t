@@ -2,11 +2,13 @@
  * Which frame a page is drawn in, and what the sidebar offers someone who
  * is not signed in.
  *
- * g1t is a sidebar site: projects, Explore, Search, profiles and
- * not-found pages are drawn in the app's sidebar for everyone, so a
- * visitor browsing public projects finds their way the same as a member.
- * Only the front page and the pages about signing in or paying keep the
- * marketing header and footer.
+ * Someone signed in always gets the app's frame: the rail and its modes.
+ * A visitor gets it on projects, workspaces and not-found pages, where the
+ * sidebar is the project's own menu. g1t's public pages that belong to no
+ * workspace (a person's profile, Explore, Search) are drawn for a visitor
+ * in the public frame instead: the top bar with the mark, search and
+ * signing in, the page at full width, and the footer. So do the front page
+ * and the pages about signing in, paying and trust.
  */
 
 import type { Abilities, Capability } from "@g1t/contracts";
@@ -35,11 +37,16 @@ const MARKETING = new Set([
   "/workspaces/new",
 ]);
 
+/** g1t's public pages that are no workspace's: a visitor reads them in the public frame. */
+const PUBLIC_PAGES = new Set(["/explore", "/search"]);
+
 /** Whether the page is drawn in the app's sidebar frame. */
 export function usesAppShell(pathname: string, signedIn: boolean): boolean {
   if (signedIn) return true;
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  if (MARKETING.has(path)) return false;
+  if (MARKETING.has(path) || PUBLIC_PAGES.has(path)) return false;
+  // A person's profile: theirs, not any workspace's.
+  if (/^\/u\/[^/]+$/.test(path)) return false;
   if (path === "/oauth" || path.startsWith("/oauth/")) return false;
   // An invite link is the front door: the marketing frame, like /register.
   if (path.startsWith("/invite/")) return false;

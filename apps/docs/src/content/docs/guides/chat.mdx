@@ -82,7 +82,11 @@ ask in a DM or a private channel. Docs and checks come later.
 ## Channels
 
 A channel is a named conversation, such as `#web`, `#releases` or
-`#support`. Every workspace starts with `#general`.
+`#support`. Every workspace starts with `#general`, and everyone new is put
+in it the first time they open Chat (owners can choose other
+[default channels](#workspace-chat-settings)). A private channel shows a
+lock in place of `#`, in the sidebar, in Browse channels and at the top of
+the channel.
 
 | | Public channel | Private channel |
 | --- | --- | --- |
@@ -107,14 +111,36 @@ A channel is a named conversation, such as `#web`, `#releases` or
 
 </Steps>
 
+A workspace's owners can keep creating public channels, private channels or
+both to themselves ([chat settings](#workspace-chat-settings)). When they
+have, **Create a channel** is turned off for everyone else and says why, and
+someone who may create only one kind gets that kind.
+
 ### Join, leave and browse
 
-- **Browse channels** lists every public channel you haven't joined, at
-  `g1t.sh/<workspace>/-/chat/browse`. Open one to read it, and choose
-  **Join** to post in it and see it in your sidebar.
+- **Browse channels** lists every public channel, and the private ones
+  you're in, at `g1t.sh/<workspace>/-/chat/browse`. Open one to read it, and
+  choose **Join** to post in it and see it in your sidebar. A private channel
+  you're not in never appears.
+- **Archived**, on the same page, lists archived channels.
 - You can leave a channel, and join a public one again at any time.
 - When you join, everything already said counts as read, so a busy channel
   doesn't greet you with its whole history as unread.
+
+### Rename, archive and change the topic
+
+Open a channel's details (the members button at the top right) to change
+it.
+
+| Change | Who can |
+| --- | --- |
+| **Topic** | Any member of the channel. |
+| **Rename** | The channel's owners and the workspace's owners, or only the workspace's owners if they chose so in [chat settings](#workspace-chat-settings). The address follows the new name for everyone who has it open. |
+| **Archive** | The same people as rename. An archived channel leaves everyone's sidebar and nobody can post in it, but its history stays readable. |
+| **Unarchive** | The same people, from the archived channel itself or **Browse channels → Archived**. |
+
+`#general` is never renamed or archived. Everyone looking at a channel sees
+a change to it the moment it is made.
 
 ### Star and mute
 
@@ -177,12 +203,32 @@ While an agent works on a reply, the channel shows it as typing, the same
 as a person. If it is out of budget, it says so in the thread instead of
 answering, and tells you who can raise its limit.
 
+### Session cards
+
+When an agent starts a longer piece of work, it posts a **session card**:
+the session's title, a line such as *Step 3 · 12 tools · $0.14*, and its
+state. The card changes in place as the session moves, for everyone looking,
+and opens the session's page in Agents.
+
+| State | Means |
+| --- | --- |
+| **Queued** | Waiting to start. |
+| **Working** | Running now. The chip pulses softly. |
+| **Waiting on helpers** | Another agent is doing part of the work. |
+| **Needs approval** | Waiting for someone to approve a step. Shown in amber. |
+| **Done** | Finished. Shown in green. |
+| **Stopped** | Someone stopped it. |
+| **Failed** | It could not finish. Shown in red. |
+
 ## Live
 
 Chat is live. Messages, edits and deletions appear for everyone in the
 channel the moment they happen, without reloading. You also see:
 
-- **Typing.** Who is writing right now, people and agents.
+- **Typing.** Who is writing right now, people and agents, in the channel
+  or in a thread.
+- **Channel changes.** A new name, topic, or archiving.
+- **Cards.** An agent's session card, or any other card, changing state.
 - **Read state.** Your sidebar shows unread counts per channel, and the
   channel scrolls to the first message you haven't read.
 
@@ -256,11 +302,11 @@ Aliases follow the same name rules.
 
 ### Who can add emoji
 
-Owners choose, on the same page:
+Owners choose in the workspace's [chat settings](#workspace-chat-settings):
 
 | Setting | Means |
 | --- | --- |
-| **Every member** (the default) | Anyone in the workspace can add emoji and aliases. |
+| **Any member** (the default) | Anyone in the workspace can add emoji and aliases. |
 | **Owners only** | Members use the workspace's emoji; only owners add them. |
 
 ### Remove an emoji
@@ -274,6 +320,25 @@ Type `:` and a couple of letters in the composer, and a list of matching
 emoji appears, the workspace's own marked **This workspace**. Up and Down
 move through it, Enter or Tab puts the emoji in, and Escape closes it. A whole
 `:shortcode:` you type yourself works too.
+
+## Workspace chat settings
+
+A workspace's owners decide what members can do in its chat, under
+**Workspace → Settings → Chat** (`g1t.sh/<workspace>/-/settings/chat`).
+Every member can open the page to see what is allowed; only owners can
+change it. g1t enforces each setting, whichever app or API the request
+comes from.
+
+| Setting | Choices |
+| --- | --- |
+| **Public channels** | Who can create them: **Any member** (the default) or **Owners only**. |
+| **Private channels** | Who can create them: **Any member** (the default) or **Owners only**. |
+| **Renaming and archiving** | **Channel owners and workspace owners** (the default) or **Workspace owners only**. Any member of a channel can still change its topic. |
+| **Custom emoji** | Who can add them: **Any member** (the default) or **Owners only**. |
+| **Default channels** | The public channels someone new is put in the first time they open Chat. `#general` unless owners choose others. People already in the workspace are not moved, and anyone can leave a default channel. |
+
+Changing a setting doesn't change what already exists: channels already
+made stay, whoever made them.
 
 ## Notifications
 

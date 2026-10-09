@@ -3,8 +3,8 @@
  * `/<workspace>` (as Docker Hub keeps people under `/u/`).
  *
  * The left column is who they are; the main column is their work, as
- * tabs: an overview, then their pull requests and issues with a filter
- * aside. Everything is filtered on the server by `work.byAuthor`, which
+ * tabs: an overview (their contribution calendar first), then their pull
+ * requests and issues with a filter aside. Everything is filtered on the server by `work.byAuthor`, which
  * only ever returns work on repositories the viewer may read, and the
  * workspaces shown are only those the viewer could know about anyway (see
  * `profile_workspaces` in services/identity/src/profiles.rs).
@@ -23,14 +23,16 @@ import {
 import type { ReactNode } from "react";
 import { Form, Link, redirect, useNavigate, useSearchParams } from "react-router";
 
-import type { Authored, AuthoredItem, AuthoredSort, AuthoredState, Profile, StarredRepo } from "@g1t/contracts";
+import type { Authored, AuthoredItem, AuthoredSort, AuthoredState, Contributions, Profile, StarredRepo } from "@g1t/contracts";
 
 import type { Route } from "./+types/user";
 import { page } from "../lib/meta";
+import { ContributionCalendar } from "../components/contribution-calendar";
 import { Avatar, Button, ButtonLink, EmptyState, TimeAgo } from "../components/ui";
 import { RadioGroup, RadioOption } from "../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { IssueIcon, PullIcon } from "../components/work-icons";
+import { lastDay } from "../lib/contribution-calendar";
 import { notFound } from "../lib/not-found.server";
 import { identity, repos, work } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
@@ -96,13 +98,22 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     .then((publicIn) => identity.profileWorkspaces(username, viewer, publicIn));
   // The card is drawn for no one in particular, so its version uses what
   // everyone sees; for a signed-out viewer that is these counts already.
-  const [authored, shown, starred] = await Promise.all([
+  const [authored, shown, starred, year] = await Promise.all([
     work.byAuthor(username, viewer, filter),
     workspaces,
     // What they starred that the viewer can see, on its own tab.
     tab === "stars" ? repos.starred(username, viewer).catch(() => [] as StarredRepo[]) : ([] as StarredRepo[]),
+    // Their year, on the overview: counted only where the viewer can see.
+    tab === "overview"
+      ? work
+          .contributions(username, viewer)
+          .then((result) => (result.ok ? result.value : null))
+          .catch(() => null as Contributions | null)
+      : null,
   ]);
   const activity = authored.ok ? authored.value : EMPTY;
+  // The calendar ends today, as the work service counted it (UTC).
+  const today = (year && lastDay(year.from)) || new Date().toISOString().slice(0, 10);
   return {
     profile,
     tab,
@@ -111,6 +122,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     failed: !authored.ok,
     workspaces: shown,
     starred,
+    contributions: year ? { ...year, today } : null,
     isSelf: viewer?.username === profile.username,
     publicCounts: viewer ? null : activity.counts,
   };
@@ -324,11 +336,19 @@ function StarredList({ starred, isSelf }: { starred: StarredRepo[]; isSelf: bool
 
 type Data = Route.ComponentProps["loaderData"];
 
-function Overview({ profile, activity, failed }: Data) {
+function Overview({ profile, activity, failed, contributions }: Data) {
   const { counts, items } = activity;
   const who = profile.name ?? profile.username;
   return (
     <div className="space-y-8">
+      {contributions && (
+        <ContributionCalendar
+          days={contributions.days}
+          total={contributions.total}
+          today={contributions.today}
+          from={contributions.from}
+        />
+      )}
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat
           label="Pull requests merged"

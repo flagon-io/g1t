@@ -28,6 +28,8 @@ import {
   type AgentPostMessage,
   type AskerAccess,
   type Channel,
+  type ChannelChange,
+  type ChannelDetail,
   type ChannelMember,
   type ChatAudience,
   type ChatLiveEvent,
@@ -37,6 +39,8 @@ import {
   type EmojiFile,
   type EmojiList,
   type EmojiUpload,
+  type ChatSettings,
+  type ChatSettingsView,
   type ChatSidebar,
   type ChatSidebarEntry,
 
@@ -74,6 +78,7 @@ import { mentionedHandles, mentionsColumn } from "./mentions.ts";
 import { AGENT_TYPING_MS, historyOf, historySize, messageBody, meterDay, pageOf, pageSize } from "./messages.ts";
 import { GENERAL, MAX_DM_MEMBERS, channelName, dmKey, dmMembers } from "./names.ts";
 import { ROOM_MEMBER_HEADER, type ChannelRoom, type RoomMember } from "./room.ts";
+import { mayCreateChannel, mayManageChannel, permissionsFor, rowFor, settingsChange, settingsOf, type SettingsRow } from "./settings.ts";
 import { dmTitle, sidebarOrder, tally, type UnreadRow } from "./unread.ts";
 // Live notifications and counts (services/notify).
 import { notifyMessage, notifyMuted, notifyRead } from "./notify.ts";
@@ -232,6 +237,7 @@ class Chat {
   private readonly people = new Map<string, Promise<Map<string, Member>>>();
   private readonly usernames = new Map<string, string>();
   private readonly agents = new Map<string, WorkspaceAgent | null>();
+  private readonly settingsRows = new Map<string, Promise<SettingsRow | null>>();
 
   /** `defer` runs work after the answer is sent: the request's waitUntil. */
   constructor(
@@ -505,8 +511,19 @@ class Chat {
         .prepare("INSERT OR IGNORE INTO general_joined (workspace_id, principal, joined_at) VALUES (?, ?, ?)")
         .bind(workspace.id, me, at),
     ];
-    if (general && !general.private && !general.archived_at) {
-      statements.push(this.joinStatement(general.id, me, general.created_by === me ? "owner" : "member", at));
+    // The workspace's default channels (#general unless its owners chose
+    // others): public and not archived only, whatever was kept.
+    const settings = await this.settings(workspace, general?.id ?? null);
+    const defaults = settings.default_channels.length
+      ? await this.db
+          .prepare(
+            "SELECT * FROM channels WHERE workspace_id = ? AND kind = 'channel' AND private = 0 AND archived_at IS NULL AND id IN (SELECT value FROM json_each(?))",
+          )
+          .bind(workspace.id, JSON.stringify(settings.default_channels))
+          .all<ChannelRow>()
+      : { results: [] as ChannelRow[] };
+    for (const channel of defaults.results) {
+      statements.push(this.joinStatement(channel.id, me, channel.created_by === me ? "owner" : "member", at));
     }
     await this.db.batch(statements);
   }
@@ -598,22 +615,27 @@ class Chat {
         mentions: count.mentions,
       };
     });
-    return ok({ entries: sidebarOrder(entries), browsable: browsable?.n ?? 0 });
+    const settings = await this.settings(workspace);
+    return ok({ entries: sidebarOrder(entries), browsable: browsable?.n ?? 0, can: permissionsFor(settings, roleOf(a.viewer, slug)) });
   }
 
   // ── Channels ────────────────────────────────────────────────────────────
 
-  async channel(a: { workspace: string; channel_id: string; viewer: Viewer }): Promise<Result<{ channel: Channel; members: ChannelMember[] }>> {
+  async channel(a: { workspace: string; channel_id: string; viewer: Viewer }): Promise<Result<ChannelDetail>> {
     const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
     if (!found.ok) return found;
-    const { slug, workspace, channel } = found.value;
-    const rows = await this.db
-      .prepare("SELECT * FROM channel_members WHERE channel_id = ? ORDER BY joined_at, principal")
-      .bind(channel.id)
-      .all<MemberRow>();
+    const { slug, workspace, channel, member } = found.value;
+    const [rows, settings] = await Promise.all([
+      this.db
+        .prepare("SELECT * FROM channel_members WHERE channel_id = ? ORDER BY joined_at, principal")
+        .bind(channel.id)
+        .all<MemberRow>(),
+      this.settings(workspace),
+    ]);
     const profiles = await this.profiles(slug, workspace, rows.results.map((r) => r.principal));
     return ok({
       channel: toChannel(channel),
+      can_manage: channel.kind === "channel" && mayManageChannel(settings, roleOf(a.viewer, slug), member?.role ?? null),
       members: rows.results.map((row) => ({
         channel_id: row.channel_id,
         member: profiles.get(row.principal)!,
@@ -627,7 +649,7 @@ class Chat {
   }
 
   /** A channel by its name, as the site's URLs name them; read like `channel`. */
-  async channelByName(a: { workspace: string; name: string; viewer: Viewer }): Promise<Result<{ channel: Channel; members: ChannelMember[] }>> {
+  async channelByName(a: { workspace: string; name: string; viewer: Viewer }): Promise<Result<ChannelDetail>> {
     const found = await this.viewerWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
     const named = channelName(a.name ?? "");
@@ -641,14 +663,22 @@ class Chat {
     return this.channel({ workspace: a.workspace, channel_id: row.id, viewer: a.viewer });
   }
 
-  async browse(a: { workspace: string; viewer: Viewer }): Promise<Result<Channel[]>> {
+  /**
+   * Every public channel, and the private ones the viewer is in; a private
+   * one they are not in stays unseen. With `archived`, the archived ones.
+   */
+  async browse(a: { workspace: string; viewer: Viewer; archived?: boolean }): Promise<Result<Channel[]>> {
     const found = await this.viewerWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
     const rows = await this.db
       .prepare(
-        "SELECT * FROM channels WHERE workspace_id = ? AND kind = 'channel' AND private = 0 AND archived_at IS NULL ORDER BY name",
+        `SELECT * FROM channels c
+         WHERE c.workspace_id = ?1 AND c.kind = 'channel'
+           AND (c.archived_at IS NULL) = (?3 = 0)
+           AND (c.private = 0 OR EXISTS (SELECT 1 FROM channel_members m WHERE m.channel_id = c.id AND m.principal = ?2))
+         ORDER BY c.name`,
       )
-      .bind(found.value.id)
+      .bind(found.value.id, userKey(a.viewer!), a.archived === true ? 1 : 0)
       .all<ChannelRow>();
     return ok(rows.results.map(toChannel));
   }
@@ -661,6 +691,10 @@ class Chat {
     if (!named.ok) return fail("invalid", named.message);
     const topic = typeof a.input?.topic === "string" ? a.input.topic.trim() : "";
     if (topic.length > MAX_TOPIC) return fail("invalid", `A topic is at most ${MAX_TOPIC} characters.`);
+    const isPrivate = !!a.input?.private;
+    if (!mayCreateChannel(await this.settings(workspace), roleOf(a.viewer, a.workspace), isPrivate)) {
+      return fail("forbidden", `Only owners can create ${isPrivate ? "private" : "public"} channels in this workspace.`);
+    }
     const taken = await this.db
       .prepare("SELECT 1 FROM channels WHERE workspace_id = ? AND name = ?")
       .bind(workspace.id, named.name)
@@ -673,7 +707,7 @@ class Chat {
       kind: "channel",
       name: named.name,
       topic: topic || null,
-      private: a.input?.private ? 1 : 0,
+      private: isPrivate ? 1 : 0,
       dm_key: null,
       created_by: me,
       created_at: now(),
@@ -809,6 +843,145 @@ class Chat {
       );
     }
     return ok(null);
+  }
+
+  // ── What owners decide (src/settings.ts) ────────────────────────────────
+
+  /** The row of a workspace's chat settings, read once per request. */
+  private settingsRow(workspace: Workspace): Promise<SettingsRow | null> {
+    let found = this.settingsRows.get(workspace.id);
+    if (!found) {
+      found = this.db
+        .prepare("SELECT emoji_upload, public_channels, private_channels, manage_channels, default_channels FROM chat_settings WHERE workspace_id = ?")
+        .bind(workspace.id)
+        .first<SettingsRow>();
+      this.settingsRows.set(workspace.id, found);
+    }
+    return found;
+  }
+
+  /**
+   * A workspace's chat settings. Default channels never chosen are
+   * #general, looked up unless `generalId` is given.
+   */
+  private async settings(workspace: Workspace, generalId?: string | null): Promise<ChatSettings> {
+    const row = await this.settingsRow(workspace);
+    if (row?.default_channels != null || generalId !== undefined) return settingsOf(row, generalId ?? null);
+    const general = await this.db
+      .prepare("SELECT id FROM channels WHERE workspace_id = ? AND name = ? AND kind = 'channel'")
+      .bind(workspace.id, GENERAL)
+      .first<{ id: string }>();
+    return settingsOf(row, general?.id ?? null);
+  }
+
+  async chatSettings(a: { workspace: string; viewer: Viewer }): Promise<Result<ChatSettingsView>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const workspace = found.value;
+    const [settings, channels] = await Promise.all([
+      this.settings(workspace),
+      this.db
+        .prepare("SELECT * FROM channels WHERE workspace_id = ? AND kind = 'channel' AND private = 0 AND archived_at IS NULL ORDER BY name")
+        .bind(workspace.id)
+        .all<ChannelRow>(),
+    ]);
+    return ok({ settings, can: permissionsFor(settings, roleOf(a.viewer, a.workspace)), channels: channels.results.map(toChannel) });
+  }
+
+  async setChatSettings(a: { workspace: string; viewer: Viewer; change: Partial<ChatSettings> }): Promise<Result<ChatSettings>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const workspace = found.value;
+    if (roleOf(a.viewer, a.workspace) !== "owner") return fail("forbidden", "Only owners can change the workspace's chat settings.");
+    const checked = settingsChange(a.change);
+    if (!checked.ok) return fail("invalid", checked.message);
+    const change = checked.change;
+    if (change.default_channels) {
+      // Only the workspace's public channels that are not archived: a private
+      // one would put people somewhere they were never invited.
+      const rows = await this.db
+        .prepare(
+          "SELECT id FROM channels WHERE workspace_id = ? AND kind = 'channel' AND private = 0 AND archived_at IS NULL AND id IN (SELECT value FROM json_each(?))",
+        )
+        .bind(workspace.id, JSON.stringify(change.default_channels))
+        .all<{ id: string }>();
+      const open = new Set(rows.results.map((r) => r.id));
+      if (change.default_channels.some((id) => !open.has(id))) return fail("invalid", "Default channels must be public channels that are not archived.");
+    }
+    const next: ChatSettings = { ...(await this.settings(workspace)), ...change };
+    const row = rowFor(next);
+    await this.db
+      .prepare(
+        `INSERT INTO chat_settings (workspace_id, emoji_upload, public_channels, private_channels, manage_channels, default_channels)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT (workspace_id) DO UPDATE SET emoji_upload = ?2, public_channels = ?3, private_channels = ?4, manage_channels = ?5, default_channels = ?6`,
+      )
+      .bind(workspace.id, row.emoji_upload, row.public_channels, row.private_channels, row.manage_channels, row.default_channels)
+      .run();
+    this.settingsRows.delete(workspace.id);
+    return ok(next);
+  }
+
+  /**
+   * Renames, archives or unarchives a channel, or changes its topic. The
+   * workspace's `manage_channels` setting says who may do the first three;
+   * any member may change the topic. #general stays #general, and stays.
+   */
+  async updateChannel(a: { workspace: string; channel_id: string; viewer: Viewer; change: ChannelChange }): Promise<Result<Channel>> {
+    // Archived or not, a channel is found the same way; a private one only by its members.
+    const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
+    if (!found.ok) return found;
+    const { slug, workspace, channel, member } = found.value;
+    if (channel.kind === "dm") return fail("invalid", "A direct message has no name or topic to change.");
+    const change = a.change ?? {};
+    const next: ChannelRow = { ...channel };
+    if (change.name !== undefined || change.archived !== undefined) {
+      const settings = await this.settings(workspace);
+      if (!mayManageChannel(settings, roleOf(a.viewer, slug), member?.role ?? null)) {
+        return fail(
+          "forbidden",
+          settings.manage_channels === "owners"
+            ? "Only workspace owners can rename or archive channels here."
+            : "Only this channel's owners and workspace owners can rename or archive it.",
+        );
+      }
+      if (channel.name === GENERAL) return fail("invalid", "#general is where everyone is: it can't be renamed or archived.");
+    }
+    if (change.name !== undefined) {
+      const named = channelName(String(change.name ?? ""));
+      if (!named.ok) return fail("invalid", named.message);
+      if (named.name !== channel.name) {
+        const taken = await this.db
+          .prepare("SELECT 1 FROM channels WHERE workspace_id = ? AND name = ? AND id != ?")
+          .bind(workspace.id, named.name, channel.id)
+          .first();
+        if (taken || named.name === GENERAL) return fail("conflict", `#${named.name} already exists.`);
+      }
+      next.name = named.name;
+    }
+    if (change.topic !== undefined) {
+      if (!member) return fail("forbidden", `Join #${channel.name} first.`);
+      const topic = typeof change.topic === "string" ? change.topic.trim() : "";
+      if (topic.length > MAX_TOPIC) return fail("invalid", `A topic is at most ${MAX_TOPIC} characters.`);
+      next.topic = topic || null;
+    }
+    if (change.archived !== undefined) {
+      next.archived_at = change.archived ? (channel.archived_at ?? now()) : null;
+    } else if (channel.archived_at && (change.name !== undefined || change.topic !== undefined)) {
+      return fail("invalid", "This channel is archived. Unarchive it first.");
+    }
+    try {
+      await this.db
+        .prepare("UPDATE channels SET name = ?, topic = ?, archived_at = ? WHERE id = ?")
+        .bind(next.name, next.topic, next.archived_at, channel.id)
+        .run();
+    } catch (error) {
+      if (String(error).includes("UNIQUE")) return fail("conflict", `#${next.name} already exists.`);
+      throw error;
+    }
+    const updated = toChannel(next);
+    this.broadcast(channel.id, { type: "channel.updated", channel: updated });
+    return ok(updated);
   }
 
   // ── Messages ────────────────────────────────────────────────────────────
@@ -1166,6 +1339,42 @@ class Chat {
   }
 
   /**
+   * Changes a message the agent posted (a session's live card, say): its
+   * body, its card, or both. Only the agent's own messages; it wakes
+   * nobody, and everyone in the conversation sees it change.
+   */
+  async updateAsAgent(a: {
+    workspace: string;
+    channel_id: string;
+    agent_id: string;
+    id: string;
+    change: { body?: string; card?: MessageCard | null };
+  }): Promise<Result<ChatMessage>> {
+    const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
+    if (!found.ok) return found;
+    const { place, agent } = found.value;
+    const row = await this.messageRow(place.channel.id, String(a.id ?? ""));
+    if (!row || row.deleted_at) return fail("not_found", "No such message.");
+    if (row.author !== principalKey({ kind: "agent", id: agent.id })) return fail("forbidden", "An agent can change only its own messages.");
+    const change = a.change ?? {};
+    const card = change.card === undefined ? (row.card ? (JSON.parse(row.card) as MessageCard) : null) : change.card === null ? null : cleanCard(change.card);
+    if (change.card && !card) return fail("invalid", "A card needs a kind and a title.");
+    const body = messageBody(change.body === undefined ? row.body : change.body, !!card);
+    if (!body.ok) return fail("invalid", body.message);
+    const cardJson = card ? JSON.stringify(card) : null;
+    const at = now();
+    // A card's live state is not an edit a person made: no "edited" mark for it.
+    const edited = change.body !== undefined && change.body !== row.body ? at : row.edited_at;
+    await this.db
+      .prepare("UPDATE messages SET body = ?, card = ?, kind = ?, edited_at = ? WHERE id = ?")
+      .bind(body.body, cardJson, card ? "card" : "text", edited, row.id)
+      .run();
+    const [message] = await this.toMessages(place.slug, place.workspace, [{ ...row, body: body.body, card: cardJson, kind: card ? "card" : "text", edited_at: edited }]);
+    this.broadcast(place.channel.id, { type: "message.updated", message });
+    return ok(message);
+  }
+
+  /**
    * What an agent reads before replying, oldest first: a thread (its root,
    * then its latest replies), or the channel's latest top-level messages.
    * Only where the agent is a member, so it reads only what was said where
@@ -1421,8 +1630,7 @@ class Chat {
   // ── A workspace's own emoji (src/emoji.ts) ──────────────────────────────
 
   private async emojiUpload(workspace: Workspace): Promise<EmojiUpload> {
-    const row = await this.db.prepare("SELECT emoji_upload FROM chat_settings WHERE workspace_id = ?").bind(workspace.id).first<{ emoji_upload: EmojiUpload }>();
-    return row?.emoji_upload === "admins" ? "admins" : "members";
+    return settingsOf(await this.settingsRow(workspace)).emoji_upload;
   }
 
   private async toEmoji(slug: string, workspace: Workspace, rows: EmojiRow[]): Promise<CustomEmoji[]> {
@@ -1574,13 +1782,9 @@ class Chat {
     if (!found.ok) return found;
     if (roleOf(a.viewer, a.workspace) !== "owner") return fail("forbidden", "Only owners can change who adds emoji.");
     if (a.value !== "members" && a.value !== "admins") return fail("invalid", "Choose members or owners.");
-    await this.db
-      .prepare(
-        "INSERT INTO chat_settings (workspace_id, emoji_upload) VALUES (?1, ?2) ON CONFLICT (workspace_id) DO UPDATE SET emoji_upload = ?2",
-      )
-      .bind(found.value.id, a.value)
-      .run();
-    return ok(a.value);
+    // The same setting as Settings → Chat (`setChatSettings`).
+    const set = await this.setChatSettings({ workspace: a.workspace, viewer: a.viewer, change: { emoji_upload: a.value } });
+    return set.ok ? ok(set.value.emoji_upload) : set;
   }
 
   // ── The live socket ─────────────────────────────────────────────────────
@@ -1638,6 +1842,12 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.browse(args));
     case "create_channel":
       return Response.json(await service.createChannel(args));
+    case "update_channel":
+      return Response.json(await service.updateChannel(args));
+    case "chat_settings":
+      return Response.json(await service.chatSettings(args));
+    case "set_chat_settings":
+      return Response.json(await service.setChatSettings(args));
     case "open_dm":
       return Response.json(await service.openDm(args));
     case "join":
@@ -1660,6 +1870,8 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.setPreferences(args));
     case "post_as_agent":
       return Response.json(await service.postAsAgent(args));
+    case "update_as_agent":
+      return Response.json(await service.updateAsAgent(args));
     case "agent_typing":
       return Response.json(await service.agentTyping(args));
     case "history_for_agent":

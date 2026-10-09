@@ -1,4 +1,7 @@
 import {
+  Archive,
+  ArchiveRestore,
+  Bot,
   ChevronLeft,
   Copy,
   Pencil,
@@ -20,9 +23,19 @@ import {
   X,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useRouteLoaderData, useSearchParams } from "react-router";
+import { Link, useNavigate, useRouteLoaderData, useSearchParams } from "react-router";
 
-import { type ChannelMember, type ChatLiveEvent, type ChatMessage, type MemberProfile, type MessageCard, type Result, hasCodeAccess } from "@g1t/contracts";
+import {
+  type Channel,
+  type ChannelChange,
+  type ChannelMember,
+  type ChatLiveEvent,
+  type ChatMessage,
+  type MemberProfile,
+  type MessageCard,
+  type Result,
+  hasCodeAccess,
+} from "@g1t/contracts";
 
 import { useChatData, useChatSend, useChatSidebar } from "./actions";
 import { Composer } from "./composer";
@@ -33,10 +46,21 @@ import { Avatar } from "../ui";
 import { localTime } from "../../lib/time-zone";
 import { BottomSheet, SheetRow, useBack, useSwipeBack } from "../mobile";
 import { MessageText, type TextContext } from "./text";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Badge, type BadgeTone } from "../ui/badge";
 import { Hint } from "../ui/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { type Mentionable, type ShownMessage, mergeMessages, shownName, timeline } from "../../lib/chat";
+import { type Mentionable, type ShownMessage, channelPath, mergeMessages, shownName, timeline } from "../../lib/chat";
+import { sessionChip } from "../../lib/session-card";
 import { codeAccessPath } from "../../lib/workspace-nav";
 import { conversationCache } from "./conversation-cache";
 // Reactions and the workspace's own emoji (components/emoji).
@@ -97,6 +121,10 @@ export function ChannelView({ data }: { data: Loaded }) {
   const [typing, setTyping] = useState<Map<string, { member: MemberProfile; until: number }>>(new Map());
   const [joined, setJoined] = useState(data.joined);
   const [members, setMembers] = useState<ChannelMember[]>(data.members);
+  // The channel as it is now: renamed, its topic changed, archived, live.
+  const [channel, setChannel] = useState<Channel>(data.channel);
+  const [canManage, setCanManage] = useState(data.can_manage === true);
+  const view = useMemo<Loaded>(() => ({ ...data, channel, title: channel.kind === "channel" ? `#${channel.name}` : data.title }), [data, channel]);
   // The server's answer behind a cached draw: merged in by id.
   useEffect(() => {
     const onFresh = (event: Event) => {
@@ -105,6 +133,8 @@ export function ChannelView({ data }: { data: Loaded }) {
       setMessages((now) => mergeMessages(now, value.messages));
       setMembers(value.members);
       setJoined(value.joined);
+      setChannel(value.channel);
+      setCanManage(value.can_manage === true);
     };
     window.addEventListener("g1t:chat-fresh", onFresh);
     return () => window.removeEventListener("g1t:chat-fresh", onFresh);
@@ -113,11 +143,19 @@ export function ChannelView({ data }: { data: Loaded }) {
   useEffect(() => {
     const path = window.location.pathname;
     const timer = setTimeout(
-      () => conversationCache.set(path, { ...data, messages: messages.filter((m) => !m.pending).slice(-80), members, joined }),
+      () => conversationCache.set(path, { ...view, messages: messages.filter((m) => !m.pending).slice(-80), members, joined, can_manage: canManage }),
       400,
     );
     return () => clearTimeout(timer);
-  }, [data, messages, members, joined]);
+  }, [view, messages, members, joined, canManage]);
+  // Renamed while open, here or by someone else: the address follows the name.
+  const navigate = useNavigate();
+  const nameShown = useRef(data.channel.name);
+  useEffect(() => {
+    if (channel.kind !== "channel" || channel.name === nameShown.current || !slug) return;
+    nameShown.current = channel.name;
+    navigate(`${channelPath(slug, channel)}${window.location.search}`, { replace: true, preventScrollReset: true });
+  }, [channel, slug, navigate]);
   const [info, setInfo] = useState(false);
   // A phone: back to the list, by the chevron or a swipe from the edge;
   // and a long-pressed message's actions.
@@ -269,9 +307,14 @@ export function ChannelView({ data }: { data: Loaded }) {
         if (event.channel_id !== data.channel.id) return;
         if (event.member.kind === "user" && event.member.id === me?.id) return;
         setTyping((now) => new Map(now).set(`${event.member.kind}:${event.member.id}`, { member: event.member, until: new Date(event.until).getTime() }));
+      } else if (event.type === "channel.updated") {
+        // Renamed, a new topic, archived or back: everyone looking sees it at once.
+        if (event.channel.id !== data.channel.id) return;
+        setChannel(event.channel);
+        refresh();
       }
     },
-    [data.channel.id, threadId, me?.id, countReply],
+    [data.channel.id, threadId, me?.id, countReply, refresh],
   );
   // Back after a drop: what was missed.
   const onReconnect = useCallback(async () => {
@@ -438,6 +481,15 @@ export function ChannelView({ data }: { data: Loaded }) {
     setParams(next, { preventScrollReset: true, replace: !!threadId && !!id });
   };
 
+  const updateChannel = useCallback(
+    async (change: ChannelChange): Promise<Result<unknown>> => {
+      const done = await send<{ channel: Channel }>({ intent: "update_channel", channel_id: data.channel.id, ...change });
+      if (done.ok) setChannel(done.value.channel);
+      return done;
+    },
+    [send, data.channel.id],
+  );
+
   const toggleStar = async () => {
     await send({ intent: "preferences", channel_id: data.channel.id, starred: !starred });
     refresh();
@@ -466,7 +518,8 @@ export function ChannelView({ data }: { data: Loaded }) {
 
   const rows = useMemo(() => timeline(messages, new Date(), zone), [messages, zone]);
   const typers = [...typing.values()].map((t) => t.member);
-  const name = data.channel.name ?? "";
+  const name = channel.name ?? "";
+  const archived = channel.kind === "channel" && !!channel.archived_at;
   const placeholder = isDm
     ? `Message ${others.map(shownName).join(", ") || "yourself"}`
     : `Message #${name}. @ a teammate or an agent`;
@@ -496,7 +549,7 @@ export function ChannelView({ data }: { data: Loaded }) {
       <section aria-label={data.title} className="flex min-w-0 grow flex-col">
         <ChannelHeader
           onBack={back}
-          data={data}
+          data={view}
           others={others}
           starred={starred}
           muted={muted}
@@ -526,7 +579,7 @@ export function ChannelView({ data }: { data: Loaded }) {
                 </button>
               </div>
             ) : (
-              <ConversationStart data={data} others={others} />
+              <ConversationStart data={view} others={others} />
             )}
             {rows.map((row) =>
               row.kind === "day" ? (
@@ -552,7 +605,26 @@ export function ChannelView({ data }: { data: Loaded }) {
         <div className="shrink-0 px-2 pb-3 sm:px-4 sm:pb-4 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] in-data-[keyboard=open]:pb-2">
           <div className="mx-auto max-w-[56rem]">
             <TypingLine members={typers} />
-            {joined ? (
+            {archived ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+                <p className="flex items-center gap-2 text-sm text-muted">
+                  <Archive size={15} className="shrink-0 text-faint" />
+                  <span>
+                    <span className="font-medium text-fg">#{name}</span> is archived. Its history stays here to read; nobody can post in it.
+                  </span>
+                </p>
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => void updateChannel({ archived: false })}
+                    className="inline-flex h-9 items-center gap-2 rounded-md border border-line px-3 text-sm font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-raised"
+                  >
+                    <ArchiveRestore size={15} />
+                    Unarchive
+                  </button>
+                )}
+              </div>
+            ) : joined ? (
               <Composer draftKey={data.channel.id} placeholder={placeholder} people={people} onSend={(body) => void post(body, null)} onTyping={onTyping} autoFocus />
             ) : (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
@@ -581,9 +653,10 @@ export function ChannelView({ data }: { data: Loaded }) {
             code={code}
             slug={slug}
             people={people}
-            joined={joined}
+            joined={joined && !archived}
             onSend={(body) => void post(body, threadId)}
             onRetry={retry}
+            onTyping={onTyping}
             draftKey={`${data.channel.id}:${threadId}`}
           />
         </SidePanel>
@@ -594,7 +667,16 @@ export function ChannelView({ data }: { data: Loaded }) {
       ) : (
         info && (
           <SidePanel title={isDm ? "Details" : "About this channel"} onClose={toggleInfo}>
-            <InfoPanel data={data} members={members} slug={slug} people={people} onAdded={(m) => setMembers((now) => [...now, m])} joined={joined} />
+            <InfoPanel
+              data={view}
+              members={members}
+              slug={slug}
+              people={people}
+              onAdded={(m) => setMembers((now) => [...now, m])}
+              joined={joined}
+              canManage={canManage}
+              onUpdate={updateChannel}
+            />
           </SidePanel>
         )
       )}
@@ -694,7 +776,15 @@ function ChannelHeader({
         {channel.kind === "channel" ? (
           <>
             <h1 className="flex min-w-0 shrink-0 items-center gap-1 text-[0.9375rem] font-semibold">
-              {channel.private ? <Lock size={15} className="text-faint" /> : <Hash size={16} className="text-faint" />}
+              {channel.private ? (
+                <Hint label="Private channel: only its members can find and read it">
+                  <span className="flex">
+                    <Lock size={15} className="text-faint" aria-label="Private channel" />
+                  </span>
+                </Hint>
+              ) : (
+                <Hash size={16} className="text-faint" aria-label="Public channel" />
+              )}
               <span className="truncate">{channel.name}</span>
             </h1>
             <StarButton starred={starred} onClick={onStar} />
@@ -704,6 +794,12 @@ function ChannelHeader({
                   <BellOff size={14} aria-label="Muted" />
                 </span>
               </Hint>
+            )}
+            {channel.archived_at && (
+              <Badge tone="neutral" className="shrink-0">
+                <Archive size={11} />
+                Archived
+              </Badge>
             )}
             {channel.topic && (
               <>
@@ -851,7 +947,28 @@ const CARD_ICONS: Record<string, ReactNode> = {
   task: <ListChecks size={16} />,
   deploy: <Rocket size={16} />,
   approval: <ShieldCheck size={16} />,
+  session: <Bot size={16} />,
 };
+
+/**
+ * An agent session's state, as a chip: Working pulses softly in lavender,
+ * Needs approval is amber, Done green, Failed red, Stopped and Queued quiet.
+ * The agent changes the card in place, so this follows the session live.
+ */
+function SessionStateChip({ state }: { state: string }) {
+  const chip = sessionChip(state);
+  return (
+    <Badge tone={chip.tone} className="mt-0.5">
+      {chip.live && (
+        <span aria-hidden="true" className="relative flex size-1.5">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-60 motion-reduce:animate-none" />
+          <span className="relative inline-flex size-1.5 rounded-full bg-current" />
+        </span>
+      )}
+      {state}
+    </Badge>
+  );
+}
 
 /** How loud a card's state reads, from what it says. */
 function stateTone(state: string): BadgeTone {
@@ -866,20 +983,29 @@ function stateTone(state: string): BadgeTone {
 
 /** A card g1t or an agent posted: what it is about, a line of detail, and its state. */
 export function CardBox({ card, href }: { card: MessageCard; href: string | null }) {
+  // An agent session's card: updated in place as the session moves (`message.updated`).
+  const session = card.kind === "session";
   const inner = (
     <>
-      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-raised text-muted group-hover:text-fg">
+      <span
+        className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors group-hover:text-fg ${
+          session && sessionChip(card.state).live ? "bg-accent/10 text-accent" : "bg-raised text-muted"
+        }`}
+      >
         {CARD_ICONS[card.kind] ?? <Sparkles size={16} />}
       </span>
       <span className="min-w-0 grow">
         <span className="line-clamp-2 text-sm font-medium text-fg">{card.title}</span>
-        {card.detail && <span className="mt-0.5 block truncate font-mono text-xs text-muted">{card.detail}</span>}
+        {card.detail && <span className="mt-0.5 block truncate font-mono text-xs text-muted tabular-nums">{card.detail}</span>}
       </span>
-      {card.state && (
-        <Badge tone={stateTone(card.state)} className="mt-0.5">
-          {card.state}
-        </Badge>
-      )}
+      {card.state &&
+        (session ? (
+          <SessionStateChip state={card.state} />
+        ) : (
+          <Badge tone={stateTone(card.state)} className="mt-0.5">
+            {card.state}
+          </Badge>
+        ))}
     </>
   );
   const box = "group mt-1.5 flex max-w-xl items-start gap-3 rounded-xl border border-line bg-surface px-3.5 py-3 transition-colors";
@@ -1269,6 +1395,7 @@ function ThreadPanel({
   joined,
   onSend,
   onRetry,
+  onTyping,
   draftKey,
 }: {
   root: ShownMessage | null;
@@ -1281,6 +1408,8 @@ function ThreadPanel({
   joined: boolean;
   onSend: (body: string) => void;
   onRetry: (message: ShownMessage) => void;
+  /** Says "is typing" to the others in the channel, as the main composer does. */
+  onTyping: () => void;
   draftKey: string;
 }) {
   const rows = useMemo(() => timeline(replies ?? [], new Date(), zone).filter((row) => row.kind === "message"), [replies, zone]);
@@ -1314,9 +1443,149 @@ function ThreadPanel({
       </div>
       {joined && (
         <div className="shrink-0 p-3">
-          <Composer draftKey={draftKey} placeholder="Reply…" people={people} onSend={onSend} compact autoFocus />
+          <Composer draftKey={draftKey} placeholder="Reply…" people={people} onSend={onSend} onTyping={onTyping} compact autoFocus />
         </div>
       )}
+    </>
+  );
+}
+
+/**
+ * A channel's name, topic and visibility, and changing them: any member
+ * edits the topic; renaming and archiving are for whoever the workspace's
+ * chat settings allow (`canManage`). #general keeps its name and stays.
+ */
+function ChannelAbout({
+  channel,
+  joined,
+  canManage,
+  onUpdate,
+}: {
+  channel: Channel;
+  joined: boolean;
+  canManage: boolean;
+  onUpdate: (change: ChannelChange) => Promise<Result<unknown>>;
+}) {
+  const [editing, setEditing] = useState<"name" | "topic" | null>(null);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const general = channel.name === "general";
+  const archived = !!channel.archived_at;
+  const mayRename = canManage && !general && !archived;
+  const mayTopic = joined && !archived;
+  const save = async (change: ChannelChange) => {
+    setBusy(true);
+    setError(null);
+    const done = await onUpdate(change);
+    setBusy(false);
+    if (!done.ok) return setError(done.error.message);
+    setEditing(null);
+    setConfirm(false);
+  };
+  const start = (field: "name" | "topic") => {
+    setEditing(field);
+    setValue(field === "name" ? (channel.name ?? "") : (channel.topic ?? ""));
+    setError(null);
+  };
+  const edit = (field: "name" | "topic") => (
+    <form
+      className="mt-1.5 space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save(field === "name" ? { name: value } : { topic: value });
+      }}
+    >
+      <span className="flex h-9 items-center gap-1.5 rounded-md border border-line bg-bg px-2.5 focus-within:border-accent-dim">
+        {field === "name" && (channel.private ? <Lock size={13} className="text-faint" /> : <Hash size={13} className="text-faint" />)}
+        <input
+          autoFocus
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => event.key === "Escape" && setEditing(null)}
+          maxLength={field === "name" ? 80 : 250}
+          placeholder={field === "name" ? "channel-name" : "What this channel is for"}
+          aria-label={field === "name" ? "Channel name" : "Topic"}
+          autoComplete="off"
+          data-1p-ignore
+          className="min-w-0 grow bg-transparent text-sm outline-none placeholder:text-faint"
+        />
+      </span>
+      <div className="flex justify-end gap-1.5">
+        <button type="button" onClick={() => setEditing(null)} className="h-7 rounded-md px-2.5 text-xs text-muted hover:bg-raised hover:text-fg">
+          Cancel
+        </button>
+        <button type="submit" disabled={busy} className="h-7 rounded-md bg-accent px-2.5 text-xs font-medium text-bg hover:bg-accent-hover disabled:opacity-50">
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </form>
+  );
+  const editButton = (field: "name" | "topic", label: string) => (
+    <button
+      type="button"
+      onClick={() => start(field)}
+      aria-label={label}
+      className="rounded px-1.5 py-0.5 text-xs text-muted opacity-0 transition-opacity group-hover/about:opacity-100 hover:bg-raised hover:text-fg focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+    >
+      Edit
+    </button>
+  );
+  return (
+    <>
+      <section className="group/about rounded-xl border border-line bg-surface p-3.5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-medium text-faint">Name</h3>
+          {mayRename && editing !== "name" && editButton("name", "Rename channel")}
+        </div>
+        {editing === "name" ? edit("name") : <p className="mt-1 text-sm text-fg-soft">#{channel.name}</p>}
+        <div className="mt-3 flex items-center justify-between">
+          <h3 className="text-xs font-medium text-faint">Topic</h3>
+          {mayTopic && editing !== "topic" && editButton("topic", "Edit topic")}
+        </div>
+        {editing === "topic" ? edit("topic") : <p className="mt-1 text-sm text-fg-soft">{channel.topic || "No topic yet."}</p>}
+        <h3 className="mt-3 text-xs font-medium text-faint">Visibility</h3>
+        <p className="mt-1 flex items-center gap-1.5 text-sm text-fg-soft">
+          {channel.private ? <Lock size={13} /> : <Hash size={13} />}
+          {channel.private ? "Private: only its members can find and read it" : "Public: anyone in the workspace can read and join"}
+        </p>
+        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      </section>
+      {canManage && !general && (
+        <button
+          type="button"
+          onClick={() => (archived ? void save({ archived: false }) : setConfirm(true))}
+          disabled={busy}
+          className="mt-2 flex h-8 w-full items-center justify-center gap-2 rounded-md text-[0.8125rem] text-muted transition-colors hover:bg-raised hover:text-fg disabled:opacity-50"
+        >
+          {archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+          {archived ? "Unarchive channel" : "Archive channel"}
+        </button>
+      )}
+      <AlertDialog open={confirm} onOpenChange={setConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive #{channel.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It leaves everyone&apos;s sidebar and nobody can post in it. Its history stays readable, and it can be unarchived from Browse
+              channels, Archived.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void save({ archived: true });
+              }}
+              disabled={busy}
+            >
+              {busy ? "Archiving…" : "Archive"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -1328,6 +1597,8 @@ function InfoPanel({
   people,
   onAdded,
   joined,
+  canManage,
+  onUpdate,
 }: {
   data: Loaded;
   members: ChannelMember[];
@@ -1335,23 +1606,16 @@ function InfoPanel({
   people: Mentionable[];
   onAdded: (member: ChannelMember) => void;
   joined: boolean;
+  /** Whether the viewer may rename, archive and unarchive it. */
+  canManage: boolean;
+  onUpdate: (change: ChannelChange) => Promise<Result<unknown>>;
 }) {
   const channel = data.channel;
   const agents = members.filter((m) => m.member.kind === "agent");
   const humans = members.filter((m) => m.member.kind === "user");
   return (
     <div className="min-h-0 grow overflow-y-auto p-4 [scrollbar-width:thin]">
-      {channel.kind === "channel" && (
-        <section className="rounded-xl border border-line bg-surface p-3.5">
-          <h3 className="text-xs font-medium text-faint">Topic</h3>
-          <p className="mt-1 text-sm text-fg-soft">{channel.topic || "No topic yet."}</p>
-          <h3 className="mt-3 text-xs font-medium text-faint">Visibility</h3>
-          <p className="mt-1 flex items-center gap-1.5 text-sm text-fg-soft">
-            {channel.private ? <Lock size={13} /> : <Hash size={13} />}
-            {channel.private ? "Private: invited members only" : "Public to the workspace"}
-          </p>
-        </section>
-      )}
+      {channel.kind === "channel" && <ChannelAbout channel={channel} joined={joined} canManage={canManage} onUpdate={onUpdate} />}
       {agents.length > 0 && (
         <section className="mt-5">
           <h3 className="mb-2 px-1 text-xs font-medium text-faint">Agents · {agents.length}</h3>

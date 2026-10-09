@@ -30,6 +30,8 @@ export type ChannelData =
       older: string | null;
       /** Whether the viewer is in it: a public channel can be read before joining. */
       joined: boolean;
+      /** Whether the viewer may rename, archive and unarchive it (the workspace's chat settings). */
+      can_manage?: boolean;
     };
 
 /**
@@ -84,6 +86,7 @@ async function readConversation(
     messages: history.ok ? history.value.messages : [],
     older: history.ok ? history.value.older : null,
     joined,
+    can_manage: detail.value.can_manage === true,
   };
 }
 

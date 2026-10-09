@@ -91,7 +91,25 @@ const QUIET_BUTTON =
 const ICON_BUTTON =
   "flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent";
 
-/** Making a channel: its name, what it is for, and whether it is private. */
+/** Why someone may not make a channel: the workspace keeps it to its owners. */
+export const OWNERS_ONLY_CHANNELS = "Only workspace owners can create channels here.";
+
+/**
+ * What the viewer may make, from the workspace's chat settings (Settings,
+ * Chat). Until the sidebar arrives, everything: the chat service checks.
+ */
+export function useChannelCreation(): { public: boolean; private: boolean; any: boolean } {
+  const { sidebar } = useChatSidebar();
+  const open = sidebar?.can?.create_public_channels ?? true;
+  const closed = sidebar?.can?.create_private_channels ?? true;
+  return { public: open, private: closed, any: open || closed };
+}
+
+/**
+ * Making a channel: its name, what it is for, and whether it is private.
+ * Someone the workspace's settings do not let make one sees the button
+ * turned off, with why; someone who may make only one kind gets that kind.
+ */
 export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; variant?: "icon" | "button" }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -101,12 +119,15 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
   const [busy, setBusy] = useState(false);
   const send = useChatSend(slug);
   const navigate = useNavigate();
+  const may = useChannelCreation();
+  // Only one kind allowed: that kind, and the switch says why it is fixed.
+  const isPrivate = !may.public ? true : !may.private ? false : secret;
   const clean = channelName(name);
   const submit = async () => {
     if (!clean) return setError("Give the channel a name.");
     setBusy(true);
     setError(null);
-    const made = await send<{ to: string }>({ intent: "create_channel", name: clean, topic, private: secret });
+    const made = await send<{ to: string }>({ intent: "create_channel", name: clean, topic, private: isPrivate });
     setBusy(false);
     if (!made.ok) return setError(made.error.message);
     setOpen(false);
@@ -114,6 +135,23 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
     setTopic("");
     navigate(made.value.to);
   };
+  if (!may.any) {
+    // Shown off, not hidden, so nobody wonders where it went.
+    return (
+      <Hint label={OWNERS_ONLY_CHANNELS} disabled>
+        {variant === "icon" ? (
+          <button type="button" aria-label="Create a channel" disabled className={`${ICON_BUTTON} opacity-40`}>
+            <Plus size={14} />
+          </button>
+        ) : (
+          <button type="button" disabled className={`${QUIET_BUTTON} opacity-50`}>
+            <Lock size={14} />
+            Create a channel
+          </button>
+        )}
+      </Hint>
+    );
+  }
   return (
     <>
       {variant === "icon" ? (
@@ -144,7 +182,7 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
             <label className="grid gap-1.5">
               <span className="text-sm font-medium text-muted">Name</span>
               <span className="flex h-10 items-center gap-1.5 rounded-md border border-line bg-bg px-3 focus-within:border-accent-dim">
-                {secret ? <Lock size={14} className="text-faint" /> : <Hash size={14} className="text-faint" />}
+                {isPrivate ? <Lock size={14} className="text-faint" /> : <Hash size={14} className="text-faint" />}
                 <input
                   autoFocus
                   value={name}
@@ -174,10 +212,21 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
             </label>
             <label className="flex items-start justify-between gap-4 rounded-lg border border-line bg-bg/60 p-3">
               <span>
-                <span className="block text-sm font-medium">Private</span>
-                <span className="mt-0.5 block text-xs text-muted">Only people and agents you invite can find and read it.</span>
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  {isPrivate ? <Lock size={13} className="text-muted" /> : <Hash size={13} className="text-muted" />}
+                  {isPrivate ? "Private" : "Public"}
+                </span>
+                <span className="mt-0.5 block text-xs text-muted">
+                  {!may.public
+                    ? "Only workspace owners can create public channels here, so this one is private: only people and agents you invite can find and read it."
+                    : !may.private
+                      ? "Only workspace owners can create private channels here, so this one is public: anyone in the workspace can find, read and join it."
+                      : isPrivate
+                        ? "Only people and agents you invite can find and read it."
+                        : "Anyone in the workspace can find, read and join it. Turn on to keep it to the people and agents you invite."}
+                </span>
               </span>
-              <Switch checked={secret} onCheckedChange={setSecret} aria-label="Private" />
+              <Switch checked={isPrivate} onCheckedChange={setSecret} disabled={!may.public || !may.private} aria-label="Private" />
             </label>
             {error && <p className="text-sm text-danger">{error}</p>}
             <DialogFooter>

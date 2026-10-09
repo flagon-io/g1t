@@ -1,12 +1,10 @@
-import { Hash, Search } from "lucide-react";
+import { Archive, Hash, Lock, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
-import type { Channel } from "@g1t/contracts";
-
 import type { Route } from "./+types/browse";
 import { ChatUnavailable } from "../../../components/chat/empty";
-import { CreateChannelButton, useChatSend } from "../../../components/chat/actions";
+import { CreateChannelButton, OWNERS_ONLY_CHANNELS, useChannelCreation, useChatSend } from "../../../components/chat/actions";
 import { channelPath } from "../../../lib/chat";
 import { sidebarOrNull } from "../../../lib/chat.server";
 import { page } from "../../../lib/meta";
@@ -17,18 +15,19 @@ export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Browse channels · ${params.owner} · g1t` });
 }
 
-/** Every public channel in the workspace, joined or not. */
+/**
+ * Every public channel in the workspace, joined or not, and the private
+ * ones the viewer is in (the chat service leaves out the rest). With
+ * `?archived=1`, the archived ones instead.
+ */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   const slug = params.owner.toLowerCase();
-  const [open, sidebar] = await Promise.all([chat.browse(slug, viewer).catch(() => null), sidebarOrNull(slug, viewer)]);
-  if (!open?.ok) return { slug, unavailable: true as const };
-  const mine = new Set((sidebar?.entries ?? []).map((entry) => entry.channel.id));
-  const listed = new Map<string, Channel>();
-  for (const channel of open.value) listed.set(channel.id, channel);
-  for (const entry of sidebar?.entries ?? []) if (entry.channel.kind === "channel") listed.set(entry.channel.id, entry.channel);
-  const channels = [...listed.values()].filter((channel) => !channel.archived_at).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
-  return { slug, unavailable: false as const, channels, joined: [...mine] };
+  const archived = new URL(request.url).searchParams.get("archived") === "1";
+  const [listed, sidebar] = await Promise.all([chat.browse(slug, viewer, { archived }).catch(() => null), sidebarOrNull(slug, viewer)]);
+  if (!listed?.ok) return { slug, unavailable: true as const };
+  const joined = (sidebar?.entries ?? []).map((entry) => entry.channel.id);
+  return { slug, unavailable: false as const, archived, channels: listed.value, joined };
 }
 
 export default function Browse({ loaderData }: Route.ComponentProps) {
@@ -36,6 +35,7 @@ export default function Browse({ loaderData }: Route.ComponentProps) {
   const navigate = useNavigate();
   const send = useChatSend(loaderData.slug);
   const [joining, setJoining] = useState<string | null>(null);
+  const may = useChannelCreation();
   const shown = useMemo(() => {
     if (loaderData.unavailable) return [];
     const q = query.trim().toLowerCase().replace(/^#/, "");
@@ -47,10 +47,24 @@ export default function Browse({ loaderData }: Route.ComponentProps) {
     <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 lg:py-12">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Browse channels</h1>
-          <p className="mt-1 text-sm text-muted">Every public channel in {loaderData.slug}. Anyone in the workspace can read and join them.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{loaderData.archived ? "Archived channels" : "Browse channels"}</h1>
+          <p className="mt-1 text-sm text-muted">
+            {loaderData.archived
+              ? "Channels no one posts in any more. Their history stays readable; whoever may archive a channel may bring it back."
+              : `Every public channel in ${loaderData.slug}, which anyone in the workspace can read and join, and the private ones you're in.`}
+          </p>
+          {!loaderData.archived && !may.any && <p className="mt-1 text-xs text-faint">{OWNERS_ONLY_CHANNELS}</p>}
         </div>
-        <CreateChannelButton slug={loaderData.slug} variant="button" />
+        <div className="flex items-center gap-2">
+          <Link
+            to={loaderData.archived ? `/${loaderData.slug}/-/chat/browse` : `/${loaderData.slug}/-/chat/browse?archived=1`}
+            className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm text-muted transition-colors hover:bg-surface hover:text-fg"
+          >
+            {loaderData.archived ? <Hash size={15} /> : <Archive size={15} />}
+            {loaderData.archived ? "Current channels" : "Archived"}
+          </Link>
+          {!loaderData.archived && <CreateChannelButton slug={loaderData.slug} variant="button" />}
+        </div>
       </div>
       <label className="mt-6 flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm focus-within:border-accent-dim">
         <Search size={15} className="text-faint" />
@@ -63,19 +77,30 @@ export default function Browse({ loaderData }: Route.ComponentProps) {
         />
       </label>
       <ul className="mt-4 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-        {shown.length === 0 && <li className="px-4 py-10 text-center text-sm text-muted">No channel matches.</li>}
+        {shown.length === 0 && (
+          <li className="px-4 py-10 text-center text-sm text-muted">
+            {query ? "No channel matches." : loaderData.archived ? "No archived channels." : "No channels yet."}
+          </li>
+        )}
         {shown.map((channel) => {
           const isIn = joined.has(channel.id);
           return (
             <li key={channel.id} className="flex items-center gap-3 px-4 py-3">
-              <Hash size={16} className="shrink-0 text-faint" />
+              {channel.private ? (
+                <Lock size={15} className="shrink-0 text-faint" aria-label="Private" />
+              ) : (
+                <Hash size={16} className="shrink-0 text-faint" aria-label="Public" />
+              )}
               <div className="min-w-0 grow">
                 <Link to={channelPath(loaderData.slug, channel)} className="font-medium hover:text-accent">
                   {channel.name}
                 </Link>
+                {channel.private && <span className="ml-2 text-xs text-faint">Private</span>}
                 {channel.topic && <p className="truncate text-sm text-muted">{channel.topic}</p>}
               </div>
-              {isIn ? (
+              {loaderData.archived ? (
+                <span className="text-xs text-faint">Archived</span>
+              ) : isIn ? (
                 <span className="text-xs text-faint">Joined</span>
               ) : (
                 <button

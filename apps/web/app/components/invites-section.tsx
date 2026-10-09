@@ -7,11 +7,11 @@ import type { Invite, InvitesOverview } from "@g1t/contracts";
 import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
 import { CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
+import { SelectField } from "./ui/select";
 import { G1T_INVITES, inviteFor, inviteKind, inviteLink, invitesPage, inviteState, moreInvitesMailto, remainingLine } from "../lib/invites";
 import type { BringIntoChoices } from "../lib/invites.server";
 
-const SELECT =
-  "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none hover:border-line-strong focus:border-accent-dim sm:w-auto";
+const SELECT = "h-auto w-full py-2 sm:w-auto sm:min-w-40";
 
 const TONE: Record<"pending" | "done" | "dead", string> = {
   pending: "border-accent/40 text-accent",
@@ -99,16 +99,17 @@ function InviteForm({ overview, bringInto }: { overview: InvitesOverview; bringI
         {workspaces.length > 0 && (
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-muted">Use</span>
-            <select name="charge" className={SELECT}>
-              <option value="mine">Your invites</option>
-              {workspaces
-                .filter((workspace) => workspace.allowance.remaining !== 0)
-                .map((workspace) => (
-                  <option key={workspace.slug} value={workspace.slug}>
-                    {workspace.slug}'s invites
-                  </option>
-                ))}
-            </select>
+            <SelectField
+              name="charge"
+              defaultValue="mine"
+              className={SELECT}
+              options={[
+                { value: "mine", label: "Your invites" },
+                ...workspaces
+                  .filter((workspace) => workspace.allowance.remaining !== 0)
+                  .map((workspace) => ({ value: workspace.slug, label: `${workspace.slug}'s invites` })),
+              ]}
+            />
           </label>
         )}
         <SubmitButton match={{ intent: "create-invite" }} pending="Creating…">
@@ -130,23 +131,28 @@ function InviteForm({ overview, bringInto }: { overview: InvitesOverview; bringI
             <div className="flex flex-col gap-3 pl-6 sm:flex-row sm:items-end">
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-muted">Workspace</span>
-                <select name="join" required defaultValue="" className={SELECT}>
-                  <option value="" disabled>
-                    Choose a workspace
-                  </option>
-                  {bringInto.options.map((workspace) => (
-                    <option key={workspace.slug} value={workspace.slug}>
-                      {workspace.name === workspace.slug ? workspace.slug : `${workspace.name} (${workspace.slug})`}
-                    </option>
-                  ))}
-                </select>
+                <SelectField
+                  name="join"
+                  required
+                  placeholder="Choose a workspace"
+                  className={SELECT}
+                  options={bringInto.options.map((workspace) => ({
+                    value: workspace.slug,
+                    label: workspace.name === workspace.slug ? workspace.slug : `${workspace.name} (${workspace.slug})`,
+                  }))}
+                />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-muted">Role</span>
-                <select name="join_role" defaultValue="member" className={SELECT}>
-                  <option value="member">Member</option>
-                  <option value="owner">Owner</option>
-                </select>
+                <SelectField
+                  name="join_role"
+                  defaultValue="member"
+                  className={SELECT}
+                  options={[
+                    { value: "member", label: "Member" },
+                    { value: "owner", label: "Owner" },
+                  ]}
+                />
               </label>
             </div>
           )}

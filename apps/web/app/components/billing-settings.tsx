@@ -16,6 +16,7 @@ import { PLUS_TAX, type PlanStatus, cardFeeCents, dollars, feeAndTax, wholeDolla
 import { money } from "../lib/usage";
 import { Card } from "./billing";
 import { ErrorText, SubmitButton } from "./ui";
+import { SelectField } from "./ui/select";
 import { Skeleton } from "./ui/skeleton";
 
 const FIELD =
@@ -623,13 +624,13 @@ export function InvoiceDetailsCard({ details, owner, enabled, error }: { details
           <label className="block">
             <span className="text-xs text-muted">Tax ID</span>
             <span className="mt-1 flex gap-2">
-              <select name="taxIdType" defaultValue={details?.taxIdType ?? ""} className={`${FIELD} w-auto`} aria-label="Kind of tax ID">
-                {TAX_IDS.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+              <SelectField
+                name="taxIdType"
+                defaultValue={details?.taxIdType ?? ""}
+                aria-label="Kind of tax ID"
+                className="h-auto w-auto shrink-0 px-2.5 py-1.5"
+                options={TAX_IDS.map(([value, label]) => ({ value, label }))}
+              />
               <input name="taxId" defaultValue={details?.taxId ?? ""} aria-label="Tax ID" className={FIELD} />
             </span>
             {details?.taxId && details.taxIdStatus && (
@@ -642,13 +643,13 @@ export function InvoiceDetailsCard({ details, owner, enabled, error }: { details
           </label>
           <label className="block">
             <span className="text-xs text-muted">Invoice language</span>
-            <select name="language" defaultValue={details?.language ?? ""} className={`mt-1 ${FIELD}`}>
-              {LANGUAGES.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            <SelectField
+              name="language"
+              defaultValue={details?.language ?? ""}
+              aria-label="Invoice language"
+              className="mt-1 h-auto px-2.5 py-1.5"
+              options={LANGUAGES.map(([value, label]) => ({ value, label }))}
+            />
           </label>
           {!disabled && (
             <div className="flex items-end">

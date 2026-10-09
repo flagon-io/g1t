@@ -1,6 +1,6 @@
 import { ImagePlus, Lock, Plus, Search, Trash2, Upload } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useFetcher } from "react-router";
+import { Link, useFetcher } from "react-router";
 
 import { type CustomEmoji, type EmojiList, type EmojiUpload, MAX_EMOJI_BYTES, MAX_EMOJI_SIDE } from "@g1t/contracts";
 
@@ -11,6 +11,7 @@ import { MemberAvatar } from "../chat/marks";
 import { Button, EmptyState, ErrorText, TimeAgo, notACredential } from "../ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Hint } from "../ui/hint";
+import { SelectField } from "../ui/select";
 import { cleanEmojiName, emojiNameProblem, standardCodes } from "../../lib/emoji";
 
 /** What the page's action answers (routes/workspace/emoji.tsx). */
@@ -22,7 +23,7 @@ const ACCEPT = "image/png,image/gif,image/webp";
 /**
  * A workspace's own emoji: every one with its name, who added it and when;
  * adding one from an image, giving one another name, and removing them.
- * Owners also choose who may add them.
+ * Who may add them is a chat setting (routes/workspace/chat-settings.tsx).
  */
 export function EmojiSettings({ slug, list, usercontent, meId }: { slug: string; list: EmojiList; usercontent: string; meId: string }) {
   const [query, setQuery] = useState("");
@@ -99,7 +100,7 @@ export function EmojiSettings({ slug, list, usercontent, meId }: { slug: string;
           </section>
         )}
 
-        {list.can_manage && <UploadSetting value={list.emoji_upload} />}
+        {list.can_manage && <UploadSetting slug={slug} value={list.emoji_upload} />}
       </div>
       <UploadDialog open={adding} onOpenChange={setAdding} taken={taken} />
       <AliasDialog open={aliasing} onOpenChange={setAliasing} emoji={list.emoji} taken={taken} usercontent={usercontent} />
@@ -169,40 +170,22 @@ function EmojiCard({ slug, emoji, usercontent, removable }: { slug: string; emoj
 }
 
 /** Owners: who may add emoji. */
-function UploadSetting({ value }: { value: EmojiUpload }) {
-  const fetcher = useFetcher<EmojiActionResult>();
-  const current = (fetcher.formData?.get("value") as EmojiUpload | null) ?? value;
-  const choices: { value: EmojiUpload; label: string; detail: string }[] = [
-    { value: "members", label: "Every member", detail: "Anyone in the workspace can add emoji and aliases." },
-    { value: "admins", label: "Owners only", detail: "Members use the workspace’s emoji; only owners add them." },
-  ];
+/** Who may add emoji: one of the workspace's chat settings, changed in Settings, Chat. */
+function UploadSetting({ slug, value }: { slug: string; value: EmojiUpload }) {
   return (
-    <section aria-labelledby="emoji-upload" className="rounded-xl border border-line p-4">
-      <h2 id="emoji-upload" className="text-sm font-medium text-fg">
-        Who can add emoji
-      </h2>
-      <p className="mt-1 text-xs text-muted">Whoever added an emoji, and owners, can remove it.</p>
-      <div role="radiogroup" aria-labelledby="emoji-upload" className="mt-3 grid gap-2 sm:grid-cols-2">
-        {choices.map((choice) => (
-          <button
-            key={choice.value}
-            type="button"
-            role="radio"
-            aria-checked={current === choice.value}
-            onClick={() => current !== choice.value && fetcher.submit({ intent: "setting", value: choice.value }, { method: "post" })}
-            className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
-              current === choice.value ? "border-accent/60 bg-accent/10" : "border-line hover:border-line-strong hover:bg-surface"
-            }`}
-          >
-            <span className="flex items-center gap-2 text-sm font-medium text-fg">
-              <span className={`size-3.5 rounded-full border ${current === choice.value ? "border-4 border-accent" : "border-line-strong"}`} aria-hidden />
-              {choice.label}
-            </span>
-            <span className="mt-0.5 block pl-5.5 text-xs text-muted">{choice.detail}</span>
-          </button>
-        ))}
+    <section aria-labelledby="emoji-upload" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-4">
+      <div>
+        <h2 id="emoji-upload" className="text-sm font-medium text-fg">
+          Who can add emoji: {value === "admins" ? "owners only" : "any member"}
+        </h2>
+        <p className="mt-1 text-xs text-muted">Whoever added an emoji, and owners, can remove it. Who can add them is one of the workspace&apos;s chat settings.</p>
       </div>
-      {fetcher.data && !fetcher.data.ok && <ErrorText>{fetcher.data.error}</ErrorText>}
+      <Link
+        to={`/${slug}/-/settings/chat`}
+        className="inline-flex h-8 items-center rounded-md border border-line px-3 text-[0.8125rem] font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-surface"
+      >
+        Chat settings
+      </Link>
     </section>
   );
 }
@@ -403,7 +386,6 @@ function AliasDialog({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetcher.state, fetcher.data]);
-  const picked = originals.find((e) => e.name === target);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -411,19 +393,23 @@ function AliasDialog({
           <DialogTitle>Add an alias</DialogTitle>
           <DialogDescription>Another name for an emoji: both show the same image. Removing the emoji removes its aliases.</DialogDescription>
         </DialogHeader>
-        <label className="block">
-          <span className="text-sm font-medium text-fg">Emoji</span>
-          <span className="mt-1.5 flex items-center gap-2 rounded-md border border-line-strong bg-bg px-2.5">
-            {picked && <CustomEmojiImage name={picked.name} file={picked.file} usercontent={usercontent} size={20} />}
-            <select value={target} onChange={(event) => setTarget(event.target.value)} className="min-w-0 grow bg-transparent py-1.5 font-mono text-sm text-fg outline-none">
-              {originals.map((e) => (
-                <option key={e.name} value={e.name}>
-                  :{e.name}:
-                </option>
-              ))}
-            </select>
+        <div className="block">
+          <span id="alias-target-label" className="text-sm font-medium text-fg">
+            Emoji
           </span>
-        </label>
+          <SelectField
+            aria-labelledby="alias-target-label"
+            value={target}
+            onValueChange={setTarget}
+            className="mt-1.5 border-line-strong font-mono"
+            itemClassName="font-mono"
+            options={originals.map((e) => ({
+              value: e.name,
+              label: `:${e.name}:`,
+              icon: <CustomEmojiImage name={e.name} file={e.file} usercontent={usercontent} size={18} />,
+            }))}
+          />
+        </div>
         <label className="block">
           <span className="text-sm font-medium text-fg">Alias</span>
           <input
