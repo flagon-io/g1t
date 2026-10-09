@@ -122,9 +122,13 @@ impl AuditActor {
                 .and_then(|acting| acting.run())
                 .map(|run| run.kind.as_str().to_owned())
                 .or_else(|| job.map(|_| WORKFLOW_JOB.to_owned())),
+            // The token used, whatever the surface: a person's or a
+            // workspace's on the API, MCP or git, and a person's on the
+            // website (apps/web, app/lib/website-token.ts).
             credential_id: acting
                 .map(|acting| acting.credential_id.clone())
-                .or_else(|| job.map(|(token, _)| token.token_id.clone())),
+                .or_else(|| job.map(|(token, _)| token.token_id.clone()))
+                .or_else(|| user.token.as_deref().map(|token| token.token_id.clone()).filter(|id| !id.is_empty())),
         }
     }
 
@@ -342,6 +346,26 @@ mod tests {
         });
         assert_eq!(person.actor_kind, Some(ActorKind::Person));
         assert!(!person.records_reads());
+        assert_eq!(person.credential_id, None, "signed in: no token");
+    }
+
+    #[test]
+    fn a_person_using_a_token_is_recorded_with_it_on_any_surface() {
+        let user = User {
+            id: "usr_1".to_owned(),
+            username: "syntaqx".to_owned(),
+            token: Some(Box::new(crate::scopes::TokenAccess {
+                token_id: "tok_web".to_owned(),
+                website: true,
+                ..crate::scopes::TokenAccess::default()
+            })),
+            ..User::default()
+        };
+        let actor = AuditActor::of(&user);
+        assert_eq!(actor.actor_kind, Some(ActorKind::Person));
+        assert_eq!(actor.actor, "syntaqx");
+        assert_eq!(actor.credential_id.as_deref(), Some("tok_web"));
+        assert!(!actor.records_reads());
     }
 
     #[test]

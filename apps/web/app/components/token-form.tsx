@@ -28,7 +28,7 @@ import {
   policyNote,
   tokenPermissions,
 } from "../lib/access-tokens";
-import { Checkbox } from "./ui/checkbox";
+import { Checkbox, CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { SelectField } from "./ui/select";
@@ -214,6 +214,7 @@ export function TokenForm({
   const [levels, setLevels] = useState<Permissions>(() =>
     editing ? tokenPermissions(editing) : permissionsOf(presetScopes(preset) ?? null),
   );
+  const [website, setWebsite] = useState<boolean>(editing?.website ?? false);
 
   // The rules of the workspaces it would reach decide how long it may last.
   const reached = workspaceOwned ? [] : one ? [chosen] : reach === ALL_WORKSPACES ? workspaces : [];
@@ -387,6 +388,39 @@ export function TokenForm({
           </p>
         )}
       </section>
+
+      {!workspaceOwned && (
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-sm font-medium text-fg">Website</h3>
+            <p className="mt-0.5 text-xs text-faint">For automation that drives a browser, such as end-to-end tests.</p>
+          </div>
+          <CheckboxOption
+            id="token-website"
+            name="website"
+            value="on"
+            checked={website}
+            onCheckedChange={(on) => setWebsite(on === true)}
+            className="rounded-md border border-line px-3 py-2.5"
+            labelClassName="font-medium"
+            label="Use the website as you"
+            description={
+              <>
+                Sent as <code className="font-mono">Authorization: Bearer</code> on each request, it signs g1t.sh in as you
+                without a password or a two-factor code. Tokens, two-factor authentication, your password, email addresses,
+                keys, deleting your account or a workspace, giving a workspace away and payment methods still need you to sign
+                in.
+              </>
+            }
+          />
+          {website && (
+            <Note tone="warn">
+              The website does not hold this token to its permissions above: treat it as able to do anything you can in
+              the workspaces it reaches. Keep it as safe as your password, and give it an expiration.
+            </Note>
+          )}
+        </section>
+      )}
     </div>
   );
 }

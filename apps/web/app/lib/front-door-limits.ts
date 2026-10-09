@@ -10,7 +10,10 @@
  *   costly to answer (archives, run pages, logs, search). Signed in, by a
  *   hash of the session cookie, higher: the session is not checked here,
  *   which would cost a call to identity, and the ceiling per address keeps
- *   made-up cookies from getting round the signed-out limit.
+ *   made-up cookies from getting round the signed-out limit. With an
+ *   access token (`Authorization: Bearer`, app/lib/website-token.ts), by a
+ *   hash of the token, at the API's limit for a token; the address ceiling
+ *   applies as for cookies.
  *
  * Static assets never reach the Worker (the assets binding answers them),
  * and the few files it serves itself are left out here too. Every limit
@@ -29,6 +32,7 @@ export type FrontDoorLimits = {
   WEB_HEAVY_LIMIT?: RateLimitBinding;
   WEB_SESSION_LIMIT?: RateLimitBinding;
   WEB_ADDRESS_LIMIT?: RateLimitBinding;
+  WEB_TOKEN_LIMIT?: RateLimitBinding;
   GIT_ANONYMOUS_LIMIT?: RateLimitBinding;
   GIT_SIGNED_LIMIT?: RateLimitBinding;
 };
@@ -58,6 +62,7 @@ const GIT_MESSAGE_ANONYMOUS =
   "Too many git requests from your network. Wait a minute and try again, or use credentials for a higher limit: https://docs.g1t.sh/reference/rate-limits/\n";
 const GIT_MESSAGE_SIGNED = "Too many git requests with these credentials. Wait a minute and try again: https://docs.g1t.sh/reference/rate-limits/\n";
 const PAGE_MESSAGE = "Too many requests from your network. Wait a minute and try again.\n";
+const TOKEN_PAGE_MESSAGE = "Too many requests with this access token. Wait a minute and try again: https://docs.g1t.sh/reference/rate-limits/\n";
 
 /**
  * The 429 for a git request past its limit, or null to go on. Git shows a
@@ -73,13 +78,25 @@ export async function gitLimited(env: FrontDoorLimits, request: Request): Promis
   return verdict === "limited" ? tooManyRequests(GIT_MESSAGE_ANONYMOUS) : null;
 }
 
+/**
+ * The token in a page request's `Authorization: Bearer` header, or null
+ * (app/lib/website-token.ts). Not checked here either.
+ */
+export function websiteToken(authorization: string | null): string | null {
+  return /^\s*bearer\s+(\S+)\s*$/i.exec(authorization ?? "")?.[1] ?? null;
+}
+
 /** The 429 for a page or data request past its limit, or null to go on. */
 export async function pageLimited(env: FrontDoorLimits, request: Request, pathname: string): Promise<Response | null> {
   if (unlimited(pathname)) return null;
   const address = `ip:${clientAddress(request)}`;
+  const token = websiteToken(request.headers.get("authorization"));
   const session = sessionCookie(request.headers.get("cookie"));
   const checks: Promise<string>[] = [checkLimit(env.WEB_ADDRESS_LIMIT, address)];
-  if (session) {
+  if (token) {
+    // A token on the website: per token, as the API counts it.
+    checks.push(secretKey("token", token).then((key) => checkLimit(env.WEB_TOKEN_LIMIT, key)));
+  } else if (session) {
     checks.push(secretKey("session", session).then((key) => checkLimit(env.WEB_SESSION_LIMIT, key)));
   } else {
     checks.push(checkLimit(env.WEB_ANONYMOUS_LIMIT, address));
@@ -87,7 +104,8 @@ export async function pageLimited(env: FrontDoorLimits, request: Request, pathna
   }
   const verdicts = await Promise.all(checks);
   if (!verdicts.includes("limited")) return null;
-  return tooManyRequests(session ? PAGE_MESSAGE : `${PAGE_MESSAGE.trimEnd()} Signed-in accounts have a higher limit.\n`);
+  if (token && verdicts[1] === "limited") return tooManyRequests(TOKEN_PAGE_MESSAGE);
+  return tooManyRequests(token || session ? PAGE_MESSAGE : `${PAGE_MESSAGE.trimEnd()} Signed-in accounts have a higher limit.\n`);
 }
 
 /**

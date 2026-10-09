@@ -111,6 +111,20 @@ test("signed-in requests count by session, and every request by address", async 
   assert.equal(refused?.status, 429);
 });
 
+test("requests with an access token count by a hash of the token, at the API's limit", async () => {
+  const env = { WEB_ADDRESS_LIMIT: binding(100), WEB_TOKEN_LIMIT: binding(1), WEB_SESSION_LIMIT: binding(100), WEB_ANONYMOUS_LIMIT: binding(0) };
+  const withToken = () => request("/acme/rocket", { authorization: "Bearer g1t_secret", cookie: "g1t_session=abc123" });
+  assert.equal(await pageLimited(env, withToken(), "/acme/rocket"), null);
+  assert.equal(env.WEB_SESSION_LIMIT.keys.length, 0, "the token counts, not a cookie beside it");
+  assert.equal(env.WEB_ANONYMOUS_LIMIT.keys.length, 0);
+  assert.match(env.WEB_TOKEN_LIMIT.keys[0]!, /^token:[0-9a-f]{16}$/);
+  assert.ok(!env.WEB_TOKEN_LIMIT.keys[0]!.includes("g1t_secret"));
+  const refused = await pageLimited(env, withToken(), "/acme/rocket");
+  assert.equal(refused?.status, 429);
+  assert.match((await refused?.text()) ?? "", /this access token/);
+  assert.equal(RATE_LIMITS.WEB_TOKEN_LIMIT.limit, RATE_LIMITS.API_TOKEN_LIMIT.limit);
+});
+
 test("files the Worker serves itself are never limited", async () => {
   const env = { WEB_ADDRESS_LIMIT: binding(0), WEB_ANONYMOUS_LIMIT: binding(0) };
   for (const path of ["/assets/app-1a2b.js", "/fonts/hanken.woff2", "/favicon.ico", "/robots.txt", "/llms.txt", "/sitemap.xml"]) {

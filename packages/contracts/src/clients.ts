@@ -111,6 +111,7 @@ export function identityClient(service: ServiceBinding): IdentityApi {
         repository_selection: input.repositorySelection,
         repositories: input.repositories,
         permissions: input.permissions,
+        website: input.website ?? false,
       }),
     updateToken: (actor, id, change, owner) =>
       call("update_token", {
@@ -122,6 +123,7 @@ export function identityClient(service: ServiceBinding): IdentityApi {
         repository_selection: change.repositorySelection ?? null,
         repositories: change.repositories ?? null,
         permissions: change.permissions ?? null,
+        website: change.website ?? null,
       }),
     getTokenPolicy: (slug, viewer) => call("get_token_policy", { slug, viewer }),
     setTokenPolicy: (actor, slug, change) =>

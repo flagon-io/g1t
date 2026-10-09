@@ -77,6 +77,7 @@ export function TokenBadges({ token }: { token: AccessToken }) {
     <>
       {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
       {token.workspaceOwned && <Badge tone={token.admin ? "danger" : "neutral"}>{token.admin ? "Admin" : "Write"}</Badge>}
+      {token.website && <Badge tone="warn">Uses the website</Badge>}
     </>
   );
 }

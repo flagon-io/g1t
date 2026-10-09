@@ -116,7 +116,7 @@ const READS = new Set(
     "readable ready_issues references registration repo_access resolve resolve_branch resolve_path resolve_slug " +
     "routes run run_context run_cost runner_groups runner_settings runners runs scorecards search search_memories " +
     "settings statement statement_entries status status_by_id suggest tree usage usage_meters user_by_username " +
-    "user_for_session usernames waiting_workspaces workflows workspace workspace_invites github_enabled " +
+    "user_for_session user_for_access_token usernames waiting_workspaces workflows workspace workspace_invites github_enabled " +
     "stars about public_links branch_drift tags last_commits languages contributors license releases release " +
     "stargazers starred commit_checks shortcuts"
   ).split(" "),

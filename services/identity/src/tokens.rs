@@ -29,7 +29,7 @@ pub(crate) const TOKEN_COLUMNS: &str = "access_tokens.id, access_tokens.name, ac
   access_tokens.last_used_at, users.username AS created_by, access_tokens.scopes,
   access_tokens.expires_at, access_tokens.description, access_tokens.admin,
   access_tokens.workspace_id, access_tokens.repository_selection,
-  access_tokens.status, access_tokens.review_reason,
+  access_tokens.status, access_tokens.review_reason, access_tokens.website,
   (SELECT slug FROM workspaces WHERE workspaces.id = access_tokens.owner_workspace_id) AS owner_workspace";
 
 /// Who a new token belongs to.
@@ -121,6 +121,9 @@ struct Presented {
     job_run_id: Option<String>,
     #[serde(default)]
     job_pulls: Option<u32>,
+    /// 1 when its owner let it use the website (migration 0043).
+    #[serde(default)]
+    website: Option<f64>,
     /// The workspace it is made for, its repositories and status, a
     /// workspace token's Admin, and when it was made and expires, for the
     /// rules of the workspaces it reaches (token_reach.rs).
@@ -138,6 +141,17 @@ fn text(value: Option<&str>) -> JsValue {
     value.map_or(JsValue::NULL, JsValue::from)
 }
 
+/// Whether a token being used may be used on the website as its owner: one
+/// a person made and turned that on for, never a workspace's, a job's or an
+/// agent's (apps/web, app/lib/website-token.ts).
+fn website_allowed(presented: &Presented) -> bool {
+    presented.website.is_some_and(|on| on >= 1.0)
+        && presented.user_id.is_some()
+        && presented.workspace_id.is_none()
+        && presented.job_id.is_none()
+        && presented.agent_scope.is_none()
+}
+
 impl Identity {
     pub async fn user_for_access_token(&self, token: &str) -> Result<Viewer> {
         if !token.starts_with(TOKEN_PREFIX) {
@@ -148,7 +162,7 @@ impl Identity {
             .prepare(format!(
                 "SELECT id, user_id, workspace_id, last_used_at, agent_scope, scopes, name,
                    repo, job_id, job_run_id, job_pulls, created_at, expires_at,
-                   owner_workspace_id, repository_selection, status, admin
+                   owner_workspace_id, repository_selection, status, admin, website
                  FROM access_tokens
                  WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > {SQL_NOW})"
             ))
@@ -178,7 +192,7 @@ impl Identity {
         let mut viewer = match (&presented.user_id, &presented.workspace_id) {
             (Some(user_id), _) => {
                 self.find_user(
-                    "SELECT id, username, email_verified_at IS NOT NULL AS verified
+                    "SELECT id, username, display_username, email_verified_at IS NOT NULL AS verified, avatar
                      FROM users WHERE id = ? AND deleted_at IS NULL",
                     user_id,
                 )
@@ -204,6 +218,7 @@ impl Identity {
                     }),
                     _ => None,
                 },
+                website: website_allowed(&presented),
                 ..TokenAccess::default()
             }));
             // What it reaches: the workspace it is made for and its
@@ -541,5 +556,23 @@ mod tests {
         assert_eq!(grant.scopes_column(), "issues:read");
         assert_eq!(Grant::asked(&None).scopes_column(), "*");
         assert_eq!(Grant::asked(&Some(vec![])).scopes_column(), "");
+    }
+
+    #[test]
+    fn only_a_persons_own_token_with_it_turned_on_uses_the_website() {
+        let row = |extra: serde_json::Value| {
+            let mut value = serde_json::json!({ "id": "tok_1", "user_id": "usr_1", "workspace_id": null, "last_used_at": null, "agent_scope": null, "scopes": "*", "website": 1.0 });
+            for (key, field) in extra.as_object().unwrap() {
+                value[key] = field.clone();
+            }
+            serde_json::from_value::<Presented>(value).unwrap()
+        };
+        assert!(website_allowed(&row(serde_json::json!({}))));
+        assert!(!website_allowed(&row(serde_json::json!({ "website": 0.0 }))));
+        assert!(!website_allowed(&row(serde_json::json!({ "website": null }))));
+        // A workspace's token, a job's token and an agent's never do.
+        assert!(!website_allowed(&row(serde_json::json!({ "user_id": null, "workspace_id": "wsp_1" }))));
+        assert!(!website_allowed(&row(serde_json::json!({ "job_id": "job_1" }))));
+        assert!(!website_allowed(&row(serde_json::json!({ "agent_scope": "{}" }))));
     }
 }
