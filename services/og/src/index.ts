@@ -31,10 +31,10 @@ import sans700 from "./fonts/hanken-grotesk-700.ttf";
 import mono400 from "./fonts/ibm-plex-mono-400.ttf";
 import mono500 from "./fonts/ibm-plex-mono-500.ttf";
 import { cardPng } from "./render.ts";
-import { cacheKey } from "./cache.ts";
+import { cacheKey, drawnKey } from "./cache.ts";
 import { type Shot, screenshotOf, sweep, take } from "./capture.ts";
 import { parseShot } from "./screenshot.ts";
-import { BRAND, type Card, docsCard, resolve } from "./resolve.ts";
+import { BRAND, type Card, cardPath, docsCard, resolve } from "./resolve.ts";
 
 interface Env {
   /** Uploaded avatars by hash, with `{ contentType }`; written by identity. */
@@ -122,15 +122,23 @@ export default {
     const hit = await cache.match(key);
     if (hit) return hit;
 
-    const card = await cardFor(url, env);
-    const failed = card.kind === "brand" && card.failed === true;
+    const found = await lookUpCard(url, env);
+    const failed = found.kind === "brand" && found.failed === true;
     // Every page without a card of its own shares the one brand card, so
     // made-up paths cannot make the service draw it again and again.
     const brandKey = cacheKey(new URL("/", url));
-    if (card.kind === "brand" && key !== brandKey) {
+    if (found.kind === "brand" && key !== brandKey) {
       const brand = await cache.match(brandKey);
       if (brand) return withCacheControl(brand, failed);
     }
+    // The same card under another address (another `v`): drawn once.
+    const drawn = found.kind === "brand" ? null : await drawnKey(url.origin, found);
+    const same = drawn ? await cache.match(drawn) : undefined;
+    if (same) {
+      ctx.waitUntil(cache.put(key, same.clone()));
+      return same;
+    }
+    const card = await withIcon(found, env);
 
     let png: Uint8Array;
     let fellBack = false;
@@ -167,6 +175,7 @@ export default {
       ctx.waitUntil(cache.put(brandKey, response.clone()));
     } else {
       ctx.waitUntil(cache.put(key, response.clone()));
+      if (drawn) ctx.waitUntil(cache.put(drawn, response.clone()));
     }
     return withCacheControl(response, failed);
   },
@@ -187,8 +196,10 @@ const DRAWABLE = new Set(["image/png", "image/jpeg"]);
 async function iconFor(env: Env, avatar: string | null | undefined): Promise<string | undefined> {
   if (!avatar || !/^[0-9a-f]{64}$/.test(avatar)) return undefined;
   try {
+    // An avatar's key is its hash: what is under it never changes.
     const { value, metadata } = await env.AVATARS.getWithMetadata<{ contentType?: string }>(avatar, {
       type: "arrayBuffer",
+      cacheTtl: 86_400,
     });
     const type = metadata?.contentType;
     if (!value || !type || !DRAWABLE.has(type)) return undefined;
@@ -201,8 +212,7 @@ async function iconFor(env: Env, avatar: string | null | undefined): Promise<str
   }
 }
 
-async function cardFor(url: URL, env: Env): Promise<Card> {
-  const card = await lookUpCard(url, env);
+async function withIcon(card: Card, env: Env): Promise<Card> {
   if (card.kind === "workspace" || card.kind === "person") return { ...card, icon: await iconFor(env, card.avatar) };
   return card;
 }
@@ -210,7 +220,8 @@ async function cardFor(url: URL, env: Env): Promise<Card> {
 async function lookUpCard(url: URL, env: Env): Promise<Card> {
   if (url.pathname === "/docs") return docsCard(url.searchParams);
   if (url.pathname === "/") return BRAND;
-  return resolve(url.searchParams.get("path") ?? "/", {
+  // The page whose card it is, as the cache key has it (cache.ts).
+  return resolve(cardPath(url.searchParams.get("path") ?? "/"), {
     identity: identityClient(env.IDENTITY),
     repos: reposClient(env.REPOS),
     work: workClient(env.WORK),
