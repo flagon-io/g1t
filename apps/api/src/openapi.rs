@@ -82,7 +82,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Invites",
-        "While g1t is invite-only, every new account needs an invite. Your invites, and inviting people into a workspace by email.",
+        "While g1t is invite-only, every new account needs an invite. Your invites, inviting people into a workspace by username or email, and answering the invitations to workspaces sent to you.",
         &[
             Op::ListInvites,
             Op::CreateInvite,
@@ -90,6 +90,9 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::ListWorkspaceInvites,
             Op::InviteMember,
             Op::RevokeWorkspaceInvite,
+            Op::ListInvitations,
+            Op::AcceptInvitation,
+            Op::DeclineInvitation,
         ],
     ),
     (
@@ -549,6 +552,9 @@ fn title(op: Op) -> &'static str {
         Op::RevokeInvite => "Revoke an invite",
         Op::ListWorkspaceInvites => "List a workspace's invites",
         Op::InviteMember => "Invite someone to a workspace",
+        Op::ListInvitations => "List your workspace invitations",
+        Op::AcceptInvitation => "Accept a workspace invitation",
+        Op::DeclineInvitation => "Decline a workspace invitation",
         Op::RevokeWorkspaceInvite => "Revoke a workspace's invite",
         Op::TransferRepo => "Transfer a repository",
         Op::RenameRepo => "Rename a repository",

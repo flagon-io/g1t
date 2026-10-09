@@ -252,9 +252,10 @@ without being a member of it. They:
 
 Owners see every outside collaborator, and the repositories and roles each
 has, on the **Outside collaborators** tab of the workspace's
-**People**. **Convert to member** adds one to the workspace
-(see [members and roles](/guides/workspaces/#members-and-roles)); the
-roles they have stay, and the base permission adds to them.
+**People**. **Invite as a member** sends one an invitation to join the
+workspace as a member (see [add people](/guides/workspaces/#add-people));
+once they accept, the roles they have stay, and the base permission adds
+to them.
 
 Removing a member from a workspace, or their leaving it, also removes the
 roles they were given on its repositories, and takes them out of its teams.

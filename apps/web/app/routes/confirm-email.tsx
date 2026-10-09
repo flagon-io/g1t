@@ -69,7 +69,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     confirmed: true as const,
     line: confirmedLine(done),
     lapsed: Boolean(done.inviteLapsed),
-    to: afterConfirming(next, done.joined),
+    to: afterConfirming(next, done.joined, done.invitedTo),
   };
 }
 

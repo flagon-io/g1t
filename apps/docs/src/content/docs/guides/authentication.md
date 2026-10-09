@@ -146,18 +146,25 @@ repository, or just making an account), and finishes the job there:
    for an account that has confirmed that address. The page says so and
    offers **Sign out and continue**.
 
-Once you have signed in, or your new account has confirmed its address,
-you land in the workspace (or the repository) the invite was for, already
-a member, with a one-time "You're in" banner, and it becomes the workspace
-your sidebar shows.
+Nobody joins a workspace without saying yes. With an existing account,
+accepting on the invite's page is that yes: you land in the workspace (or
+the repository) the invite was for, with a one-time "You're in" banner,
+and it becomes the workspace your sidebar shows.
+
+A new account made from an invite that names a workspace is invited to
+it: once the account's address is confirmed, g1t takes you to
+[g1t.sh/invitations](https://g1t.sh/invitations), where you
+[accept or decline](#workspace-invitations) it. Until you answer, you have
+no workspace of your own, so you never end up with two. An invite that
+names no workspace gives the new account a workspace of its own instead;
+see [your first workspace](#your-first-workspace).
 
 Signing up spends the invite at once, so nobody else can use it while you
-confirm your address, but you join its workspace only when you confirm, in
-the same step. Until then the invite shows as **confirming their email** to
-whoever made it, and they can still revoke it. If the invite is revoked or
-expires, or its workspace is deleted, before you confirm, your address is
-confirmed all the same and g1t tells you the invite no longer applies: ask
-whoever invited you to add you again. A
+confirm your address. Until you confirm, the invite shows as **confirming
+their email** to whoever made it, and they can still revoke it. If the
+invite is revoked or expires, or its workspace is deleted, before you
+confirm, your address is confirmed all the same and g1t tells you the
+invite no longer applies: ask whoever invited you to invite you again. A
 code typed at [g1t.sh/register](https://g1t.sh/register) goes to the
 same page.
 
@@ -174,9 +181,10 @@ the link shows that you can read that inbox, so:
 
 - the invite page says the address is confirmed because you came from the
   invite email, and the email field stays locked to it;
-- your new account starts with the address confirmed: no code is sent, and
-  you land in the workspace or repository the invite was for straight
-  away.
+- your new account starts with the address confirmed: no code is sent. A
+  repository the invite was for is yours straight away; a workspace it
+  names is a [workspace invitation](#workspace-invitations) you accept or
+  decline straight away, since nobody joins a workspace without saying yes.
 
 Anything else confirms the address the usual way, after you sign up: the
 code typed at [g1t.sh/register](https://g1t.sh/register), an invite link
@@ -217,25 +225,71 @@ of their own; group links are made by g1t staff only.
 2. Optionally enter the email address of the person you are inviting.
    With one, g1t emails them the invite, and only that address can use it.
    Without one, anyone with the link can, once.
-3. Select **Create invite**, then copy the link.
+3. Under **Bring them into**, choose the workspace they are invited to
+   join, or **No workspace — they'll get their own**. The workspace you
+   are in is chosen to start with, when you can bring people into it.
+4. Select **Create invite**, then copy the link.
+
+**Bring them into** lists the workspaces you can add members to: the ones
+you own that are on the g1t plan. A workspace on the free plan cannot add
+people, so it is not offered, and the form says so when it is the one you
+are in. With a workspace chosen, the new account gets a
+[workspace invitation](#workspace-invitations) to it, to join as a member,
+once its address is confirmed; it is not given a workspace of its own.
 
 Each person can have **5** invites out at a time. Pending and used invites
 count; an invite you revoke, or one that expires before anyone uses it,
 comes back to you. The list under the form shows each invite's state:
 pending, confirming their email (used to sign up by someone who has not
-confirmed their address yet), joined (with the username of who joined),
-expired or revoked. You
+confirmed their address yet), waiting for them to accept (the account is
+made and confirmed, and the workspace invitation waits for its answer),
+joined (with the username of who joined), declined, expired or revoked. You
 must confirm your email before you can make invites. An agent's token and
 a workspace's token cannot make them.
 
 ### Inviting someone into a workspace
 
-An owner can invite an email address straight into a workspace from its
-People page; see [members and roles](/guides/workspaces/#members-and-roles).
-When the address has no g1t account, the invite makes the account, which
-joins the workspace once it confirms its email address (at once when it
-was made from the invite email's link), and it uses one invite. Inviting someone who is
-already on g1t costs nothing.
+An owner can invite someone into a workspace from its People page, by
+username or by email address, with the role they join as; see
+[add people](/guides/workspaces/#add-people). Nobody is added without
+saying yes: someone on g1t gets a [workspace invitation](#workspace-invitations)
+to accept or decline. When an address has no g1t account, the invite makes
+the account first, and the invitation follows once the account's address
+is confirmed (at once when it was made from the invite email's link); it
+uses one invite. Inviting someone who is already on g1t costs nothing.
+
+### Workspace invitations
+
+A workspace invitation asks one account to join one workspace, with the
+role chosen when it was sent. You hear of it in your inbox and by email,
+and answer it at [g1t.sh/invitations](https://g1t.sh/invitations):
+
+- **Accept** joins the workspace with that role, and takes you there.
+- **Decline** joins nothing; whoever invited you is told in their inbox.
+
+An invitation works for 30 days, the same as an invite. Until it is
+answered, the workspace's owners see it under **Pending invitations** on
+its People page and can revoke it. A workspace on the free plan cannot add
+people, so an invitation to one cannot be accepted until it starts the
+plan. Only you can answer your invitations: an agent's token and a
+workspace's token cannot.
+
+### Your first workspace
+
+Everything on g1t lives in a workspace, so every new account gets one:
+
+- An account whose invite brings it into a workspace gets the invitation
+  to it, and no workspace of its own.
+- Every other account (signed up with a password, with GitHub, from a
+  shared invite link or an invite from g1t staff, or with an invite that
+  names no workspace) gets a workspace of its own, named for its username,
+  on the free plan. Rename it or start the plan on it whenever you like.
+
+Signed in without any workspace (you declined an invitation, or left the
+only workspace you were in), g1t shows **Create your workspace or ask to
+join one** in place of Mission control: the invitations waiting for you, if
+any, and the form to create a workspace. To join a team already on g1t,
+ask one of its owners to invite you by your username.
 
 ### Need more invites?
 
@@ -262,9 +316,12 @@ does not move you down the list.
 | Route | MCP tool and action | What it does |
 | --- | --- | --- |
 | [`GET /user/invites`](/reference/api/invites/list-invites/) | `account` `list_invites` | Your invites and how many you have left |
-| [`POST /user/invites`](/reference/api/invites/create-invite/) | `account` `create_invite` | Make an invite, optionally for one `email` |
+| [`POST /user/invites`](/reference/api/invites/create-invite/) | `account` `create_invite` | Make an invite, optionally for one `email`; with `workspace` (a slug), the new account is invited to that workspace |
 | [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/) | `account` `revoke_invite` | Revoke a pending invite, or one whose new account has not confirmed its address |
-| [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `workspace` `invite_member` | Invite an address into a workspace. Owners only. |
+| [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `workspace` `invite_member` | Invite a `username` or an `email` into a workspace, with a `role`. Owners only. |
+| [`GET /user/invitations`](/reference/api/invites/list-invitations/) | `account` `list_workspace_invitations` | The workspace invitations waiting for your answer |
+| [`POST /user/invitations/{id}/accept`](/reference/api/invites/accept-invitation/) | `account` `accept_workspace_invitation` | Join the invitation's workspace with its role |
+| [`POST /user/invitations/{id}/decline`](/reference/api/invites/decline-invitation/) | `account` `decline_invitation` | Decline it; whoever sent it is told |
 
 ## Confirming your email address
 
@@ -307,7 +364,7 @@ An account that has not confirmed its address can only confirm it:
 - **The MCP server** answers `403` with the same message.
 - **Git** over HTTPS refuses pushes and fetches with your credentials, with
   the same message. Package registries treat them as wrong credentials.
-- You cannot create a workspace, join the one your invite named, make
+- You cannot create a workspace, answer the invitation your invite brought, make
   invites or tokens, or approve a tool's sign-in.
 
 You cannot make a token before you confirm, so the API and MCP refusals
@@ -341,8 +398,11 @@ gives it a new address.
 | [`POST /user/emails/confirm`](/reference/api/accounts/confirm-email/) | `account` `confirm_email` | Confirm an address with the `code` from its email |
 
 The answer says whether the account is now confirmed (`verified`), the
-workspace confirming joined it to (`joined`), or why its invite no longer
-applies (`invite_lapsed`).
+workspace its invite invites it to (`invited_to`: accept or decline it with
+[`POST /user/invitations/{id}/accept`](/reference/api/invites/accept-invitation/)
+or [`/decline`](/reference/api/invites/decline-invitation/)), or why its
+invite no longer applies (`invite_lapsed`). `joined` is always null: nothing
+is joined without an answer.
 
 ## Email addresses
 
@@ -464,8 +524,9 @@ token and a workspace's token are refused.
 
 ## Workspaces
 
-Your account does not own repositories itself: a workspace does. After
-confirming your email, the first thing you do is create one. Workspaces,
+Your account does not own repositories itself: a workspace does. A new
+account gets one of its own, named for its username, unless its invite
+brings it into one; see [your first workspace](#your-first-workspace). Workspaces,
 their members and roles, and the access tokens that belong to a workspace
 are covered in [workspaces](/guides/workspaces/).
 

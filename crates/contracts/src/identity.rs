@@ -468,7 +468,10 @@ pub struct ListMembersArgs {
     pub viewer: crate::Viewer,
 }
 
-/// `add_member` and `remove_member`: owners only. Removing yourself is
+/// `add_member` and `remove_member`: owners only. `add_member` never adds a
+/// person at once: it sends them a workspace invitation to accept or
+/// decline, as `invite_member` with a username does. Only g1t's own agent
+/// is added at once. Removing yourself is
 /// leaving (`members::LeaveWorkspaceArgs`); removing an owner is refused
 /// when they are the last. Each returns `Outcome<bool>`.
 #[derive(Debug, Serialize, Deserialize)]
@@ -1136,7 +1139,13 @@ pub enum InviteStatus {
     /// yet. The code is spent; the workspace (or repository) it gives is
     /// joined when the address is confirmed, unless it is revoked first.
     AwaitingConfirmation,
+    /// Used to make an account that has confirmed its address, for a
+    /// workspace it has not yet joined or declined: the workspace
+    /// invitation waits for the person's answer (`accept_invitation`).
+    AwaitingAnswer,
     Redeemed,
+    /// Its person declined the workspace it invited them to.
+    Declined,
     Expired,
     Revoked,
 }
@@ -1194,6 +1203,13 @@ pub struct Invite {
     pub redeemed_at: Option<String>,
     /// RFC 3339.
     pub revoked_at: Option<String>,
+    /// The account a workspace invitation is for, by username: someone
+    /// invited by username, or the account the invite made.
+    #[serde(default)]
+    pub invitee: Option<String>,
+    /// The role `workspace` is joined with. Null when it names none.
+    #[serde(default)]
+    pub role: Option<crate::Role>,
     /// The staff member who minted it. Only in staff views.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staff: Option<String>,
@@ -1261,6 +1277,12 @@ pub struct CreateInviteArgs {
     /// Use this workspace's granted invites, by slug.
     #[serde(default)]
     pub workspace: Option<String>,
+    /// The workspace the new account is invited to, by slug: one the
+    /// person owns that can add members (not on the free plan). Once the
+    /// account is confirmed it gets a workspace invitation to accept, as a
+    /// member, and no workspace of its own is made for it.
+    #[serde(default)]
+    pub join: Option<String>,
     /// Where the request came in, for the audit log; g1t.sh when absent.
     #[serde(default)]
     pub surface: Option<crate::audit::Surface>,
@@ -1370,10 +1392,63 @@ pub struct AcceptInviteArgs {
 pub struct InviteMemberArgs {
     pub actor: User,
     pub slug: String,
+    /// An email address. Give this or `username`.
+    #[serde(default)]
     pub email: String,
+    /// A g1t username: that account gets a workspace invitation to accept
+    /// or decline, in its inbox and by email. Nobody joins without saying
+    /// yes.
+    #[serde(default)]
+    pub username: Option<String>,
+    /// The role they join with; member when absent.
+    #[serde(default)]
+    pub role: Option<crate::Role>,
     /// Where the request came in, for the audit log; g1t.sh when absent.
     #[serde(default)]
     pub surface: Option<crate::audit::Surface>,
+}
+
+/// A workspace invitation waiting for its person's answer, as they see it.
+/// `list_invitations` (takes `UserArgs`) returns `Vec<WorkspaceInvitation>`,
+/// newest first: pending ones only, never expired, revoked or answered.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceInvitation {
+    pub id: String,
+    pub workspace: ProfileWorkspace,
+    /// The role accepting joins with.
+    pub role: crate::Role,
+    /// Null when g1t staff sent it.
+    pub invited_by: Option<InviteFrom>,
+    /// RFC 3339.
+    pub created_at: String,
+    /// RFC 3339.
+    pub expires_at: String,
+}
+
+/// `accept_invitation`: the person it is for joins the workspace with the
+/// role it names. Returns `Outcome<String>`, the workspace's slug.
+///
+/// `decline_invitation`: they say no; whoever sent it is told in their
+/// inbox. Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InvitationArgs {
+    pub user: User,
+    pub id: String,
+    /// Where the request came in, for the audit log; g1t.sh when absent.
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `find_people`: accounts whose username starts with `query`, or whose
+/// name contains it, for picking someone to invite. Only what a profile
+/// shows: a username, a name and an avatar, never an email address.
+/// Returns `Vec<InviteFrom>`, at most `limit` (10 at most, 8 when absent).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FindPeopleArgs {
+    pub query: String,
+    #[serde(default)]
+    pub limit: Option<u32>,
 }
 
 /// `workspace_invites` (takes `ListMembersArgs`): a workspace's invites,

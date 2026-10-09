@@ -384,7 +384,7 @@ pub const TOOLS: &[Tool] = &[
             a("transfer_ownership", Op::TransferOwnership, "Hand it to another member: they become an owner, you a member"),
             a("leave", Op::LeaveWorkspace, "Leave it yourself"),
             a("list_invites", Op::ListWorkspaceInvites, "Its invites"),
-            a("invite_member", Op::InviteMember, "Invite an email address"),
+            a("invite_member", Op::InviteMember, "Invite someone by username or email address"),
             a("revoke_invite", Op::RevokeWorkspaceInvite, "Revoke a pending invite"),
             a("list_integrations", Op::ListIntegrations, "Model providers, alert sources, trackers"),
             a("connect_integration", Op::ConnectIntegration, "Connect one"),
@@ -494,7 +494,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "account",
         title: "Your account",
-        description: "Who this token acts as and its workspaces (`whoami`), your email addresses, your invites, and invitations to repositories waiting for you.",
+        description: "Who this token acts as and its workspaces (`whoami`), your email addresses, your invites, and invitations to workspaces and repositories waiting for you.",
         default_action: Some("whoami"),
         actions: &[
             a("whoami", Op::Whoami, "Who the token acts as, and its workspaces"),
@@ -506,6 +506,9 @@ pub const TOOLS: &[Tool] = &[
             a("list_invites", Op::ListInvites, "Your invites to g1t"),
             a("create_invite", Op::CreateInvite, "Make an invite"),
             a("revoke_invite", Op::RevokeInvite, "Revoke one"),
+            a("list_workspace_invitations", Op::ListInvitations, "Invitations to workspaces for you"),
+            a("accept_workspace_invitation", Op::AcceptInvitation, "Accept one and join"),
+            a("decline_workspace_invitation", Op::DeclineInvitation, "Decline one"),
             a("list_repository_invitations", Op::ListMyRepoInvitations, "Invitations to repositories for you"),
             a("accept_repository_invitation", Op::AcceptRepoInvitation, "Accept one"),
             a("decline_repository_invitation", Op::DeclineRepoInvitation, "Decline one"),

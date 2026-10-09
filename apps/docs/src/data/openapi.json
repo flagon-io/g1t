@@ -107,14 +107,17 @@
     },
     {
       "name": "Invites",
-      "description": "While g1t is invite-only, every new account needs an invite. Your invites, and inviting people into a workspace by email.",
+      "description": "While g1t is invite-only, every new account needs an invite. Your invites, inviting people into a workspace by username or email, and answering the invitations to workspaces sent to you.",
       "x-tools": [
         "list_invites",
         "create_invite",
         "revoke_invite",
         "list_workspace_invites",
         "invite_member",
-        "revoke_workspace_invite"
+        "revoke_workspace_invite",
+        "list_invitations",
+        "accept_invitation",
+        "decline_invitation"
       ]
     },
     {
@@ -1562,7 +1565,7 @@
           "Accounts"
         ],
         "summary": "Confirm an email address",
-        "description": "Confirm an email address with the six-digit `code` from the confirmation email g1t sent it. The same email has a link that does the same; either one works, once, for 60 minutes, and asking for a new email ends both. A new account must confirm its address before it can do anything else: until then this, `GET /user` and `GET /user/emails` are the only calls its token can make, and everything else, MCP included, is refused with `403`. Confirming a new account's address also joins the workspace its invite named, when the invite still applies: the answer's `joined` names it, or `invite_lapsed` says why not. Ten wrong codes in an hour pause checking for the account. People only.\n\nThe code confirms the address it was sent to, and ends the link sent with it. A wrong, used or expired code answers `422` with one message for all three; after ten wrong codes in an hour the account answers `409` for a while, and the link in the email still works. `verified` says whether the account is confirmed: whether its primary address is. `joined` is set when confirming a new account's address joined the workspace its invite named; when the invite was revoked or expired, or the workspace deleted, while the account waited, the address is confirmed all the same and `invite_lapsed` says so. See [Confirming your email address](/guides/authentication/#confirming-your-email-address).",
+        "description": "Confirm an email address with the six-digit `code` from the confirmation email g1t sent it. The same email has a link that does the same; either one works, once, for 60 minutes, and asking for a new email ends both. A new account must confirm its address before it can do anything else: until then this, `GET /user` and `GET /user/emails` are the only calls its token can make, and everything else, MCP included, is refused with `403`. Confirming a new account's address also invites it to the workspace its invite named, when the invite still applies: the answer's `invited_to` names it, and the invitation waits for you to accept or decline it (accept_invitation), or `invite_lapsed` says why not. Ten wrong codes in an hour pause checking for the account. People only.\n\nThe code confirms the address it was sent to, and ends the link sent with it. A wrong, used or expired code answers `422` with one message for all three; after ten wrong codes in an hour the account answers `409` for a while, and the link in the email still works. `verified` says whether the account is confirmed: whether its primary address is. `invited_to` is set when the invite the account signed up with brings it into a workspace: confirming the address sends the account an invitation to that workspace, which it accepts with `POST /user/invitations/{id}/accept` or declines; nobody joins a workspace without saying yes. `joined` is kept for older clients and is null. When the invite was revoked or expired, or the workspace deleted, while the account waited, the address is confirmed all the same and `invite_lapsed` says so. See [Confirming your email address](/guides/authentication/#confirming-your-email-address).",
         "x-operation": "confirm_email",
         "x-mcp-tool": "account",
         "x-mcp-action": "confirm_email",
@@ -1585,7 +1588,8 @@
                   "username": "ada",
                   "email": "ada@example.com",
                   "verified": true,
-                  "joined": "acme",
+                  "joined": null,
+                  "invited_to": "acme",
                   "invite_lapsed": null
                 }
               }
@@ -1971,7 +1975,7 @@
           "Invites"
         ],
         "summary": "List your invites",
-        "description": "Your invites, newest first, and how many you have left. While g1t is invite-only, every new account needs an invite code. You may have 5 invites out at once: pending and used ones count, and one revoked or expired before it was used comes back. `allowance.limit` is null when you have no limit. `workspaces` lists the workspaces you own that were granted invites to share. A pending invite's `code` is shown to you; `status` is pending, redeemed, expired or revoked.\n\n`allowance.limit` and `allowance.remaining` are null when you have no limit. A revoked or expired invite that was never used is not counted. Ask for more at hey@flagon.io with the subject `[g1t Invites]`. See [Invites](/guides/authentication/#invites).",
+        "description": "Your invites, newest first, and how many you have left. While g1t is invite-only, every new account needs an invite code. You may have 5 invites out at once: pending and used ones count, and one revoked or expired before it was used comes back. `allowance.limit` is null when you have no limit. `workspaces` lists the workspaces you own that were granted invites to share. A pending invite's `code` is shown to you. `status` is `pending`; `awaiting_confirmation` (used to make an account that has not confirmed its address yet); `awaiting_answer` (used to make an account that has yet to accept or decline the workspace it was invited to); `redeemed`; `declined` (its person declined the workspace); `expired`; or `revoked`. An invite that brings someone into a workspace names it in `workspace`, with the `role` it joins with and, once known, the account it is for in `invitee`.\n\n`allowance.limit` and `allowance.remaining` are null when you have no limit. A revoked or expired invite that was never used is not counted. `status` is `pending`, `awaiting_confirmation`, `awaiting_answer` (the account it made has yet to accept or decline the workspace in `workspace`), `redeemed`, `declined`, `expired` or `revoked`. Ask for more at hey@flagon.io with the subject `[g1t Invites]`. See [Invites](/guides/authentication/#invites).",
         "x-operation": "list_invites",
         "x-mcp-tool": "account",
         "x-mcp-action": "list_invites",
@@ -2022,7 +2026,9 @@
                       "created_at": "2026-10-05T17:00:00.000Z",
                       "expires_at": "2026-11-04T17:00:00.000Z",
                       "redeemed_at": null,
-                      "revoked_at": null
+                      "revoked_at": null,
+                      "invitee": null,
+                      "role": null
                     },
                     {
                       "id": "inv_01kp1v3c4d5e6f7g8h9j0k1m2n",
@@ -2038,7 +2044,9 @@
                       "created_at": "2026-10-02T09:12:40.000Z",
                       "expires_at": "2026-11-01T09:12:40.000Z",
                       "redeemed_at": "2026-10-02T11:30:05.000Z",
-                      "revoked_at": null
+                      "revoked_at": null,
+                      "invitee": "grace",
+                      "role": null
                     }
                   ]
                 }
@@ -2093,7 +2101,7 @@
           "Invites"
         ],
         "summary": "Create an invite",
-        "description": "Make an invite. With `email`, it is sent there and only that address can use it; without, anyone with the code can, once. It works for 30 days. It uses one of your invites, or with `workspace`, one of the invites g1t granted that workspace (its owners only). Returns the invite with its `code`; the link is https://g1t.sh/invite/<code>. People only: an agent's token or a workspace's token cannot make invites.\n\nRefused with `402` (`limit`) when you have no invites left, with `409` when you already have a pending invite for that address or it already has a g1t account, and with `403` for an agent's or a workspace's token. The code is returned in full; send people the link `https://g1t.sh/invite/<code>`.",
+        "description": "Make an invite. With `email`, it is sent there and only that address can use it; without, anyone with the code can, once. It works for 30 days. With `workspace`, the new account is brought into that workspace: once it confirms its address it gets an invitation to join as a member, which it accepts or declines, and no workspace of its own is made for it. That must be a workspace you own on the g1t plan; a free workspace is refused with `payment_required` (402). Without `workspace`, the new account gets a free workspace of its own. It uses one of your invites, or with `charge_workspace`, one of the invites g1t granted that workspace (its owners only). Returns the invite with its `code`; the link is https://g1t.sh/invite/<code>. People only: an agent's token or a workspace's token cannot make invites.\n\n`workspace` brings the new account into a workspace you own: once it confirms its address it gets an invitation to join as a member, which it accepts or declines, and no workspace of its own is made for it. Leave `workspace` out and the new account gets a free workspace of its own. A workspace on the free plan cannot bring anyone in: `402` with `payment_required`, until it starts the g1t plan. `charge_workspace` is separate: it uses one of the invites g1t granted that workspace instead of one of yours, and works with or without `workspace`. Refused with `402` (`limit`) when you have no invites left, with `409` when you already have a pending invite for that address or it already has a g1t account, and with `403` for an agent's or a workspace's token. The code is returned in full; send people the link `https://g1t.sh/invite/<code>`.",
         "x-operation": "create_invite",
         "x-mcp-tool": "account",
         "x-mcp-action": "create_invite",
@@ -2118,7 +2126,7 @@
                   "hint": "g1t-k7m2",
                   "email": "ada@example.com",
                   "kind": "account",
-                  "workspace": null,
+                  "workspace": "acme-labs",
                   "status": "pending",
                   "charged_to": "user",
                   "invited_by": "syntaqx",
@@ -2126,7 +2134,9 @@
                   "created_at": "2026-10-05T17:00:00.000Z",
                   "expires_at": "2026-11-04T17:00:00.000Z",
                   "redeemed_at": null,
-                  "revoked_at": null
+                  "revoked_at": null,
+                  "invitee": null,
+                  "role": "member"
                 }
               }
             }
@@ -2195,12 +2205,17 @@
                   },
                   "workspace": {
                     "type": "string",
+                    "description": "The workspace the new account is invited to, by slug. Once it confirms its address it gets an invitation to join as a member, and no workspace of its own. One you own, on the g1t plan."
+                  },
+                  "charge_workspace": {
+                    "type": "string",
                     "description": "Use one of the invites g1t granted this workspace instead of yours, by slug. Owners only."
                   }
                 }
               },
               "example": {
-                "email": "ada@example.com"
+                "email": "ada@example.com",
+                "workspace": "acme-labs"
               }
             }
           }
@@ -2257,7 +2272,9 @@
                   "created_at": "2026-10-05T17:00:00.000Z",
                   "expires_at": "2026-11-04T17:00:00.000Z",
                   "redeemed_at": null,
-                  "revoked_at": "2026-10-06T08:00:00.000Z"
+                  "revoked_at": "2026-10-06T08:00:00.000Z",
+                  "invitee": null,
+                  "role": null
                 }
               }
             }
@@ -2315,6 +2332,290 @@
         }
       }
     },
+    "/user/invitations": {
+      "get": {
+        "operationId": "list_invitations",
+        "tags": [
+          "Invites"
+        ],
+        "summary": "List your workspace invitations",
+        "description": "The invitations to workspaces waiting for your answer, newest first: each one's `id`, the `workspace` (`slug`, `name`, `avatar`), the `role` accepting gives (`member` or `owner`), who sent it (`invited_by`, null when g1t staff did), and when it was made and when it expires. Expired, revoked and answered ones are left out. Accept or decline each by its `id`. People only; an agent's or a workspace's token gets an empty list.\n\nAccept one with `POST /user/invitations/{id}/accept`, or decline it with `POST /user/invitations/{id}/decline`. An agent's or a workspace's token gets an empty list.",
+        "x-operation": "list_invitations",
+        "x-mcp-tool": "account",
+        "x-mcp-action": "list_workspace_invitations",
+        "x-scope": "account:read",
+        "security": [
+          {
+            "token": [
+              "account:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+                    "workspace": {
+                      "slug": "acme-labs",
+                      "name": "Acme Labs",
+                      "avatar": null
+                    },
+                    "role": "member",
+                    "invited_by": {
+                      "username": "syntaqx",
+                      "name": "Chase",
+                      "avatar": null
+                    },
+                    "created_at": "2026-10-05T17:00:00.000Z",
+                    "expires_at": "2026-11-04T17:00:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/invitations/{id}/accept": {
+      "post": {
+        "operationId": "accept_invitation",
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Accept a workspace invitation",
+        "description": "Accept an invitation to a workspace sent to you. You join it at once with the role it names. Returns the workspace's slug in `workspace`. Refused with `404` when you have no open invitation with that id (it may have been answered, revoked or expired), with `403` until you confirm your email address or when your account does not meet what the workspace asks of its members, such as two-factor authentication, and with `payment_required` (402) while the workspace is free: it can add no one until it starts the g1t plan, and the invitation stays open until then. People only.\n\nYou join at once with the invitation's `role`. `404` when you have no open invitation with that id (it may have been answered, revoked or expired). `403` until you confirm your email address, and when your account does not meet what the workspace asks of its members, such as two-factor authentication, with a message that says what to turn on. `402` with `payment_required` while the workspace is on the free plan; the invitation stays open until it starts the g1t plan. Recorded as `member.added`.",
+        "x-operation": "accept_invitation",
+        "x-mcp-tool": "account",
+        "x-mcp-action": "accept_workspace_invitation",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The invitation's id, from list_invitations."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "workspace": "acme-labs"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y"
+        }
+      }
+    },
+    "/user/invitations/{id}/decline": {
+      "post": {
+        "operationId": "decline_invitation",
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Decline a workspace invitation",
+        "description": "Decline an invitation to a workspace sent to you. Whoever sent it is told in their inbox, and the workspace's owners can invite you again. People only.\n\nWhoever sent it is told in their inbox. The workspace's owners can invite you again. `404` when you have no open invitation with that id.",
+        "x-operation": "decline_invitation",
+        "x-mcp-tool": "account",
+        "x-mcp-action": "decline_workspace_invitation",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The invitation's id, from list_invitations."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": true
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y"
+        }
+      }
+    },
     "/workspaces/{workspace}/invitations": {
       "get": {
         "operationId": "list_workspace_invites",
@@ -2366,13 +2667,15 @@
                     "created_at": "2026-10-05T17:00:00.000Z",
                     "expires_at": "2026-11-04T17:00:00.000Z",
                     "redeemed_at": null,
-                    "revoked_at": null
+                    "revoked_at": null,
+                    "invitee": null,
+                    "role": "member"
                   },
                   {
                     "id": "inv_01kp1z9y8x7w6v5t4s3r2q1p0n",
                     "code": "g1t-k7m2-q9xd-4hpw-…",
                     "hint": "g1t-w2vb",
-                    "email": "linus@example.com",
+                    "email": null,
                     "kind": "workspace",
                     "workspace": "acme-labs",
                     "status": "pending",
@@ -2382,7 +2685,9 @@
                     "created_at": "2026-10-05T17:00:00.000Z",
                     "expires_at": "2026-11-04T17:00:00.000Z",
                     "redeemed_at": null,
-                    "revoked_at": null
+                    "revoked_at": null,
+                    "invitee": "linus",
+                    "role": "owner"
                   }
                 ]
               }
@@ -2436,7 +2741,7 @@
           "Invites"
         ],
         "summary": "Invite someone to a workspace",
-        "description": "Invite an email address into a workspace. It always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, accepting makes the account and joins the workspace in one step, and uses one of the workspace's granted invites, or else one of yours. With one, it costs nothing, and they join when they accept. To add someone by username at once, use the workspace's People page. Owners only. A free workspace cannot invite anyone: this is refused with `payment_required` (402) until it starts the g1t plan, and an invite sent before cannot be accepted until then.\n\n`kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when accepting makes one. Both answers look alike to the caller on purpose: the invite is emailed either way. A free workspace cannot invite anyone: `402` with `payment_required`, until it starts the g1t plan.",
+        "description": "Invite someone into a workspace, by `username` or by `email`. Nobody joins without saying yes: they get an invitation to accept or decline, and join with `role` (`member` unless you give `owner`) when they accept. By `username`, the account gets the invitation in its inbox and by email, and it costs nothing. By `email`, it always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, the link makes the account, which is invited once it confirms its address; that uses one of the workspace's granted invites, or else one of yours. With one, it costs nothing. Refused with `409` when the person is already a member or already has a pending invitation to the workspace. Owners only. A free workspace cannot invite anyone: this is refused with `payment_required` (402) until it starts the g1t plan, and an invite sent before cannot be accepted until then.\n\nGive `username` or `email`. Nobody is added without saying yes: the person gets an invitation to accept or decline, and joins with `role` when they accept. By username, `invitee` names the account and it costs nothing; `404` when there is no account with that username. By email, `kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when the link makes one; both answers look alike to the caller on purpose, and `invitee` stays null until an account is known. `409` when the person is already a member or already has a pending invitation to the workspace. A free workspace cannot invite anyone: `402` with `payment_required`, until it starts the g1t plan. See [Workspace invitations](/reference/api/invites/list-invitations/) for the other side.",
         "x-operation": "invite_member",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "invite_member",
@@ -2469,17 +2774,19 @@
                   "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
                   "code": "g1t-k7m2-q9xd-4hpw-…",
                   "hint": "g1t-k7m2",
-                  "email": "ada@example.com",
-                  "kind": "account",
+                  "email": null,
+                  "kind": "workspace",
                   "workspace": "acme-labs",
                   "status": "pending",
-                  "charged_to": "workspace",
+                  "charged_to": "none",
                   "invited_by": "syntaqx",
                   "redeemed_by": null,
                   "created_at": "2026-10-05T17:00:00.000Z",
                   "expires_at": "2026-11-04T17:00:00.000Z",
                   "redeemed_at": null,
-                  "revoked_at": null
+                  "revoked_at": null,
+                  "invitee": "ada",
+                  "role": "member"
                 }
               }
             }
@@ -2536,23 +2843,33 @@
           }
         },
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
                 "properties": {
+                  "username": {
+                    "type": "string",
+                    "description": "A g1t username to invite. Give this or email."
+                  },
                   "email": {
                     "type": "string",
-                    "description": "The address to invite."
+                    "description": "An address to invite. Give this or username."
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "member",
+                      "owner"
+                    ],
+                    "description": "The role they join with when they accept. member when left out."
                   }
-                },
-                "required": [
-                  "email"
-                ]
+                }
               },
               "example": {
-                "email": "ada@example.com"
+                "username": "ada",
+                "role": "member"
               }
             }
           }
@@ -3389,7 +3706,9 @@
                   "created_at": "2026-10-05T17:00:00.000Z",
                   "expires_at": "2026-11-04T17:00:00.000Z",
                   "redeemed_at": null,
-                  "revoked_at": "2026-10-06T08:00:00.000Z"
+                  "revoked_at": "2026-10-06T08:00:00.000Z",
+                  "invitee": null,
+                  "role": "member"
                 }
               }
             }

@@ -292,10 +292,11 @@
       "username": "ada",
       "email": "ada@example.com",
       "verified": true,
-      "joined": "acme",
+      "joined": null,
+      "invited_to": "acme",
       "invite_lapsed": null
     },
-    "notes": "The code confirms the address it was sent to, and ends the link sent with it. A wrong, used or expired code answers `422` with one message for all three; after ten wrong codes in an hour the account answers `409` for a while, and the link in the email still works. `verified` says whether the account is confirmed: whether its primary address is. `joined` is set when confirming a new account's address joined the workspace its invite named; when the invite was revoked or expired, or the workspace deleted, while the account waited, the address is confirmed all the same and `invite_lapsed` says so. See [Confirming your email address](/guides/authentication/#confirming-your-email-address)."
+    "notes": "The code confirms the address it was sent to, and ends the link sent with it. A wrong, used or expired code answers `422` with one message for all three; after ten wrong codes in an hour the account answers `409` for a while, and the link in the email still works. `verified` says whether the account is confirmed: whether its primary address is. `invited_to` is set when the invite the account signed up with brings it into a workspace: confirming the address sends the account an invitation to that workspace, which it accepts with `POST /user/invitations/{id}/accept` or declines; nobody joins a workspace without saying yes. `joined` is kept for older clients and is null. When the invite was revoked or expired, or the workspace deleted, while the account waited, the address is confirmed all the same and `invite_lapsed` says so. See [Confirming your email address](/guides/authentication/#confirming-your-email-address)."
   },
   "remove_email": {
     "request": {
@@ -409,7 +410,9 @@
           "created_at": "2026-10-05T17:00:00.000Z",
           "expires_at": "2026-11-04T17:00:00.000Z",
           "redeemed_at": null,
-          "revoked_at": null
+          "revoked_at": null,
+          "invitee": null,
+          "role": null
         },
         {
           "id": "inv_01kp1v3c4d5e6f7g8h9j0k1m2n",
@@ -425,15 +428,18 @@
           "created_at": "2026-10-02T09:12:40.000Z",
           "expires_at": "2026-11-01T09:12:40.000Z",
           "redeemed_at": "2026-10-02T11:30:05.000Z",
-          "revoked_at": null
+          "revoked_at": null,
+          "invitee": "grace",
+          "role": null
         }
       ]
     },
-    "notes": "`allowance.limit` and `allowance.remaining` are null when you have no limit. A revoked or expired invite that was never used is not counted. Ask for more at hey@flagon.io with the subject `[g1t Invites]`. See [Invites](/guides/authentication/#invites)."
+    "notes": "`allowance.limit` and `allowance.remaining` are null when you have no limit. A revoked or expired invite that was never used is not counted. `status` is `pending`, `awaiting_confirmation`, `awaiting_answer` (the account it made has yet to accept or decline the workspace in `workspace`), `redeemed`, `declined`, `expired` or `revoked`. Ask for more at hey@flagon.io with the subject `[g1t Invites]`. See [Invites](/guides/authentication/#invites)."
   },
   "create_invite": {
     "request": {
-      "email": "ada@example.com"
+      "email": "ada@example.com",
+      "workspace": "acme-labs"
     },
     "response": {
       "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
@@ -441,7 +447,7 @@
       "hint": "g1t-k7m2",
       "email": "ada@example.com",
       "kind": "account",
-      "workspace": null,
+      "workspace": "acme-labs",
       "status": "pending",
       "charged_to": "user",
       "invited_by": "syntaqx",
@@ -449,9 +455,11 @@
       "created_at": "2026-10-05T17:00:00.000Z",
       "expires_at": "2026-11-04T17:00:00.000Z",
       "redeemed_at": null,
-      "revoked_at": null
+      "revoked_at": null,
+      "invitee": null,
+      "role": "member"
     },
-    "notes": "Refused with `402` (`limit`) when you have no invites left, with `409` when you already have a pending invite for that address or it already has a g1t account, and with `403` for an agent's or a workspace's token. The code is returned in full; send people the link `https://g1t.sh/invite/<code>`."
+    "notes": "`workspace` brings the new account into a workspace you own: once it confirms its address it gets an invitation to join as a member, which it accepts or declines, and no workspace of its own is made for it. Leave `workspace` out and the new account gets a free workspace of its own. A workspace on the free plan cannot bring anyone in: `402` with `payment_required`, until it starts the g1t plan. `charge_workspace` is separate: it uses one of the invites g1t granted that workspace instead of one of yours, and works with or without `workspace`. Refused with `402` (`limit`) when you have no invites left, with `409` when you already have a pending invite for that address or it already has a g1t account, and with `403` for an agent's or a workspace's token. The code is returned in full; send people the link `https://g1t.sh/invite/<code>`."
   },
   "revoke_invite": {
     "response": {
@@ -468,7 +476,9 @@
       "created_at": "2026-10-05T17:00:00.000Z",
       "expires_at": "2026-11-04T17:00:00.000Z",
       "redeemed_at": null,
-      "revoked_at": "2026-10-06T08:00:00.000Z"
+      "revoked_at": "2026-10-06T08:00:00.000Z",
+      "invitee": null,
+      "role": null
     }
   },
   "list_workspace_invites": {
@@ -487,13 +497,15 @@
         "created_at": "2026-10-05T17:00:00.000Z",
         "expires_at": "2026-11-04T17:00:00.000Z",
         "redeemed_at": null,
-        "revoked_at": null
+        "revoked_at": null,
+        "invitee": null,
+        "role": "member"
       },
       {
         "id": "inv_01kp1z9y8x7w6v5t4s3r2q1p0n",
         "code": "g1t-k7m2-q9xd-4hpw-…",
         "hint": "g1t-w2vb",
-        "email": "linus@example.com",
+        "email": null,
         "kind": "workspace",
         "workspace": "acme-labs",
         "status": "pending",
@@ -503,31 +515,36 @@
         "created_at": "2026-10-05T17:00:00.000Z",
         "expires_at": "2026-11-04T17:00:00.000Z",
         "redeemed_at": null,
-        "revoked_at": null
+        "revoked_at": null,
+        "invitee": "linus",
+        "role": "owner"
       }
     ]
   },
   "invite_member": {
     "request": {
-      "email": "ada@example.com"
+      "username": "ada",
+      "role": "member"
     },
     "response": {
       "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
       "code": "g1t-k7m2-q9xd-4hpw-…",
       "hint": "g1t-k7m2",
-      "email": "ada@example.com",
-      "kind": "account",
+      "email": null,
+      "kind": "workspace",
       "workspace": "acme-labs",
       "status": "pending",
-      "charged_to": "workspace",
+      "charged_to": "none",
       "invited_by": "syntaqx",
       "redeemed_by": null,
       "created_at": "2026-10-05T17:00:00.000Z",
       "expires_at": "2026-11-04T17:00:00.000Z",
       "redeemed_at": null,
-      "revoked_at": null
+      "revoked_at": null,
+      "invitee": "ada",
+      "role": "member"
     },
-    "notes": "`kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when accepting makes one. Both answers look alike to the caller on purpose: the invite is emailed either way. A free workspace cannot invite anyone: `402` with `payment_required`, until it starts the g1t plan."
+    "notes": "Give `username` or `email`. Nobody is added without saying yes: the person gets an invitation to accept or decline, and joins with `role` when they accept. By username, `invitee` names the account and it costs nothing; `404` when there is no account with that username. By email, `kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when the link makes one; both answers look alike to the caller on purpose, and `invitee` stays null until an account is known. `409` when the person is already a member or already has a pending invitation to the workspace. A free workspace cannot invite anyone: `402` with `payment_required`, until it starts the g1t plan. See [Workspace invitations](/reference/api/invites/list-invitations/) for the other side."
   },
   "revoke_workspace_invite": {
     "response": {
@@ -544,8 +561,47 @@
       "created_at": "2026-10-05T17:00:00.000Z",
       "expires_at": "2026-11-04T17:00:00.000Z",
       "redeemed_at": null,
-      "revoked_at": "2026-10-06T08:00:00.000Z"
+      "revoked_at": "2026-10-06T08:00:00.000Z",
+      "invitee": null,
+      "role": "member"
     }
+  },
+  "list_invitations": {
+    "response": [
+      {
+        "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+        "workspace": {
+          "slug": "acme-labs",
+          "name": "Acme Labs",
+          "avatar": null
+        },
+        "role": "member",
+        "invited_by": {
+          "username": "syntaqx",
+          "name": "Chase",
+          "avatar": null
+        },
+        "created_at": "2026-10-05T17:00:00.000Z",
+        "expires_at": "2026-11-04T17:00:00.000Z"
+      }
+    ],
+    "notes": "Accept one with `POST /user/invitations/{id}/accept`, or decline it with `POST /user/invitations/{id}/decline`. An agent's or a workspace's token gets an empty list."
+  },
+  "accept_invitation": {
+    "params": {
+      "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y"
+    },
+    "response": {
+      "workspace": "acme-labs"
+    },
+    "notes": "You join at once with the invitation's `role`. `404` when you have no open invitation with that id (it may have been answered, revoked or expired). `403` until you confirm your email address, and when your account does not meet what the workspace asks of its members, such as two-factor authentication, with a message that says what to turn on. `402` with `payment_required` while the workspace is on the free plan; the invitation stays open until it starts the g1t plan. Recorded as `member.added`."
+  },
+  "decline_invitation": {
+    "params": {
+      "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y"
+    },
+    "response": true,
+    "notes": "Whoever sent it is told in their inbox. The workspace's owners can invite you again. `404` when you have no open invitation with that id."
   },
   "list_repos": {
     "query": {

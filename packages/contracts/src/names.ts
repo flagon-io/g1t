@@ -15,6 +15,8 @@ const RESERVED = new Set([
   "policies", "security", "support", "status", "terms", "privacy", "help", "blog",
   // Invite links, and the waitlist.
   "invite", "invites", "waitlist",
+  // g1t.sh/invitations: the workspace invitations waiting for an answer.
+  "invitations",
   // The container registry, at g1t.sh/v2/.
   "v2",
   // g1t.sh/inbox, and the name it might also go by.

@@ -10,8 +10,16 @@ there is no separate notion of an organization.
 
 ## Create a workspace
 
-Your account does not own repositories itself. After confirming your email
-the first thing you do is create a workspace, and repositories go in it.
+Your account does not own repositories itself: a workspace does, and
+repositories go in it. Every new account gets a workspace of its own, named
+for its username and on the free plan, unless its invite brings it into
+someone else's workspace; see
+[your first workspace](/guides/authentication/#your-first-workspace).
+Signed in without a workspace, g1t shows **Create your workspace or ask to
+join one** in place of Mission control: the invitations waiting for you,
+and the form below.
+
+To create another:
 
 1. Open [g1t.sh/workspaces/new](https://g1t.sh/workspaces/new).
 2. Choose its name in URLs: lowercase letters, digits and single hyphens.
@@ -320,31 +328,51 @@ leave.
 
 ### Add people
 
-Whoever creates a workspace is its owner. An owner adds people on the
-workspace's **People**, `g1t.sh/<workspace>/-/people` (in the sidebar):
+Whoever creates a workspace is its owner. Nobody is added to a workspace
+without saying yes: an owner invites people, and each person accepts or
+declines. On the workspace's **People**, `g1t.sh/<workspace>/-/people` (in
+the sidebar):
 
-- **By username**: someone already on g1t joins at once, as a member.
+1. Under **Invite someone**, type a username, a name or an email address.
+   As you type, people on g1t are offered by username and name, with their
+   pictures; hover over one for their card. Only usernames, names and
+   pictures are shown, never anyone's email address.
+2. Choose the **Role** they join with: **Member** or **Owner**.
+3. Select **Invite**.
+
+- **By username**: they get a
+  [workspace invitation](/guides/authentication/#workspace-invitations) in
+  their inbox and by email, and join with that role when they accept at
+  [g1t.sh/invitations](https://g1t.sh/invitations). If they decline, you
+  are told in your inbox. It costs nothing.
 - **By email address**: g1t emails an invite that only that address can
-  use. Without a g1t account, accepting it makes the account and joins the
-  workspace in one step, and uses one of the workspace's granted invites, or
-  else one of yours (see [invites](/guides/authentication/#invites)). With
-  an account, it costs nothing, and they join when they accept. The page
-  never says which it was.
+  use. With a g1t account, it is a workspace invitation like the one above
+  and costs nothing. Without one, the invite makes the account first, and
+  uses one of the workspace's granted invites, or else one of yours (see
+  [invites](/guides/authentication/#invites)); the new account is then
+  invited to the workspace, and joins when it accepts. The page never says
+  which it was.
 
 The email names you and the workspace and links to the invite's page.
-Someone new signs up right there, with the invited address filled in, and
-joins at once when they opened the page from that email (it proves the
-address is theirs), or otherwise once they confirm it with the code g1t
-emails them; someone with an account signs in. Either way they land in the workspace as a member, with
-a one-time welcome. Until a new account confirms its address, its invite
-shows as **confirming their email** under the members, and you can still
-revoke it. See
+Someone new signs up right there, with the invited address filled in; once
+the address is confirmed (straight away when they opened the page from
+that email, which proves the address is theirs, otherwise with the code g1t
+emails them), they are asked to accept or decline the invitation. Someone
+with an account signs in and accepts on the page. Accepting lands them in
+the workspace, with a one-time welcome. See
 [using an invite](/guides/authentication/#using-an-invite).
 
-Pending invites are listed under the members, with a link to copy and
-**Revoke**. Through the API, use
+Pending invitations are listed under the members, with the person or
+address, the role, until when it works (30 days), a link to copy and
+**Revoke**: one waiting to be used, one whose new account is **confirming
+their email**, and one **waiting for them to accept**. Converting an
+outside collaborator to a member sends them an invitation the same way.
+Through the API, use
 [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/)
-(the `workspace` tool's `invite_member` action over MCP).
+with a `username` or an `email` and a `role` (the `workspace` tool's
+`invite_member` action over MCP); the person answers with
+[`POST /user/invitations/{id}/accept`](/reference/api/invites/accept-invitation/)
+or [`/decline`](/reference/api/invites/decline-invitation/).
 
 To give someone a role on one repository without making them a member,
 add them as an [outside collaborator](/guides/access-and-roles/#outside-collaborators).

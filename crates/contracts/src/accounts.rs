@@ -246,6 +246,11 @@ pub struct EmailConfirmed {
     /// by slug, now that the account is confirmed.
     #[serde(default)]
     pub joined: Option<String>,
+    /// The workspace the invite the account signed up with invites it to,
+    /// by slug: a workspace invitation now waits for its answer
+    /// (`accept_invitation`). Nobody joins a workspace without saying yes.
+    #[serde(default)]
+    pub invited_to: Option<String>,
     /// Why the invite the account signed up with no longer applies, when it
     /// was revoked, expired or its workspace deleted while the account
     /// waited. The address is confirmed all the same.

@@ -4,7 +4,10 @@ import { Form, Link } from "react-router";
 import type { Invite, InvitesOverview } from "@g1t/contracts";
 
 import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
-import { inviteFor, inviteLink, inviteState, moreInvitesMailto, remainingLine } from "../lib/invites";
+import { type BringInto, OWN_WORKSPACE, inviteFor, inviteLink, inviteState, moreInvitesMailto, remainingLine } from "../lib/invites";
+
+const SELECT =
+  "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none hover:border-line-strong focus:border-accent-dim sm:w-auto";
 
 const TONE: Record<"pending" | "done" | "dead", string> = {
   pending: "border-accent/40 text-accent",
@@ -19,7 +22,7 @@ function InviteRow({ invite, origin }: { invite: Invite; origin: string }) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${TONE[state.tone]}`}>{state.label}</span>
         <span className="min-w-0 truncate text-sm">{inviteFor(invite)}</span>
-        {(invite.status === "pending" || invite.status === "awaiting_confirmation") && (
+        {(invite.status === "pending" || invite.status === "awaiting_confirmation" || invite.status === "awaiting_answer") && (
           <Form method="post" className="ml-auto">
             <input type="hidden" name="intent" value="revoke-invite" />
             <input type="hidden" name="id" value={invite.id} />
@@ -52,8 +55,11 @@ export function InvitesSection({
   created,
   error,
   origin = "https://g1t.sh",
+  bringInto = { options: [], chosen: OWN_WORKSPACE, note: null },
 }: {
   overview: InvitesOverview | null;
+  /** The workspaces an invite can bring its person into (lib/invites.ts, `bringIntoChoices`). */
+  bringInto?: { options: BringInto[]; chosen: string; note: string | null };
   created?: Invite;
   error?: string;
   origin?: string;
@@ -124,10 +130,7 @@ export function InvitesSection({
             {workspaces.length > 0 && (
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-muted">Use</span>
-                <select
-                  name="charge"
-                  className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none hover:border-line-strong focus:border-accent-dim sm:w-auto"
-                >
+                <select name="charge" className={SELECT}>
                   <option value="mine">Your invites</option>
                   {workspaces
                     .filter((workspace) => workspace.allowance.remaining !== 0)
@@ -143,6 +146,21 @@ export function InvitesSection({
               Create invite
             </SubmitButton>
           </div>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-muted">Bring them into</span>
+            <select name="join" defaultValue={bringInto.chosen} className={SELECT} aria-describedby="bring-into-hint">
+              {bringInto.options.map((workspace) => (
+                <option key={workspace.slug} value={workspace.slug}>
+                  {workspace.name === workspace.slug ? workspace.slug : `${workspace.name} (${workspace.slug})`}
+                </option>
+              ))}
+              <option value={OWN_WORKSPACE}>No workspace — they'll get their own</option>
+            </select>
+          </label>
+          <p id="bring-into-hint" className="text-xs text-faint">
+            With a workspace, they are invited to join it as a member once their account is made, and accept or decline it. Without one, their account gets a workspace of its own.
+            {bringInto.note && <> {bringInto.note}</>}
+          </p>
           <p className="text-xs text-faint">
             With an email, the invite is sent there and only that address can use it.
           </p>

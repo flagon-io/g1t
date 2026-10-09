@@ -5,6 +5,9 @@ import { page } from "../../lib/meta";
 import { planHref } from "../../components/start-plan";
 import { ButtonLink, ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { billing, identity } from "../../lib/services.server";
+import { InvitationList } from "../../components/invitation-list";
+import { answerInvitation, loadInvitations } from "../../lib/invitations.server";
+import { declinedLine } from "../../lib/invitations";
 import { assertSameOrigin, nextPath, requireUser } from "../../lib/session.server";
 
 export function meta(args: Route.MetaArgs) {
@@ -16,14 +19,23 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const owned = (user.workspaces ?? []).filter((membership) => membership.role === "owner").map((membership) => membership.slug);
   // A person owns at most one free workspace; identity refuses a second
   // either way, so a failure here only leaves the form up.
-  const free = owned.length > 0 ? await billing.freeWorkspaces(owned).catch(() => [] as string[]) : [];
-  return { user, first: (user.workspaces ?? []).length === 0, free };
+  const first = (user.workspaces ?? []).length === 0;
+  const [free, invitations] = await Promise.all([
+    owned.length > 0 ? billing.freeWorkspaces(owned).catch(() => [] as string[]) : Promise.resolve([] as string[]),
+    // Someone without a workspace may have been invited to one.
+    first ? loadInvitations(user) : Promise.resolve([]),
+  ]);
+  const next = nextPath(request);
+  return { user, first, free, invitations, next: next === "/" ? null : next };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const form = await request.formData();
+  // Accepting or declining an invitation shown here (lib/invitations.server.ts).
+  const answered = await answerInvitation(user, form, request);
+  if (answered) return answered;
   const result = await identity.createWorkspace(
     user,
     String(form.get("slug") ?? ""),
@@ -39,12 +51,35 @@ export default function NewWorkspace({
   loaderData,
   actionData,
 }: Route.ComponentProps) {
-  const { user, first, free } = loaderData;
+  const { user, first, free, invitations, next } = loaderData;
+  const said = actionData as { error?: string; invitationError?: string; invitationId?: string; declined?: string } | undefined;
   return (
     <main className="mx-auto max-w-lg px-4 py-12">
       <h1 className="text-xl font-semibold">
-        {first ? "Create your workspace" : "New workspace"}
+        {first ? "Create your workspace or ask to join one" : "New workspace"}
       </h1>
+      {first && (
+        <section className="mt-4">
+          {said?.declined !== undefined && (
+            <p className="mb-3 text-sm text-muted" role="status">
+              {declinedLine(said.declined)}
+            </p>
+          )}
+          {invitations.length > 0 ? (
+            <>
+              <h2 className="text-sm font-medium">You are invited</h2>
+              <p className="mt-1 mb-3 text-sm text-muted">Accept an invitation to join that workspace, or decline it.</p>
+              <InvitationList invitations={invitations} error={said?.invitationError} errorFor={said?.invitationId} next={next} />
+            </>
+          ) : (
+            <p className="text-sm text-muted">
+              To join a team that is on g1t already, ask one of its workspace's owners to invite you by your username,{" "}
+              <span className="font-mono text-fg">{user.username}</span>. Their invitation shows here and in your inbox.
+            </p>
+          )}
+          <h2 className="mt-8 text-sm font-medium">Or create your own</h2>
+        </section>
+      )}
       <p className="mt-2 text-sm text-muted">
         {first && "Everything on g1t lives in a workspace, so this comes first. "}
         A workspace holds repositories, the people who work on them and the
@@ -79,7 +114,7 @@ export default function NewWorkspace({
             <p className="text-xs text-faint">
               A new workspace is free. Each person can own one free workspace; more need the plan on the ones you have.
             </p>
-            <ErrorText>{actionData?.error}</ErrorText>
+            <ErrorText>{said?.error}</ErrorText>
             <SubmitButton pending="Creating…">Create workspace</SubmitButton>
           </Form>
         </>

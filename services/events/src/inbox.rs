@@ -815,17 +815,39 @@ pub async fn deliver(db: &D1Database, sources: &Sources<'_>, events: &[Event]) {
 /// | --- | --- | --- | --- |
 /// | `token.approval_requested` | the workspace's owners | review_requested | warning |
 /// | `token.approval_reviewed` | the token's owner | author | info |
-pub const WORKSPACE_EVENTS: [&str; 2] = ["token.approval_requested", "token.approval_reviewed"];
+/// | `workspace_invitation.created` | the person invited | review_requested | warning |
+/// | `workspace_invitation.accepted` | who invited them | author | success |
+/// | `workspace_invitation.declined` | who invited them | author | info |
+///
+/// An invitation's item for the person invited is done once it is
+/// accepted, declined or revoked (`workspace_invitation.revoked`, which
+/// tells nobody).
+pub const WORKSPACE_EVENTS: [&str; 5] = [
+    "token.approval_requested",
+    "token.approval_reviewed",
+    "workspace_invitation.created",
+    "workspace_invitation.accepted",
+    "workspace_invitation.declined",
+];
+
+/// Events that close what a workspace invitation asked of its person.
+pub const INVITATION_ANSWERED: [&str; 3] =
+    ["workspace_invitation.accepted", "workspace_invitation.declined", "workspace_invitation.revoked"];
 
 /// The notices a workspace event calls for, and the thread they go to.
 pub fn workspace_notices(event: &Event, actor: Option<&str>) -> (String, Vec<Notice>) {
     let data = &event.data;
     let text = |key: &str| data[key].as_str().unwrap_or_default().to_owned();
     let (reason, severity) = match event.kind.as_str() {
-        "token.approval_requested" => (Reason::ReviewRequested, Severity::Warning),
+        "token.approval_requested" | "workspace_invitation.created" => (Reason::ReviewRequested, Severity::Warning),
+        "workspace_invitation.accepted" => (Reason::Author, Severity::Success),
         _ => (Reason::Author, Severity::Info),
     };
-    let thread = format!("workspace:{}/token/{}", text("workspace"), text("tokenId"));
+    // An invitation names its own thread; a token approval's is the token's.
+    let thread = match data["thread"].as_str().filter(|thread| !thread.is_empty()) {
+        Some(thread) => thread.to_owned(),
+        None => format!("workspace:{}/token/{}", text("workspace"), text("tokenId")),
+    };
     let notices = names(data, "notify")
         .into_iter()
         .map(|name| name.to_lowercase())
@@ -902,6 +924,19 @@ async fn resolve(db: &D1Database, events: &[Event]) -> Result<()> {
             db.prepare(
                 "UPDATE inbox_items SET done_at = ?1, read_at = COALESCE(read_at, ?1)
                  WHERE thread = ?2 AND reason = 'agent' AND done_at IS NULL",
+            )
+            .bind(&[now.as_str().into(), thread.into()])?,
+        );
+    }
+    // A workspace invitation answered or revoked no longer waits on its person.
+    for event in events.iter().filter(|event| INVITATION_ANSWERED.contains(&event.kind.as_str())) {
+        let Some(thread) = event.data["thread"].as_str().filter(|thread| thread.starts_with("invitation:")) else {
+            continue;
+        };
+        statements.push(
+            db.prepare(
+                "UPDATE inbox_items SET done_at = ?1, read_at = COALESCE(read_at, ?1)
+                 WHERE thread = ?2 AND reason = 'review_requested' AND done_at IS NULL",
             )
             .bind(&[now.as_str().into(), thread.into()])?,
         );
@@ -2301,5 +2336,30 @@ mod tests {
         let (_, told) = workspace_notices(&reviewed, None);
         assert_eq!(told[0].reason, Reason::Author);
         assert!(WORKSPACE_EVENTS.contains(&"token.approval_reviewed"));
+    }
+
+    #[test]
+    fn a_workspace_invitation_asks_its_person_and_tells_whoever_sent_it_the_answer() {
+        let mut sent = event(
+            "workspace_invitation.created",
+            Some("usr_owner"),
+            json!({ "workspace": "flagon-io", "invitationId": "inv_1", "thread": "invitation:inv_1", "notify": ["daweazl"], "title": "@syntaqx invited you to join Flagon, Inc.", "link": "/invitations" }),
+        );
+        sent.repo_id = None;
+        let (thread, told) = workspace_notices(&sent, None);
+        assert_eq!(thread, "invitation:inv_1");
+        assert_eq!(told.len(), 1);
+        assert_eq!((told[0].username.as_str(), told[0].reason, told[0].severity), ("daweazl", Reason::ReviewRequested, Severity::Warning));
+        let accepted = event("workspace_invitation.accepted", None, json!({ "workspace": "flagon-io", "thread": "invitation:inv_1", "notify": ["syntaqx"] }));
+        let (thread, told) = workspace_notices(&accepted, None);
+        assert_eq!(thread, "invitation:inv_1");
+        assert_eq!((told[0].reason, told[0].severity), (Reason::Author, Severity::Success));
+        let declined = event("workspace_invitation.declined", None, json!({ "workspace": "flagon-io", "thread": "invitation:inv_1", "notify": ["syntaqx"] }));
+        assert_eq!(workspace_notices(&declined, None).1[0].severity, Severity::Info);
+        // Answered or revoked, the person's item is done; a revocation tells nobody.
+        for kind in ["workspace_invitation.accepted", "workspace_invitation.declined", "workspace_invitation.revoked"] {
+            assert!(INVITATION_ANSWERED.contains(&kind));
+        }
+        assert!(!WORKSPACE_EVENTS.contains(&"workspace_invitation.revoked"));
     }
 }

@@ -526,7 +526,7 @@ pub fn invite_wording(from: Option<&str>, workspace: Option<&str>, joins_existin
         (Some(workspace), false) => (
             format!("{who} invited you to {workspace} on g1t"),
             format!(
-                "{who} invited you to join the {workspace} workspace on g1t, where people and agents ship software together. Accepting makes your account and joins you to {workspace}."
+                "{who} invited you to join the {workspace} workspace on g1t, where people and agents ship software together. Accepting makes your account, and then you can join {workspace}."
             ),
         ),
         (None, _) => (
@@ -581,7 +581,7 @@ mod tests {
         assert_eq!(subject, "ada invited you to acme on g1t");
         assert_eq!(intro, "ada invited you to join the acme workspace on g1t.");
         let (_, intro) = invite_wording(Some("ada"), Some("acme"), false);
-        assert!(intro.contains("makes your account and joins you to acme"));
+        assert!(intro.contains("makes your account, and then you can join acme"));
     }
 
     fn invite<'a>(note: Option<&'a str>, from: Option<&'a str>) -> InviteEmail<'a> {

@@ -58,6 +58,10 @@ export default [
   // What the command palette shows as someone types.
   route("search.json", "routes/search-json.ts"),
   route("workspaces/new", "routes/workspace/new.tsx"),
+  // Workspace invitations waiting for the person's answer. `invitations` is reserved.
+  route("invitations", "routes/invitations.tsx"),
+  // People to invite, as the People page's invite form searches them.
+  route("-/people.json", "routes/people-json.ts"),
   // Trust pages: reserved names, like the rest above.
   route("policies", "routes/policies.tsx"),
   route("policies/:policy", "routes/policy.tsx"),
