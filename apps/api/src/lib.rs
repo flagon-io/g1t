@@ -15,6 +15,7 @@ mod checks;
 mod deployments;
 mod deploy_keys;
 mod logs;
+mod mirrors;
 mod mcp;
 mod notifications;
 mod oauth;

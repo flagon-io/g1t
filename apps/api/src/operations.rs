@@ -30,6 +30,7 @@ use crate::checks::ChecksOp;
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deploy_keys::DeployKeysOp;
+use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::packages::PackagesOp;
 use crate::protection::ProtectionOp;
@@ -311,6 +312,9 @@ pub enum Op {
     Artifacts(ArtifactsOp),
     /// A repository's deploy keys: deploy_keys.rs.
     DeployKeys(DeployKeysOp),
+    /// A repository's mirroring: its remotes, takeovers and hand-backs:
+    /// mirrors.rs.
+    Mirrors(MirrorsOp),
     /// A workspace's packages, their versions, deleting and restoring
     /// them, and who may use them: packages.rs.
     Packages(PackagesOp),
@@ -683,7 +687,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 315] = [
+    pub const ALL: [Op; 325] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -962,6 +966,16 @@ impl Op {
         Op::DeployKeys(DeployKeysOp::GetDeployKey),
         Op::DeployKeys(DeployKeysOp::CreateDeployKey),
         Op::DeployKeys(DeployKeysOp::DeleteDeployKey),
+        Op::Mirrors(MirrorsOp::GetMirror),
+        Op::Mirrors(MirrorsOp::GetHandBackPlan),
+        Op::Mirrors(MirrorsOp::TakeOver),
+        Op::Mirrors(MirrorsOp::SetCiFailover),
+        Op::Mirrors(MirrorsOp::HandBack),
+        Op::Mirrors(MirrorsOp::MoveToG1t),
+        Op::Mirrors(MirrorsOp::SyncMirror),
+        Op::Mirrors(MirrorsOp::AddRemote),
+        Op::Mirrors(MirrorsOp::UpdateRemote),
+        Op::Mirrors(MirrorsOp::RemoveRemote),
         Op::Protection(ProtectionOp::UpdateEnvironment),
         Op::Protection(ProtectionOp::DeleteEnvironment),
         Op::Protection(ProtectionOp::GetPendingDeployments),
@@ -1206,6 +1220,7 @@ impl Op {
             Op::Tokens(op) => op.name(),
             Op::Artifacts(op) => op.name(),
             Op::DeployKeys(op) => op.name(),
+            Op::Mirrors(op) => op.name(),
             Op::Packages(op) => op.name(),
         }
     }
@@ -1752,6 +1767,7 @@ impl Op {
             Op::Tokens(op) => op.description(),
             Op::Artifacts(op) => op.description(),
             Op::DeployKeys(op) => op.description(),
+            Op::Mirrors(op) => op.description(),
             Op::Packages(op) => op.description(),
         }
     }
@@ -3216,6 +3232,7 @@ impl Op {
             Op::Tokens(op) => op.input(),
             Op::Artifacts(op) => op.input(),
             Op::DeployKeys(op) => op.input(),
+            Op::Mirrors(op) => op.input(),
             Op::Packages(op) => op.input(),
         }
     }
@@ -5499,6 +5516,7 @@ impl Op {
             Op::Tokens(op) => crate::token_policy::run(op, services, viewer, input).await,
             Op::Artifacts(op) => crate::artifacts::run(op, services, viewer, input).await,
             Op::DeployKeys(op) => crate::deploy_keys::run(op, services, viewer, input).await,
+            Op::Mirrors(op) => crate::mirrors::run(op, services, viewer, input).await,
             Op::Packages(op) => crate::packages::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(

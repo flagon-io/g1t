@@ -409,6 +409,12 @@ pub const NEVER: &[&str] = &[
     "get_deploy_key",
     "create_deploy_key",
     "delete_deploy_key",
+    // Moving a repository to g1t for good, and a remote's token and
+    // levers, are a person's to decide.
+    "move_mirror_to_g1t",
+    "add_mirror_remote",
+    "update_mirror_remote",
+    "remove_mirror_remote",
     // Teams: who is in which, and what they reach, is for people.
     "create_team",
     "update_team",
