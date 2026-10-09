@@ -1,4 +1,6 @@
 /** Small pieces every page about deployments shares. */
+import type { AnchorHTMLAttributes } from "react";
+
 import type { DeployStatus } from "@g1t/contracts";
 
 export const DEPLOY_STATUS: Record<DeployStatus, { label: string; tone: string }> = {
@@ -24,4 +26,14 @@ export function StatusDot({ status, label }: { status: DeployStatus; label?: str
 /** An address on g1t.page without its scheme. */
 export function host(url: string): string {
   return url.replace(/^https?:\/\//, "");
+}
+
+/**
+ * A link to where something runs: a g1t.page address, an environment's
+ * URL, a preview, a project's homepage. It always opens in a new tab, so
+ * the page about it stays open behind it. `rel` adds to noopener and
+ * noreferrer (nofollow, say), never replaces them.
+ */
+export function DeployLink({ rel, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
+  return <a {...props} target="_blank" rel={rel ? `noopener noreferrer ${rel}` : "noopener noreferrer"} />;
 }

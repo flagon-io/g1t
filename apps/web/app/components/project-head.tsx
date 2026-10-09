@@ -10,7 +10,7 @@ import { Link, useFetcher } from "react-router";
 
 import type { DeployStatus, Project } from "@g1t/contracts";
 
-import { host, StatusDot } from "./deploy";
+import { DeployLink, host, StatusDot } from "./deploy";
 import { ButtonLink, Input, SubmitButton, TimeAgo } from "./ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Hint } from "./ui/hint";
@@ -66,10 +66,10 @@ export function HeadLabel({ icon, children }: { icon: ReactNode; children: React
 
 function BigLink({ url }: { url: string }) {
   return (
-    <a href={url} rel="noopener noreferrer" className="mt-2 flex min-w-0 items-center gap-1.5 font-mono text-lg font-medium hover:text-accent">
+    <DeployLink href={url} className="mt-2 flex min-w-0 items-center gap-1.5 font-mono text-lg font-medium hover:text-accent">
       <span className="truncate">{host(url).replace(/\/$/, "")}</span>
       <ArrowUpRight size={16} className="shrink-0 text-faint" />
-    </a>
+    </DeployLink>
   );
 }
 
@@ -190,7 +190,7 @@ export function ElsewhereHead({
       </div>
       {url && (
         <div className="flex shrink-0 items-center gap-2">
-          <ButtonLink to={url} variant="accent" reloadDocument>
+          <ButtonLink to={url} variant="accent" reloadDocument target="_blank" rel="noopener noreferrer">
             Visit
             <ArrowUpRight size={14} />
           </ButtonLink>
@@ -291,7 +291,7 @@ export function DocsHead({ project, base, canChange, canDeploy }: Head) {
       </div>
       {url && (
         <div className="flex shrink-0 items-center gap-2">
-          <ButtonLink to={url} variant="accent" reloadDocument>
+          <ButtonLink to={url} variant="accent" reloadDocument target="_blank" rel="noopener noreferrer">
             Read
             <ArrowUpRight size={14} />
           </ButtonLink>
@@ -329,10 +329,10 @@ export function AlsoAt({ url }: { url: string | null }) {
   if (!url) return null;
   return (
     <Hint label="Its homepage">
-      <a href={url} rel="noopener noreferrer" className="inline-flex items-center gap-1 text-faint hover:text-fg">
+      <DeployLink href={url} className="inline-flex items-center gap-1 text-faint hover:text-fg">
         <Globe size={12} />
         {host(url).replace(/\/$/, "")}
-      </a>
+      </DeployLink>
     </Hint>
   );
 }

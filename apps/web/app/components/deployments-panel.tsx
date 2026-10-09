@@ -3,7 +3,7 @@
  * latest deployment and when, linking to the Deployments page. Also the
  * state icon and badge every page about deployments shares.
  */
-import { Check, CircleDashed, Clock, Loader2, Rocket, X } from "lucide-react";
+import { Check, CircleDashed, CircleDot, Clock, Loader2, Rocket, X } from "lucide-react";
 import { Link } from "react-router";
 
 import type { DeploymentEnvironments, DeploymentSource, DeploymentState } from "@g1t/contracts";
@@ -26,7 +26,18 @@ export const STATE_TONE: Record<DeploymentState, string> = {
 };
 
 /** A deployment's state as an icon: a check, a cross, a spinner, a clock. */
-export function DeploymentStateIcon({ state, size = 16, className }: { state: DeploymentState; size?: number; className?: string }) {
+export function DeploymentStateIcon({
+  state,
+  size = 16,
+  className,
+  over = false,
+}: {
+  state: DeploymentState;
+  size?: number;
+  className?: string;
+  /** A past status a later one followed: under way then, over now, so it does not spin. */
+  over?: boolean;
+}) {
   const label = STATE_WORD[state];
   switch (state) {
     case "success":
@@ -43,6 +54,7 @@ export function DeploymentStateIcon({ state, size = 16, className }: { state: De
         </span>
       );
     case "in_progress":
+      if (over) return <CircleDot size={size} aria-label={label} className={cn("shrink-0 text-faint", className)} />;
       return <Loader2 size={size} aria-label={label} className={cn("shrink-0 animate-spin text-warn", className)} />;
     case "queued":
       return <Clock size={size} aria-label={label} className={cn("shrink-0 text-faint", className)} />;

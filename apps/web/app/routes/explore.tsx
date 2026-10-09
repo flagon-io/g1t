@@ -7,7 +7,7 @@ import type { ExploreRepo } from "@g1t/contracts";
 import type { Route } from "./+types/explore";
 import { EmptyState, Pill, TimeAgo, notACredential } from "../components/ui";
 import { page } from "../lib/meta";
-import { host } from "../components/deploy";
+import { DeployLink, host } from "../components/deploy";
 import { projects, search } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
@@ -66,14 +66,14 @@ function RepoCard({ repo, link }: { repo: ExploreRepo; link: string | null }) {
       </span>
       <span className="mt-2 line-clamp-2 grow text-sm text-muted">{repo.description ?? "No description."}</span>
       {link && (
-        <a
+        <DeployLink
           href={link}
-          rel="noopener noreferrer nofollow"
+          rel="nofollow"
           className="relative z-10 mt-2 flex min-w-0 items-center gap-1 self-start font-mono text-xs text-muted hover:text-accent"
         >
           <span className="truncate">{host(link).replace(/\/$/, "")}</span>
           <ArrowUpRight size={11} className="shrink-0" />
-        </a>
+        </DeployLink>
       )}
       {repo.topics.length > 0 && (
         <span className="mt-3 flex flex-wrap gap-1.5">

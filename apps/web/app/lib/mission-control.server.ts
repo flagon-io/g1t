@@ -393,7 +393,8 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
         key,
         kind: "ready",
         title: pull.title,
-        detail: lowConfidence ? confidenceAsk(lowConfidence) : "Its required checks passed and it was approved. It lands when you merge it.",
+        // The ask first: a list cuts the sentence short, and "it lands" alone reads as stuck.
+        detail: lowConfidence ? confidenceAsk(lowConfidence) : "Waiting for you to merge it. It was approved and its required checks passed.",
         to,
         action: "Merge",
         at: Date.parse(pull.updatedAt),
@@ -406,6 +407,8 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
           fields: { action: "merge" },
           done: "Merging",
         }),
+        // This repository leaves landing an agent's change to a person; say where that is changed.
+        link: isAgent(pull.agent) ? { label: "Merge automatically when ready", to: `/${repo.namespace}/${repo.name}/settings/branches` } : null,
       });
     } else if (!lifecycle && pull.status === "open" && pull.checkStatus === "failed") {
       // Taken out of the merge queue: its change failed combined with what was ahead.

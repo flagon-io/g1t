@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import { Duration, StatusIcon } from "./actions";
+import { DeployLink } from "./deploy";
 import { GRAPH, type GraphJob, type EdgeState, type PlacedGroup, type PlacedNode, type Standing, layoutRun, sharedUrl, standingOf, unitStanding } from "../lib/run-graph";
 
 /** A job calling a workflow shows as running while its jobs do. */
@@ -46,16 +47,14 @@ function JobNode({ node, href, selected }: { node: PlacedNode & { unit: { kind: 
 /** Where a deployment is, under its node's name. */
 function Address({ url }: { url: string }) {
   return (
-    <a
+    <DeployLink
       href={url}
-      target="_blank"
-      rel="noreferrer"
       className="-mt-2 flex items-center gap-1 truncate pr-3 pl-9 font-mono text-xs text-accent hover:underline"
       style={{ height: GRAPH.urlHeight }}
     >
       <span className="truncate">{url.replace(/^https?:\/\//, "")}</span>
       <ExternalLink size={11} className="shrink-0" />
-    </a>
+    </DeployLink>
   );
 }
 

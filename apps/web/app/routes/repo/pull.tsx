@@ -94,6 +94,7 @@ import { computeNoteFor } from "../../lib/compute.server";
 import { actions, agents, deployments, identity, inbox, repos, work } from "../../lib/services.server";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { CommitChecksBadge } from "../../components/commit-checks";
+import { DeployLink } from "../../components/deploy";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
@@ -1683,9 +1684,9 @@ function DeploymentCard({
                 : "This branch is live"}
           </p>
           {preview ? (
-            <a href={preview.url} className="mt-0.5 block truncate font-mono text-xs text-muted hover:text-accent">
+            <DeployLink href={preview.url} className="mt-0.5 block truncate font-mono text-xs text-muted hover:text-accent">
               {preview.url.replace(/^https?:[/][/]/, "")}
-            </a>
+            </DeployLink>
           ) : (
             build?.error && <p className="mt-0.5 truncate text-xs text-muted">{build.error}</p>
           )}
@@ -1697,13 +1698,13 @@ function DeploymentCard({
             </Link>
           )}
           {preview && (
-            <a
+            <DeployLink
               href={preview.url}
               className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-bg hover:opacity-90"
             >
               Visit preview
               <ArrowUpRight size={13} />
-            </a>
+            </DeployLink>
           )}
         </div>
       </div>

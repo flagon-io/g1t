@@ -4,7 +4,7 @@ import { Link, redirect } from "react-router";
 import type { PackageSummary, Project, ProjectDeploys, User } from "@g1t/contracts";
 
 import type { Route } from "./+types/overview";
-import { host, StatusDot } from "../../components/deploy";
+import { DeployLink, host, StatusDot } from "../../components/deploy";
 import { Avatar, ButtonLink, CopyLine, Pill, TimeAgo } from "../../components/ui";
 import { UsageCard } from "../../components/usage-card";
 import { PullIcon } from "../../components/work-icons";
@@ -176,13 +176,13 @@ function ProjectCard({
             {project.name}
           </Link>
           {link && !(library && pkg && !production) ? (
-            <a
+            <DeployLink
               href={link}
               className="relative z-10 mt-0.5 flex items-center gap-1 truncate font-mono text-xs text-muted hover:text-accent"
             >
               {host(link)}
               <ArrowUpRight size={11} className="shrink-0" />
-            </a>
+            </DeployLink>
           ) : library && pkg ? (
             <Link
               to={packagePath(pkg)}

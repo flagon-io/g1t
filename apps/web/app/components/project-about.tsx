@@ -6,6 +6,7 @@ import { MAX_PROJECT_LINKS, type Project, type ProjectLinks } from "@g1t/contrac
 
 import { cn } from "../lib/cn";
 import { KIND_CHOICES, type KindChoice, type ShownLink, choiceOf, linksToShow } from "../lib/project-kind";
+import { DeployLink } from "./deploy";
 import { Input, SubmitButton } from "./ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
@@ -30,14 +31,14 @@ export function LinkList({ links, shown = [], className }: { links: ProjectLinks
     <ul className={cn("space-y-1.5 text-sm", className)}>
       {list.map((link) => (
         <li key={link.key} className="min-w-0">
-          <a
+          <DeployLink
             href={link.url}
-            rel="noopener noreferrer nofollow"
+            rel="nofollow"
             className="flex min-w-0 items-center gap-2 text-fg-soft hover:text-accent [&_svg]:shrink-0 [&_svg]:text-faint"
           >
             {LINK_ICON[link.type]}
             <span className="truncate">{link.label}</span>
-          </a>
+          </DeployLink>
         </li>
       ))}
     </ul>

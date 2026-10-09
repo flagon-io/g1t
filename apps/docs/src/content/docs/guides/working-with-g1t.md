@@ -195,7 +195,10 @@ get the pull request back ready to merge:
    at most twice, or as often as the repository's **Revisions before asking
    you** allows.
 4. **Ready to merge.** The required checks passed and it is approved.
-   Merging is yours, unless the repository says otherwise (below).
+   Merging is yours, unless the repository says otherwise (below). Until
+   you merge it, Home and Code's overview list it as waiting for you to
+   merge it, with a link to **Merge automatically when ready** in the
+   repository's branch settings for a pull request g1t made.
 
 Agents are told to run the same tests and linters the workflows run before
 they finish, so most failures are caught in the sandbox. What "done" means
