@@ -37,6 +37,8 @@
 //! Usage counts at what it cost g1t or what it is charged, whichever is
 //! more. Test-mode payments are not money, so they do not raise trust.
 
+use std::collections::BTreeSet;
+
 use futures_util::future::{try_join, try_join5, try_join_all};
 use g1t_contracts::billing::{
     BillingAccount, CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetBudgetArgs, SetSpendLimitArgs, Trust,
@@ -714,13 +716,36 @@ impl Billing {
         Ok(true)
     }
 
+    /// The workspaces with usage on the ledger this month: autopay's and
+    /// the limit warnings' candidates, read once a tick for both. Served by
+    /// `ledger_usage_by_time` (migration 0050), not a scan of the ledger.
+    pub(crate) async fn month_users(&self) -> Result<BTreeSet<String>> {
+        #[derive(Deserialize)]
+        struct User {
+            workspace: String,
+        }
+        let month_start = format!("{}-01", &rfc3339(now_ms())[..7]);
+        Ok(self
+            .db
+            .prepare("SELECT DISTINCT workspace FROM ledger WHERE kind = 'usage' AND created_at >= ?")
+            .bind(&[month_start.into()])?
+            .all()
+            .await?
+            .results::<User>()?
+            .into_iter()
+            .map(|user| user.workspace)
+            .collect())
+    }
+
     /// Charges the saved card of each workspace nearing its limit, for what
     /// it owes, so that a workspace that pays never has its work stopped.
     /// Only with live payments: test-mode payments are not money and lower
     /// nothing. Not for a workspace's own spend limit, which means stop, nor
     /// for enterprises, which are invoiced. A charge at the limit always
     /// goes through, whatever the minimum charge.
-    pub(crate) async fn autopay(&self) -> Result<()> {
+    ///
+    /// `users` are the workspaces with usage this month ([`Self::month_users`]).
+    pub(crate) async fn autopay(&self, users: &BTreeSet<String>) -> Result<()> {
         if !self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live) {
             return Ok(());
         }
@@ -728,22 +753,20 @@ impl Billing {
         struct Candidate {
             workspace: String,
         }
-        let month_start = format!("{}-01", &rfc3339(now_ms())[..7]);
         // With a card, and not already declined: a declined card waits for
         // the owners, rather than being tried again every few minutes.
         let candidates = self
             .db
             .prepare(
-                "SELECT DISTINCT ledger.workspace AS workspace
-                 FROM ledger JOIN accounts ON accounts.workspace = ledger.workspace
-                 LEFT JOIN limits ON limits.workspace = ledger.workspace
-                 WHERE ledger.kind = 'usage' AND ledger.created_at >= ? AND accounts.customer_id IS NOT NULL
-                   AND limits.autopay_failed_at IS NULL",
+                "SELECT accounts.workspace AS workspace
+                 FROM accounts LEFT JOIN limits ON limits.workspace = accounts.workspace
+                 WHERE accounts.customer_id IS NOT NULL AND limits.autopay_failed_at IS NULL",
             )
-            .bind(&[month_start.as_str().into()])?
             .all()
             .await?
-            .results::<Candidate>()?;
+            .results::<Candidate>()?
+            .into_iter()
+            .filter(|candidate| users.contains(&candidate.workspace));
         for candidate in candidates {
             let limit = self.limit_of(&candidate.workspace).await?;
             // Near g1t's ceiling on what is unpaid; the spend limit is the
@@ -850,7 +873,9 @@ impl Billing {
     /// plan's included usage, its spend limit and g1t's ceiling, once each a
     /// month; when its card was declined; and when a spend spike paused it.
     /// The same alerts show in the app (`entitlements`).
-    pub(crate) async fn warn_limits(&self, identity: &worker::Fetcher) -> Result<()> {
+    ///
+    /// `users` are the workspaces with usage this month ([`Self::month_users`]).
+    pub(crate) async fn warn_limits(&self, identity: &worker::Fetcher, users: &BTreeSet<String>) -> Result<()> {
         if self.stripe.is_none() {
             return Ok(());
         }
@@ -860,16 +885,16 @@ impl Billing {
         struct Candidate {
             workspace: String,
         }
-        let candidates = self
-            .db
-            .prepare(
-                "SELECT DISTINCT workspace FROM ledger WHERE kind = 'usage' AND created_at >= ?1
-                 UNION SELECT workspace FROM limits WHERE autopay_failed_at IS NOT NULL",
-            )
-            .bind(&[format!("{month}-01").into()])?
-            .all()
-            .await?
-            .results::<Candidate>()?;
+        let mut candidates = users.clone();
+        candidates.extend(
+            self.db
+                .prepare("SELECT workspace FROM limits WHERE autopay_failed_at IS NOT NULL")
+                .all()
+                .await?
+                .results::<Candidate>()?
+                .into_iter()
+                .map(|candidate| candidate.workspace),
+        );
         #[derive(Deserialize)]
         struct Told {
             autopay_failed_at: Option<String>,
@@ -880,7 +905,7 @@ impl Billing {
             meter: String,
             level: Option<i64>,
         }
-        for Candidate { workspace } in candidates {
+        for workspace in candidates {
             let told = self
                 .db
                 .prepare("SELECT autopay_failed_at, declined_told_at FROM limits WHERE workspace = ?")

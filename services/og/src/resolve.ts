@@ -234,6 +234,34 @@ export function segments(path: string): string[] | null {
   }
 }
 
+/**
+ * The page whose card `path` shows, asking no one: the parts of an address
+ * a card does not read are dropped, and an address no card is for becomes
+ * `/`, the brand card. `/acme/web/tree/main/src` and `/acme/web?tab=1` are
+ * both `/acme/web`. The cache key and the lookup both use it, so made-up
+ * addresses cannot make the service draw the same card again and again.
+ */
+export function cardPath(path: string): string {
+  const parts = segments(path);
+  if (!parts || parts.length === 0) return "/";
+  const join = (...kept: string[]) => `/${kept.map(encodeURIComponent).join("/")}`;
+  const [owner, repo, section, item] = parts;
+  const lower = owner.toLowerCase();
+  if (lower === "u") return repo !== undefined && parts.length === 2 && NAME.test(repo) ? join("u", repo.toLowerCase()) : "/";
+  if (RESERVED.has(lower)) {
+    if (parts.length === 1) return lower in PAGES ? join(lower) : "/";
+    const page = `${lower}/${parts[1].toLowerCase()}`;
+    return parts.length === 2 && page in PAGES ? join(lower, parts[1].toLowerCase()) : "/";
+  }
+  if (!NAME.test(owner)) return "/";
+  if (repo === undefined || repo === "-") return join(lower);
+  if (!NAME.test(repo)) return "/";
+  if (section === "issues" && item !== undefined && isNumber(item) && parts.length === 4) return join(owner, repo, "issues", item);
+  if (section === "pull" && item !== undefined && isNumber(item)) return join(owner, repo, "pull", item);
+  if (section === "soon" && item !== undefined && parts.length === 4 && roadmapItem(item)) return join(owner, repo, "soon", item);
+  return join(owner, repo);
+}
+
 /** The card for a page of g1t.sh, as an anonymous visitor would see it. */
 export async function resolve(path: string, sources: Sources): Promise<Card> {
   const parts = segments(path);

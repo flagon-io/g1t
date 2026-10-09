@@ -1348,6 +1348,17 @@ impl Actions {
             .await
             .unwrap_or_else(|error| fail(FailureCode::Conflict, format!("The runner could not be reached: {error}")));
             if let Outcome::Fail(refused) = started {
+                // Billing would not pay for a scheduled run's job: the
+                // schedule waits rather than making runs only to refuse them.
+                if refused.code == FailureCode::PaymentRequired
+                    && let Some(run) = run.as_ref().filter(|run| run.event == "schedule")
+                {
+                    self.db
+                        .prepare("UPDATE workflows SET schedule_refused_until = ? WHERE id = ?")
+                        .bind(&[rfc3339(now_ms() + crate::SCHEDULE_REFUSED_MS).into(), run.workflow_id.as_str().into()])?
+                        .run()
+                        .await?;
+                }
                 Box::pin(self.finish_job(&job.id, "failure", Some(&refused.message), None)).await?;
             } else {
                 self.job_started(&job.id).await?;

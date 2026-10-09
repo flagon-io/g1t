@@ -124,6 +124,11 @@ build: `dist`, `build`, `out`, `public`, `_site`, `.output/public`. Set
   are served under the binding name your config gives them. Cron triggers
   (`triggers.crons`) are not scheduled, so a `scheduled` handler never
   runs; the deployment says so in its warnings.
+- Each request your Worker answers may use up to 50 ms of CPU time
+  (waiting on the network does not count) and make up to 50 requests of
+  its own (`fetch` calls and the like). A request that goes over either
+  is stopped and answered with a 503 page that says so. Static assets are
+  served without running your Worker, and count toward neither.
 - `vars` are deployed as plain-text bindings (or JSON, for objects). Rows
   of the project's [secrets and variables](/guides/secrets-and-variables/)
   available to Deployments are bound too, and replace a `var` of the same

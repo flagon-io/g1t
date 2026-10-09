@@ -56,6 +56,18 @@ struct Meta {
     name: String,
 }
 
+/// Artifacts older runners kept in KV expire 14 days after they were made,
+/// and none has been made there since artifacts moved to R2 on 2026-10-08:
+/// from 2026-10-22T00:00Z every one is gone, and KV is not asked (a list is
+/// the dearest thing KV does). Delete the KV artifact code after that date,
+/// with its twin in apps/web/app/lib/artifacts.server.ts.
+const LEGACY_KV_UNTIL_MS: u64 = 1_792_627_200_000;
+
+/// Whether artifacts kept in KV may still be there at `now`.
+fn legacy_kv(now: u64) -> bool {
+    now < LEGACY_KV_UNTIL_MS
+}
+
 fn store(env: &Env) -> Result<KvStore> {
     env.kv("BLOBS")
 }
@@ -404,9 +416,11 @@ async fn artifacts(
                     // Artifacts older runners kept in KV, for the days they
                     // are still there.
                     let legacy_run = run_id.as_deref().unwrap_or(run);
-                    for (_, meta) in list(kv, &format!("a/{legacy_run}/")).await? {
-                        if !listed.iter().any(|a| a["name"] == meta.name.as_str()) {
-                            listed.push(json!({ "name": meta.name, "size": meta.size, "format": "tgz" }));
+                    if legacy_kv(g1t_kit::now_ms()) {
+                        for (_, meta) in list(kv, &format!("a/{legacy_run}/")).await? {
+                            if !listed.iter().any(|a| a["name"] == meta.name.as_str()) {
+                                listed.push(json!({ "name": meta.name, "size": meta.size, "format": "tgz" }));
+                            }
                         }
                     }
                     crate::reply(&listed)
@@ -547,10 +561,11 @@ async fn artifacts(
             match found {
                 Outcome::Ok(found) => stream(bucket, &found.object, &found.artifact.format).await,
                 // One an older runner kept in KV.
-                Outcome::Fail(_) => match get(kv, &format!("a/{run}/{name}")).await? {
+                Outcome::Fail(_) if legacy_kv(g1t_kit::now_ms()) => match get(kv, &format!("a/{run}/{name}")).await? {
                     Some(bytes) => Response::from_bytes(bytes),
                     None => error(404, "No such artifact."),
                 },
+                Outcome::Fail(_) => error(404, "No such artifact."),
             }
         }
         _ => error(404, "No such endpoint."),
@@ -612,6 +627,9 @@ pub async fn download(env: &Env, services: &Services, viewer: &g1t_contracts::Vi
         return Response::redirect_with_status(Url::parse(&crate::artifacts::blob_url(&services.addresses.api, &found.blob))?, 302);
     }
     // Kept in KV by an older runner.
+    if !legacy_kv(g1t_kit::now_ms()) {
+        return error(404, "No such artifact, or it has expired.");
+    }
     match get(&store(env)?, &format!("a/{run}/{name}")).await? {
         Some(bytes) => {
             let mut response = Response::from_bytes(bytes)?;
@@ -624,3 +642,14 @@ pub async fn download(env: &Env, services: &Services, viewer: &g1t_contracts::Vi
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kv_artifacts_are_not_asked_for_after_they_have_all_expired() {
+        assert_eq!(g1t_contracts::time::rfc3339(LEGACY_KV_UNTIL_MS), "2026-10-22T00:00:00.000Z");
+        assert!(legacy_kv(LEGACY_KV_UNTIL_MS - 1));
+        assert!(!legacy_kv(LEGACY_KV_UNTIL_MS));
+    }
+}

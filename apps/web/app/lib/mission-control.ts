@@ -503,6 +503,17 @@ export function placePushes<C extends { hash: string; parents: string[] }>(
   return [...seen].flatMap(([hash, at]) => (at ? [{ hash, at }] : []));
 }
 
+/**
+ * Whether a read of the default branch reaches back far enough to place
+ * every push, newest first: it holds the oldest push's `before`, or it is
+ * the whole branch. A shorter read than `asked` is the whole branch.
+ */
+export function historyCovers(history: { hash: string }[], pushes: PushRecord[], asked: number): boolean {
+  if (history.length < asked) return true;
+  const oldest = pushes.at(-1)?.data.before;
+  return oldest != null && history.some((commit) => commit.hash === oldest);
+}
+
 /** A merged pull request, as the week counts it. */
 export type Merged = {
   repo: RepoPath;

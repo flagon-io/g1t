@@ -11,6 +11,7 @@ use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
 use g1t_contracts::repos::{Commit, CompareArgs, Comparison, LogArgs, Repo, RepoPath};
 use g1t_contracts::work::{IssueDetail, PullDetail, ViewArgs};
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
+use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
 use serde_json::{Map, Value, json};
 use worker::Result;
@@ -511,6 +512,18 @@ impl Actions {
         })
     }
 
+    /// A push keeps the repository's schedules going (`run_schedules`).
+    /// Written at most once a day, and only on scheduled workflows.
+    async fn note_push(&self, repo_id: &str) -> Result<()> {
+        let at = now_ms();
+        self.db
+            .prepare("UPDATE workflows SET pushed_at = ? WHERE repo_id = ? AND crons != '[]' AND (pushed_at IS NULL OR pushed_at < ?)")
+            .bind(&[rfc3339(at).into(), repo_id.into(), rfc3339(at.saturating_sub(24 * 60 * 60 * 1000)).into()])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
     pub async fn on_event(&self, event: &Event) -> Result<()> {
         let Some(repo_id) = event.repo_id.as_deref() else { return Ok(()) };
         let mut mapped = github_events(&event.kind);
@@ -519,6 +532,9 @@ impl Actions {
             mapped.push(("create", None));
         }
         let pushed_default = event.kind == "git.push" && event.data["defaultBranch"].as_bool() == Some(true);
+        if event.kind == "git.push" {
+            self.note_push(repo_id).await?;
+        }
         if mapped.is_empty() && !pushed_default {
             return Ok(());
         }
@@ -717,17 +733,25 @@ impl Actions {
         self.record_failed_run(&row, subject.git_ref.as_str(), &subject.sha, event_key, actor_id, sender, problem).await
     }
 
-    /// Scheduled workflows whose cron fires this minute, on the default branch.
+    /// Scheduled workflows that run this minute, on the default branch: at
+    /// most every five minutes (`cron::Schedule::runs_at`). Not in a
+    /// repository with no push for [`crate::SCHEDULE_IDLE_MS`], nor for an
+    /// hour after billing refused one of the workflow's scheduled jobs
+    /// ([`crate::SCHEDULE_REFUSED_MS`]): no run is made only to be refused.
     pub async fn run_schedules(&self, minute: u64) -> Result<()> {
         let rows = self
             .db
-            .prepare("SELECT * FROM workflows WHERE state = 'active' AND crons != '[]' AND error IS NULL")
+            .prepare(
+                "SELECT * FROM workflows WHERE state = 'active' AND crons != '[]' AND error IS NULL
+                   AND COALESCE(pushed_at, updated_at) >= ? AND (schedule_refused_until IS NULL OR schedule_refused_until <= ?)",
+            )
+            .bind(&[rfc3339(minute.saturating_sub(crate::SCHEDULE_IDLE_MS)).into(), rfc3339(minute).into()])?
             .all()
             .await?
             .results::<WorkflowRow>()?;
         for row in rows {
             let crons: Vec<String> = serde_json::from_str(&row.crons).unwrap_or_default();
-            let Some(cron) = crons.iter().find(|cron| g1t_actions::cron::Schedule::parse(cron).is_ok_and(|s| s.fires_at(minute))) else {
+            let Some(cron) = crons.iter().find(|cron| g1t_actions::cron::Schedule::parse(cron).is_ok_and(|s| s.runs_at(minute))) else {
                 continue;
             };
             let Ok(workflow) = workflow::parse(&row.source) else { continue };

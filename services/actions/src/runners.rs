@@ -36,6 +36,16 @@ use crate::{Actions, Count, SILENT_MS, check, fail, optional};
 const POLL_EVERY_MS: u64 = 2_500;
 /// A runner that has been offline this long is removed, as on GitHub.
 const FORGET_OFFLINE_MS: u64 = 14 * 24 * 60 * 60 * 1000;
+/// How often a poll writes down that a runner, or the work it holds, is
+/// still there. Polls come every twenty seconds or so; a write each time
+/// would be most of the service's writes for nothing. Well inside
+/// [`model::ONLINE_WITHIN_MS`] and [`crate::SILENT_MS`].
+const SEEN_RESOLUTION_MS: u64 = 60 * 1000;
+
+/// Whether `seen` is old enough, at `at`, to be written down again.
+fn seen_is_stale(seen: Option<&str>, at: u64) -> bool {
+    seen.is_none_or(|seen| seen < rfc3339(at.saturating_sub(SEEN_RESOLUTION_MS)).as_str())
+}
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct RunnerRow {
@@ -124,6 +134,8 @@ pub struct TaskRow {
     pub runner_id: Option<String>,
     pub runner_name: Option<String>,
     pub started_at: Option<String>,
+    #[serde(default)]
+    pub seen_at: Option<String>,
 }
 
 /// Who may do what with a set of runners: the workspace, and the
@@ -912,7 +924,9 @@ impl Actions {
         for id in a.running.iter().take(10) {
             if let Some(job) = self.db.prepare("SELECT * FROM jobs WHERE id = ?").bind(&[id.as_str().into()])?.first::<JobRow>(None).await? {
                 if job.status == "in_progress" && job.runner_id.as_deref() == Some(row.id.as_str()) {
-                    self.db.prepare("UPDATE jobs SET seen_at = ? WHERE id = ?").bind(&[seen.as_str().into(), id.as_str().into()])?.run().await?;
+                    if seen_is_stale(job.seen_at.as_deref(), at) {
+                        self.db.prepare("UPDATE jobs SET seen_at = ? WHERE id = ?").bind(&[seen.as_str().into(), id.as_str().into()])?.run().await?;
+                    }
                     active = Some((id.clone(), "workflow"));
                 } else {
                     cancel.push(id.clone());
@@ -921,23 +935,26 @@ impl Actions {
             }
             match self.db.prepare("SELECT * FROM runner_tasks WHERE id = ?").bind(&[id.as_str().into()])?.first::<TaskRow>(None).await? {
                 Some(task) if task.status == "in_progress" && task.runner_id.as_deref() == Some(row.id.as_str()) => {
-                    self.db.prepare("UPDATE runner_tasks SET seen_at = ? WHERE id = ?").bind(&[seen.as_str().into(), id.as_str().into()])?.run().await?;
+                    if seen_is_stale(task.seen_at.as_deref(), at) {
+                        self.db.prepare("UPDATE runner_tasks SET seen_at = ? WHERE id = ?").bind(&[seen.as_str().into(), id.as_str().into()])?.run().await?;
+                    }
                     active = Some((id.clone(), "agent"));
                 }
                 _ => cancel.push(id.clone()),
             }
         }
-        self.db
-            .prepare("UPDATE runners SET last_seen_at = ?, version = ?, work_id = ?, work_kind = ? WHERE id = ?")
-            .bind(&[
-                seen.as_str().into(),
-                (if a.version.is_empty() { row.version.clone() } else { a.version.chars().take(40).collect() }).into(),
-                optional(active.as_ref().map(|(id, _)| id.as_str())),
-                optional(active.as_ref().map(|(_, kind)| *kind)),
-                row.id.as_str().into(),
-            ])?
-            .run()
-            .await?;
+        // Written when something changed, or once a minute to keep it online.
+        let version: String = if a.version.is_empty() { row.version.clone() } else { a.version.chars().take(40).collect() };
+        let work_id = active.as_ref().map(|(id, _)| id.as_str());
+        let work_kind = active.as_ref().map(|(_, kind)| *kind);
+        let changed = version != row.version || work_id != row.work_id.as_deref() || work_kind != row.work_kind.as_deref();
+        if changed || seen_is_stale(row.last_seen_at.as_deref(), at) {
+            self.db
+                .prepare("UPDATE runners SET last_seen_at = ?, version = ?, work_id = ?, work_kind = ? WHERE id = ?")
+                .bind(&[seen.as_str().into(), version.into(), optional(work_id), optional(work_kind), row.id.as_str().into()])?
+                .run()
+                .await?;
+        }
         let mut poll = Poll { assignment: None, cancel, credential, removed: false };
         // Busy, or an ephemeral runner that has had its one job.
         if active.is_some() || !a.running.is_empty() {
@@ -1540,6 +1557,18 @@ mod tests {
             repositories: serde_json::to_string(&repositories).unwrap(),
             updated_at: "2026-10-06T00:00:00Z".into(),
         }
+    }
+
+    #[test]
+    fn being_seen_is_written_once_a_minute() {
+        let at = 2_000_000_000_000;
+        assert!(seen_is_stale(None, at));
+        assert!(!seen_is_stale(Some(&rfc3339(at - 59_000)), at));
+        assert!(seen_is_stale(Some(&rfc3339(at - 61_000)), at));
+        // A runner written down at the last moment is still online until the
+        // next write, a poll later.
+        assert!(SEEN_RESOLUTION_MS + model::MAX_POLL_WAIT_MS < model::ONLINE_WITHIN_MS);
+        assert!(SEEN_RESOLUTION_MS < crate::SILENT_MS);
     }
 
     #[test]

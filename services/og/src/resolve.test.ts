@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { Issue, Project, Pull, Repo, Result, Workspace } from "@g1t/contracts";
 
 import { RENDER_VERSION, cacheKey } from "./cache.ts";
-import { type Sources, clean, docsCard, resolve, segments } from "./resolve.ts";
+import { type Sources, cardPath, clean, docsCard, resolve, segments } from "./resolve.ts";
 
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
 const notFound: Result<never> = { ok: false, error: { code: "not_found", message: "Not found" } };
@@ -227,13 +227,46 @@ test("a docs card is bounded, and has a title even without one", () => {
 });
 
 test("the cache key keeps only what changes the card", () => {
-  const a = cacheKey(new URL("https://og.g1t.sh/image?utm=1&path=/acme/web&v=3"));
-  const b = cacheKey(new URL("https://og.g1t.sh/image?path=/acme/web&v=3&x=2"));
+  const v = `${RENDER_VERSION}.1z141z3`;
+  const a = cacheKey(new URL(`https://og.g1t.sh/image?utm=1&path=/acme/web&v=${v}`));
+  const b = cacheKey(new URL(`https://og.g1t.sh/image?path=/acme/web&v=${v}&x=2`));
   assert.equal(a, b);
-  assert.notEqual(a, cacheKey(new URL("https://og.g1t.sh/image?path=/acme/web&v=4")));
+  assert.notEqual(a, cacheKey(new URL(`https://og.g1t.sh/image?path=/acme/web&v=${RENDER_VERSION}.abc`)));
   assert.match(a, new RegExp(`render=${RENDER_VERSION}`));
   // The keys cards were kept under before the render version was.
   assert.notEqual(a, "https://og.g1t.sh/image?design=1&path=%2Facme%2Fweb&v=3");
-  const docs = cacheKey(new URL("https://og.g1t.sh/docs?title=Quickstart&v=2&utm=x"));
-  assert.equal(docs, `https://og.g1t.sh/docs?render=${RENDER_VERSION}&title=Quickstart&v=2`);
+  const docs = cacheKey(new URL(`https://og.g1t.sh/docs?title=Quickstart&v=${RENDER_VERSION}&utm=x`));
+  assert.equal(docs, `https://og.g1t.sh/docs?render=${RENDER_VERSION}&title=Quickstart&v=${RENDER_VERSION}`);
+  // The docs' text as the card draws it.
+  assert.equal(cacheKey(new URL("https://og.g1t.sh/docs?title=%20Quick%0Astart%20")), cacheKey(new URL("https://og.g1t.sh/docs?title=Quick%20start")));
+});
+
+test("a v the site never writes is left out of the key", () => {
+  const plain = cacheKey(new URL("https://og.g1t.sh/image?path=/acme/web"));
+  for (const v of ["random", "999", `${RENDER_VERSION}.TOOLONG12`, `${RENDER_VERSION}.ab-c`, `x${RENDER_VERSION}`]) {
+    assert.equal(cacheKey(new URL(`https://og.g1t.sh/image?path=/acme/web&v=${encodeURIComponent(v)}`)), plain, v);
+  }
+});
+
+test("a path is keyed by the page whose card it shows", () => {
+  const key = (path: string) => cacheKey(new URL(`https://og.g1t.sh/image?path=${encodeURIComponent(path)}`));
+  assert.equal(key("/acme/web/tree/main/src?x=1"), key("/acme/web"));
+  assert.equal(key("/acme/web/pull/3/files"), key("/acme/web/pull/3"));
+  assert.notEqual(key("/acme/web/pull/3"), key("/acme/web"));
+  assert.equal(key("/Acme/-/settings"), key("/acme"));
+  assert.equal(key("/pricing/"), key("/pricing"));
+  assert.equal(key("/not a name/web"), key("/"));
+  assert.equal(key("/login/extra/parts"), key("/"));
+  assert.equal(cardPath("/u/Ada"), "/u/ada");
+  assert.equal(cardPath("/acme/web/issues/12"), "/acme/web/issues/12");
+  assert.equal(cardPath("/acme/web/issues/012"), "/acme/web");
+  assert.equal(cardPath("/acme/web/soon/no-such-thing"), "/acme/web");
+  assert.equal(cardPath("//evil"), "/");
+});
+
+test("a path resolves to the same card as the page it is keyed by", async () => {
+  const { sources: s } = sources();
+  for (const path of ["/acme/web/tree/main", "/acme/web/pull/7/files", "/acme/-/settings", "/acme/web/issues/3"]) {
+    assert.deepEqual(await resolve(path, s), await resolve(cardPath(path), s), path);
+  }
 });
