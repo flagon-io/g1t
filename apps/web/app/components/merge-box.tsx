@@ -231,7 +231,12 @@ function CheckLine({
         {name}
         {detail && <span className="text-muted"> — {detail}</span>}
       </span>
-      {time && <span className="shrink-0 animate-fade-in font-mono text-xs text-faint">{time}</span>}
+      {time && (
+        // A running job's time counts to now, which differs between server and browser.
+        <span className="shrink-0 animate-fade-in font-mono text-xs text-faint" suppressHydrationWarning>
+          {time}
+        </span>
+      )}
       {timing && <SkeletonLine className="w-10 shrink-0 text-xs" />}
       {to && (
         <Link to={to} className="shrink-0 text-xs text-muted hover:text-fg hover:underline">

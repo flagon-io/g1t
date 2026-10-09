@@ -31,7 +31,7 @@ import type { Annotation, EnvironmentReviewer, Job, JobSummary, PendingDeploymen
 
 import type { Route } from "./+types/actions-run";
 import { page } from "../../lib/meta";
-import { LogText, Notes, StatusIcon, duration, shortRef, standingWord, useJobLog } from "../../components/actions";
+import { Duration, LogText, Notes, StatusIcon, shortRef, standingWord, useJobLog } from "../../components/actions";
 import { Markdown } from "../../components/markdown";
 import { Button, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
@@ -150,7 +150,7 @@ function StepRow({
             {matches} {matches === 1 ? "line" : "lines"}
           </span>
         )}
-        <span className="ml-auto shrink-0 font-mono text-xs text-faint">{duration(step.startedAt, step.finishedAt)}</span>
+        <Duration className="ml-auto shrink-0 font-mono text-xs text-faint" start={step.startedAt} end={step.finishedAt} />
       </summary>
       <div className="border-t border-line bg-bg/60">
         {text === undefined ? (
@@ -365,7 +365,12 @@ function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNod
         <h3 className="text-base font-semibold">{job.name}</h3>
         <span className="text-sm text-muted">
           {job.cancelling ? "Cancelling: running its cleanup steps" : standingWord({ ...job, of: "job" })}
-          {job.startedAt && ` · ${duration(job.startedAt, job.finishedAt)}`}
+          {job.startedAt && (
+            <>
+              {" · "}
+              <Duration start={job.startedAt} end={job.finishedAt} />
+            </>
+          )}
         </span>
         <span className="ml-auto flex items-center gap-2">
           {rerun}
@@ -776,7 +781,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
             {run.event}
             {run.actor && ` by ${run.actor}`} · <TimeAgo at={run.createdAt} />
           </span>
-          {run.startedAt && <span className="font-mono text-xs">{duration(run.startedAt, run.finishedAt)}</span>}
+          {run.startedAt && <Duration className="font-mono text-xs" start={run.startedAt} end={run.finishedAt} />}
           {run.attempt > 1 && attempts.length <= 1 && <span>Attempt {run.attempt}</span>}
           {cancelling && <span className="text-warn">Its jobs are running their cleanup steps</span>}
           {detail.approval?.state === "approved" && detail.approval.approvedBy && <span>Approved by {detail.approval.approvedBy}</span>}
@@ -868,7 +873,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
               >
                 <StatusIcon status={job.status} conclusion={job.conclusion} of="job" environment={job.environment} size={14} />
                 <span className="min-w-0 truncate">{job.name}</span>
-                <span className="ml-auto shrink-0 font-mono text-xs text-faint">{duration(job.startedAt, job.finishedAt)}</span>
+                <Duration className="ml-auto shrink-0 font-mono text-xs text-faint" start={job.startedAt} end={job.finishedAt} />
               </Link>
             ))}
           </nav>
