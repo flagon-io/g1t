@@ -18,7 +18,7 @@ const passage = (over: Partial<DocPassage> = {}): DocPassage => ({
 });
 
 test("the query is what people said last, without mentions, cut short", () => {
-  assert.equal(recallQuery(["@izzy can a customer get a refund after 40 days?", "hi", "on enterprise"]), "can a customer get a refund after 40 days? \non enterprise");
+  assert.equal(recallQuery(["@sam can a customer get a refund after 40 days?", "hi", "on enterprise"]), "can a customer get a refund after 40 days? \non enterprise");
   assert.equal(recallQuery(["ok", ""]), null);
   assert.equal(recallQuery(["x".repeat(2000)])!.length, 600);
 });

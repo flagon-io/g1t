@@ -54,12 +54,12 @@ test("pills start where their scene does, and progress runs 0 to 1", () => {
 
 test("each still shows its step's point", () => {
   assert.equal(frameAt(STILLS.code).approved, true);
-  assert.equal(frameAt(STILLS.chat).izzy, true);
+  assert.equal(frameAt(STILLS.chat).sam, true);
   assert.equal(frameAt(STILLS.agents).scene, "agents");
   assert.equal(frameAt(STILLS.docs).docUpdated, true);
 });
 
-test("Izzy tells #support after g1t says it shipped", () => {
-  assert.equal(frameAt(BEAT.izzy - 1).izzy, false);
-  assert.equal(frameAt(BEAT.izzy).shipped, true);
+test("Sam tells #support after g1t says it shipped", () => {
+  assert.equal(frameAt(BEAT.sam - 1).sam, false);
+  assert.equal(frameAt(BEAT.sam).shipped, true);
 });

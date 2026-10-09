@@ -89,7 +89,7 @@ orchestrator.
 ### Roles, not tasks
 
 An agent is hired into a role, like a person: **Margo** works in QA,
-**Izzy** in Customer Support, **David** in Sales, **Bruno** in Operations.
+**Sam** in Customer Support, **David** in Sales, **Bruno** in Operations.
 The role is broad on purpose.
 
 - **A title and a team.** For example, "QA Engineer" on the QA team.
@@ -103,7 +103,7 @@ The role is broad on purpose.
   - reproduce bug reports;
   - keep the release checklist honest.
 
-  Izzy's:
+  Sam's:
   - answer customer questions from Docs and the product;
   - turn bugs into intake for the owning team;
   - tell customers when their fix ships.
@@ -178,7 +178,7 @@ A workspace's org chart can therefore read like a real company:
 - Operations: Bruno.
 - Docs: Inky.
 - Product: Dot.
-- Support: Izzy.
+- Support: Sam.
 - Sales: David.
 
 g1t is the one who knows everyone. The **role templates** are organised by

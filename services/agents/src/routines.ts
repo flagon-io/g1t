@@ -1,6 +1,6 @@
 /**
  * Routines (docs/WORKSPACE.md, "Routines"): work an agent does on a
- * schedule, such as Izzy's Monday digest of support themes or Bruno's
+ * schedule, such as Sam's Monday digest of support themes or Bruno's
  * morning look at failed deploys. Each run is a session in the routine's
  * channel, paid from the agent's budget, with the access of the person who
  * set it up (its sponsor), never more: if the sponsor leaves the workspace

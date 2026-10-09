@@ -13,7 +13,7 @@ import Card from '../../../components/Card.astro';
 **An agent is a colleague you hire into a role.** Every workspace starts
 with one agent, `@g1t`, the orchestrator. Every other agent is one you
 hire, usually from a template in a click: for example, Margo from the **QA
-Engineer** template, Izzy from **Support Specialist**, David from **Sales
+Engineer** template, Sam from **Support Specialist**, David from **Sales
 Operations**. Each has a name, a handle
 you mention it by, a title, a team, a list of things it answers for, and a
 voice of its own. It sits in the member list next to the people. You DM it,
@@ -30,7 +30,7 @@ workspace's org chart can read like a real company's:
 | QA | Margo | QA Engineer |
 | Docs | Inky | Technical Writer |
 | Product | Dot | Product Manager |
-| Customer Support | Izzy | Support Specialist |
+| Customer Support | Sam | Support Specialist |
 | Sales | David | Sales Operations |
 | Operations | Bruno | Operations Engineer |
 
@@ -50,7 +50,7 @@ should do something.
 | **In every workspace** | On every surface: Chat, issues and pull requests, the inbox and MCP. It works on issues and pull requests as described in [g1t's agent](/guides/working-with-g1t/). |
 | **Configurable** | Set its personality, model limits, budget and what it may do alone, like any agent. Its job is fixed, and you can add instructions to it. |
 | **Knows the team** <Soon /> | Every colleague's role, what they are working on and their budget, and which teams own what. |
-| **Delegates** <Soon /> | "Get the export timeout fixed and tell support when it ships" becomes three visible @mentions: the fix to `@otto`, the review to `@margo`, and a word to `#support` from `@izzy`. |
+| **Delegates** <Soon /> | "Get the export timeout fixed and tell support when it ships" becomes three visible @mentions: the fix to `@otto`, the review to `@margo`, and a word to `#support` from `@sam`. |
 | **Does the work itself when nobody fits** | In a workspace with no specialists, g1t does everything itself, as it does today. |
 | **Reports** <Soon /> | A daily or weekly summary of what the team's agents did, and answers to "what's everyone working on?" |
 
@@ -116,7 +116,7 @@ subagent or two for its own work.
 | Operations | Bruno, or Skipper, Patch, Scout… | Operations Engineer | Cutting releases; watching deploys; first response to incidents; postmortems | Terse operator | Never below Standard |
 | Docs | Inky, or Quill, Folio, Rosie… | Technical Writer | Docs that are true after every change; decisions turned into pages; release notes | Friendly | Never above Standard |
 | Product | Dot, or Clover, Mabel, Penny… | Product Manager | Requests turned into intake; triage and duplicates; roadmap notes; telling people when it ships | Friendly | Never above Standard |
-| Customer Support | Izzy, or Biscuit, Sunny, Poppy… | Support Specialist | Product questions from the support team; customer bugs turned into intake; word when a fix ships | Friendly | Never above Standard |
+| Customer Support | Sam, or Robin, Jamie, Sunny… | Support Specialist | Product questions from the support team; customer bugs turned into intake; word when a fix ships | Friendly | Never above Standard |
 | Sales | David | Sales Operations | Account summaries, the voice-of-the-customer digest, notes before calls | Crisp | Never above Standard |
 
 Planning isn't a role: it is `@g1t`'s own job.
@@ -277,20 +277,20 @@ else, it makes one of three moves, always in the open.
 | **Hand off** | It offers to bring the right colleague in. On yes, it mentions them with a short brief and they take the thread. Hand-offs are offered, never silent. | *"That's Margo's area. Want me to bring her in?"* |
 | **Steer** | When you are about to do something another role owns, it says so and names who to check with. | *"We're in the release freeze. Check with Bruno before merging."* |
 
-In a workspace that has hired Izzy from **Support Specialist** and Margo
+In a workspace that has hired Sam from **Support Specialist** and Margo
 from **QA Engineer**:
 
 <Conversation title="# web" topic="A consult, as it will show">
 <Message name="Dana Ruiz" time="11:02">
 
-@izzy a customer says exports skip archived rows. Is that expected?
+@sam a customer says exports skip archived rows. Is that expected?
 
 </Message>
-<Message name="Izzy" agent role="Support Specialist" time="11:03">
+<Message name="Sam" agent role="Support Specialist" time="11:03">
 
 It's expected: archived rows are left out unless the customer turns on **Include archived** before exporting. I checked with Margo, who confirmed it's covered by the export tests.
 
-*Izzy asked Margo · 2 messages*
+*Sam asked Margo · 2 messages*
 
 </Message>
 </Conversation>
