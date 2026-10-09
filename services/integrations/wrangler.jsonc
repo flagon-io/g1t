@@ -24,9 +24,12 @@
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "RUNNER", "service": "g1t-runner" },
 		// Where a transferred repository is now, for moving its links.
-		{ "binding": "REPOS", "service": "g1t-repos" }
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "EVENTS", "service": "g1t-events" }
 	],
 	// Work starting on, and finishing, what an outside system is waiting on.
+	// Mirrors' hosts are checked every minute (src/remotes.rs).
+	"triggers": { "crons": ["* * * * *"] },
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-integrations", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},

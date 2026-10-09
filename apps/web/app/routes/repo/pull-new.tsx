@@ -5,6 +5,8 @@ import type { Route } from "./+types/pull-new";
 import { page } from "../../lib/meta";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { Combobox } from "../../components/ui/combobox";
+import { Hint } from "../../components/ui/hint";
+import { useMirrorReason } from "../../components/mirror";
 import {
   SubmitButton,
   CopyLine,
@@ -79,6 +81,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 export default function NewPull({ loaderData, actionData, params }: Route.ComponentProps) {
   const { defaultBranch, base, bases, branches, selected, issue } = loaderData;
   const remote = cloneUrl(useAddresses(), `${params.owner}/${params.repo}`);
+  // A mirror takes no pull requests until someone takes over.
+  const mirrorBlocked = useMirrorReason();
 
   if (branches.length === 0) {
     return (
@@ -142,10 +146,12 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
       </Field>
       <ErrorText>{actionData?.error}</ErrorText>
       <div className="flex flex-wrap items-center gap-2">
-        <SubmitButton name="intent" value="open" match={{ intent: "open" }} pending="Opening…">
-          Open pull request
-        </SubmitButton>
-        <SubmitButton name="intent" value="draft" match={{ intent: "draft" }} variant="quiet" pending="Opening…">
+        <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
+          <SubmitButton name="intent" value="open" match={{ intent: "open" }} pending="Opening…" disabled={mirrorBlocked != null}>
+            Open pull request
+          </SubmitButton>
+        </Hint>
+        <SubmitButton name="intent" value="draft" match={{ intent: "draft" }} variant="quiet" pending="Opening…" disabled={mirrorBlocked != null}>
           Open as draft
         </SubmitButton>
         <span className="text-xs text-faint">A draft can't merge, and agents' review routines wait, until you mark it ready.</span>

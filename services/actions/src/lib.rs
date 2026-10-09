@@ -24,6 +24,7 @@
 
 mod artifacts;
 mod cache;
+mod mirrored;
 mod payload;
 mod plan;
 mod protection;

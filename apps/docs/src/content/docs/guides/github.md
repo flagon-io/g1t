@@ -87,12 +87,14 @@ it is private on GitHub, and a [project](/guides/projects/) of its own.
 | Choice | What happens | Where you push |
 | --- | --- | --- |
 | **Import** | Copied once. The g1t repository is then its own. | g1t |
-| **Mirror** | Copied, then every push to GitHub is fetched into g1t within seconds. Branches deleted on GitHub are deleted on g1t. | GitHub |
-| **Move to g1t** | Copied, then every push to g1t is pushed to GitHub, so people still working there see it. Branches that exist only on GitHub are left alone. | g1t |
+| **Standby mirror** | Copied, then every push to GitHub is copied in within seconds. On g1t it's a read-only copy that runs nothing, until you take over. | GitHub |
+| **Move to g1t** | Copied, then g1t leads: every push to g1t is pushed to GitHub, so people still working there see it. Branches that exist only on GitHub are left alone. | g1t |
 
-A mirror is a copy that follows GitHub: anything pushed to the g1t copy
-directly is overwritten at the next sync. Deployments, previews, checks
-and agents run on the copy as on any project.
+A standby mirror is a backup you can switch to: if GitHub is down, or
+whenever you want to work on g1t for a while, **take over** in its
+**Settings → Mirroring**, and **hand back** when you're done. You can also
+run its GitHub workflows on g1t while GitHub's don't run, or move it to g1t
+for good. See [mirroring](/guides/mirroring/).
 
 ### What comes across
 
@@ -105,7 +107,7 @@ and agents run on the copy as on any project.
 | Issue numbers | New numbers on g1t; each issue links to the original |
 | Comments on issues | No |
 | Pull requests | No. Their branches come across; open pull requests stay on GitHub. |
-| GitHub Actions workflows | Yes, as files. Rename `.github` to `.g1t` to run them on g1t: see [GitHub Actions](/guides/actions/). |
+| GitHub Actions workflows | Yes, as files. A mirror runs them on g1t in CI failover and when taken over; otherwise rename `.github` to `.g1t` to run them on g1t: see [GitHub Actions](/guides/actions/). |
 | Releases, wikis, Git LFS objects | No |
 
 A repository is copied in one piece of at most 40 MB, after compression.
@@ -113,26 +115,28 @@ Push a larger one with git instead: see [git](/guides/git/).
 
 ### Keep a mirror in step
 
-The repository's overview shows where it came from and when it last
-synced. **Sync now** copies at once; **Stop mirroring** (or **Stop
-pushing**) ends the tie and leaves the g1t repository as it is. A mirror
-also stops, keeping its copy, when:
+The repository's **Settings → Mirroring** shows the link: its state,
+whether GitHub is answering, and when it last synced. **Sync now** copies
+at once. **Take over**, **Hand back**, **Move to g1t** and **Remove** are
+there too: see [mirroring](/guides/mirroring/). A standby mirror stops,
+keeping its copy, when:
 
 - the repository is deleted on GitHub,
 - the app is uninstalled from its GitHub account, or
 - a workspace owner removes that GitHub account from the workspace.
 
-If GitHub stops letting the app see a repository, its overview says so;
-add it back to the installation on GitHub to carry on. Renaming or
+If GitHub stops letting the app see a repository, its settings say so; add
+it back to the installation on GitHub to carry on. Renaming or
 transferring a repository on GitHub keeps the mirror working.
 
 ## What g1t's GitHub App can do
 
 | Permission | Access | Why |
 | --- | --- | --- |
-| Contents | Read and write | Read: clone the repositories you choose. Write: only for **Move to g1t**, to push. |
-| Metadata | Read | Required by GitHub for every app: names and visibility. |
+| Contents | Read and write | Read: clone the repositories you choose. Write: to push for **Move to g1t**, and to hand a takeover back. |
+| Metadata | Read | Required by GitHub for every app: names, visibility, and whether a branch is protected. |
 | Issues | Read | Copy issues when you ask. |
+| Pull requests | Read and write | When a takeover is handed back, open a pull request for a branch GitHub protects. Without it, g1t pushes the commits to `g1t/handback/<branch>` and tells you to open the pull request yourself. |
 | Email addresses (account) | Read | Find your verified email when you sign in. |
 
 The app only ever sees the repositories you or your organization's owners

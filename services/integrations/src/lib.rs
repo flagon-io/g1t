@@ -14,6 +14,7 @@ mod github_jwt;
 mod http;
 mod models;
 mod refs;
+mod remotes;
 mod rename;
 mod sentry;
 mod trackers;
@@ -29,7 +30,7 @@ use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use worker::wasm_bindgen::JsValue;
-use worker::{Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, event};
+use worker::{Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
 use alerts::{Action, Signal};
 use g1t_secrets::{self as crypto, Sealer};
@@ -1569,6 +1570,10 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
     if let Some(answer) = github::route(&method, &body, &env, &ctx).await {
         return answer;
     }
+    // Mirroring: links to other hosts, takeovers and hand-backs; see remotes.rs.
+    if let Some(answer) = remotes::route(&method, &body, &env, &ctx).await {
+        return answer;
+    }
     let service = Integrations::new(&env)?;
     match method.as_str() {
         "list" => reply(&service.list(args(body)?).await?),
@@ -1631,13 +1636,28 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         }
         // A repository purged: what was kept for it goes.
         rename::on_purged(&env.d1("DB")?, message.body()).await?;
-        if github::first_push_in_batch(&mut pushed, message.body()) {
-            github::on_event(&env, message.body()).await?;
+        if message.body().kind == "git.push" && github::first_push_in_batch(&mut pushed, message.body()) {
+            remotes::Mirrors::new(&env)?.on_event(message.body()).await?;
         }
         service.on_event(message.body()).await?;
         message.ack();
     }
     Ok(())
+}
+
+/// Every minute: mirrors' hosts checked, links the repos service has not
+/// heard of recorded, remotes with no webhook polled, and the takeovers and
+/// hand-backs people asked to happen on their own. See remotes.rs.
+#[event(scheduled)]
+async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    match remotes::Mirrors::new(&env) {
+        Ok(mirrors) => {
+            if let Err(error) = mirrors.on_minute().await {
+                worker::console_error!("integrations: the mirrors' minute failed: {error}");
+            }
+        }
+        Err(error) => worker::console_error!("integrations: mirrors unavailable: {error}"),
+    }
 }
 
 #[cfg(test)]

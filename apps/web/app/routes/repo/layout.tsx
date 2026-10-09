@@ -18,12 +18,14 @@ import { WatchMenu } from "../../components/notifications";
 import { PinButton } from "../../components/pin-button";
 import { StarButton } from "../../components/star-button";
 import { ArchivedBanner } from "../../components/repo-lifecycle";
+import { MirrorBadge, MirrorBanner } from "../../components/mirror";
+import type { MirrorBrief } from "../../lib/mirror";
 import { WelcomeBanner } from "../../components/welcome";
 import { clearWelcome, welcomes } from "../../lib/invites";
 import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed, redirectIfTransferred } from "../../lib/renamed.server";
 import { accessFor, countsFor, projectFor, repoFor } from "../../lib/access.server";
-import { inbox, projects, repos } from "../../lib/services.server";
+import { inbox, mirrors, projects, repos } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
@@ -35,7 +37,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   // Members pin the workspace's projects, and what they open is their Recent.
   const member = viewer ? roleIn(viewer, params.owner) != null : false;
-  const [repo, counts, found, watching, shortcuts, stars] = await Promise.all([
+  const [repo, counts, found, watching, shortcuts, stars, mirrorBriefs] = await Promise.all([
     repoFor(context, params),
     countsFor(context, params),
     projectFor(context, params),
@@ -48,6 +50,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     member ? projects.shortcuts(params.owner, viewer).catch(() => null) : null,
     // How many starred it and whether they did, for the header's Star button.
     repos.stars(path, viewer).then((found) => (found.ok ? found.value : null)).catch(() => null),
+    // Its remotes in brief, for the badge and the line across its pages:
+    // whether the one it mirrors answers, and those that follow it.
+    repoFor(context, params).then((found) =>
+      found.ok ? mirrors.briefs([found.value.id]).catch((): MirrorBrief[] => []) : ([] as MirrorBrief[]),
+    ),
   ]);
   if (!repo.ok && !found.ok) {
     // Under a workspace's old name, after a rename: the project is at the new one.
@@ -82,6 +89,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Null for a pull request's working copy, or when it could not be read.
     stars: value.forkOf ? null : stars,
     signedIn: Boolean(viewer),
+    mirrorBriefs: mirrorBriefs as MirrorBrief[],
     // Null when they cannot pin it: not one of their workspaces.
     pinned: member && project ? (shortcuts?.pinned ?? []).some((pinned) => pinned.id === project.id) : null,
   }, { headers });
@@ -103,7 +111,7 @@ export function useProject() {
 }
 
 /** A repository's topics, each a way into Explore. */
-function Header({ project, isPrivate, archived, namespace, name, description, large, actions }: {
+function Header({ project, isPrivate, archived, namespace, name, description, large, actions, mirror }: {
   project: Project | null;
   isPrivate: boolean;
   namespace: string;
@@ -113,6 +121,8 @@ function Header({ project, isPrivate, archived, namespace, name, description, la
   large?: boolean;
   /** At the end of the row: Pin, Watch and Star. */
   actions?: ReactNode;
+  /** Beside the visibility: what it is to its remotes. */
+  mirror?: ReactNode;
 }) {
   const base = `/${namespace}/${name}`;
   return (
@@ -133,6 +143,7 @@ function Header({ project, isPrivate, archived, namespace, name, description, la
       </h1>
       <Pill>{isPrivate ? "private" : "public"}</Pill>
       {archived && <Pill>archived</Pill>}
+      {mirror}
       {/* On a phone, on its own line under the name and the Watch menu. */}
       {description && <p className="order-last min-w-0 basis-full truncate text-sm text-muted sm:order-none sm:basis-0 sm:flex-1">{description}</p>}
       {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
@@ -179,7 +190,7 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
 }
 
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
-  const { repo, project, member, access, welcome, watching, pinned, stars, signedIn } = loaderData;
+  const { repo, project, member, access, welcome, watching, pinned, stars, signedIn, mirrorBriefs } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
   // The project's own description, else the repository's as it is now.
   const description = (project && !project.descriptionInherited ? project.description : null) ?? repo.description;
@@ -201,6 +212,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             name={repo.name}
             // The files' own About says it there, as the one place.
             description={filesPage ? null : description}
+            mirror={<MirrorBadge mirror={repo.mirror} briefs={mirrorBriefs} />}
             actions={
               watching || stars || (project && pinned != null) ? (
                 <>
@@ -238,6 +250,17 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
           <div className="mb-6">
             <ArchivedBanner base={base} owner={access.can.administer} settings={/^settings(\/|$)/.test(pathname.slice(base.length + 1))} />
           </div>
+        )}
+        {/* The mirroring settings say it themselves, in more detail. */}
+        {!/^settings\/mirroring(\/|$)/.test(pathname.slice(base.length + 1)) && (
+          <MirrorBanner
+            base={base}
+            full={`${repo.namespace}/${repo.name}`}
+            mirror={repo.mirror}
+            briefs={mirrorBriefs}
+            admin={access.can.manage_integrations}
+            className="mb-6"
+          />
         )}
         <Outlet />
       </div>

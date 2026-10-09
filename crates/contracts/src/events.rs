@@ -110,6 +110,15 @@ pub struct GitPush {
     /// [`CAUSED_BY_JOB`]). Absent otherwise.
     #[serde(rename = "causedByJob", skip_serializing_if = "Option::is_none")]
     pub caused_by_job: Option<String>,
+    /// Set when the push was copied in from the remote a mirror follows,
+    /// not made on g1t. Absent otherwise.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub mirrored: bool,
+    /// The repository's mirror state when the push landed (see
+    /// [`crate::mirrors`]): workflows and deployments follow it. Absent for
+    /// a repository that leads.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mirror: Option<crate::mirrors::RepoMirror>,
 }
 
 /// The payload of `issue.opened`, `issue.updated`, `issue.assigned`,
@@ -1098,6 +1107,8 @@ mod tests {
             default_branch: false,
             unscanned: false,
             caused_by_job: job_run_of(&actor).map(str::to_owned),
+            mirrored: false,
+            mirror: None,
         };
         let push = serde_json::to_value(push).unwrap();
         assert_eq!(caused_by_job(&push), Some("run_9"));
@@ -1115,6 +1126,8 @@ mod tests {
             default_branch: false,
             unscanned,
             caused_by_job: None,
+            mirrored: false,
+            mirror: None,
         };
         let quiet = serde_json::to_value(push(false)).unwrap();
         assert!(quiet.get("unscanned").is_none());

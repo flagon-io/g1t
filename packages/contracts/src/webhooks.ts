@@ -110,6 +110,10 @@ export const EVENT_TYPES = [
   "vulnerability_alert.fixed",
   "vulnerability_alert.dismissed",
   "vulnerability_alert.reopened",
+  "mirror.unreachable",
+  "mirror.reachable",
+  "mirror.state_changed",
+  "mirror.moved_in",
 ] as const;
 
 export type Hook = {

@@ -40,6 +40,8 @@ import { agents, identity, inbox, integrations, work } from "../../lib/services.
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
+import { useMirrorReason } from "../../components/mirror";
+import { Hint } from "../../components/ui/hint";
 import { useRefreshWhile } from "../../lib/refresh";
 import { DetailsDisclosure, detailsSummary } from "../../components/details-disclosure";
 
@@ -272,6 +274,8 @@ function PullRow({ pull, base }: { pull: Pull; base: string }) {
 
 export default function IssuePage({ loaderData, actionData, params }: Route.ComponentProps) {
   const { issue, pulls, comments, viewer, labels, agentsEnabled, members, canManage, can } = loaderData;
+  // A mirror runs no agents until someone takes over.
+  const mirrorBlocked = useMirrorReason();
 
   // Follow agents at work without a manual reload.
   const running = pulls.some(
@@ -548,11 +552,13 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           {open && agentsEnabled && can.run && !assigned && !issue.queued && (
             <Form method="post" className="mt-3 space-y-2">
               <input type="hidden" name="action" value="run-hosted" />
-              <div className="*:w-full">
-                <SubmitButton variant="accent" match={{ action: "run-hosted" }} pending="Starting a sandbox…">
-                  <Sparkles size={14} />
-                  Assign to g1t
-                </SubmitButton>
+              <div className="*:w-full [&_button]:w-full">
+                <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
+                  <SubmitButton variant="accent" match={{ action: "run-hosted" }} pending="Starting a sandbox…" disabled={mirrorBlocked != null}>
+                    <Sparkles size={14} />
+                    Assign to g1t
+                  </SubmitButton>
+                </Hint>
               </div>
               <details>
                 <summary className="cursor-pointer text-xs text-faint hover:text-fg">

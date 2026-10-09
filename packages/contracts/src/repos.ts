@@ -1,5 +1,6 @@
 import type { Contributors, Languages, License, NewRelease, Release, ReleaseChange, RepoAbout, Stargazer, StarredRepo, Stars } from "./about";
 import type { User, Viewer } from "./identity";
+import type { RepoMirror } from "./mirrors";
 import type { Result } from "./result";
 
 export type Repo = {
@@ -33,6 +34,12 @@ export type Repo = {
    * requests are locked. Null when it is not archived.
    */
   archivedAt?: string | null;
+  /**
+   * Set when it mirrors a remote that leads. Unless g1t has taken over,
+   * it is read-only: pushes, merges, issues, pull requests and agents are
+   * refused, and nothing runs. See `./mirrors`.
+   */
+  mirror?: RepoMirror | null;
 };
 
 /** How long a deleted repository can be restored before it is purged. */

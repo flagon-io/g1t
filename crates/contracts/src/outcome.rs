@@ -28,6 +28,8 @@ pub enum FailureCode {
     /// A sensitive change needs the person to prove it is them again: a
     /// recent sign-in, or their password. See `identity::Reauth`.
     ReauthRequired,
+    /// Another host g1t depends on for this did not answer.
+    Unavailable,
 }
 
 impl FailureCode {
@@ -45,6 +47,7 @@ impl FailureCode {
             | FailureCode::OssPoolEmpty => 402,
             FailureCode::Paused => 409,
             FailureCode::ReauthRequired => 403,
+            FailureCode::Unavailable => 503,
         }
     }
 }

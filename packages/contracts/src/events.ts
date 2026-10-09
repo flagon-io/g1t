@@ -10,6 +10,7 @@
 import type { Release } from "./about";
 import type { RepoRole } from "./access";
 import type { CheckRunEventData, CheckSuiteEventData, StatusEventData } from "./checks";
+import type { RepoMirror } from "./mirrors";
 import type { DeploymentStatus, RepoDeployment } from "./deployments";
 import type { TeamRole, TeamVisibility } from "./teams";
 import type { AgentRef, Confidence, Verdict } from "./work";
@@ -181,7 +182,18 @@ export type EventPayloads = {
    * `before` is where the ref pointed before; absent for a new branch or
    * tag. `causedByJob` is set when a workflow job's token pushed: the run's id.
    */
-  "git.push": { repoId: string; ref: string; before?: string; after: string; defaultBranch: boolean; causedByJob?: string };
+  "git.push": {
+    repoId: string;
+    ref: string;
+    before?: string;
+    after: string;
+    defaultBranch: boolean;
+    causedByJob?: string;
+    /** Set when it was copied in from the remote a mirror follows, not made on g1t. */
+    mirrored?: boolean;
+    /** The repository's mirror state when it landed; absent for one that leads. */
+    mirror?: RepoMirror;
+  };
   /**
    * `author` is who opened it: g1t, for one its agent filed while at work,
    * with `requestedBy` the person it was working for. Every issue and pull

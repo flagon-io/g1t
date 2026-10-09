@@ -441,7 +441,7 @@ impl<S: GitStore> Repos<S> {
         if !actor.verified {
             return Ok(Err(Outcome::fail(FailureCode::Forbidden, UNVERIFIED)));
         }
-        if let Some((code, message)) = crate::lifecycle::archived_refusal(&repo) {
+        if let Some((code, message)) = crate::lifecycle::read_only_refusal(&repo) {
             return Ok(Err(Outcome::fail(code, message)));
         }
         Ok(Ok(repo))

@@ -1,8 +1,7 @@
 import type { GithubRepoLink } from "@g1t/contracts";
-import { Form } from "react-router";
 import { siGithub } from "simple-icons";
 
-import { SubmitButton, TimeAgo } from "./ui";
+import { TimeAgo } from "./ui";
 
 /** GitHub's mark (from Simple Icons), for the buttons that go there. */
 export function GithubMark({ className = "size-4" }: { className?: string }) {
@@ -40,24 +39,18 @@ export function OrDivider() {
   );
 }
 
-const LINK_LABEL: Record<GithubRepoLink["mode"], string> = {
-  import: "Imported from",
-  mirror: "Mirrored from",
-  push: "Pushed to",
-};
-
 /**
- * Where a repository's code came from on GitHub, on its overview: how it
- * stays in step, when it last did, and what went wrong if anything did.
+ * Where a repository's code was imported from on GitHub, on its overview,
+ * and when. A repository that stays in step with GitHub says so beside its
+ * name instead, and is managed under Settings → Mirroring.
  */
 export function GithubLinkStrip({ link }: { link: GithubRepoLink }) {
-  const syncing = link.mode !== "import";
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line px-4 py-2.5 text-sm">
       <span className="flex min-w-0 items-start gap-2 text-muted">
         <GithubMark className="mt-0.5 size-4 shrink-0" />
         <span className="min-w-0">
-          {LINK_LABEL[link.mode]}{" "}
+          Imported from{" "}
           <a href={`https://github.com/${link.fullName}`} className="font-mono break-all text-fg hover:text-accent" target="_blank" rel="noreferrer">
             github.com/{link.fullName}
           </a>
@@ -65,28 +58,8 @@ export function GithubLinkStrip({ link }: { link: GithubRepoLink }) {
       </span>
       {link.syncedAt && (
         <span className="text-xs text-faint">
-          {syncing ? "synced" : "copied"} <TimeAgo at={link.syncedAt} />
+          copied <TimeAgo at={link.syncedAt} />
         </span>
-      )}
-      {syncing && (
-        <Form method="post" className="ml-auto flex items-center gap-3">
-          <SubmitButton
-            name="intent"
-            value="github-sync"
-            pending="Syncing…"
-            className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg disabled:opacity-50"
-          >
-            Sync now
-          </SubmitButton>
-          <SubmitButton
-            name="intent"
-            value="github-stop"
-            pending="Stopping…"
-            className="inline-flex items-center gap-1 text-xs text-faint hover:text-danger disabled:opacity-50"
-          >
-            Stop {link.mode === "mirror" ? "mirroring" : "pushing"}
-          </SubmitButton>
-        </Form>
       )}
       {link.lastError && <p className="w-full text-xs text-warn">{link.lastError}</p>}
     </div>

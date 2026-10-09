@@ -609,6 +609,7 @@ impl<S: GitStore> Repos<S> {
             topics: Vec::new(),
             website: None,
             archived_at: None,
+            mirror: a.mirror.clone(),
         };
         let namespace = match self.place(&repo).await? {
             Ok(namespace) => namespace,
@@ -713,7 +714,11 @@ impl<S: GitStore> Repos<S> {
         })
         .await?;
         for (git_ref, head) in &pushed {
-            self.publish_push(&repo, git_ref, None, head, None).await?;
+            if repo.mirror.is_some() {
+                self.publish_mirrored_push(&repo, git_ref, None, head).await?;
+            } else {
+                self.publish_push(&repo, git_ref, None, head, None).await?;
+            }
         }
         Ok(Outcome::Ok(repo))
     }
@@ -1286,7 +1291,7 @@ impl<S: GitStore> Repos<S> {
         else {
             return Ok(not_found());
         };
-        if let Some((code, message)) = lifecycle::archived_refusal(&source) {
+        if let Some((code, message)) = lifecycle::read_only_refusal(&source) {
             return Ok(Outcome::fail(code, message));
         }
         // Its working copy is made in its namespace: not while it moves.
@@ -1310,6 +1315,7 @@ impl<S: GitStore> Repos<S> {
             topics: Vec::new(),
             website: None,
             archived_at: None,
+            mirror: None,
         };
         // Artifacts forks within a namespace: the copy goes where its
         // repository is.
@@ -1435,8 +1441,8 @@ impl<S: GitStore> Repos<S> {
                 if !allowed {
                     return Ok(denied());
                 }
-                // An archived repository, or a pull request's copy of one,
-                // is read-only.
+                // An archived repository, a mirror standing by, or a pull
+                // request's copy of either, is read-only.
                 if write {
                     let archived = match &repo.fork_of {
                         Some(source) => self.registry.by_id(source).await?,
@@ -1444,7 +1450,7 @@ impl<S: GitStore> Repos<S> {
                     };
                     match archived {
                         Some(source) => {
-                            if let Some((code, message)) = lifecycle::archived_refusal(&source) {
+                            if let Some((code, message)) = lifecycle::read_only_refusal(&source) {
                                 return Ok(Outcome::fail(code, format!("{message}\n")));
                             }
                         }
@@ -1503,7 +1509,7 @@ impl<S: GitStore> Repos<S> {
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
         }
-        if let Some((code, message)) = lifecycle::archived_refusal(&target) {
+        if let Some((code, message)) = lifecycle::read_only_refusal(&target) {
             return Ok(Outcome::fail(code, message));
         }
         // Moving between namespaces: wait for it (moves.rs). Both are read
@@ -1682,7 +1688,14 @@ impl<S: GitStore> Repos<S> {
         actor: Option<&User>,
     ) -> Result<()> {
         let caused_by_job = actor.and_then(g1t_contracts::events::job_run_of).map(str::to_owned);
-        self.publish_git_push(repo, git_ref, before, after, actor.map(|user| user.id.clone()), false, caused_by_job).await
+        self.publish_git_push(repo, git_ref, before, after, actor.map(|user| user.id.clone()), false, caused_by_job, false)
+            .await
+    }
+
+    /// A push copied in from the remote a mirror follows (mirror.rs), or
+    /// made by filling a new mirror from it.
+    async fn publish_mirrored_push(&self, repo: &Repo, git_ref: &str, before: Option<&str>, after: &str) -> Result<()> {
+        self.publish_git_push(repo, git_ref, before, after, None, false, None, true).await
     }
 
     /// `publish_push`, saying whether the push reached the store without
@@ -1697,6 +1710,7 @@ impl<S: GitStore> Repos<S> {
         actor: Option<String>,
         unscanned: bool,
         caused_by_job: Option<String>,
+        mirrored: bool,
     ) -> Result<()> {
         self.publish(NewEvent {
             kind: "git.push",
@@ -1712,6 +1726,8 @@ impl<S: GitStore> Repos<S> {
                     == Some(repo.default_branch.as_str()),
                 unscanned,
                 caused_by_job,
+                mirrored,
+                mirror: repo.mirror.clone(),
             },
         })
         .await
@@ -2262,6 +2278,7 @@ impl<S: GitStore> Repos<S> {
                     actor.clone(),
                     unscanned,
                     caused_by_job.clone(),
+                    false,
                 )
                 .await?;
             }
@@ -2505,8 +2522,13 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
             )
         }
         "create" => reply(&repos.create(args(body)?).await?),
-        // Services only: a GitHub mirror catching up, or pushing out.
+        // Services only: a mirror catching up, or pushing out; refs moved
+        // either way when a takeover is handed back; and the mirror state
+        // integrations decided (mirror.rs).
         "mirror" => reply(&repos.mirror(args(body)?).await?),
+        "mirror_refs" => reply(&repos.mirror_refs(args(body)?).await?),
+        "mirror_apply" => reply(&repos.mirror_apply(args(body)?).await?),
+        "set_mirror" => reply(&repos.set_mirror(args(body)?).await?),
         "transfer" => reply(&repos.transfer(args(body)?).await?),
         // A repository's lifecycle: see lifecycle.rs.
         "delete" => reply(&repos.delete(args(body)?).await?),
@@ -2905,6 +2927,7 @@ fn push_to_create(owner: &User, path: &RepoPath) -> CreateArgs {
         is_private: true,
         import_url: None,
         import_token: None,
+        mirror: None,
     }
 }
 

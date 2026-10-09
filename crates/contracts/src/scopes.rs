@@ -1157,6 +1157,18 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_deploy_key", Scope::AccessRead),
     ("create_deploy_key", Scope::AccessAdmin),
     ("delete_deploy_key", Scope::AccessAdmin),
+    // Mirroring: a repository's links to other hosts. Reading them is
+    // reading the repository; syncing writes code; the rest is an admin's.
+    ("get_mirror", Scope::RepoRead),
+    ("sync_mirror", Scope::CodeWrite),
+    ("get_hand_back_plan", Scope::RepoAdmin),
+    ("take_over_mirror", Scope::RepoAdmin),
+    ("set_ci_failover", Scope::RepoAdmin),
+    ("hand_back_mirror", Scope::RepoAdmin),
+    ("move_mirror_to_g1t", Scope::RepoAdmin),
+    ("add_mirror_remote", Scope::RepoAdmin),
+    ("update_mirror_remote", Scope::RepoAdmin),
+    ("remove_mirror_remote", Scope::RepoAdmin),
     // Webhooks.
     ("list_webhooks", Scope::WebhooksRead),
     ("list_webhook_deliveries", Scope::WebhooksRead),

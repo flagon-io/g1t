@@ -57,57 +57,80 @@ impl Actions {
     /// The workflow files of `path` as of `git_ref` (the default branch
     /// when absent).
     pub async fn read_workflows(&self, path: &RepoPath, actor: &User, git_ref: Option<&str>) -> Result<Read> {
-        let viewer = Some(actor.clone());
-        let tree: Outcome<TreeView> = g1t_kit::call(
-            &self.repos,
-            "tree",
-            &TreeArgs {
-                path: path.clone(),
-                viewer: viewer.clone(),
-                git_ref: git_ref.map(str::to_owned),
-                tree_path: FOLDER.to_owned(),
-            },
-        )
-        .await?;
-        let (entries, head, resolved) = match tree {
-            Outcome::Ok(tree) => (tree.entries, tree.head.map(|commit| commit.hash), tree.git_ref),
-            // No folder: no workflows.
-            Outcome::Fail(_) => return Ok(Read { files: Vec::new(), head: None }),
-        };
-        let at = head.clone().unwrap_or(resolved);
-        let mut files = Vec::new();
-        for entry in entries
-            .into_iter()
-            .filter(|entry| matches!(entry.kind, EntryKind::Blob | EntryKind::Exec))
-            .filter(|entry| entry.name.ends_with(".yml") || entry.name.ends_with(".yaml"))
-            .take(MAX_WORKFLOWS)
-        {
-            let file_path = format!("{FOLDER}/{}", entry.name);
-            let blob: Outcome<BlobView> = g1t_kit::call(
-                &self.repos,
-                "blob",
-                &BlobArgs {
-                    path: path.clone(),
-                    viewer: viewer.clone(),
-                    git_ref: at.clone(),
-                    file_path: file_path.clone(),
-                },
-            )
-            .await?;
-            if let Outcome::Ok(BlobView { text: Some(source), .. }) = blob {
-                files.push(WorkflowFile { path: file_path, source });
-            }
-        }
-        Ok(Read { files, head })
+        self.read_folders(path, actor, git_ref, &[FOLDER]).await
     }
 
-    /// Keeps the `workflows` table in step with the default branch.
-    pub async fn sync(&self, repo: &Repo, actor: &User) -> Result<()> {
+    /// The workflow files a repository runs: `.g1t/workflows`, and on a
+    /// mirror in CI failover or taken over, `.github/workflows` too (see
+    /// mirrored.rs), where g1t's own stands in for one of the same name.
+    pub async fn read_for(&self, repo: &Repo, actor: &User, git_ref: Option<&str>, github: bool) -> Result<Read> {
         let path = RepoPath {
             namespace: repo.namespace.clone(),
             name: repo.name.clone(),
         };
-        let read = self.read_workflows(&path, actor, None).await?;
+        if !github {
+            return self.read_workflows(&path, actor, git_ref).await;
+        }
+        let read = self.read_folders(&path, actor, git_ref, &[FOLDER, crate::mirrored::GITHUB_FOLDER]).await?;
+        Ok(Read {
+            files: crate::mirrored::prefer_g1t(read.files),
+            head: read.head,
+        })
+    }
+
+    async fn read_folders(&self, path: &RepoPath, actor: &User, git_ref: Option<&str>, folders: &[&str]) -> Result<Read> {
+        let viewer = Some(actor.clone());
+        let mut files = Vec::new();
+        let mut found_head = None;
+        for folder in folders {
+            let tree: Outcome<TreeView> = g1t_kit::call(
+                &self.repos,
+                "tree",
+                &TreeArgs {
+                    path: path.clone(),
+                    viewer: viewer.clone(),
+                    git_ref: git_ref.map(str::to_owned),
+                    tree_path: (*folder).to_owned(),
+                },
+            )
+            .await?;
+            let (entries, head, resolved) = match tree {
+                Outcome::Ok(tree) => (tree.entries, tree.head.map(|commit| commit.hash), tree.git_ref),
+                // No folder: no workflows from it.
+                Outcome::Fail(_) => continue,
+            };
+            let at = head.clone().unwrap_or(resolved);
+            found_head = found_head.or(head);
+            for entry in entries
+                .into_iter()
+                .filter(|entry| matches!(entry.kind, EntryKind::Blob | EntryKind::Exec))
+                .filter(|entry| entry.name.ends_with(".yml") || entry.name.ends_with(".yaml"))
+                .take(MAX_WORKFLOWS.saturating_sub(files.len()))
+            {
+                let file_path = format!("{folder}/{}", entry.name);
+                let blob: Outcome<BlobView> = g1t_kit::call(
+                    &self.repos,
+                    "blob",
+                    &BlobArgs {
+                        path: path.clone(),
+                        viewer: viewer.clone(),
+                        git_ref: at.clone(),
+                        file_path: file_path.clone(),
+                    },
+                )
+                .await?;
+                if let Outcome::Ok(BlobView { text: Some(source), .. }) = blob {
+                    files.push(WorkflowFile { path: file_path, source });
+                }
+            }
+        }
+        Ok(Read { files, head: found_head })
+    }
+
+    /// Keeps the `workflows` table in step with the default branch.
+    pub async fn sync(&self, repo: &Repo, actor: &User) -> Result<()> {
+        let github = crate::mirrored::policy(repo.mirror.as_ref(), false).github;
+        let read = self.read_for(repo, actor, None, github).await?;
         let full_name = format!("{}/{}", repo.namespace, repo.name);
         let now = rfc3339(now_ms());
         let mut statements = Vec::new();

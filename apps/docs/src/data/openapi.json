@@ -215,6 +215,22 @@
       ]
     },
     {
+      "name": "Mirroring",
+      "description": "A repository's links to copies of it on other hosts: a mirror stands by as a read-only copy of a remote that leads, until someone takes over on g1t and later hands back, or moves it to g1t for good. A repository g1t leads can be mirrored to other hosts.",
+      "x-tools": [
+        "get_mirror",
+        "get_hand_back_plan",
+        "take_over_mirror",
+        "set_ci_failover",
+        "hand_back_mirror",
+        "move_mirror_to_g1t",
+        "sync_mirror",
+        "add_mirror_remote",
+        "update_mirror_remote",
+        "remove_mirror_remote"
+      ]
+    },
+    {
       "name": "Teams",
       "description": "Groups of a workspace's members: given a role on repositories together, mentioned together as @workspace/team, and asked to review together. Any member may create a team; the workspace's owners and the team's maintainers manage it.",
       "x-tools": [
@@ -5276,6 +5292,1512 @@
           "owner": "flagon-io",
           "name": "hello",
           "id": "dk_01kp3g4h5j6k7m8n9p0q1r2s3t"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/mirror": {
+      "get": {
+        "operationId": "get_mirror",
+        "tags": [
+          "Mirroring"
+        ],
+        "summary": "Get a repository's mirroring",
+        "description": "A repository's links to other hosts. `remotes` lists each with its `role` (`leader`: the remote leads and this repository is its mirror; `follower`: g1t leads and the remote is kept in step), `provider` (`github`, `g1t` or `git`), `name` (`github.com/acme/web`), `state` (a mirror is `standby`, `ci`, `takeover` or `handing_back`; a follower is `following` or `stuck`), `reachable` and `unreachable_since`, `synced_at`, `last_error` and its `settings`. `can_manage` says whether you may change them. A mirror standing by is read-only on g1t and runs nothing. Needs read access.\n\nA repository that leads lists its followers instead, each `role: follower` with `state` `following` or `stuck`. A mirror standing by is read-only on g1t: pushes, merges, issues, pull requests and agents are refused, and nothing runs. `reachable` is false once the remote's host has failed three checks over two minutes; by default that is only shown, and nothing happens on its own.",
+        "x-operation": "get_mirror",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "mirror",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "remotes": [
+                    {
+                      "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+                      "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+                      "repo": "acme/web",
+                      "provider": "github",
+                      "role": "leader",
+                      "name": "github.com/acme/web",
+                      "url": "https://github.com/acme/web",
+                      "state": "standby",
+                      "state_since": "2026-10-08T13:58:00.000Z",
+                      "state_by": "syntaqx",
+                      "reachable": true,
+                      "unreachable_since": null,
+                      "synced_at": "2026-10-08T13:57:42.000Z",
+                      "last_error": null,
+                      "settings": {
+                        "notify": "banner",
+                        "take_over_after": null,
+                        "hand_back": "when_clean",
+                        "keep_ci_warm": false,
+                        "github_workflows": true,
+                        "hold_deploys": true,
+                        "remote_pushes": "adopt"
+                      },
+                      "created_at": "2026-10-05T10:00:00.000Z"
+                    }
+                  ],
+                  "plan": null,
+                  "can_manage": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "acme",
+          "name": "web"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/mirror/hand-back": {
+      "get": {
+        "operationId": "get_hand_back_plan",
+        "tags": [
+          "Mirroring"
+        ],
+        "summary": "Get the hand-back plan",
+        "description": "What handing a takeover back would do, ref by ref, in `plan.refs`: each with `base` (where it was when the takeover began), `ours`, `theirs` and `action`: `push` (only g1t moved), `fetch` (only the remote moved), `pull_request` (the remote protects the branch: g1t's commits go to `g1t/handback/<branch>` there as a pull request, and g1t follows the remote's branch) or `diverged` (both moved: it needs a decision). `plan.reachable` is false while the remote does not answer; `plan.ready` once it answers and every diverged ref has a decision. Asks the remote, so it takes a moment. Needs the Admin role.\n\nRefs that did not move on either side are left out. `ready` stays false until `docs/readme` has a decision.",
+        "x-operation": "get_hand_back_plan",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "mirror_hand_back_plan",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "remotes": [
+                    {
+                      "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+                      "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+                      "repo": "acme/web",
+                      "provider": "github",
+                      "role": "leader",
+                      "name": "github.com/acme/web",
+                      "url": "https://github.com/acme/web",
+                      "state": "takeover",
+                      "state_since": "2026-10-08T13:58:00.000Z",
+                      "state_by": "syntaqx",
+                      "reachable": true,
+                      "unreachable_since": null,
+                      "synced_at": "2026-10-08T13:57:42.000Z",
+                      "last_error": null,
+                      "settings": {
+                        "notify": "banner",
+                        "take_over_after": null,
+                        "hand_back": "when_clean",
+                        "keep_ci_warm": false,
+                        "github_workflows": true,
+                        "hold_deploys": true,
+                        "remote_pushes": "adopt"
+                      },
+                      "created_at": "2026-10-05T10:00:00.000Z"
+                    }
+                  ],
+                  "plan": {
+                    "refs": [
+                      {
+                        "ref": "refs/heads/fix/login-timeout",
+                        "base": "9d0e1aa4c8f2b7e6d5a4c3b2a1f0e9d8c7b6a5f4",
+                        "ours": "c47f2b8e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a",
+                        "theirs": "9d0e1aa4c8f2b7e6d5a4c3b2a1f0e9d8c7b6a5f4",
+                        "action": "push",
+                        "decision": null
+                      },
+                      {
+                        "ref": "refs/heads/main",
+                        "base": "41c9e02b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d",
+                        "ours": "e01d9a37f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c1",
+                        "theirs": "41c9e02b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d",
+                        "action": "pull_request",
+                        "decision": null
+                      },
+                      {
+                        "ref": "refs/heads/docs/readme",
+                        "base": "7f3a1c2d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b",
+                        "ours": "5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c",
+                        "theirs": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+                        "action": "diverged",
+                        "decision": null
+                      }
+                    ],
+                    "reachable": true,
+                    "ready": false
+                  },
+                  "can_manage": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "acme",
+          "name": "web"
+        }
+      },
+      "post": {
+        "operationId": "hand_back_mirror",
+        "tags": [
+          "Mirroring"
+        ],
+        "summary": "Hand a takeover back",
+        "description": "Hand a takeover back to the remote, as get_hand_back_plan describes, with `decisions` for diverged refs: an object from ref (`refs/heads/docs`) to `keep_ours` (g1t's commit is pushed over the remote's), `keep_theirs` (the remote's is taken; g1t's is kept under `refs/g1t/replaced/`) or `pull_request`. Refused while the remote does not answer or a diverged ref has no decision. The repository is read-only while it goes back; if anything is refused, g1t keeps the lead and says why. On success the mirror stands by again, and `notes` lists the pull requests opened. Needs the Admin role.\n\nBranch names work as keys too: `{ \"docs/readme\": \"keep_theirs\" }`.",
+        "x-operation": "hand_back_mirror",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "mirror_hand_back",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "remotes": [
+                    {
+                      "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+                      "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+                      "repo": "acme/web",
+                      "provider": "github",
+                      "role": "leader",
+                      "name": "github.com/acme/web",
+                      "url": "https://github.com/acme/web",
+                      "state": "standby",
+                      "state_since": "2026-10-08T13:58:00.000Z",
+                      "state_by": "syntaqx",
+                      "reachable": true,
+                      "unreachable_since": null,
+                      "synced_at": "2026-10-08T13:57:42.000Z",
+                      "last_error": null,
+                      "settings": {
+                        "notify": "banner",
+                        "take_over_after": null,
+                        "hand_back": "when_clean",
+                        "keep_ci_warm": false,
+                        "github_workflows": true,
+                        "hold_deploys": true,
+                        "remote_pushes": "adopt"
+                      },
+                      "created_at": "2026-10-05T10:00:00.000Z"
+                    }
+                  ],
+                  "plan": null,
+                  "can_manage": true,
+                  "notes": [
+                    "main: opened https://github.com/acme/web/pull/1290",
+                    "docs/readme: opened https://github.com/acme/web/pull/1291"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decisions": {
+                    "type": "object",
+                    "description": "For each diverged ref, by its full name: keep_ours, keep_theirs or pull_request.",
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": [
+                        "keep_ours",
+                        "keep_theirs",
+                        "pull_request"
+                      ]
+                    }
+                  }
+                }
+              },
+              "example": {
+                "decisions": {
+                  "refs/heads/docs/readme": "pull_request"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "acme",
+          "name": "web"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/mirror/take-over": {
+      "post": {
+        "operationId": "take_over_mirror",
+        "tags": [
+          "Mirroring"
+        ],
+        "summary": "Take over a mirror",
+        "description": "Take over a mirror: g1t leads it for now, so pushes, pull requests, issues, agents and workflows work on g1t, whether or not the remote is answering. Each ref's commit is recorded as where the takeover began. Workflows that deploy wait for approval, unless the link's settings say otherwise. End it with hand_back_mirror, or keep it with move_mirror_to_g1t. Needs the Admin role.",
+        "x-operation": "take_over_mirror",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "mirror_take_over",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "remotes": [
+                    {
+                      "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+                      "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+                      "repo": "acme/web",
+                      "provider": "github",
+                      "role": "leader",
+                      "name": "github.com/acme/web",
+                      "url": "https://github.com/acme/web",
+                      "state": "takeover",
+                      "state_since": "2026-10-08T13:58:00.000Z",
+                      "state_by": "syntaqx",
+                      "reachable": false,
+                      "unreachable_since": "2026-10-08T14:04:00.000Z",
+                      "synced_at": "2026-10-08T13:57:42.000Z",
+                      "last_error": null,
+                      "settings": {
+                        "notify": "banner",
+                        "take_over_after": null,
+                        "hand_back": "when_clean",
+                        "keep_ci_warm": false,
+                        "github_workflows": true,
+                        "hold_deploys": true,
+                        "remote_pushes": "adopt"
+                      },
+                      "created_at": "2026-10-05T10:00:00.000Z"
+                    }
+                  ],
+                  "plan": null,
+                  "can_manage": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "acme",
+          "name": "web"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/mirror/ci": {
+      "post": {
+        "operationId": "set_ci_failover",
+        "tags": [
+          "Mirroring"
+        ],
+        "summary": "Start or end CI failover",
+        "description": "Start (`on: true`) or end (`on: false`) CI failover on a mirror standing by: the remote keeps the code, and g1t runs its workflows, `.github/workflows` as well as `.g1t/workflows`, on each push copied in. Workflows that deploy wait for approval unless the link's settings say otherwise. Needs the Admin role.",
+        "x-operation": "set_ci_failover",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "mirror_ci",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "remotes": [
+                    {
+                      "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+                      "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+                      "repo": "acme/web",
+                      "provider": "github",
+                      "role": "leader",
+                      "name": "github.com/acme/web",
+                      "url": "https://github.com/acme/web",
+                      "state": "ci",
+                      "state_since": "2026-10-08T13:58:00.000Z",
+                      "state_by": "syntaqx",
+                      "reachable": true,
+                      "unreachable_since": null,
+                      "synced_at": "2026-10-08T13:57:42.000Z",
+                      "last_error": null,
+                      "settings": {
+                        "notify": "banner",
+                        "take_over_after": null,
+                        "hand_back": "when_clean",
+                        "keep_ci_warm": false,
+                        "github_workflows": true,
+                        "hold_deploys": true,
+                        "remote_pushes": "adopt"
+                      },
+                      "created_at": "2026-10-05T10:00:00.000Z"
+                    }
+                  ],
+                  "plan": null,
+                  "can_manage": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "on": {
+                    "type": "boolean",
+                    "description": "True to start CI failover, false to end it."
+                  }
+                },
+                "required": [
+                  "on"
+                ]
+              },
+              "example": {
+                "on": true
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "acme",
+          "name": "web"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/mirror/move-to-g1t": {
+      "post": {
+        "operationId": "move_mirror_to_g1t",
+        "tags": [
+          "Mirroring"
+        ],
+        "summary": "Move a mirror to g1t",
+        "description": "Move a mirror to g1t for good: it stops being a mirror and g1t no longer tracks the remote, so pushes made there no longer come here. Allowed while it stands by, in CI failover, or during a takeover, whose work stays as it is. With `keep_remote_updated: true` the remote becomes a follower instead of being unlinked, and g1t pushes to it from then on. Needs the Admin role; agents' tokens are refused.\n\nWith `keep_remote_updated: true` the remote stays in `remotes` as a follower, and g1t pushes to it from then on.",
+        "x-operation": "move_mirror_to_g1t",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "mirror_move_to_g1t",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "remotes": [],
+                  "plan": null,
+                  "can_manage": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "keep_remote_updated": {
+                    "type": "boolean",
+                    "description": "True to keep pushing to the remote from g1t; false (the default) to stop tracking it."
+                  }
+                }
+              },
+              "example": {
+                "keep_remote_updated": false
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "acme",
+          "name": "web"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/mirror/sync": {
+      "post": {
+        "operationId": "sync_mirror",
+        "tags": [
+          "Mirroring"
+        ],
+        "summary": "Sync a repository's remotes",
+        "description": "Bring a repository's remotes in step now: a mirror standing by or in CI failover copies the remote's branches and tags in; each follower is pushed g1t's (which also clears a follower that was stuck by pushing over what changed there). Needs push access.",
+        "x-operation": "sync_mirror",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "mirror_sync",
+        "x-scope": "code:write",
+        "security": [
+          {
+            "token": [
+              "code:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "remotes": [
+                    {
+                      "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+                      "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+                      "repo": "acme/web",
+                      "provider": "github",
+                      "role": "leader",
+                      "name": "github.com/acme/web",
+                      "url": "https://github.com/acme/web",
+                      "state": "standby",
+                      "state_since": "2026-10-08T13:58:00.000Z",
+                      "state_by": "syntaqx",
+                      "reachable": true,
+                      "unreachable_since": null,
+                      "synced_at": "2026-10-08T13:57:42.000Z",
+                      "last_error": null,
+                      "settings": {
+                        "notify": "banner",
+                        "take_over_after": null,
+                        "hand_back": "when_clean",
+                        "keep_ci_warm": false,
+                        "github_workflows": true,
+                        "hold_deploys": true,
+                        "remote_pushes": "adopt"
+                      },
+                      "created_at": "2026-10-05T10:00:00.000Z"
+                    }
+                  ],
+                  "plan": null,
+                  "can_manage": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "acme",
+          "name": "web"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/mirror/remotes": {
+      "post": {
+        "operationId": "add_mirror_remote",
+        "tags": [
+          "Mirroring"
+        ],
+        "summary": "Add a remote",
+        "description": "Link a repository to a remote on another g1t or any git host over HTTPS (GitHub repositories are linked by importing them through g1t's GitHub App). `role` `follower`: g1t leads and pushes to it. `role` `leader`: this repository becomes its mirror; only an empty repository can, and it is filled from the remote. `url` is its https clone address, `token` a token that can read and push (kept sealed, never returned), `username` the user it is sent as. Needs the Admin role; agents' tokens are refused.\n\nThe token is never returned. A remote that refused it, or could not be reached, is still added, with `last_error` saying why.",
+        "x-operation": "add_mirror_remote",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "mirror_add_remote",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rmt_01kp4b3c4d5e6f7g8h9j0k1m2n",
+                  "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+                  "repo": "acme/web",
+                  "provider": "g1t",
+                  "role": "follower",
+                  "name": "git.acme.internal/acme/web",
+                  "url": "https://git.acme.internal/acme/web",
+                  "state": "following",
+                  "state_since": "2026-10-08T13:58:00.000Z",
+                  "state_by": "syntaqx",
+                  "reachable": true,
+                  "unreachable_since": null,
+                  "synced_at": "2026-10-08T13:57:42.000Z",
+                  "last_error": null,
+                  "settings": {
+                    "notify": "banner",
+                    "take_over_after": null,
+                    "hand_back": "when_clean",
+                    "keep_ci_warm": false,
+                    "github_workflows": true,
+                    "hold_deploys": true,
+                    "remote_pushes": "adopt"
+                  },
+                  "created_at": "2026-10-05T10:00:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "g1t",
+                      "git"
+                    ],
+                    "description": "Another g1t (g1t.sh or your own), or any git host."
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "follower",
+                      "leader"
+                    ],
+                    "description": "follower: g1t leads and pushes to it. leader: this empty repository becomes its mirror."
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Its https clone address, such as https://g1t.sh/acme/web.git."
+                  },
+                  "username": {
+                    "type": "string",
+                    "description": "The user the token is sent as. x-access-token when left out."
+                  },
+                  "token": {
+                    "type": "string",
+                    "description": "A token that can read and push. Kept sealed; never returned."
+                  }
+                },
+                "required": [
+                  "provider",
+                  "role",
+                  "url",
+                  "token"
+                ]
+              },
+              "example": {
+                "provider": "g1t",
+                "role": "follower",
+                "url": "https://git.acme.internal/acme/web.git",
+                "username": "deploy",
+                "token": "g1t_…"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "acme",
+          "name": "web"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/mirror/remotes/{id}": {
+      "patch": {
+        "operationId": "update_mirror_remote",
+        "tags": [
+          "Mirroring"
+        ],
+        "summary": "Update a remote's settings",
+        "description": "Change a remote's `settings`, all optional: `notify` (`banner`, or `inbox` to also tell the workspace's owners), `take_over_after` (minutes, 5 to 1440, after which g1t takes over on its own while the remote does not answer; null for never), `hand_back` (`when_clean`: an automatic takeover goes back on its own once every ref goes back without a decision; `ask`), `keep_ci_warm` (run `.g1t/workflows` on pushes copied in while standing by), `github_workflows` (run `.github/workflows` in CI failover and takeovers), `hold_deploys`, and for a follower `remote_pushes` (`adopt` fast-forwards made there, or `overwrite` them). Needs the Admin role; agents' tokens are refused.",
+        "x-operation": "update_mirror_remote",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "mirror_update_remote",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The remote's id (rmt_…), from get_mirror."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+                  "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+                  "repo": "acme/web",
+                  "provider": "github",
+                  "role": "leader",
+                  "name": "github.com/acme/web",
+                  "url": "https://github.com/acme/web",
+                  "state": "standby",
+                  "state_since": "2026-10-08T13:58:00.000Z",
+                  "state_by": "syntaqx",
+                  "reachable": true,
+                  "unreachable_since": null,
+                  "synced_at": "2026-10-08T13:57:42.000Z",
+                  "last_error": null,
+                  "settings": {
+                    "notify": "inbox",
+                    "take_over_after": 30,
+                    "hand_back": "when_clean",
+                    "keep_ci_warm": false,
+                    "github_workflows": true,
+                    "hold_deploys": true,
+                    "remote_pushes": "adopt"
+                  },
+                  "created_at": "2026-10-05T10:00:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "notify": {
+                    "type": "string",
+                    "enum": [
+                      "banner",
+                      "inbox"
+                    ]
+                  },
+                  "take_over_after": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 5,
+                    "maximum": 1440
+                  },
+                  "hand_back": {
+                    "type": "string",
+                    "enum": [
+                      "when_clean",
+                      "ask"
+                    ]
+                  },
+                  "keep_ci_warm": {
+                    "type": "boolean"
+                  },
+                  "github_workflows": {
+                    "type": "boolean"
+                  },
+                  "hold_deploys": {
+                    "type": "boolean"
+                  },
+                  "remote_pushes": {
+                    "type": "string",
+                    "enum": [
+                      "adopt",
+                      "overwrite"
+                    ]
+                  }
+                }
+              },
+              "example": {
+                "notify": "inbox",
+                "take_over_after": 30
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "acme",
+          "name": "web",
+          "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m"
+        }
+      },
+      "delete": {
+        "operationId": "remove_mirror_remote",
+        "tags": [
+          "Mirroring"
+        ],
+        "summary": "Remove a remote",
+        "description": "Unlink a remote. A mirror becomes an ordinary repository with what it has; a follower is no longer pushed to. Refused during a takeover: hand it back or move it to g1t first. Needs the Admin role; agents' tokens are refused.",
+        "x-operation": "remove_mirror_remote",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "mirror_remove_remote",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The remote's id (rmt_…), from get_mirror."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": true
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "acme",
+          "name": "web",
+          "id": "rmt_01kp4b3c4d5e6f7g8h9j0k1m2n"
         }
       }
     },
@@ -38600,7 +40122,11 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
-                        "vulnerability_alert.reopened"
+                        "vulnerability_alert.reopened",
+                        "mirror.unreachable",
+                        "mirror.reachable",
+                        "mirror.state_changed",
+                        "mirror.moved_in"
                       ]
                     },
                     "description": "Event types to send. All of them if left out."
@@ -38870,7 +40396,11 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
-                        "vulnerability_alert.reopened"
+                        "vulnerability_alert.reopened",
+                        "mirror.unreachable",
+                        "mirror.reachable",
+                        "mirror.state_changed",
+                        "mirror.moved_in"
                       ]
                     }
                   },
@@ -39786,7 +41316,11 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
-                        "vulnerability_alert.reopened"
+                        "vulnerability_alert.reopened",
+                        "mirror.unreachable",
+                        "mirror.reachable",
+                        "mirror.state_changed",
+                        "mirror.moved_in"
                       ]
                     },
                     "description": "Event types to send. All of them if left out."
@@ -40042,7 +41576,11 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
-                        "vulnerability_alert.reopened"
+                        "vulnerability_alert.reopened",
+                        "mirror.unreachable",
+                        "mirror.reachable",
+                        "mirror.state_changed",
+                        "mirror.moved_in"
                       ]
                     }
                   },

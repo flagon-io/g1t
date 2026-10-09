@@ -400,7 +400,7 @@ impl<S: GitStore> Repos<S> {
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
         }
-        if let Some((code, message)) = crate::lifecycle::archived_refusal(&target) {
+        if let Some((code, message)) = crate::lifecycle::read_only_refusal(&target) {
             return Ok(Outcome::fail(code, message));
         }
         // Moving between namespaces: wait for it (moves.rs). Both are read

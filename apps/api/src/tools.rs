@@ -21,6 +21,7 @@ use serde_json::{Map, Value, json};
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deploy_keys::DeployKeysOp;
+use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::packages::PackagesOp;
 use crate::protection::ProtectionOp;
@@ -67,7 +68,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "repository",
         title: "Repositories",
-        description: "Repositories: find, read and create them, change their settings and rulesets (what may happen to branches and tags, and what a pull request needs to merge), check their CODEOWNERS file, manage their labels and milestones, see and dismiss their security alerts (secrets and vulnerable dependencies), read what their default branch says (languages, contributors, license), star them, and publish releases. Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
+        description: "Repositories: find, read and create them, change their settings and rulesets (what may happen to branches and tags, and what a pull request needs to merge), check their CODEOWNERS file, manage their labels and milestones, see and dismiss their security alerts (secrets and vulnerable dependencies), read what their default branch says (languages, contributors, license), star them, publish releases, and look after their mirroring (take a mirror over, hand it back, or move it to g1t for good). Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
         default_action: None,
         actions: &[
             a("list", Op::ListRepos, "Repositories you can see"),
@@ -114,6 +115,16 @@ pub const TOOLS: &[Tool] = &[
             a("rename_branch", Op::RenameBranch, "Rename a branch"),
             a("rename", Op::RenameRepo, "Rename it; old addresses redirect"),
             a("transfer", Op::TransferRepo, "Move it to another workspace you own"),
+            a("mirror", Op::Mirrors(MirrorsOp::GetMirror), "Its remotes: what it mirrors or is mirrored to"),
+            a("mirror_hand_back_plan", Op::Mirrors(MirrorsOp::GetHandBackPlan), "What handing a takeover back would do, ref by ref"),
+            a("mirror_take_over", Op::Mirrors(MirrorsOp::TakeOver), "Make g1t lead a mirror for now"),
+            a("mirror_ci", Op::Mirrors(MirrorsOp::SetCiFailover), "Run a mirror's workflows on g1t (on), or stop (off)"),
+            a("mirror_hand_back", Op::Mirrors(MirrorsOp::HandBack), "Send a takeover back, deciding diverged refs"),
+            a("mirror_move_to_g1t", Op::Mirrors(MirrorsOp::MoveToG1t), "Stop tracking the remote; g1t leads for good"),
+            a("mirror_sync", Op::Mirrors(MirrorsOp::SyncMirror), "Bring its remotes in step now"),
+            a("mirror_add_remote", Op::Mirrors(MirrorsOp::AddRemote), "Link another g1t or git host"),
+            a("mirror_update_remote", Op::Mirrors(MirrorsOp::UpdateRemote), "Change a remote's settings"),
+            a("mirror_remove_remote", Op::Mirrors(MirrorsOp::RemoveRemote), "Unlink a remote"),
             a("archive", Op::ArchiveRepo, "Make it read-only"),
             a("unarchive", Op::UnarchiveRepo, "Make it writable again"),
             a("set_visibility", Op::SetRepoVisibility, "Make it public or private"),

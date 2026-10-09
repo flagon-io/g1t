@@ -12221,5 +12221,377 @@
         }
       ]
     }
+  },
+  "get_mirror": {
+    "params": {
+      "owner": "acme",
+      "name": "web"
+    },
+    "response": {
+      "remotes": [
+        {
+          "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+          "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+          "repo": "acme/web",
+          "provider": "github",
+          "role": "leader",
+          "name": "github.com/acme/web",
+          "url": "https://github.com/acme/web",
+          "state": "standby",
+          "state_since": "2026-10-08T13:58:00.000Z",
+          "state_by": "syntaqx",
+          "reachable": true,
+          "unreachable_since": null,
+          "synced_at": "2026-10-08T13:57:42.000Z",
+          "last_error": null,
+          "settings": {
+            "notify": "banner",
+            "take_over_after": null,
+            "hand_back": "when_clean",
+            "keep_ci_warm": false,
+            "github_workflows": true,
+            "hold_deploys": true,
+            "remote_pushes": "adopt"
+          },
+          "created_at": "2026-10-05T10:00:00.000Z"
+        }
+      ],
+      "plan": null,
+      "can_manage": true
+    },
+    "notes": "A repository that leads lists its followers instead, each `role: follower` with `state` `following` or `stuck`. A mirror standing by is read-only on g1t: pushes, merges, issues, pull requests and agents are refused, and nothing runs. `reachable` is false once the remote's host has failed three checks over two minutes; by default that is only shown, and nothing happens on its own."
+  },
+  "get_hand_back_plan": {
+    "params": {
+      "owner": "acme",
+      "name": "web"
+    },
+    "response": {
+      "remotes": [
+        {
+          "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+          "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+          "repo": "acme/web",
+          "provider": "github",
+          "role": "leader",
+          "name": "github.com/acme/web",
+          "url": "https://github.com/acme/web",
+          "state": "takeover",
+          "state_since": "2026-10-08T13:58:00.000Z",
+          "state_by": "syntaqx",
+          "reachable": true,
+          "unreachable_since": null,
+          "synced_at": "2026-10-08T13:57:42.000Z",
+          "last_error": null,
+          "settings": {
+            "notify": "banner",
+            "take_over_after": null,
+            "hand_back": "when_clean",
+            "keep_ci_warm": false,
+            "github_workflows": true,
+            "hold_deploys": true,
+            "remote_pushes": "adopt"
+          },
+          "created_at": "2026-10-05T10:00:00.000Z"
+        }
+      ],
+      "plan": {
+        "refs": [
+          {
+            "ref": "refs/heads/fix/login-timeout",
+            "base": "9d0e1aa4c8f2b7e6d5a4c3b2a1f0e9d8c7b6a5f4",
+            "ours": "c47f2b8e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a",
+            "theirs": "9d0e1aa4c8f2b7e6d5a4c3b2a1f0e9d8c7b6a5f4",
+            "action": "push",
+            "decision": null
+          },
+          {
+            "ref": "refs/heads/main",
+            "base": "41c9e02b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d",
+            "ours": "e01d9a37f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c1",
+            "theirs": "41c9e02b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d",
+            "action": "pull_request",
+            "decision": null
+          },
+          {
+            "ref": "refs/heads/docs/readme",
+            "base": "7f3a1c2d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b",
+            "ours": "5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c",
+            "theirs": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+            "action": "diverged",
+            "decision": null
+          }
+        ],
+        "reachable": true,
+        "ready": false
+      },
+      "can_manage": true
+    },
+    "notes": "Refs that did not move on either side are left out. `ready` stays false until `docs/readme` has a decision."
+  },
+  "take_over_mirror": {
+    "params": {
+      "owner": "acme",
+      "name": "web"
+    },
+    "response": {
+      "remotes": [
+        {
+          "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+          "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+          "repo": "acme/web",
+          "provider": "github",
+          "role": "leader",
+          "name": "github.com/acme/web",
+          "url": "https://github.com/acme/web",
+          "state": "takeover",
+          "state_since": "2026-10-08T13:58:00.000Z",
+          "state_by": "syntaqx",
+          "reachable": false,
+          "unreachable_since": "2026-10-08T14:04:00.000Z",
+          "synced_at": "2026-10-08T13:57:42.000Z",
+          "last_error": null,
+          "settings": {
+            "notify": "banner",
+            "take_over_after": null,
+            "hand_back": "when_clean",
+            "keep_ci_warm": false,
+            "github_workflows": true,
+            "hold_deploys": true,
+            "remote_pushes": "adopt"
+          },
+          "created_at": "2026-10-05T10:00:00.000Z"
+        }
+      ],
+      "plan": null,
+      "can_manage": true
+    }
+  },
+  "set_ci_failover": {
+    "params": {
+      "owner": "acme",
+      "name": "web"
+    },
+    "request": {
+      "on": true
+    },
+    "response": {
+      "remotes": [
+        {
+          "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+          "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+          "repo": "acme/web",
+          "provider": "github",
+          "role": "leader",
+          "name": "github.com/acme/web",
+          "url": "https://github.com/acme/web",
+          "state": "ci",
+          "state_since": "2026-10-08T13:58:00.000Z",
+          "state_by": "syntaqx",
+          "reachable": true,
+          "unreachable_since": null,
+          "synced_at": "2026-10-08T13:57:42.000Z",
+          "last_error": null,
+          "settings": {
+            "notify": "banner",
+            "take_over_after": null,
+            "hand_back": "when_clean",
+            "keep_ci_warm": false,
+            "github_workflows": true,
+            "hold_deploys": true,
+            "remote_pushes": "adopt"
+          },
+          "created_at": "2026-10-05T10:00:00.000Z"
+        }
+      ],
+      "plan": null,
+      "can_manage": true
+    }
+  },
+  "hand_back_mirror": {
+    "params": {
+      "owner": "acme",
+      "name": "web"
+    },
+    "request": {
+      "decisions": {
+        "refs/heads/docs/readme": "pull_request"
+      }
+    },
+    "response": {
+      "remotes": [
+        {
+          "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+          "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+          "repo": "acme/web",
+          "provider": "github",
+          "role": "leader",
+          "name": "github.com/acme/web",
+          "url": "https://github.com/acme/web",
+          "state": "standby",
+          "state_since": "2026-10-08T13:58:00.000Z",
+          "state_by": "syntaqx",
+          "reachable": true,
+          "unreachable_since": null,
+          "synced_at": "2026-10-08T13:57:42.000Z",
+          "last_error": null,
+          "settings": {
+            "notify": "banner",
+            "take_over_after": null,
+            "hand_back": "when_clean",
+            "keep_ci_warm": false,
+            "github_workflows": true,
+            "hold_deploys": true,
+            "remote_pushes": "adopt"
+          },
+          "created_at": "2026-10-05T10:00:00.000Z"
+        }
+      ],
+      "plan": null,
+      "can_manage": true,
+      "notes": [
+        "main: opened https://github.com/acme/web/pull/1290",
+        "docs/readme: opened https://github.com/acme/web/pull/1291"
+      ]
+    },
+    "notes": "Branch names work as keys too: `{ \"docs/readme\": \"keep_theirs\" }`."
+  },
+  "move_mirror_to_g1t": {
+    "params": {
+      "owner": "acme",
+      "name": "web"
+    },
+    "request": {
+      "keep_remote_updated": false
+    },
+    "response": {
+      "remotes": [],
+      "plan": null,
+      "can_manage": true
+    },
+    "notes": "With `keep_remote_updated: true` the remote stays in `remotes` as a follower, and g1t pushes to it from then on."
+  },
+  "sync_mirror": {
+    "params": {
+      "owner": "acme",
+      "name": "web"
+    },
+    "response": {
+      "remotes": [
+        {
+          "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+          "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+          "repo": "acme/web",
+          "provider": "github",
+          "role": "leader",
+          "name": "github.com/acme/web",
+          "url": "https://github.com/acme/web",
+          "state": "standby",
+          "state_since": "2026-10-08T13:58:00.000Z",
+          "state_by": "syntaqx",
+          "reachable": true,
+          "unreachable_since": null,
+          "synced_at": "2026-10-08T13:57:42.000Z",
+          "last_error": null,
+          "settings": {
+            "notify": "banner",
+            "take_over_after": null,
+            "hand_back": "when_clean",
+            "keep_ci_warm": false,
+            "github_workflows": true,
+            "hold_deploys": true,
+            "remote_pushes": "adopt"
+          },
+          "created_at": "2026-10-05T10:00:00.000Z"
+        }
+      ],
+      "plan": null,
+      "can_manage": true
+    }
+  },
+  "add_mirror_remote": {
+    "params": {
+      "owner": "acme",
+      "name": "web"
+    },
+    "request": {
+      "provider": "g1t",
+      "role": "follower",
+      "url": "https://git.acme.internal/acme/web.git",
+      "username": "deploy",
+      "token": "g1t_…"
+    },
+    "response": {
+      "id": "rmt_01kp4b3c4d5e6f7g8h9j0k1m2n",
+      "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+      "repo": "acme/web",
+      "provider": "g1t",
+      "role": "follower",
+      "name": "git.acme.internal/acme/web",
+      "url": "https://git.acme.internal/acme/web",
+      "state": "following",
+      "state_since": "2026-10-08T13:58:00.000Z",
+      "state_by": "syntaqx",
+      "reachable": true,
+      "unreachable_since": null,
+      "synced_at": "2026-10-08T13:57:42.000Z",
+      "last_error": null,
+      "settings": {
+        "notify": "banner",
+        "take_over_after": null,
+        "hand_back": "when_clean",
+        "keep_ci_warm": false,
+        "github_workflows": true,
+        "hold_deploys": true,
+        "remote_pushes": "adopt"
+      },
+      "created_at": "2026-10-05T10:00:00.000Z"
+    },
+    "notes": "The token is never returned. A remote that refused it, or could not be reached, is still added, with `last_error` saying why."
+  },
+  "update_mirror_remote": {
+    "params": {
+      "owner": "acme",
+      "name": "web",
+      "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m"
+    },
+    "request": {
+      "notify": "inbox",
+      "take_over_after": 30
+    },
+    "response": {
+      "id": "rmt_01kp4a2b3c4d5e6f7g8h9j0k1m",
+      "repo_id": "rep_01kp49z8y7x6w5v4t3s2r1q0pn",
+      "repo": "acme/web",
+      "provider": "github",
+      "role": "leader",
+      "name": "github.com/acme/web",
+      "url": "https://github.com/acme/web",
+      "state": "standby",
+      "state_since": "2026-10-08T13:58:00.000Z",
+      "state_by": "syntaqx",
+      "reachable": true,
+      "unreachable_since": null,
+      "synced_at": "2026-10-08T13:57:42.000Z",
+      "last_error": null,
+      "settings": {
+        "notify": "inbox",
+        "take_over_after": 30,
+        "hand_back": "when_clean",
+        "keep_ci_warm": false,
+        "github_workflows": true,
+        "hold_deploys": true,
+        "remote_pushes": "adopt"
+      },
+      "created_at": "2026-10-05T10:00:00.000Z"
+    }
+  },
+  "remove_mirror_remote": {
+    "params": {
+      "owner": "acme",
+      "name": "web",
+      "id": "rmt_01kp4b3c4d5e6f7g8h9j0k1m2n"
+    },
+    "response": true
   }
 }

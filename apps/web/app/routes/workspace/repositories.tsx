@@ -247,6 +247,11 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
                       </Link>
                       <Badge>{repo.isPrivate ? "private" : "public"}</Badge>
                       {repo.archivedAt && <Badge tone="warn">archived</Badge>}
+                      {repo.mirror && (
+                        <Badge tone={repo.mirror.state === "takeover" || repo.mirror.state === "handing_back" ? "warn" : "neutral"}>
+                          {repo.mirror.state === "takeover" ? "taken over" : repo.mirror.state === "handing_back" ? "handing back" : "mirror"}
+                        </Badge>
+                      )}
                     </div>
                     {repo.description && <p className="mt-0.5 line-clamp-2 text-sm text-muted">{repo.description}</p>}
                     <p className="mt-1 text-xs text-faint">

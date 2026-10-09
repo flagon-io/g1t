@@ -5,6 +5,7 @@ use serde_json::{Map, Value};
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deploy_keys::DeployKeysOp;
+use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::packages::PackagesOp;
 use crate::protection::ProtectionOp;
@@ -84,6 +85,17 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/repos/:owner/:name/keys", Op::DeployKeys(DeployKeysOp::CreateDeployKey), &[]),
     route("GET", "/repos/:owner/:name/keys/:id", Op::DeployKeys(DeployKeysOp::GetDeployKey), &[]),
     route("DELETE", "/repos/:owner/:name/keys/:id", Op::DeployKeys(DeployKeysOp::DeleteDeployKey), &[]),
+    // Mirroring: a repository's remotes, takeovers and hand-backs.
+    route("GET", "/repos/:owner/:name/mirror", Op::Mirrors(MirrorsOp::GetMirror), &[]),
+    route("GET", "/repos/:owner/:name/mirror/hand-back", Op::Mirrors(MirrorsOp::GetHandBackPlan), &[]),
+    route("POST", "/repos/:owner/:name/mirror/take-over", Op::Mirrors(MirrorsOp::TakeOver), &[]),
+    route("POST", "/repos/:owner/:name/mirror/ci", Op::Mirrors(MirrorsOp::SetCiFailover), &[]),
+    route("POST", "/repos/:owner/:name/mirror/hand-back", Op::Mirrors(MirrorsOp::HandBack), &[]),
+    route("POST", "/repos/:owner/:name/mirror/move-to-g1t", Op::Mirrors(MirrorsOp::MoveToG1t), &[]),
+    route("POST", "/repos/:owner/:name/mirror/sync", Op::Mirrors(MirrorsOp::SyncMirror), &[]),
+    route("POST", "/repos/:owner/:name/mirror/remotes", Op::Mirrors(MirrorsOp::AddRemote), &[]),
+    route("PATCH", "/repos/:owner/:name/mirror/remotes/:id", Op::Mirrors(MirrorsOp::UpdateRemote), &[]),
+    route("DELETE", "/repos/:owner/:name/mirror/remotes/:id", Op::Mirrors(MirrorsOp::RemoveRemote), &[]),
     // Your notifications: threads, marking them, and what you subscribe
     // to and watch. GitHub's addresses, with g1t's saved and snoozed.
     route("GET", "/notifications", Op::ListNotifications, &[("all", "all"), ("participating", "participating"), ("view", "view"), ("reason", "reason"), ("severity", "severity"), ("since", "since"), ("before", "before"), ("cursor", "cursor"), ("per_page", "per_page")]),

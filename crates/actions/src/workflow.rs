@@ -10,7 +10,9 @@ use crate::permissions::{self, Permissions};
 
 /// Where workflows live: GitHub's `.github/workflows`, under g1t's own
 /// folder, so moving a repository to g1t is renaming `.github` to `.g1t`.
-/// g1t never reads `.github`, which stays GitHub's.
+/// g1t reads `.github` only for a mirror of a GitHub repository in CI
+/// failover or taken over (services/actions/src/mirrored.rs); otherwise it
+/// stays GitHub's.
 pub const FOLDER: &str = ".g1t/workflows";
 
 /// The events a workflow can name that g1t starts runs for.
