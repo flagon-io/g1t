@@ -184,6 +184,31 @@ test("a reply can spin off a session and draft an issue; a session can't spin of
   assert.equal(session.maxCalls, MAX_SESSION_TOOL_CALLS);
 });
 
+test("hand_off: offered from chat, never in a session or at the hop limit; not to itself or its sender; two per reply", async () => {
+  const log: string[] = [];
+  const handing: ActionPorts = { ...actions(log), handOff: async (handle, brief) => (log.push(`hand_off:${handle}:${brief}`), { ok: true, message: "handed" }) };
+  const audience = await Audience.build("acme", "ann", audienceWorld({ kind: "dm", member_user_ids: ["ann"], member_count: 1 }, [member("ann")], { ann: [WEB.id] }));
+  const reply = new ToolBox(audience, readPorts, { ...ctx, notConsult: ["me", "g1t"] }, [], handing);
+  const names = reply.definitions().map((t) => t.name);
+  assert.ok(names.includes("hand_off") && names.includes("ask_colleague"));
+  const descriptions = Object.fromEntries(reply.definitions().map((t) => [t.name, t.description]));
+  assert.match(descriptions.hand_off, /only way to get a colleague working: an @mention in your message wakes nobody/);
+  assert.match(descriptions.ask_colleague, /quick question, privately/);
+  assert.match(descriptions.ask_colleague, /To give them the work itself, use hand_off/);
+  assert.equal((await reply.run("hand_off", { handle: "@me", brief: "x" })).outcome, "refused", "not to itself");
+  assert.equal((await reply.run("hand_off", { handle: "g1t", brief: "x" })).outcome, "refused", "not back to the one that sent it");
+  assert.equal((await reply.run("hand_off", { handle: "mike", brief: "" })).outcome, "refused", "a brief is needed");
+  assert.equal((await reply.run("hand_off", { handle: "@Mike", brief: "Draft the role brief." })).outcome, "allowed");
+  assert.equal((await reply.run("hand_off", { handle: "dot", brief: "Plan it." })).outcome, "allowed");
+  assert.equal((await reply.run("hand_off", { handle: "sam", brief: "Tell them." })).outcome, "refused", "two per reply");
+  assert.deepEqual(log, ["hand_off:mike:Draft the role brief.", "hand_off:dot:Plan it."]);
+  // Not in a session (bring_in is), and not at the hop limit.
+  assert.ok(!new ToolBox(audience, readPorts, { ...ctx, session: true }, [], handing).definitions().some((t) => t.name === "hand_off"));
+  assert.ok(!new ToolBox(audience, readPorts, { ...ctx, hops: 6 }, [], handing).definitions().some((t) => t.name === "hand_off"));
+  // Without the port (an old chat), it isn't offered.
+  assert.ok(!new ToolBox(audience, readPorts, ctx, [], actions(log)).definitions().some((t) => t.name === "hand_off"));
+});
+
 test("nobody drafts issues for someone who can't read code, and no hand-offs at the hop limit", async () => {
   const log: string[] = [];
   const noCode = await Audience.build("acme", "cal", audienceWorld({ kind: "dm", member_user_ids: ["cal"], member_count: 1 }, [member("cal", false)], { cal: [WEB.id] }));

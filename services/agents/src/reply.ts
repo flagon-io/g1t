@@ -17,12 +17,13 @@
  * (with one short notice in the conversation, not repeated), skipped or
  * failed (with one short apology).
  */
-import { type AgentDelivery, type ServiceBinding, newId } from "@g1t/contracts";
+import { type AgentDelivery, type ServiceBinding, identityClient, newId } from "@g1t/contracts";
 
 import { CHAT_MAX_HOPS } from "../../../packages/contracts/src/chat.ts";
 import type { Tokens } from "./budget.ts";
+import { handOffPort } from "./handoff.ts";
 import { HISTORY_LIMIT, fixedHello, helloAsk, systemPrompt, turns } from "./prompt.ts";
-import { type Specialist, capMentions, orchestratorInstructions, orchestratorTier, rosterLines } from "./orchestrator.ts";
+import { type Specialist, orchestratorInstructions, orchestratorTier, rosterLines } from "./orchestrator.ts";
 import { type MeterEnv, metered } from "./meter.ts";
 import { type RecallPlace, memorySection, recall } from "./memory.ts";
 import { recallQuery, recallSection } from "./recall.ts";
@@ -331,7 +332,12 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
 
     // Read the conversation while showing that the agent is on it.
     // A hello has no conversation yet: it is asked to introduce itself.
-    const [, history] = await Promise.all([surface.typing(), delivery.hello ? Promise.resolve([]) : surface.history(HISTORY_LIMIT)]);
+    // And who is here: said every turn, so the agent knows who reads it and who doesn't.
+    const [, history, conversationHere] = await Promise.all([
+      surface.typing(),
+      delivery.hello ? Promise.resolve([]) : surface.history(HISTORY_LIMIT),
+      delivery.hello ? Promise.resolve(null) : surface.conversation(),
+    ]);
     const conversation = delivery.hello ? [{ role: "user" as const, content: helloAsk(delivery.asker?.username ?? null) }] : turns(history, row.id);
     if (!conversation.length) return await finish({ status: "skipped", error: "nothing to answer" });
     const author = askerIn(history, delivery);
@@ -408,6 +414,28 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
               return { ok: true, message: `Started the session "${session.title}"${cap}. Its card is in the conversation and it reports back there. Tell them in a sentence; don't do the work here.` };
             },
           });
+          // Work handed to a colleague: the only way an agent gets another working (handoff.ts).
+          const viewer = audience.asker;
+          actions.handOff = handOffPort({
+            self: { id: row.id, handle: row.handle },
+            chain,
+            asker: delivery.asker ?? null,
+            agent: async (handle) => {
+              const found = await db
+                .prepare(selectAgents("a.workspace_id = ?3 AND a.handle = ?4 AND a.archived_at IS NULL"))
+                .bind(...periods(now), row.workspace_id, handle)
+                .first<Row>();
+              if (!found) return null;
+              const agent = toAgent(found, now);
+              return { id: agent.id, handle: agent.handle, display_name: agent.display_name, builtin: !!found.builtin, status: agent.status };
+            },
+            person: async (handle) => {
+              if (!viewer) return false;
+              const members = await identityClient(env.IDENTITY).listMembers(slug, viewer);
+              return members.ok && members.value.some((m) => m.username.toLowerCase() === handle);
+            },
+            handOff: (colleagueId, brief) => surface.handOff(colleagueId, brief),
+          });
           toolbox = new ToolBox(
             audience,
             ports(consult.ask),
@@ -446,6 +474,9 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
           // @g1t's team is in its job; everyone else is told who their colleagues are.
           colleagues: row.builtin ? null : rosterLines(specialists),
           recentSessions: recent,
+          conversation: conversationHere,
+          canHandOff: !!toolbox?.definitions().some((tool) => tool.name === "hand_off"),
+          handedOffBy: sender?.handle ?? null,
         }),
         memorySection(facts),
         recallSection(passages),
@@ -455,11 +486,8 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
       toolCalls = toolbox?.calls ?? [];
       const answer = await runTurn(model.send, { model: model.model.model, system, messages: conversation as ModelMessage[], tools: toolbox, price: model.ownModel ? null : model.model.price });
       // Post as soon as there is an answer; the bill is settled after.
-      if (answer.text) {
-        // At most two specialists woken by one of @g1t's messages: a rail, not only a rule in its prompt.
-        const text = row.builtin ? capMentions(answer.text, specialists.map((agent) => agent.handle)) : answer.text;
-        posted = await surface.post(text);
-      }
+      // It wakes nobody, @mentions or not: colleagues get work only through hand_off.
+      if (answer.text) posted = await surface.post(answer.text);
       return {
         text: answer.text,
         tokens: addTokens(answer.tokens, consulted.tokens),

@@ -5,6 +5,7 @@ import {
   CircleCheck,
   CircleDot,
   CircleDotDashed,
+  Forward,
   GitPullRequest,
   ListChecks,
   LoaderCircle,
@@ -61,6 +62,8 @@ const CARD_ICONS: Record<string, ReactNode> = {
   deploy: <Rocket size={16} />,
   approval: <ShieldCheck size={16} />,
   session: <Bot size={16} />,
+  // Where an agent handed the work: the group message it went to.
+  handoff: <Forward size={16} />,
 };
 
 /** Where a card's link goes for this viewer: a member without Code goes to the workspace's own view of it. */

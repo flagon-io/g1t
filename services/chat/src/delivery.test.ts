@@ -1,13 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { MAX_HOPS, deliveries, delivery } from "./delivery.ts";
+import { MAX_HOPS, chainFor, deliveries, delivery, handOffPlace, handOffRefusal } from "./delivery.ts";
 
 const ship = { id: "a1", handle: "ship" };
 const docs = { id: "a2", handle: "docs" };
 
 test("a person's direct message wakes every agent in it, at hop 0", () => {
   assert.deepEqual(deliveries({ author: "user:u", hops: 3, channelKind: "dm", agents: [ship, docs], mentioned: [] }), [
+    { agent_id: "a1", hops: 0 },
+    { agent_id: "a2", hops: 0 },
+  ]);
+});
+
+test("in a group direct message, a person who mentions some of its agents wakes only those", () => {
+  assert.deepEqual(deliveries({ author: "user:u", hops: 0, channelKind: "dm", agents: [ship, docs], mentioned: ["docs"] }), [{ agent_id: "a2", hops: 0 }]);
+  // Mentioning someone who isn't in it is no mention of its agents: all of them answer.
+  assert.deepEqual(deliveries({ author: "user:u", hops: 0, channelKind: "dm", agents: [ship, docs], mentioned: ["mike"] }), [
     { agent_id: "a1", hops: 0 },
     { agent_id: "a2", hops: 0 },
   ]);
@@ -21,29 +30,10 @@ test("in a channel, a person wakes only the agent members they mention", () => {
   );
 });
 
-test("an agent wakes other agents only by mentioning them, one hop further", () => {
-  // In a direct message with two agents, an agent's reply wakes nobody unless addressed.
+test("an agent's message wakes nobody, even when it @mentions an agent member", () => {
   assert.deepEqual(deliveries({ author: "agent:a1", hops: 0, channelKind: "dm", agents: [ship, docs], mentioned: [] }), []);
-  assert.deepEqual(
-    deliveries({ author: "agent:a1", hops: 2, channelKind: "channel", agents: [ship, docs], mentioned: ["docs"] }),
-    [{ agent_id: "a2", hops: 3 }],
-  );
-});
-
-test("an agent is never handed its own message", () => {
-  assert.deepEqual(
-    deliveries({ author: "agent:a1", hops: 0, channelKind: "channel", agents: [ship, docs], mentioned: ["ship"] }),
-    [],
-  );
-});
-
-test("a chain stops at the hop limit", () => {
-  const at = (hops: number) =>
-    deliveries({ author: "agent:a1", hops, channelKind: "channel", agents: [ship, docs], mentioned: ["docs"] });
-  assert.equal(MAX_HOPS, 6);
-  assert.deepEqual(at(MAX_HOPS - 1), [{ agent_id: "a2", hops: MAX_HOPS }]);
-  assert.deepEqual(at(MAX_HOPS), []);
-  assert.deepEqual(at(50), []);
+  assert.deepEqual(deliveries({ author: "agent:a1", hops: 0, channelKind: "dm", agents: [ship, docs], mentioned: ["docs"] }), []);
+  assert.deepEqual(deliveries({ author: "agent:a1", hops: 2, channelKind: "channel", agents: [ship, docs], mentioned: ["docs", "ship"] }), []);
 });
 
 test("a delivery carries the chain's asker on g1t's own chat, and the wake's hops", () => {
@@ -68,22 +58,25 @@ test("mentioning @g1t in a channel brings it in once; never into a DM", async ()
   assert.deepEqual(deliveries({ author: "user:u", hops: 0, channelKind: "channel", agents: [ship, g1t], mentioned: ["g1t"] }), [{ agent_id: "a9", hops: 0 }]);
 });
 
-test("no ping-pong: an agent's message never goes back to the agent that sent it the work", async () => {
-  const { chainFor, sender } = await import("./delivery.ts");
-  const g1t = { id: "a9", handle: "g1t" };
-  // g1t handed the work to ship; ship's reply mentions g1t and docs.
-  const chain = chainFor(["a9"], "a1");
-  assert.deepEqual(chain, ["a9", "a1"]);
-  assert.equal(sender(chain), "a9");
-  assert.deepEqual(
-    deliveries({ author: "agent:a1", hops: 1, channelKind: "channel", agents: [ship, docs, g1t], mentioned: ["g1t", "docs"], notTo: sender(chain) }),
-    [{ agent_id: "a2", hops: 2 }],
-  );
+test("a chain is the agents that handled a request, with the poster added", () => {
+  assert.deepEqual(chainFor(["a9"], "a1"), ["a9", "a1"]);
   assert.deepEqual(chainFor("nonsense", "a1"), ["a1"]);
-  assert.equal(sender(["a1"]), null, "a person sent it");
 });
 
-test("the hop limit holds along a chain of hand-offs", () => {
-  assert.deepEqual(deliveries({ author: "agent:a1", hops: MAX_HOPS - 1, channelKind: "channel", agents: [docs], mentioned: ["docs"] }), [{ agent_id: "a2", hops: MAX_HOPS }]);
-  assert.deepEqual(deliveries({ author: "agent:a1", hops: MAX_HOPS, channelKind: "channel", agents: [docs], mentioned: ["docs"] }), []);
+test("a hand-off goes here when the colleague is in this channel or group DM, else to a group DM", () => {
+  assert.equal(handOffPlace({ channelKind: "channel", members: 40, colleagueHere: true }), "here");
+  assert.equal(handOffPlace({ channelKind: "dm", members: 3, colleagueHere: true }), "here");
+  assert.equal(handOffPlace({ channelKind: "channel", members: 40, colleagueHere: false }), "group_dm");
+  // The 1:1 DM the user saw: @g1t and the person, Mike not in it.
+  assert.equal(handOffPlace({ channelKind: "dm", members: 2, colleagueHere: false }), "group_dm");
+});
+
+test("a hand-off is refused to itself, to @g1t, back along the chain, and past the hop limit", () => {
+  const ok = { agent: "a9", colleague: { id: "a1" }, chain: [], hops: 0 };
+  assert.equal(handOffRefusal(ok), null);
+  assert.match(handOffRefusal({ ...ok, colleague: { id: "a9" } })!, /itself/);
+  assert.match(handOffRefusal({ ...ok, agent: "a1", colleague: { id: "a9", builtin: true } })!, /@g1t/);
+  assert.match(handOffRefusal({ ...ok, agent: "a2", chain: ["a1", "a2"] })!, /already handled/);
+  assert.equal(handOffRefusal({ ...ok, hops: MAX_HOPS - 1 }), null);
+  assert.match(handOffRefusal({ ...ok, hops: MAX_HOPS })!, /too many times/);
 });

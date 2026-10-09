@@ -49,6 +49,7 @@ import { type RecallPlace, MAX_FACTS, cleanFact, memorySection, recall, scopeFor
 import { readPolicy } from "./policy.ts";
 import { type PortsEnv, audiencePorts, toolPorts } from "./ports.ts";
 import { systemPrompt } from "./prompt.ts";
+import { conversationFrom } from "./surface.ts";
 import { type Row, definitionOf, periods } from "./store.ts";
 import { type ActionPorts, type ToolCall, ToolBox } from "./tools.ts";
 import { type ModelMessage, SESSION_LIMITS, runTurn } from "./turn.ts";
@@ -787,10 +788,17 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
         recall(db, agent.id, place).catch(() => []),
         toolbox ? toolbox.recall(recallQuery(asked, 800), definition.reading ?? []) : Promise.resolve([]),
       ]);
-      const team = await db
-        .prepare("SELECT handle, display_name, role, title, team, department, responsibilities FROM agents WHERE workspace_id = ? AND archived_at IS NULL AND id <> ? ORDER BY builtin DESC, handle LIMIT 50")
-        .bind(agent.workspace_id, agent.id)
-        .all<{ handle: string; display_name: string; role: string; title: string; team: string | null; department: string; responsibilities: string }>();
+      const [team, here] = await Promise.all([
+        db
+          .prepare("SELECT handle, display_name, role, title, team, department, responsibilities FROM agents WHERE workspace_id = ? AND archived_at IS NULL AND id <> ? ORDER BY builtin DESC, handle LIMIT 50")
+          .bind(agent.workspace_id, agent.id)
+          .all<{ handle: string; display_name: string; role: string; title: string; team: string | null; department: string; responsibilities: string }>(),
+        // Who reads what this session posts: said every step, as in a reply. A helper may not be a member: then not said.
+        chatClient(env.CHAT)
+          .conversationForAgent(slug, current.channel_id, agent.id, current.asked_by)
+          .then((found) => (found.ok ? conversationFrom(found.value) : null))
+          .catch(() => null),
+      ]);
       const roster = rosterLines(
         team.results.map((a) => ({
           handle: a.handle,
@@ -816,6 +824,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
           tools: toolbox ? { code: toolbox.definitions().some((tool) => tool.name === "read_file") } : null,
           colleagues: roster,
           session: true,
+          conversation: here,
         }),
         sessionSection(current, current.asked_by_username ? `@${current.asked_by_username}` : "the person who asked"),
         memorySection(facts),

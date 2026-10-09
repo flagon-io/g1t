@@ -25,6 +25,7 @@ import {
   workspaceAgentsClient,
   type AgentDelivery,
   type AgentFoundMessage,
+  type AgentHandOff,
   type AgentPostMessage,
   type AskerAccess,
   type Channel,
@@ -43,7 +44,9 @@ import {
   type ChatSettingsView,
   type ChatSidebar,
   type ChatSidebarEntry,
-
+  CONVERSATION_PEOPLE_SHOWN,
+  type ConversationForAgent,
+  type HandOffResult,
   type Member,
   type MemberProfile,
   type CardActionResult,
@@ -61,7 +64,7 @@ import {
 } from "@g1t/contracts";
 
 import { audienceKind, isShared, likePattern, readableBy } from "./audience.ts";
-import { MAX_HOPS, addsOrchestrator, chainFor, deliveries, delivery, sender, type Chain } from "./delivery.ts";
+import { MAX_HOPS, addsOrchestrator, chainFor, deliveries, delivery, handOffPlace, handOffRefusal, type Chain, type Wake } from "./delivery.ts";
 import {
   MAX_REACTIONS_PER_MESSAGE,
   emojiImage,
@@ -76,7 +79,7 @@ import {
   type ReactionTally,
 } from "./emoji.ts";
 import { cleanCard } from "./cards.ts";
-import { mentionedHandles, mentionsColumn } from "./mentions.ts";
+import { mentionedHandles, mentionsColumn, plainOutside } from "./mentions.ts";
 import { AGENT_TYPING_MS, historyOf, historySize, messageBody, meterDay, pageOf, pageSize } from "./messages.ts";
 import { GENERAL, MAX_DM_MEMBERS, channelName, dmKey, dmMembers } from "./names.ts";
 import { ROOM_MEMBER_HEADER, type ChannelRoom, type RoomMember } from "./room.ts";
@@ -1046,13 +1049,15 @@ class Chat {
    * Writes a message and everything that follows from it: the thread's
    * reply count, the channel's last activity, the author's own read mark,
    * the meter; then, after answering, tells the room and wakes the agents
-   * it is for.
+   * it is for: those a person's message is for (src/delivery.ts), or, for
+   * an agent's, only `wake` (a hand-off's colleague), never by mention.
    */
   private async write(
     place: Place,
     author: string,
     input: { body: string; card: MessageCard | null; thread_root: string | null },
     chain: Chain<AskerAccess>,
+    wake: Wake[] = [],
   ): Promise<Result<ChatMessage>> {
     const { channel, workspace } = place;
     if (channel.archived_at) return fail("invalid", "This channel is archived.");
@@ -1064,13 +1069,15 @@ class Chat {
       threadRoot = root.thread_root ?? root.id;
     }
     const at = now();
-    const handles = mentionedHandles(input.body);
+    // An agent's mention of someone who isn't here reaches nobody, so it reads as a plain name.
+    const body = author.startsWith("agent:") ? await this.agentText(place, input.body) : input.body;
+    const handles = mentionedHandles(body);
     const row: MessageRow = {
       id: newId("msg"),
       channel_id: channel.id,
       author,
       kind: input.card ? "card" : "text",
-      body: input.body,
+      body,
       card: input.card ? JSON.stringify(input.card) : null,
       mentions: mentionsColumn(handles),
       thread_root: threadRoot,
@@ -1111,7 +1118,9 @@ class Chat {
     this.broadcast(channel.id, { type: "message.created", message });
     if (threadRoot) this.rebroadcast(place, threadRoot);
     this.defer(
-      this.wake(place, row, handles, chain).catch((error) => console.error("chat could not hand", row.id, "to agents", error)),
+      (wake.length ? this.deliverTo(place, row, chain, wake) : this.wake(place, row, handles, chain)).catch((error) =>
+        console.error("chat could not hand", row.id, "to agents", error),
+      ),
     );
     // Notify: counts for everyone in the conversation, a notification for those it is for.
     this.defer(
@@ -1125,8 +1134,8 @@ class Chat {
   /** Hands a new message to the agents it is for (src/delivery.ts). */
   private async wake(place: Place, row: MessageRow, handles: string[], chain: Chain<AskerAccess>): Promise<void> {
     const { channel, workspace } = place;
-    // Only an agent's message mentioning someone, or a person's, can wake anyone.
-    if (row.author.startsWith("agent:") && !handles.length) return;
+    // Only a person's message wakes anyone, and in a channel only by mention.
+    if (!row.author.startsWith("user:") || chain.quiet) return;
     if (channel.kind === "channel" && !handles.length) return;
     const members = await this.db
       .prepare("SELECT principal FROM channel_members WHERE channel_id = ? AND principal LIKE 'agent:%'")
@@ -1160,8 +1169,13 @@ class Chat {
       channelKind: channel.kind,
       agents: agents.map((agent) => ({ id: agent.id, handle: agent.handle })),
       mentioned: handles,
-      notTo: sender(chain.chain),
     });
+    await this.deliverTo(place, row, chain, wakes);
+  }
+
+  /** Hands a message to these agents (src/delivery.ts `delivery`). */
+  private async deliverTo(place: Place, row: { id: string; thread_root: string | null }, chain: Chain<AskerAccess>, wakes: Wake[]): Promise<void> {
+    const { channel, workspace } = place;
     const client = workspaceAgentsClient(this.env.AGENTS);
     await Promise.all(
       wakes.map((wake) =>
@@ -1205,8 +1219,8 @@ class Chat {
       place,
       me,
       { body: body.body, card: null, thread_root: a.message?.thread_root ?? null },
-      // A person's message starts a chain.
-      { hops: 0, asked_by: a.viewer!.id, asker: askerAccess(a.viewer!, a.workspace), chain: [] },
+      // A person's message starts a chain; a workflow job's token starts none.
+      { hops: 0, asked_by: a.viewer!.id, asker: askerAccess(a.viewer!, a.workspace), chain: [], quiet: !!a.viewer!.token?.job },
     );
   }
 
@@ -1329,6 +1343,121 @@ class Chat {
     );
   }
 
+  /** Everyone in a conversation, as member keys. */
+  private async memberKeys(channelId: string): Promise<string[]> {
+    const rows = await this.db.prepare("SELECT principal FROM channel_members WHERE channel_id = ?").bind(channelId).all<{ principal: string }>();
+    return rows.results.map((row) => row.principal);
+  }
+
+  /** An agent's text as it is kept: mentions of anyone not in the conversation lose their `@` (src/mentions.ts). */
+  private async agentText(place: Place, body: string): Promise<string> {
+    if (!body.includes("@")) return body;
+    const profiles = await this.profiles(place.slug, place.workspace, await this.memberKeys(place.channel.id));
+    return plainOutside(body, new Set([...profiles.values()].map((p) => p.name.toLowerCase())));
+  }
+
+  /** What an agent is told about where it is answering, every turn. */
+  async conversationForAgent(a: { workspace: string; channel_id: string; agent_id: string; asked_by?: string | null }): Promise<Result<ConversationForAgent>> {
+    const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
+    if (!found.ok) return found;
+    const { place } = found.value;
+    const rows = await this.db
+      .prepare("SELECT principal FROM channel_members WHERE channel_id = ? ORDER BY joined_at, principal")
+      .bind(place.channel.id)
+      .all<{ principal: string }>();
+    const keys = rows.results.map((row) => row.principal);
+    const agents = keys.filter((key) => key.startsWith("agent:"));
+    const people = keys.filter((key) => key.startsWith("user:"));
+    // The person who asked first, then the earliest to join, up to the cap.
+    const asker = typeof a.asked_by === "string" && a.asked_by ? `user:${a.asked_by}` : null;
+    const shown = [...(asker && people.includes(asker) ? [asker] : []), ...people.filter((key) => key !== asker)].slice(0, CONVERSATION_PEOPLE_SHOWN);
+    const profiles = await this.profiles(place.slug, place.workspace, [...agents, ...shown]);
+    return ok({
+      channel: toChannel(place.channel),
+      members: [...agents, ...shown].map((key) => profiles.get(key)!).filter(Boolean),
+      people: people.length,
+      agents: agents.length,
+    });
+  }
+
+  /**
+   * An agent hands work to a colleague agent for the person who asked
+   * (`handOffAsAgent` in @g1t/contracts). The brief is the agent's message,
+   * so everyone where it lands sees the work move; it wakes the colleague
+   * and nobody else.
+   */
+  async handOffAsAgent(a: { workspace: string; channel_id: string; agent_id: string; hand_off: AgentHandOff }): Promise<Result<HandOffResult>> {
+    const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
+    if (!found.ok) return found;
+    const { place, agent } = found.value;
+    const input = a.hand_off ?? ({} as AgentHandOff);
+    const brief = messageBody(input.brief);
+    if (!brief.ok) return fail("invalid", brief.message);
+    const colleague = await this.liveAgent(place.workspace, String(input.colleague_id ?? ""));
+    if (!colleague) return fail("not_found", "No such agent in this workspace.");
+    const given = typeof input.hops === "number" && input.hops >= 0 ? Math.floor(input.hops) : 0;
+    const before = chainFor(input.chain, agent.id).slice(0, -1);
+    const refused = handOffRefusal({ agent: agent.id, colleague, chain: before, hops: given });
+    if (refused) return fail("invalid", refused);
+    // Work is handed on for someone in this conversation, never for a stranger to it.
+    const askedBy = typeof input.asked_by === "string" ? input.asked_by : "";
+    const keys = await this.memberKeys(place.channel.id);
+    const askerKey = principalKey({ kind: "user", id: askedBy });
+    if (!askedBy || !keys.includes(askerKey)) return fail("forbidden", "Only the person who asked, in this conversation, can have work handed on.");
+    const me = principalKey({ kind: "agent", id: agent.id });
+    const them = principalKey({ kind: "agent", id: colleague.id });
+    const chain: Chain<AskerAccess> = { hops: given + 1, asked_by: askedBy, asker: cleanAsker(input.asker), chain: [...before, agent.id] };
+    const wake: Wake[] = [{ agent_id: colleague.id, hops: given + 1 }];
+    const threadRoot = typeof input.thread_root === "string" && input.thread_root ? input.thread_root : null;
+
+    if (handOffPlace({ channelKind: place.channel.kind, members: keys.length, colleagueHere: keys.includes(them) }) === "here") {
+      const posted = await this.write(place, me, { body: brief.body, card: null, thread_root: threadRoot }, chain, wake);
+      return posted.ok ? ok({ where: "here", channel_id: place.channel.id, message_id: posted.value.id, opened: false }) : posted;
+    }
+
+    // The group DM of the person, the agent and the colleague: the same three always get the same one.
+    if (!(await this.belongs(place.slug, place.workspace, { kind: "user", id: askedBy }))) {
+      return fail("forbidden", "Only members of the workspace can have work handed on to its agents.");
+    }
+    const members = dmMembers(askerKey, [me, them]);
+    const key = dmKey(members);
+    let dm = await this.db.prepare("SELECT * FROM channels WHERE workspace_id = ? AND dm_key = ?").bind(place.workspace.id, key).first<ChannelRow>();
+    const opened = !dm;
+    if (!dm) {
+      const at = now();
+      await this.db
+        .prepare("INSERT OR IGNORE INTO channels (id, workspace_id, kind, private, dm_key, created_by, created_at) VALUES (?, ?, 'dm', 1, ?, ?, ?)")
+        .bind(newId("chn"), place.workspace.id, key, askerKey, at)
+        .run();
+      dm = await this.db.prepare("SELECT * FROM channels WHERE workspace_id = ? AND dm_key = ?").bind(place.workspace.id, key).first<ChannelRow>();
+      if (!dm) return fail("conflict", "The group message could not be opened. Try again.");
+      await this.db.batch(members.map((member) => this.joinStatement(dm!.id, member, "member", at)));
+    }
+    const there: Place = { slug: place.slug, workspace: place.workspace, channel: dm, member: { channel_id: dm.id, principal: me } as MemberRow };
+    const posted = await this.write(there, me, { body: brief.body, card: null, thread_root: null }, chain, wake);
+    if (!posted.ok) return posted;
+    // Where the work went, here, where it was asked for. It wakes nobody.
+    const named = await this.profiles(place.slug, place.workspace, [askerKey]);
+    const person = named.get(askerKey);
+    await this.write(
+      place,
+      me,
+      {
+        body: "",
+        card: {
+          kind: "handoff",
+          title: `${agent.display_name} handed this to ${colleague.display_name}`,
+          detail: `${colleague.display_name} works on it in a group message with ${person ? person.display_name : "the person who asked"} and ${agent.display_name}.`,
+          state: null,
+          href: `/${place.slug}/-/chat/dm/${dm.id}`,
+        },
+        thread_root: threadRoot,
+      },
+      { ...chain, hops: given },
+    ).catch((error: unknown) => console.error("chat could not post where a hand-off went", error));
+    return ok({ where: "group_dm", channel_id: dm.id, message_id: posted.value.id, opened });
+  }
+
   /**
    * A person presses an action on a card. They must be able to read the
    * conversation; the card must offer the action; its owner (agents)
@@ -1384,7 +1513,7 @@ class Chat {
     const change = a.change ?? {};
     const card = change.card === undefined ? (row.card ? (JSON.parse(row.card) as MessageCard) : null) : change.card === null ? null : cleanCard(change.card);
     if (change.card && !card) return fail("invalid", "A card needs a kind and a title.");
-    const body = messageBody(change.body === undefined ? row.body : change.body, !!card);
+    const body = messageBody(change.body === undefined ? row.body : await this.agentText(place, String(change.body ?? "")), !!card);
     if (!body.ok) return fail("invalid", body.message);
     const cardJson = card ? JSON.stringify(card) : null;
     const at = now();
@@ -1905,6 +2034,10 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.historyForAgent(args));
     case "audience":
       return Response.json(await service.audience(args));
+    case "conversation_for_agent":
+      return Response.json(await service.conversationForAgent(args));
+    case "hand_off_as_agent":
+      return Response.json(await service.handOffAsAgent(args));
     case "search_for_agent":
       return Response.json(await service.searchForAgent(args));
     case "thread_for_agent":

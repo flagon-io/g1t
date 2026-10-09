@@ -150,9 +150,80 @@ test("every agent knows its colleagues: consult, offer hand-offs, steer, no ping
   assert.match(prompt, /## Your colleagues\n\n- @margo: QA Engineer/);
   assert.match(prompt, /ask_colleague/);
   assert.match(prompt, /offer it; don't do it silently/);
-  assert.match(prompt, /Only when they say yes, @mention the colleague/);
+  assert.match(prompt, /Only when they say yes, call hand_off with a complete brief/);
+  assert.match(prompt, /Writing their @handle does nothing/);
   assert.match(prompt, /about to do something another role owns/);
   assert.match(prompt, /Never hand work back to, or consult, the colleague who sent it to you/);
   const consulted = systemPrompt({ ...base, consultedBy: "david" });
   assert.match(consulted, /@david \(an agent\) is asking for your view/);
+});
+
+// ── Where you are: said every turn ──────────────────────────────────────
+
+const member = (kind: "user" | "agent", name: string, display_name: string, title: string | null = null) => ({ kind, id: kind === "agent" ? `agt_${name}` : `usr_${name}`, name, display_name, title });
+const g1t = { ...base, agent: { ...agent, id: "agt_g1t", handle: "g1t", display_name: "g1t" }, asker: { name: "syntaqx", display_name: "Chase Pierce", access: { username: "syntaqx", role: "owner" as const, can_write: true } } };
+
+test("in a 1:1 DM, the prompt names the person, says only they read it, and that names reach no one", () => {
+  const prompt = systemPrompt({
+    ...g1t,
+    channel: { kind: "dm", name: null },
+    canHandOff: true,
+    conversation: { kind: "dm", name: null, people: 1, agents: 1, members: [member("agent", "g1t", "g1t", "Orchestrator"), member("user", "syntaqx", "Chase Pierce")] },
+  });
+  assert.match(prompt, /You are answering in a direct message with Chase Pierce \(@syntaqx\) in the acme workspace/);
+  assert.match(prompt, /Who is in this conversation, and the only ones who read it:\n- @g1t: you\n- Chase Pierce \(@syntaqx\), a person: asked you this/);
+  assert.match(prompt, /Writing the name or @handle of anyone not listed reaches no one: they aren't told and can't see it\./);
+  assert.match(prompt, /Your messages never wake another agent, even with an @mention\. To get a colleague working on something, use hand_off/);
+  assert.match(prompt, /a group message with the person who asked, you and them/);
+  assert.match(prompt, /quick question answered privately to you, use ask_colleague/);
+  assert.match(prompt, /Never say you asked, told or handed work to anyone unless a tool did it/);
+  assert.match(prompt, /@mention only members of this conversation\. Write anyone else by name, without @\./);
+});
+
+test("in a group DM, every member is listed with their kind and role", () => {
+  const prompt = systemPrompt({
+    ...g1t,
+    channel: { kind: "dm", name: null },
+    canHandOff: true,
+    conversation: {
+      kind: "group_dm",
+      name: null,
+      people: 1,
+      agents: 2,
+      members: [member("agent", "g1t", "g1t"), member("agent", "mike", "Mike", "Technical Recruiter"), member("user", "syntaqx", "Chase Pierce")],
+    },
+  });
+  assert.match(prompt, /You are answering in a group direct message in the acme workspace/);
+  assert.match(prompt, /- @g1t: you\n- @mike, an agent: Technical Recruiter/);
+  assert.match(prompt, /- Chase Pierce \(@syntaqx\), a person: asked you this/);
+});
+
+test("in a big channel, agents are all listed, people up to the cap and then a count", () => {
+  const people = Array.from({ length: 20 }, (_, n) => member("user", `p${n}`, `Person ${n}`));
+  const prompt = systemPrompt({
+    ...base,
+    conversation: { kind: "public_channel", name: "releases", people: 312, agents: 2, members: [member("agent", "ship", "Ship"), member("agent", "docs", "Docs", "Docs keeper"), ...people] },
+  });
+  assert.match(prompt, /You are answering in the public channel #releases/);
+  assert.match(prompt, /it is public: anyone in the workspace can also open it/);
+  assert.match(prompt, /- @ship: you\n- @docs, an agent: Docs keeper\n- Person 0 \(@p0\), a person/);
+  assert.match(prompt, /- and 292 more people/);
+  assert.match(prompt, /Only its members are told what you say here/);
+  const secret = systemPrompt({
+    ...base,
+    conversation: { kind: "private_channel", name: "exec", people: 2, agents: 1, members: [member("agent", "ship", "Ship"), member("user", "dana", "Dana Ruiz"), member("user", "bo", "Bo")] },
+  });
+  assert.match(secret, /the private channel #exec/);
+  assert.doesNotMatch(secret, /more people/, "everyone shown is everyone there");
+});
+
+test("without hand_off the prompt says work can't be handed on; a handed-off agent is told who sent it", () => {
+  const plain = systemPrompt({ ...base, conversation: null });
+  assert.match(plain, /you can't hand work on from here: name who they should ask instead/);
+  assert.match(plain, /Writing the name or @handle of anyone else reaches no one/);
+  const session = systemPrompt({ ...base, session: true });
+  assert.match(session, /To get a colleague's help, use bring_in/);
+  const handed = systemPrompt({ ...base, handedOffBy: "g1t" });
+  assert.match(handed, /## Handed to you\n\n@g1t \(an agent\) handed you this work for @dana/);
+  assert.match(handed, /Don't hand it back to @g1t\./);
 });

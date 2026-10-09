@@ -335,10 +335,12 @@ export type AgentFoundMessage = {
 export const CHAT_MAX_HOPS = 6;
 
 /**
- * What an agent posts. When it answers a delivery, it passes that
- * delivery's `hops`, `asked_by` and `asker` back, so another agent it @mentions is
- * handed the message one hop further along the same person's request, and
- * the chain stops at `CHAT_MAX_HOPS`. Left out: a new chain (hops 0) asked
+ * What an agent posts. An agent's message never wakes another agent, even
+ * when it @mentions one: only a hand-off does (`handOffAsAgent`). Its
+ * mentions of anyone who is not a member of the conversation lose their
+ * `@`, so they show as plain names and notify nobody. When it answers a
+ * delivery, it passes that delivery's `hops`, `asked_by`, `asker` and
+ * `chain` back, which a card that waits on the asker uses. Left out: asked
  * by the person who created the agent.
  */
 export type AgentPostMessage = PostMessage & {
@@ -354,6 +356,50 @@ export type AgentPostMessage = PostMessage & {
    */
   chain?: string[];
 };
+
+/**
+ * A conversation as an agent is told about it before every turn: what it
+ * is and who is in it, so it knows who reads what it says and who doesn't.
+ * Every agent member is listed; people up to `CONVERSATION_PEOPLE_SHOWN`
+ * (the person who asked always among them), with the totals beside.
+ */
+export type ConversationForAgent = {
+  channel: Channel;
+  /** Agents first, then people. */
+  members: MemberProfile[];
+  /** How many people and agents are in it, listed or not. */
+  people: number;
+  agents: number;
+};
+
+/** The most people `conversationForAgent` lists; the rest are a count. */
+export const CONVERSATION_PEOPLE_SHOWN = 20;
+
+/**
+ * An agent handing work to a colleague agent for the person who asked
+ * (docs/WORKSPACE.md, "Agents know each other"). The fields after `brief`
+ * are the delivery the agent is answering, passed back as for a post.
+ */
+export type AgentHandOff = {
+  /** The colleague, by agent id. */
+  colleague_id: string;
+  /** What they are asked to do, addressed to them. */
+  brief: string;
+  thread_root?: string | null;
+  hops?: number;
+  asked_by: string;
+  asker?: AskerAccess | null;
+  chain?: string[];
+};
+
+/**
+ * Where a hand-off went. `here`: the colleague is in this channel or group
+ * direct message, and the brief was posted here. `group_dm`: the brief was
+ * posted in the direct message of the person who asked, the agent and the
+ * colleague (`opened` when it was new), and a card linking to it was
+ * posted here.
+ */
+export type HandOffResult = { where: "here" | "group_dm"; channel_id: string; message_id: string; opened: boolean };
 
 /**
  * What the live socket sends. The site opens
@@ -499,6 +545,24 @@ export type ChatApi = {
   /** Internal: who reads a conversation. */
   audience(workspace: string, channelId: string): Promise<Result<ChatAudience>>;
   /**
+   * Internal, for an agent about to answer in `channelId`, which it must be
+   * a member of: the conversation and its members (`ConversationForAgent`).
+   * `askedBy` (a user id) is always among the people listed.
+   */
+  conversationForAgent(workspace: string, channelId: string, agentId: string, askedBy?: string | null): Promise<Result<ConversationForAgent>>;
+  /**
+   * Internal: `agentId`, answering in `channelId`, hands work to a
+   * colleague agent for the person who asked. If the colleague is in this
+   * channel or group direct message, the brief is posted here; otherwise in
+   * the group direct message of the person, the agent and the colleague
+   * (opened on first use), with a card here linking to it. Either way the
+   * brief wakes the colleague, one hop further along the same chain, and
+   * nobody else. Refused for an agent that is not of the workspace, the
+   * agent itself, @g1t, one already in the chain, past the hop limit, or
+   * when the person who asked is not in this conversation.
+   */
+  handOffAsAgent(workspace: string, channelId: string, agentId: string, handOff: AgentHandOff): Promise<Result<HandOffResult>>;
+  /**
    * Internal, for an agent replying in `channelId`: messages matching
    * `query` (newest first, at most 20) from conversations every person in
    * that conversation's audience is in, and from public channels. Never
@@ -595,6 +659,10 @@ export function chatClient(service: ServiceBinding): ChatApi {
     agentTyping: (workspace, channelId, agentId) =>
       call("agent_typing", { workspace, channel_id: channelId, agent_id: agentId }),
     audience: (workspace, channelId) => call("audience", { workspace, channel_id: channelId }),
+    conversationForAgent: (workspace, channelId, agentId, askedBy) =>
+      call("conversation_for_agent", { workspace, channel_id: channelId, agent_id: agentId, asked_by: askedBy ?? null }),
+    handOffAsAgent: (workspace, channelId, agentId, handOff) =>
+      call("hand_off_as_agent", { workspace, channel_id: channelId, agent_id: agentId, hand_off: handOff }),
     searchForAgent: (workspace, channelId, query, limit) =>
       call("search_for_agent", { workspace, channel_id: channelId, query, limit: limit ?? null }),
     threadForAgent: (workspace, channelId, targetChannelId, id) =>

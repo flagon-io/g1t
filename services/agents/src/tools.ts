@@ -127,7 +127,12 @@ export interface ActionPorts {
   useSubagent?(name: string, brief: string): Promise<{ ok: boolean; message: string }>;
   /** In a session: a colleague works on part of it, paid from this session's budget. */
   bringIn?(handle: string, brief: string): Promise<{ ok: boolean; message: string }>;
+  /** From chat: a colleague takes the work on for the person who asked, here or in a group message. */
+  handOff?(handle: string, brief: string): Promise<{ ok: boolean; message: string }>;
 }
+
+/** The most hand-offs one reply makes. */
+export const MAX_HAND_OFFS = 2;
 
 /** The most tool calls one reply makes. */
 export const MAX_TOOL_CALLS = 8;
@@ -226,8 +231,15 @@ const CHAT_TOOLS: ToolDef[] = [
 const ASK_COLLEAGUE: ToolDef = {
   name: "ask_colleague",
   description:
-    "Ask another agent of the workspace a question and get their answer here, without handing the work over. Use it when their role knows something yours doesn't.",
+    "Ask a colleague agent a quick question, privately: their answer comes back to you alone, they do no work in the conversation, and the work stays yours. Use it when their role knows something yours doesn't. To give them the work itself, use hand_off.",
   input_schema: { type: "object", properties: { handle: { type: "string" }, question: { type: "string" } }, required: ["handle", "question"] },
+};
+
+const HAND_OFF: ToolDef = {
+  name: "hand_off",
+  description:
+    "Hand work to a colleague agent, for the person who asked: they take it on and answer that person themselves, with that person's access. If they are a member of this conversation (a channel or group message), your brief is posted here; otherwise a group message opens (or is reused) with the person who asked, you and them, your brief goes there, and a card here links to it. It is the only way to get a colleague working: an @mention in your message wakes nobody. Give their handle and a complete brief written to them: what is wanted, why, what done looks like, and what they need from this conversation. For a quick question you answer with, use ask_colleague instead.",
+  input_schema: { type: "object", properties: { handle: { type: "string" }, brief: { type: "string" } }, required: ["handle", "brief"] },
 };
 
 const REMEMBER: ToolDef = {
@@ -439,6 +451,8 @@ export class ToolBox {
   private readonly actions: ActionPorts | null;
   /** Updates posted in this step. */
   private updates = 0;
+  /** Hand-offs made in this reply. */
+  private handOffs = 0;
   /** Artifacts read or made in this turn that not everyone here can read: never named here. */
   private readonly notHere = new Set<string>();
   /**
@@ -491,6 +505,7 @@ export class ToolBox {
       ...(this.canFile() && actions?.comment ? [COMMENT] : []),
       ...(this.canFile() && actions?.review ? [REVIEW_PULL] : []),
       ...(actions?.startSession && !this.context.session ? [START_SESSION] : []),
+      ...(actions?.handOff && !this.context.session && roomForHop ? [HAND_OFF] : []),
       ...(actions?.postUpdate && this.context.session ? [POST_UPDATE] : []),
       ...(actions?.useSubagent && this.context.session && roomForHop ? [USE_SUBAGENT] : []),
       ...(actions?.bringIn && this.context.session && roomForHop ? [BRING_IN] : []),
@@ -833,6 +848,18 @@ export class ToolBox {
         if (!handle || !brief) return { text: "Name the colleague and give them a brief.", outcome: "refused" };
         if (this.context.notConsult.includes(handle)) return { text: `You can't bring in @${handle} here: they sent you this work, or it is you.`, outcome: "refused" };
         return said(await actions.bringIn!(handle, brief));
+      }
+      case "hand_off": {
+        const handle = text("handle", 60).replace(/^@/, "").toLowerCase();
+        const brief = text("brief", 8000);
+        if (!handle || !brief) return { text: "Name the colleague and give them a brief.", outcome: "refused" };
+        if (this.context.notConsult.includes(handle)) {
+          return { text: `You can't hand work to @${handle}: they sent you this work, or it is you. Answer with what you have.`, outcome: "refused" };
+        }
+        if (this.handOffs >= MAX_HAND_OFFS) return { text: `You've handed off to ${MAX_HAND_OFFS} colleagues from this message; hand off the rest later.`, outcome: "refused" };
+        const done = await actions.handOff!(handle, brief);
+        if (done.ok) this.handOffs++;
+        return said(done);
       }
       default:
         return { text: `There is no tool called ${name}.`, outcome: "refused" };
