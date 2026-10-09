@@ -733,6 +733,7 @@ impl Work {
                 number: row.number,
                 pull_id: row.pull_id,
                 verdict: None,
+                ..CommentCreated::default()
             },
         )
         .await?;

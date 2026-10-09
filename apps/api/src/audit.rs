@@ -167,7 +167,11 @@ pub async fn run(
         None => Decision::allow("anonymous"),
     });
     record(op, services, viewer, input, &decision, Some(&outcome)).await;
-    Ok(outcome)
+    // Every person in the answer with the case they chose (people.rs).
+    Ok(match outcome {
+        Outcome::Ok(value) => Outcome::Ok(crate::people::name_people(services, value).await),
+        failed => failed,
+    })
 }
 
 /// Appends the entry, if this is something the log keeps. A failure to

@@ -362,7 +362,7 @@ pub struct ReviewEvent {
 }
 
 /// `comment.created`. `number` is the issue or pull request commented on.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentCreated {
     pub comment_id: String,
@@ -374,6 +374,16 @@ pub struct CommentCreated {
     /// Set when the comment is a review: approve or request changes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verdict: Option<crate::work::Verdict>,
+    /// Set when one of the workspace's agents wrote it, as itself. The
+    /// event's actor is then the person it acted for (`actingFor`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<crate::work::AgentRef>,
+    /// Who the agent acted for, set with `agent`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acting_for: Option<crate::credentials::Principal>,
+    /// An agent's review, advisory: its verdict counts toward nothing.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub advisory: bool,
 }
 
 /// `comment.edited`: a comment's text changed. `changes.body.from` is what

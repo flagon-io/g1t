@@ -29,8 +29,17 @@ export function parsePrincipalKey(key: string): Principal | null {
 
 /** How a member shows: resolved by the chat service when it answers. */
 export type MemberProfile = Principal & {
-  /** `username` for a person, `handle` for an agent. */
+  /** `username` for a person (lowercased: what `@` mentions), `handle` for an agent. */
   name: string;
+  /**
+   * A person's username as they wrote it (`Ana`), when that differs from
+   * `name`; absent for an agent. Shown in their card and in autocomplete.
+   */
+  display_username?: string | null;
+  /**
+   * What chat shows them as: a person's display name, else their username
+   * in its chosen case; an agent's display name. Read it with `memberName`.
+   */
   display_name: string;
   /** Uploaded avatar hash for a person, or null for the letter avatar. */
   avatar: string | null;
@@ -44,6 +53,25 @@ export type MemberProfile = Principal & {
   /** What an agent's pixel creature is drawn from; null for a person. Always set by chat. */
   avatar_seed?: string | null;
 };
+
+/**
+ * A member's handle as it shows (`@Ana`, without the `@`): a person's
+ * username in its chosen case, an agent's handle.
+ */
+export function memberHandle(member: { name: string; display_username?: string | null }): string {
+  const display = member.display_username;
+  return display && display.toLowerCase() === member.name.toLowerCase() ? display : member.name;
+}
+
+/**
+ * How a member's name is shown everywhere in chat (messages, the
+ * sidebar, direct-message titles, typing, notifications and pushes): their
+ * display name, else their handle in its chosen case. One rule, so every
+ * surface agrees.
+ */
+export function memberName(member: { name: string; display_name?: string | null; display_username?: string | null }): string {
+  return member.display_name?.trim() || memberHandle(member);
+}
 
 export type ChannelKind = "channel" | "dm";
 
@@ -73,7 +101,7 @@ export type ChannelMember = {
 
 /** A card g1t or an agent posts: an event, a task, an approval. */
 export type MessageCard = {
-  /** What it is about, e.g. `pull`, `issue`, `task`, `deploy`, `approval`. */
+  /** What it is about, e.g. `pull`, `issue`, `task`, `deploy`, `approval`, `session`, `draft_issue`. */
   kind: string;
   title: string;
   /** A short line under the title: "3/3 checks · +214 −87". */
@@ -82,7 +110,40 @@ export type MessageCard = {
   state: string | null;
   /** Where clicking the card goes, relative to the site. */
   href: string | null;
+  /** A preview in Markdown under the title: a draft issue's body, a report's first lines. */
+  body?: string | null;
+  /** Labelled facts shown in two columns: "Repository · acme/web", "Cap · $2.00". */
+  fields?: CardField[];
+  /**
+   * What people can do right here. Pressing one goes to the service that
+   * owns the card (`owner`), which checks the person may, does it, and
+   * updates the card in place. A card without `owner` has no actions.
+   */
+  actions?: CardAction[];
+  /** The service whose card this is and that answers its actions: `agents`. */
+  owner?: "agents" | null;
+  /** What the card is about, for its owner: a session id, a draft id. */
+  ref?: string | null;
 };
+
+export type CardField = { label: string; value: string };
+
+/** A button on a card. */
+export type CardAction = {
+  /** Unique on the card: `stop`, `approve`, `file`. */
+  id: string;
+  label: string;
+  style?: "primary" | "danger" | "default";
+  /** Asked before it runs: "Stop this session and everything under it?". */
+  confirm?: string | null;
+  /** A value it needs first, asked inline: an amount in dollars, or a line of text. */
+  input?: { kind: "money" | "text"; label: string; placeholder?: string | null; initial?: string | null } | null;
+  /** A link instead of an action: opens this place in the site. */
+  href?: string | null;
+};
+
+/** What pressing a card's action did, as the person who pressed it is told. */
+export type CardActionResult = { ok: boolean; message: string | null };
 
 export type ChatMessage = {
   /** Time-sortable (ULID-like), so ordering by id is ordering by time. */
@@ -400,6 +461,19 @@ export type ChatApi = {
     id: string,
     change: { body?: string; card?: MessageCard | null },
   ): Promise<Result<ChatMessage>>;
+  /**
+   * A person presses an action on a card in a conversation they can read.
+   * Chat hands it to the card's owner with the person, and the owner
+   * decides, acts and updates the card.
+   */
+  cardAction(
+    workspace: string,
+    channelId: string,
+    viewer: User,
+    messageId: string,
+    actionId: string,
+    input?: string | null,
+  ): Promise<Result<CardActionResult>>;
   /** Shows "is typing" for an agent while it works on a reply. */
   agentTyping(workspace: string, channelId: string, agentId: string): Promise<Result<null>>;
   /**
@@ -508,6 +582,8 @@ export function chatClient(service: ServiceBinding): ChatApi {
       call("set_preferences", { workspace, channel_id: channelId, viewer, prefs }),
     postAsAgent: (workspace, channelId, agentId, message) =>
       call("post_as_agent", { workspace, channel_id: channelId, agent_id: agentId, message }),
+    cardAction: (workspace, channelId, viewer, messageId, actionId, input) =>
+      call("card_action", { workspace, channel_id: channelId, viewer, message_id: messageId, action_id: actionId, input: input ?? null }),
     updateAsAgent: (workspace, channelId, agentId, id, change) =>
       call("update_as_agent", { workspace, channel_id: channelId, agent_id: agentId, id, change }),
     agentTyping: (workspace, channelId, agentId) =>

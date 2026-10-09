@@ -180,3 +180,28 @@ ALTER TABLE agent_replies ADD COLUMN channel_name TEXT;
 ALTER TABLE agent_replies ADD COLUMN tool_count INTEGER NOT NULL DEFAULT 0;
 -- Session steps counted with the agent's spend, beside replies.
 ALTER TABLE agent_spend ADD COLUMN sessions INTEGER NOT NULL DEFAULT 0;
+
+-- Issues an agent drafted in a conversation, as cards with File and
+-- Discard: whoever presses File files it as themselves, if they can read
+-- the repository. status: draft, filed, discarded.
+CREATE TABLE agent_drafts (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  workspace TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  message_id TEXT,
+  session_id TEXT,
+  repo_id TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  labels TEXT NOT NULL DEFAULT '[]',
+  asked_by TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  filed_by TEXT,
+  number INTEGER,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX agent_drafts_message ON agent_drafts (message_id);

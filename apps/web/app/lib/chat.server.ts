@@ -1,4 +1,4 @@
-import type { ChatSidebar, Principal, User, WorkspaceAgent } from "@g1t/contracts";
+import { type ChatSidebar, type Principal, type User, type WorkspaceAgent, shownUsername } from "@g1t/contracts";
 
 import type { Mentionable } from "./chat";
 import { chat, identity, workspaceAgents } from "./services.server";
@@ -18,7 +18,9 @@ export async function workspacePeople(slug: string, viewer: User): Promise<{ peo
     ? members.value.map((member) => ({
         kind: "user" as const,
         name: member.username,
-        display_name: member.name?.trim() || member.username,
+        display_username: member.display_username ?? null,
+        // As chat names them (`memberName`): display name, else the username as they wrote it.
+        display_name: member.name?.trim() || shownUsername(member),
         avatar: member.avatar ?? null,
       }))
     : [];

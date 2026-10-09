@@ -72,7 +72,9 @@ Call a tool with `tools/call`, its name, and `arguments` that hold the
 ### Results
 
 A result is the operation's answer as JSON text, with `snake_case` fields,
-as the REST API returns it:
+as the REST API returns it. Each person in it has a lowercased `username`
+and a `display_username`, the case they chose
+([Usernames](/reference/api/#requests-and-responses)):
 
 ```json
 {
@@ -347,7 +349,7 @@ far.
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`list`](/reference/api/pull-requests/list-pull-requests/) | Pull requests, newest first. `open` covers drafts and those ready for review. `label`, `milestone` and `base` filter them. | `repo` | `pull_requests:read` |
-| [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, who is asked to review (`pull.reviewers`, and `pull.team_reviewers` as `workspace/team`), its issue, its checks (`statuses`, and `required_checks`: each check the default branch requires, as `success`, `failure`, `pending` or `expected`), `code_owners` (whose approval the changed files need, and what is still `missing`), `behind`, and `overlaps`. | `repo`, `number` | `pull_requests:read` |
+| [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, who is asked to review (`pull.reviewers`, and `pull.team_reviewers` as `workspace/team`), its issue, its checks (`statuses`, and `required_checks`: each check the default branch requires, as `success`, `failure`, `pending` or `expected`), `code_owners` (whose approval the changed files need, and what is still `missing`), `behind`, and `overlaps`. A comment or review one of the workspace's agents wrote as itself has `agent` and `acting_for`; an agent's review has `advisory: true` and never counts toward approvals ([agent reviews](/guides/pull-requests/#agent-reviews)). | `repo`, `number` | `pull_requests:read` |
 | [`changes`](/reference/api/pull-requests/get-pull-request-changes/) | The files it changes, with line-by-line diffs. | `repo`, `number` | `pull_requests:read` |
 | [`create`](/reference/api/pull-requests/create-pull-request/) | Open a draft pull request with its own fork and get its git remote; or, with `branch`, one from a branch already pushed. Give `issue` whenever there is one. It merges into the default branch unless `base` names another. | `repo` | `pull_requests:write` |
 | [`update`](/reference/api/pull-requests/update-pull-request/) | Change its `base` (the branch it merges into; Write role), `labels`, `milestone`, `assignees` or `reviewers`. `state` `open` reopens it and `closed` closes it. | `repo`, `number` | `pull_requests:write` |

@@ -1008,7 +1008,11 @@ function describePeopleSaid(comments: Comment[]): string | null {
           : comment.verdict === "approve"
             ? " (approved)"
             : "";
-      return `- ${comment.author.username}${where}${verdict}: ${comment.body.trim()}`;
+      // A workspace's agent says so, and its review is advisory: a person's request outranks it.
+      const who = comment.agent
+        ? `${comment.agent.displayName} (an agent${comment.actingFor ? ` for ${comment.actingFor.username}` : ""}${comment.advisory ? ", advisory review" : ""})`
+        : comment.author.username;
+      return `- ${who}${where}${verdict}: ${comment.body.trim()}`;
     });
   if (said.length === 0) return null;
   let text = said.join("\n");

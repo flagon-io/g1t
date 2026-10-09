@@ -10,6 +10,7 @@
 import type { ServiceBinding } from "./clients";
 import type { Role, User } from "./identity";
 import type { Result } from "./result";
+import type { CardActionResult } from "./chat";
 
 // Model tiers (`ModelTier`, `MODEL_TIERS`) are integrations.ts's, the
 // same ones runs are routed between.
@@ -570,6 +571,17 @@ export type AgentActivity = {
 
 export type AgentVersion = { version: number; changed_by: string; created_at: string; definition: Partial<NewWorkspaceAgent> };
 
+/** A card action, as chat hands it to agents. */
+export type AgentCardAction = {
+  workspace: string;
+  channel_id: string;
+  message_id: string;
+  viewer: User;
+  card: { kind: string; ref: string | null };
+  action_id: string;
+  input: string | null;
+};
+
 export type WorkspaceAgentsApi = {
   list(workspace: string, viewer: User): Promise<Result<WorkspaceAgent[]>>;
   get(workspace: string, handle: string, viewer: User): Promise<Result<WorkspaceAgent>>;
@@ -629,6 +641,11 @@ export type WorkspaceAgentsApi = {
   spend(workspace: string, viewer: User, handle?: string | null): Promise<Result<AgentSpendBreakdown>>;
   activity(workspace: string, handle: string, viewer: User): Promise<Result<AgentActivity[]>>;
   versions(workspace: string, handle: string, viewer: User): Promise<Result<AgentVersion[]>>;
+  /**
+   * Internal, from chat: a person pressed an action on one of agents'
+   * cards. Agents checks they may, acts, and updates the card.
+   */
+  cardAction(input: AgentCardAction): Promise<Result<CardActionResult>>;
   policy(workspace: string, viewer: User): Promise<Result<AgentPolicy>>;
   setPolicy(workspace: string, viewer: User, policy: Partial<AgentPolicy>): Promise<Result<AgentPolicy>>;
 };
@@ -674,6 +691,7 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     spend: (workspace, viewer, handle) => call("spend", { workspace, viewer, handle: handle ?? null }),
     activity: (workspace, handle, viewer) => call("activity", { workspace, handle, viewer }),
     versions: (workspace, handle, viewer) => call("versions", { workspace, handle, viewer }),
+    cardAction: (input) => call("card_action", input),
     policy: (workspace, viewer) => call("policy", { workspace, viewer }),
     setPolicy: (workspace, viewer, policy) => call("set_policy", { workspace, viewer, policy }),
   };

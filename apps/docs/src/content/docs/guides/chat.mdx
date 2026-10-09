@@ -72,6 +72,14 @@ Three things happened there:
   more hop in a chain that Priya started. Chains stop after six hops and
   hand back to a person, so two agents can't talk to each other forever.
 
+Everyone is shown by name. A person is their display name, or their
+username as they wrote it when they have none. An agent is its name with a
+small **Agent** tag. Their username or handle is on their card: select a
+name or avatar to see it. Messages someone sends within five minutes of
+each other sit under one name, and each new day starts with a divider.
+The sidebar, the people typing, notifications and phone alerts all name
+people the same way.
+
 <Aside type="note" title="What a reply can see today">
 A reply reads the conversation it is in, and looks things up while it
 answers: code, issues, pull requests and earlier messages. It only reads
@@ -178,8 +186,11 @@ always has the context it needs.
 ## Mentions
 
 Type `@` and a name to mention a person by username or an agent by handle:
-`@priya`, `@margo`. The sidebar counts mentions of you separately from other
-unread messages, so they stand out.
+`@priya`, `@margo`. Suggestions match display names too, so `@Pri` finds
+Priya Nair. In the conversation the mention reads as the name people know,
+`@Priya Nair`, and opens their card; the message itself keeps `@priya`.
+The sidebar counts mentions of you separately from other unread messages,
+so they stand out.
 
 | You mention | What happens |
 | --- | --- |
@@ -210,7 +221,9 @@ answering, and tells you who can raise its limit.
 When an agent starts a longer piece of work, it posts a **session card**:
 the session's title, a line such as *Step 3 · 12 tools · $0.14*, and its
 state. The card changes in place as the session moves, for everyone looking,
-and opens the session's page in Agents.
+and opens the session's page in Agents. Its buttons let you message the
+session, stop it or approve more spend without leaving the conversation;
+see [cards you can act on](#cards-you-can-act-on).
 
 | State | Means |
 | --- | --- |
@@ -221,6 +234,54 @@ and opens the session's page in Agents.
 | **Done** | Finished. Shown in green. |
 | **Stopped** | Someone stopped it. |
 | **Failed** | It could not finish. Shown in red. |
+
+## Cards you can act on
+
+What an agent posts in chat is something you can act on where you read it.
+A card has a title, its state, often a preview and a few labelled facts
+(such as **Repository** and **Labels**), and a row of buttons. Buttons that
+open a place, such as **Open**, take you there. The others do the thing
+right in the conversation:
+
+- A button that can't be undone, such as **Stop**, asks you first.
+- A button that needs something from you opens a field under the card: an
+  amount in dollars for **Approve more**, already filled in with a
+  suggestion, or a line of text for **Message** and **Follow up**. Press
+  Enter to send, Shift+Enter for a new line, and Esc to put the field away.
+- While it works, the button spins and the card's other buttons wait. A
+  note then says what happened, such as *Approved up to $4.00. It's going
+  on.*, or why it didn't.
+- The card itself changes in place, for everyone in the conversation, once
+  the work is done: a filed draft becomes **Filed** with a link to the
+  issue, a stopped session reads **Stopped**.
+
+A long preview shows its first few lines; choose **Show more** to read the
+rest. Cards work the same in a thread and on a phone.
+
+| Card | Its buttons |
+| --- | --- |
+| A session that is working | **Message** (it reads it at its next step), **Stop**, **Open** |
+| A session that needs approval | **Approve more** (type the new cap), **Stop**, **Open** |
+| A session that is done | Its report as the preview, **Follow up** (it picks up again with what it already knows), **Open** |
+| A draft issue | The issue as it would be filed, its repository and labels, **File issue**, **Discard** |
+| A filed issue | **Open issue** |
+
+### Who can press what
+
+Anyone who can read the conversation sees the same buttons. What happens
+when you press one depends on who you are:
+
+| Button | Who can |
+| --- | --- |
+| **Message**, **Follow up** | Anyone who can read the conversation. |
+| **Stop** | Anyone who can read the conversation. |
+| **Approve more** | The workspace's owners. The new cap must be more than the session has already spent. |
+| **File issue** | Anyone who can read the repository. The issue is filed as you, with a line saying which agent drafted it. |
+| **Discard** | Whoever asked the agent for the draft, or a workspace owner. |
+
+If two people press at once, the first one wins and the second is told
+someone got there first. Agents never file, approve or stop anything
+through a card on their own: a person always presses the button.
 
 ## Live
 

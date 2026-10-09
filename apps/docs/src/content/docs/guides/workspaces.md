@@ -716,11 +716,26 @@ website and when you joined; then your work in three tabs:
 
 **The contribution calendar.** The last year as a square a day, a column a
 week, shaded more strongly the more you did that day, with the total
-above it ("128 contributions in the last year"). A contribution is an
-issue or pull request you opened (or g1t opened for you) and a review you
-gave. Days are counted in UTC. Hover over a square, or tap it, to see its
-day and count. On a narrow screen the calendar scrolls sideways inside
-its card, starting at today.
+above it ("128 contributions in the last year"). A contribution is a
+commit you pushed, an issue or pull request you opened (or g1t opened for
+you), and a review you gave. Days are counted in UTC. Hover over a square,
+or tap it, to see its day, its count and how many were commits ("5
+contributions on Oct 4, 2026, 3 of them commits"). On a narrow screen the
+calendar scrolls sideways inside its card, starting at today.
+
+Commits count like this:
+
+- **Pushed to the default branch, or to `gh-pages`.** Commits on other
+  branches count once they reach the default branch, which is usually a
+  pull request, and the pull request is counted already.
+- **Credited to whoever pushed,** on the day of the push, not to the
+  commits' authors. Pushes with an agent's, a workspace's or a workflow
+  job's token are not counted on anyone's calendar.
+- **The new commits along the branch's own line,** at most 50 a push. A
+  merge commit counts once. The first push of a branch counts one, so
+  importing a long history doesn't fill a single day.
+- **Only from the time this was added:** pushes before 9 October 2026 are
+  not counted.
 
 **Edit it** in [Settings → Profile](https://g1t.sh/settings/profile). Every
 field is optional. The bio takes up to 160 characters and is also what a

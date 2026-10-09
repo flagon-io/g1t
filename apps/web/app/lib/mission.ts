@@ -165,6 +165,10 @@ export function eventItem(event: G1tEvent, repo: RepoPath): ActivityItem | null 
       if (!event.data.verdict) return null;
       return { ...base, actor: "g1t", verb: event.data.verdict === "approve" ? "approved" : "changes_requested", number: event.data.number };
     case "comment.created":
+      // An agent's advisory review is not a verdict, and its writer is the agent.
+      if (event.data.agent) {
+        return { ...base, actor: `${event.data.agent.displayName} (agent)`, verb: "commented", number: event.data.number };
+      }
       if (event.data.verdict) {
         return { ...base, verb: event.data.verdict === "approve" ? "approved" : "changes_requested", number: event.data.number };
       }

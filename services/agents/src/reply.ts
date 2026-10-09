@@ -381,6 +381,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
             source: { kind: "message", ref: delivery.message_id, label: askerName ? `@${askerName} in ${where}` : where, channel_id: delivery.channel_id },
             asker: { id: delivery.asked_by, username: askerName },
             workspace: slug,
+            postCard: (card) => surface.post("", card).catch(() => null),
             // Real work becomes a session, with its card in this conversation.
             spinOff: async (title, goal) => {
               if (spinOffs >= MAX_SPIN_OFFS) return { ok: false, message: "You've started enough sessions from this message." };

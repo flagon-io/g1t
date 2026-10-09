@@ -650,6 +650,41 @@ impl Identity {
     /// `accounts`: the accounts behind these ids (at most 200), each with
     /// its username and avatar, for lists that keep ids, such as who
     /// starred a repository. Ids of no account are left out.
+    /// `display_usernames`: each lowercased username's chosen case, for the
+    /// API, which shows it beside every username it answers with.
+    async fn display_usernames(&self, a: DisplayUsernamesArgs) -> Result<std::collections::HashMap<String, String>> {
+        #[derive(serde::Deserialize)]
+        struct Row {
+            username: String,
+            display_username: String,
+        }
+        let mut names: Vec<String> = a.usernames.iter().map(|name| name.trim().to_lowercase()).filter(|name| !name.is_empty()).collect();
+        names.sort();
+        names.dedup();
+        names.truncate(200);
+        let mut found = std::collections::HashMap::new();
+        if names.is_empty() {
+            return Ok(found);
+        }
+        let marks = vec!["?"; names.len()].join(", ");
+        let bind: Vec<worker::wasm_bindgen::JsValue> = names.iter().map(|name| name.as_str().into()).collect();
+        let rows = self
+            .db
+            .prepare(format!(
+                "SELECT username, display_username FROM users WHERE username IN ({marks}) AND display_username IS NOT NULL AND deleted_at IS NULL"
+            ))
+            .bind(&bind)?
+            .all()
+            .await?
+            .results::<Row>()?;
+        for row in rows {
+            if row.display_username.eq_ignore_ascii_case(&row.username) && row.display_username != row.username {
+                found.insert(row.username, row.display_username);
+            }
+        }
+        Ok(found)
+    }
+
     async fn accounts(&self, a: UsernamesArgs) -> Result<std::collections::HashMap<String, g1t_contracts::accounts::EmailOwner>> {
         #[derive(serde::Deserialize)]
         struct Row {
@@ -940,6 +975,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "user_for_ssh_key" => reply(&identity.user_for_ssh_key(args(body)?).await?),
         "user_by_username" => reply(&identity.user_by_username(args(body)?).await?),
         "usernames" => reply(&identity.usernames(args(body)?).await?),
+        // The API: each username's chosen case, shown beside it.
+        "display_usernames" => reply(&identity.display_usernames(args(body)?).await?),
         "accounts" => reply(&identity.accounts(args(body)?).await?),
         "users_for_audience" => reply(&identity.users_for_audience(args(body)?).await?),
         "notify_by_email" => reply(&identity.notify_by_email(args(body)?).await?),

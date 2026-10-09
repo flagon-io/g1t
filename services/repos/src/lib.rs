@@ -32,6 +32,7 @@ mod moves;
 mod namespaces;
 mod pack_cache;
 mod pack_limits;
+mod push_commits;
 mod refs;
 mod refs_cache;
 mod registry;
@@ -2091,6 +2092,11 @@ impl<S: GitStore> Repos<S> {
                 pushed: forwarded.pushed,
                 pack_bytes: forwarded.pack_bytes,
                 caused_by_job: viewer.as_ref().and_then(g1t_contracts::events::job_run_of).map(str::to_owned),
+                // The calendar credits people, never a job's, an agent's or a workspace's token.
+                credit: viewer
+                    .as_ref()
+                    .filter(|user| user.kind == PrincipalKind::User && g1t_contracts::events::job_run_of(user).is_none())
+                    .map(|user| user.id.clone()),
                 actor: viewer.map(|user: User| user.id),
                 unscanned: forwarded.unscanned,
             });
@@ -2186,6 +2192,7 @@ impl<S: GitStore> Repos<S> {
             actor,
             unscanned,
             caused_by_job,
+            credit,
         } = push;
         // What the push stored, for billing's storage meter. A failure only
         // leaves the count short.
@@ -2224,6 +2231,21 @@ impl<S: GitStore> Repos<S> {
                     head.first().is_none_or(|commit| commit.hash == pushed.after)
                 }),
             };
+            // The person's contribution calendar (push_commits.rs). A
+            // failure only leaves the day short.
+            if moved
+                && let (Some(user_id), Some(branch)) = (credit.as_deref(), pushed.branch())
+                && push_commits::counts(branch, &repo.default_branch)
+            {
+                let credited = async {
+                    let log = stored.log(&pushed.after, push_commits::MOST_PER_PUSH + 1).await?;
+                    let commits = push_commits::new_commits(&log, pushed.before.as_deref());
+                    push_commits::record(&self.registry.db, user_id, &repo.id, &rfc3339(now_ms())[..10], commits).await
+                };
+                if let Err(error) = credited.await {
+                    worker::console_error!("commits pushed to {} not credited: {error}", repo.name);
+                }
+            }
             if moved {
                 self.publish_git_push(
                     &repo,
@@ -2276,6 +2298,9 @@ struct PushDone {
     /// The run whose job's token pushed, if one did: its push starts no
     /// workflows.
     caused_by_job: Option<String>,
+    /// The person credited with the push's commits on their contribution
+    /// calendar: whoever pushed, when that is a person (push_commits.rs).
+    credit: Option<String>,
 }
 
 /// What a git request leaves for after its answer: its audit entry, with
@@ -2428,6 +2453,12 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "readable" => {
             let a: ReadableArgs = args(body)?;
             reply(&repos.registry.readable(&a.ids, &a.viewer).await?)
+        }
+        // Work's contribution calendar: the commits a person pushed each
+        // day, in repositories the viewer may read (push_commits.rs).
+        "commit_days" => {
+            let a: g1t_contracts::repos::CommitDaysArgs = args(body)?;
+            reply(&push_commits::days(&repos.registry, &a.user_id, &a.since, &a.viewer).await?)
         }
         "public_namespaces" => {
             let a: PublicNamespacesArgs = args(body)?;

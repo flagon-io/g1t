@@ -779,6 +779,124 @@ pub struct Comment {
     /// When its text was last edited, RFC 3339; absent if it never was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edited_at: Option<String>,
+    /// Set when one of the workspace's agents wrote it, as itself
+    /// (`author` is then the agent: its id, its handle as `username`,
+    /// kind `agent`). Absent for people and for g1t.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentRef>,
+    /// Who the agent acted for: the person whose access it had, who
+    /// answers for it as its author would. Set with `agent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_for: Option<User>,
+    /// An agent's review: shown with its verdict (or none, for a review
+    /// that only comments) but advisory. It never counts toward required
+    /// approvals or code owners, and never blocks a merge.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub advisory: bool,
+}
+
+impl Comment {
+    /// The person who answers for it: whoever an agent acted for, or its author.
+    pub fn answerable(&self) -> &User {
+        self.acting_for.as_ref().unwrap_or(&self.author)
+    }
+}
+
+/// One of a workspace's own agents, as a comment or review it wrote shows
+/// it: Margo (@margo), with the pixel face drawn from `avatar_seed`. Its
+/// page is `/<workspace>/-/agents/<handle>`. Read in camelCase, like the
+/// comment it sits on; the snake_case spelling is accepted too.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRef {
+    pub id: String,
+    pub handle: String,
+    #[serde(alias = "display_name")]
+    pub display_name: String,
+    #[serde(alias = "avatar_seed")]
+    pub avatar_seed: String,
+}
+
+/// An agent's review: a comment, an approval or a request for changes,
+/// all of them advisory.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentVerdict {
+    Comment,
+    Approve,
+    RequestChanges,
+}
+
+impl AgentVerdict {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AgentVerdict::Comment => "comment",
+            AgentVerdict::Approve => "approve",
+            AgentVerdict::RequestChanges => "request_changes",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "comment" => Some(AgentVerdict::Comment),
+            "approve" => Some(AgentVerdict::Approve),
+            "request_changes" => Some(AgentVerdict::RequestChanges),
+            _ => None,
+        }
+    }
+
+    /// As a person's verdict reads, for showing it; none for a comment.
+    pub fn verdict(self) -> Option<Verdict> {
+        match self {
+            AgentVerdict::Comment => None,
+            AgentVerdict::Approve => Some(Verdict::Approve),
+            AgentVerdict::RequestChanges => Some(Verdict::RequestChanges),
+        }
+    }
+}
+
+/// How many comments and reviews one agent may write on one issue or pull
+/// request in [`AGENT_COMMENT_WINDOW_MS`].
+pub const AGENT_COMMENTS_PER_WINDOW: u32 = 5;
+/// An hour.
+pub const AGENT_COMMENT_WINDOW_MS: u64 = 60 * 60 * 1000;
+
+/// `workspace_agent_comment`: one of a workspace's agents comments on an
+/// issue or a pull request as itself, on behalf of `acting_for`. For the
+/// agents service only; never reachable with a person's token. The same
+/// checks as a person commenting apply to `acting_for` (verified, can
+/// read the repository, not archived), and an agent writes at most
+/// [`AGENT_COMMENTS_PER_WINDOW`] comments and reviews on one issue or
+/// pull request an hour. Publishes `comment.created` with `agent`.
+/// Returns `Outcome<Comment>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceAgentCommentArgs {
+    pub repo: RepoPath,
+    pub number: u32,
+    pub agent: AgentRef,
+    #[serde(alias = "actingFor")]
+    pub acting_for: User,
+    pub body: String,
+}
+
+/// `workspace_agent_review`: one of a workspace's agents reviews a pull
+/// request as itself, on behalf of `acting_for`. Advisory: the verdict is
+/// shown but never counts toward required approvals or code owners, and a
+/// request for changes never blocks a merge. Not on a draft, nor on a
+/// closed or merged pull request. `body` may be empty only when approving.
+/// The same checks and limit as `workspace_agent_comment`. Publishes
+/// `comment.created` with `agent`, `advisory` and the verdict.
+/// Returns `Outcome<Comment>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceAgentReviewArgs {
+    pub repo: RepoPath,
+    pub number: u32,
+    pub agent: AgentRef,
+    #[serde(alias = "actingFor")]
+    pub acting_for: User,
+    pub verdict: AgentVerdict,
+    #[serde(default)]
+    pub body: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2545,9 +2663,9 @@ pub struct Authored {
 /// How many days `contributions` covers: today and the 364 before it.
 pub const CONTRIBUTION_DAYS: u64 = 365;
 
-/// `contributions`: what a person did each day of the last year (issues
-/// and pull requests opened, reviews given), only on repositories `viewer`
-/// may read, for the calendar on their profile. Returns
+/// `contributions`: what a person did each day of the last year (commits
+/// they pushed to a default branch, issues and pull requests opened,
+/// reviews given), only on repositories `viewer` may read, for the calendar on their profile. Returns
 /// `Outcome<Contributions>`; not found for an account that does not exist.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ContributionsArgs {
@@ -2560,7 +2678,11 @@ pub struct ContributionsArgs {
 pub struct ContributionDay {
     /// `YYYY-MM-DD`, UTC.
     pub date: String,
+    /// Everything that day, commits included.
     pub count: u32,
+    /// How many of `count` are commits they pushed (repos' `commit_days`).
+    #[serde(default)]
+    pub commits: u32,
 }
 
 /// A person's year, as far as the viewer may see.

@@ -11,10 +11,13 @@ import {
   dayLabel,
   filterEntries,
   inline,
+  mentionNames,
   mentionQuery,
   mergeMessages,
   safeHref,
   sections,
+  shownHandle,
+  shownName,
   timeline,
   unreadTotals,
   type ShownMessage,
@@ -165,4 +168,24 @@ test("addresses, names, money and reconnecting", () => {
   assert.equal(channelName("#Release Train_2!"), "release-train-2");
   assert.equal(backoff(0, () => 0.5), 1000);
   assert.equal(backoff(10, () => 0.5), 30_000);
+});
+
+test("a member shows by display name, else by their username as they wrote it", () => {
+  assert.equal(shownName({ name: "ana", display_name: "Ana Lima", display_username: "Ana" }), "Ana Lima");
+  assert.equal(shownName({ name: "ana", display_name: " ", display_username: "Ana" }), "Ana");
+  assert.equal(shownName({ name: "ana", display_name: "" }), "ana");
+  assert.equal(shownHandle({ name: "ana", display_username: "Ana" }), "Ana");
+  assert.equal(shownHandle({ name: "ana", display_username: "Bo" }), "ana");
+});
+
+test("mentions read as the names people know, found by the lowercased handle", () => {
+  const names = mentionNames([
+    { kind: "user", name: "ana", display_username: "Ana", display_name: "Ana Lima", avatar: null },
+    { kind: "user", name: "bo", display_username: "Bo", display_name: "", avatar: null },
+    { kind: "agent", name: "reviewer", display_name: "Reviewer", avatar: null },
+  ]);
+  assert.equal(names.get("ana"), "Ana Lima");
+  assert.equal(names.get("bo"), "Bo");
+  assert.equal(names.get("reviewer"), "Reviewer");
+  assert.equal(names.get("cy"), undefined);
 });

@@ -852,6 +852,19 @@ pub struct ReadableArgs {
 /// The most ids one `readable` call looks at.
 pub const MAX_READABLE: usize = 500;
 
+/// `commit_days`: how many commits a person pushed each day (UTC) since
+/// `since` (`YYYY-MM-DD`), to the default branch or `gh-pages` of
+/// repositories the viewer may read (as `readable` decides), for the
+/// contribution calendar. Credited to whoever pushed; at most 50 commits a
+/// push, counted along the branch's first-parent line. Returns
+/// `Vec<crate::work::ContributionDay>`, oldest first, days with none left out.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommitDaysArgs {
+    pub user_id: String,
+    pub since: String,
+    pub viewer: Viewer,
+}
+
 /// `public_namespaces`: the workspaces in which this account made a public
 /// repository, and so a public project, which anyone can see on its page.
 /// Returns `Vec<String>` of workspace slugs.

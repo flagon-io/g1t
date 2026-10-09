@@ -96,8 +96,10 @@ export function mergeMessages(current: ShownMessage[], incoming: ShownMessage[])
 /** Someone who can be mentioned: a person by username, an agent by handle. */
 export type Mentionable = {
   kind: "user" | "agent";
-  /** What follows the `@`. */
+  /** What follows the `@`: lowercased, as it is kept. */
   name: string;
+  /** A person's username as they wrote it, when that differs from `name`. */
+  display_username?: string | null;
   display_name: string;
   avatar: string | null;
   /** An agent's role, shown beside it. */
@@ -364,9 +366,34 @@ export function principalField(kind: Principal["kind"], key: string): string {
   return `${kind}:${key}`;
 }
 
-/** The name shown for a member: their display name, else their handle. */
-export function shownName(member: Pick<MemberProfile, "display_name" | "name">): string {
-  return member.display_name?.trim() || member.name;
+/**
+ * A member's handle as it shows after `@`: a person's username in its
+ * chosen case, an agent's handle. The same rule as `memberHandle` in
+ * @g1t/contracts, kept here so this file stays pure for its tests.
+ */
+export function shownHandle(member: { name: string; display_username?: string | null }): string {
+  const display = member.display_username;
+  return display && display.toLowerCase() === member.name.toLowerCase() ? display : member.name;
+}
+
+/**
+ * The name shown for a member, everywhere in chat (messages, the sidebar,
+ * typing, cards): their display name, else their handle in its chosen
+ * case. The same rule as `memberName` in @g1t/contracts, which the chat
+ * service and its notifications follow.
+ */
+export function shownName(member: Pick<MemberProfile, "display_name" | "name"> & { display_username?: string | null }): string {
+  return member.display_name?.trim() || shownHandle(member);
+}
+
+/**
+ * Who each lowercased handle is, for drawing `@name` as the name people
+ * know: the workspace's people and agents.
+ */
+export function mentionNames(people: readonly Mentionable[]): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const person of people) names.set(person.name.toLowerCase(), shownName(person));
+  return names;
 }
 
 /** Reconnect delays for the live socket: doubling from one second to thirty, with jitter. */

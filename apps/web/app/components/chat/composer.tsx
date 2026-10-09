@@ -6,7 +6,7 @@ import { Hint } from "../ui/hint";
 // `:shortcode` completion and the emoji picker (components/emoji).
 import { useEmojiAutocomplete } from "../emoji/autocomplete";
 import { EmojiPickerPopover } from "../emoji/picker";
-import { type MentionQuery, type Mentionable, mentionQuery } from "../../lib/chat";
+import { type MentionQuery, type Mentionable, mentionQuery, shownHandle } from "../../lib/chat";
 
 /** How tall the box grows before it scrolls. */
 const MAX_HEIGHT = 240;
@@ -150,7 +150,7 @@ export function Composer({
               <MemberAvatar member={person} size={22} />
               <span className="min-w-0 grow truncate text-sm">
                 <span className="font-medium text-fg">{person.display_name}</span>
-                <span className="ml-1.5 text-faint">@{person.name}</span>
+                <span className="ml-1.5 text-faint">@{shownHandle(person)}</span>
               </span>
               {person.kind === "agent" && <AgentPill />}
             </li>

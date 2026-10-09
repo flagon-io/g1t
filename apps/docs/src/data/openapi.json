@@ -698,7 +698,12 @@
                       "description": "Present when approved."
                     },
                     "username": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Lowercased: what the account is found and linked by."
+                    },
+                    "display_username": {
+                      "type": "string",
+                      "description": "The username as its owner wrote it; the same as username when they chose no case."
                     },
                     "verified": {
                       "type": "boolean",
@@ -710,6 +715,7 @@
                   "status": "approved",
                   "token": "g1t_…",
                   "username": "syntaqx",
+                  "display_username": "syntaqx",
                   "verified": true
                 }
               }
@@ -745,6 +751,7 @@
                 "example": {
                   "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "username": "syntaqx",
+                  "display_username": "syntaqx",
                   "kind": "user",
                   "verified": true,
                   "workspaces": [
@@ -1586,6 +1593,7 @@
                 "schema": {},
                 "example": {
                   "username": "ada",
+                  "display_username": "Ada",
                   "email": "ada@example.com",
                   "verified": true,
                   "joined": null,
@@ -2369,6 +2377,7 @@
                     "role": "member",
                     "invited_by": {
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "name": "Chase",
                       "avatar": null
                     },
@@ -3795,6 +3804,7 @@
                   "people": [
                     {
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "name": "Chase Pierce",
                       "avatar": null,
                       "role": "admin",
@@ -3804,6 +3814,7 @@
                     },
                     {
                       "username": "linus",
+                      "display_username": "linus",
                       "name": null,
                       "avatar": null,
                       "role": "maintain",
@@ -3813,6 +3824,7 @@
                     },
                     {
                       "username": "grace",
+                      "display_username": "grace",
                       "name": "Grace Hopper",
                       "avatar": null,
                       "role": "write",
@@ -3822,6 +3834,7 @@
                     },
                     {
                       "username": "ada",
+                      "display_username": "Ada",
                       "name": "Ada Lovelace",
                       "avatar": null,
                       "role": "triage",
@@ -4113,6 +4126,7 @@
                 "schema": {},
                 "example": {
                   "username": "ada",
+                  "display_username": "Ada",
                   "name": "Ada Lovelace",
                   "avatar": null,
                   "role": "write",
@@ -4380,6 +4394,7 @@
                 "schema": {},
                 "example": {
                   "username": "ada",
+                  "display_username": "Ada",
                   "role": "triage",
                   "source": "direct",
                   "capabilities": [
@@ -8791,11 +8806,13 @@
                 "example": [
                   {
                     "username": "ada",
+                    "display_username": "Ada",
                     "avatar": null,
                     "starred_at": "2026-10-06T18:30:00.000Z"
                   },
                   {
                     "username": "sam",
+                    "display_username": "sam",
                     "avatar": null,
                     "starred_at": "2026-10-02T09:12:00.000Z"
                   }
@@ -9046,6 +9063,7 @@
                       "kind": "user",
                       "name": "ada",
                       "username": "ada",
+                      "display_username": "Ada",
                       "avatar": "5f2b8c1d9e7a3f6b4c0d2e8a1b9c7d5e3f1a0b2c4d6e8f0a1b3c5d7e9f0a2b4c",
                       "commits": 52,
                       "first_at": "2026-09-28T14:11:52.000Z",
@@ -10935,7 +10953,7 @@
           "Members"
         ],
         "summary": "List a workspace's members",
-        "description": "A workspace's members, owners first, then by username. Each has their `username`, `name`, `avatar`, `role` (`owner` or `member`), the roles they hold besides it (`org_roles`: `billing_manager`, `security_manager`), and, when an owner asks, whether they have two-factor authentication on (`two_factor`; null for anyone else). Members only.\n\nOwners first, then by username. `two_factor` is shown to owners only, and is `null` for anyone else. `403` for anyone who is not a member. See [Workspaces](/guides/workspaces/#members-and-owners).",
+        "description": "A workspace's members, owners first, then by username. Each has their `username`, `display_username` (the username as they wrote it), `name`, `avatar`, `role` (`owner` or `member`), the roles they hold besides it (`org_roles`: `billing_manager`, `security_manager`), and, when an owner asks, whether they have two-factor authentication on (`two_factor`; null for anyone else). Members only.\n\nOwners first, then by username. `two_factor` is shown to owners only, and is `null` for anyone else. `403` for anyone who is not a member. See [Workspaces](/guides/workspaces/#members-and-owners).",
         "x-operation": "list_members",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "list_members",
@@ -10967,6 +10985,7 @@
                 "example": [
                   {
                     "username": "ada",
+                    "display_username": "Ada",
                     "role": "owner",
                     "org_roles": [],
                     "two_factor": true,
@@ -10975,6 +10994,7 @@
                   },
                   {
                     "username": "grace",
+                    "display_username": "grace",
                     "role": "member",
                     "org_roles": [
                       "security_manager"
@@ -11080,6 +11100,7 @@
                 "schema": {},
                 "example": {
                   "username": "grace",
+                  "display_username": "grace",
                   "role": "member",
                   "org_roles": [
                     "security_manager"
@@ -12246,6 +12267,7 @@
                 "example": [
                   {
                     "username": "ada",
+                    "display_username": "Ada",
                     "name": "Ada Lovelace",
                     "avatar": null,
                     "repos": [
@@ -13130,6 +13152,7 @@
                 "example": [
                   {
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "name": "Chase Pierce",
                     "avatar": null,
                     "role": "maintainer",
@@ -13137,6 +13160,7 @@
                   },
                   {
                     "username": "ana",
+                    "display_username": "Ana",
                     "name": "Ana Lima",
                     "avatar": null,
                     "role": "member",
@@ -13144,6 +13168,7 @@
                   },
                   {
                     "username": "bo",
+                    "display_username": "bo",
                     "name": null,
                     "avatar": null,
                     "role": "member",
@@ -13259,6 +13284,7 @@
                 "schema": {},
                 "example": {
                   "username": "ana",
+                  "display_username": "Ana",
                   "name": "Ana Lima",
                   "avatar": null,
                   "role": "maintainer",
@@ -35404,6 +35430,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -35469,6 +35496,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -35890,6 +35918,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -36015,6 +36044,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -36143,7 +36173,7 @@
           "Issues"
         ],
         "summary": "Get an issue",
-        "description": "An issue: its description (which may say what done means, under \"Definition of done\"), labels, its comments, and every pull request made against it with its status. If the issue is closed, resolved_by is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried.\n\nA closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolved_by` is the number of the pull request whose merge closed it. Each pull request made for it is listed; one closed because another was merged has `superseded_by` set.",
+        "description": "An issue: its description (which may say what done means, under \"Definition of done\"), labels, its comments, and every pull request made against it with its status. If the issue is closed, resolved_by is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried. A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`.\n\nA closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolved_by` is the number of the pull request whose merge closed it. Each pull request made for it is listed; one closed because another was merged has `superseded_by` set.",
         "x-operation": "get_issue",
         "x-mcp-tool": "issue",
         "x-mcp-action": "get",
@@ -36207,6 +36237,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -36255,6 +36286,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -36302,6 +36334,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -36318,6 +36351,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -36444,6 +36478,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -36639,6 +36674,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -36803,6 +36839,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -36960,6 +36997,7 @@
                   "author": {
                     "id": "usr_g1t_agent",
                     "username": "g1t",
+                    "display_username": "g1t",
                     "kind": "agent",
                     "verified": false,
                     "workspaces": []
@@ -36967,6 +37005,7 @@
                   "requested_by": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -37259,6 +37298,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -37306,6 +37346,7 @@
                     "author": {
                       "id": "usr_g1t_agent",
                       "username": "g1t",
+                      "display_username": "g1t",
                       "kind": "agent",
                       "verified": false,
                       "workspaces": []
@@ -37313,6 +37354,7 @@
                     "requested_by": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -51029,6 +51071,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -51185,6 +51228,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -51349,6 +51393,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": true,
                     "workspaces": [
@@ -51510,6 +51555,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": true,
                     "workspaces": [
@@ -51836,6 +51882,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -51972,6 +52019,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -52089,7 +52137,7 @@
           "Pull requests"
         ],
         "summary": "Get a pull request",
-        "description": "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the rules of the branch it merges into require, as success, failure, pending or expected when nothing has reported it yet), rules (each rule of that branch it does not meet yet, with the ruleset it comes from, what is wrong and how to meet it, in `unmet`; those you may bypass in `bypassable`; those of rulesets in evaluate that would refuse it in `evaluate`; and whether merging joins the merge queue), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them).\n\n| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request g1t is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `pull.reviewers`, `pull.team_reviewers` | The people asked to review it, `g1t` among them when a g1t agent was, and the teams, as `workspace/team`. Change them with [`request_reviewers`](/reference/api/pull-requests/request-reviewers/). |\n| `code_owners` | Present when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required` there, `reviews` (one per section and rule that owns a changed file: `section`, `line`, `pattern`, `owners`, `files`, `optional`, the approvals `required`, `approved_by`, `changes_requested_by` and `satisfied`), what is still `missing`, as the merge box says it, and how many `errors` the file has; [`get_codeowners_errors`](/reference/api/repositories/get-codeowners-errors/) lists them. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have g1t do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/).",
+        "description": "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the rules of the branch it merges into require, as success, failure, pending or expected when nothing has reported it yet), rules (each rule of that branch it does not meet yet, with the ruleset it comes from, what is wrong and how to meet it, in `unmet`; those you may bypass in `bypassable`; those of rulesets in evaluate that would refuse it in `evaluate`; and whether merging joins the merge queue), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them). A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`. An agent's review also has `advisory: true`: its `verdict` (none, for a review that only comments) is shown but never counts toward required approvals or code owners, and never blocks a merge.\n\n| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request g1t is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `pull.reviewers`, `pull.team_reviewers` | The people asked to review it, `g1t` among them when a g1t agent was, and the teams, as `workspace/team`. Change them with [`request_reviewers`](/reference/api/pull-requests/request-reviewers/). |\n| `code_owners` | Present when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required` there, `reviews` (one per section and rule that owns a changed file: `section`, `line`, `pattern`, `owners`, `files`, `optional`, the approvals `required`, `approved_by`, `changes_requested_by` and `satisfied`), what is still `missing`, as the merge box says it, and how many `errors` the file has; [`get_codeowners_errors`](/reference/api/repositories/get-codeowners-errors/) lists them. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have g1t do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/).",
         "x-operation": "get_pull_request",
         "x-mcp-tool": "pull_request",
         "x-mcp-action": "get",
@@ -52177,6 +52225,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -52204,6 +52253,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -52227,6 +52277,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -52236,6 +52287,36 @@
                       "line": null,
                       "verdict": null,
                       "created_at": "2026-10-01T18:33:10.420Z"
+                    },
+                    {
+                      "id": "cmt_01m43sw2a6c0e4h8k2n6r0v4z8",
+                      "kind": "comment",
+                      "author": {
+                        "id": "agt_01m43q8d2f6h0k4n8r2v6z0c4g",
+                        "username": "margo",
+                        "kind": "agent",
+                        "verified": false,
+                        "workspaces": []
+                      },
+                      "body": "The empty-name case is handled and tested. One nit: trim the name before using it.",
+                      "path": null,
+                      "line": null,
+                      "verdict": "approve",
+                      "created_at": "2026-10-01T18:36:41.207Z",
+                      "agent": {
+                        "id": "agt_01m43q8d2f6h0k4n8r2v6z0c4g",
+                        "handle": "margo",
+                        "display_name": "Margo",
+                        "avatar_seed": "margo"
+                      },
+                      "acting_for": {
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                        "username": "syntaqx",
+                        "kind": "user",
+                        "verified": false,
+                        "workspaces": []
+                      },
+                      "advisory": true
                     }
                   ],
                   "checks": null,
@@ -52440,6 +52521,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -52768,6 +52850,7 @@
                   "author": {
                     "id": "usr_01kz9d3f7h1k5n9r3v7z1c5g9b",
                     "username": "ana",
+                    "display_username": "Ana",
                     "kind": "user",
                     "verified": true,
                     "workspaces": [
@@ -52963,6 +53046,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -53155,6 +53239,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -53648,6 +53733,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -53825,6 +53911,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -53980,6 +54067,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -54135,6 +54223,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -54292,6 +54381,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []

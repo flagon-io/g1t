@@ -1,22 +1,15 @@
 import {
   Archive,
   ArchiveRestore,
-  Bot,
   ChevronLeft,
   Copy,
   Pencil,
   Trash2,
   BellOff,
-  CircleDot,
-  GitPullRequest,
   Hash,
-  ListChecks,
   Lock,
   MessageSquareText,
   PanelRight,
-  Rocket,
-  ShieldCheck,
-  Sparkles,
   Star,
   UserPlus,
   Users,
@@ -32,12 +25,13 @@ import {
   type ChatLiveEvent,
   type ChatMessage,
   type MemberProfile,
-  type MessageCard,
   type Result,
   hasCodeAccess,
+  shownUsername,
 } from "@g1t/contracts";
 
 import { useChatData, useChatSend, useChatSidebar } from "./actions";
+import { CardBox, CardToasts } from "./card";
 import { Composer } from "./composer";
 import { type LiveState, useChatLive } from "./live";
 import { AgentPill, MemberAvatar } from "./marks";
@@ -57,11 +51,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
-import { Badge, type BadgeTone } from "../ui/badge";
+import { Badge } from "../ui/badge";
 import { Hint } from "../ui/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { type Mentionable, type ShownMessage, channelPath, mergeMessages, shownName, timeline } from "../../lib/chat";
-import { sessionChip } from "../../lib/session-card";
+import { type Mentionable, type ShownMessage, channelPath, mentionNames, mergeMessages, shownHandle, shownName, timeline } from "../../lib/chat";
 import { codeAccessPath } from "../../lib/workspace-nav";
 import { conversationCache } from "./conversation-cache";
 // Reactions and the workspace's own emoji (components/emoji).
@@ -206,11 +199,13 @@ export function ChannelView({ data }: { data: Loaded }) {
       slug,
       me: me?.username ?? null,
       agents: new Set((chatData?.agents ?? []).map((a) => a.handle.toLowerCase())),
+      // `@ana` reads as the name people know: everyone in the workspace, the viewer too.
+      names: mentionNames([...people, ...(me ? [{ kind: "user" as const, name: me.username, display_username: me.display_username, display_name: me.display_name, avatar: me.avatar }] : [])]),
       channels: new Set((sidebar?.entries ?? []).filter((e) => e.channel.kind === "channel").map((e) => e.channel.name ?? "")),
       project,
       codeLink: code ? undefined : (href: string) => (/^\/[^/]+\/(?!-\/)[^/]+/.test(href) ? codeAccessPath(slug, href) : href),
     }),
-    [slug, me?.username, chatData?.agents, sidebar?.entries, project, code],
+    [slug, me, people, chatData?.agents, sidebar?.entries, project, code],
   );
 
   // Keeps the newest message in view while the reader is at the bottom.
@@ -374,7 +369,7 @@ export function ChannelView({ data }: { data: Loaded }) {
     async (body: string, root: string | null) => {
       if (!me) return;
       const clientId = newClientId();
-      const author: MemberProfile = { kind: "user", id: me.id, name: me.username, display_name: me.username, avatar: me.avatar, role: null };
+      const author: MemberProfile = { kind: "user", id: me.id, name: me.username, display_username: me.display_username, display_name: me.display_name, avatar: me.avatar, role: null };
       const pending: ShownMessage = {
         id: clientId,
         client_id: clientId,
@@ -413,7 +408,7 @@ export function ChannelView({ data }: { data: Loaded }) {
   const customs = useCustomEmoji(slug);
   const { usercontent } = useAddresses();
   const meProfile = useMemo<MemberProfile | null>(
-    () => (me ? { kind: "user", id: me.id, name: me.username, display_name: me.username, avatar: me.avatar, role: null } : null),
+    () => (me ? { kind: "user", id: me.id, name: me.username, display_username: me.display_username, display_name: me.display_name, avatar: me.avatar, role: null } : null),
     [me],
   );
   const react = useCallback(
@@ -505,7 +500,7 @@ export function ChannelView({ data }: { data: Loaded }) {
           ...now,
           {
             channel_id: data.channel.id,
-            member: { kind: "user", id: me.id, name: me.username, display_name: me.username, avatar: me.avatar, role: null },
+            member: { kind: "user", id: me.id, name: me.username, display_username: me.display_username, display_name: me.display_name, avatar: me.avatar, role: null },
             role: "member",
             starred: false,
             muted: false,
@@ -547,6 +542,8 @@ export function ChannelView({ data }: { data: Loaded }) {
       {...swipe}
       className="flex h-[calc(100dvh-3.5rem)] min-h-0 lg:h-dvh max-md:fixed max-md:inset-x-0 max-md:top-(--vv-top,0px) max-md:z-30 max-md:h-(--vv-height,100dvh) max-md:bg-bg"
     >
+      {/* What pressing a card's action did (components/chat/card.tsx). */}
+      <CardToasts />
       <section aria-label={data.title} className="flex min-w-0 grow flex-col">
         <ChannelHeader
           onBack={back}
@@ -944,89 +941,6 @@ function DayRule({ label }: { label: string }) {
   );
 }
 
-const CARD_ICONS: Record<string, ReactNode> = {
-  pull: <GitPullRequest size={16} />,
-  issue: <CircleDot size={16} />,
-  task: <ListChecks size={16} />,
-  deploy: <Rocket size={16} />,
-  approval: <ShieldCheck size={16} />,
-  session: <Bot size={16} />,
-};
-
-/**
- * An agent session's state, as a chip: Working pulses softly in lavender,
- * Needs approval is amber, Done green, Failed red, Stopped and Queued quiet.
- * The agent changes the card in place, so this follows the session live.
- */
-function SessionStateChip({ state }: { state: string }) {
-  const chip = sessionChip(state);
-  return (
-    <Badge tone={chip.tone} className="mt-0.5">
-      {chip.live && (
-        <span aria-hidden="true" className="relative flex size-1.5">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-60 motion-reduce:animate-none" />
-          <span className="relative inline-flex size-1.5 rounded-full bg-current" />
-        </span>
-      )}
-      {state}
-    </Badge>
-  );
-}
-
-/** How loud a card's state reads, from what it says. */
-function stateTone(state: string): BadgeTone {
-  const s = state.toLowerCase();
-  if (/merged/.test(s)) return "merged";
-  if (/fail|error|blocked|over budget|rejected/.test(s)) return "danger";
-  if (/approval|waiting|review|queued|needs/.test(s)) return "warn";
-  if (/pass|done|deployed|ready|approved|live|success/.test(s)) return "success";
-  if (/working|running|in progress|open/.test(s)) return "info";
-  return "neutral";
-}
-
-/** A card g1t or an agent posted: what it is about, a line of detail, and its state. */
-export function CardBox({ card, href }: { card: MessageCard; href: string | null }) {
-  // An agent session's card: updated in place as the session moves (`message.updated`).
-  const session = card.kind === "session";
-  const inner = (
-    <>
-      <span
-        className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors group-hover:text-fg ${
-          session && sessionChip(card.state).live ? "bg-accent/10 text-accent" : "bg-raised text-muted"
-        }`}
-      >
-        {CARD_ICONS[card.kind] ?? <Sparkles size={16} />}
-      </span>
-      <span className="min-w-0 grow">
-        <span className="line-clamp-2 text-sm font-medium text-fg">{card.title}</span>
-        {card.detail && <span className="mt-0.5 block truncate font-mono text-xs text-muted tabular-nums">{card.detail}</span>}
-      </span>
-      {card.state &&
-        (session ? (
-          <SessionStateChip state={card.state} />
-        ) : (
-          <Badge tone={stateTone(card.state)} className="mt-0.5">
-            {card.state}
-          </Badge>
-        ))}
-    </>
-  );
-  const box = "group mt-1.5 flex max-w-xl items-start gap-3 rounded-xl border border-line bg-surface px-3.5 py-3 transition-colors";
-  return href ? (
-    <Link to={href} className={`${box} hover:border-line-strong hover:bg-raised/40`}>
-      {inner}
-    </Link>
-  ) : (
-    <div className={box}>{inner}</div>
-  );
-}
-
-function cardHref(card: MessageCard, slug: string, code: boolean): string | null {
-  if (!card.href) return null;
-  if (code || !/^\/[^/]+\/(?!-\/)[^/]+/.test(card.href)) return card.href;
-  return codeAccessPath(slug, card.href);
-}
-
 /** One message: with its author's name and avatar when it starts a group. */
 /**
  * Someone's profile beside the conversation, opened from their card: who
@@ -1067,9 +981,9 @@ function ProfilePanel({
       <WithPresence person={{ username }} size={88}>
         <Avatar name={username} image={card?.avatar ?? null} size={88} />
       </WithPresence>
-      <h3 className="mt-3 text-xl font-semibold tracking-tight">{card?.name?.trim() || username}</h3>
+      <h3 className="mt-3 text-xl font-semibold tracking-tight">{card?.name?.trim() || (card ? shownUsername(card) : username)}</h3>
       <p className="font-mono text-sm text-muted">
-        @{username}
+        @{card ? shownUsername(card) : username}
         {card?.pronouns ? <span className="font-sans"> · {card.pronouns}</span> : null}
       </p>
       <PresenceSummary person={{ username }} className="mt-3 text-sm text-muted" />
@@ -1284,7 +1198,16 @@ function MessageRow({
         )}
         <div className={message.pending && !message.failed ? "opacity-60" : undefined}>
           {message.body && <MessageText body={message.body} context={context} />}
-          {message.card && <CardBox card={message.card} href={cardHref(message.card, slug, code)} />}
+          {message.card && (
+            <CardBox
+              card={message.card}
+              slug={slug}
+              code={code}
+              channelId={message.channel_id}
+              messageId={message.id}
+              inert={!!message.pending || !!message.deleted_at}
+            />
+          )}
           {message.edited_at && <span className="text-[0.6875rem] text-faint"> (edited)</span>}
         </div>
         {!message.pending && !message.deleted_at && <ReactionBar messageId={message.id} reactions={message.reactions} />}
@@ -1653,7 +1576,7 @@ function InfoPanel({
                 <MemberAvatar member={member} size={26} presence />
                 <span className="min-w-0 grow truncate text-sm">
                   {shownName(member)}
-                  {member.display_name !== member.name && <span className="ml-1.5 text-faint">@{member.name}</span>}
+                  {shownName(member) !== shownHandle(member) && <span className="ml-1.5 text-faint">@{shownHandle(member)}</span>}
                   <PersonStatusEmoji person={{ id: member.id, username: member.name }} size={13} className="ml-1.5 align-[-2px]" inert />
                 </span>
                 {role === "owner" && <span className="text-[0.6875rem] text-faint">Owner</span>}
@@ -1699,7 +1622,7 @@ function AddMember({
     if (!done.ok) return setError(done.error.message);
     onAdded({
       channel_id: channelId,
-      member: { kind: person.kind, id: agent?.id ?? person.name, name: person.name, display_name: person.display_name, avatar: person.avatar, role: person.role ?? null },
+      member: { kind: person.kind, id: agent?.id ?? person.name, name: person.name, display_username: person.display_username ?? null, display_name: person.display_name, avatar: person.avatar, role: person.role ?? null },
       role: "member",
       starred: false,
       muted: false,

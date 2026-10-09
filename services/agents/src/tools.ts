@@ -52,8 +52,19 @@ export interface ToolPorts {
 export interface ActionPorts {
   remember(body: string, scope: "workspace" | "channel" | "person" | null): Promise<{ ok: boolean; message: string }>;
   forget(id: string): Promise<{ ok: boolean; message: string }>;
-  /** Opens an issue as the person who asked; they must be able to read the repository. */
-  fileIssue(repo: RepoRef, asker: User, input: { title: string; body: string; labels: string[] }): Promise<{ ok: true; number: number; url: string } | { ok: false; message: string }>;
+  /**
+   * Posts a draft issue as a card in the conversation, with File issue and
+   * Discard: whoever presses File files it as themselves, if they can read
+   * the repository. Nothing is filed by the agent.
+   */
+  draftIssue(repo: RepoRef, input: { title: string; body: string; labels: string[] }): Promise<{ ok: boolean; message: string }>;
+  /**
+   * Comments on an issue or pull request, or reviews a pull request, as the
+   * agent on behalf of the person who asked. Reviews are advisory: they
+   * never count toward required approvals.
+   */
+  comment?(repo: RepoRef, asker: User, number: number, body: string): Promise<{ ok: boolean; message: string }>;
+  review?(repo: RepoRef, asker: User, number: number, verdict: "comment" | "approve" | "request_changes", body: string): Promise<{ ok: boolean; message: string }>;
   /** From chat: spins off a session for real work. */
   startSession?(title: string, goal: string): Promise<{ ok: boolean; message: string }>;
   /** In a session: a short progress note in its thread. */
@@ -182,10 +193,10 @@ const FORGET: ToolDef = {
   input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
 };
 
-const FILE_ISSUE: ToolDef = {
-  name: "file_issue",
+const DRAFT_ISSUE: ToolDef = {
+  name: "draft_issue",
   description:
-    "File an issue (a bug report or a feature request) in a repository, as the person who asked, with what you found. Only after you showed them a draft and they said yes. Write it for the team that will fix it: what happens, what should happen, steps or evidence, and where in the code it likely is.",
+    "Draft an issue (a bug report or a feature request) for a repository with what you found. It appears in the conversation as a card with File issue and Discard buttons: the person files it themselves with one press, so don't ask them to confirm in words. Write it for the team that will fix it: what happens, what should happen, steps or evidence, and where in the code it likely is.",
   input_schema: {
     type: "object",
     properties: {
@@ -195,6 +206,33 @@ const FILE_ISSUE: ToolDef = {
       labels: { type: "array", items: { type: "string" } },
     },
     required: ["repo", "title", "body"],
+  },
+};
+
+const COMMENT: ToolDef = {
+  name: "comment",
+  description:
+    "Comment on an issue or pull request, as yourself on behalf of the person you're working for. Use it when the comment belongs on the issue or pull request (findings, a test plan, a question for its author), not for chatting.",
+  input_schema: {
+    type: "object",
+    properties: { repo: { type: "string" }, number: { type: "integer" }, body: { type: "string" } },
+    required: ["repo", "number", "body"],
+  },
+};
+
+const REVIEW_PULL: ToolDef = {
+  name: "review_pull",
+  description:
+    "Review a pull request on the pull request itself, as yourself on behalf of the person you're working for: approve, request changes, or just comment, with your review in the body. Your review is advisory: people still give the approvals a merge needs. Read the change first.",
+  input_schema: {
+    type: "object",
+    properties: {
+      repo: { type: "string" },
+      number: { type: "integer" },
+      verdict: { type: "string", enum: ["comment", "approve", "request_changes"] },
+      body: { type: "string" },
+    },
+    required: ["repo", "number", "verdict", "body"],
   },
 };
 
@@ -288,7 +326,9 @@ export class ToolBox {
       ...CHAT_TOOLS,
       ...(roomForHop ? [ASK_COLLEAGUE] : []),
       ...(actions ? [REMEMBER, FORGET] : []),
-      ...(this.canFile() ? [FILE_ISSUE] : []),
+      ...(this.canFile() ? [DRAFT_ISSUE] : []),
+      ...(this.canFile() && actions?.comment ? [COMMENT] : []),
+      ...(this.canFile() && actions?.review ? [REVIEW_PULL] : []),
       ...(actions?.startSession && !this.context.session ? [START_SESSION] : []),
       ...(actions?.postUpdate && this.context.session ? [POST_UPDATE] : []),
       ...(actions?.useSubagent && this.context.session && roomForHop ? [USE_SUBAGENT] : []),
@@ -384,9 +424,8 @@ export class ToolBox {
       }
       case "forget":
         return said(await actions.forget(text("id", 100)));
-      case "file_issue": {
-        const asker = this.audience.asker;
-        if (!asker || !this.audience.codeAllowed()) return this.withheld();
+      case "draft_issue": {
+        if (!this.audience.asker || !this.audience.codeAllowed()) return this.withheld();
         const repo = await this.audience.repo(input.repo);
         if (!repo) return this.withheld();
         const title = text("title", 200);
@@ -395,9 +434,24 @@ export class ToolBox {
         const labels = Array.isArray(input.labels)
           ? input.labels.filter((l): l is string => typeof l === "string").map((l) => l.trim()).filter(Boolean).slice(0, 5)
           : [];
-        const filed = await actions.fileIssue(repo, asker, { title, body, labels });
-        if (!filed.ok) return { text: filed.message, outcome: "refused" };
-        return { text: `Filed ${repo.namespace}/${repo.name}#${filed.number}: ${filed.url}`, outcome: "allowed" };
+        return said(await actions.draftIssue(repo, { title, body, labels }));
+      }
+      case "comment":
+      case "review_pull": {
+        const asker = this.audience.asker;
+        if (!asker || !this.audience.codeAllowed()) return this.withheld();
+        const repo = await this.audience.repo(input.repo);
+        if (!repo) return this.withheld();
+        const number = Math.floor(Number(input.number));
+        if (!Number.isFinite(number) || number < 1) return { text: "Give the issue or pull request's number.", outcome: "refused" };
+        const body = text("body", 20_000);
+        if (name === "comment") {
+          if (!body) return { text: "Say what to comment.", outcome: "refused" };
+          return said(await actions.comment!(repo, asker, number, body));
+        }
+        const verdict = input.verdict === "approve" || input.verdict === "request_changes" ? input.verdict : "comment";
+        if (!body && verdict !== "approve") return { text: "A review needs its text.", outcome: "refused" };
+        return said(await actions.review!(repo, asker, number, verdict, body));
       }
       case "start_session": {
         const title = text("title", 120);

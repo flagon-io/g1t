@@ -10,7 +10,7 @@ import { Avatar } from "../ui";
 import { Hint } from "../ui/hint";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Switch } from "../ui/switch";
-import { channelName } from "../../lib/chat";
+import { channelName, shownHandle, shownName } from "../../lib/chat";
 import type { ChatLayoutData } from "../../routes/workspace/chat/layout";
 import { useLiveCounts } from "../../lib/notify-client";
 import { overlayEntries, unlisted } from "../../lib/notify-store";
@@ -249,7 +249,7 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
 }
 
 /** Someone a new message can go to. */
-type Pickable = { key: string; kind: "user" | "agent"; name: string; display: string; avatar: string | null; role?: string | null };
+type Pickable = { key: string; kind: "user" | "agent"; name: string; handle: string; display: string; avatar: string | null; role?: string | null };
 
 /**
  * A new direct message: choose people, agents or both, then open the
@@ -307,13 +307,14 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
         key: `agent:${agent.id}`,
         kind: "agent" as const,
         name: agent.handle,
+        handle: agent.handle,
         display: agent.display_name,
         avatar: agent.avatar,
         role: agent.role,
       })),
       ...(data?.people ?? [])
         .filter((person) => person.name.toLowerCase() !== me)
-        .map((person) => ({ key: `user:${person.name}`, kind: "user" as const, name: person.name, display: person.display_name, avatar: person.avatar })),
+        .map((person) => ({ key: `user:${person.name}`, kind: "user" as const, name: person.name, handle: shownHandle(person), display: shownName(person), avatar: person.avatar })),
     ];
   }, [data]);
   const q = query.trim().toLowerCase().replace(/^@/, "");
@@ -411,7 +412,7 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
                 {person.kind === "agent" && <AgentPill />}
               </span>
               <span className="block truncate text-xs text-faint">
-                @{person.name}
+                @{person.handle}
                 {person.role ? ` · ${person.role}` : ""}
               </span>
             </span>

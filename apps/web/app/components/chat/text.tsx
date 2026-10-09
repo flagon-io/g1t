@@ -15,6 +15,11 @@ export type TextContext = {
   me: string | null;
   /** Handles of the workspace's agents: their mentions go to the agent. */
   agents: ReadonlySet<string>;
+  /**
+   * Who each lowercased handle is (`mentionNames`): a mention shows as
+   * `@Ana Lima`, the name people know. The text keeps `@ana`.
+   */
+  names?: ReadonlyMap<string, string>;
   /** Channels by name, for `#name`. */
   channels: ReadonlySet<string>;
   /** The project `#123` means when no repository is named, if any. */
@@ -66,9 +71,10 @@ function SpanView({ span, context }: { span: Span; context: TextContext }): Reac
           </Link>
         );
       }
+      const shown = context.names?.get(name);
       return (
-        <MemberCard member={{ kind: agent ? "agent" : "user", name }} className={`inline ${pill}`}>
-          @{span.name}
+        <MemberCard member={{ kind: agent ? "agent" : "user", name, display_name: shown }} className={`inline ${pill}`}>
+          @{shown ?? span.name}
         </MemberCard>
       );
     }

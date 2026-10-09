@@ -61,6 +61,19 @@ test("deliveries: counts for everyone, a notification for those it is for, the a
   assert.deepEqual(self, { user_id: "u1", workspace: "acme", counts: { channel_id: "chn_1", unread: 0, mentions: 0, set: true }, notification: null });
 });
 
+test("a person without a display name is named by their username as they wrote it", () => {
+  const author: MemberProfile = { kind: "user", id: "u1", name: "ana", display_username: "Ana", display_name: "", avatar: null, role: null, avatar_seed: null };
+  const [toBo] = messageDeliveries({
+    slug: "acme",
+    channel: { id: "chn_9", kind: "dm", name: null },
+    message: { id: "msg_2", author: "user:u1", body: "hi", card_title: null, thread_root: null, created_at: "2026-10-08T00:00:00Z" },
+    author,
+    recipients: recipients({ author: "user:u1", channelKind: "dm", people: [ana, bo], mentioned: [], thread: null }),
+  });
+  assert.equal(toBo.notification?.title, "Ana");
+  assert.equal(toBo.notification?.actor.name, "Ana");
+});
+
 test("a reply links to its thread; a DM to the DM", () => {
   assert.equal(conversationHref("acme", { id: "chn_9", kind: "dm", name: null }, null), "/acme/-/chat/dm/chn_9");
   assert.equal(conversationHref("acme", { id: "chn_1", kind: "channel", name: "ops" }, "msg_1"), "/acme/-/chat/ops?thread=msg_1");

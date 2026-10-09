@@ -1048,7 +1048,8 @@ fn onboarding() -> Map<String, Value> {
                         "properties": {
                             "status": { "type": "string", "enum": ["pending", "approved", "denied", "expired"] },
                             "token": { "type": "string", "description": "Present when approved." },
-                            "username": { "type": "string" },
+                            "username": { "type": "string", "description": "Lowercased: what the account is found and linked by." },
+                            "display_username": { "type": "string", "description": "The username as its owner wrote it; the same as username when they chose no case." },
                             "verified": {
                                 "type": "boolean",
                                 "description": "Whether the account's email is confirmed.",

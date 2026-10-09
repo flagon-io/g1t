@@ -20,6 +20,7 @@
       "status": "approved",
       "token": "g1t_…",
       "username": "syntaqx",
+      "display_username": "syntaqx",
       "verified": true
     }
   },
@@ -27,6 +28,7 @@
     "response": {
       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
       "username": "syntaqx",
+      "display_username": "syntaqx",
       "kind": "user",
       "verified": true,
       "workspaces": [
@@ -134,6 +136,7 @@
     "response": [
       {
         "username": "ada",
+        "display_username": "Ada",
         "role": "owner",
         "org_roles": [],
         "two_factor": true,
@@ -142,6 +145,7 @@
       },
       {
         "username": "grace",
+        "display_username": "grace",
         "role": "member",
         "org_roles": [
           "security_manager"
@@ -166,6 +170,7 @@
     },
     "response": {
       "username": "grace",
+      "display_username": "grace",
       "role": "member",
       "org_roles": [
         "security_manager"
@@ -290,6 +295,7 @@
     },
     "response": {
       "username": "ada",
+      "display_username": "Ada",
       "email": "ada@example.com",
       "verified": true,
       "joined": null,
@@ -578,6 +584,7 @@
         "role": "member",
         "invited_by": {
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "name": "Chase",
           "avatar": null
         },
@@ -1053,6 +1060,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1095,6 +1103,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1130,6 +1139,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1178,6 +1188,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -1225,6 +1236,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -1241,6 +1253,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -1282,6 +1295,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1323,6 +1337,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1356,6 +1371,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1408,6 +1424,7 @@
       "author": {
         "id": "usr_g1t_agent",
         "username": "g1t",
+        "display_username": "g1t",
         "kind": "agent",
         "verified": false,
         "workspaces": []
@@ -1415,6 +1432,7 @@
       "requested_by": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1444,6 +1462,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1491,6 +1510,7 @@
         "author": {
           "id": "usr_g1t_agent",
           "username": "g1t",
+          "display_username": "g1t",
           "kind": "agent",
           "verified": false,
           "workspaces": []
@@ -1498,6 +1518,7 @@
         "requested_by": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1525,6 +1546,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": true,
         "workspaces": [
@@ -1554,6 +1576,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": true,
         "workspaces": [
@@ -1660,6 +1683,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1722,6 +1746,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1775,6 +1800,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1826,6 +1852,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1883,6 +1910,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1910,6 +1938,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1933,6 +1962,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -1942,6 +1972,36 @@
           "line": null,
           "verdict": null,
           "created_at": "2026-10-01T18:33:10.420Z"
+        },
+        {
+          "id": "cmt_01m43sw2a6c0e4h8k2n6r0v4z8",
+          "kind": "comment",
+          "author": {
+            "id": "agt_01m43q8d2f6h0k4n8r2v6z0c4g",
+            "username": "margo",
+            "kind": "agent",
+            "verified": false,
+            "workspaces": []
+          },
+          "body": "The empty-name case is handled and tested. One nit: trim the name before using it.",
+          "path": null,
+          "line": null,
+          "verdict": "approve",
+          "created_at": "2026-10-01T18:36:41.207Z",
+          "agent": {
+            "id": "agt_01m43q8d2f6h0k4n8r2v6z0c4g",
+            "handle": "margo",
+            "display_name": "Margo",
+            "avatar_seed": "margo"
+          },
+          "acting_for": {
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+            "username": "syntaqx",
+            "kind": "user",
+            "verified": false,
+            "workspaces": []
+          },
+          "advisory": true
         }
       ],
       "checks": null,
@@ -2097,6 +2157,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2117,6 +2178,7 @@
       "author": {
         "id": "usr_01kz9d3f7h1k5n9r3v7z1c5g9b",
         "username": "ana",
+        "display_username": "Ana",
         "kind": "user",
         "verified": true,
         "workspaces": [
@@ -2187,6 +2249,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2248,6 +2311,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2301,6 +2365,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2349,6 +2414,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2396,6 +2462,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2444,6 +2511,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -4506,6 +4574,7 @@
       "people": [
         {
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "name": "Chase Pierce",
           "avatar": null,
           "role": "admin",
@@ -4515,6 +4584,7 @@
         },
         {
           "username": "linus",
+          "display_username": "linus",
           "name": null,
           "avatar": null,
           "role": "maintain",
@@ -4524,6 +4594,7 @@
         },
         {
           "username": "grace",
+          "display_username": "grace",
           "name": "Grace Hopper",
           "avatar": null,
           "role": "write",
@@ -4533,6 +4604,7 @@
         },
         {
           "username": "ada",
+          "display_username": "Ada",
           "name": "Ada Lovelace",
           "avatar": null,
           "role": "triage",
@@ -4608,6 +4680,7 @@
     },
     "response": {
       "username": "ada",
+      "display_username": "Ada",
       "name": "Ada Lovelace",
       "avatar": null,
       "role": "write",
@@ -4634,6 +4707,7 @@
     },
     "response": {
       "username": "ada",
+      "display_username": "Ada",
       "role": "triage",
       "source": "direct",
       "capabilities": [
@@ -4772,6 +4846,7 @@
     "response": [
       {
         "username": "ada",
+        "display_username": "Ada",
         "name": "Ada Lovelace",
         "avatar": null,
         "repos": [
@@ -5047,6 +5122,7 @@
     "response": [
       {
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "name": "Chase Pierce",
         "avatar": null,
         "role": "maintainer",
@@ -5054,6 +5130,7 @@
       },
       {
         "username": "ana",
+        "display_username": "Ana",
         "name": "Ana Lima",
         "avatar": null,
         "role": "member",
@@ -5061,6 +5138,7 @@
       },
       {
         "username": "bo",
+        "display_username": "bo",
         "name": null,
         "avatar": null,
         "role": "member",
@@ -5080,6 +5158,7 @@
     },
     "response": {
       "username": "ana",
+      "display_username": "Ana",
       "name": "Ana Lima",
       "avatar": null,
       "role": "maintainer",
@@ -8648,6 +8727,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -8713,6 +8793,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -8773,6 +8854,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -10849,6 +10931,7 @@
           "kind": "user",
           "name": "ada",
           "username": "ada",
+          "display_username": "Ada",
           "avatar": "5f2b8c1d9e7a3f6b4c0d2e8a1b9c7d5e3f1a0b2c4d6e8f0a1b3c5d7e9f0a2b4c",
           "commits": 52,
           "first_at": "2026-09-28T14:11:52.000Z",
@@ -10907,11 +10990,13 @@
     "response": [
       {
         "username": "ada",
+        "display_username": "Ada",
         "avatar": null,
         "starred_at": "2026-10-06T18:30:00.000Z"
       },
       {
         "username": "sam",
+        "display_username": "sam",
         "avatar": null,
         "starred_at": "2026-10-02T09:12:00.000Z"
       }

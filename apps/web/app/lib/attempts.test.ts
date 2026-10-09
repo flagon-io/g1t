@@ -56,3 +56,15 @@ test("an attempt's outcome says which was merged instead", () => {
   assert.equal(attemptOutcome({ status: "draft", supersededBy: null }), "Draft · in progress");
   assert.equal(attemptOutcome({ status: "open", supersededBy: null }), "Open");
 });
+
+test("an agent's review is advisory: it neither approves nor asks for changes", () => {
+  const margo = { id: "agt_1", handle: "margo", displayName: "Margo", avatarSeed: "margo" };
+  const advisory = (verdict: "approve" | "request_changes") => ({
+    author: { id: "agt_1", username: "margo" },
+    verdict,
+    agent: margo,
+    advisory: true,
+  });
+  assert.deepEqual(attemptReview([advisory("approve")], []), { state: "none", text: "No review yet" });
+  assert.deepEqual(attemptReview([advisory("request_changes")], ["ada"]), { state: "requested", text: "Review requested from ada" });
+});

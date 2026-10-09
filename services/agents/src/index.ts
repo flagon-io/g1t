@@ -9,7 +9,9 @@
  * JSON (@g1t/contracts workspace-agents.ts).
  */
 import {
+  type AgentCardAction,
   type AgentDelivery,
+  type CardActionResult,
   type G1tEvent,
   type NewWorkspaceAgent,
   type Result,
@@ -38,6 +40,7 @@ import { TEMPLATES, TEMPLATE_IDS } from "./templates.ts";
 import { readPolicy } from "./policy.ts";
 import { runDue } from "./routines.ts";
 import { onEvents } from "./triggers.ts";
+import { cardAction } from "./cards.ts";
 import { type SessionEnv, sweep } from "./sessions.ts";
 import * as views from "./views.ts";
 import { monthKey } from "./budget.ts";
@@ -81,6 +84,13 @@ class Agents {
     if (!canSee(viewer, workspace)) return fail("not_found", "There is no such workspace.");
     const id = await this.workspaceId(workspace);
     return id ? ok(id) : fail("not_found", "There is no such workspace.");
+  }
+
+  /** Internal, from chat: a person pressed an action on one of agents' cards. */
+  async cardAction(a: AgentCardAction): Promise<Result<CardActionResult>> {
+    if (a?.viewer && awaitsConfirmation(a.viewer)) return UNVERIFIED;
+    if (!a?.viewer || !canSee(a.viewer, a.workspace ?? "")) return fail("not_found", "No such card.");
+    return cardAction(this.env as unknown as SessionEnv, a);
   }
 
   /** What the views need: the workspace, the viewer, and whether they own it. */
@@ -436,6 +446,8 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
       return Response.json(await service.view(args, (ctx) => views.activity(ctx, args.handle)));
     case "versions":
       return Response.json(await service.view(args, (ctx) => views.versions(ctx, args.handle)));
+    case "card_action":
+      return Response.json(await service.cardAction(args));
     case "policy":
       return Response.json(await service.view(args, (ctx) => views.policy(ctx)));
     case "set_policy":

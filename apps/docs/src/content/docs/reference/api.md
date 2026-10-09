@@ -118,6 +118,20 @@ Names you chose are never changed: a workflow's `inputs`, the names of
 secrets and variables, an environment's `env`, a job's `outputs` and
 `matrix`, labels and headers come back exactly as they were written.
 
+Every person in a response, such as an issue's `author`, a workspace's
+members or whoever `whoami` is, has two usernames:
+
+- `username` is lowercased. It is what an account is found, linked and
+  mentioned by, and it never changes case, so match on it.
+- `display_username` is the username as its owner wrote it, such as
+  `Ana`. It is the same as `username` when they chose no case. Show it.
+
+```json
+{ "id": "usr_01kkntcg1eeb98j62xjm7eh09p", "username": "ana", "display_username": "Ana" }
+```
+
+Requests take a username in any case: `Ana` and `ana` are the same person.
+
 A successful request answers `200` with the result as the body: an object,
 a list, or `true` for a deletion. There is no envelope around it.
 

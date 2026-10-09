@@ -314,7 +314,7 @@ function Dots() {
 
 /**
  * The session's card in #web, drawn as chat draws an agent session's card
- * (components/chat/channel.tsx, CardBox): it changes in place as the
+ * (components/chat/card.tsx, CardBox): it changes in place as the
  * session moves, wherever the story is.
  */
 function TaskCard({ frame }: { frame: Frame }) {

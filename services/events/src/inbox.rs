@@ -20,6 +20,7 @@
 //! | `pull.ready` for a change g1t made | whoever asked g1t for it | author | success |
 //! | `pull.merged`, `pull.closed`, `issue.closed`, `issue.reopened` | everyone subscribed | state_change | success for a merge, else info |
 //! | `comment.created` | everyone mentioned, the people of teams mentioned, then everyone subscribed | mention, team_mention, or why they are subscribed | info (success for an approval) |
+//! | `comment.created` by a workspace's agent | the same, shown as "Margo (agent)"; a review also tells the owner, "(advisory)" | the same, or author | the same |
 //! | `issue.opened`, `pull.opened` | whoever was assigned, asked to review or mentioned in its description (people and teams); watchers | assign, review_requested, mention, team_mention, subscribed | info |
 //!
 //! Watchers of a repository at `all` (or `custom`, for the kinds they
@@ -614,13 +615,24 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             let Some(comment) = on.comment.as_ref().filter(|comment| !comment.event) else {
                 return Vec::new();
             };
-            // Whoever wrote it is the actor, whatever the event says.
-            let writer = Actor {
-                id: Some(comment.author.id.clone()),
-                username: Some(comment.author.username.clone()),
+            // Whoever wrote it is the actor, whatever the event says. One of
+            // the workspace's agents is shown by its name, marked as an
+            // agent; its handle is not a person's, so nobody is left out
+            // for sharing it, and whoever it acted for hears of it as of
+            // anything they set off.
+            let writer = match &comment.agent {
+                Some(agent) => Actor { id: Some(agent.id.clone()), username: None },
+                None => Actor {
+                    id: Some(comment.author.id.clone()),
+                    username: Some(comment.author.username.clone()),
+                },
             };
             told.actor = &writer;
-            let who = &comment.author.username;
+            let who = match &comment.agent {
+                Some(agent) => format!("{} (agent)", agent.display_name),
+                None => comment.author.username.clone(),
+            };
+            let advisory = if comment.advisory { " (advisory)" } else { "" };
             let body = if comment.excerpt.is_empty() { &on.title } else { &comment.excerpt };
             for name in &comment.mentions {
                 let title = format!("{who} mentioned you on {at}");
@@ -633,13 +645,15 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
                 }
             }
             let (severity, title) = match comment.verdict.as_deref() {
-                Some("approve") => (Severity::Success, format!("{who} approved {at}")),
-                Some("request_changes") => (Severity::Info, format!("{who} asked for changes on {at}")),
+                Some("approve") => (Severity::Success, format!("{who} approved {at}{advisory}")),
+                Some("request_changes") => (Severity::Info, format!("{who} asked for changes on {at}{advisory}")),
+                _ if comment.advisory => (Severity::Info, format!("{who} reviewed {at}{advisory}")),
                 _ => (Severity::Info, format!("{who} commented on {at}")),
             };
-            // An approval or a request for changes is the owner's to hear
-            // of whatever they chose; the rest, as they subscribed.
-            if comment.verdict.is_some() {
+            // An approval or a request for changes (or an agent's review)
+            // is the owner's to hear of whatever they chose; the rest, as
+            // they subscribed.
+            if comment.verdict.is_some() || comment.advisory {
                 told.tell_person(on.owner(), Reason::Author, severity, &title, body, true);
             }
             told.tell_subscribed(on, None, severity, &title, body);
@@ -665,7 +679,8 @@ pub fn subscribes(event: &Event, subject: Option<&InboxSubject>) -> Vec<(String,
     match event.kind.as_str() {
         "comment.created" => {
             if let Some(comment) = subject.and_then(|subject| subject.comment.as_ref()).filter(|comment| !comment.event) {
-                if !is_g1t_id(&comment.author.id) {
+                // An agent is no person to subscribe; its handle may be someone's name.
+                if !is_g1t_id(&comment.author.id) && comment.agent.is_none() {
                     add(&comment.author.username, Reason::Comment);
                 }
                 for name in &comment.mentions {
@@ -2289,6 +2304,30 @@ mod tests {
             told(&notices(&changes, "acme/rocket", &Actor::default(), Some(&pull()), &nobody())),
             vec![("ana", Reason::Author, Severity::Info)]
         );
+    }
+
+    #[test]
+    fn an_agent_s_review_is_shown_by_its_name_and_marked_advisory() {
+        // Margo (@margo), acting for bo, asks for changes on ana's pull request.
+        let created = event("comment.created", Some("usr_bo"), json!({ "number": 7, "commentId": "cmt_1" }));
+        let mut on = comment(person("agt_1", "ana"), "Trim the name.", &[]);
+        if let Some(said) = on.comment.as_mut() {
+            said.agent = Some(g1t_contracts::work::AgentRef {
+                id: "agt_1".into(),
+                handle: "ana".into(),
+                display_name: "Margo".into(),
+                avatar_seed: "margo".into(),
+            });
+            said.acting_for = Some(person("usr_bo", "bo"));
+            said.verdict = Some("request_changes".into());
+            said.advisory = true;
+        }
+        let notices_ = notices(&created, "acme/rocket", &actor("usr_bo", "bo"), Some(&on), &nobody());
+        // Its handle sharing ana's name leaves nobody out: ana owns it and hears.
+        assert!(told(&notices_).contains(&("ana", Reason::Author, Severity::Info)));
+        assert_eq!(notices_[0].title, "Margo (agent) asked for changes on acme/rocket#7 (advisory)");
+        // An agent subscribes nobody by its handle.
+        assert!(subscribes(&created, Some(&on)).iter().all(|(name, _)| name != "ana"));
     }
 
     #[test]

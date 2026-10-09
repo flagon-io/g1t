@@ -946,6 +946,27 @@ Concretely:
 - `workspace-nav.ts` gains a `ModeKey`;
 - each mode keeps its own `SidebarKey`s.
 
+## Cards
+
+What agents post in chat is something you act on where you read it, not a
+link to somewhere else. A card has a title, a state, a short preview,
+labelled facts, and up to five actions. Links just open a place; every
+other action goes to the service that owns the card (`owner`, today
+`agents`), which checks the person may, acts as them, and updates the card
+in place for everyone in the conversation.
+
+| Card | Actions |
+| --- | --- |
+| A session, working | **Message** (it reads it at its next step), **Stop** (asks first), **Open** |
+| A session at its cap | **Approve more** with the new cap inline (owners), **Stop**, **Open** |
+| A session, done | Its report as the preview; **Follow up** (it picks up again with its context), **Open** |
+| A draft issue | **File issue** (filed as whoever presses it, only where they can read), **Discard** (whoever asked, or an owner) |
+
+Rules, in code: chat checks the person can read the conversation and that
+the card offers the action; the owner checks everything else. An action
+that needs a value (an amount, a line of text) asks for it inline. Agents
+never file, approve or stop anything on their own through a card.
+
 ## Live notifications
 
 A DM has to reach someone wherever they are in g1t, not only inside Chat.

@@ -42,7 +42,7 @@ test("each day is shaded in quarters of the busiest", () => {
   );
   assert.equal(calendar.max, 8);
   const days = calendar.weeks.flat();
-  assert.deepEqual(days.find((day) => day?.date === "2026-10-01"), { date: "2026-10-01", count: 8, level: 4 });
+  assert.deepEqual(days.find((day) => day?.date === "2026-10-01"), { date: "2026-10-01", count: 8, commits: 0, level: 4 });
   assert.equal(days.find((day) => day?.date === "2026-10-02")?.level, 1);
 });
 
@@ -84,6 +84,10 @@ test("hints and the heading read as sentences", () => {
   assert.equal(dayLabel(3, "2026-10-04"), "3 contributions on Oct 4, 2026");
   assert.equal(dayLabel(1, "2026-10-04"), "1 contribution on Oct 4, 2026");
   assert.equal(dayLabel(0, "2026-01-01"), "No contributions on Jan 1, 2026");
+  assert.equal(dayLabel(5, "2026-10-04", 3), "5 contributions on Oct 4, 2026, 3 of them commits");
+  assert.equal(dayLabel(2, "2026-10-04", 1), "2 contributions on Oct 4, 2026, 1 of them a commit");
+  assert.equal(dayLabel(3, "2026-10-04", 3), "3 commits on Oct 4, 2026");
+  assert.equal(dayLabel(1, "2026-10-04", 1), "1 commit on Oct 4, 2026");
   assert.equal(totalLabel(0), "0 contributions in the last year");
   assert.equal(totalLabel(1), "1 contribution in the last year");
   assert.equal(totalLabel(1204), "1,204 contributions in the last year");

@@ -149,6 +149,15 @@ pub struct UsernamesArgs {
     pub ids: Vec<String>,
 }
 
+/// `display_usernames`: how each of these people (by lowercased username,
+/// at most 200) wrote their username, for showing it beside the key.
+/// Returns a map from the lowercased username to its chosen case; people
+/// who chose none, and names nobody has, are left out.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct DisplayUsernamesArgs {
+    pub usernames: Vec<String>,
+}
+
 /// `list_ssh_keys` and `list_access_tokens`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserArgs {
@@ -401,6 +410,10 @@ pub struct Workspace {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Member {
     pub username: String,
+    /// The username as its owner wrote it (`Ana`), when that differs from
+    /// `username`: what pages show.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_username: Option<String>,
     pub role: crate::Role,
     /// The roles they hold besides `role`.
     #[serde(default)]

@@ -83,6 +83,8 @@ import {
   PersonLink,
   PullState,
   TimelineItem,
+  agentReviews,
+  AgentReviewLine,
   verdicts,
 } from "../../components/work";
 import { CatchUpProgress, ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
@@ -738,6 +740,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const working = pull.status === "draft";
   const checking = statuses.some((status) => status.state === "pending");
   const reviews = verdicts(comments);
+  // Agents' reviews: shown, never counted.
+  const advisory = agentReviews(comments);
   // What stands between this pull request and a merge, if anything: a
   // required check that has not passed, or the merge queue taking it out.
   const unchecked = requiredChecks.some((check) => check.state !== "success") || checks?.status === "failed";
@@ -863,8 +867,11 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           )}
         </div>
 
-        {reviews.length > 0 && (
+        {(reviews.length > 0 || advisory.length > 0) && (
           <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            {advisory.map(({ agent, verdict }) => (
+              <AgentReviewLine key={agent.id} agent={agent} verdict={verdict} base={base} />
+            ))}
             {reviews.map(({ reviewer, verdict }) => (
               <span
                 key={reviewer}

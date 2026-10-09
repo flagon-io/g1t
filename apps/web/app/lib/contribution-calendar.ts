@@ -13,7 +13,7 @@ export const CALENDAR_WEEKS = 53;
 export type Level = 0 | 1 | 2 | 3 | 4;
 
 /** One square: a day of the year, or null outside it (before it starts, after today). */
-export type CalendarDay = { date: string; count: number; level: Level } | null;
+export type CalendarDay = { date: string; count: number; commits: number; level: Level } | null;
 
 export type Calendar = {
   /** `CALENDAR_WEEKS` columns of seven days, Sunday first. */
@@ -48,12 +48,16 @@ export function levelOf(count: number, max: number): Level {
  * `from`, when given, and after `today` are left blank; days with nothing
  * in `days` are zero.
  */
-export function buildCalendar(days: readonly { date: string; count: number }[], today: string, from?: string): Calendar {
+export function buildCalendar(days: readonly { date: string; count: number; commits?: number }[], today: string, from?: string): Calendar {
   const end = parse(today);
   if (Number.isNaN(end)) return { weeks: [], months: [], max: 0 };
   const first = from && !Number.isNaN(parse(from)) ? parse(from) : end - 364 * DAY_MS;
   const counts = new Map<string, number>();
-  for (const day of days) counts.set(day.date, (counts.get(day.date) ?? 0) + day.count);
+  const commits = new Map<string, number>();
+  for (const day of days) {
+    counts.set(day.date, (counts.get(day.date) ?? 0) + day.count);
+    if (day.commits) commits.set(day.date, (commits.get(day.date) ?? 0) + day.commits);
+  }
   let max = 0;
   for (const [date, count] of counts) {
     const at = parse(date);
@@ -73,7 +77,7 @@ export function buildCalendar(days: readonly { date: string; count: number }[], 
       }
       const date = format(at);
       const count = counts.get(date) ?? 0;
-      column.push({ date, count, level: levelOf(count, max) });
+      column.push({ date, count, commits: commits.get(date) ?? 0, level: levelOf(count, max) });
     }
     weeks.push(column);
     // A month is named over the first column holding its first day, or over
@@ -86,14 +90,21 @@ export function buildCalendar(days: readonly { date: string; count: number }[], 
   return { weeks, months, max };
 }
 
-/** What a day's hint says: "3 contributions on Oct 4, 2026". */
-export function dayLabel(count: number, date: string): string {
+/**
+ * What a day's hint says: "3 contributions on Oct 4, 2026", and how many
+ * of them were commits when some were: "5 contributions on Oct 4, 2026,
+ * 3 of them commits", or "3 commits on Oct 4, 2026" when all were.
+ */
+export function dayLabel(count: number, date: string, commits = 0): string {
   const at = parse(date);
   const when = Number.isNaN(at)
     ? date
     : new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   if (count === 0) return `No contributions on ${when}`;
-  return `${count.toLocaleString("en-US")} ${count === 1 ? "contribution" : "contributions"} on ${when}`;
+  if (commits > 0 && commits >= count) return `${count.toLocaleString("en-US")} ${count === 1 ? "commit" : "commits"} on ${when}`;
+  const all = `${count.toLocaleString("en-US")} ${count === 1 ? "contribution" : "contributions"} on ${when}`;
+  if (commits <= 0) return all;
+  return `${all}, ${commits.toLocaleString("en-US")} of them ${commits === 1 ? "a commit" : "commits"}`;
 }
 
 /** The heading: "1,204 contributions in the last year". */

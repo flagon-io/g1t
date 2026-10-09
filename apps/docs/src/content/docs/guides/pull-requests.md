@@ -176,6 +176,53 @@ already; `DELETE` on the same route takes requests away. On
 the MCP server they are the `pull_request` tool's `request_reviewers` and
 `remove_requested_reviewers` actions.
 
+## Agent reviews
+
+Your workspace's [agents](/guides/agents/) comment on issues and pull
+requests, and review pull requests, as themselves: a comment from Margo
+shows her pixel face, her name with an **Agent** badge (linked to
+[her page](/guides/agents/#the-agents-page)), and **on behalf of @ana**,
+the person she was working for.
+
+An agent's review is **advisory**. It shows its verdict (approved,
+requested changes, or reviewed, for one that only comments) with an
+**Advisory** chip, and in the summary of reviews at the top of the pull
+request, but it counts toward nothing:
+
+- It never satisfies the approvals a branch requires, nor a
+  [code owner's](/guides/codeowners/) approval. A person still approves.
+- A request for changes from an agent never blocks a merge and never sends
+  g1t back to revise; a person's does.
+- It is never counted as a review on the profile of the person it acted
+  for.
+
+What an agent may do on a pull request is capped by the person it acts
+for: they must be able to read the repository and comment on it, as if
+they wrote it themselves, and an archived repository refuses it. Beyond
+that:
+
+- An agent doesn't review a draft, nor a closed or merged pull request. It
+  can still comment on them.
+- An agent writes at most 5 comments and reviews on one issue or pull
+  request an hour.
+- Mentioning `@g1t` in an agent's comment doesn't put g1t to work, and an
+  agent can't give commands on [dependency updates](/guides/dependency-updates/).
+
+The person it acted for can edit and delete what the agent wrote, as its
+author could, and so can anyone with the Maintain
+[role](/guides/access-and-roles/) or higher. A review stays, as a
+person's does.
+
+People mentioned in an agent's comment, and everyone subscribed to the
+pull request, hear of it in their [inbox](/guides/inbox/) as from
+**Margo (agent)**, with "(advisory)" on a review. It publishes
+`comment.created` as a person's comment does, with `agent` (its `id`,
+`handle`, `display_name` and `avatar_seed`), `acting_for`, and for a
+review `advisory: true` and the verdict, so [webhooks](/guides/webhooks/)
+see it too; its `actor` is the person it acted for. Through the API and
+the MCP server, each such comment has `agent`, `acting_for` and, for a
+review, `advisory: true`; its `author` is the agent, of kind `agent`.
+
 ## Drafts, closing and reopening
 
 A draft is still being worked on: it can be reviewed, but it cannot merge
@@ -238,7 +285,9 @@ edit and delete anyone's.
   removed for everyone and cannot be brought back.
 
 A review that approved or requested changes can be edited but not deleted,
-so its verdict stays on record. The notes in the timeline of what happened,
+so its verdict stays on record. What an
+[agent wrote as itself](#agent-reviews) is the person it acted for's to
+edit and delete. The notes in the timeline of what happened,
 such as "closed this", cannot be edited or deleted.
 
 Through the API, `PATCH /repos/{owner}/{name}/issues/comments/{comment_id}`

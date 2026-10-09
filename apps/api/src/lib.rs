@@ -21,6 +21,7 @@ mod notifications;
 mod oauth;
 mod oidc;
 mod packages;
+mod people;
 mod openapi;
 mod pins;
 mod projects;
@@ -276,6 +277,7 @@ async fn device_token(request: &mut Request, services: &Services) -> Result<Resp
         DeviceClaim::Approved { token, user } => json!({
             "status": "approved",
             "token": token,
+            "display_username": user.display_username.clone().filter(|display| display.eq_ignore_ascii_case(&user.username)).unwrap_or_else(|| user.username.clone()),
             "username": user.username,
             "verified": user.verified,
         }),

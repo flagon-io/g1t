@@ -23,6 +23,7 @@
  * so a step is billed, capped and recorded exactly as a reply is.
  */
 import {
+  type AgentRef,
   type AgentSession,
   type AgentSessionKind,
   type AgentSessionStatus,
@@ -36,6 +37,7 @@ import {
   type User,
   chatClient,
   identityClient,
+  agentRef,
   newId,
   workClient,
 } from "@g1t/contracts";
@@ -52,6 +54,8 @@ import { type ActionPorts, type ToolCall, ToolBox } from "./tools.ts";
 import { type ModelMessage, SESSION_LIMITS, runTurn } from "./turn.ts";
 import { rosterLines } from "./orchestrator.ts";
 import { dollars } from "./money.ts";
+import { postDraft } from "./cards.ts";
+import { sessionActions } from "./card-views.ts";
 import type { Desk } from "./desk.ts";
 
 export type SessionEnv = MeterEnv &
@@ -181,7 +185,12 @@ export function toSession(row: SessionRow, agent: { handle: string; display_name
 }
 
 /** A session's card, as its conversation shows it. */
-export function cardFor(row: Pick<SessionRow, "id" | "title" | "status" | "steps" | "tool_calls" | "charged_micros" | "status_note">, slug: string, handle: string, children = 0): MessageCard {
+export function cardFor(
+  row: Pick<SessionRow, "id" | "title" | "status" | "steps" | "tool_calls" | "charged_micros" | "status_note"> & Partial<Pick<SessionRow, "cap_micros" | "summary" | "goal">>,
+  slug: string,
+  handle: string,
+  children = 0,
+): MessageCard {
   const state: Record<string, string> = {
     queued: "Queued",
     working: "Working",
@@ -197,12 +206,21 @@ export function cardFor(row: Pick<SessionRow, "id" | "title" | "status" | "steps
     row.charged_micros ? dollars(row.charged_micros) : null,
   ].filter(Boolean);
   const note = row.status === "needs_approval" || row.status === "failed" || row.status === "stopped" ? row.status_note : null;
+  const href = `/${slug}/-/agents/${handle}/sessions/${row.id}`;
   return {
     kind: "session",
     title: row.title,
     detail: [parts.join(" · ") || "Starting", note].filter(Boolean).join(" — ").slice(0, 480),
     state: state[row.status] ?? row.status,
-    href: `/${slug}/-/agents/${handle}/sessions/${row.id}`,
+    href,
+    ...(row.status === "done" && row.summary ? { body: row.summary.length > 600 ? `${row.summary.slice(0, 600)}…` : row.summary } : {}),
+    fields: [
+      ...(row.cap_micros ? [{ label: "Spent", value: `${dollars(row.charged_micros)} of ${dollars(row.cap_micros)}` }] : []),
+      ...(children ? [{ label: "Helpers", value: `${children} working` }] : []),
+    ],
+    actions: sessionActions(row.status, row.cap_micros ?? null, row.charged_micros, href),
+    owner: "agents",
+    ref: row.id,
   };
 }
 
@@ -424,6 +442,23 @@ async function postInThread(env: SessionEnv, row: SessionRow, by: Row, text: str
   return !!posted?.ok;
 }
 
+/** Posts a card (a draft issue) in the root card's thread, as the root's agent; its id. */
+async function postCardInThread(env: SessionEnv, row: SessionRow, by: Row, card: MessageCard): Promise<string | null> {
+  const { root } = await speaker(env.DB, row);
+  const posted = await chatClient(env.CHAT)
+    .postAsAgent(root.workspace, root.channel_id, root.agent_id, {
+      body: root.id === row.id ? "" : `**${by.display_name}** drafted this:`,
+      card,
+      thread_root: root.card_message_id ?? root.thread_root,
+      hops: root.hops,
+      asked_by: root.asked_by,
+      asker: json<AskerAccess | null>(root.asker, null),
+      chain: json<string[]>(root.chain, []),
+    })
+    .catch(() => null);
+  return posted?.ok ? posted.value.id : null;
+}
+
 /** Sets a session's status, records why, and brings its card along. */
 async function setStatus(env: SessionEnv, row: SessionRow, status: AgentSessionStatus, note: string | null, extra: Record<string, string | number | null> = {}): Promise<SessionRow> {
   const db = env.DB;
@@ -465,6 +500,8 @@ export function actionPorts(
     session?: SessionRow | null;
     /** From a reply: starts a session for the conversation. */
     spinOff?: (title: string, goal: string) => Promise<{ ok: boolean; message: string }>;
+    /** Posts a card where this work reports (a draft issue); its message id, or null. */
+    postCard: (card: MessageCard) => Promise<string | null>;
   },
 ): ActionPorts {
   const db = env.DB;
@@ -500,14 +537,37 @@ export function actionPorts(
       await db.prepare("DELETE FROM agent_memories WHERE id = ?").bind(id).run();
       return { ok: true, message: "Forgotten." };
     },
-    async fileIssue(repo, asker, issue) {
-      const where = input.source.label;
-      const footer = `\n\n---\n_Filed by @${asker.username} with ${agent.display_name} (@${agent.handle}) from ${where}._`;
-      const opened = await workClient(env.WORK).openIssue(asker, { namespace: repo.namespace, name: repo.name }, { title: issue.title, body: `${issue.body}${footer}`, labels: issue.labels });
-      if (!opened.ok) return { ok: false, message: `It couldn't be filed: ${opened.error.message}` };
-      const number = opened.value.number;
-      if (session) await addOutput(db, session.id, { kind: "issue", repo: `${repo.namespace}/${repo.name}`, number, title: issue.title });
-      return { ok: true, number, url: `/${repo.namespace}/${repo.name}/issues/${number}` };
+    async comment(repo, asker, number, body) {
+      const made = await workClient(env.WORK).workspaceAgentComment({ namespace: repo.namespace, name: repo.name }, number, refOf(agent), asker, body);
+      if (!made.ok) return { ok: false, message: `It couldn't be posted: ${made.error.message}` };
+      return { ok: true, message: `Commented on ${repo.namespace}/${repo.name}#${number}.` };
+    },
+    async review(repo, asker, number, verdict, body) {
+      const made = await workClient(env.WORK).workspaceAgentReview({ namespace: repo.namespace, name: repo.name }, number, refOf(agent), asker, verdict, body);
+      if (!made.ok) return { ok: false, message: `The review couldn't be posted: ${made.error.message}` };
+      const what = verdict === "approve" ? "Approved" : verdict === "request_changes" ? "Requested changes on" : "Reviewed";
+      return { ok: true, message: `${what} ${repo.namespace}/${repo.name}#${number} (advisory). Link it in your report: /${repo.namespace}/${repo.name}/pull/${number}` };
+    },
+    async draftIssue(repo, issue) {
+      const draft = await postDraft(
+        env,
+        {
+          agent_id: agent.id,
+          workspace_id: agent.workspace_id,
+          workspace: input.workspace,
+          channel_id: input.source.channel_id,
+          session_id: session?.id ?? null,
+          repo_id: repo.id,
+          repo: `${repo.namespace}/${repo.name}`,
+          title: issue.title,
+          body: issue.body,
+          labels: issue.labels,
+          asked_by: input.asker.id,
+        },
+        input.postCard,
+      );
+      if (!draft) return { ok: false, message: "The draft couldn't be posted; give it in your answer instead." };
+      return { ok: true, message: "The draft is in the conversation as a card with File issue and Discard. Tell them in a sentence; don't repeat it." };
     },
   };
   if (input.spinOff) ports.startSession = input.spinOff;
@@ -564,6 +624,11 @@ export function actionPorts(
     };
   }
   return ports;
+}
+
+/** How work names an agent on issues and pull requests. */
+function refOf(agent: Row): AgentRef {
+  return agentRef({ id: agent.id, handle: agent.handle, display_name: agent.display_name, avatar_seed: agent.avatar_seed || agent.handle });
 }
 
 async function treeDepth(db: D1Database, row: SessionRow): Promise<number> {
@@ -703,6 +768,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
               asker,
               workspace: slug,
               session: current,
+              postCard: (card) => postCardInThread(env, current, agent, card),
             }),
           );
         }

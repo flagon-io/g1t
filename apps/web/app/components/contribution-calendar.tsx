@@ -1,7 +1,8 @@
 /**
  * A person's last year on their profile: a square a day, a column a week,
- * shaded in the accent by how much they did (issues and pull requests
- * opened, reviews given) on repositories the viewer can see. The layout is
+ * shaded in the accent by how much they did (commits pushed to a default
+ * branch, issues and pull requests opened, reviews given) on repositories
+ * the viewer can see. The layout is
  * lib/contribution-calendar.ts; the counts come from the work service's
  * `contributions`, which never counts work the viewer could not open.
  *
@@ -29,7 +30,7 @@ const SHADES: Record<Level, string> = {
 
 const WEEKDAYS = ["", "Mon", "", "Wed", "", "Fri", ""];
 
-type Hovered = { date: string; count: number; left: number; top: number };
+type Hovered = { date: string; count: number; commits: number; left: number; top: number };
 
 export function ContributionCalendar({
   days,
@@ -37,7 +38,7 @@ export function ContributionCalendar({
   today,
   from,
 }: {
-  days: readonly { date: string; count: number }[];
+  days: readonly { date: string; count: number; commits?: number }[];
   total: number;
   /** `YYYY-MM-DD`, UTC: the last day shown. */
   today: string;
@@ -59,7 +60,7 @@ export function ContributionCalendar({
     if (!cell) return setHovered(null);
     const date = cell.dataset.date!;
     if (hovered?.date === date) return;
-    setHovered({ date, count: Number(cell.dataset.count ?? 0), left: cell.offsetLeft, top: cell.offsetTop });
+    setHovered({ date, count: Number(cell.dataset.count ?? 0), commits: Number(cell.dataset.commits ?? 0), left: cell.offsetLeft, top: cell.offsetTop });
   };
 
   const heading = totalLabel(total);
@@ -100,6 +101,7 @@ export function ContributionCalendar({
                         key={row}
                         data-date={day.date}
                         data-count={day.count}
+                        data-commits={day.commits}
                         className={`block rounded-[2px] ${SHADES[day.level]} ${hovered?.date === day.date ? "ring-1 ring-fg/60" : ""}`}
                         style={{ width: CELL, height: CELL }}
                       />
@@ -119,7 +121,7 @@ export function ContributionCalendar({
                   style={{ left: hovered?.left ?? 0, top: hovered?.top ?? 0, width: CELL, height: CELL }}
                 />
               </TooltipTrigger>
-              <TooltipContent side="top">{hovered ? dayLabel(hovered.count, hovered.date) : null}</TooltipContent>
+              <TooltipContent side="top">{hovered ? dayLabel(hovered.count, hovered.date, hovered.commits) : null}</TooltipContent>
             </Tooltip>
           </div>
         </div>

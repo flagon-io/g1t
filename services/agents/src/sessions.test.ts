@@ -148,7 +148,7 @@ function actions(log: string[]): ActionPorts {
   return {
     remember: async (body) => (log.push(`remember:${body}`), { ok: true, message: "ok" }),
     forget: async () => ({ ok: true, message: "ok" }),
-    fileIssue: async (repo, asker, input) => (log.push(`issue:${repo.name}:${asker.username}:${input.title}`), { ok: true, number: 7, url: "/acme/web/issues/7" }),
+    draftIssue: async (repo, input) => (log.push(`draft:${repo.name}:${input.title}`), { ok: true, message: "drafted" }),
     startSession: async (title) => (log.push(`session:${title}`), { ok: true, message: "started" }),
     postUpdate: async () => ({ ok: true, message: "posted" }),
     useSubagent: async () => ({ ok: true, message: "on it" }),
@@ -158,18 +158,18 @@ function actions(log: string[]): ActionPorts {
 
 const ctx = { agentId: "agt_me", notConsult: ["me"], hops: 0, maxHops: 6 };
 
-test("a reply can spin off a session and file an issue as the asker; a session can't spin off", async () => {
+test("a reply can spin off a session and draft an issue; a session can't spin off", async () => {
   const log: string[] = [];
   const audience = await Audience.build("acme", "ann", audienceWorld({ kind: "dm", member_user_ids: ["ann"], member_count: 1 }, [member("ann")], { ann: [WEB.id] }));
   const reply = new ToolBox(audience, readPorts, ctx, [], actions(log));
   const names = reply.definitions().map((t) => t.name);
-  assert.ok(names.includes("start_session") && names.includes("file_issue") && names.includes("remember"));
+  assert.ok(names.includes("start_session") && names.includes("draft_issue") && names.includes("remember"));
   assert.ok(!names.includes("bring_in") && !names.includes("use_subagent") && !names.includes("post_update"));
-  const filed = await reply.run("file_issue", { repo: "web", title: "CSV export times out", body: "Over 100k rows." });
-  assert.equal(filed.outcome, "allowed");
-  assert.deepEqual(log, ["issue:web:ann:CSV export times out"]);
+  const drafted = await reply.run("draft_issue", { repo: "web", title: "CSV export times out", body: "Over 100k rows." });
+  assert.equal(drafted.outcome, "allowed");
+  assert.deepEqual(log, ["draft:web:CSV export times out"]);
   // A repository the audience can't read is withheld, never named.
-  const hidden = await reply.run("file_issue", { repo: "acme/secret", title: "x", body: "y" });
+  const hidden = await reply.run("draft_issue", { repo: "acme/secret", title: "x", body: "y" });
   assert.equal(hidden.text, WITHHELD);
 
   const session = new ToolBox(audience, readPorts, { ...ctx, session: true }, [], actions(log));
@@ -181,12 +181,12 @@ test("a reply can spin off a session and file an issue as the asker; a session c
   assert.equal(session.maxCalls, MAX_SESSION_TOOL_CALLS);
 });
 
-test("nobody files issues for someone who can't read code, and no hand-offs at the hop limit", async () => {
+test("nobody drafts issues for someone who can't read code, and no hand-offs at the hop limit", async () => {
   const log: string[] = [];
   const noCode = await Audience.build("acme", "cal", audienceWorld({ kind: "dm", member_user_ids: ["cal"], member_count: 1 }, [member("cal", false)], { cal: [WEB.id] }));
   const box = new ToolBox(noCode, readPorts, ctx, [], actions(log));
-  assert.ok(!box.definitions().some((t) => t.name === "file_issue"));
-  assert.equal((await box.run("file_issue", { repo: "web", title: "x", body: "y" })).outcome, "refused");
+  assert.ok(!box.definitions().some((t) => t.name === "draft_issue"));
+  assert.equal((await box.run("draft_issue", { repo: "web", title: "x", body: "y" })).outcome, "refused");
   assert.deepEqual(log, []);
   const audience = await Audience.build("acme", "ann", audienceWorld({ kind: "dm", member_user_ids: ["ann"], member_count: 1 }, [member("ann")], { ann: [WEB.id] }));
   const atLimit = new ToolBox(audience, readPorts, { ...ctx, session: true, hops: 6 }, [], actions(log));
@@ -237,4 +237,23 @@ test("an event routine needs no schedule, but a routine needs one or the other",
   const ok = checkEventRoutine({ ...base, schedule: null, events: ["pull_ready", "pull_ready"], repos: ["Acme/Web"] });
   assert.ok(ok.ok && ok.value.events.length === 1 && ok.value.repos[0] === "acme/web");
   assert.equal(describeEvents(["pull_ready", "checks_failed"]), "When a pull request is ready for review or checks fail on a pull request");
+});
+
+test("agents comment and review on issues and pull requests only where the asker can read", async () => {
+  const log: string[] = [];
+  const ports = {
+    ...actions(log),
+    comment: async (repo: RepoRef, asker: User, number: number) => (log.push(`comment:${repo.name}#${number}:${asker.username}`), { ok: true, message: "ok" }),
+    review: async (repo: RepoRef, asker: User, number: number, verdict: string) => (log.push(`review:${repo.name}#${number}:${verdict}:${asker.username}`), { ok: true, message: "ok" }),
+  };
+  const audience = await Audience.build("acme", "ann", audienceWorld({ kind: "dm", member_user_ids: ["ann"], member_count: 1 }, [member("ann")], { ann: [WEB.id] }));
+  const session = new ToolBox(audience, readPorts, { ...ctx, session: true }, [], ports);
+  assert.ok(session.definitions().some((t) => t.name === "review_pull"));
+  await session.run("review_pull", { repo: "web", number: 12, verdict: "approve", body: "" });
+  await session.run("review_pull", { repo: "web", number: 12, verdict: "made-up", body: "Looks risky" });
+  await session.run("comment", { repo: "web", number: 3, body: "Test plan: …" });
+  assert.equal((await session.run("comment", { repo: "acme/secret", number: 3, body: "x" })).text, WITHHELD);
+  assert.deepEqual(log, ["review:web#12:approve:ann", "review:web#12:comment:ann", "comment:web#3:ann"]);
+  const noCode = await Audience.build("acme", "cal", audienceWorld({ kind: "dm", member_user_ids: ["cal"], member_count: 1 }, [member("cal", false)], { cal: [WEB.id] }));
+  assert.ok(!new ToolBox(noCode, readPorts, { ...ctx, session: true }, [], ports).definitions().some((t) => t.name === "comment" || t.name === "review_pull"));
 });

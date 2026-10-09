@@ -466,6 +466,10 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("add_comment", { actor, repo, number, ...comment }),
     editComment: (actor, repo, commentId, body) => call("edit_comment", { actor, repo, commentId, body }),
     deleteComment: (actor, repo, commentId) => call("delete_comment", { actor, repo, commentId }),
+    workspaceAgentComment: (repo, number, agent, actingFor, body) =>
+      call("workspace_agent_comment", { repo, number, agent, acting_for: actingFor, body }),
+    workspaceAgentReview: (repo, number, agent, actingFor, verdict, body) =>
+      call("workspace_agent_review", { repo, number, agent, acting_for: actingFor, verdict, body }),
     startChecks: (pullId) => call("start_checks", { pullId }),
     reportChecks: (runId, token, report) =>
       call("report_checks", { runId, token, ...report }),

@@ -35,7 +35,7 @@ const RULES: Rule[] = [
     match: /\b(review|reviewing|reviews)\b.*\b(pull requests?|prs?|changes?|code)\b|\b(pull requests?|prs?)\b.*\breview/i,
     routine: (duty) => ({
       name: "Review pull requests",
-      instructions: `When a pull request is ready for review, review it (${trimmed(duty)}). Read the change and its checks, then post a short review: what it changes, the risks, which tests cover it and what they miss, and a verdict: looks good, or what to fix first. Link the pull request.`,
+      instructions: `When a pull request is ready for review, review it (${trimmed(duty)}). Read the change and its checks, then post your review on the pull request with review_pull: what it changes, the risks, which tests cover it and what they miss, and a verdict (approve, or request changes with what to fix first). Then post a two-line summary here with a link.`,
       schedule: null,
       events: ["pull_ready"],
       repos: [],
@@ -55,7 +55,7 @@ const RULES: Rule[] = [
     match: /\btest plans?\b|\bnew features?\b.*\btest/i,
     routine: (duty) => ({
       name: "Test plans for new work",
-      instructions: `When an issue is opened for new work, draft a test plan (${trimmed(duty)}): what to test, the edge cases, and what can be automated. Skip bug reports and questions.`,
+      instructions: `When an issue is opened for new work, draft a test plan (${trimmed(duty)}): what to test, the edge cases, and what can be automated. Post it on the issue with comment, and a one-line note here. Skip bug reports and questions.`,
       schedule: null,
       events: ["issue_opened"],
       repos: [],

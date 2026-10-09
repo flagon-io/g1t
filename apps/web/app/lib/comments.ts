@@ -8,10 +8,13 @@ import type { Comment } from "@g1t/contracts";
  * only says which buttons to show.
  */
 export function mayChangeComment(
-  comment: Pick<Comment, "kind" | "verdict"> & { author: { id: string } },
+  comment: Pick<Comment, "kind" | "verdict"> &
+    Partial<Pick<Comment, "advisory">> & { author: { id: string }; actingFor?: { id: string } | null },
   viewerId: string | null | undefined,
   canModerate: boolean,
 ): { edit: boolean; delete: boolean } {
-  const allowed = comment.kind === "comment" && viewerId != null && (comment.author.id === viewerId || canModerate);
-  return { edit: allowed, delete: allowed && comment.verdict == null };
+  // What an agent wrote as itself is answered for by whoever it acted for.
+  const answerable = comment.actingFor?.id ?? comment.author.id;
+  const allowed = comment.kind === "comment" && viewerId != null && (answerable === viewerId || canModerate);
+  return { edit: allowed, delete: allowed && comment.verdict == null && !comment.advisory };
 }

@@ -669,3 +669,28 @@ body {
     font-size: max(16px, 1em);
   }
 }
+
+/* A card's Markdown preview in chat (components/chat/card.tsx): the same Markdown, smaller and tighter. */
+.card-md .prose {
+  @apply text-[0.8125rem] leading-relaxed;
+}
+.card-md .prose > * + * {
+  @apply mt-2;
+}
+.card-md .prose p,
+.card-md .prose li {
+  @apply text-[0.8125rem] text-fg/85;
+}
+.card-md .prose h1,
+.card-md .prose h2,
+.card-md .prose h3,
+.card-md .prose h4 {
+  @apply mt-3 border-0 pb-0 text-sm font-semibold;
+}
+.card-md .prose ul,
+.card-md .prose ol {
+  @apply space-y-0.5 pl-5;
+}
+.card-md .prose pre {
+  @apply p-2.5 text-xs leading-5;
+}

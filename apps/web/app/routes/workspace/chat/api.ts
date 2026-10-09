@@ -11,7 +11,8 @@ import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.serv
 /**
  * What a chat page asks for as it runs, as JSON, without loading a page:
  * the sidebar again, a thread's replies, older messages; and everything it
- * sends: messages, read marks, stars, new channels and direct messages.
+ * sends: messages, read marks, stars, new channels and direct messages,
+ * and the actions pressed on cards.
  * Every answer is `{ ok, value }` or `{ ok: false, error }`, the services'
  * own shape.
  */
@@ -51,6 +52,8 @@ type Sent = {
   message_id?: string;
   emoji?: string;
   archived?: boolean;
+  action_id?: string;
+  input?: string | null;
 };
 
 export async function action({ params, context, request }: Route.ActionArgs) {
@@ -77,6 +80,11 @@ export async function action({ params, context, request }: Route.ActionArgs) {
         return chat.react(slug, channel, viewer, sent.message_id ?? "", sent.emoji ?? "");
       case "unreact":
         return chat.unreact(slug, channel, viewer, sent.message_id ?? "", sent.emoji ?? "");
+      case "card_action": {
+        // A button on a card; chat checks the viewer reads the conversation, its owner does the rest.
+        const input = typeof sent.input === "string" ? sent.input : null;
+        return chat.cardAction(slug, channel, viewer, sent.message_id ?? "", sent.action_id ?? "", input);
+      }
       case "preferences":
         return chat.setPreferences(slug, channel, viewer, { starred: sent.starred, muted: sent.muted });
       case "join":

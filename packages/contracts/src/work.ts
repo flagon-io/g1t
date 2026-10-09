@@ -366,7 +366,44 @@ export type Comment = {
   createdAt: string;
   /** When its text was last edited, RFC 3339; absent if it never was. */
   editedAt?: string;
+  /**
+   * Set when one of the workspace's agents wrote it, as itself. `author`
+   * is then the agent (its id, its handle as `username`, kind `agent`):
+   * show it by `agent.displayName` with an Agent badge, never as a person.
+   */
+  agent?: AgentRef;
+  /** Who the agent acted for, whose access capped it. Set with `agent`. */
+  actingFor?: User;
+  /**
+   * An agent's review. Its `verdict` (none for a review that only
+   * comments) is shown but advisory: it never counts toward required
+   * approvals or code owners, and never blocks a merge.
+   */
+  advisory?: boolean;
 };
+
+/**
+ * One of a workspace's own agents as a comment or review it wrote shows
+ * it: Margo (@margo), with the pixel face drawn from `avatarSeed`. Its page
+ * is `/<workspace>/-/agents/<handle>`.
+ */
+export type AgentRef = {
+  id: string;
+  handle: string;
+  displayName: string;
+  avatarSeed: string;
+};
+
+/** An agent's review: all of them advisory. */
+export type AgentVerdict = "comment" | "approve" | "request_changes";
+
+/** How many comments and reviews one agent may write on one issue or pull request an hour. */
+export const AGENT_COMMENTS_PER_HOUR = 5;
+
+/** An agent as its comments name it, from the agents service's record of it. */
+export function agentRef(agent: { id: string; handle: string; display_name: string; avatar_seed: string }): AgentRef {
+  return { id: agent.id, handle: agent.handle, displayName: agent.display_name, avatarSeed: agent.avatar_seed };
+}
 
 export type NewComment = {
   /** May be empty when approving. */
@@ -914,6 +951,39 @@ export interface WorkApi extends RulesApi, ChecksApi {
    * higher. A review that gave a verdict cannot be deleted, only edited.
    */
   deleteComment(actor: User, repo: RepoPath, commentId: string): Promise<Result<boolean>>;
+  /**
+   * One of the workspace's agents comments on an issue or a pull request
+   * as itself, on behalf of `actingFor`: the person whose access caps it.
+   * The checks a person's comment has apply to them (verified, can read
+   * the repository, not archived). At most `AGENT_COMMENTS_PER_HOUR`
+   * comments and reviews per agent per issue or pull request
+   * (`conflict` past it). Publishes `comment.created` with `agent`. For
+   * the agents service only: never reachable with a person's token.
+   */
+  workspaceAgentComment(
+    repo: RepoPath,
+    number: number,
+    agent: AgentRef,
+    actingFor: User,
+    body: string,
+  ): Promise<Result<Comment>>;
+  /**
+   * One of the workspace's agents reviews a pull request as itself, on
+   * behalf of `actingFor`. Advisory: the verdict is shown but never counts
+   * toward required approvals or code owners, and never blocks a merge.
+   * Refused on a draft and on a closed or merged pull request (`conflict`);
+   * `body` may be empty only when approving. Same checks and limit as
+   * `workspaceAgentComment`. Publishes `comment.created` with `agent`,
+   * `advisory` and the verdict.
+   */
+  workspaceAgentReview(
+    repo: RepoPath,
+    number: number,
+    agent: AgentRef,
+    actingFor: User,
+    verdict: AgentVerdict,
+    body: string,
+  ): Promise<Result<Comment>>;
 
   /**
    * Always refused now: a pull request's checks are the workflows run on
@@ -1300,7 +1370,14 @@ export type Authored = {
 export const CONTRIBUTION_DAYS = 365;
 
 /** One day with something on it; days with nothing are left out. */
-export type ContributionDay = { /** `YYYY-MM-DD`, UTC. */ date: string; count: number };
+export type ContributionDay = {
+  /** `YYYY-MM-DD`, UTC. */
+  date: string;
+  /** Everything that day, commits included. */
+  count: number;
+  /** How many of `count` are commits they pushed to a default branch. */
+  commits?: number;
+};
 
 /** A person's year, as far as the viewer may see. */
 export type Contributions = {

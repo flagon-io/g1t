@@ -76,19 +76,22 @@ export function messageDeliveries(input: {
 }): FeedDelivery[] {
   const { slug, channel, message, author } = input;
   const where = channel.kind === "dm" ? "" : ` in #${channel.name}`;
+  // The service sets `display_name` by `memberName`'s rule (display name,
+  // else the username in its chosen case), so pushes match the chat.
+  const shown = author.display_name.trim() || author.display_username || author.name;
   const deliveries: FeedDelivery[] = input.recipients.map((r) => {
     const notification: FeedNotification | null = r.kind
       ? {
           id: message.id,
           kind: r.kind,
           workspace: slug,
-          title: r.kind === "thread_reply" ? `${author.display_name} replied${where}` : `${author.display_name}${where}`,
+          title: r.kind === "thread_reply" ? `${shown} replied${where}` : `${shown}${where}`,
           body: preview(message.card_title ?? message.body),
           href: conversationHref(slug, channel, message.thread_root),
           actor: {
             kind: author.kind,
             id: author.id,
-            name: author.display_name,
+            name: shown,
             avatar: author.avatar,
             avatar_seed: author.avatar_seed ?? null,
           },

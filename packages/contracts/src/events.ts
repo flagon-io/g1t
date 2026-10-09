@@ -12,7 +12,7 @@ import type { RepoRole } from "./access";
 import type { CheckRunEventData, CheckSuiteEventData, StatusEventData } from "./checks";
 import type { DeploymentStatus, RepoDeployment } from "./deployments";
 import type { TeamRole, TeamVisibility } from "./teams";
-import type { Confidence, Verdict } from "./work";
+import type { AgentRef, Confidence, Verdict } from "./work";
 
 /** What every `package.*` event names. */
 export type PackageEventData = {
@@ -321,6 +321,14 @@ export type EventPayloads = {
     pullId?: string;
     /** Set when the comment is a review. */
     verdict?: Verdict;
+    /**
+     * Set when one of the workspace's agents wrote it, as itself; the
+     * event's actor is then the person it acted for (`actingFor`).
+     */
+    agent?: AgentRef;
+    actingFor?: { id: string; username: string };
+    /** An agent's review: its verdict is advisory and counts toward nothing. */
+    advisory?: boolean;
   };
   /** A comment's text changed; `changes.body.from` is what it said before. */
   "comment.edited": {

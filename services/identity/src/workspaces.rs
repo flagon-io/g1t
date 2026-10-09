@@ -356,7 +356,7 @@ impl Identity {
         let rows = self
             .db
             .prepare(
-                "SELECT workspace_members.user_id, users.username, workspace_members.role, users.display_name AS name, users.avatar,
+                "SELECT workspace_members.user_id, users.username, users.display_username, workspace_members.role, users.display_name AS name, users.avatar,
                    workspace_members.billing_manager, workspace_members.security_manager,
                    EXISTS (SELECT 1 FROM two_factor WHERE two_factor.user_id = users.id AND two_factor.enabled_at IS NOT NULL) AS two_factor
                  FROM workspace_members

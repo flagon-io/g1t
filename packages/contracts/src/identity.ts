@@ -166,6 +166,8 @@ export type Workspace = {
 
 export type Member = {
   username: string;
+  /** The username as its owner wrote it (`Ana`), when that differs from `username`. */
+  display_username?: string;
   role: Role;
   /** The roles they hold besides `role`. */
   org_roles?: OrgRole[];

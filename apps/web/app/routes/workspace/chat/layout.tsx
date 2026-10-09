@@ -1,6 +1,6 @@
 import { Outlet, data, type ShouldRevalidateFunctionArgs } from "react-router";
 
-import type { ChatSidebar, WorkspaceAgent } from "@g1t/contracts";
+import { type ChatSidebar, type WorkspaceAgent, shownUsername } from "@g1t/contracts";
 
 import type { Route } from "./+types/layout";
 import type { Mentionable } from "../../../lib/chat";
@@ -16,7 +16,8 @@ export type ChatLayoutData = {
   slug: string;
   /** The viewer's role: owners may make agents. */
   role: string;
-  me: { id: string; username: string; avatar: string | null };
+  /** The viewer, named as chat names them (`memberName`). */
+  me: { id: string; username: string; display_username: string | null; display_name: string; avatar: string | null };
   sidebar: ChatSidebar | null;
   people: Mentionable[];
   agents: WorkspaceAgent[];
@@ -28,7 +29,22 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
   if (!role) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
   const [sidebar, { people, agents }] = await Promise.all([sidebarOrNull(slug, viewer), workspacePeople(slug, viewer)]);
-  return { slug, role, me: { id: viewer.id, username: viewer.username, avatar: viewer.avatar ?? null }, sidebar, people, agents };
+  const self = people.find((person) => person.name === viewer.username.toLowerCase());
+  const display_username = viewer.display_username ?? self?.display_username ?? null;
+  return {
+    slug,
+    role,
+    me: {
+      id: viewer.id,
+      username: viewer.username,
+      display_username,
+      display_name: self?.display_name ?? shownUsername({ username: viewer.username, display_username }),
+      avatar: viewer.avatar ?? null,
+    },
+    sidebar,
+    people,
+    agents,
+  };
 }
 
 /**

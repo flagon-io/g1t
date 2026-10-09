@@ -1,6 +1,11 @@
 //! A person's year, for the contribution calendar on their profile: how
-//! many issues and pull requests they opened (or g1t opened for them, see
-//! `requested_by`) and how many reviews they gave, day by day (UTC).
+//! many commits they pushed to a default branch (or `gh-pages`), issues and
+//! pull requests they opened (or g1t opened for them, see `requested_by`)
+//! and reviews they gave, day by day (UTC).
+//!
+//! Commits are the repos service's: it credits whoever pushed, as each
+//! push lands (`commit_days`, services/repos/src/push_commits.rs), and
+//! counts only repositories the viewer may read, by the same `readable`.
 //!
 //! As with `by_author` (authored.rs), only repositories the viewer may read
 //! are counted: the repos service decides which (`readable`) over every
@@ -9,7 +14,7 @@
 //! repository the viewer could not open.
 
 use g1t_contracts::identity::UsernameArgs;
-use g1t_contracts::repos::{ReadableArgs, Repo, MAX_READABLE};
+use g1t_contracts::repos::{CommitDaysArgs, ReadableArgs, Repo, MAX_READABLE};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, Viewer};
@@ -60,14 +65,22 @@ fn first_day(now_ms: u64) -> String {
     rfc3339(now_ms.saturating_sub(back))[..10].to_owned()
 }
 
-/// The rows as the calendar's days and their total.
-fn tally(rows: Vec<DayRow>, from: String) -> Contributions {
-    let days: Vec<ContributionDay> = rows
+/// The rows and the days' commits as the calendar's days and their total.
+fn tally(rows: Vec<DayRow>, commits: Vec<ContributionDay>, from: String) -> Contributions {
+    let mut by_day = std::collections::BTreeMap::<String, (u32, u32)>::new();
+    for row in rows {
+        by_day.entry(row.day).or_default().0 += row.n;
+    }
+    for day in commits {
+        by_day.entry(day.date).or_default().1 += day.commits;
+    }
+    let days: Vec<ContributionDay> = by_day
         .into_iter()
-        .filter(|row| row.n > 0 && row.day.len() == 10 && row.day.as_str() >= from.as_str())
-        .map(|row| ContributionDay {
-            date: row.day,
-            count: row.n,
+        .filter(|(day, (work, commits))| work + commits > 0 && day.len() == 10 && day.as_str() >= from.as_str())
+        .map(|(date, (work, commits))| ContributionDay {
+            date,
+            count: work + commits,
+            commits,
         })
         .collect();
     let total = days.iter().map(|day| day.count).sum();
@@ -88,43 +101,60 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::NotFound, "There is no such account."));
         };
         let from = first_day(now_ms());
+        // Commits come from the repos service, asked at once; a calendar
+        // without them is better than none.
+        let (commits, rows) = futures_util::future::join(
+            g1t_kit::call::<_, Vec<ContributionDay>>(
+                &self.repos,
+                "commit_days",
+                &CommitDaysArgs {
+                    user_id: person.id.clone(),
+                    since: from.clone(),
+                    viewer: a.viewer.clone(),
+                },
+            ),
+            self.work_days(&person.id, &from, a.viewer),
+        )
+        .await;
+        let commits = commits.unwrap_or_else(|error| {
+            worker::console_error!("commit_days for {} failed: {error}", person.username);
+            Vec::new()
+        });
+        Ok(Outcome::Ok(tally(rows?, commits, from)))
+    }
 
+    /// Issues, pull requests and reviews a day, in repositories the viewer may read.
+    async fn work_days(&self, person: &str, from: &str, viewer: Viewer) -> Result<Vec<DayRow>> {
         let touched = self
             .db
             .prepare(TOUCHED_SQL)
-            .bind(&[
-                person.id.as_str().into(),
-                from.as_str().into(),
-                (MAX_READABLE as u32).into(),
-            ])?
+            .bind(&[person.into(), from.into(), (MAX_READABLE as u32).into()])?
             .all()
             .await?
             .results::<RepoCount>()?;
         if touched.is_empty() {
-            return Ok(Outcome::Ok(tally(Vec::new(), from)));
+            return Ok(Vec::new());
         }
         let readable: Vec<Repo> = g1t_kit::call(
             &self.repos,
             "readable",
             &ReadableArgs {
                 ids: touched.into_iter().map(|row| row.repo_id).collect(),
-                viewer: a.viewer,
+                viewer,
             },
         )
         .await?;
         if readable.is_empty() {
-            return Ok(Outcome::Ok(tally(Vec::new(), from)));
+            return Ok(Vec::new());
         }
         let ids: Vec<&str> = readable.iter().map(|repo| repo.id.as_str()).collect();
         let visible = serde_json::to_string(&ids)?;
-        let rows = self
-            .db
+        self.db
             .prepare(DAYS_SQL)
-            .bind(&[person.id.as_str().into(), visible.as_str().into(), from.as_str().into()])?
+            .bind(&[person.into(), visible.as_str().into(), from.into()])?
             .all()
             .await?
-            .results::<DayRow>()?;
-        Ok(Outcome::Ok(tally(rows, from)))
+            .results::<DayRow>()
     }
 }
 
@@ -159,15 +189,34 @@ mod tests {
             DayRow { day: "2026-01-01".into(), n: 0 },
             DayRow { day: "2026-10-08".into(), n: 3 },
         ];
-        let year = tally(rows, "2025-10-09".into());
+        let year = tally(rows, Vec::new(), "2025-10-09".into());
         assert_eq!(year.total, 5);
         assert_eq!(
             year.days,
             vec![
-                ContributionDay { date: "2025-10-09".into(), count: 2 },
-                ContributionDay { date: "2026-10-08".into(), count: 3 },
+                ContributionDay { date: "2025-10-09".into(), count: 2, commits: 0 },
+                ContributionDay { date: "2026-10-08".into(), count: 3, commits: 0 },
             ]
         );
-        assert_eq!(tally(Vec::new(), "2025-10-09".into()).total, 0);
+        assert_eq!(tally(Vec::new(), Vec::new(), "2025-10-09".into()).total, 0);
+    }
+
+    #[test]
+    fn commits_join_the_days_they_were_pushed() {
+        let rows = vec![DayRow { day: "2026-10-01".into(), n: 2 }];
+        let commits = vec![
+            ContributionDay { date: "2026-10-01".into(), count: 3, commits: 3 },
+            ContributionDay { date: "2026-10-02".into(), count: 1, commits: 1 },
+            ContributionDay { date: "2025-01-01".into(), count: 9, commits: 9 },
+        ];
+        let year = tally(rows, commits, "2025-10-09".into());
+        assert_eq!(year.total, 6);
+        assert_eq!(
+            year.days,
+            vec![
+                ContributionDay { date: "2026-10-01".into(), count: 5, commits: 3 },
+                ContributionDay { date: "2026-10-02".into(), count: 1, commits: 1 },
+            ]
+        );
     }
 }

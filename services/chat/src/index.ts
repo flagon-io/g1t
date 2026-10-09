@@ -46,6 +46,7 @@ import {
 
   type Member,
   type MemberProfile,
+  type CardActionResult,
   type MessageCard,
   type MessagePage,
   type NewChannel,
@@ -74,6 +75,7 @@ import {
   type ReactionRow,
   type ReactionTally,
 } from "./emoji.ts";
+import { cleanCard } from "./cards.ts";
 import { mentionedHandles, mentionsColumn } from "./mentions.ts";
 import { AGENT_TYPING_MS, historyOf, historySize, messageBody, meterDay, pageOf, pageSize } from "./messages.ts";
 import { GENERAL, MAX_DM_MEMBERS, channelName, dmKey, dmMembers } from "./names.ts";
@@ -201,25 +203,6 @@ function toChannel(row: ChannelRow): Channel {
   };
 }
 
-/** A card as kept, or null when what was sent is not one. */
-function cleanCard(card: unknown): MessageCard | null {
-  if (!card || typeof card !== "object") return null;
-  const c = card as Record<string, unknown>;
-  const text = (value: unknown, max: number) => (typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null);
-  const kind = text(c.kind, 40);
-  const title = text(c.title, 300);
-  if (!kind || !title) return null;
-  const href = text(c.href, 2000);
-  return {
-    kind,
-    title,
-    detail: text(c.detail, 500),
-    state: text(c.state, 80),
-    // Relative to the site only: a card never links somewhere else.
-    href: href && href.startsWith("/") && !href.startsWith("//") ? href : null,
-  };
-}
-
 /** An asker handed back by the agents service, or null when what was sent is not one. */
 function cleanAsker(asker: unknown): AskerAccess | null {
   if (!asker || typeof asker !== "object") return null;
@@ -326,7 +309,10 @@ class Chat {
         out.set(principalKey(p), {
           ...p,
           name: username ?? "ghost",
-          display_name: person?.name || username || "Former member",
+          display_username: person?.display_username ?? null,
+          // Their display name, else their username as they wrote it
+          // (`memberName` reads this the same way).
+          display_name: person?.name?.trim() || person?.display_username || username || "Former member",
           avatar: person?.avatar ?? null,
           role: null,
           title: null,
@@ -1339,6 +1325,40 @@ class Chat {
   }
 
   /**
+   * A person presses an action on a card. They must be able to read the
+   * conversation; the card must offer the action; its owner (agents)
+   * decides whether this person may, does it, and updates the card.
+   */
+  async cardAction(a: {
+    workspace: string;
+    channel_id: string;
+    viewer: Viewer;
+    message_id: string;
+    action_id: string;
+    input?: string | null;
+  }): Promise<Result<CardActionResult>> {
+    const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
+    if (!found.ok) return found;
+    const place = found.value;
+    const row = await this.messageRow(place.channel.id, String(a.message_id ?? ""));
+    if (!row || row.deleted_at || !row.card) return fail("not_found", "No such card.");
+    const card = JSON.parse(row.card) as MessageCard;
+    const action = card.actions?.find((x) => x.id === a.action_id);
+    if (!action || action.href || card.owner !== "agents") return fail("invalid", "That card has no such action.");
+    const input = typeof a.input === "string" ? a.input.slice(0, 4000) : null;
+    if (action.input && !input?.trim()) return fail("invalid", `${action.input.label || "A value"} is needed.`);
+    return workspaceAgentsClient(this.env.AGENTS).cardAction({
+      workspace: place.slug,
+      channel_id: place.channel.id,
+      message_id: row.id,
+      viewer: a.viewer!,
+      card: { kind: card.kind, ref: card.ref ?? null },
+      action_id: action.id,
+      input,
+    });
+  }
+
+  /**
    * Changes a message the agent posted (a session's live card, say): its
    * body, its card, or both. Only the agent's own messages; it wakes
    * nobody, and everyone in the conversation sees it change.
@@ -1870,6 +1890,8 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.setPreferences(args));
     case "post_as_agent":
       return Response.json(await service.postAsAgent(args));
+    case "card_action":
+      return Response.json(await service.cardAction(args));
     case "update_as_agent":
       return Response.json(await service.updateAsAgent(args));
     case "agent_typing":

@@ -83,6 +83,7 @@ what it was:
 | Someone mentioned you with `@username` in a comment | You | `mention` | Info |
 | Someone mentioned a team with `@workspace/team` in a comment, or in an issue or pull request they opened | Everyone in the team and its child teams, when the team's notifications are on and the writer can see the team | `team_mention` | Info |
 | Someone commented on an issue or pull request | Everyone subscribed to it, and people watching its kind | Why each is subscribed, or `subscribed` for watchers | Info, or Success for an approval |
+| One of your workspace's agents commented on or reviewed an issue or pull request, as itself | The same people, and the person the pull request belongs to for a review; shown as from "Margo (agent)", with "(advisory)" on a review. See [agent reviews](/guides/pull-requests/#agent-reviews) | Why each is subscribed, or `author` for a review | Info, or Success for an approval |
 | An issue or pull request was opened | People watching its kind | `subscribed` | Info |
 
 "The person a pull request belongs to" is its author, or, for a change g1t
