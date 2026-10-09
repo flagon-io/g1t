@@ -23,7 +23,7 @@ const tool = (...args) => spawnSync(process.execPath, [TOOL, ...args], { encodin
 function commit(dir, file, text) {
   writeFileSync(join(dir, file), text);
   git(dir, "add", "--all");
-  git(dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "-m", text);
+  git(dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", text);
 }
 
 function refsOf(dir) {
