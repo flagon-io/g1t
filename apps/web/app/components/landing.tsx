@@ -300,6 +300,13 @@ const PRICES: { name: string; price: string; unit?: string; about: string }[] = 
   },
 ];
 
+/**
+ * What people using g1t say, each with their name, role, workspace and a
+ * specific outcome. None yet: the section shows once real, permitted
+ * quotes are here. Never write one on someone's behalf.
+ */
+const TESTIMONIALS = [] as { quote: string; name: string; role: string; workspace: string; avatar: string }[];
+
 /** A workspace's org chart, read like a company's: g1t knows everyone; each department has its colleague. */
 const ORG: { team: string; who: string }[] = [
   { team: "Engineering", who: "Otto" },
@@ -353,9 +360,9 @@ export function Landing() {
             to={`${DOCS}/guides/chat/`}
             className="inline-flex animate-fade-up items-center gap-2 rounded-full bg-bg/50 px-3 py-1 text-xs text-fg-soft ring-1 ring-white/10 backdrop-blur transition-colors hover:bg-bg/70"
           >
-            <span className="size-1.5 rounded-full bg-accent" />
-            Chat, agents, docs and code in one workspace
-            <ArrowRight size={12} />
+            <span className="size-1.5 shrink-0 rounded-full bg-accent" />
+            For engineering teams running AI coding agents: chat, agents, docs and code in one workspace
+            <ArrowRight size={12} className="shrink-0" />
           </Link>
           <h1 className="mx-auto mt-7 max-w-4xl animate-fade-up text-[2.75rem] leading-[1.04] font-semibold tracking-tight text-balance sm:text-7xl">
             Your team and its agents,{" "}
@@ -612,22 +619,71 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Coming next: coordination and Docs. */}
+      {/* Switching: what moving in costs, and what holds if g1t goes away. */}
+      <section id="switching" className="mx-auto max-w-6xl scroll-mt-20 px-4 pb-24">
+        <div className="grid gap-10 rounded-3xl bg-surface p-8 ring-1 ring-line sm:p-10 lg:grid-cols-[1fr_1.1fr] lg:gap-16">
+          <div>
+            <Eyebrow>Switching</Eyebrow>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
+              Moving in is an import. Leaving is a git clone.
+            </h2>
+            <p className="mt-4 max-w-xl leading-7 text-muted">
+              Bring repositories across from GitHub in a few clicks: every branch and tag with full history, and their
+              issues if you want them. Import a copy, keep a mirror that follows GitHub while you try g1t, or move and
+              let g1t push back to GitHub so people still working there see every change.
+            </p>
+            <p className="mt-4 max-w-xl leading-7 text-muted">
+              If g1t went away tomorrow, your code is plain git, the source is MIT licensed, and the core forge runs on
+              your own machine with Docker Compose.
+            </p>
+            <More to={`${DOCS}/guides/github/#import-mirror-or-move-a-repository`}>Import from GitHub</More>
+          </div>
+          <div className="space-y-6">
+            <div>
+              <p className="text-sm font-medium">What keeps working</p>
+              <Points
+                columns={false}
+                points={[
+                  "git over HTTPS, with your history as it is",
+                  "GitHub Actions workflows: rename .github to .g1t and push",
+                  "The coding agents you use today, through MCP",
+                  "Leaving: git clone, and the REST API for the rest",
+                ]}
+              />
+            </div>
+            <div className="rounded-xl border border-dashed border-line-strong px-4 py-3.5 text-sm leading-6 text-muted">
+              <p className="font-medium text-fg-soft">Not a fit yet if you need</p>
+              <p className="mt-1.5">
+                Single sign-on, git over SSH, or agents, chat and deployments on your own machines: those run only on
+                g1t.sh today. Open pull requests, issue comments, releases and wikis stay behind on import.{" "}
+                <Link to={`${DOCS}/about/limitations/`} className="text-fg-soft underline-offset-4 hover:text-accent hover:underline">
+                  What g1t can&apos;t do yet
+                </Link>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Coordination, as it works today; and Docs, coming next. */}
       <section className="mx-auto grid max-w-6xl gap-4 px-4 pb-24 lg:grid-cols-2">
         <div className="rounded-3xl bg-surface p-8 ring-1 ring-line">
-          <div className="flex items-center gap-3">
-            <Eyebrow>Coordination</Eyebrow>
-            <Soon />
-          </div>
+          <Eyebrow>Coordination</Eyebrow>
           <h3 className="mt-3 text-2xl font-semibold tracking-tight text-balance">Many agents, no collisions</h3>
           <p className="mt-3 text-sm leading-6 text-muted">
-            Before an agent touches an issue, a branch, an environment or a set of paths, it claims it. When two
-            agents&apos; work would overlap, they agree who goes first in a thread you can read. Chains of agents stop
-            and ask a person after a few hops, and work done for another agent is charged to the task that asked.
+            Every agent already sees what the others are changing and can ask them, through the forge. Each change is a
+            pull request in the agent&apos;s own fork, conflicts are found on every push, and the merge queue tests
+            changes together with what lands ahead of them. Five agents can open pull requests the same afternoon and
+            main still only moves to what passed.
           </p>
-          <p className="mt-3 text-sm leading-6 text-muted">
-            Today, every agent already sees what the others are changing and can ask them, through the forge.
+          <p className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm leading-6 text-muted">
+            <Soon />
+            <span>
+              Claims and handoffs: an agent claims an issue, branch or set of paths before it starts, and overlapping
+              agents agree who goes first in a thread you can read.
+            </span>
           </p>
+          <More to={`${DOCS}/guides/merge-queue/`}>The merge queue</More>
         </div>
         <div className="rounded-3xl bg-surface p-8 ring-1 ring-line">
           <div className="flex items-center gap-3">
@@ -643,6 +699,29 @@ export function Landing() {
           <More to={`${DOCS}/guides/docs/`}>What Docs will do</More>
         </div>
       </section>
+
+      {/* What people using it say. Nothing until there are real quotes. */}
+      {TESTIMONIALS.length > 0 && (
+        <section className="mx-auto max-w-6xl px-4 pb-24">
+          <Eyebrow>From the teams using it</Eyebrow>
+          <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {TESTIMONIALS.map((item) => (
+              <li key={item.name} className="flex flex-col rounded-2xl bg-surface p-6 ring-1 ring-line">
+                <blockquote className="grow text-sm leading-6 text-fg-soft">&ldquo;{item.quote}&rdquo;</blockquote>
+                <p className="mt-5 flex items-center gap-3 text-sm">
+                  <img src={item.avatar} alt="" width={32} height={32} className="size-8 rounded-full ring-1 ring-line" />
+                  <span className="min-w-0 leading-tight">
+                    <span className="block font-medium text-fg">{item.name}</span>
+                    <span className="block truncate text-xs text-muted">
+                      {item.role}, {item.workspace}
+                    </span>
+                  </span>
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* How it flows */}
       <section id="how" className="scroll-mt-20 border-y border-line bg-surface/40">

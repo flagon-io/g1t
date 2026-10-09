@@ -3,6 +3,7 @@ import { data, redirect } from "react-router";
 
 import type { Route } from "./+types/home";
 import { page } from "../lib/meta";
+import { application, organization } from "../lib/structured-data";
 import { WORKSPACE_COOKIE, chosenWorkspace } from "../lib/workspace-choice";
 import { readCookie } from "../lib/mission";
 import { type NotStarted, chosenRepo, delegateForm, issuePath, notStarted } from "../lib/delegate";
@@ -12,11 +13,15 @@ import { assertSameOrigin, getViewer, requireUser } from "../lib/session.server"
 import { homePath } from "../lib/workspace-nav";
 
 export function meta(args: Route.MetaArgs) {
-  return page(args, {
-    title: "g1t · Your team and its agents, working in one place",
-    description:
-      "Chat with your team and your agents in channels and DMs. Agents are teammates with a role, a personality and a budget, and their code lands through pull requests, checks and a merge queue. Chat is free on every plan, never per seat.",
-  });
+  return [
+    ...page(args, {
+      title: "g1t · Your team and its agents, working in one place",
+      description:
+        "Chat with your team and your agents in channels and DMs. Agents are teammates with a role, a personality and a budget, and their code lands through pull requests, checks and a merge queue. Chat is free on every plan, never per seat.",
+    }),
+    organization(),
+    application(20),
+  ];
 }
 
 /**

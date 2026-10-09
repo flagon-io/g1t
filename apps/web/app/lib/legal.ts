@@ -13,6 +13,21 @@ export const COMPANY = {
 };
 
 /**
+ * The person behind g1t, for the footer's founder block. None yet: the
+ * block shows once a real name, photo, links and their own words are here.
+ */
+export type Founder = {
+  name: string;
+  role: string;
+  /** A square photo, served from g1t's own assets or usercontent. */
+  photo: string;
+  /** One paragraph, in their words: why they built g1t. */
+  why: string;
+  links: { label: string; url: string }[];
+};
+export const FOUNDER = null as Founder | null;
+
+/**
  * Flagon's other launched products, which the footer's maker line names
  * ("…, the people behind X and Y"). None yet: add each here when it ships.
  */
