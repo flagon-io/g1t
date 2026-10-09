@@ -245,6 +245,11 @@ pub struct RegisterArgs {
     /// registration is open.
     #[serde(default)]
     pub invite_code: Option<String>,
+    /// The `proof` from the invite email's link. When it is the invite's
+    /// own and `email` is the address the invite was sent to, the account
+    /// starts with that address confirmed; otherwise it is ignored.
+    #[serde(default)]
+    pub email_proof: Option<String>,
     /// Who is asking, such as the visitor's IP address, for rate limits.
     #[serde(default)]
     pub client: Option<String>,
@@ -1278,6 +1283,10 @@ pub struct InviteCodeArgs {
     pub viewer: Option<User>,
     #[serde(default)]
     pub any_status: bool,
+    /// The `proof` from the invite email's link, if the page was opened
+    /// from it: sets `InvitePreview::email_proven`.
+    #[serde(default)]
+    pub email_proof: Option<String>,
 }
 
 /// Someone shown on an invite.
@@ -1333,6 +1342,12 @@ pub struct InvitePreview {
     /// domains, such as `["cloudflare.com"]`. Empty for any address.
     #[serde(default)]
     pub shared_domains: Vec<String>,
+    /// Whether `email_proof` was this pending invite's own, from the email
+    /// it was sent in: the account made with it starts with `address`
+    /// confirmed. False without a proof, with a wrong one, and for an
+    /// invite bound to no address.
+    #[serde(default)]
+    pub email_proven: bool,
 }
 
 /// `accept_invite`: a signed-in person uses a workspace invite made for

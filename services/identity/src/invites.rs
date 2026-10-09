@@ -233,6 +233,38 @@ pub fn admits(invite: Option<&Admits>, email: &str, for_account: bool) -> std::r
     }
 }
 
+/// The proof for an invite's email link, or None when there is none to
+/// make: no key (a development setup), or no address the invite is bound
+/// to. See [`crypto::invite_proof`].
+pub fn email_proof(key: &[u8], invite_id: &str, bound: Option<&str>) -> Option<String> {
+    let bound = bound.map(str::trim).filter(|bound| !bound.is_empty())?;
+    (!key.is_empty()).then(|| crypto::invite_proof(key, invite_id, bound))
+}
+
+/// Whether `proof` shows that whoever brings it followed the invite's own
+/// email: it is the proof for this invite and the address it is bound to,
+/// and `email`, the address the account is made with, is that address.
+/// Anything else (no proof, a wrong or altered one, another invite's, an
+/// invite bound to no address, a different address) proves nothing, and
+/// the address is confirmed as any other is.
+pub fn proves_email(key: &[u8], invite_id: &str, bound: Option<&str>, email: &str, proof: Option<&str>) -> bool {
+    let (Some(expected), Some(proof)) = (email_proof(key, invite_id, bound), proof.map(str::trim)) else {
+        return false;
+    };
+    let same_address = bound.is_some_and(|bound| bound.trim().to_lowercase() == email.trim().to_lowercase());
+    same_address && crypto::same(&expected, &proof.to_ascii_lowercase())
+}
+
+/// Whether a new account starts with its address confirmed: GitHub
+/// confirmed it (`verified`), or `invite`, the one-person invite that
+/// admitted it, was followed from its own email with `proof` and `email` is
+/// the address it was sent to. A shared link, a code typed in or passed on,
+/// or an invite bound to no address: confirmed as any other is.
+pub fn starts_confirmed(key: &[u8], verified: bool, invite: Option<&InviteRow>, email: &str, proof: Option<&str>) -> bool {
+    verified
+        || invite.is_some_and(|row| row.kind == "account" && proves_email(key, &row.id, row.email.as_deref(), email, proof))
+}
+
 /// What an invite used to sign up does once its account confirms its
 /// address.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -439,6 +471,10 @@ pub struct NewAccount<'a> {
     /// Whether the address is confirmed already (GitHub's verified email).
     pub verified: bool,
     pub invite_code: Option<&'a str>,
+    /// The proof from the invite email's link ([`proves_email`]): when it
+    /// is the invite's and `email` is the address the invite was sent to,
+    /// the account starts with that address confirmed.
+    pub email_proof: Option<&'a str>,
     /// Who is asking, for rate limits.
     pub client: Option<&'a str>,
 }
@@ -496,6 +532,25 @@ impl Identity {
 
     pub(crate) fn invite_sealer(&self) -> Option<Sealer> {
         Sealer::new(&self.env.secret("IDENTITY_KEY").ok()?.to_string())
+    }
+
+    /// The key invite email proofs are made under: IDENTITY_KEY, or none
+    /// in a development setup without one (then no proof is made, and none
+    /// is accepted).
+    fn proof_key(&self) -> Vec<u8> {
+        self.env.secret("IDENTITY_KEY").map(|key| key.to_string().into_bytes()).unwrap_or_default()
+    }
+
+    /// The proof for the link of an invite emailed to `to`, the address it
+    /// is bound to; never shown anywhere but in that email.
+    pub(crate) fn email_proof_for(&self, invite_id: &str, to: &str) -> Option<String> {
+        email_proof(&self.proof_key(), invite_id, Some(to))
+    }
+
+    /// Whether `proof` shows the invite in `row` was followed from its own
+    /// email, by someone making an account with `email`.
+    fn proven(&self, row: &InviteRow, email: &str, proof: Option<&str>) -> bool {
+        starts_confirmed(&self.proof_key(), false, Some(row), email, proof)
     }
 
     // --- Rate limits ---
@@ -693,7 +748,8 @@ impl Identity {
     /// invite-only, `invite_code` must admit `email`; the code is spent in
     /// the same transaction as the account is made. What the invite gives
     /// (a workspace, repository invitations) is applied once the address
-    /// is confirmed: at once for an address GitHub has confirmed, otherwise
+    /// is confirmed: at once for an address GitHub has confirmed or one
+    /// proven by the invite email's link ([`proves_email`]), otherwise
     /// in the transaction that confirms it (emails.rs, `confirm_address`).
     /// In open mode a code is used if it is good and otherwise ignored.
     pub async fn create_account(&self, new: NewAccount<'_>) -> Result<Outcome<User>> {
@@ -739,10 +795,12 @@ impl Identity {
             }
         }
 
-        // Only an address GitHub has confirmed starts confirmed. An invite
-        // bound to the address proves nothing: its link can be forwarded,
-        // so the new account confirms the address like any other.
-        let verified = new.verified;
+        // An address GitHub has confirmed starts confirmed, and so does the
+        // address an invite was emailed to, when the link followed was the
+        // email's own: its proof is in no code the inviter sees or shares.
+        // The code alone proves nothing (it can be passed on), so without
+        // the proof the new account confirms the address like any other.
+        let verified = starts_confirmed(&self.proof_key(), new.verified, invite.as_ref(), new.email, new.email_proof);
         let user = User {
             id: new_id("usr", now_ms()),
             username: new.username.to_owned(),
@@ -823,7 +881,7 @@ impl Identity {
             self.count_failure(new.client).await?;
             return Ok(Outcome::fail(FailureCode::Forbidden, INVALID));
         }
-        // Confirmed already (GitHub): what the invite gives, now. Otherwise
+        // Confirmed already (GitHub, or the invite email): what the invite gives, now. Otherwise
         // it waits, spent, for the address to be confirmed.
         if let Some(row) = invite
             && user.verified
@@ -1169,7 +1227,7 @@ impl Identity {
         };
         if let (Some(email), Some(code)) = (&email, &invite.code) {
             let from = self.display_name(&a.user).await;
-            self.send_invite_email(email, Some(&from), None, false, code, None).await;
+            self.send_invite_email(email, Some(&from), None, false, code, &invite.id, None).await;
         }
         let logs: Vec<String> = a.user.workspaces.iter().map(|membership| membership.slug.clone()).collect();
         self.audit_invites(&a.user, "invite.created", logs, a.surface.unwrap_or(Surface::Web), format!("Created invite {}", invite.hint))
@@ -1184,14 +1242,20 @@ impl Identity {
         workspace: Option<&str>,
         existing: bool,
         code: &str,
+        invite_id: &str,
         note: Option<&str>,
     ) {
+        // An invite that makes an account carries the proof that the link
+        // came from this email; one for an existing account has nothing
+        // to prove.
+        let proof = if existing { None } else { self.email_proof_for(invite_id, to) };
         let invite = crate::email::InviteEmail {
             to,
             from,
             workspace,
             joins_existing_account: existing,
             code,
+            proof: proof.as_deref(),
             days: self.invite_ttl_days(),
             note,
         };
@@ -1349,6 +1413,11 @@ impl Identity {
             _ => false,
         };
         let repository = self.repository_of_code(&row.id).await?;
+        // Opened from the invite's own email: the account it makes starts
+        // with the address confirmed. Said only while it can make one.
+        let email_proven = pending
+            && !has_account
+            && row.email.as_deref().is_some_and(|bound| self.proven(&row, bound, a.email_proof.as_deref()));
         #[derive(Deserialize)]
         struct From {
             username: String,
@@ -1391,6 +1460,7 @@ impl Identity {
             expires_at: row.expires_at,
             shared_label: None,
             shared_domains: Vec::new(),
+            email_proven,
         }))
     }
 
@@ -1550,7 +1620,7 @@ impl Identity {
         if let Some(code) = &invite.code {
             let from = self.display_name(&a.actor).await;
             let workspace = self.workspace_name(&workspace_id, &slug).await;
-            self.send_invite_email(&email, Some(&from), Some(&workspace), has_account, code, None).await;
+            self.send_invite_email(&email, Some(&from), Some(&workspace), has_account, code, &invite.id, None).await;
         }
         self.audit_invites(
             &a.actor,
@@ -1953,7 +2023,7 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Conflict, "The invite could not be made. Try again."));
         };
         if let (Some(email), Some(code)) = (&email, &invite.code) {
-            self.send_invite_email(email, None, None, false, code, note).await;
+            self.send_invite_email(email, None, None, false, code, &invite.id, note).await;
         }
         invite.staff = Some(staff.to_owned());
         Ok(Outcome::Ok(invite))
@@ -2394,6 +2464,63 @@ mod tests {
         // once it has an account.
         let account = invite("account", Some("ada@example.com"), InviteStatus::Pending);
         assert_eq!(admits(Some(&account), "ada@example.com", false), Ok(()));
+    }
+
+    const KEY: &[u8] = b"identity key";
+
+    #[test]
+    fn an_invite_emails_proof_is_for_its_invite_and_address_only() {
+        let proof = email_proof(KEY, "inv_1", Some("ada@example.com")).unwrap();
+        assert_eq!(proof.len(), 64);
+        let proves = |id: &str, bound: Option<&str>, email: &str, proof: Option<&str>| proves_email(KEY, id, bound, email, proof);
+        // The right invite and address, however the address is written.
+        assert!(proves("inv_1", Some("ada@example.com"), "ada@example.com", Some(&proof)));
+        assert!(proves("inv_1", Some("Ada@Example.com"), " ADA@example.com ", Some(&proof)));
+        assert!(proves("inv_1", Some("ada@example.com"), "ada@example.com", Some(&proof.to_uppercase())));
+        // Another address: the account confirms that one itself.
+        assert!(!proves("inv_1", Some("ada@example.com"), "eve@example.com", Some(&proof)));
+        // Another invite's proof, even for the same address.
+        assert!(!proves("inv_2", Some("ada@example.com"), "ada@example.com", Some(&proof)));
+        // Tampered, cut short, empty or missing.
+        let mut tampered = proof.clone().into_bytes();
+        tampered[10] = if tampered[10] == b'0' { b'1' } else { b'0' };
+        let tampered = String::from_utf8(tampered).unwrap();
+        assert!(!proves("inv_1", Some("ada@example.com"), "ada@example.com", Some(&tampered)));
+        assert!(!proves("inv_1", Some("ada@example.com"), "ada@example.com", Some(&proof[..32])));
+        assert!(!proves("inv_1", Some("ada@example.com"), "ada@example.com", Some("")));
+        assert!(!proves("inv_1", Some("ada@example.com"), "ada@example.com", None));
+        // An invite bound to no address has no proof to give.
+        assert_eq!(email_proof(KEY, "inv_1", None), None);
+        assert!(!proves("inv_1", None, "ada@example.com", Some(&proof)));
+        // Made under another key: not ours.
+        let foreign = email_proof(b"another key", "inv_1", Some("ada@example.com")).unwrap();
+        assert!(!proves("inv_1", Some("ada@example.com"), "ada@example.com", Some(&foreign)));
+        // Without a key (development) none is made, and none is taken.
+        assert_eq!(email_proof(b"", "inv_1", Some("ada@example.com")), None);
+        let unkeyed = crypto::invite_proof(b"", "inv_1", "ada@example.com");
+        assert!(!proves_email(b"", "inv_1", Some("ada@example.com"), "ada@example.com", Some(&unkeyed)));
+    }
+
+    #[test]
+    fn an_account_starts_confirmed_only_from_the_invite_email_to_its_address() {
+        let invite = row(None, false, LATER);
+        let proof = email_proof(KEY, &invite.id, invite.email.as_deref()).unwrap();
+        // From the invite email, with the address it was sent to.
+        assert!(starts_confirmed(KEY, false, Some(&invite), "ada@example.com", Some(&proof)));
+        // The code alone (typed in, or a link passed on), or a bad proof.
+        assert!(!starts_confirmed(KEY, false, Some(&invite), "ada@example.com", None));
+        assert!(!starts_confirmed(KEY, false, Some(&invite), "ada@example.com", Some("0123")));
+        // A different address than the invite's.
+        assert!(!starts_confirmed(KEY, false, Some(&invite), "eve@example.com", Some(&proof)));
+        // No invite (open registration, or a shared link), or one bound to no address.
+        assert!(!starts_confirmed(KEY, false, None, "ada@example.com", Some(&proof)));
+        let unbound = InviteRow { email: None, ..row(None, false, LATER) };
+        assert!(!starts_confirmed(KEY, false, Some(&unbound), "ada@example.com", Some(&proof)));
+        // A workspace invite makes no account.
+        let join = InviteRow { kind: "workspace".into(), ..row(None, false, LATER) };
+        assert!(!starts_confirmed(KEY, false, Some(&join), "ada@example.com", Some(&proof)));
+        // GitHub's confirmed address, whatever else.
+        assert!(starts_confirmed(KEY, true, None, "ada@example.com", None));
     }
 
     #[test]

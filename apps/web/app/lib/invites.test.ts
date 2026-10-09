@@ -6,6 +6,9 @@ import {
   HAVE_AN_INVITE,
   INVITES_CONTACT,
   cleanCode,
+  cleanProof,
+  invitePath,
+  inviteSignUpCopy,
   inviteFor,
   inviteLink,
   inviteState,
@@ -43,6 +46,44 @@ test("asking for more invites goes to support with the [g1t Invites] subject", (
 test("an invite link is on g1t.sh unless told otherwise", () => {
   assert.equal(inviteLink(CODE), `https://g1t.sh/invite/${CODE}`);
   assert.equal(inviteLink(CODE, "http://localhost:8787/"), `http://localhost:8787/invite/${CODE}`);
+});
+
+const PROOF = "4f9c2a7e0b13d5c84f9c2a7e0b13d5c84f9c2a7e0b13d5c84f9c2a7e0b13d5c8";
+
+test("an invite email's proof is kept only when it looks like one, and goes along to the invite's page", () => {
+  assert.equal(cleanProof(PROOF), PROOF);
+  assert.equal(cleanProof(` ${PROOF.toUpperCase()} `), PROOF);
+  assert.equal(cleanProof("not-a-proof"), null);
+  assert.equal(cleanProof("abc"), null);
+  assert.equal(cleanProof("a".repeat(500)), null);
+  assert.equal(cleanProof(null), null);
+  assert.equal(invitePath(CODE, PROOF), `/invite/${CODE}?proof=${PROOF}`);
+  assert.equal(invitePath(CODE, null), `/invite/${CODE}`);
+  assert.equal(invitePath(CODE), `/invite/${CODE}`);
+});
+
+test("signing up from the invite email says the address is confirmed already; otherwise the code step applies", () => {
+  const base = { address: "ada@example.com", emailProven: false, workspace: { name: "Flagon, Inc." }, repository: null };
+  const proven = inviteSignUpCopy({ ...base, emailProven: true });
+  assert.equal(proven.intro, "You join Flagon, Inc. as soon as you create it.");
+  assert.match(proven.confirmed ?? "", /^ada@example\.com is confirmed: you came here from the invite we emailed to it/);
+  assert.match(proven.hint, /confirmed already/);
+  assert.doesNotMatch(proven.hint, /code/);
+
+  // No proof (a code typed in, or a link passed on): nothing new is said.
+  const plain = inviteSignUpCopy(base);
+  assert.equal(plain.intro, "You join Flagon, Inc. as soon as you confirm your email.");
+  assert.equal(plain.confirmed, null);
+  assert.equal(plain.hint, "Your invite was sent here. We email it a code to confirm it before you start.");
+
+  // An invite for anyone with the code has no address to prove.
+  const open = inviteSignUpCopy({ ...base, address: null, emailProven: true, workspace: null });
+  assert.equal(open.confirmed, null);
+  assert.equal(open.intro, "It takes a minute.");
+  assert.equal(open.hint, "We email it a code to confirm it before you start.");
+
+  const repo = inviteSignUpCopy({ ...base, workspace: null, repository: { name: "flagon-io/g1t" }, emailProven: true });
+  assert.equal(repo.intro, "You get flagon-io/g1t as soon as you create it.");
 });
 
 test("a pasted link or code is tidied to the code", () => {

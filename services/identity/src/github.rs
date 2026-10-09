@@ -584,6 +584,8 @@ impl Identity {
                 password_hash: "",
                 verified: true,
                 invite_code,
+                // GitHub has confirmed the address already.
+                email_proof: None,
                 client: None,
             })
             .await?

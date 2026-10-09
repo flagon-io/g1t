@@ -281,6 +281,13 @@ export type InvitePreview = {
   sharedLabel: string | null;
   /** The email domains a shared invite link is limited to; empty for any address. */
   sharedDomains: string[];
+  /**
+   * Whether the page was opened from this pending invite's own email (its
+   * `proof` checked out): the account made with it starts with `address`
+   * confirmed. False without a proof, with a wrong one, or for an invite
+   * bound to no address.
+   */
+  emailProven: boolean;
 };
 
 export type WaitlistStatus = "waiting" | "invited" | "dismissed";
@@ -702,6 +709,12 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
     inviteCode?: string | null,
     /** Who is asking, such as the visitor's IP address, for rate limits. */
     client?: string | null,
+    /**
+     * The `proof` from the invite email's link. When it is the invite's own
+     * and `email` is the address it was sent to, the account starts with that
+     * address confirmed; otherwise it is ignored.
+     */
+    emailProof?: string | null,
   ): Promise<Result<{ user: User; sessionToken: string }>>;
   /** Verifies a username and password for website sign-in. */
   /**
@@ -890,12 +903,13 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
   /**
    * What a code is for. Unknown, used, revoked and expired codes all get the
    * same answer, unless `anyStatus`: then a real code that is spent is
-   * described, with its `status`. `viewer` sets `forViewer`.
+   * described, with its `status`. `viewer` sets `forViewer`; `emailProof`,
+   * the `proof` from the invite email's link, sets `emailProven`.
    */
   checkInvite(
     code: string,
     client?: string | null,
-    options?: { viewer?: User | null; anyStatus?: boolean },
+    options?: { viewer?: User | null; anyStatus?: boolean; emailProof?: string | null },
   ): Promise<Result<InvitePreview>>;
   /**
    * A signed-in person uses a workspace invite sent to their address, or one

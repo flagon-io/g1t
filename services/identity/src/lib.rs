@@ -427,6 +427,7 @@ impl Identity {
                 password_hash: &password_hash,
                 verified: false,
                 invite_code,
+                email_proof: a.email_proof.as_deref(),
                 client: a.client.as_deref(),
             })
             .await?
