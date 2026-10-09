@@ -10,7 +10,7 @@ import { githubApp } from "../../lib/github.server";
 import { integrationsSection } from "../../lib/integration-sections";
 import { page } from "../../lib/meta";
 import { integrations, webhooks } from "../../lib/services.server";
-import { getViewer, roleIn } from "../../lib/session.server";
+import { requireUser, roleIn } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Integrations · ${params.owner} · g1t` });
@@ -23,7 +23,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
  * GitHub import, webhooks); this page only finds them.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
-  const viewer = getViewer(context);
+  // Signed out, sign in first (as Chat and Docs do), rather than a 404.
+  const viewer = requireUser(context, request);
   const role = roleIn(viewer, params.owner);
   if (!role || !viewer) throw new Response(null, { status: 404 });
   const slug = params.owner.toLowerCase();

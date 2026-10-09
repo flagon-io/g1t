@@ -6,7 +6,7 @@ import { AgentsSidebar } from "../../../components/agents-mode";
 
 import type { Route } from "./+types/layout";
 import { workspaceAgents } from "../../../lib/services.server";
-import { getViewer, roleIn } from "../../../lib/session.server";
+import { requireUser, roleIn } from "../../../lib/session.server";
 
 /**
  * Agents mode: the workspace's agents, for its sidebar, and how many live
@@ -14,8 +14,9 @@ import { getViewer, roleIn } from "../../../lib/session.server";
  */
 export type AgentsLayoutData = { slug: string; agents: WorkspaceAgent[] | null; live: Record<string, number> };
 
-export async function loader({ params, context }: Route.LoaderArgs): Promise<AgentsLayoutData> {
-  const viewer = getViewer(context);
+export async function loader({ params, context, request }: Route.LoaderArgs): Promise<AgentsLayoutData> {
+  // Signed out, sign in first (as Chat and Docs do), rather than a 404.
+  const viewer = requireUser(context, request);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
   const [listed, live] = await Promise.all([

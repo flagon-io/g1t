@@ -46,7 +46,7 @@ test("only close enough, only allowed, at most two per page, best first", () => 
 });
 
 test("required spaces come first, then the rest", () => {
-  const picked = pickPassages([c("a:0", "s1", 0.9), c("b:0", "s2", 0.65), c("c:0", "s1", 0.85)], { allowed: new Set(["s1", "s2"]), required: ["s2"], limit: 2 });
+  const picked = pickPassages([c("a:0", "s1", 0.9), c("b:0", "s2", 0.75), c("c:0", "s1", 0.85)], { allowed: new Set(["s1", "s2"]), required: ["s2"], limit: 2 });
   assert.deepEqual(
     picked.map((p) => p.id),
     ["b:0", "a:0"],

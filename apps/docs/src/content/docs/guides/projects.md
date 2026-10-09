@@ -63,7 +63,7 @@ else sees what the project shares publicly.
 | **Active branches** | Branches other than the default, newest first. See [active branches](#active-branches). |
 | **Recent changes**, **Latest on main**, **Activity**, **Previews** | What landed, the default branch's latest commits, what happened (pull requests opened, readied and merged, issues opened and closed, checks, reviews, comments, pushes to the default branch and production deploys), and the previews that are up. |
 | **About** | Its description, its [links](#links), what it is, and its latest release (its newest tag). People who can change its settings edit the description and links from here. |
-| **Health**, **Clone** | How often checks pass, recent builds and open issues by age; the clone address. |
+| **Health**, **Clone** | How often checks pass (on pull requests, or the project's workflow runs when it ships without them), recent builds and open issues by age; the clone address. |
 
 ### The checklist
 
