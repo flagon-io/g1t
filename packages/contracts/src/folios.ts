@@ -673,8 +673,13 @@ export type FoliosApi = {
   // ── The site, and the API acting for a person ───────────────────────
   list(workspace: string, viewer: User, query: FolioListQuery): Promise<Result<FolioList>>;
   sidebar(workspace: string, viewer: User): Promise<Result<FoliosSidebar>>;
-  /** A folio and the viewer's role in it; records the visit (which is what makes a link folio readable). Not found when they can't read it. */
-  folio(workspace: string, viewer: User, folioId: string): Promise<Result<Folio>>;
+  /**
+   * A folio and the viewer's role in it; records the visit (which is what
+   * makes a link folio readable). Not found when they can't read it. A
+   * `peek` (chat's card for a link) records nothing, so it finds a link
+   * folio only once they have opened it, and never one in the trash.
+   */
+  folio(workspace: string, viewer: User, folioId: string, options?: { peek?: boolean }): Promise<Result<Folio>>;
   /** As `folio`, with what its page shows around it. Records the visit too. */
   page(workspace: string, viewer: User, folioId: string): Promise<Result<FolioPage>>;
   create(workspace: string, viewer: User, input: NewFolio): Promise<Result<Folio>>;
@@ -767,7 +772,7 @@ export function foliosClient(service: ServiceBinding): FoliosApi {
   return {
     list: (workspace, viewer, query) => call("folio_list", { workspace, viewer, query }),
     sidebar: (workspace, viewer) => call("folio_sidebar", { workspace, viewer }),
-    folio: (workspace, viewer, folioId) => call("folio", { workspace, viewer, folio_id: folioId }),
+    folio: (workspace, viewer, folioId, options) => call("folio", { workspace, viewer, folio_id: folioId, ...(options?.peek ? { peek: true } : {}) }),
     page: (workspace, viewer, folioId) => call("folio_page", { workspace, viewer, folio_id: folioId }),
     create: (workspace, viewer, input) => call("create_folio", { workspace, viewer, input }),
     update: (workspace, viewer, folioId, change) => call("update_folio", { workspace, viewer, folio_id: folioId, change }),

@@ -9,6 +9,7 @@ import {
   contextClient,
   deploymentsClient,
   docsClient,
+  foliosClient,
   memoryReviewClient,
   mirrorsClient,
   packagesClient,
@@ -86,5 +87,7 @@ export const memoryReview = memoryReviewClient(WORK);
 export const chat = chatClient(CHAT);
 /** The workspace's own agents: who they are, their limits and their desks. */
 export const workspaceAgents = workspaceAgentsClient(AGENTS);
-/** Docs: spaces, pages, history, suggestions and comments. */
+/** The docs service's spaces (Artifacts' spaces) and projects' docs. Its old pages are no longer read. */
 export const docs = docsClient(DOCS);
+/** Artifacts (folios): docs, and later slides, designs and dashboards, kept by the docs service. */
+export const folios = foliosClient(DOCS);

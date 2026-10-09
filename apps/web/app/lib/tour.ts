@@ -105,9 +105,9 @@ export const PILLS: { scene: Scene; label: string; start: number; soon: boolean 
   { scene: "chat", label: "Chat", start: BEAT.chat, soon: false },
   // Sessions, colleagues brought in, spend against a cap: built.
   { scene: "agents", label: "Agents", start: BEAT.agents, soon: false },
-  // Docs is built; an agent keeping a page current after a merge on its
-  // own is not yet, and the line under the frame says so.
-  { scene: "docs", label: "Docs", start: BEAT.docs, soon: false },
+  // Docs in Artifacts are built; an agent keeping one current after a merge
+  // on its own is not yet, and the line under the frame says so.
+  { scene: "docs", label: "Artifacts", start: BEAT.docs, soon: false },
 ];
 
 /** Which pill a time falls under. */

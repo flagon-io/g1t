@@ -107,7 +107,10 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/acme/-/agents/ship/profile", "acme"), "agents");
   assert.equal(modeOf("/acme/-/context", "acme"), "agents");
   assert.equal(modeOf("/acme/-/memory", "acme"), "agents");
-  assert.equal(modeOf("/acme/-/docs", "acme"), "docs");
+  assert.equal(modeOf("/acme/-/artifacts", "acme"), "artifacts");
+  assert.equal(modeOf("/acme/-/artifacts/spaces/general", "acme"), "artifacts");
+  // Docs mode is gone: its old addresses are nobody's mode, so they fall to Code's not-found page.
+  assert.equal(modeOf("/acme/-/docs", "acme"), "code");
   assert.equal(modeOf("/acme/-/overview", "acme"), "code");
   assert.equal(modeOf("/acme/-/projects", "acme"), "code");
   assert.equal(modeOf("/acme/-/security", "acme"), "code");

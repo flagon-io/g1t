@@ -56,6 +56,7 @@ import {
   SendHorizontal,
   Settings,
   ShieldCheck,
+  Shapes,
   Sparkles,
   SquarePen,
 } from "lucide-react";
@@ -188,7 +189,7 @@ function pillOf(frame: Frame): number {
 
 /** What the line under the frame says about the moment: working today, or a preview. */
 function honesty(frame: Frame): { today: boolean; label: string } {
-  if (frame.scene === "docs") return { today: false, label: "Docs works today; an agent updating a page after a merge on its own is coming soon" };
+  if (frame.scene === "docs") return { today: false, label: "Docs in Artifacts work today; an agent updating one after a merge on its own is coming soon" };
   if (frame.scene === "agents") return { today: true, label: "Sessions work today" };
   if (frame.scene === "code") return { today: true, label: "Works today" };
   if (frame.handoff && !frame.shipped) return { today: false, label: "g1t splitting work between colleagues: coming soon" };
@@ -351,7 +352,7 @@ const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget
   { key: "home", icon: <House size={15} />, label: "Home" },
   { key: "code", icon: <Code2 size={15} />, label: "Code", target: "rail-code", scene: "code" },
   { key: "chat", icon: <MessagesSquare size={15} />, label: "Chat", target: "rail-chat", scene: "chat", badge: 3 },
-  { key: "docs", icon: <BookOpen size={15} />, label: "Docs", target: "rail-docs", scene: "docs" },
+  { key: "artifacts", icon: <Shapes size={15} />, label: "Artifacts", target: "rail-docs", scene: "docs" },
   { key: "agents", icon: <Sparkles size={15} />, label: "Agents", target: "rail-agents", scene: "agents" },
   { key: "inbox", icon: <Inbox size={15} />, label: "Inbox", badge: 2 },
 ];

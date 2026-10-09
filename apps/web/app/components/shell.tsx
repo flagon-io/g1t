@@ -28,7 +28,7 @@ import { type RoadmapItem, roadmapIn, roadmapItem } from "../lib/roadmap";
 import { type ModeKey, SETTINGS_PAGES, modeOf, sidebarCurrent } from "../lib/workspace-nav";
 import { AgentsSidebar } from "./agents-mode";
 import { ChatSidebar } from "./chat/sidebar";
-import { DocsSidebar } from "./docs/sidebar";
+import { FoliosSidebar } from "./folios/sidebar";
 import { HelpMenu, Rail } from "./rail";
 import { HomeSidebar } from "./home-sidebar";
 import { G1tMark } from "./orchestrator";
@@ -1738,7 +1738,7 @@ const SECTIONS: Record<string, string> = {
   insights: "Insights",
   sessions: "Sessions",
   chat: "Chat",
-  docs: "Docs",
+  artifacts: "Artifacts",
   home: "Home",
   "code-access": "Code access",
   overview: "Overview",
@@ -2071,13 +2071,13 @@ function sidebarFor(mode: ModeKey | null): Panel | null {
 }
 
 /** The sidebars that sit beside the rail, one per mode that has one. */
-type Panel = "home" | "chat" | "docs" | "agents" | "code" | "workspace" | "account";
+type Panel = "home" | "chat" | "artifacts" | "agents" | "code" | "workspace" | "account";
 
 /** Each sidebar's name, for the phone's button that opens it. */
 const MODE_MENU: Record<Panel, string> = {
   home: "Home",
   chat: "Chat",
-  docs: "Docs",
+  artifacts: "Artifacts",
   agents: "Agents",
   code: "Code",
   workspace: "Workspace",
@@ -2158,8 +2158,8 @@ export function AppShell({
         return <HomeSidebar slug={ws.slug} shell={shell} code={code} onFind={find} header={<ModeHeader title="Home" onClose={close} />} />;
       case "chat":
         return <ChatSidebar slug={ws.slug} />;
-      case "docs":
-        return <DocsSidebar slug={ws.slug} onClose={close} />;
+      case "artifacts":
+        return <FoliosSidebar slug={ws.slug} onClose={close} />;
       case "agents":
         return <AgentsSidebar slug={ws.slug} shellAgents={shell.agents ?? null} code={code} owner={ws.role === "owner"} />;
       case "workspace":

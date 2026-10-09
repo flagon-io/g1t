@@ -510,12 +510,22 @@ export class Folios {
     });
   }
 
-  async folio(a: Args & { folio_id: string }): Promise<Result<Folio>> {
+  /**
+   * A folio for the viewer. Reading it opens it, which records the visit
+   * that makes a link folio readable; a `peek` (chat's link card) does
+   * neither, so a link folio they never opened is not found.
+   */
+  async folio(a: Args & { folio_id: string; peek?: boolean | null }): Promise<Result<Folio>> {
     const found = await this.ctx(a.workspace, a.viewer);
     if (!found.ok) return found;
     const ctx = found.value;
-    const opened = await this.open(ctx, a.folio_id, "view", { trashed: true, opening: true });
+    const peek = a.peek === true;
+    const opened = await this.open(ctx, a.folio_id, "view", { trashed: !peek, opening: !peek });
     if (!opened.ok) return opened;
+    if (peek) {
+      const [folio] = await this.toFolios(ctx, [opened.value.row], { roles: new Map([[opened.value.row.id, opened.value.role]]), found: opened.value.found });
+      return ok(folio!);
+    }
     const at = now();
     this.defer(
       this.db

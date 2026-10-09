@@ -168,21 +168,21 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 }
 
 /**
- * The rail's modes (docs/WORKSPACE.md, "Shell"). Home, Code, Chat, Docs
- * and Agents are where work happens; the Inbox spans them; Workspace is the
+ * The rail's modes (docs/WORKSPACE.md, "Shell"). Home, Code, Chat,
+ * Artifacts and Agents are where work happens; the Inbox spans them; Workspace is the
  * workspace itself: its people, money, policies and settings. `account` is
  * your own settings, under the avatar. `site` is g1t's own public pages
  * (a profile, Explore, Search): no workspace's, so no mode is lit and no
  * mode's sidebar sits beside them. Each mode has a sidebar of its own, or
  * none, and which one is lit follows the address.
  */
-export type ModeKey = "home" | "chat" | "docs" | "agents" | "code" | "inbox" | "workspace" | "account" | "site";
+export type ModeKey = "home" | "chat" | "artifacts" | "agents" | "code" | "inbox" | "workspace" | "account" | "site";
 
 /** Workspace pages under `-/`, by the mode they belong to. Anything else of the workspace's is Code's. */
 const PAGE_MODES: Record<string, ModeKey> = {
   home: "home",
   chat: "chat",
-  docs: "docs",
+  artifacts: "artifacts",
   agents: "agents",
   context: "agents",
   memory: "agents",
@@ -243,8 +243,8 @@ export function modeHome(mode: ModeKey, slug: string): string {
       return "/inbox";
     case "chat":
       return `/${slug}/-/chat`;
-    case "docs":
-      return `/${slug}/-/docs`;
+    case "artifacts":
+      return `/${slug}/-/artifacts`;
     case "agents":
       return `/${slug}/-/agents`;
     case "code":

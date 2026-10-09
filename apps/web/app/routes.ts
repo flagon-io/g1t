@@ -163,28 +163,30 @@ export default [
       route("dm/:id", "routes/workspace/chat/channel.tsx", { id: "routes/workspace/chat/dm" }),
       route(":channel", "routes/workspace/chat/channel.tsx"),
     ]),
-    // Docs mode (docs/WORKSPACE.md, "Docs"): what its pages call as they
-    // run (a page's live socket, JSON, comments, uploads, export), then
-    // Home, search, templates, the trash, a new space, and each space and
-    // page by its address. A page's address ends in its id, so renaming it
-    // keeps links working.
-    route("-/docs/live", "routes/workspace/docs/live.ts"),
-    route("-/docs/api", "routes/workspace/docs/api.ts"),
-    route("-/docs/threads/:page/*", "routes/workspace/docs/threads.ts"),
-    route("-/docs/upload", "routes/workspace/docs/upload.ts"),
-    route("-/docs/export", "routes/workspace/docs/export.ts"),
-    route("-/docs", "routes/workspace/docs/layout.tsx", [
-      index("routes/workspace/docs/home.tsx"),
-      route("search", "routes/workspace/docs/search.tsx"),
-      route("templates", "routes/workspace/docs/templates.tsx"),
-      route("trash", "routes/workspace/docs/trash.tsx"),
-      route("new", "routes/workspace/docs/new-space.tsx"),
-      // Pages possibly out of date, and a project's docs folder, read-only.
-      route("stale", "routes/workspace/docs/stale.tsx"),
-      route("repo/:repoOwner/:repoName/*", "routes/workspace/docs/repo-file.tsx"),
-      route(":space", "routes/workspace/docs/space.tsx"),
-      route(":space/settings", "routes/workspace/docs/space-settings.tsx"),
-      route(":space/:page", "routes/workspace/docs/page.tsx"),
+    // Artifacts mode (docs/ARTIFACTS_MODE.md; code says "folio"): what its
+    // pages call as they run (an artifact's live socket, JSON, comments,
+    // uploads, export), then Home, making one, templates, the trash, the
+    // spaces, and each artifact by its address. Addresses are flat and end
+    // in the id, so renaming or moving one keeps links working.
+    route("-/artifacts/live", "routes/workspace/folios/live.ts"),
+    route("-/artifacts/api", "routes/workspace/folios/api.ts"),
+    route("-/artifacts/threads/:folio/*", "routes/workspace/folios/threads.ts"),
+    route("-/artifacts/upload", "routes/workspace/folios/upload.ts"),
+    route("-/artifacts/export", "routes/workspace/folios/export.ts"),
+    route("-/artifacts", "routes/workspace/folios/layout.tsx", [
+      index("routes/workspace/folios/home.tsx"),
+      route("new/:kind", "routes/workspace/folios/new.tsx"),
+      route("templates", "routes/workspace/folios/templates.tsx"),
+      route("trash", "routes/workspace/folios/trash.tsx"),
+      // Artifacts possibly out of date, and a project's docs folder, read-only.
+      route("stale", "routes/workspace/folios/stale.tsx"),
+      route("spaces", "routes/workspace/folios/spaces.tsx"),
+      route("spaces/new", "routes/workspace/folios/space-new.tsx"),
+      route("spaces/:space", "routes/workspace/folios/space.tsx"),
+      route("spaces/:space/settings", "routes/workspace/folios/space-settings.tsx"),
+      route("repo/:repoOwner/:repoName/*", "routes/workspace/folios/repo-file.tsx"),
+      route(":folio", "routes/workspace/folios/folio.tsx"),
+      route(":folio/history", "routes/workspace/folios/history.tsx"),
     ]),
     // Home for a member without Code, and what Code's pages say to them
     // (docs/WORKSPACE.md, "Members without Code").

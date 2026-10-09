@@ -45,6 +45,7 @@ import { localTime } from "../../lib/time-zone";
 import { BottomSheet, SheetRow, useBack, useSwipeBack } from "../mobile";
 import { MessageText, type TextContext } from "./text";
 import { WriteUpDialog } from "./write-up";
+import { FolioUnfurls } from "../folios/unfurl";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { threadLink, writeUpAgents } from "../../lib/write-up";
 import {
@@ -492,8 +493,8 @@ export function ChannelView({ data }: { data: Loaded }) {
     setParams(next, { preventScrollReset: true, replace: !!threadId && !!id });
   };
 
-  // A thread's link, to copy and to cite; and "Write this up in Docs", which
-  // asks an agent, in the thread and as the person, for a page about it.
+  // A thread's link, to copy and to cite; and "Write this up as an artifact",
+  // which asks an agent, in the thread and as the person, for a doc about it.
   const [writeUp, setWriteUp] = useState<string | null>(null);
   const linkToThread = (root: string) => threadLink(window.location.origin, channelPath(slug, channel), root);
   const copyThreadLink = (root: string) => {
@@ -748,6 +749,7 @@ export function ChannelView({ data }: { data: Loaded }) {
         slug={slug}
         agents={writers}
         link={writeUp && typeof window !== "undefined" ? linkToThread(writeUp) : ""}
+        shared={channel.kind === "dm" || channel.private}
         onSend={askForWriteUp}
       />
       <BottomSheet open={editing != null} onOpenChange={(open) => !open && setEditing(null)} title="Edit message">
@@ -1181,7 +1183,7 @@ function MessageActions({
           )}
           {!message.pending && onWriteUp && (
             <SheetRow icon={<FileText />} onClick={act(() => onWriteUp(message))}>
-              Write this up in Docs
+              Write this up as an artifact
             </SheetRow>
           )}
           {mine && message.kind === "text" && (
@@ -1277,6 +1279,7 @@ function MessageRow({
         )}
         <div className={message.pending && !message.failed ? "opacity-60" : undefined}>
           {message.body && <MessageText body={message.body} context={context} />}
+          {message.body && !message.pending && <FolioUnfurls slug={slug} body={message.body} />}
           {message.card && (
             <CardBox
               card={message.card}
@@ -1363,7 +1366,7 @@ function ThreadMenuItems({ onCopyLink, onWriteUp }: { onCopyLink: () => void; on
       {onWriteUp && (
         <DropdownMenuItem onSelect={onWriteUp}>
           <FileText />
-          Write this up in Docs
+          Write this up as an artifact
         </DropdownMenuItem>
       )}
     </>

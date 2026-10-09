@@ -18,6 +18,7 @@ import {
   Plug,
   Plus,
   Settings,
+  Shapes,
   Smile,
   Sparkles,
   Sun,
@@ -146,7 +147,7 @@ export function MobileTabBar({
     { key: "home", label: "Home", to: `/${slug}/-/home`, icon: <House size={21} /> },
     code
       ? { key: "code", label: "Code", to: `/${slug}/-/projects`, icon: <Code2 size={21} /> }
-      : { key: "docs", label: "Docs", to: `/${slug}/-/docs`, icon: <BookOpen size={21} /> },
+      : { key: "artifacts", label: "Artifacts", to: `/${slug}/-/artifacts`, icon: <Shapes size={21} /> },
     {
       key: "chat",
       label: "Chat",
@@ -376,10 +377,10 @@ export function AvatarSheetButton({ user, workspace }: { user: User; workspace: 
           </div>
         </div>
         <SheetGroup title="Workspace">
-          {/* Docs has no tab of its own for someone with Code: it leads here. */}
+          {/* Artifacts has no tab of its own for someone with Code: it leads here. */}
           {hasCodeAccess(workspace) && (
-            <SheetRow to={`/${slug}/-/docs`} icon={<BookOpen />} end={<ChevronRight size={16} className="text-faint" />}>
-              Docs
+            <SheetRow to={`/${slug}/-/artifacts`} icon={<Shapes />} end={<ChevronRight size={16} className="text-faint" />}>
+              Artifacts
             </SheetRow>
           )}
           <SheetRow to={`/${slug}/-/workspace`} icon={<Building2 />}>

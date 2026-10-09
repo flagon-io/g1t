@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Building2, Check, CircleHelp, CircleUserRound, Code2, House, Inbox, Keyboard, LifeBuoy, MessagesSquare, Plus, Settings, Sparkles } from "lucide-react";
+import { Activity, BookOpen, Building2, Check, CircleHelp, CircleUserRound, Code2, House, Inbox, Keyboard, LifeBuoy, MessagesSquare, Plus, Settings, Shapes, Sparkles } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useLocation, useNavigation } from "react-router";
 
@@ -264,7 +264,7 @@ export function Rail({
       icon: <MessagesSquare size={19} />,
       badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 },
     },
-    { key: "docs", label: "Docs", icon: <BookOpen size={19} /> },
+    { key: "artifacts", label: "Artifacts", icon: <Shapes size={19} /> },
     { key: "agents", label: "Agents", icon: <Sparkles size={19} /> },
     { key: "inbox", label: "Inbox", icon: <Inbox size={19} />, badge: { count: unread.inbox, loud: true } },
   ];
