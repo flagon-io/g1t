@@ -1,6 +1,7 @@
 import { type ReactNode, Suspense, lazy, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { cn } from "../lib/cn";
+import { Kbd } from "./ui/kbd";
 import { paletteKeyLabel } from "../lib/shortcut";
 
 /*
@@ -46,7 +47,7 @@ function platform(): string {
 export function PaletteKey({ className }: { className?: string }) {
   // The server cannot know the computer: it says ⌘K, and the browser corrects it.
   const label = useSyncExternalStore(never, () => paletteKeyLabel(platform()), () => "⌘K");
-  return <kbd className={cn(className, "pointer-coarse:hidden")}>{label}</kbd>;
+  return <Kbd className={cn(className, "pointer-coarse:hidden")}>{label}</Kbd>;
 }
 
 /**

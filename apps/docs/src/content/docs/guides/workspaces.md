@@ -525,7 +525,7 @@ The Projects page, `g1t.sh/<workspace>/-/projects`, is made for workspaces with 
 Everything you choose is in the address, so a filtered list can be
 bookmarked or shared.
 
-## The dock, the sidebar and the page
+## The rail, the sidebar and the page
 
 Signed in, g1t is always about one workspace: the one you are in. On a
 workspace's pages, and on a project in one of your workspaces, that is the
@@ -537,14 +537,14 @@ Each page has three parts:
 
 | Part | Where | What it holds |
 | --- | --- | --- |
-| **The dock** | A rounded bar down the left | g1t's mark, which goes to [Home](/guides/home/); the built-in apps; the apps you pinned; **Apps**; and at its foot **People**, **Workspace** and your account. |
-| **The sidebar** | Beside the dock | The workspace and its switcher at the top, then the lists of the app you are in. Home and Apps have none. |
-| **The page** | A rounded panel, the rest of the window | Its header: the button that shows or hides the sidebar, where you are, **Search or jump to** (<kbd>Ctrl</kbd> <kbd>K</kbd>, or <kbd>⌘</kbd> <kbd>K</kbd> on a Mac), [your spend this month](/guides/spend/#in-the-top-bar), **Ask g1t**, the [notifications](/guides/notifications/) bell and **Create new**. Then the page itself. |
+| **The rail** | A narrow column of icons down the left edge | g1t's mark, which goes to [Home](/guides/home/); the built-in apps; the apps you pinned; **Apps**; and at its foot **People**, **Workspace** and your account. Hold the pointer over an icon for its name. |
+| **The sidebar** | Flush against the rail | The workspace and its switcher at the top, **Search or jump to**, then the lists of the app you are in, in named groups. Home and Apps have none. |
+| **The page** | A rounded panel, the rest of the window | Its header: the button that shows or hides the sidebar, where you are, **Search or jump to** (<kbd>Ctrl</kbd> <kbd>K</kbd>, or <kbd>⌘</kbd> <kbd>K</kbd> on a Mac) when the sidebar is hidden or has a search of its own, [your spend this month](/guides/spend/#in-the-top-bar), **Ask g1t**, the [notifications](/guides/notifications/) bell and **Create new**. Then the page itself. |
 
-### The dock
+### The rail
 
-The built-in apps are always in the dock, each with its name and what is
-unread:
+The built-in apps are always in the rail, each an icon with what is
+unread on it:
 
 | App | Opens |
 | --- | --- |
@@ -557,7 +557,7 @@ unread:
 | **People** | Everyone in the workspace, people and agents; its [teams](/guides/teams/); the org chart; and, under **Membership**, **Members and invites**. See [people and teams](/guides/people-and-teams/). |
 | **Workspace** | Usage, billing, integrations, policies and settings. |
 
-A bar on the dock's edge marks the app you are in. Your account is the
+The app you are in sits on a filled square. Your account is the
 avatar at the foot: your status, your profile and settings,
 [appearance](#appearance), the documentation, support, status, the
 keyboard's shortcuts, and signing out.
@@ -575,7 +575,7 @@ your system's setting.
 
 To change it:
 
-1. Select your avatar at the foot of the dock. On a phone, open **More**,
+1. Select your avatar at the foot of the rail. On a phone, open **More**,
    then **You and help**.
 2. Under **Appearance**, select **Auto** (the screen icon), **Light** (the
    sun) or **Dark** (the moon).
@@ -611,7 +611,7 @@ The built-in apps' own pages are in their sidebars, not in Apps: Code's has
 A pinned app shows as its mark under the built-in ones, in the order you
 pinned them. To pin one:
 
-1. Select **Apps** near the foot of the dock, or open the Apps page at
+1. Select **Apps** near the foot of the rail, or open the Apps page at
    `g1t.sh/<workspace>/-/apps`.
 2. Find the app, by name if you like.
 3. Select the pin on its tile. Select it again to unpin it.
@@ -621,20 +621,24 @@ page say so and lead to the Marketplace. The launcher's **Marketplace**
 link always does.
 
 Your pins are yours alone and each workspace has its own. They are saved
-to your account, so your dock is the same on every browser and device you
+to your account, so your rail is the same on every browser and device you
 sign in on, in the order you pinned.
 
 ### The sidebar
 
 The sidebar's top row names the workspace you are in. Select it to switch
 to another of your workspaces, make a new one, or open your profile or
-settings. The button beside it hides the sidebar, and the same button at
-the left of the page's header brings it back; <kbd>Ctrl</kbd> <kbd>B</kbd>
-(<kbd>⌘</kbd> <kbd>B</kbd> on a Mac) does both, except while you type. g1t
-remembers which you chose. When the sidebar is hidden, or the app has none,
-the page's header starts with the same switcher.
+settings. The button beside it hides the sidebar, leaving the rail alone
+and the page wider, and the same button at the left of the page's header
+brings it back; <kbd>Ctrl</kbd> <kbd>B</kbd> (<kbd>⌘</kbd> <kbd>B</kbd> on
+a Mac) does both, except while you type. g1t remembers which you chose.
+When the sidebar is hidden, or the app has none, the page's header starts
+with the same switcher. Under the top row, **Search or jump to** opens the
+same palette as <kbd>Ctrl</kbd> <kbd>K</kbd>; in Chat and Artifacts, whose
+sidebars search their own lists, it stays in the page's header.
 
-Below it are the lists of the app you are in. Code's lists the workspace's
+Below it are the lists of the app you are in, each group under a small
+heading. Code's lists the workspace's
 [projects](#pinned-and-recent-projects), and drills into a project's own
 list when you open one, with **‹ All projects** at the top to go back. Its
 **Settings** opens one level further: **General**, **Deployments**,
@@ -894,7 +898,7 @@ public repositories. The link preview for a profile uses only public work.
 
 **How it is laid out.** Signed out, a profile, Explore and Search are
 shown with g1t's public header (search, Explore, Docs, signing in) and the page
-at full width, with no workspace sidebar. Signed in, the dock stays, but
+at full width, with no workspace sidebar. Signed in, the rail stays, but
 no mode is lit and no mode's sidebar opens beside these pages: they are
 nobody's workspace, and the profile's own left column says whose it is.
 

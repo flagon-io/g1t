@@ -23,12 +23,12 @@ import { FOLIO_KIND_UI, FolioGlyph, KindIcon } from "./kinds";
 import { warmOnIntent } from "./list";
 import { SpaceIcon } from "./parts";
 
-const ROW = "group flex h-8 items-center gap-1.5 rounded-md pr-1 text-[0.8125rem] transition-colors";
+const ROW = "group flex h-9 items-center gap-1.5 rounded-md pr-1 text-[0.8125rem] transition-colors";
 const ROW_BUTTON = "flex size-6 shrink-0 items-center justify-center rounded text-faint opacity-0 group-hover:opacity-100 hover:bg-line hover:text-fg focus-visible:opacity-100 pointer-coarse:size-9 pointer-coarse:opacity-100";
 
 function SideLink({ to, end, icon, children, trailing }: { to: string; end?: boolean; icon: ReactNode; children: ReactNode; trailing?: ReactNode }) {
   return (
-    <NavLink to={to} end={end} prefetch="intent" className={({ isActive }) => `${ROW} pl-2 ${isActive ? "bg-raised font-medium text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`}>
+    <NavLink to={to} end={end} prefetch="intent" className={({ isActive }) => `${ROW} pl-2 ${isActive ? "bg-sidebar-accent font-medium text-fg" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"}`}>
       <span className="flex w-5 shrink-0 justify-center text-faint">{icon}</span>
       <span className="min-w-0 grow truncate">{children}</span>
       {trailing}
@@ -41,7 +41,7 @@ function Section({ title, children, action, open: initially = true }: { title: s
   return (
     <section className="mt-4">
       <div className="mb-0.5 flex items-center gap-1 pr-1">
-        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex grow items-center gap-1 rounded px-1 text-xs font-medium text-faint transition-colors hover:text-muted">
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex grow items-center gap-1 rounded px-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase transition-colors hover:text-muted">
           <ChevronRight size={12} className={`transition-transform ${open ? "rotate-90" : ""}`} />
           {title}
         </button>
@@ -110,7 +110,7 @@ function TreeRow({ slug, place, item, current, open, toggle, drag, setDrag, onDr
           setOver(null);
           if (drag && drag.id !== item.id) onDrop(item, where);
         }}
-        className={`${ROW} relative ${active ? "bg-raised font-medium text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"} ${over === "inside" ? "ring-1 ring-accent/60 ring-inset" : ""}`}
+        className={`${ROW} relative ${active ? "bg-sidebar-accent font-medium text-fg" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"} ${over === "inside" ? "ring-1 ring-accent/60 ring-inset" : ""}`}
         style={{ paddingLeft: 4 + item.depth * 14 }}
       >
         {over === "before" && <span className="pointer-events-none absolute inset-x-1 -top-px h-0.5 rounded bg-accent" aria-hidden="true" />}
@@ -266,7 +266,7 @@ function RepoFolderRows({ slug, repo, folder, depth, current }: { slug: string; 
     <>
       {folder.files.map((f) => (
         <li key={f.path}>
-          <NavLink to={repoFilePath(slug, repo, f.path)} prefetch="intent" className={({ isActive }) => `${ROW} ${isActive ? "bg-raised font-medium text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`} style={{ paddingLeft: 26 + depth * 14 }}>
+          <NavLink to={repoFilePath(slug, repo, f.path)} prefetch="intent" className={({ isActive }) => `${ROW} ${isActive ? "bg-sidebar-accent font-medium text-fg" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"}`} style={{ paddingLeft: 26 + depth * 14 }}>
             <FileText size={14} className="shrink-0 text-faint" aria-hidden="true" />
             <span className="min-w-0 truncate">{f.title}</span>
           </NavLink>
@@ -287,7 +287,7 @@ function RepoFolderRows({ slug, repo, folder, depth, current }: { slug: string; 
                   return next;
                 })
               }
-              className={`${ROW} w-full text-muted hover:bg-raised/60 hover:text-fg`}
+              className={`${ROW} w-full text-muted hover:bg-sidebar-accent/60 hover:text-fg`}
               style={{ paddingLeft: 4 + (depth + 1) * 14 }}
             >
               <ChevronRight size={13} className={`shrink-0 text-faint transition-transform ${expanded ? "rotate-90" : ""}`} />
@@ -366,7 +366,7 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-9 shrink-0 items-center gap-1 pr-1 pl-3">
-        <h2 className="min-w-0 grow truncate text-xs font-medium text-faint">Artifacts</h2>
+        <h2 className="min-w-0 grow truncate text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Artifacts</h2>
         <NewMenu onMake={make}>
           <Button type="button" aria-label="New" variant="ghost" className="h-8 gap-0.5 px-1.5 text-faint">
             <Plus size={16} />

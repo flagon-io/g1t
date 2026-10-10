@@ -95,7 +95,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
       : visitorShell(params, context),
     registrationMode(),
   ]);
-  // The apps this person pinned to their dock here: as their account keeps
+  // The apps this person pinned to their rail here: as their account keeps
   // them (read with the rest of the shell), else as this device's cookie
   // remembers them (lib/apps.ts).
   if (shell.workspace) shell.pins = pinsToShow(shell.pins, dock, shell.workspace.slug);
@@ -200,8 +200,8 @@ async function shellFor(
     workspace ? chatUnreadFor(workspace.slug, user) : Promise.resolve(null),
     // Home's Recent and the Agents sidebar, on every page: never waited on for long.
     workspace ? agentsFor(workspace.slug, user) : Promise.resolve(null),
-    // The dock's pins, kept with the account so every device shows the same
-    // dock; never kept here, so a pin shows the moment it is made. Null
+    // The rail's pins, kept with the account so every device shows the same
+    // rail; never kept here, so a pin shows the moment it is made. Null
     // falls back to the cookie (lib/dock.server.ts).
     workspace ? savedPins(user, workspace.slug) : Promise.resolve(null),
   ]);

@@ -3,8 +3,8 @@
  *
  * - `standalone`: signing in, signing up and choosing a workspace. The
  *   page alone, centred, with the logo and a quiet row of links at the
- *   foot: no header, no sidebar, no dock.
- * - `app`: someone signed in, everywhere else. The dock, the mode's
+ *   foot: no header, no sidebar, no rail.
+ * - `app`: someone signed in, everywhere else. The rail, the mode's
  *   sidebar and the page in its panel, always about their current
  *   workspace, even on public pages such as Explore, a profile or another
  *   workspace's public project.

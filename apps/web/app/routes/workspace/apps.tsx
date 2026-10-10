@@ -1,7 +1,7 @@
 /**
  * Apps: what the workspace installed from the Marketplace that you can
- * use, the ones pinned to your dock first. Built-in apps are always in the
- * dock, and their own pages are in their sidebars; Apps are only what was
+ * use, the ones pinned to your rail first. Built-in apps are always in the
+ * rail, and their own pages are in their sidebars; Apps are only what was
  * added. Pins are yours alone, per workspace, kept with your account so
  * every device shows the same dock (lib/dock.server.ts), with a copy in a
  * cookie for when the account's cannot be read (lib/apps.ts). The pin
@@ -76,7 +76,7 @@ export default function Apps({ loaderData }: Route.ComponentProps) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Apps</h1>
           <p className="mt-1 max-w-xl text-sm text-muted">
-            What {name} added from the Marketplace. Pin the ones you want in your dock: your dock is yours, and nobody else sees your pins.
+            What {name} added from the Marketplace. Pin the ones you want in your rail: your rail is yours, and nobody else sees your pins.
           </p>
         </div>
         <Link
@@ -102,14 +102,14 @@ export default function Apps({ loaderData }: Route.ComponentProps) {
           <section aria-labelledby="pinned" className="mt-8">
             <div className="flex items-baseline justify-between gap-3">
               <h2 id="pinned" className="text-sm font-semibold">
-                Pinned to your dock
+                Pinned to your rail
               </h2>
               <span className="text-xs text-faint">{pinned.length === 0 ? "None yet" : `${pinned.length} pinned`}</span>
             </div>
             {pinned.length === 0 ? (
               <Card asChild tone="plain" className="mt-3 border-dashed px-4 py-6 text-center text-sm text-muted">
                 <p>
-                  Nothing pinned yet. Pin an app below and it shows in your dock, under the built-in ones.
+                  Nothing pinned yet. Pin an app below and it shows in your rail, under the built-in ones.
                 </p>
               </Card>
             ) : (

@@ -74,7 +74,7 @@ test("a click's data request for an alias leads to the page, not its data", () =
   );
 });
 
-test("the dock's mode follows the address", async () => {
+test("the rail's mode follows the address", async () => {
   const { modeOf, modeHome, homePath } = await import("./workspace-nav.ts");
   assert.equal(modeOf("/", "acme"), "home");
   assert.equal(modeOf("/acme", "acme"), "home");

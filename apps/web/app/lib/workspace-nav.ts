@@ -123,7 +123,7 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 }
 
 /**
- * The dock's modes. Home is the front page;
+ * The rail's modes. Home is the front page;
  * Chat, Agents, Code and Artifacts are where work happens; Notifications
  * spans them; People is who belongs; Workspace is the workspace itself:
  * its money, policies and settings; Apps is everything installed that you
@@ -205,7 +205,7 @@ export function modeOf(pathname: string, slug: string | null): ModeKey {
   return "code";
 }
 
-/** Where each mode's button in the dock goes, in the workspace `slug`. */
+/** Where each mode's button in the rail goes, in the workspace `slug`. */
 export function modeHome(mode: ModeKey, slug: string): string {
   switch (mode) {
     case "home":

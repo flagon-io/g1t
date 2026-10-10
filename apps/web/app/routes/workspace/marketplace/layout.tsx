@@ -4,7 +4,7 @@
  * what the team already uses so agents can work with it. Owners add them;
  * everyone else asks an owner, and the agents service keeps the request
  * (lib/marketplace.ts). Agents aren't here: they start from templates in
- * Agents mode. It is not in the dock: the Apps page and the launcher lead
+ * Agents mode. It is not in the rail: the Apps page and the launcher lead
  * here, as does ⌘K.
  *
  * This layout holds the heading, the tabs and the viewer's requests, which

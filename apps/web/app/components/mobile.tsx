@@ -22,7 +22,7 @@ import { Link, useLocation, useNavigate, useSubmit } from "react-router";
 import { type Abilities, type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
 
 import { appIcon, pinnedApp } from "./apps";
-import { CountBadge, ShortcutsDialog } from "./dock";
+import { CountBadge, ShortcutsDialog } from "./rail";
 import { Mark } from "./logo";
 
 import { Avatar } from "./ui/avatar";
@@ -40,7 +40,7 @@ import { ROADMAP, type RoadmapItem } from "../lib/roadmap";
 /**
  * The phone's layout (below 768px): a bottom bar of apps with More for
  * the rest, the mode's sidebar as a drawer from the left, and each tab a
- * list that pushes its detail full screen. A computer has the dock.
+ * list that pushes its detail full screen. A computer has the rail.
  */
 
 /** Whether a path is one conversation, which takes the whole screen on a phone. */
@@ -135,7 +135,7 @@ export function BottomBar({
 }: {
   user: User;
   workspace: Membership;
-  /** The apps pinned to this person's dock here, for the More sheet. */
+  /** The apps pinned to this person's rail here, for the More sheet. */
   pins: PinnableApp[];
   unread: { notifications: number; chat: number; mentions: number };
   /** Tapping the tab you are already in: the shell opens that mode's menu (its sidebar). */
@@ -160,7 +160,7 @@ export function BottomBar({
     <>
       <nav
         aria-label="Apps"
-        className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-2 z-40 h-16 rounded-2xl border border-line bg-dock px-1 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_8px_24px_rgba(0,0,0,0.35)] md:hidden in-data-[keyboard=open]:hidden"
+        className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-2 z-40 h-16 rounded-2xl border border-line bg-rail px-1 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_8px_24px_rgba(0,0,0,0.35)] md:hidden in-data-[keyboard=open]:hidden"
       >
         <ul className="grid h-full" style={{ gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))` }}>
           {tabs.map((tab) => {
@@ -266,7 +266,7 @@ function MoreSheet({ open, onOpenChange, user, workspace, pins }: { open: boolea
           <Primitive.Content
             aria-describedby={undefined}
             onOpenAutoFocus={(event) => event.preventDefault()}
-            className="fixed right-2 bottom-[calc(4.875rem+env(safe-area-inset-bottom))] left-2 z-50 max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-[18px] border border-line-strong bg-dock px-3 pt-2 pb-3.5 text-fg shadow-2xl shadow-black/60 outline-none data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out md:hidden"
+            className="fixed right-2 bottom-[calc(4.875rem+env(safe-area-inset-bottom))] left-2 z-50 max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-[18px] border border-line-strong bg-rail px-3 pt-2 pb-3.5 text-fg shadow-2xl shadow-black/60 outline-none data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out md:hidden"
           >
             <div aria-hidden="true" className="mx-auto mt-0.5 mb-2 h-1 w-9 rounded-full bg-line-strong" />
             <div className="mb-2 flex items-center gap-2 px-1">

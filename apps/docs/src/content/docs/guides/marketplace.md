@@ -16,11 +16,11 @@ workspace and aren't listed. Two kinds of listing are:
 Agents aren't in the Marketplace. To add one, start from a
 [template](/guides/agents/#role-templates) in Agents.
 
-Open it from **Apps** at the foot of the dock (the launcher's
+Open it from **Apps** at the foot of the rail (the launcher's
 **Marketplace** link, or **Browse the Marketplace** on the Apps page), from
 **More** on a phone, or with <kbd>Ctrl</kbd> <kbd>K</kbd> and
 *Marketplace*. Its address is `g1t.sh/<workspace>/-/marketplace`. The
-Marketplace isn't in the dock itself.
+Marketplace isn't in the rail itself.
 
 ## Who builds what, and whether you can add it
 
@@ -220,4 +220,4 @@ Answered requests stay listed for 30 days.
 
 What the workspace added from the Marketplace that you can use is under
 **Apps**: today, the integrations it connected. Each shows its tier, as
-in the Marketplace. Pin the ones you want to your dock. See [Apps](/guides/workspaces/#apps).
+in the Marketplace. Pin the ones you want to your rail. See [Apps](/guides/workspaces/#apps).

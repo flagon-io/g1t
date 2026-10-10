@@ -41,7 +41,7 @@ says so and offers what it can do instead.
 
 ## See an agent's skills
 
-1. Open **Agents** in the dock and choose an agent.
+1. Open **Agents** in the rail and choose an agent.
 2. Open its **Skills** tab.
 
 **Foundational, from g1t** shows each foundational skill: a check on each

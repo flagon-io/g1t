@@ -1,9 +1,9 @@
 /**
- * The dock's built-in apps, the apps a workspace installed from the
- * Marketplace, and the ones each person pins to their dock.
+ * The rail's built-in apps, the apps a workspace installed from the
+ * Marketplace, and the ones each person pins to their rail.
  *
  * Built-in apps (Home, Chat, Notifications, Agents, Code, Artifacts,
- * People and Workspace) are always in the dock; their own pages (Projects,
+ * People and Workspace) are always in the rail; their own pages (Projects,
  * Usage, Teams and the rest) are in their sidebars. Apps are what the
  * workspace added from the Marketplace: today, the integrations it
  * connected, each opening its page. Each person pins the ones they want.
@@ -16,7 +16,7 @@
  * Pins are each person's own, per workspace, in the order they set, and
  * kept with their account by the identity service (`dock_pins`), so the
  * dock is the same on every device (lib/dock.server.ts). A cookie
- * (`g1t_dock`) keeps a copy on each device: the dock still draws from it
+ * (`g1t_dock`) keeps a copy on each device: the rail still draws from it
  * when identity cannot be reached, and pins from before they were kept
  * with the account carry over from it until the first change.
  * No Workers or React imports, so it can be tested under Node.
@@ -25,7 +25,7 @@ import type { ExtensionInstall, ListingTier } from "@g1t/contracts";
 import { CONNECTORS, type Connector, connectorPath } from "@g1t/contracts/connectors";
 import { CONNECTOR_PUBLISHER, extensionById } from "@g1t/contracts/marketplace";
 
-/** The apps that are always in the dock. */
+/** The apps that are always in the rail. */
 export type BuiltinApp = "home" | "chat" | "notifications" | "agents" | "code" | "artifacts" | "people" | "workspace";
 
 export type BuiltinInfo = {
@@ -39,7 +39,7 @@ export type BuiltinInfo = {
 
 const under = (page: string) => (slug: string) => `/${slug}/-/${page}`;
 
-/** The dock's built-in apps, in its order. */
+/** The rail's built-in apps, in its order. */
 export const BUILTINS: BuiltinInfo[] = [
   { key: "home", name: "Home", path: under("home") },
   { key: "chat", name: "Chat", path: under("chat") },
@@ -238,7 +238,7 @@ export function withPin(pins: PinnableApp[], app: PinnableApp, pinned: boolean):
   return pinned ? [...rest, app] : rest;
 }
 
-/** The Set-Cookie header that keeps the dock, for a year. */
+/** The Set-Cookie header that keeps the rail, for a year. */
 export function dockCookie(value: string, secure: boolean): string {
   return `${DOCK_COOKIE}=${encodeURIComponent(value)}; Path=/; Max-Age=31536000; SameSite=Lax${secure ? "; Secure" : ""}`;
 }

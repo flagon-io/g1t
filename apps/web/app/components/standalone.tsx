@@ -10,7 +10,7 @@ const FOOT_LINK = "rounded px-1.5 py-1 text-xs text-faint transition-colors hove
 
 /**
  * The frame for signing in, signing up and choosing a workspace
- * (lib/chrome.ts, `standalone`): no header, no sidebar, no dock. The
+ * (lib/chrome.ts, `standalone`): no header, no sidebar, no rail. The
  * logo, then the page in a narrow column at the centre, and a quiet row
  * of links at the foot of the window.
  */

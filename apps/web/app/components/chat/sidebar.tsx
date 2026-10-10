@@ -22,7 +22,7 @@ import { FALLBACK_REFRESH_MS } from "../../lib/notify-store";
 const REFRESH_MS = FALLBACK_REFRESH_MS;
 
 const ROW =
-  "group/row flex h-8 items-center gap-2 rounded-md pr-1.5 pl-2 text-[0.8125rem] transition-colors max-md:h-11 max-md:text-[0.9375rem] max-md:active:bg-raised";
+  "group/row flex h-9 items-center gap-2 rounded-md pr-1.5 pl-2 text-[0.8125rem] transition-colors max-md:h-11 max-md:text-[0.9375rem] max-md:active:bg-raised";
 
 /** Unread on a row: lavender for a mention, quiet for the rest. */
 function Count({ entry }: { entry: ChatSidebarEntry | undefined }) {
@@ -140,10 +140,10 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
 
   return (
     // The colour behind it, for the dots cut out of people's avatars.
-    <div className="flex h-full flex-col [--chat-sidebar-bg:var(--color-shell)]">
+    <div className="flex h-full flex-col [--chat-sidebar-bg:var(--color-sidebar)]">
       {heading && (
         <div className="flex h-9 shrink-0 items-center justify-between pr-1 pl-3">
-          <h2 className="text-xs font-medium text-faint">Chat</h2>
+          <h2 className="text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Chat</h2>
           <NewMessageButton slug={slug} />
         </div>
       )}
@@ -327,7 +327,7 @@ function Section({
           onClick={() => onFold(id)}
           aria-expanded={open}
           aria-controls={list}
-          className="flex min-w-0 grow items-center gap-1 rounded px-1 py-1 text-left text-xs font-medium text-faint transition-colors hover:text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none max-md:text-[0.8125rem]"
+          className="flex min-w-0 grow items-center gap-1 rounded px-1 py-1 text-left text-[0.6875rem] font-medium tracking-wide text-faint uppercase transition-colors hover:text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none max-md:text-[0.8125rem]"
         >
           <ChevronDown size={12} className={`shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
           {title}
@@ -350,7 +350,7 @@ function ExtraRow({ to, icon, count, countLabel, children }: { to: string; icon:
       <NavLink
         to={to}
         end
-        className={({ isActive }) => `${ROW} ${isActive ? "bg-raised text-fg" : "text-faint hover:bg-raised/60 hover:text-muted"}`}
+        className={({ isActive }) => `${ROW} ${isActive ? "bg-sidebar-accent text-fg" : "text-faint hover:bg-sidebar-accent/60 hover:text-muted"}`}
       >
         <span className="flex w-4.5 shrink-0 justify-center">{icon}</span>
         <span className="min-w-0 grow truncate">{children}</span>
@@ -468,7 +468,7 @@ function ConversationRow({
           {...prefetch}
           aria-current={current ? "page" : undefined}
           className={`${ROW} ${
-            current ? "bg-raised text-fg" : unread ? "text-fg hover:bg-raised/60" : entry.muted ? "text-faint hover:bg-raised/60 hover:text-muted" : "text-muted hover:bg-raised/60 hover:text-fg"
+            current ? "bg-sidebar-accent text-fg" : unread ? "text-fg hover:bg-sidebar-accent/60" : entry.muted ? "text-faint hover:bg-sidebar-accent/60 hover:text-muted" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"
           }`}
         >
           <span className={`flex w-4.5 shrink-0 justify-center ${current || unread ? "text-muted" : "text-faint"}`}>{icon}</span>
@@ -513,7 +513,7 @@ function AgentRow({ agent, busy, onOpen, onPin }: { agent: WorkspaceAgent; busy:
           onClick={onOpen}
           aria-busy={busy || undefined}
           aria-label={`Message ${agent.display_name}, ${g1t ? "orchestrator" : agent.title}${g1t ? "" : `, ${statusLabel(agent.status).toLowerCase()}`}`}
-          className={`${ROW} w-full text-left text-muted hover:bg-raised/60 hover:text-fg ${busy ? "opacity-60" : ""}`}
+          className={`${ROW} w-full text-left text-muted hover:bg-sidebar-accent/60 hover:text-fg ${busy ? "opacity-60" : ""}`}
         >
           <span className="flex w-4.5 shrink-0 justify-center">
             <AgentFace agent={agent} g1t={g1t} />

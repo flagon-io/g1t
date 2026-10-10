@@ -19,10 +19,18 @@
    * `scheme-dark` and its tokens stay dark.
    */
   --color-bg: light-dark(var(--g1t-light-bg), var(--g1t-bg));
-  /* Behind the page panel, where the sidebar sits flat (components/shell.tsx). */
-  --color-shell: light-dark(#ececea, #0b0b0d);
-  /* The dock's own surface: a floating bar a step above the shell. */
-  --color-dock: light-dark(#ffffff, #15151a);
+  /*
+   * The app's frame (components/shell.tsx, components/ui/sidebar.tsx):
+   * the page is a rounded panel on the shell; the sidebar sits flat on the
+   * same surface beside it, and the rail, the narrow column of icons at
+   * the window's edge, is a step apart: white in the light theme, near
+   * black in the dark one. The current row or icon is a muted fill.
+   */
+  --color-shell: light-dark(#efefed, #0b0b0d);
+  --color-sidebar: var(--color-shell);
+  --color-sidebar-accent: light-dark(#e1e1de, #1c1c20);
+  --color-sidebar-border: light-dark(#e0e0dd, #1d1d22);
+  --color-rail: light-dark(#ffffff, #050507);
   --color-surface: light-dark(var(--g1t-light-surface), var(--g1t-surface));
   --color-raised: light-dark(var(--g1t-light-raised), var(--g1t-raised));
   --color-line: light-dark(var(--g1t-light-line), var(--g1t-line));
@@ -185,8 +193,8 @@ html[data-theme="dark"] {
 
 /*
  * The app's frame (components/shell.tsx), set on <body data-frame="app">:
- * the page is a rounded panel inset from the window, with the dock beside
- * it and, on a phone, the bottom bar under it. What sticks to the top or
+ * the page is a rounded panel inset from the window, with the rail and the
+ * sidebar beside it and, on a phone, the bottom bar under it. What sticks to the top or
  * the bottom of a page reads these:
  * --frame-top  the gap above the panel
  * --topbar-h   the panel's top edge plus its header: where sticky things sit

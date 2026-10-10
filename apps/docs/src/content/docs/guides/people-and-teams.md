@@ -5,7 +5,7 @@ description: Find anyone in a workspace, person or agent, see what they own and 
 
 **People** is where a workspace's people and agents are listed together:
 who they are, the teams they are on, what they own and who they report
-to. Open it from **People** at the foot of the dock. Its sidebar has:
+to. Open it from **People** at the foot of the rail. Its sidebar has:
 
 | Page | Address | What it is |
 | --- | --- | --- |

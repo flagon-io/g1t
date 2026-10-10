@@ -1,6 +1,6 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PanelLeft, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
+import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
 import { type Abilities, type ChatSidebarEntry, type InboxCounts, type WorkspaceAgent, type Membership, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
 
@@ -10,7 +10,24 @@ import { NotificationsBell } from "./inbox";
 import { SpendPill } from "./spend";
 import { PinButton } from "./pin-button";
 import { Hint } from "./ui/hint";
-import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupAction,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMobile,
+  SidebarProvider,
+  SidebarSeparator,
+  SidebarTrigger,
+} from "./ui/sidebar";
 import { StatusDot, useSiteStatus } from "./footer";
 import { Logo, MarkGlyph } from "./logo";
 import { SoonPill } from "./ui";
@@ -33,7 +50,7 @@ import { type ModeKey, SETTINGS_PAGES, homePagePath, modeOf } from "../lib/works
 import { AgentsSidebar } from "./agents-mode";
 import { ChatSidebar } from "./chat/sidebar";
 import { FoliosSidebar } from "./folios/sidebar";
-import { Dock, ShortcutsDialog, WorkspaceSwitcher, sidebarKeyLabel } from "./dock";
+import { Rail, ShortcutsDialog, WorkspaceSwitcher, sidebarKeyLabel } from "./rail";
 import { BottomBar, isConversation, useVisualViewport } from "./mobile";
 import { useChatSidebar } from "./chat/actions";
 import { unreadTotals } from "../lib/chat";
@@ -89,16 +106,16 @@ export type ShellData = {
   monthUsageMicros: number | null;
   /** Whether new compute is paused (a spend spike or a hold), and whether the viewer can answer it. */
   compute?: { paused: string | null; spike: Spike | null; owner: boolean } | null;
-  /** What is unread in their notifications, for the dock and the bell. Absent for a visitor. */
+  /** What is unread in their notifications, for the rail and the bell. Absent for a visitor. */
   inbox?: InboxCounts | null;
   /**
-   * Chat, for the dock's badge: what is unread, and the
+   * Chat, for the rail's badge: what is unread, and the
    * starred and latest conversations. Null when chat did not answer in time.
    */
   chat?: { unread: number; mentions: number; starred?: ChatSidebarEntry[]; recent?: ChatSidebarEntry[] } | null;
   /** The workspace's agents, g1t first, for the Agents sidebar; null when not known. */
   agents?: ShellAgent[] | null;
-  /** The apps this person pinned to their dock in the workspace (lib/apps.ts). */
+  /** The apps this person pinned to their rail in the workspace (lib/apps.ts). */
   pins?: PinnableApp[];
 };
 
@@ -112,6 +129,33 @@ export type ShellAgent = Pick<
   teams?: { slug: string; name: string }[];
 };
 
+/** Whether `pathname` is `to` or a page under it (`end`: only `to` itself), the query left aside. */
+function under(pathname: string, to: string, end = false): boolean {
+  const path = to.split("?")[0]!;
+  return pathname === path || (!end && pathname.startsWith(path.endsWith("/") ? path : `${path}/`));
+}
+
+/**
+ * Where a row is current and where it is on its way to. A row's page is
+ * current under its own address and any `also` prefix, unless the list
+ * says itself (`current`). Rows that differ by query alone (Notifications'
+ * views and reasons) are pending only when the page on its way is that
+ * row's, query and all.
+ */
+function useRowState(to: string, { end, also, current: lit }: { end?: boolean; also?: string | string[]; current?: boolean }) {
+  const { pathname } = useLocation();
+  const going = useNavigation().location;
+  const current = lit ?? (under(pathname, to, end) || [also ?? []].flat().some((prefix) => under(pathname, prefix)));
+  const pending =
+    going != null && !current && (lit === undefined ? under(going.pathname, to, end) : `${going.pathname}${going.search}` === to);
+  return { current, pending };
+}
+
+/**
+ * One row of a mode's sidebar: an icon, its words, how many it lists
+ * (`count`) and, for a row that opens a list of its own (`drill`), a
+ * chevron, always or on hover.
+ */
 function SidebarLink({
   to,
   icon,
@@ -120,6 +164,8 @@ function SidebarLink({
   also,
   drill,
   current: lit,
+  action,
+  bare = false,
   children,
 }: {
   to: string;
@@ -132,50 +178,31 @@ function SidebarLink({
   drill?: boolean | "hover";
   /** Whether it is the current row, when the list works that out itself. */
   current?: boolean;
+  /** A small button at the row's end, beside the words (a pin). */
+  action?: ReactNode;
+  /** The row alone, for a list item that is drawn by the list (a pinned project, which drags). */
+  bare?: boolean;
   children: ReactNode;
 }) {
-  const { pathname } = useLocation();
-  const navigation = useNavigation();
-  // NavLink's own pending state compares paths only, so a list whose rows
-  // differ by query (Notifications' views and reasons) would light every
-  // row while one loads. Where the list says which row is current, a row
-  // is pending only when the page on its way is that row's, query and all.
-  const loading = navigation.location;
-  const pendingHere = loading != null && `${loading.pathname}${loading.search}` === to;
+  const { current, pending } = useRowState(to, { end, also, current: lit });
+  const Item = bare ? Fragment : SidebarMenuItem;
   return (
-    <NavLink
-      to={to}
-      end={end}
-      prefetch="intent"
-      className={({ isActive, isPending }) => {
-        const current =
-          lit ??
-          (isActive || [also ?? []].flat().some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/")));
-        const pending = lit === undefined ? isPending : pendingHere;
-        return `group flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${
-          current
-            ? "bg-raised font-medium text-fg"
-            : pending
-              ? "bg-raised/60 text-fg"
-              : "text-muted hover:bg-raised/60 hover:text-fg"
-        }`;
-      }}
-    >
-      <span className="shrink-0 text-faint group-hover:text-muted">{icon}</span>
-      <span className="min-w-0 grow truncate">{children}</span>
-      {count != null && count > 0 && (
-        <span className="rounded bg-line px-1.5 text-[0.6875rem] tabular-nums text-muted">
-          {count}
-        </span>
-      )}
-      {drill && (
-        <ChevronRight
-          size={14}
-          aria-hidden="true"
-          className={`-mr-0.5 shrink-0 text-faint transition-opacity ${drill === "hover" ? "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" : ""}`}
-        />
-      )}
-    </NavLink>
+    <Item>
+      <SidebarMenuButton asChild isActive={current} isPending={pending} className={action ? "pr-7" : undefined}>
+        <Link to={to} prefetch="intent" aria-current={current ? "page" : undefined}>
+          {icon}
+          <span className="min-w-0 grow truncate">{children}</span>
+          {count != null && count > 0 && <SidebarMenuBadge>{count}</SidebarMenuBadge>}
+          {drill && (
+            <ChevronRight
+              aria-hidden="true"
+              className={`-mr-0.5 size-3.5! shrink-0 text-faint transition-opacity ${drill === "hover" ? "opacity-0 group-hover/menu-button:opacity-100 group-focus-visible/menu-button:opacity-100" : ""}`}
+            />
+          )}
+        </Link>
+      </SidebarMenuButton>
+      {action}
+    </Item>
   );
 }
 
@@ -185,14 +212,18 @@ function SidebarLink({
  */
 function SidebarSoon({ icon, children, about }: { icon: ReactNode; children: ReactNode; about: string }) {
   return (
-    <Hint label={about} side="right">
-      <div aria-disabled="true" className="flex h-8 cursor-default items-center gap-2.5 rounded-md px-2 text-[0.8125rem] text-faint">
-        <span className="shrink-0 opacity-70">{icon}</span>
-        <span className="grow truncate">{children}</span>
-        <span className="sr-only">{about}</span>
-        <SoonPill />
-      </div>
-    </Hint>
+    <SidebarMenuItem>
+      <Hint label={about} side="right">
+        <SidebarMenuButton asChild variant="faint">
+          <div aria-disabled="true" className="cursor-default">
+            {icon}
+            <span className="min-w-0 grow truncate">{children}</span>
+            <span className="sr-only">{about}</span>
+            <SoonPill />
+          </div>
+        </SidebarMenuButton>
+      </Hint>
+    </SidebarMenuItem>
   );
 }
 
@@ -216,28 +247,19 @@ function SidebarSoonLink({
   current?: boolean;
   children: ReactNode;
 }) {
-  const { pathname } = useLocation();
+  const { current, pending } = useRowState(to, { also, current: lit });
   return (
-    // The hint wraps a plain box: Radix's asChild merges className as a
-    // string, which would break NavLink's className function.
-    <Hint label={about} side="right">
-    <div>
-    <NavLink
-      to={to}
-      prefetch="intent"
-      className={({ isActive }) => {
-        const current = lit ?? (isActive || (also ?? []).some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/")));
-        return `group flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${
-          current ? "bg-raised font-medium text-fg" : "text-faint hover:bg-raised/60 hover:text-muted"
-        }`;
-      }}
-    >
-      <span className="shrink-0 opacity-80">{icon}</span>
-      <span className="min-w-0 grow truncate">{children}</span>
-      <SoonPill />
-    </NavLink>
-    </div>
-    </Hint>
+    <SidebarMenuItem>
+      <Hint label={about} side="right">
+        <SidebarMenuButton asChild variant="faint" isActive={current} isPending={pending}>
+          <Link to={to} prefetch="intent" aria-current={current ? "page" : undefined}>
+            {icon}
+            <span className="min-w-0 grow truncate">{children}</span>
+            <SoonPill />
+          </Link>
+        </SidebarMenuButton>
+      </Hint>
+    </SidebarMenuItem>
   );
 }
 
@@ -255,25 +277,40 @@ function soonPaths(base: string, section: RoadmapItem["section"]): string[] {
   return roadmapIn(section).map((item) => `${base}/soon/${item.key}`);
 }
 
-function SidebarGroup({
+/** A titled group of rows: its name in small capitals, what it makes at the end, and its menu. */
+function NavGroup({
   title,
   action,
-  className = "",
+  className,
   children,
 }: {
   title: string;
+  /** A small button at the label's end: what the group makes (a `SidebarGroupAction`). */
   action?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className={className}>
-      <div className="mb-1 flex h-6 items-center justify-between px-2">
-        <h2 className="text-xs font-medium text-faint">{title}</h2>
-        {action}
-      </div>
-      <div className="space-y-px">{children}</div>
-    </section>
+    <SidebarGroup className={className}>
+      <SidebarGroupLabel asChild>
+        <h2>{title}</h2>
+      </SidebarGroupLabel>
+      {action}
+      <SidebarGroupContent>
+        <SidebarMenu>{children}</SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
+/** Rows with no name over them: the first of a list, or a run between rules. */
+function NavRows({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <SidebarGroup className={className}>
+      <SidebarGroupContent>
+        <SidebarMenu>{children}</SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
 
@@ -332,7 +369,7 @@ function StatusSummary({ open }: { open: boolean }) {
 const MENU_ROW = "h-9 gap-2.5 px-2.5 text-[0.8125rem]";
 
 /**
- * Your account, at the foot of the dock (or in the header, before you have
+ * Your account, at the foot of the rail (or in the header, before you have
  * a workspace): who you are and your status, your profile and settings,
  * and help: the documentation, support, status and the keyboard's
  * shortcuts; then signing out and the fine print.
@@ -363,15 +400,22 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
     <>
     <DropdownMenu open={open} onOpenChange={setOpen}>
       {/* The avatar alone, with a dot that says how others see you (components/presence.tsx). */}
-      <DropdownMenuTrigger
-        aria-label={`Account menu for ${shownUsername(user)}`}
-        onPointerEnter={prefetch}
-        onFocus={prefetch}
-        className="relative flex rounded-full outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
-      >
-        <Avatar name={user.username} image={user.avatar} size={side === "right" ? 32 : 28} />
-        <OwnPresenceDot ring={side === "right" ? "var(--color-dock)" : "var(--color-bg)"} className="absolute -right-0.5 -bottom-0.5" />
-      </DropdownMenuTrigger>
+      <Hint label={side === "right" ? "Your account" : undefined} side="right">
+        <DropdownMenuTrigger
+          aria-label={`Account menu for ${shownUsername(user)}`}
+          onPointerEnter={prefetch}
+          onFocus={prefetch}
+          className={
+            side === "right"
+              ? // At the foot of the rail: a 40px rounded square, as the rail's icons are.
+                "relative flex size-10 items-center justify-center rounded-[10px] outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-sidebar-accent"
+              : "relative flex rounded-full outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
+          }
+        >
+          <Avatar name={user.username} image={user.avatar} size={side === "right" ? 40 : 28} square={side === "right"} />
+          <OwnPresenceDot ring={side === "right" ? "var(--color-rail)" : "var(--color-bg)"} className={side === "right" ? "absolute -right-1 -bottom-1" : "absolute -right-0.5 -bottom-0.5"} />
+        </DropdownMenuTrigger>
+      </Hint>
       <DropdownMenuContent align="end" side={side} sideOffset={side === "right" ? 14 : 6} collisionPadding={8} className="w-[17.5rem] p-1.5">
         {/* Who is signed in, and a way to their profile. */}
         <DropdownMenuItem asChild className="gap-3 px-2 py-2">
@@ -495,7 +539,7 @@ const REPO_SETTINGS_PAGE = /^\/([^/]+)\/([^/-][^/]*)\/settings(\/|$)/;
 const LAYER =
   "absolute inset-0 [transition:translate_380ms_cubic-bezier(0.32,0.72,0,1),opacity_220ms_ease-out] will-change-[translate,opacity] motion-reduce:transition-none";
 /** One list, filling its layer. */
-const PANEL = "h-full overflow-y-auto px-2 pb-4";
+const PANEL = "h-full overflow-y-auto px-1 pt-1 pb-4 [scrollbar-width:thin]";
 
 /** One list in the stack: what it is, and its rows. */
 type Level = { key: string; node: ReactNode };
@@ -563,28 +607,32 @@ function Drill({ trail }: { trail: Level[] }) {
  */
 function BackRow({ to, label, context }: { to: string; label: ReactNode; context?: ReactNode }) {
   return (
-    <Link
-      to={to}
-      prefetch="intent"
-      className="group mt-3 flex h-8 items-center gap-1.5 rounded-md pr-2 pl-1 text-[0.8125rem] font-medium text-fg transition-colors hover:bg-raised/60"
-    >
-      <ChevronLeft size={16} className="shrink-0 text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
-      <span className="min-w-0 shrink-0 truncate">{label}</span>
-      {context && (
-        <span className="ml-auto min-w-0 truncate pl-2 font-mono text-[0.6875rem] font-normal text-faint">{context}</span>
-      )}
-    </Link>
+    <NavRows className="mt-1">
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild className="gap-1.5 pl-1 font-medium text-fg">
+          <Link to={to} prefetch="intent">
+            <ChevronLeft className="text-faint transition-transform group-hover/menu-button:-translate-x-0.5 group-hover/menu-button:text-muted" />
+            <span className="min-w-0 shrink-0 truncate">{label}</span>
+            {context && <span className="ml-auto min-w-0 truncate pl-2 font-mono text-[0.6875rem] font-normal text-faint">{context}</span>}
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </NavRows>
   );
 }
 
 /** A thin rule between groups of a list. */
 function Rule() {
-  return <div role="separator" className="mx-2 my-2.5 h-px bg-line" />;
+  return <SidebarSeparator className="my-1.5" />;
 }
 
 /** A quiet heading inside a group: Pinned, Recent. */
 function SidebarSubhead({ children }: { children: ReactNode }) {
-  return <h3 className="px-2 pt-1.5 pb-0.5 text-[0.6875rem] font-medium tracking-wide text-faint">{children}</h3>;
+  return (
+    <SidebarGroupLabel asChild className="h-6 pt-0.5">
+      <h3>{children}</h3>
+    </SidebarGroupLabel>
+  );
 }
 
 /**
@@ -615,36 +663,45 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
   // Each row pins or unpins in place: the pin shows on hover or focus, and
   // stays shown on a pinned row's hover so it reads as "unpin".
   const row = (project: ShortcutProject, isPinned: boolean) => (
-    <div className="group/row relative">
-      <SidebarLink to={`/${project.namespace}/${project.name}`} icon={project.isPrivate ? <Lock size={15} /> : <Box size={15} />} drill="hover">
-        <span className="block truncate pr-6">{project.title ?? project.name}</span>
-      </SidebarLink>
-      <PinButton
-        workspace={slug}
-        slug={project.name}
-        name={project.title ?? project.name}
-        pinned={isPinned}
-        small
-        className="absolute top-1/2 right-6 -translate-y-1/2 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100"
-      />
-    </div>
-  );
-  return (
-    <SidebarGroup
-      title="Projects"
+    <SidebarLink
+      to={`/${project.namespace}/${project.name}`}
+      icon={project.isPrivate ? <Lock /> : <Box />}
+      drill="hover"
+      bare={isPinned}
       action={
-        <Link to="/new" aria-label="New project" className="rounded p-0.5 text-faint hover:bg-raised hover:text-fg">
-          <Plus size={13} />
-        </Link>
+        <PinButton
+          workspace={slug}
+          slug={project.name}
+          name={project.title ?? project.name}
+          pinned={isPinned}
+          small
+          className="absolute top-1/2 right-6 -translate-y-1/2 opacity-0 transition-opacity group-hover/menu-item:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+        />
       }
     >
+      {project.title ?? project.name}
+    </SidebarLink>
+  );
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel asChild>
+        <h2>Projects</h2>
+      </SidebarGroupLabel>
+      <Hint label="New project">
+        <SidebarGroupAction asChild>
+          <Link to="/new" aria-label="New project">
+            <Plus />
+          </Link>
+        </SidebarGroupAction>
+      </Hint>
+      <SidebarGroupContent>
       {/* Only there once something is pinned: each row below has its own pin. */}
       {pinned.length > 0 && (
         <>
         <SidebarSubhead>Pinned</SidebarSubhead>
-        <ul aria-label="Pinned projects" className="space-y-px">
+        <SidebarMenu aria-label="Pinned projects">
           {pinned.map((project, index) => (
-            <li
+            <SidebarMenuItem
               key={project.name}
               draggable={pinned.length > 1}
               onDragStart={(event) => {
@@ -665,34 +722,37 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
                 event.preventDefault();
                 move(index, event.key === "ArrowUp" ? -1 : 1);
               }}
-              className={`group/pin relative ${dragging === index ? "opacity-50" : ""}`}
+              className={`group/pin ${dragging === index ? "opacity-50" : ""}`}
             >
               {row(project, true)}
               {pinned.length > 1 && (
                 <Hint label="Drag, or Alt and an arrow key, to reorder" side="right">
-                  <span className="absolute top-1/2 -left-1.5 -translate-y-1/2 cursor-grab text-faint opacity-0 transition-opacity group-hover/pin:opacity-100">
+                  <span className="absolute top-1/2 -left-2 -translate-y-1/2 cursor-grab text-faint opacity-0 transition-opacity group-hover/pin:opacity-100">
                     <GripVertical size={12} aria-hidden="true" />
                   </span>
                 </Hint>
               )}
-            </li>
+            </SidebarMenuItem>
           ))}
-        </ul>
+        </SidebarMenu>
         </>
       )}
       {recent.length > 0 && (
         <>
           <SidebarSubhead>Recent</SidebarSubhead>
-          {recent.map((project) => (
-            <div key={`${project.namespace}/${project.name}`}>{row(project, false)}</div>
-          ))}
+          <SidebarMenu aria-label="Recent projects">
+            {recent.map((project) => (
+              <Fragment key={`${project.namespace}/${project.name}`}>{row(project, false)}</Fragment>
+            ))}
+          </SidebarMenu>
         </>
       )}
-      <div className="pt-1">
-        <SidebarLink to={`/${slug}/-/projects`} icon={<LayoutGrid size={15} />} count={shell.repos.length} current={current}>
+      <SidebarMenu className="pt-1">
+        <SidebarLink to={`/${slug}/-/projects`} icon={<LayoutGrid />} count={shell.repos.length} current={current}>
           All projects
         </SidebarLink>
-      </div>
+      </SidebarMenu>
+      </SidebarGroupContent>
     </SidebarGroup>
   );
 }
@@ -744,33 +804,31 @@ function RepoMenu({
   const base = `/${repo.namespace}/${repo.name}`;
   // What a member sees, and what everyone who can see the project does.
   const shows = new Set(projectPages(repo.member, repo.can));
+  const { current: atOverview, pending: toOverview } = useRowState(base, { end: true });
   return (
     <nav aria-label={`${repo.namespace}/${repo.name}`} className={PANEL}>
       <BackRow to={back.to} label={back.label} />
-      <Hint label="Overview" side="right">
-      <div>
-      <NavLink
-        to={base}
-        end
-        prefetch="intent"
-        className={({ isActive }) =>
-          `mt-2 flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors ${isActive ? "bg-raised" : "hover:bg-raised/60"}`
-        }
-      >
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
-          {isPrivate ? <Lock size={13} /> : <Box size={13} />}
-        </span>
-        <span className="min-w-0 truncate font-mono text-[0.8125rem]">
-          <span className="text-faint">{repo.namespace}/</span>
-          <span className="font-semibold text-fg">{repo.name}</span>
-        </span>
-      </NavLink>
-      </div>
-      </Hint>
+      <NavRows className="mt-1">
+        <SidebarMenuItem>
+          <Hint label="Overview" side="right">
+            <SidebarMenuButton asChild size="lg" isActive={atOverview} isPending={toOverview} className="gap-2 font-normal">
+              <Link to={base} prefetch="intent" aria-current={atOverview ? "page" : undefined}>
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line [&>svg]:size-3.5">
+                  {isPrivate ? <Lock /> : <Box />}
+                </span>
+                <span className="min-w-0 truncate font-mono text-[0.8125rem]">
+                  <span className="text-faint">{repo.namespace}/</span>
+                  <span className="font-semibold text-fg">{repo.name}</span>
+                </span>
+              </Link>
+            </SidebarMenuButton>
+          </Hint>
+        </SidebarMenuItem>
+      </NavRows>
       {/* A project's pages, in the order people use them. A page with more
           than one view shows them as tabs across its top. */}
       <Rule />
-      <div className="space-y-px">
+      <NavRows>
         <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, `${base}/compare`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
           Code
         </SidebarLink>
@@ -786,9 +844,9 @@ function RepoMenu({
         <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
           Workflows
         </SidebarLink>
-      </div>
+      </NavRows>
       <Rule />
-      <div className="space-y-px">
+      <NavRows>
         {shows.has("deployments") ? (
           <SidebarLink to={`${base}/deployments`} also={soonPaths(base, "Deployments")} icon={<Rocket size={15} />}>
             Deployments
@@ -809,13 +867,15 @@ function RepoMenu({
         >
           Insights
         </SidebarLink>
-      </div>
+      </NavRows>
       {(repo.settings ?? shows.has("settings")) && (
         <>
           <Rule />
-          <SidebarLink to={`${base}/settings`} icon={<Settings size={15} />} drill>
-            Settings
-          </SidebarLink>
+          <NavRows>
+            <SidebarLink to={`${base}/settings`} icon={<Settings size={15} />} drill>
+              Settings
+            </SidebarLink>
+          </NavRows>
         </>
       )}
     </nav>
@@ -837,29 +897,29 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
     <nav aria-label={`${repo.namespace}/${repo.name} settings`} className={PANEL}>
       <BackRow to={base} label="Settings" context={`${repo.namespace}/${repo.name}`} />
       {shows("") && (
-        <div className="mt-2 space-y-px">
+        <NavRows className="mt-2">
           <SidebarLink to={`${base}/settings`} end icon={<Settings size={15} />}>
             General
           </SidebarLink>
-        </div>
+        </NavRows>
       )}
       {running && (
         <>
           {shows("") && <Rule />}
-          <div className={shows("") ? "space-y-px" : "mt-2 space-y-px"}>
+          <NavRows className={shows("") ? undefined : "mt-2"}>
             <SidebarLink to={`${base}/settings/deployments`} icon={<Rocket size={15} />}>
               Deployments
             </SidebarLink>
             <SidebarLink to={`${base}/settings/domains`} icon={<Globe size={15} />}>
               Domains
             </SidebarLink>
-          </div>
+          </NavRows>
         </>
       )}
       {agents && (
         <>
           <Rule />
-          <div className="space-y-px">
+          <NavRows>
             {shows("agents") && (
               <SidebarLink to={`${base}/settings/agents`} icon={<Bot size={15} />}>
                 Agents
@@ -870,11 +930,11 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
                 Guardrails
               </SidebarLink>
             )}
-          </div>
+          </NavRows>
         </>
       )}
       <Rule />
-      <div className="space-y-px">
+      <NavRows>
         {shows("repository") && (
           <SidebarLink to={`${base}/settings/repository`} icon={<BookMarked size={15} />}>
             Repository
@@ -930,7 +990,7 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
             Webhooks
           </SidebarLink>
         )}
-      </div>
+      </NavRows>
     </nav>
   );
 }
@@ -961,27 +1021,27 @@ function AccountSettingsMenu({ username }: { username: string }) {
   return (
     <nav aria-label="Your settings" className={PANEL}>
       <BackRow to="/" label="Your settings" context={username} />
-      <div className="mt-2 space-y-px">
+      <NavRows className="mt-2">
         {link("profile", <CircleUserRound size={15} />)}
         {link("emails", <Mail size={15} />)}
         {invites && link("invites", <Ticket size={15} />)}
-      </div>
+      </NavRows>
       <Rule />
-      <div className="space-y-px">
+      <NavRows>
         {link("keys", <Fingerprint size={15} />)}
         {link("tokens", <KeyRound size={15} />)}
-      </div>
+      </NavRows>
       <Rule />
-      <div className="space-y-px">
+      <NavRows>
         {link("integrations", <Blocks size={15} />)}
         {link("github", <GithubMark className="size-[15px]" />)}
         {link("applications", <Plug size={15} />)}
-      </div>
+      </NavRows>
       <Rule />
-      <div className="space-y-px">
+      <NavRows>
         {link("two-factor", <ShieldCheck size={15} />)}
         {link("security-log", <History size={15} />)}
-      </div>
+      </NavRows>
     </nav>
   );
 }
@@ -1079,15 +1139,17 @@ function CodeSidebar({
  */
 export function ModeHeader({ title, action }: { title: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex h-9 shrink-0 items-center gap-1 pr-1 pl-3">
-      <h2 className="min-w-0 grow truncate text-xs font-medium text-faint">{title}</h2>
+    <div className="flex h-8 shrink-0 items-center gap-1 pr-2 pl-3">
+      <SidebarGroupLabel asChild className="min-w-0 grow truncate px-1">
+        <h2>{title}</h2>
+      </SidebarGroupLabel>
       {action}
     </div>
   );
 }
 
 /**
- * Code's own list (beside the dock): only code. Its Overview (Mission
+ * Code's own list (beside the rail): only code. Its Overview (Mission
  * control's code panels), the projects, what spans them, and what is
  * coming. The workspace's people, money and settings are elsewhere;
  * agents, context and memory are Agents'.
@@ -1100,16 +1162,15 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
   const shared = shell.shared ?? [];
   return (
     <nav aria-label="Code" className={PANEL}>
-      <div className="space-y-px">
+      <NavRows>
         <SidebarLink to={`/${slug}/-/overview`} icon={<LayoutDashboard size={15} />} current={at("overview")}>
           Overview
         </SidebarLink>
-      </div>
-      <div className="mt-3">
-        <SidebarProjects slug={slug} shell={shell} current={at("projects")} />
-      </div>
+      </NavRows>
       <Rule />
-      <div className="space-y-px">
+      <SidebarProjects slug={slug} shell={shell} current={at("projects")} />
+      <Rule />
+      <NavRows>
         <SidebarLink to={`/${slug}/-/security`} icon={<ShieldCheck size={15} />} current={at("security") && !at("security/settings")}>
           Security
         </SidebarLink>
@@ -1128,11 +1189,11 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
               {item.title === "Board" ? "Boards" : item.title}
             </SidebarSoonLink>
           ))}
-      </div>
+      </NavRows>
       {shared.length > 0 && (
         <>
           <Rule />
-          <SidebarGroup title="Shared with you">
+          <NavGroup title="Shared with you">
             {shared.map((repo) => (
               <SidebarLink
                 key={`${repo.namespace}/${repo.name}`}
@@ -1144,7 +1205,7 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
                 {repo.name}
               </SidebarLink>
             ))}
-          </SidebarGroup>
+          </NavGroup>
         </>
       )}
     </nav>
@@ -1169,12 +1230,13 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
   const inSettings = WORKSPACE_SETTINGS.includes(top);
   const main = (
     <nav aria-label="Workspace" className={PANEL}>
-      <div className="space-y-px">
+      <NavRows>
         <SidebarLink to={`/${slug}/-/workspace`} icon={<LayoutGrid size={15} />} current={at("workspace")}>
           Overview
         </SidebarLink>
-      </div>
-      <SidebarGroup title="Money" className="mt-3">
+      </NavRows>
+      <Rule />
+      <NavGroup title="Money">
         <SidebarLink to={`/${slug}/-/spend`} icon={<Coins size={15} />} current={at("spend")}>
           Spend
         </SidebarLink>
@@ -1187,20 +1249,25 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
         <SidebarLink to={`/${slug}/-/billing`} icon={<CreditCard size={15} />} current={at("billing")}>
           Billing and plans
         </SidebarLink>
-      </SidebarGroup>
+      </NavGroup>
       {owner && (
-        <SidebarGroup title="Compute" className="mt-3">
-          <SidebarLink to={`/${slug}/-/runners`} icon={<ServerCog size={15} />} current={at("runners")}>
-            Runners
-          </SidebarLink>
-        </SidebarGroup>
+        <>
+          <Rule />
+          <NavGroup title="Compute">
+            <SidebarLink to={`/${slug}/-/runners`} icon={<ServerCog size={15} />} current={at("runners")}>
+              Runners
+            </SidebarLink>
+          </NavGroup>
+        </>
       )}
-      <SidebarGroup title="Connections" className="mt-3">
+      <Rule />
+      <NavGroup title="Connections">
         <SidebarLink to={`/${slug}/-/integrations`} icon={<Plug size={15} />} current={at("integrations")}>
           Integrations
         </SidebarLink>
-      </SidebarGroup>
-      <SidebarGroup title="Security policies" className="mt-3">
+      </NavGroup>
+      <Rule />
+      <NavGroup title="Security policies">
         <SidebarLink to={`/${slug}/-/security/settings`} icon={<ShieldCheck size={15} />} current={at("security/settings")}>
           Security settings
         </SidebarLink>
@@ -1210,22 +1277,22 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
         <SidebarLink to={`/${slug}/-/rules`} icon={<Scale size={15} />} current={at("rules")}>
           Rules
         </SidebarLink>
-      </SidebarGroup>
+      </NavGroup>
       <Rule />
-      <div className="space-y-px">
+      <NavRows>
         <SidebarLink to={`/${slug}/-/audit`} icon={<History size={15} />} current={at("audit")}>
           Audit log
         </SidebarLink>
         <SidebarLink to={owner ? `/${slug}/-/settings` : `/${slug}/-/repositories`} icon={<Settings size={15} />} drill current={inSettings}>
           Settings
         </SidebarLink>
-      </div>
+      </NavRows>
     </nav>
   );
   const settings = (
     <nav aria-label="Workspace settings" className={PANEL}>
       <BackRow to={`/${slug}/-/workspace`} label="Settings" context={slug} />
-      <div className="mt-2 space-y-px">
+      <NavRows className="mt-2">
         {owner && (
           <SidebarLink to={`/${slug}/-/settings`} icon={<Settings size={15} />} end>
             General
@@ -1251,15 +1318,16 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
         <SidebarLink to={`/${slug}/-/emoji`} icon={<Smile size={15} />}>
           Emoji
         </SidebarLink>
-      </div>
-      <SidebarGroup title="Runs" className="mt-3">
+      </NavRows>
+      <Rule />
+      <NavGroup title="Runs">
         <SidebarLink to={`/${slug}/-/secrets`} icon={<Lock size={15} />}>
           Secrets and variables
         </SidebarLink>
         <SidebarLink to={`/${slug}/-/actions`} icon={<PlayCircle size={15} />}>
           Actions
         </SidebarLink>
-      </SidebarGroup>
+      </NavGroup>
     </nav>
   );
   const trail: Level[] = [{ key: "workspace", node: main }];
@@ -1285,7 +1353,7 @@ function PeopleSidebar({ slug }: { slug: string }) {
     <div className="flex h-full flex-col">
       <ModeHeader title="People" />
       <nav aria-label="People" className={PANEL}>
-        <div className="space-y-px">
+        <NavRows>
           <SidebarLink to={`/${slug}/-/people`} icon={<Users size={15} />} current={at("people")}>
             Everyone
           </SidebarLink>
@@ -1295,12 +1363,13 @@ function PeopleSidebar({ slug }: { slug: string }) {
           <SidebarLink to={`/${slug}/-/org-chart`} icon={<Network size={15} />} current={at("org-chart")}>
             Org chart
           </SidebarLink>
-        </div>
-        <SidebarGroup title="Membership" className="mt-3">
+        </NavRows>
+        <Rule />
+      <NavGroup title="Membership">
           <SidebarLink to={`/${slug}/-/members`} icon={<UserPlus size={15} />} current={at("members")}>
             Members and invites
           </SidebarLink>
-        </SidebarGroup>
+        </NavGroup>
       </nav>
     </div>
   );
@@ -1332,7 +1401,7 @@ function NotificationsSidebar({ counts }: { counts: InboxCounts | null }) {
     <div className="flex h-full flex-col">
       <ModeHeader title="Notifications" />
       <nav aria-label="Notifications" className={PANEL}>
-        <div className="space-y-px">
+        <NavRows>
           {views.map((entry) => (
             <SidebarLink
               key={entry.view}
@@ -1344,8 +1413,9 @@ function NotificationsSidebar({ counts }: { counts: InboxCounts | null }) {
               {entry.label}
             </SidebarLink>
           ))}
-        </div>
-        <SidebarGroup title="Why you were told" className="mt-4">
+        </NavRows>
+        <Rule />
+      <NavGroup title="Why you were told">
           {REASON_FILTERS.map((entry) => (
             <SidebarLink
               key={entry.reason ?? "any"}
@@ -1356,7 +1426,7 @@ function NotificationsSidebar({ counts }: { counts: InboxCounts | null }) {
               {entry.reason == null ? "Any reason" : entry.label}
             </SidebarLink>
           ))}
-        </SidebarGroup>
+        </NavGroup>
       </nav>
     </div>
   );
@@ -1830,48 +1900,51 @@ function useSidebarShortcut(toggle: () => void) {
  * Search or jump to: the command palette. On a computer it looks like the
  * field it opens, with its shortcut; on a phone, a magnifier.
  */
-function SearchButton({ onClick }: { onClick: () => void }) {
+function SearchButton({ onClick, place }: { onClick: () => void; place: "bar" | "sidebar" }) {
+  const field = (
+    <Button
+      variant="outline"
+      size="sm"
+      aria-label="Search or jump to"
+      onClick={onClick}
+      className={
+        place === "sidebar"
+          ? "w-full justify-start bg-bg font-normal text-faint hover:bg-bg hover:text-muted"
+          : "mr-1 w-[min(18rem,26vw)] justify-start bg-surface font-normal text-faint hover:bg-surface hover:text-muted max-md:hidden"
+      }
+    >
+      <Search size={15} />
+      <span className="grow truncate text-left">Search or jump to</span>
+      <PaletteKey className="px-1.5 text-[0.625rem] leading-4 text-muted" />
+    </Button>
+  );
+  if (place === "sidebar") return field;
   return (
     <>
       <Button variant="ghost" size="icon-bar" aria-label="Search or jump to" onClick={onClick} className="md:hidden">
         <Search size={18} />
       </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        aria-label="Search or jump to"
-        onClick={onClick}
-        className="mr-1 w-[min(18rem,26vw)] justify-start bg-surface font-normal text-faint hover:bg-surface hover:text-muted max-md:hidden"
-      >
-        <Search size={15} />
-        <span className="grow truncate text-left">Search or jump to</span>
-        <PaletteKey className="rounded border border-line bg-bg px-1.5 font-mono text-[0.625rem] leading-4 text-muted" />
-      </Button>
+      {field}
     </>
   );
 }
 
-/** The button that shows or hides the sidebar. */
-function SidebarToggle({ onClick, open, className = "" }: { onClick: () => void; open: boolean; className?: string }) {
-  const key = sidebarKeyLabel(typeof navigator === "undefined" ? null : navigator.platform);
-  return (
-    <Hint label={`Toggle sidebar (${key})`}>
-      <Button variant="ghost" size="icon-sm" aria-label={open ? "Hide the sidebar" : "Show the sidebar"} aria-expanded={open} onClick={onClick} className={className}>
-        <PanelLeft size={17} />
-      </Button>
-    </Hint>
-  );
+/** The sidebar's shortcut, for the hint on its toggle. */
+function useSidebarKey(): string {
+  return sidebarKeyLabel(typeof navigator === "undefined" ? null : navigator.platform);
 }
 
 /**
- * The app: three surfaces that never blur
- * together. The dock, a floating bar of apps down the left; the mode's
- * sidebar, flat on the background beside it, which folds away with Ctrl B
- * and is a drawer below 1024px; and the page, a rounded panel inset from
- * the window, with its header across the top: the sidebar's toggle, where
- * you are, search, Ask g1t and Create new. On a phone the dock is a bar
- * along the bottom. Only for someone signed in; without a workspace yet,
- * there is no dock.
+ * The app: three surfaces that never blur together. The rail, a narrow
+ * column of icons down the window's left edge; the mode's sidebar, flat
+ * against it with a hairline between, which folds away with Ctrl B and is
+ * a drawer below 1024px; and the page, a rounded panel inset from the
+ * window, with its header across the top: the sidebar's toggle, where you
+ * are, search, Ask g1t and Create new. On a phone the rail is a bar along
+ * the bottom. Only for someone signed in; without a workspace yet, there
+ * is no rail. The rail and the sidebar are drawn from the sidebar kit
+ * (components/ui/sidebar.tsx): one provider holds whether the sidebar is
+ * open on a computer and whether the drawer is.
  */
 export function AppShell({
   user,
@@ -1964,71 +2037,66 @@ export function AppShell({
         return <AccountSidebar username={user.username} />;
     }
   };
-  // The sidebar's top row: the workspace and its switcher, and the way to fold the sidebar or close the drawer.
+  const sidebarKey = useSidebarKey();
+  // Search or jump to sits at the top of the sidebar, except in Chat and
+  // Artifacts, whose sidebars search their own lists: there it stays in the bar.
+  const sidebarSearch = panel != null && panel !== "chat" && panel !== "artifacts";
+  // The sidebar's head: the workspace and its switcher, the way to fold the
+  // sidebar or close the drawer, and search, which opens the palette.
   const sidebarTop = (inDrawer: boolean) => (
-    <div className="flex h-14 shrink-0 items-center gap-1 pr-1 pl-1">
-      {ws ? (
-        <WorkspaceSwitcher user={user} workspace={ws} />
-      ) : (
-        <Link to="/" aria-label="g1t" className="mr-auto flex h-9 items-center rounded-md px-2">
-          <Logo className="text-[1.125rem]" />
-        </Link>
-      )}
-      {inDrawer ? (
-        <Button type="button" aria-label="Close menu" onClick={() => setDrawer(false)} variant="ghost" size="icon-sm" className="text-faint">
-          <X size={16} />
-        </Button>
-      ) : (
-        <SidebarToggle open onClick={toggleSidebar} />
-      )}
-    </div>
+    <SidebarHeader className="gap-1 px-2 pt-0 pb-2">
+      <div className="flex h-14 shrink-0 items-center gap-1">
+        {ws ? (
+          <WorkspaceSwitcher user={user} workspace={ws} />
+        ) : (
+          <Link to="/" aria-label="g1t" className="mr-auto flex h-9 items-center rounded-md px-2">
+            <Logo className="text-[1.125rem]" />
+          </Link>
+        )}
+        {inDrawer ? (
+          <Button type="button" aria-label="Close menu" onClick={() => setDrawer(false)} variant="ghost" size="icon-sm" className="text-faint">
+            <X size={16} />
+          </Button>
+        ) : (
+          <SidebarTrigger hint={`Hide the sidebar (${sidebarKey})`} className="text-faint" />
+        )}
+      </div>
+      {sidebarSearch && <SearchButton place="sidebar" onClick={() => setPalette(true)} />}
+    </SidebarHeader>
   );
 
   // On a phone (below 768px): the bottom bar, and a conversation full screen.
   const conversation = isConversation(going ?? pathname);
-  // Where the page panel starts: 8px past the dock (88px), or right after the sidebar (260px) when it is open.
-  const left = ws ? (inline ? "md:left-24 lg:left-[21.75rem]" : "md:left-24") : inline ? "md:left-2 lg:left-[16.75rem]" : "md:left-2";
-  const pad = ws ? (inline ? "md:pl-24 lg:pl-[21.75rem]" : "md:pl-24") : inline ? "md:pl-2 lg:pl-[16.75rem]" : "md:pl-2";
+  // Where the page panel starts: 8px past the rail (56px), or 8px past the sidebar (56 + 240px) when it is open.
+  const left = ws ? (inline ? "md:left-16 lg:left-[19rem]" : "md:left-16") : inline ? "md:left-2 lg:left-[15.5rem]" : "md:left-2";
+  const pad = ws ? (inline ? "md:pl-16 lg:pl-[19rem]" : "md:pl-16") : inline ? "md:pl-2 lg:pl-[15.5rem]" : "md:pl-2";
 
   return (
-    // The drawer is a sheet: a dialog that holds focus, closes on Escape or
-    // a tap outside, and gives focus back to the button that opened it.
-    <Sheet open={drawer} onOpenChange={setDrawer}>
+    <SidebarProvider open={!closed} onOpenChange={(open) => setClosed(!open)} openMobile={drawer} onOpenMobileChange={setDrawer} toggleSidebar={toggleSidebar}>
       <Progress />
       {ws && (
-        <div className="fixed top-2 bottom-2 left-2 z-40 hidden w-20 md:block">
-          <Dock
-            workspace={ws}
-            pins={shell.pins ?? []}
-            unread={unread}
-            account={<AccountMenu user={user} />}
-          />
+        <div className="fixed inset-y-0 left-0 z-40 hidden md:block">
+          <Rail workspace={ws} pins={shell.pins ?? []} unread={unread} account={<AccountMenu user={user} />} />
         </div>
       )}
       {panel && (
-        <aside
+        <Sidebar
+          role="complementary"
           aria-label={`${MODE_MENU[panel]} sidebar`}
-          className={`fixed inset-y-0 z-40 hidden w-[16.25rem] flex-col pr-0.5 pl-1.5 ${ws ? "left-[5.5rem]" : "left-0"} ${inline ? "lg:flex" : ""}`}
+          className={`fixed inset-y-0 z-40 max-lg:hidden ${ws ? "left-14" : "left-0"}`}
         >
           {sidebarTop(false)}
           <div className="min-h-0 grow">{sidebarNode()}</div>
-        </aside>
+        </Sidebar>
       )}
-      <SheetContent
-        side="left"
-        showClose={false}
-        aria-describedby={undefined}
-        // Focus would land on the workspace's switcher and open its menu's hint; the sheet itself takes it instead.
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          (event.currentTarget as HTMLElement | null)?.focus();
-        }}
-        className="flex w-[min(18.5rem,86vw)] flex-col border-line bg-shell px-1.5 pb-[env(safe-area-inset-bottom)] max-md:[&_nav_a]:min-h-10"
-      >
-        <SheetTitle className="sr-only">{panel ? `${MODE_MENU[panel]} menu` : "Menu"}</SheetTitle>
-        {sidebarTop(true)}
-        <div className="min-h-0 grow">{sidebarNode()}</div>
-      </SheetContent>
+      {/* The drawer is a sheet: a dialog that holds focus, closes on Escape or
+          a tap outside, and gives focus back to the button that opened it. */}
+      {panel && (
+        <SidebarMobile title={`${MODE_MENU[panel]} menu`} className="pb-[env(safe-area-inset-bottom)] max-md:[&_nav_a]:min-h-10">
+          {sidebarTop(true)}
+          <div className="min-h-0 grow">{sidebarNode()}</div>
+        </SidebarMobile>
+      )}
 
       <div className={`min-h-dvh px-1.5 pt-(--frame-top) pb-(--tabbar-h) md:pr-2 ${pad}`}>
         {/* A page whose own header sits right under this bar (data-page-head: a conversation's, a project's) reads as one
@@ -2040,7 +2108,12 @@ export function AppShell({
             className={`sticky top-(--frame-top) z-30 flex h-14 items-center gap-1 rounded-t-[14px] border-b border-line bg-bg pr-2 pl-2 transition-[border-color] duration-150 sm:pr-3 ${inline ? "lg:pl-3.5" : ""} ${conversation ? "max-md:hidden" : ""}`}
           >
             {panel && (
-              <SidebarToggle open={drawer} onClick={toggleSidebar} className={`max-md:size-11 ${inline ? "lg:hidden" : ""}`} />
+              <SidebarTrigger
+                hint={`Show the sidebar (${sidebarKey})`}
+                aria-label={drawer ? "Hide the sidebar" : "Show the sidebar"}
+                aria-expanded={drawer}
+                className={`max-md:size-11 ${inline ? "lg:hidden" : ""}`}
+              />
             )}
             {ws && (
               <span className={`flex min-w-0 shrink items-center gap-1.5 ${inline ? "lg:hidden" : ""}`}>
@@ -2053,7 +2126,10 @@ export function AppShell({
             <Breadcrumbs pathname={pathname} missing={missing} repo={shell.repo} workspace={ws?.slug ?? null} />
             {/* Search, then what's yours (spend, Ask g1t), then the bell and Create new: one height, one rhythm. */}
             <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
-              <SearchButton onClick={() => setPalette(true)} />
+              {/* With the sidebar open, search is at its top. */}
+              <span className={`flex ${inline && sidebarSearch ? "lg:hidden" : ""}`}>
+                <SearchButton place="bar" onClick={() => setPalette(true)} />
+              </span>
               {/* Your spend this month, or the workspace's for owners and billing managers; on a phone it is on Spend. */}
               {ws && (
                 <span className="flex max-md:hidden">
@@ -2067,7 +2143,7 @@ export function AppShell({
                 <NotificationsBell counts={shell.inbox ? { ...shell.inbox, unread: notificationsUnread } : null} />
               </span>
               <CreateMenu shell={shell} />
-              {/* Without a workspace there is no dock: the account is here. */}
+              {/* Without a workspace there is no rail: the account is here. */}
               {!ws && <AccountMenu user={user} side="bottom" />}
             </div>
           </header>
@@ -2085,7 +2161,7 @@ export function AppShell({
       />
       {ws && <BottomBar user={user} workspace={ws} pins={shell.pins ?? []} unread={unread} onReselect={panel ? () => setDrawer(true) : undefined} />}
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} repo={shell.repo ? `${shell.repo.namespace}/${shell.repo.name}` : null} />
-    </Sheet>
+    </SidebarProvider>
   );
 }
 

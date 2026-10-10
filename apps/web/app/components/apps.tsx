@@ -30,20 +30,20 @@ export function InstalledMark({ app, size = 22 }: { app: { connector: InstalledA
   return <ConnectorMark view={{ id: app.connector.id, name: app.connector.name, provider: app.connector.provider ?? null }} size={size} />;
 }
 
-/** A pinned app as the dock draws it, from its key alone; null when the key names nothing installable. */
+/** A pinned app as the rail draws it, from its key alone; null when the key names nothing installable. */
 export function pinnedApp(key: PinnableApp, slug: string): { key: string; name: string; to: string; icon: (size: number) => ReactNode } | null {
   const app = installedAppOf(key);
   if (!app) return null;
   return { key, name: app.name, to: app.path(slug), icon: (size) => <InstalledMark app={app} size={size} /> };
 }
 
-/** Every pin form shares this key, so the dock, the launcher and the Apps page see one change. */
+/** Every pin form shares this key, so the rail, the launcher and the Apps page see one change. */
 const PIN_FETCHER = "app-pin";
 
 /**
  * Someone's pins in the workspace `slug`, as saved (`saved`, from the
  * root's data), with any pin or unpin on its way already applied, so the
- * dock changes the moment a pin is pressed. `toggle` pins or unpins.
+ * rail changes the moment a pin is pressed. `toggle` pins or unpins.
  */
 export function useAppPins(slug: string, saved: PinnableApp[]) {
   const fetcher = useFetcher({ key: PIN_FETCHER });
@@ -127,10 +127,10 @@ export function AppTile({
         {body}
       </Link>
       {app.usable && (
-        <Hint label={pinned ? "Unpin from your dock" : "Pin to your dock"}>
+        <Hint label={pinned ? "Unpin from your rail" : "Pin to your rail"}>
           <button
             type="button"
-            aria-label={pinned ? `Unpin ${app.name} from your dock` : `Pin ${app.name} to your dock`}
+            aria-label={pinned ? `Unpin ${app.name} from your rail` : `Pin ${app.name} to your rail`}
             aria-pressed={pinned}
             onClick={() => onToggle(app.key)}
             className={cn(
@@ -155,7 +155,7 @@ export function NoApps({ slug, onOpen, compact = false }: { slug: string; onOpen
         <Store size={18} />
       </span>
       <p className="mt-3 text-sm font-medium">No apps installed yet</p>
-      <p className="mt-1 max-w-xs text-[0.8125rem] text-muted">Apps come from the Marketplace: integrations your workspace connects, and extensions later. Each one you can use shows here, to pin to your dock.</p>
+      <p className="mt-1 max-w-xs text-[0.8125rem] text-muted">Apps come from the Marketplace: integrations your workspace connects, and extensions later. Each one you can use shows here, to pin to your rail.</p>
       <Link to={`/${slug}/-/marketplace`} onClick={onOpen} className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[0.8125rem] font-medium text-bg hover:bg-fg-hover">
         <Store size={14} />
         Browse the Marketplace

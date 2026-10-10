@@ -9,7 +9,7 @@ someone asked you to review a pull request, checks failed on your pull
 request, a deployment failed, someone mentioned you. You are never told
 about what you did yourself.
 
-Open them from **Notifications** in the dock, or from the bottom bar on a
+Open them from **Notifications** in the rail, or from the bottom bar on a
 phone. The number on it is what is unread. The bell at the right of the
 page's header opens the same notifications in a panel beside the page; its
 number is amber while something is waiting on you, red while a failure is
@@ -205,7 +205,7 @@ The count beside each tab is what is unread under it.
 
 ## The Notifications page
 
-**Notifications** in the dock opens
+**Notifications** in the rail opens
 [g1t.sh/notifications](https://g1t.sh/notifications): every thread, a page
 at a time, under the same tabs. Its sidebar chooses what you look at:
 

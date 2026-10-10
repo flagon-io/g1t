@@ -214,7 +214,7 @@ export default [
     ]),
     // Home, the workspace's front page (`-/today` leads there), where it
     // marks your visit, and every app in it you can use, with pinning them
-    // to your dock.
+    // to your rail.
     route("-/home", "routes/workspace/home.tsx"),
     route("-/home/seen", "routes/workspace/home-seen.ts"),
     route("-/today", "routes/workspace/moved.ts", { id: "routes/workspace/moved-today" }),

@@ -39,7 +39,7 @@ function SideLink({ to, end, icon, children, trailing }: { to: string; end?: boo
       prefetch="intent"
       className={({ isActive }) =>
         `group flex h-9 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${
-          isActive ? "bg-raised font-medium text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"
+          isActive ? "bg-sidebar-accent font-medium text-fg" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"
         }`
       }
     >
@@ -111,13 +111,13 @@ export function AgentsSidebar({
         to={`/${slug}/-/agents/${agent.handle}`}
         prefetch="intent"
         className={({ isActive }) =>
-          `group flex h-11 items-center gap-2.5 rounded-md px-2 transition-colors ${isActive ? "bg-raised" : "hover:bg-raised/60"}`
+          `group flex h-11 items-center gap-2.5 rounded-md px-2 transition-colors ${isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/60"}`
         }
       >
         <span className="relative shrink-0">
           <AgentFace agent={{ ...agent, builtin: isOrchestrator(agent) }} size={26} />
           {!isOrchestrator(agent) && (
-            <StatusDot status={agent.status} className="absolute -right-0.5 -bottom-0.5 ring-2 ring-shell" />
+            <StatusDot status={agent.status} className="absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar" />
           )}
         </span>
         <span className="min-w-0 grow leading-tight">
@@ -147,7 +147,7 @@ export function AgentsSidebar({
   return (
     <div className="flex h-full flex-col">
       <div className={`flex h-9 shrink-0 items-center justify-between pr-1 pl-3 ${phone ? "hidden" : ""}`}>
-        <h2 className="text-xs font-medium text-faint">Agents</h2>
+        <h2 className="text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Agents</h2>
         {canCreate && (
           <NavLink
             to={`/${slug}/-/agents/new`}
@@ -246,7 +246,7 @@ function Group({ title, children, collapsible, initiallyOpen = true }: { title: 
           type="button"
           onClick={() => setOpen(!open)}
           aria-expanded={open}
-          className="mb-1 flex w-full items-center gap-1 rounded px-1 text-xs font-medium text-faint transition-colors hover:text-muted"
+          className="mb-1 flex w-full items-center gap-1 rounded px-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase transition-colors hover:text-muted"
         >
           <ChevronRight size={12} className={`transition-transform ${open ? "rotate-90" : ""}`} />
           {title}
@@ -257,7 +257,7 @@ function Group({ title, children, collapsible, initiallyOpen = true }: { title: 
   }
   return (
     <section className="mt-4">
-      <h3 className="mb-1 px-2 text-xs font-medium text-faint">{title}</h3>
+      <h3 className="mb-1 px-2 text-[0.6875rem] font-medium tracking-wide text-faint uppercase">{title}</h3>
       <ul className="space-y-px">{children}</ul>
     </section>
   );
