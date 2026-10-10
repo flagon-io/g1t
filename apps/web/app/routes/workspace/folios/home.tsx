@@ -63,7 +63,7 @@ const EMPTY: Record<string, { title: string; body: string }> = {
 };
 
 /**
- * Artifacts' home (docs/ARTIFACTS_MODE.md section 6.2): search and
+ * Artifacts' home (docs.g1t.sh/guides/artifacts/, "Home"): search and
  * filters, All / Yours / Shared with you, tiles to make something new,
  * and everything you can open, grouped by the day it was last edited, or
  * as cards.

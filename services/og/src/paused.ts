@@ -1,9 +1,9 @@
 /**
  * While rendering is paused across g1t (billing's `platform_pause`,
- * `renders`; docs/SPEND-GUARDRAILS.md), no card is drawn: a request that
- * misses the edge cache gets the brand card the cache already has, or a
- * redirect to g1t's static logo. Either is kept only a minute, so cards
- * come back soon after rendering is resumed.
+ * `renders`; docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails), no
+ * card is drawn: a request that misses the edge cache gets the brand card
+ * the cache already has, or a redirect to g1t's static logo. Either is kept
+ * only a minute, so cards come back soon after rendering is resumed.
  */
 
 /** g1t's logo on dark, served by the site as a static file. */

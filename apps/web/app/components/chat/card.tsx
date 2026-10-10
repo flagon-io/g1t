@@ -47,7 +47,7 @@ import { repoAt } from "../../lib/markdown-plugins";
 import { sessionChip } from "../../lib/session-card";
 import { codeAccessPath } from "../../lib/workspace-nav";
 
-// A card g1t or an agent posts in chat (docs/WORKSPACE.md, "Cards"): what
+// A card g1t or an agent posts in chat: what
 // it is about, its state, a preview, a few facts, and what people can do
 // right here. Pressing an action goes to the site (routes/workspace/chat/
 // api.ts, `card_action`), then to chat, then to the service that owns the

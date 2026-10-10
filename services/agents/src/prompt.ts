@@ -3,9 +3,9 @@
  * is and how to answer, and the conversation as turns. Pure, so it is
  * tested on its own.
  *
- * Personality is voice only (docs/WORKSPACE.md, "The definition"): it is
- * placed under its own heading and the rules come after it, so free text
- * there cannot loosen what the agent may do.
+ * Personality is voice only (docs.g1t.sh/guides/agents/, "Job and
+ * personality"): it is placed under its own heading and the rules come
+ * after it, so free text there cannot loosen what the agent may do.
  */
 import type { AskerAccess, PersonalityPreset } from "@g1t/contracts";
 
@@ -23,12 +23,13 @@ const VOICES: Record<PersonalityPreset, string> = {
 
 /**
  * Who a reply may draw on: what everyone who can read it may see
- * (docs/WORKSPACE.md, "The asker's access caps the agent"). In a DM that is
- * the asker; in a channel, the channel's members (or the whole workspace,
- * for a public one). A v1 reply reads only the conversation it is in, which
- * everyone there can already read, so nothing wider can leak. When replies
- * get tools (code, issues, docs, search), every tool call is filtered by
- * this audience before its result reaches the model.
+ * (docs.g1t.sh/guides/agent-access/, "Rule two: the audience caps the
+ * answer"). In a DM that is the asker; in a channel, the channel's members
+ * (or the whole workspace, for a public one). A v1 reply reads only the
+ * conversation it is in, which everyone there can already read, so nothing
+ * wider can leak. When replies get tools (code, issues, docs, search),
+ * every tool call is filtered by this audience before its result reaches
+ * the model.
  */
 export type Audience = { kind: "dm"; asker: string } | { kind: "channel"; channel_id: string };
 
@@ -174,11 +175,11 @@ function memberLabel(member: ConversationMember): string {
 }
 
 /**
- * Who is in the conversation, said every turn (docs/WORKSPACE.md, "Where
- * you are"), and what follows from it: only they read what the agent says
- * here, a name of anyone else reaches no one, and no agent is woken by the
- * agent's words, only by a hand-off. Every agent is listed; people up to
- * the chat service's cap, then a count.
+ * Who is in the conversation, said every turn (docs.g1t.sh/guides/agents/,
+ * "Who is in the conversation"), and what follows from it: only they read
+ * what the agent says here, a name of anyone else reaches no one, and no
+ * agent is woken by the agent's words, only by a hand-off. Every agent is
+ * listed; people up to the chat service's cap, then a count.
  */
 function membersBlock(input: PromptInput): string[] {
   const conversation = input.conversation;
@@ -238,7 +239,7 @@ function readingRules(tools: { code: boolean } | null, session = false): string[
   ];
 }
 
-/** Every agent knows its colleagues (docs/WORKSPACE.md, "Agents know each other"). */
+/** Every agent knows its colleagues (docs.g1t.sh/guides/agents/). */
 function colleaguesSection(roster: string, session = false): string {
   if (session) {
     return [

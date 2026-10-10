@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Rebuilds repositories from the nightly backups into a git store, the cold
-// fallback for an Artifacts outage (docs/ARTIFACTS.md, R12), and afterwards
+// fallback for an Artifacts outage, and afterwards
 // sends back what was pushed to it while it served.
 //
 // The store is deploy/self-host/gitstore: bare repositories under a root,
@@ -342,7 +342,7 @@ export async function reconcileOne(repo, remoteFor) {
     }
   }
   if (specs.length) {
-    // Not --atomic: whether Artifacts takes it is not documented (docs/ARTIFACTS.md, Q6).
+    // Not --atomic: whether Artifacts takes it is not documented.
     // Each move is leased on the value read above, so one that moved since is refused, not overwritten.
     const leases = specs.map((one) => one.lease).filter(Boolean);
     await git([...args, "push", "--quiet", ...leases, url, ...specs.map((one) => one.spec)], { cwd: repo.dir });

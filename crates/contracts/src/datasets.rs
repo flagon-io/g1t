@@ -1,7 +1,6 @@
-//! Datasets: the safe query layer behind dashboards (Artifacts mode,
-//! docs/ARTIFACTS_MODE.md section 3.4). Mirrors
-//! `packages/contracts/src/datasets.ts`; the tests here keep the catalog the
-//! same and run both validators over `datasets.fixtures.json`.
+//! Datasets: the safe query layer behind dashboards (Artifacts mode).
+//! Mirrors `packages/contracts/src/datasets.ts`; the tests here keep the
+//! catalog the same and run both validators over `datasets.fixtures.json`.
 //!
 //! Not SQL: a query names a dataset from a declared catalog, one measure,
 //! at most one dimension, an interval, filters on declared fields and a

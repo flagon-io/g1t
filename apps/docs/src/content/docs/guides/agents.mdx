@@ -49,10 +49,10 @@ should do something.
 | --- | --- |
 | **In every workspace** | On every surface: Chat, issues and pull requests, Notifications and MCP. It works on issues and pull requests as described in [g1t's agent](/guides/working-with-g1t/). |
 | **Configurable** | Set its personality, model limits, budget and what it may do alone, like any agent. Its job is fixed, and you can add instructions to it. |
-| **Knows the team** <Soon /> | Every colleague's role, what they are working on and their budget, and which teams own what. |
+| **Knows the team** | Every agent you hire: its handle, title, team, responsibilities, whether it is idle, working, paused or out of budget, and its spend this month against its monthly cap. |
 | **Delegates** | When a specialist's role fits, it [hands the work off](#hand-off) with a brief: here, if the specialist is in the conversation, or in a group message with you and them. At most two hand-offs per message. |
 | **Does the work itself when nobody fits** | In a workspace with no specialists, g1t does everything itself, as it does today. |
-| **Reports** <Soon /> | A daily or weekly summary of what the team's agents did, and answers to "what's everyone working on?" |
+| **Reports** | Answers "what's everyone working on?" from what it knows of the team. A daily or weekly summary of what the team's agents did is <Soon /> |
 
 `g1t` is never another agent's handle.
 
@@ -81,8 +81,12 @@ member can see its agents and talk to them.
 
 </Steps>
 
-The agent appears on the Agents page as **Idle**. Open a DM with it from
-Chat's **New message**, or invite it to the channels its team works in.
+The agent appears on the Agents page as **Idle**, and a direct message
+between you and it opens in Chat, where it says hello in its own voice: who
+it is, what it will do for the team, and a thing or two to ask it first.
+That hello is a reply like any other, charged to its budget; when the
+workspace has no model it can use, it sends a short fixed hello instead.
+Invite it to the channels its team works in.
 
 ### Example: hire Margo from the QA template
 
@@ -140,7 +144,8 @@ request #418".
 | Responsibilities | What it answers for, one per line. | 2 to 8, each up to 160 characters, or none yet. |
 | Job | Its instructions: how it works and what good looks like. | Up to 8,000 characters. |
 | Personality | A preset, plus free text that refines the voice. | Free text up to 1,000 characters. |
-| Subagents | Help it keeps for its own work. See [subagents](#subagents). | Run soon. |
+| Subagents | Help it keeps for its own work. See [subagents](#subagents). | Up to 8. They run inside its sessions. |
+| Required reading | Spaces in [Artifacts](/guides/artifacts/) it checks first, every time it answers or works. It still reads only what the person it works for, and everyone reading its answer, can open. | Up to 10 spaces. |
 | Models | A floor, a ceiling and the providers it may use. | See [model routing](#model-routing). |
 | Budget | A monthly cap, a daily cap and a cap per session. | Each optional, up to $100,000. |
 | What it may do alone | Pull requests, merging, production deploys, doc edits. | See [what it may do alone](#what-it-may-do-alone). |
@@ -374,11 +379,16 @@ busy without a person.
 While it writes, the agent shows as typing. Its answer is charged to its
 own budget; see [what an agent costs](#what-an-agent-costs).
 
-<Aside type="note" title="What a reply can see today">
+<Aside type="note" title="What a reply can see">
 A reply reads the conversation it is in: the thread, or the latest 30
 messages of the channel or DM. It knows who asked and whether they can
-change code. Looking things up in code, issues, checks and docs while it
-answers is <Soon />
+change code, and it is given the facts it [remembers](/guides/agent-memory/)
+for that place and the passages of [artifacts](/guides/artifacts/#agents-and-artifacts)
+closest to what was asked. While it answers it can look up code, issues,
+pull requests with their checks, earlier messages and artifacts, up to 8
+lookups a reply, only within what everyone in the conversation can see.
+In public channels and conversations of more than 50 people it reads no
+code. See [what agents can do for whom](/guides/agent-access/).
 </Aside>
 
 ## Model routing

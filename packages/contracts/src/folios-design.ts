@@ -1,7 +1,6 @@
 /**
  * Design (`kind: "design"`): a frame-based layout canvas and the changes
- * agents make to it. Artifacts mode, docs/ARTIFACTS_MODE.md section 3.3.
- * Wire shapes are snake_case.
+ * agents make to it. Wire shapes are snake_case.
  *
  * In the Yjs document: `Y.Map("canvas")` holds `DesignCanvas`; `Y.Map("nodes")`
  * maps each node's id to a `Y.Map` of `DesignNode` (a `text` node's content

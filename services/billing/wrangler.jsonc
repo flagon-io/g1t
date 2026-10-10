@@ -116,8 +116,7 @@
 		// (src/costs.rs, src/margin.rs) reads the bill with
 		// CLOUDFLARE_BILLING_TOKEN (Account: Billing Read, Account Analytics
 		// Read) when it is set, else with the usage token. With neither it
-		// reconciles only what g1t counted itself. See
-		// docs/BILLING_OPERATIONS.md.
+		// reconciles only what g1t counted itself.
 		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
 		// The day of the month the account's billing cycle starts on (Sep 28
 		// to Oct 27): the usage bill's included amounts are a cycle's
@@ -139,7 +138,8 @@
 		// 00:00 UTC; staff are emailed and can lift it in sudo. Workspaces
 		// paying with real money are never paused. 0 turns either cap off.
 		"PLATFORM_DAILY_SPEND_CAP_MICROS": "75000000",
-		// The platform watch (src/platform.rs, docs/SPEND-GUARDRAILS.md): at
+		// The platform watch (src/platform.rs, and "Spend guardrails" in
+		// docs.g1t.sh/guides/deploy-to-cloudflare/): at
 		// a quarter past each hour, what Cloudflare counted in the hour
 		// before, per metric, against these thresholds. Each is a dollar or
 		// a few an hour at list prices, far above a small alpha's hour; 0

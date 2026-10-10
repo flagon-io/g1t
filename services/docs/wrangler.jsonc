@@ -24,7 +24,8 @@
 	// usercontent origin at /docs-files/<key> (apps/web/workers/usercontent.ts).
 	// Create it once: npx wrangler r2 bucket create g1t-docs-files
 	// Self-hosted, any S3-compatible store instead: DOCS_FILES=s3 and the
-	// DOCS_S3_* settings (src/files.ts, docs/SELF_HOSTING.md).
+	// DOCS_S3_* settings (src/files.ts,
+	// docs.g1t.sh/guides/self-hosting-architecture/, "Storage").
 	"r2_buckets": [{ "binding": "FILES", "bucket_name": "g1t-docs-files" }],
 	// The semantic index agents recall from (src/indexer.ts, src/vectors.ts):
 	// Workers AI embeds passages (@cf/baai/bge-base-en-v1.5, 768 dimensions)
@@ -35,9 +36,9 @@
 	//   npx wrangler vectorize create-metadata-index g1t-docs --property-name=space_id --type=string
 	// Without them Docs still keeps passages in D1 and recall matches words.
 	//
-	// Folios (Artifacts mode, docs/ARTIFACTS_MODE.md section 5) have an
-	// index of their own, filtered by workspace, scope and kind. Create it
-	// once, before the first deploy that has this binding:
+	// Folios (Artifacts mode) have an index of their own, filtered by
+	// workspace, scope and kind. Create it once, before the first deploy that
+	// has this binding:
 	//   npx wrangler vectorize create g1t-folios --dimensions=768 --metric=cosine
 	//   npx wrangler vectorize create-metadata-index g1t-folios --property-name=workspace_id --type=string
 	//   npx wrangler vectorize create-metadata-index g1t-folios --property-name=scope --type=string

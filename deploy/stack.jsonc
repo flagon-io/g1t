@@ -1,7 +1,8 @@
 // Everything g1t deploys to Cloudflare, in one place. Read by
 // scripts/deploy.mjs (plan, deploy), deploy/self-host/configs.mjs (what a
 // self-hosted installation runs) and the tests in scripts/deploy/.
-// docs/DEPLOYING.md explains each field and how to add a unit.
+// docs.g1t.sh/guides/deploy-to-cloudflare/ explains each field and how to
+// add a unit.
 //
 // What is written here is what the Wrangler configs cannot say. The rest is
 // read from each unit's wrangler.jsonc, never copied: its D1 databases and
@@ -44,7 +45,7 @@
 	//            process of its own), or "none".
 	// inputs:    files outside its folder it is built from that no workspace
 	//            metadata names (a test finds such imports).
-	// image:     a Containers image (docs/DEPLOYING.md, "The runner's images"):
+	// image:     a Containers image (the guide's "The runner's images"):
 	//            dockerfile  the image a deploy ships: the base plus the binary
 	//            crate       the crate that binary is built from (and what it uses)
 	//            base        { context: the base's folder, lock: the file that
@@ -127,9 +128,9 @@
 			],
 			"self_host": "run"
 		},
-		// Docs mode's service, which also hosts artifacts (folios,
-		// docs/ARTIFACTS_MODE.md). Its Worker is g1t-docs-service: g1t-docs
-		// is the documentation site (apps/docs).
+		// Docs mode's service, which also hosts artifacts (folios). Its
+		// Worker is g1t-docs-service: g1t-docs is the documentation site
+		// (apps/docs).
 		"docs-service": {
 			"path": "services/docs",
 			"kind": "ts-worker",
@@ -298,11 +299,12 @@
 			"stage": "edge",
 			// ACTIONS_OIDC_KEY signs workflow jobs' OIDC tokens; without it the
 			// issuer answers 404 and jobs are not offered tokens.
-			// ACTIONS_OIDC_KEY_PREVIOUS only while rotating. docs/DEPLOYING.md.
+			// ACTIONS_OIDC_KEY_PREVIOUS only while rotating (the guide's "OIDC
+			// tokens for workflow jobs").
 			"secrets": ["ACTIONS_OIDC_KEY"],
 			"setup": [
-				"The OIDC signing key for workflow jobs: an RSA key made with `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`, stored with `npx wrangler secret put ACTIONS_OIDC_KEY` (docs/DEPLOYING.md, \"OIDC tokens for workflow jobs\")",
-				"The actions cache bucket's lifecycle rule limited to `c/`, so artifacts under `a/` are kept their retention-days (docs/DEPLOYING.md)"
+				"The OIDC signing key for workflow jobs: an RSA key made with `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`, stored with `npx wrangler secret put ACTIONS_OIDC_KEY` (docs.g1t.sh/guides/deploy-to-cloudflare/#oidc-tokens-for-workflow-jobs)",
+				"The actions cache bucket's lifecycle rule limited to `c/`, so artifacts under `a/` are kept their retention-days (docs.g1t.sh/guides/deploy-to-cloudflare/#a-first-deploy-to-a-new-account)"
 			],
 			"self_host": "separate"
 		},

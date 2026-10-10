@@ -1,6 +1,7 @@
 /**
- * `@g1t`, every workspace's built-in orchestrator (docs/WORKSPACE.md, "g1t,
- * the orchestrator"). Pure, so it is tested on its own.
+ * `@g1t`, every workspace's built-in orchestrator
+ * (docs.g1t.sh/guides/agents/, "g1t, the orchestrator"). Pure, so it is
+ * tested on its own.
  *
  * It is an agent row like any other, marked builtin, so it is billed,
  * gated, routed and audited the same way. What sets it apart is here:

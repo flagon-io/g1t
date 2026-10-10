@@ -1,5 +1,5 @@
 //! Repository backups: a nightly `git bundle` of every repository whose
-//! refs changed, kept outside the git store (docs/ARTIFACTS.md, R11).
+//! refs changed, kept outside the git store.
 //!
 //! The repos service decides what is due and keeps the bundles and their
 //! manifests (services/repos/src/backups.rs). It cannot run git, so the

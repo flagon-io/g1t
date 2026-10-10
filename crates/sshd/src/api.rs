@@ -1,7 +1,7 @@
 //! Client for the g1t Worker's internal endpoints, which own all
 //! authentication and authorization decisions.
 //!
-//! Neither endpoint exists yet (docs/ARTIFACTS.md). What they are to do:
+//! Neither endpoint exists yet. What they are to do:
 //!
 //! - `POST /_internal/ssh/user` with `{ fingerprint, used }` resolves the key
 //!   through identity's `principal_for_ssh_key` (`used` once the client has

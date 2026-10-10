@@ -1,7 +1,8 @@
 /**
  * The front door's rate limits (workers/app.ts), per request before it is
  * answered. The bindings and their limits are in `RATE_LIMITS`
- * (packages/contracts/src/rate-limits.ts); docs/RATE-LIMITS.md says why.
+ * (packages/contracts/src/rate-limits.ts); CONTRIBUTING.md, "Rate limits",
+ * says how they are kept.
  *
  * - Git over HTTPS: without credentials, by address; with them, by a hash
  *   of the credential, much higher. A clone is about three requests.

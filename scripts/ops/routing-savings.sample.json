@@ -1,5 +1,5 @@
 {
-  "about": "A handful of tasks shaped like g1t's own agent work, for estimating what routing saves. Illustrative, not production data: tokens follow the profile in docs/research/reviewbench.md (turns from the change's size, 92% of input read from cache, output per turn), and failsOn is an assumption, the tiers a task of that difficulty is expected to fail on. Run with --live for g1t's real runs.",
+  "about": "A handful of tasks shaped like g1t's own agent work, for estimating what routing saves. Illustrative, not production data: tokens follow a typical review run's profile (turns from the change's size, 92% of input read from cache, output per turn), and failsOn is an assumption, the tiers a task of that difficulty is expected to fail on. Run with --live for g1t's real runs.",
   "tasks": [
     {
       "id": "fix-typo-in-readme",

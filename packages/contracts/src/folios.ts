@@ -2,8 +2,7 @@
  * Folios: what people call artifacts. Artifacts mode is one mode for docs,
  * slides, designs and dashboards, each private, shared with people and
  * agents, in a space or open to the workspace, and edited live together.
- * Kept by the docs service (`services/docs`). Plan and decisions:
- * docs/ARTIFACTS_MODE.md.
+ * Kept by the docs service (`services/docs`).
  *
  * Naming: code says "folio", people see "artifact" (UI text, URLs
  * `/<ws>/-/artifacts/...`, the `artifact` MCP tool, REST paths, the

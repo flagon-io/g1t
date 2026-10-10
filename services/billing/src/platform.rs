@@ -1,6 +1,6 @@
 //! Platform spend guardrails: what Cloudflare counts for all of g1t, read
 //! every hour, and a g1t-wide pause to stop it. See
-//! docs/SPEND-GUARDRAILS.md.
+//! docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails.
 //!
 //! The caps in `budget` hold what g1t pays for agents and sandboxes; this
 //! is about the platform underneath, which no workspace's limit covers and
@@ -823,7 +823,7 @@ impl Billing {
             format!("g1t: platform usage breach, {} paused", names.join(" and "))
         };
         lines.push(
-            "Ids are Cloudflare's: `node scripts/ops/platform-usage.mjs` names them and shows the last 24 hours. To pause or resume a level: sudo, Costs & margin, Platform pause. Thresholds: PLATFORM_HOURLY_* in services/billing/wrangler.jsonc. See docs/SPEND-GUARDRAILS.md.".to_owned(),
+            "Ids are Cloudflare's: `node scripts/ops/platform-usage.mjs` names them and shows the last 24 hours. To pause or resume a level: sudo, Costs & margin, Platform pause. Thresholds: PLATFORM_HOURLY_* in services/billing/wrangler.jsonc. See https://docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails.".to_owned(),
         );
         match crate::margin::email_staff_page(&self.env, alert_to, &subject, &lines, ("Platform pause", "https://sudo.g1t.sh/costs#platform"), "g1t-billing's usage watcher").await {
             Ok(()) => {
@@ -957,7 +957,7 @@ impl Billing {
             }
         }
         lines.push(
-            "Check with `node scripts/ops/platform-usage.mjs` and a token: every dataset should report rows, and it exits non-zero naming any that errored. A renamed field is fixed in QUERIES in services/billing/src/platform.rs. See docs/SPEND-GUARDRAILS.md.".to_owned(),
+            "Check with `node scripts/ops/platform-usage.mjs` and a token: every dataset should report rows, and it exits non-zero naming any that errored. A renamed field is fixed in QUERIES in services/billing/src/platform.rs. See https://docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails.".to_owned(),
         );
         let subject = format!("g1t: the platform usage watcher is blind on {}", due.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", "));
         match crate::margin::email_staff_page(&self.env, &self.caps.alert_to, &subject, &lines, ("Platform pause", "https://sudo.g1t.sh/costs#platform"), "g1t-billing's usage watcher").await {
@@ -1043,7 +1043,7 @@ mod tests {
         for m in METRICS {
             assert!(w.threshold(m.key) > 0.0, "{}", m.key);
         }
-        // The thresholds named in docs/SPEND-GUARDRAILS.md.
+        // The defaults when no PLATFORM_HOURLY_* variable is set.
         assert_eq!(w.threshold("kv_lists"), 200_000.0);
         assert_eq!(w.threshold("queue_operations"), 5_000_000.0);
         assert_eq!(w.threshold("d1_rows_read"), 2_000_000_000.0);

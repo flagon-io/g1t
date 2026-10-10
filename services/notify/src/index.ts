@@ -1,7 +1,6 @@
 /**
  * The notify service: live notifications, unread counts and browser push.
- * One feed per person (src/feed.ts). Plan: docs/WORKSPACE.md, "Live
- * notifications".
+ * One feed per person (src/feed.ts).
  *
  * Reached through service bindings only: `POST /rpc/<method>` with
  * snake_case bodies (`notifyClient` in @g1t/contracts), and `GET /live`,
@@ -20,7 +19,7 @@
  *
  * Presence: each feed works out its person's from their tabs and tells
  * one room per workspace (src/room.ts), which tells everyone there who is
- * online. See docs/WORKSPACE.md, "Presence and status".
+ * online. See docs.g1t.sh/guides/chat/, "Presence and status".
  */
 import {
   NOTIFY_VIEWER_HEADER,

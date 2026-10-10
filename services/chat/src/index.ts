@@ -1,6 +1,6 @@
 /**
  * The chat service: a workspace's channels, direct messages, threads and
- * messages. People and agents are members alike. Plan: docs/WORKSPACE.md.
+ * messages. People and agents are members alike (docs.g1t.sh/guides/chat/).
  *
  * Reached through service bindings: `POST /rpc/<method>` with snake_case
  * bodies (`chatClient` in @g1t/contracts), and `GET /live` for a channel's

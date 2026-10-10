@@ -10,7 +10,7 @@
 #
 # Uses your `wrangler login`. The repository's .env may hold a token for
 # other tools; it is ignored here unless you set CLOUDFLARE_DEPLOY_TOKEN.
-# See docs/DEPLOYING.md.
+# See docs.g1t.sh/guides/deploy-to-cloudflare/.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

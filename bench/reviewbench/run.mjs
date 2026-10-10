@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Runs g1t's pull request reviewer over ReviewBench and scores it with the
-// benchmark's own judge. docs/research/reviewbench.md explains the design.
+// benchmark's own judge.
 //
 //   node bench/reviewbench/run.mjs setup                 clone ReviewBench (pinned) and install its judge
 //   node bench/reviewbench/run.mjs build                 build the agent image from the runner base image
@@ -114,7 +114,7 @@ function select(set, seed) {
  * growing context every turn, mostly from cache: turns and context grow
  * with the size of the change. Calibrate against real review runs (the
  * billing ledger records each run's cost) before trusting the absolute
- * numbers; see docs/research/reviewbench.md.
+ * numbers.
  */
 function estimateOne(p, model) {
   const [, output, cacheRead, cacheWrite] = PRICES[model] ?? PRICES[DEFAULT_MODEL];

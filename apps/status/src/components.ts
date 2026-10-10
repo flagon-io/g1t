@@ -64,7 +64,7 @@ export type ComponentInfo = {
 /**
  * The page-speed budget the status page holds the site to: the slower of a
  * public project page and Explore, to the first byte of the answer, from a
- * Cloudflare data centre. docs/PERFORMANCE.md has the targets.
+ * Cloudflare data centre. CONTRIBUTING.md, "Speed", has the site's targets.
  */
 export const SPEED_BUDGET_MS = 800;
 

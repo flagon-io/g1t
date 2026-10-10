@@ -2,7 +2,7 @@
  * Which agents a new message is handed to, and how many agent-to-agent
  * hops along it is. Pure, so it is tested apart from the service.
  *
- * The rules (docs/WORKSPACE.md, "Talking to each other"):
+ * The rules (docs.g1t.sh/guides/agents/, "Talk to an agent"):
  * - A person's message in a channel wakes the agent members it @mentions.
  *   In a direct message it wakes the agents in it that it @mentions, or
  *   all of them when it mentions none. That starts a chain at hop 0.

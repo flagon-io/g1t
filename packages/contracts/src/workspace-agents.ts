@@ -2,8 +2,7 @@
  * A workspace's own agents: named members with a job, a personality,
  * routing limits and a budget, kept by the agents service
  * (`services/agents`). Every workspace also has `@g1t`, its built-in
- * orchestrator, kept the same way (`builtin`). Plan: docs/WORKSPACE.md,
- * "g1t, the orchestrator".
+ * orchestrator, kept the same way (`builtin`).
  *
  * Wire shapes are snake_case end to end.
  */
@@ -79,8 +78,8 @@ export type WorkspaceAgent = {
    */
   role: string;
   /**
-   * Agents are hired into roles, not tasks (docs/WORKSPACE.md, "Roles, not
-   * tasks"): a title, a team, and broad responsibilities.
+   * Agents are hired into roles, not tasks: a title, a team, and broad
+   * responsibilities.
    */
   title: string;
   /** The team it is on, by slug, from the workspace's teams; null for none. */
@@ -135,8 +134,8 @@ export type WorkspaceAgent = {
 };
 
 /**
- * Back office or front office (docs/WORKSPACE.md, "Back office and front
- * office"). Customer-facing agents are not available yet.
+ * Back office or front office (docs.g1t.sh/guides/agents/, "Back office
+ * and front office"). Customer-facing agents are not available yet.
  */
 export type AgentFaces = "internal" | "customers";
 
@@ -221,9 +220,9 @@ export type AgentDelivery = {
   /**
    * What the person who asked may do, from the viewer the chat service
    * already holds when the message is posted (`askerAccess`). An agent
-   * never does more for someone than they could do themselves
-   * (docs/WORKSPACE.md, "The whole company"). Absent from an older chat
-   * service: the agent then treats the asker as unable to change code.
+   * never does more for someone than they could do themselves. Absent
+   * from an older chat service: the agent then treats the asker as unable
+   * to change code.
    */
   asker?: AskerAccess | null;
   /**
@@ -235,9 +234,9 @@ export type AgentDelivery = {
   chain?: string[];
   /**
    * Where the conversation is: g1t's own chat, or later another chat app
-   * the workspace connected (docs/WORKSPACE.md, "Working from another chat
-   * app"). The agent reads and replies through that surface; its
-   * definition, budget and replies are the same everywhere. Absent: `g1t`.
+   * the workspace connected. The agent reads and replies through that
+   * surface; its definition, budget and replies are the same everywhere.
+   * Absent: `g1t`.
    */
   surface?: AgentSurface;
 };
@@ -279,10 +278,10 @@ export function askerAccess(user: User, workspace: string): AskerAccess {
 }
 
 /**
- * A session: one bounded piece of work an agent took on (docs/WORKSPACE.md,
- * "Sessions"). A conversation with an agent is not a session: talking stays
- * cheap and quick, and when a request needs real work the agent spins off a
- * session for it, with its own context, transcript, budget and live card in
+ * A session: one bounded piece of work an agent took on
+ * (docs.g1t.sh/guides/agent-sessions/). A conversation with an agent is
+ * not a session: talking stays cheap and quick, and when a request needs
+ * real work the agent spins off a session for it, with its own context, transcript, budget and live card in
  * the conversation. Sessions start other sessions (one of the agent's
  * subagents, or a colleague brought in), and everything a tree of sessions
  * spends is charged to the agent at its root, so a chain never escapes the
@@ -396,9 +395,9 @@ export type AgentSessionDetail = {
 };
 
 /**
- * What an agent remembers (docs/WORKSPACE.md, "What an agent can and can't
- * know"). Every fact carries where it came from, and its scope decides, in
- * code, where it may be recalled and who may see it:
+ * What an agent remembers (docs.g1t.sh/guides/agent-memory/). Every fact
+ * carries where it came from, and its scope decides, in code, where it may
+ * be recalled and who may see it:
  *
  * - `workspace`: anywhere in the workspace. Owners write these, or an agent
  *   from a public channel, which every member can read already.
@@ -442,7 +441,7 @@ export type RoutineSchedule = {
 
 /**
  * Things that happen in the workspace a routine can run on
- * (docs/WORKSPACE.md, "Routines"). Each run is one session about the one
+ * (docs.g1t.sh/guides/agent-routines/). Each run is one session about the one
  * thing that happened, in a repository its sponsor can read.
  */
 export const ROUTINE_EVENTS = [

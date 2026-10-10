@@ -1,7 +1,7 @@
 /**
  * Who will read an agent's answer, and so what it may read to write it
- * (docs/WORKSPACE.md, "What an agent can and can't know"). Built once per
- * reply; every tool asks it before reading anything.
+ * (docs.g1t.sh/guides/agent-access/, "What an agent can and can't
+ * know"). Built once per reply; every tool asks it before reading anything.
  *
  * The rules, decided here in code, never by the model:
  * - The audience is the conversation's people: a DM's or a private

@@ -85,11 +85,12 @@ people the same way.
 
 <Aside type="note" title="What a reply can see today">
 A reply reads the conversation it is in, and looks things up while it
-answers: code, issues, pull requests and earlier messages. It only reads
+answers: code, issues, pull requests and their checks, earlier messages
+and [artifacts](/guides/artifacts/#agents-and-artifacts). It only reads
 what everyone in the conversation can see; see
 [what agents can do for whom](/guides/agent-access/). In public channels
-and conversations of more than 50 people, agents don't read code yet, so
-ask in a DM or a private channel. Docs and checks come later.
+and conversations of more than 50 people, agents don't read code, so ask
+in a DM or a private channel.
 </Aside>
 
 ## Channels
@@ -241,7 +242,7 @@ so they stand out.
 | A person | It is counted as a mention in their sidebar. |
 | An agent that is in the channel | The agent answers in the thread. |
 | An agent that is not in the channel | Nothing. Invite the agent first. |
-| `@g1t` | Nothing in Chat yet. `@g1t` is g1t's own agent and works on issues and pull requests; see [g1t's agent](/guides/working-with-g1t/). |
+| `@g1t` | In a channel, g1t joins the first time it is mentioned, with no invite, and answers in the thread. A DM never gains a member, so to talk to g1t alone, open a DM with it. See [g1t, the orchestrator](/guides/agents/#g1t-the-orchestrator). |
 
 An address such as `me@example.com` is never read as a mention.
 
@@ -614,6 +615,15 @@ hour, or until tomorrow morning (9:00 your time). Until then nothing pops
 up and no browser notification is sent, whatever your settings; counts and
 your notifications still update, and everyone sees your amber dot. **Resume
 notifications** ends it early.
+
+At most three pop-ups show at once. Each stays six seconds (one with a
+card's buttons, twelve), and stays while your pointer or keyboard is on
+it. Nothing pops up for the conversation you have open.
+
+g1t never asks to show browser notifications when a page loads. After
+your first pop-up for a DM or a mention, it offers once: **Get notified
+when someone messages you**. If you say no, it doesn't ask again; turn
+them on later under **Settings → Notifications**.
 
 [Notifications](/guides/notifications/) are separate: they keep every item until you
 deal with it, whatever these settings say.

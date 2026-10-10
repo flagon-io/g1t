@@ -1,7 +1,7 @@
 /**
- * What an agent remembers (docs/WORKSPACE.md, "What an agent can and can't
- * know"). Agents know nothing between turns but what they read through
- * tools; memory is the one exception, so its rules are code, not prompt:
+ * What an agent remembers (docs.g1t.sh/guides/agent-memory/). Agents know
+ * nothing between turns but what they read through tools; memory is the one
+ * exception, so its rules are code, not prompt:
  *
  * - Every fact keeps its source (a message, a session, or the person who
  *   wrote it) and its scope.
@@ -84,7 +84,7 @@ export function recallable(memory: Pick<MemoryRow, "scope" | "scope_ref">, place
  *
  * `onlyFor`: the person who asked, when the turn read an artifact the
  * whole workspace can't read. What it learned there is kept as theirs
- * alone, wherever it is (docs/ARTIFACTS_MODE.md, section 4.3, rule 7).
+ * alone, wherever it is.
  */
 export function scopeFor(place: RecallPlace, wanted: AgentMemoryScope | null, onlyFor: string | null = null): { scope: AgentMemoryScope; ref: string } {
   if (onlyFor) return { scope: "person", ref: onlyFor };

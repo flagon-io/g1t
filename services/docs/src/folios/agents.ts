@@ -1,7 +1,7 @@
 /**
  * What an agent may reach in folios for the person it acts for (its
  * asker), and who else will see its answer (the audience): the leak rules
- * of docs/ARTIFACTS_MODE.md section 4.3, apart from where rows come from.
+ * (docs.g1t.sh/guides/agent-access/), apart from where rows come from.
  * Pure.
  *
  * - The agent never has more than its asker (`agentFolioRole`).

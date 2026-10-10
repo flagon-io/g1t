@@ -1,9 +1,9 @@
 /**
- * Chat's cards for artifact links (docs/ARTIFACTS_MODE.md section 4.3 rule
- * 3): each viewer asks the site for their own, so someone who can open the
- * artifact sees its kind, title, space and last edit, and anyone else sees
- * only "An artifact you don't have access to", with no title. Looking is
- * not opening: a card never makes a link-shared artifact readable.
+ * Chat's cards for artifact links (docs.g1t.sh/guides/artifacts/, "Links
+ * in chat"): each viewer asks the site for their own, so someone who can
+ * open the artifact sees its kind, title, space and last edit, and anyone
+ * else sees only "An artifact you don't have access to", with no title.
+ * Looking is not opening: a card never makes a link-shared artifact readable.
  */
 import type { FolioKind, Result } from "@g1t/contracts";
 import { Lock } from "lucide-react";

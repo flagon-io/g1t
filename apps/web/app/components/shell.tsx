@@ -1759,7 +1759,7 @@ function SidebarToggle({ onClick, open, className = "" }: { onClick: () => void;
 }
 
 /**
- * The app (docs/WORKSPACE.md, "Shell"): three surfaces that never blur
+ * The app: three surfaces that never blur
  * together. The dock, a floating bar of apps down the left; the mode's
  * sidebar, flat on the background beside it, which folds away with Ctrl B
  * and is a drawer below 1024px; and the page, a rounded panel inset from

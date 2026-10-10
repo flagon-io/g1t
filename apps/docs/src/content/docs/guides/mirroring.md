@@ -105,6 +105,9 @@ g1t for each push copied in:
   places. A workflow deploys when any job names an `environment:`.
 - Secrets come from the [project on g1t](/guides/secrets-and-variables/),
   never the remote's.
+- A push copied in that changes `.g1t/`, `.github/workflows/` or
+  `.github/actions/` starts runs that wait for approval before they can
+  use the repository's secrets and variables.
 
 **End CI failover** when the remote runs its workflows again. Runs already
 started finish.
@@ -195,8 +198,12 @@ Everything here is also in the API at `/repos/{owner}/{name}/mirror`, and
 as the `mirror_*` actions of the MCP `repository` tool. See the
 [API reference](/reference/api/). Reading a repository's
 mirroring needs read access; syncing needs push; everything else needs the
-Admin role. Agents never move a repository to g1t or handle a remote's
-token.
+Admin role. Agents never move a repository to g1t, nor add, change or
+remove a remote.
+
+Removing a remote makes a mirror an ordinary repository with what it has,
+and stops pushes to a follower. It is refused during a takeover: hand it
+back or move it to g1t first.
 
 [Webhooks](/guides/webhooks/) can subscribe to:
 
@@ -216,3 +223,14 @@ A standby mirror becomes an ordinary repository, keeping what it has, when:
 
 A takeover in progress keeps going and says why on the link: move it to
 g1t to keep it.
+
+## Not supported yet
+
+- Workflow results from CI failover stay on g1t; they are not reported
+  back to the remote as checks.
+- CI failover starts only when someone starts it.
+- A takeover runs under the repository's own [rules](/guides/rules/) on
+  g1t, not the remote's branch protection.
+- A mirror doesn't show the remote's pull requests.
+- GitLab and Bitbucket repositories link as any host over HTTPS, asked
+  every five minutes.

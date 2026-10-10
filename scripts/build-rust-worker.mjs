@@ -9,7 +9,7 @@
 // workspace's Cargo target directory, so builds running side by side take
 // turns on Cargo's lock while their wasm-bindgen and wasm-opt steps
 // overlap. How hard wasm-opt works is each crate's
-// [package.metadata.wasm-pack.profile.release] (docs/DEPLOYING.md).
+// [package.metadata.wasm-pack.profile.release].
 //
 //   node ../../scripts/build-rust-worker.mjs [worker-build args]
 //   node scripts/build-rust-worker.mjs --ensure   # install only

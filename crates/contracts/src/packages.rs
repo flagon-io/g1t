@@ -1,7 +1,7 @@
 //! The packages service: the registries a workspace publishes to and
-//! installs from, beside its code (docs/PACKAGES.md). Container images
-//! first, spoken over the OCI Distribution protocol on `g1t.sh/v2/`; npm,
-//! Composer, Cargo, Go, Maven, NuGet and RubyGems after.
+//! installs from, beside its code (docs.g1t.sh/guides/packages/).
+//! Container images first, spoken over the OCI Distribution protocol on
+//! `g1t.sh/v2/`; npm, Composer, Cargo, Go, Maven, NuGet and RubyGems after.
 //!
 //! The site reaches it over `POST /rpc/<method>` with the arguments below;
 //! the registries' own protocols are any other request. Mirrors

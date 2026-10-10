@@ -1,5 +1,5 @@
 /**
- * Share an artifact (docs/ARTIFACTS_MODE.md section 6.4): invite people,
+ * Share an artifact (docs.g1t.sh/guides/artifacts/, "Sharing"): invite people,
  * agents and teams with a role, see everyone who has access and where it
  * comes from, choose whether it follows its space or parent or only
  * people invited, open it to the workspace or to anyone in it with the

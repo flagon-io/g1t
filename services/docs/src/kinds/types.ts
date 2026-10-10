@@ -1,9 +1,9 @@
 /**
  * What every kind of folio says about its own content, so one room
  * (FolioRoom, src/folios/room.ts) serves docs, slides, designs and
- * dashboards alike (docs/ARTIFACTS_MODE.md, section 3). Each kind is one
- * module under src/kinds/ and one line in src/kinds/index.ts. Pure (yjs
- * only): nothing here reads D1 or the network.
+ * dashboards alike. Each kind is one module under src/kinds/ and one line
+ * in src/kinds/index.ts. Pure (yjs only): nothing here reads D1 or the
+ * network.
  */
 import type { DocBlockOutline, DocCitation, FolioAgentEdit, FolioKind, FolioPreview, FolioVersionKind } from "@g1t/contracts";
 import type * as Y from "yjs";

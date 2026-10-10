@@ -2,8 +2,8 @@
  * An agent's budget: what it has spent, whether it may reply, and what a
  * reply cost. Pure, so it is tested on its own.
  *
- * Spend is limited at several levels (docs/WORKSPACE.md, "Budgets"). The
- * workspace's own limit and AI credit are billing's, checked by the
+ * Spend is limited at several levels (docs.g1t.sh/guides/agent-budgets/).
+ * The workspace's own limit and AI credit are billing's, checked by the
  * compute gate. The agent's monthly and daily caps are checked here, from
  * the spend this service rolls up per agent, before anything is reserved.
  * Spend counts what a reply costs at price: the model at the provider's

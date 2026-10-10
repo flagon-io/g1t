@@ -3,9 +3,8 @@ import type { WorkspaceAgent } from "@g1t/contracts";
 import { Mark } from "./logo";
 
 /**
- * Whether an agent is `@g1t`, the orchestrator every workspace has
- * (docs/WORKSPACE.md, "g1t, the orchestrator"): built in, first in the
- * agents service's list. Its handle is never another agent's.
+ * Whether an agent is `@g1t`, the orchestrator every workspace has: built
+ * in, first in the agents service's list. Its handle is never another agent's.
  */
 export function isOrchestrator(agent: Pick<WorkspaceAgent, "handle"> & { builtin?: boolean | null }): boolean {
   return agent.builtin === true || agent.handle === "g1t";

@@ -1,5 +1,5 @@
 //! Artifacts over REST and MCP: a workspace's docs, slides, designs and
-//! dashboards (Artifacts mode, docs/ARTIFACTS_MODE.md), at
+//! dashboards (Artifacts mode), at
 //! `/workspaces/{workspace}/artifacts` and as the `artifact` MCP tool.
 //! Code calls them folios; people, URLs, the tool and the scopes say
 //! "artifact". Workflow runs' artifacts are something else (artifacts.rs).

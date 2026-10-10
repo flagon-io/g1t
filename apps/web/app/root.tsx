@@ -383,7 +383,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         {/* The stylesheet before everything React Router preloads, so a slow
-            connection paints sooner (docs/research/css-shipping.md). */}
+            connection paints sooner. */}
         <link rel="stylesheet" href={appCss} precedence="default" />
         {root?.analyticsConsent && <meta name="g1t-analytics" content="consent" />}
         <Meta />

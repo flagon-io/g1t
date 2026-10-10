@@ -12,6 +12,9 @@ can install it; push to a branch and its `dev-` version follows.
 https://g1t.sh/-/composer/<workspace>/
 ```
 
+Packages from Packagist still install from Packagist: add the workspace's
+repository beside it, as [below](#install).
+
 ## Make a repository a package
 
 Give the repository a `composer.json` at its root with a `name`:

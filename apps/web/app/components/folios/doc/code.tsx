@@ -1,7 +1,6 @@
 /**
  * Docs and code: citing code in a doc (the Cite code dialog), and showing
- * a project's docs folder in Artifacts. Plan: docs/WORKSPACE.md, "Agents
- * and docs" and "Docs and repository docs".
+ * a project's docs folder in Artifacts.
  */
 import { DOC_CITATION_KIND_LABELS, type DocCitationKind, type DocRepoSpace } from "@g1t/contracts";
 import { FileCode2, FolderGit2 } from "lucide-react";

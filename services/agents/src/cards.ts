@@ -1,9 +1,10 @@
 /**
- * Agents' cards in chat that people act on in place (docs/WORKSPACE.md,
- * "Cards"): a session's card (message it, stop it, approve more), and an
- * issue an agent drafted (file it, discard it). Chat checks the person can
- * read the conversation and that the card offers the action; this decides
- * whether they may, acts as them, and updates the card for everyone.
+ * Agents' cards in chat that people act on in place
+ * (docs.g1t.sh/guides/chat/, "Cards you can act on"): a session's card
+ * (message it, stop it, approve more), and an issue an agent drafted (file
+ * it, discard it). Chat checks the person can read the conversation and
+ * that the card offers the action; this decides whether they may, acts as
+ * them, and updates the card for everyone.
  *
  * The rules, decided here in code:
  * - **Stop, message:** anyone who can read the conversation the session

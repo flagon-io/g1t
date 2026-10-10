@@ -2,7 +2,7 @@
 .SYNOPSIS
   Times g1t.sh pages from this machine: time to first byte, where the Worker
   ran (cf-placement) and where the time went (Server-Timing). Run it before
-  and after a change and compare. docs/PERFORMANCE.md explains the columns.
+  and after a change and compare. CONTRIBUTING.md ("Speed") has the targets.
 
 .EXAMPLE
   # Signed out

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Deploys g1t to Cloudflare from deploy/stack.jsonc: only what changed since
 // each Worker's live commit, migrations first, then stage by stage.
-// docs/DEPLOYING.md is the guide.
+// docs.g1t.sh/guides/deploy-to-cloudflare/ is the guide.
 //
 //   node scripts/deploy.mjs plan                  what would deploy, and why (read-only)
 //   node scripts/deploy.mjs deploy                migrations, then every changed unit

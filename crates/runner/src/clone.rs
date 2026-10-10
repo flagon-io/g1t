@@ -1,10 +1,10 @@
 //! How a sandbox clones and fetches: shallow, and deeper only when it needs
 //! to be. A sandbox's work starts from one commit (an agent's branch, the
 //! commit checks run on, a build), so the history behind it is usually
-//! never read; a full clone of g1t took 5.4 s against 3.8 s at depth 1
-//! (docs/ARTIFACTS.md, R8). Work that merges (catching up, the merge queue,
-//! a merge check, a review's diff) deepens until the two sides share a
-//! commit, and fetches everything only as the last resort.
+//! never read; a full clone of g1t took 5.4 s against 3.8 s at depth 1.
+//! Work that merges (catching up, the merge queue, a merge check, a
+//! review's diff) deepens until the two sides share a commit, and fetches
+//! everything only as the last resort.
 //!
 //! Environment, for the operator or a self-hosted runner:
 //!

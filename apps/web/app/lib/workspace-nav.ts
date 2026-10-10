@@ -113,7 +113,7 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 }
 
 /**
- * The dock's modes (docs/WORKSPACE.md, "Shell"). Today is the front page;
+ * The dock's modes. Today is the front page;
  * Chat, Agents, Code and Artifacts are where work happens; Notifications
  * spans them; People is who belongs; Workspace is the workspace itself:
  * its money, policies and settings; Apps is everything installed that you

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Do Artifacts forks copy their source's objects, or share them?
 //
-// Cloudflare does not document it (docs/ARTIFACTS.md, M2), and it decides
+// Cloudflare does not document it, and it decides
 // how much every pull request costs in storage. This makes a throwaway
 // repository holding ~100 MB that cannot be compressed, forks it five
 // times, and reads whatever storage figures Cloudflare reports before and
@@ -20,7 +20,6 @@
 // Options: --namespace <name> (default g1t-storage-test), --mb <size> (100),
 // --forks <n> (5), --minutes <n> to keep measuring (20).
 //
-// How to read the result: docs/ARTIFACTS.md, "R2: the fork storage test".
 // Needs git on PATH. Costs a few cents of Artifacts storage and operations.
 
 import { execFileSync } from "node:child_process";

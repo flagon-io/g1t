@@ -101,7 +101,7 @@ const DEFAULT_PLAN: FeaturePlan = {
   overage: "Everything is metered from the first unit at what it costs g1t plus 20%. Unused included usage does not roll over.",
 };
 
-/** How each part of a workspace is charged: the plan's Pricing table (docs/WORKSPACE.md). */
+/** How each part of a workspace is charged. */
 const WORKSPACE_CHARGES: { what: string; how: string; soon?: boolean }[] = [
   {
     what: "People chatting",

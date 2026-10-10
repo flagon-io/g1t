@@ -1,5 +1,5 @@
 /**
- * Artifacts as lists show them (docs/ARTIFACTS_MODE.md section 6.2): rows
+ * Artifacts as lists show them: rows
  * grouped by the day they were last edited, in the viewer's time zone, or
  * cards with a picture drawn from each one's preview. Each has its kind,
  * who can see it, its space, when it was edited and by whom, and its ⋯

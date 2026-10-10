@@ -33,10 +33,12 @@ a private network, not yet for an installation on the open internet.
 | Billing | Off. Nothing is charged, and no usage limit stops work. |
 | Site analytics | Off. Only g1t.sh sends page analytics (to HeyCatch, as its [privacy policy](https://g1t.sh/policies/privacy#how-the-site-is-used) describes); your installation sends none. |
 | Git over SSH and the `g1t` CLI | Not available yet |
-| Scheduled jobs | Run on their schedules inside the g1t container: webhook retries, purging deleted repositories, the packages sweep, security sweeps, audit log retention and access request summaries. Actions schedules (`on: schedule`) are not run. |
+| Scheduled jobs | Run on their schedules inside the g1t container: webhook retries, purging deleted repositories, the packages sweep, security sweeps, audit log retention, access request summaries and emptying artifacts left in the trash for 30 days. Actions schedules (`on: schedule`) are not run. |
 
 What hosted g1t cannot do yet either is on
-[What g1t can't do yet](/about/limitations/).
+[What g1t can't do yet](/about/limitations/). What runs inside the
+installation, and what stands in for each part of g1t.sh, is in
+[How a self-hosted g1t runs](/guides/self-hosting-architecture/).
 
 ## Before you start
 
@@ -164,6 +166,7 @@ Set these in the environment, or in a `.env` file next to
 | `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | the bundled RustFS, bucket `g1t-packages` | Where packages' files are kept: any S3-compatible store. Change the two keys before first start; RustFS is made with them. |
 | `S3_PUBLIC_ENDPOINT` | (none) | The store's address as clients reach it. When set, large layers are downloaded from it directly with a signed URL. |
 | `PACK_S3_BUCKET` | `g1t-git-packs` | The bucket on the same store that packs for fresh clones are kept in, so the next clone of the same commit is not built again. The bundled store deletes packs after 7 days, and uploads left unfinished after a day; on another store, give the bucket a lifecycle rule that does the same. |
+| `DOCS_S3_BUCKET` | `g1t-docs-files` | The bucket on the same store that images and files added to pages and [artifacts](/guides/artifacts/) are kept in. |
 | `RUSTFS_IMAGE` | `rustfs/rustfs:1.0.1` | The image the bundled object store runs: [RustFS](https://rustfs.com), an S3-compatible server. |
 | `AWS_CLI_IMAGE` | `amazon/aws-cli:2.37.10` | The image `storage-setup` makes the buckets and the packs' lifecycle rule with. |
 | `BACKUP_S3_BUCKET` | `g1t-backups` | The bucket on the same store that nightly repository backups (a `git bundle` of each repository whose branches or tags changed) are kept in. The bundles are cut by g1t's runner, which this installation does not run yet, so the bucket stays empty for now: copy the volumes, as below. |
@@ -245,7 +248,7 @@ across from GitHub, is in [GitHub](/guides/github/).
 | --- | --- |
 | `g1t_g1t-data` | Accounts, workspaces, issues and every other record, as SQLite files; the keys that seal stored secrets (`keys.env`) |
 | `g1t_g1t-git` | Your repositories, one bare git repository each |
-| `g1t_g1t-objects` | The bundled object store (RustFS): container images' layers and other package files in `g1t-packages`, the `g1t-backups` bucket and the clone packs in `g1t-git-packs` |
+| `g1t_g1t-objects` | The bundled object store (RustFS): container images' layers and other package files in `g1t-packages`, the `g1t-backups` bucket, the clone packs in `g1t-git-packs`, and files added to pages and artifacts in `g1t-docs-files` |
 | `g1t_g1t-secrets` | The key the site and the git store share |
 
 To back up, stop g1t and copy the volumes:

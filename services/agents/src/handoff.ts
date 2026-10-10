@@ -1,6 +1,6 @@
 /**
- * Handing work to a colleague from chat (docs/WORKSPACE.md, "Agents know
- * each other"): the `hand_off` tool's port. Pure apart from what it is
+ * Handing work to a colleague from chat (docs.g1t.sh/guides/agents/,
+ * "Hand off"): the `hand_off` tool's port. Pure apart from what it is
  * given, so its refusals are tested on their own.
  *
  * The agent's words never wake a colleague; this does. It checks who the

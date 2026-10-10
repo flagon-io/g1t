@@ -1,8 +1,7 @@
 /**
- * The kinds the room knows, one line each (docs/ARTIFACTS_MODE.md,
- * section 3). A kind without a line here can't be made yet: the service
- * says it is coming. Append only; never reformat (parallel phases each
- * add their line).
+ * The kinds the room knows, one line each. A kind without a line here can't
+ * be made yet: the service says it is coming. Append only; never reformat
+ * (parallel phases each add their line).
  */
 import type { FolioKind } from "@g1t/contracts";
 

@@ -1,6 +1,6 @@
 /**
  * Artifacts mode's pure helpers (code says "folio", people see
- * "artifact"; docs/ARTIFACTS_MODE.md): sidebar trees, the home list's
+ * "artifact"): sidebar trees, the home list's
  * days, cursor colours, covers, roles, how search snippets mark their
  * matches, and projects' docs folders. No Workers or DOM imports, so it is
  * tested under Node.

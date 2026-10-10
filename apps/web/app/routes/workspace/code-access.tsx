@@ -12,8 +12,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 /**
  * What a member without Code access sees in place of a repository, an
- * issue, a pull request or a project list (docs/WORKSPACE.md, "Members
- * without Code"): what it was, and who to ask.
+ * issue, a pull request or a project list: what it was, and who to ask.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);

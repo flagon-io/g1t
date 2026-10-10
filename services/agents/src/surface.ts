@@ -3,8 +3,7 @@
  * said, show that the agent is typing, post its answer. The loop knows
  * nothing else about the chat it is in, so the same agent (its definition,
  * budget and replies) answers wherever it is reached: g1t's own chat today,
- * another chat app the workspace connected later (docs/WORKSPACE.md,
- * "Working from another chat app"). Only g1t's adapter exists.
+ * another chat app the workspace connected later. Only g1t's adapter exists.
  */
 import type { AgentDelivery, ChatMessage, ConversationForAgent, MessageCard, ServiceBinding } from "@g1t/contracts";
 
@@ -33,8 +32,8 @@ export type ConversationMember = {
 };
 
 /**
- * Where an agent is answering and who is in it (docs/WORKSPACE.md, "Where
- * you are"): only these members read what it says there.
+ * Where an agent is answering and who is in it (docs.g1t.sh/guides/agents/,
+ * "Who is in the conversation"): only these members read what it says there.
  */
 export type Conversation = {
   kind: "dm" | "group_dm" | "private_channel" | "public_channel";

@@ -182,8 +182,16 @@ that used them goes.
 Without the [g1t plan](/guides/usage-and-billing/#the-g1t-plan), public
 packages may hold 10 GB and private ones 500 MB per workspace; a push past
 either is refused, with a message saying how much is used. On the plan,
-storage past those amounts is charged instead. See
-[storage and pull limits](/guides/containers/#storage-and-pull-limits).
+nothing is refused and storage past those amounts is charged instead:
+
+- What the workspace's packages hold is measured each day, public and
+  private apart, each past its own free amount.
+- A month's GB-months are those days added up, divided by 30, charged at
+  $0.018 a GB-month as **Package storage** on the
+  [bill](/guides/usage-and-billing/).
+- Deleted packages and versions, kept for 30 days, do not count.
+- Downloads and pulls cost nothing. Anonymous pulls are rate limited; see
+  [storage and pull limits](/guides/containers/#storage-and-pull-limits).
 
 ## Downloads
 
@@ -241,8 +249,30 @@ yanking or unyanking a crate version, unlisting or listing a NuGet version,
 pushing a NuGet version's symbols and yanking a gem version), as are
 restoring them, purging them after 30 days, every change to who has access
 and to Manage Actions access, changing the visibility, and linking and
-unlinking (see the [audit log's list](/guides/audit-log/)). The events
-`package.published`, `package.version_deleted`, `package.deleted` and
-`package.visibility_changed`, which [webhooks](/guides/webhooks/) can be
-sent: a linked package's go to its repository's webhooks and its
-workspace's, an unlinked package's to its workspace's webhooks.
+unlinking (see the [audit log's list](/guides/audit-log/)).
+
+[Webhooks](/guides/webhooks/) can subscribe to these events. A linked
+package's go to its repository's webhooks and its workspace's; an
+unlinked package's go to its workspace's webhooks.
+
+| Event | Sent when |
+| --- | --- |
+| `package.published` | A version is published. `data.tags` names the tags that now point to it. |
+| `package.version_deleted` | A version is deleted. |
+| `package.deleted` | A package is deleted. |
+| `package.visibility_changed` | A package is made public or private. `data.visibility` is the new one. |
+
+Each one's `data` has `package_id`, `workspace`, `ecosystem`, `name` and
+`repo_id` (null for an unlinked package); a version's event also has its
+`version` and `digest` (for a container image, the manifest's), and
+`package.published` its `size`, except for a Composer package.
+
+## Not supported yet
+
+- PyPI packages.
+- Installing unscoped npm packages, or other scopes, through g1t.sh, and
+  a copy of Packagist for Composer: those still come from their public
+  registries.
+- A Go module proxy: Go modules are fetched with git.
+- Workflows that run when a package is published.
+- Packages in site-wide search.

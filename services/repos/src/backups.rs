@@ -1,5 +1,5 @@
 //! Nightly backups of every repository, outside the git store
-//! (docs/ARTIFACTS.md, R11; the flow is in `g1t_contracts::backups`).
+//! (the flow is in `g1t_contracts::backups`).
 //!
 //! Each repository whose refs moved since its last backup gets a
 //! `git bundle`: a full one first, then incremental ones whose

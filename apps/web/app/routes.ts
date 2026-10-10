@@ -141,7 +141,7 @@ export default [
     route("-/settings/chat", "routes/workspace/chat-settings.tsx"),
     route("-/repositories", "routes/workspace/repositories.tsx"),
     // Agents mode: the overview (budget, sessions, roster, spend) first, then
-    // each of the workspace's own agents and its sessions (docs/WORKSPACE.md).
+    // each of the workspace's own agents and its sessions.
     // `new` is no agent's handle.
     route("-/agents", "routes/workspace/agents/layout.tsx", [
       index("routes/workspace/agents.tsx"),
@@ -168,7 +168,7 @@ export default [
       route("dm/:id", "routes/workspace/chat/channel.tsx", { id: "routes/workspace/chat/dm" }),
       route(":channel", "routes/workspace/chat/channel.tsx"),
     ]),
-    // Artifacts mode (docs/ARTIFACTS_MODE.md; code says "folio"): what its
+    // Artifacts mode (code says "folio"): what its
     // pages call as they run (an artifact's live socket, JSON, comments,
     // uploads, export), then Home, making one, templates, the trash, the
     // spaces, and each artifact by its address. Addresses are flat and end
@@ -198,7 +198,7 @@ export default [
     route("-/today", "routes/workspace/home.tsx"),
     route("-/home", "routes/workspace/moved.ts", { id: "routes/workspace/moved-home" }),
     route("-/apps", "routes/workspace/apps.tsx"),
-    // What Code's pages say to a member without Code (docs/WORKSPACE.md, "Members without Code").
+    // What Code's pages say to a member without Code.
     route("-/code-access", "routes/workspace/code-access.tsx"),
     route("-/memory", "routes/workspace/memory.tsx"),
     route("-/context", "routes/workspace/context.tsx"),

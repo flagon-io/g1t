@@ -1,6 +1,6 @@
 /**
  * One reply: an agent answering a message in chat, in this Worker, with no
- * sandbox (docs/WORKSPACE.md, "Two kinds of turn").
+ * sandbox.
  *
  * A reply is quick and bounded: it reads the latest messages of the
  * conversation (never all of it), what the agent remembers for this place,
@@ -75,7 +75,7 @@ function askerIn(history: SurfaceMessage[], delivery: AgentDelivery): SurfaceMes
 
 /**
  * An agent's colleagues: every agent of the workspace but itself that is
- * not archived (docs/WORKSPACE.md, "Agents know each other").
+ * not archived (docs.g1t.sh/guides/agents/, "Agents know each other").
  */
 async function team(db: D1Database, workspaceId: string, selfId: string, now: Date): Promise<Specialist[]> {
   const rows = await db
@@ -114,7 +114,7 @@ async function sessionsHere(db: D1Database, agentId: string, channelId: string):
 }
 
 /**
- * Consulting a colleague (docs/WORKSPACE.md, "Agents know each other"):
+ * Consulting a colleague:
  * the colleague answers in a nested turn that posts nothing, with the same
  * audience (so it can read no more than the conversation may), the same
  * asker, one hop further, its own routing limits, on the same model

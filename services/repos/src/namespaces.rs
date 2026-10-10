@@ -1,5 +1,5 @@
 //! How each git store namespace stands: what it holds, how busy and how
-//! healthy it has been, and its limits (docs/ARTIFACTS.md, R7).
+//! healthy it has been, and its limits.
 //!
 //! Placing a new repository reads this when there is more than one
 //! namespace to choose from (shards.rs `Placement::choose`), kept a minute

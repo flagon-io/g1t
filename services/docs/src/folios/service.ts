@@ -2,7 +2,6 @@
  * Folios (Artifacts mode): the docs service's answers to every method in
  * FOLIO_RPC_METHODS (packages/contracts folios.ts, `foliosClient`), its
  * live socket (`GET /live?folio=`) and uploads (`PUT /files?folio=`).
- * Plan and decisions: docs/ARTIFACTS_MODE.md.
  *
  * Every read goes through one rule (src/access.ts `effectiveRole`) over
  * the folio's chain, after the list SQL's coarse filter (`folio_access`,

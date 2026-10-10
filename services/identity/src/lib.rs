@@ -624,13 +624,13 @@ impl Identity {
     }
 
     /// `users_for_audience`: the people behind these ids (at most 50), each
-    /// with their workspaces, roles, base permissions and repository grants,
-    /// under each workspace's policy, as a signed-in viewer would have them.
-    /// For the agents service, which answers only with what every person
-    /// who will read the answer may see (docs/WORKSPACE.md, "What an agent
-    /// can and can't know"). Ids of no live account are left out, so the
-    /// caller can tell someone it could not resolve. Reached only by service
-    /// binding.
+    /// with their workspaces, roles, base permissions and repository
+    /// grants, under each workspace's policy, as a signed-in viewer would
+    /// have them. For the agents service, which answers only with what
+    /// every person who will read the answer may see
+    /// (docs.g1t.sh/guides/agent-access/, "What an agent can and can't
+    /// know"). Ids of no live account are left out, so the caller can tell
+    /// someone it could not resolve. Reached only by service binding.
     async fn users_for_audience(&self, a: UsernamesArgs) -> Result<Vec<User>> {
         let mut found = Vec::new();
         for id in a.ids.iter().take(50) {

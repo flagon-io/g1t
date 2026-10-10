@@ -3,7 +3,7 @@
  * slug, its people, agents and teams, how member keys show, and the
  * spaces with a person's role in each. Cached per request (one instance
  * per request). Docs' page code (src/index.ts, `Docs`) keeps its own copy
- * of these until Phase 7 of docs/ARTIFACTS_MODE.md removes it.
+ * of these until it is removed.
  */
 import {
   fail,

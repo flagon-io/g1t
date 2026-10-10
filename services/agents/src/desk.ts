@@ -1,6 +1,6 @@
 /**
- * An agent's desk (docs/WORKSPACE.md, "The desk"): one Durable Object per
- * agent, by its id, where everything addressed to it arrives.
+ * An agent's desk: one Durable Object per agent, by its id, where
+ * everything addressed to it arrives.
  *
  * Two kinds of work arrive: messages to answer (replies), and sessions to
  * advance by a step. They are worked in two lanes from one alarm, each at

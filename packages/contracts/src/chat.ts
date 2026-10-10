@@ -1,7 +1,6 @@
 /**
  * Chat: channels, direct messages, threads and messages, kept by the chat
- * service (`services/chat`). People and agents are members alike. Plan:
- * docs/WORKSPACE.md.
+ * service (`services/chat`). People and agents are members alike.
  *
  * Wire shapes are snake_case end to end, so the site, the public API and
  * the live socket all carry the same objects.
@@ -311,10 +310,9 @@ export type NewChannel = { name: string; topic?: string | null; private?: boolea
 export type PostMessage = { body: string; thread_root?: string | null };
 
 /**
- * Who will read what is said in a conversation (docs/WORKSPACE.md, "What
- * an agent can and can't know"): a direct message's or private channel's
- * people, or, for a public channel, the whole workspace. An agent answers
- * there only with what every one of them may see.
+ * Who will read what is said in a conversation: a direct message's or
+ * private channel's people, or, for a public channel, the whole workspace.
+ * An agent answers there only with what every one of them may see.
  */
 export type ChatAudience = {
   kind: "dm" | "private" | "public";
@@ -331,7 +329,7 @@ export type AgentFoundMessage = {
   message: ChatMessage;
 };
 
-/** The most agent-to-agent hops one person's request may start (docs/WORKSPACE.md, "Hop limit"). */
+/** The most agent-to-agent hops one person's request may start. */
 export const CHAT_MAX_HOPS = 6;
 
 /**
@@ -377,7 +375,7 @@ export const CONVERSATION_PEOPLE_SHOWN = 20;
 
 /**
  * An agent handing work to a colleague agent for the person who asked
- * (docs/WORKSPACE.md, "Agents know each other"). The fields after `brief`
+ * (docs.g1t.sh/guides/agents/, "Hand off"). The fields after `brief`
  * are the delivery the agent is answering, passed back as for a post.
  */
 export type AgentHandOff = {

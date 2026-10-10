@@ -10,11 +10,11 @@ import { actionMode, inputValue, moneyInitial } from "../../lib/card-actions";
 import { currentSink, dismiss, settle, useWaitingCards } from "../../lib/notify-client";
 import { cardActionRequest, notificationActions } from "../../lib/notify-store";
 
-// A chat card's actions on a notification about it (docs/WORKSPACE.md,
-// "Cards"): a session at its cap (Approve more with the amount inline,
-// Stop, Open), a draft issue (File issue, Discard). Pressing one sends the
-// same `card_action` as the card in the conversation; the card there
-// changes for everyone, and this notification is put away.
+// A chat card's actions on a notification about it: a session at its cap
+// (Approve more with the amount inline, Stop, Open), a draft issue (File
+// issue, Discard). Pressing one sends the same `card_action` as the card
+// in the conversation; the card there changes for everyone, and this
+// notification is put away.
 
 const BASE =
   "inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md px-2.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:pointer-events-none disabled:opacity-50 max-sm:h-9 max-sm:px-3";

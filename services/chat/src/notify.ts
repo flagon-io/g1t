@@ -1,7 +1,7 @@
 /**
  * What the notify service is told about a new message, or a read: every
  * person in the conversation has its counts moved, and those it is for are
- * notified (docs/WORKSPACE.md, "Live notifications").
+ * notified (docs.g1t.sh/guides/chat/, "Notifications").
  *
  * - A direct message notifies everyone else in it, muted or not.
  * - An @mention notifies the person named, muted or not.

@@ -135,7 +135,7 @@ impl Resource {
     /// TypeScript mirror lists it under `UPCOMING_RESOURCES`) while nothing
     /// hands it out: presets, full access, OAuth and the token form leave
     /// it out, and no operation needs it. Every resource is offered now;
-    /// Artifacts was the last, until Phase 3 of docs/ARTIFACTS_MODE.md.
+    /// Artifacts was the last.
     pub fn offered(self) -> bool {
         let _ = self;
         true

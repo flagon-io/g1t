@@ -6,8 +6,9 @@
  *
  * Every binding is listed in `RATE_LIMITS` with its namespace id and limit,
  * and apps/web's tests check each wrangler.jsonc against it, so this table
- * is the one place to read or change them. docs/RATE-LIMITS.md explains
- * the choices; the docs' rate limits page shows the public ones.
+ * is the one place to read or change them. CONTRIBUTING.md, "Rate
+ * limits", says how; the docs' rate limits page
+ * (docs.g1t.sh/reference/rate-limits/) shows the public ones.
  *
  * A limit fails open: no binding (self-hosted, `wrangler dev` without one)
  * or a binding that throws lets the request through. A limit guards
@@ -30,7 +31,7 @@ export const LIMIT_PERIOD_SECONDS = 60;
 export type RateLimitSpec = {
   /** The Worker whose wrangler.jsonc declares it. */
   worker: string;
-  /** Unique per Cloudflare account; allocated in blocks per Worker (docs/RATE-LIMITS.md). */
+  /** Unique per Cloudflare account; allocated in blocks per Worker (CONTRIBUTING.md, "Rate limits"). */
   namespaceId: number;
   /** Requests per `LIMIT_PERIOD_SECONDS` per key. */
   limit: number;

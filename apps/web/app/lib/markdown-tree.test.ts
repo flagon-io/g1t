@@ -40,7 +40,7 @@ const components: Components = {
 const root = new URL("../../../../", import.meta.url);
 const SAMPLES: [string, string][] = [
   ["README.md", readFileSync(new URL("README.md", root), "utf8")],
-  ["docs/PERFORMANCE.md", readFileSync(new URL("docs/PERFORMANCE.md", root), "utf8")],
+  ["apps/docs/src/content/docs/guides/deploy-to-cloudflare.md", readFileSync(new URL("apps/docs/src/content/docs/guides/deploy-to-cloudflare.md", root), "utf8")],
   ["CONTRIBUTING.md", readFileSync(new URL("CONTRIBUTING.md", root), "utf8")],
   [
     "edge cases",

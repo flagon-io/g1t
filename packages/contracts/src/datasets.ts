@@ -1,6 +1,5 @@
 /**
- * Datasets: the safe query layer behind dashboards (Artifacts mode,
- * docs/ARTIFACTS_MODE.md, section 3.4). Mirrors
+ * Datasets: the safe query layer behind dashboards in Artifacts. Mirrors
  * `crates/contracts/src/datasets.rs`; a Rust test keeps the catalog the
  * same and runs both validators over `datasets.fixtures.json`.
  *

@@ -243,7 +243,7 @@ function AppsButton({ slug, code, pins, onToggle, current }: { slug: string; cod
 }
 
 /**
- * The dock down the left (docs/WORKSPACE.md, "Shell"): g1t's mark, which
+ * The dock down the left: g1t's mark, which
  * leads to Today; the built-in apps (Today, Chat, Notifications, Agents,
  * Code and Artifacts) with their names; the apps you pinned, as icons;
  * the Apps launcher; and at its foot People, Workspace and your account.

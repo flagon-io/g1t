@@ -1,7 +1,7 @@
 /**
- * Making sure a workspace has its built-in @g1t (docs/WORKSPACE.md, "g1t,
- * the orchestrator"). Kept apart from the service so it is tested with a
- * stand-in database.
+ * Making sure a workspace has its built-in @g1t
+ * (docs.g1t.sh/guides/agents/, "g1t, the orchestrator"). Kept apart from
+ * the service so it is tested with a stand-in database.
  */
 import { newId } from "../../../packages/contracts/src/ids.ts";
 import { builtinDefinition } from "./orchestrator.ts";

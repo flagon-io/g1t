@@ -1,4 +1,4 @@
-// The fallback path end to end (docs/ARTIFACTS.md, R12): bundles cut as the
+// The fallback path end to end: bundles cut as the
 // runner cuts them, restored into a git store's root, served by the git
 // store itself (deploy/self-host/gitstore/server.mjs, read-only), pushed to
 // while it serves, and reconciled back into the "live" repository.

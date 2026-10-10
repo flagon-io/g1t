@@ -5,8 +5,8 @@
 #
 # A release is a tag `runner-v<version>`, where the version is the one in
 # crates/runner/Cargo.toml; or run it by hand. scripts/runner-release.mjs
-# does the work; docs/DEPLOYING.md, "The self-hosted runner", says how to
-# make the release key the first time.
+# does the work, and its header says how to make the release key the first
+# time; CONTRIBUTING.md ("Deploying") says how a release is made.
 name: Runner release
 
 on:

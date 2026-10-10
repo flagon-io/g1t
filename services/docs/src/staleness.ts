@@ -1,9 +1,9 @@
 /**
  * Pages that cite code a change touched become possibly out of date
- * (docs/WORKSPACE.md, "Agents and docs"). The events service sends this
- * service `git.push` and `pull.merged` (`SUBSCRIBER_DOCS`,
- * crates/contracts subscribers.rs), and the lifecycle events every
- * subscriber hears.
+ * (docs.g1t.sh/guides/artifacts/, "Docs that cite code"). The events
+ * service sends this service `git.push` and `pull.merged`
+ * (`SUBSCRIBER_DOCS`, crates/contracts subscribers.rs), and the lifecycle
+ * events every subscriber hears.
  *
  * - **What changed** is asked as g1t itself (a system viewer in the
  *   repository's workspace): a merged pull request's files from the work

@@ -1,8 +1,8 @@
 /**
  * The roles g1t offers to hire an agent into, by department
- * (docs/WORKSPACE.md, "Roles, not tasks"). Each is an ordinary definition
- * a workspace adopts, renames and changes: a fun name (with more to
- * shuffle through), a title, broad responsibilities, a voice, routing
+ * (docs.g1t.sh/guides/agents/, "Role templates"). Each is an ordinary
+ * definition a workspace adopts, renames and changes: a fun name (with more
+ * to shuffle through), a title, broad responsibilities, a voice, routing
  * limits, and a subagent or two it will use inside its work.
  *
  * Routing limits follow the work: careful review never runs below

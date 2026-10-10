@@ -1,7 +1,8 @@
 /**
  * Which conversations an agent may read from while it answers in one
- * (docs/WORKSPACE.md, "What an agent can and can't know"). Pure, so the
- * rule is tested apart from the service, adversarially.
+ * (docs.g1t.sh/guides/agent-access/, "What an agent can and can't
+ * know"). Pure, so the rule is tested apart from the service,
+ * adversarially.
  *
  * The audience is everyone who will read the answer: a direct message's or
  * private channel's people; for a public channel, the whole workspace. An

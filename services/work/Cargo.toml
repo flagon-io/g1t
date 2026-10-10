@@ -22,6 +22,6 @@ hex = "0.4"
 sha2 = "0.10"
 
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
-# time (docs/DEPLOYING.md, "Build speed").
+# time.
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-O1"]

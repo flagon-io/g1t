@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// How each git store namespace stands (docs/ARTIFACTS.md, R7): what it
+// How each git store namespace stands: what it
 // holds, how busy its busiest minute was against Cloudflare's limit of
 // 2,000 control-plane requests per 10 seconds, how it has been failing,
 // whether it takes new repositories, and its limits. Also queues and lists

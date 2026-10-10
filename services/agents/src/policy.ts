@@ -1,9 +1,10 @@
 /**
- * The workspace's say over all its agents together (docs/WORKSPACE.md,
- * "Budgets"): one monthly budget across every agent, the budget a new
- * agent starts with, the cap a session starts with, and alerts at 75, 90
- * and 100% of the monthly budget. Owners set it. Pure apart from the
- * statements it builds, so the rules are tested on their own.
+ * The workspace's say over all its agents together
+ * (docs.g1t.sh/guides/agent-budgets/): one monthly budget across every
+ * agent, the budget a new agent starts with, the cap a session starts with,
+ * and alerts at 75, 90 and 100% of the monthly budget. Owners set it. Pure
+ * apart from the statements it builds, so the rules are tested on their
+ * own.
  */
 import type { AgentPolicy } from "@g1t/contracts";
 

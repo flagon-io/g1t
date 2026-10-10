@@ -1,6 +1,6 @@
 /**
- * Artifacts mode's sidebar (beside the rail; docs/ARTIFACTS_MODE.md
- * section 6.3): search, Home, New and Templates; Favorites; the spaces
+ * Artifacts mode's sidebar (beside the rail; docs.g1t.sh/guides/artifacts/,
+ * "The sidebar"): search, Home, New and Templates; Favorites; the spaces
  * shown (joined open spaces, team spaces, members-only spaces) each with
  * its tree; Private, everything of yours in no space; Shared, the tops of
  * what others shared with you; then what's possibly out of date,

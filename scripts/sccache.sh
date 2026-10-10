@@ -19,8 +19,7 @@
 # stats prints the server's hits and misses, and adds them to the job's
 # summary.
 #
-# See docs/DEPLOYING.md ("Build speed") and the Actions guide's
-# "Caching Rust builds".
+# See the Actions guide's "Caching Rust builds".
 set -euo pipefail
 
 VERSION=0.18.0

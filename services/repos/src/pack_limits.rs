@@ -1,7 +1,7 @@
 //! What the git store will not hold, checked before it is asked to: no
-//! file over 32 MB, and no repository over about 1 GB
-//! (docs/ARTIFACTS.md, "Limits"). A push that would cross either is
-//! declined with a reason git prints, instead of failing inside the store.
+//! file over 32 MB, and no repository over about 1 GB. A
+//! push that would cross either is declined with a reason git prints,
+//! instead of failing inside the store.
 //!
 //! [`PackSizer`] walks a receive-pack body as it arrives, a chunk at a
 //! time, without keeping it: the commands, then each object of the pack,

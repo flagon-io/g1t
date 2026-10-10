@@ -1,8 +1,8 @@
 /**
  * g1t-wide pauses: staff (or billing's hourly usage watcher) can stop
  * whole kinds of work across the platform while unusual usage is looked
- * into. See docs/SPEND-GUARDRAILS.md and the billing service's
- * `platform.rs`.
+ * into. See the billing service's `platform.rs` and
+ * docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails.
  *
  * - `compute`: agents, sandboxes, Actions hosted jobs and builds. Billing's
  *   `reserve` refuses them itself, so every `ComputeGate.admit` caller gets

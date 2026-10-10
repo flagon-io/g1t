@@ -96,7 +96,7 @@ export function quickReplyRequest(notification: FeedNotification, body: string):
 
 // ── Cards ─────────────────────────────────────────────────────────────────
 
-/** A card's actions on its notification: what the toast and the panel offer (docs/WORKSPACE.md, "Cards"). */
+/** A card's actions on its notification: what the toast and the panel offer. */
 export function notificationActions(notification: FeedNotification): CardAction[] {
   const card = notification.card;
   if (!card || !notification.workspace || !card.channel_id || !card.message_id) return [];

@@ -16,7 +16,8 @@
 //!   private key in PEM (PKCS#8 or PKCS#1). `ACTIONS_OIDC_KEY_PREVIOUS`,
 //!   while it is set, is published too, so tokens it signed still verify
 //!   while the new key takes over. Each key's `kid` is its RFC 7638
-//!   thumbprint. docs/DEPLOYING.md says how to make and rotate them.
+//!   thumbprint. docs.g1t.sh/guides/deploy-to-cloudflare/ ("OIDC tokens
+//!   for workflow jobs") says how to make and rotate them.
 
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};

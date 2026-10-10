@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The restore drill for nightly backups (docs/ARTIFACTS.md, R11;
-// services/repos/src/backups.rs). Picks a repository, downloads its
+// The restore drill for nightly backups (services/repos/src/backups.rs).
+// Picks a repository, downloads its
 // manifest and bundle chain from the g1t-backups bucket, rebuilds the
 // repository from them in a temporary directory, and compares every ref
 // with the live repository. Exits 1 on any difference, 2 when it could not

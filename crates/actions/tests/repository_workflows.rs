@@ -1,7 +1,7 @@
 //! g1t's own workflows (`.g1t/workflows/*.yml`), read by the same parser
 //! and expressions the actions service runs them with: each reads, nothing
 //! in it is unsupported, and the deploy workflow's jobs start, wait and
-//! stop as docs/DEPLOYING.md says.
+//! stop as docs.g1t.sh/guides/deploy-to-cloudflare/ says.
 
 use std::path::PathBuf;
 

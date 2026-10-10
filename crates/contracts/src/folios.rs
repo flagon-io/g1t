@@ -1,4 +1,4 @@
-//! Folios: what people call artifacts (Artifacts mode, docs/ARTIFACTS_MODE.md).
+//! Folios: what people call artifacts (Artifacts mode).
 //! One mode for docs, slides, designs and dashboards, kept by the docs
 //! service (`services/docs`, TypeScript). Code says "folio"; people see
 //! "artifact" in the UI, URLs, the `artifact` MCP tool, REST paths and the

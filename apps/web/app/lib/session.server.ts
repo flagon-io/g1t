@@ -75,9 +75,9 @@ export const viewerMiddleware: MiddlewareFunction<Response> = async ({ request, 
   // from wherever it was going (lib/confirm-gate.ts).
   const gated = confirmGate(pathname, search, viewer);
   if (gated) throw redirect(gated);
-  // A member without Code access in a workspace (docs/WORKSPACE.md,
-  // "Members without Code"): their Home in place of Mission control, and
-  // the page that says to ask an owner in place of anything of Code's.
+  // A member without Code access in a workspace: their Home in place of
+  // Mission control, and the page that says to ask an owner in place of
+  // anything of Code's.
   // The services enforce it too; this keeps the site from offering it.
   const noCode = (viewer?.workspaces ?? []).filter((m) => !hasCodeAccess(m)).map((m) => m.slug.toLowerCase());
   if (request.method === "GET" && noCode.length > 0) {

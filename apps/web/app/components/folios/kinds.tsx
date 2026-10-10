@@ -1,8 +1,8 @@
 /**
  * Each kind of artifact as the site shows it: its icon and colour, whether
  * it can be made yet, and its page body. One line per kind, so each kind's
- * phase adds its own (docs/ARTIFACTS_MODE.md section 8: slides, design and
- * dashboards are "Coming soon" until theirs ships). Bodies are lazy, so
+ * phase adds its own (slides, design and dashboards are "Coming soon"
+ * until theirs ships). Bodies are lazy, so
  * Home and the sidebar carry no editor code.
  */
 import { FOLIO_KIND_LABELS, type DocRole, type Folio, type FolioKind, type FolioPage, type FolioPreview } from "@g1t/contracts";

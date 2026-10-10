@@ -171,7 +171,14 @@ export default defineConfig({
 						{ label: 'Audit log', slug: 'guides/audit-log' },
 						{ label: 'Usage and billing', slug: 'guides/usage-and-billing' },
 						{ label: 'Git', slug: 'guides/git' },
-						{ label: 'Run g1t yourself', slug: 'guides/self-hosting' },
+					],
+				},
+				{
+					label: 'Run g1t yourself',
+					items: [
+						{ label: 'With Docker Compose', slug: 'guides/self-hosting' },
+						{ label: 'How a self-hosted g1t runs', slug: 'guides/self-hosting-architecture' },
+						{ label: 'Deploy to Cloudflare', slug: 'guides/deploy-to-cloudflare' },
 					],
 				},
 				{

@@ -3,9 +3,9 @@
 //!
 //! The counts are `git rev-list --left-right --count main...branch`: every
 //! commit one head reaches and the other does not, merges and what they
-//! brought in included. The store lists histories by first parent only
-//! (docs/ARTIFACTS.md), so a merge's other parents are read on their own as
-//! the walk reaches them. The walk goes newest commit first from both
+//! brought in included. The store lists histories by first parent only,
+//! so a merge's other parents are read on their own as the walk reaches
+//! them. The walk goes newest commit first from both
 //! heads, marking each commit with the heads that reach it, as git does,
 //! and stops once every commit still to look at is reached by both: what
 //! lies below is shared and counts on neither side.

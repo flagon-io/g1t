@@ -23,8 +23,7 @@
 	//   { "binding": "ARTIFACTS_1", "namespace": "g1t-us-1" },
 	//   { "binding": "ARTIFACTS_EU", "namespace": "g1t-eu" }
 	// and new repositories go to those named in ARTIFACTS_NEW_REPOS. A
-	// namespace's jurisdiction is set when it is made (docs/ARTIFACTS.md,
-	// R7), never in the binding.
+	// namespace's jurisdiction is set when it is made, never in the binding.
 	"artifacts": [{ "binding": "ARTIFACTS", "namespace": "g1t" }],
 	// Shared between isolates (src/shared.rs): the git store's credentials
 	// (src/store.rs) and the ref listings git asks for first
@@ -66,7 +65,7 @@
 	// hold this much (1 GB); past it, pushes to them stop. Billing reads the
 	// same amount.
 	//
-	// The git store (docs/ARTIFACTS.md):
+	// The git store:
 	// REPO_STORAGE_LIMIT_BYTES: pushes stop before a repository holds this
 	//   much; the store holds 1 GB (src/pack_limits.rs).
 	// LARGE_PUSHES: a push too large to scan for secrets (24 MiB) is
@@ -81,7 +80,7 @@
 	//   ARTIFACTS_NAMESPACE_LIMITS (optional): JSON, {"g1t": {"max_repos": N}},
 	//   past which a namespace takes no new repositories while another can.
 	//
-	// The fallback git store (src/fallback.rs; docs/ARTIFACTS.md, R12), all
+	// The fallback git store (src/fallback.rs), all
 	// unset: nothing changes. Set as secrets, so switching takes no build:
 	//   npx wrangler secret put GIT_FALLBACK_URL         # https://gitstore.example
 	//   npx wrangler secret put GIT_FALLBACK_SECRET      # the store's API secret

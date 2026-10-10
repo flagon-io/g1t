@@ -15,9 +15,9 @@ const FIELD =
 export const DEPARTMENTS = ["Engineering", "QA", "Operations", "Docs", "Product", "Customer Support", "Sales"];
 
 /**
- * An agent's role (docs/WORKSPACE.md, "Roles, not tasks"): its title, the
- * team it is on (or a department, when it is on none), and what it is
- * responsible for, as a list to add to, edit and reorder.
+ * An agent's role: its title, the team it is on (or a department, when it
+ * is on none), and what it is responsible for, as a list to add to, edit
+ * and reorder.
  */
 export function RoleFields({
   title,

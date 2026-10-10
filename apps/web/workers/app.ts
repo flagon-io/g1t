@@ -115,9 +115,9 @@ async function site(request: Request, env: Env, ctx: ExecutionContext): Promise<
  * Public pages as someone signed out sees them: the same for every such
  * visitor, so kept in this data centre's cache. Reserved first segments
  * (settings, sign-in, invitations and the like) and workspace pages (`-`)
- * are never kept; docs/PERFORMANCE.md lists the rules. A repository's kept
- * page is served only while repos says the repository is still public: one
- * made private or deleted is never served from any data centre's copy.
+ * are never kept. A repository's kept page is served only while repos
+ * says the repository is still public: one made private or deleted is
+ * never served from any data centre's copy.
  */
 const PUBLIC_TOP = /^\/(?:|_root\.data|pricing|explore|security|support|policies(?:\/[a-z-]+)?)(?:\.data)?$/;
 const PUBLIC_PROJECT =

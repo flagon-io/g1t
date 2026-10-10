@@ -3,9 +3,9 @@
  *
  * Nobody picks a model: g1t routes each step to the tier it needs (chat
  * replies start on `small`), and the agent's definition only limits that
- * (docs/WORKSPACE.md, "Model routing"). The model behind each tier is the
- * runner's routing policy (`AGENT_ROUTING`, with staff's defaults on top),
- * read through the runner's own module so the two never disagree.
+ * (docs.g1t.sh/guides/agents/, "Model routing"). The model behind each tier
+ * is the runner's routing policy (`AGENT_ROUTING`, with staff's defaults on
+ * top), read through the runner's own module so the two never disagree.
  */
 import type { AgentRouting as AgentLimits, ModelTier } from "@g1t/contracts";
 

@@ -1,7 +1,7 @@
 /**
  * What an agent can read while it replies: code, issues, pull requests,
- * chat, the roster, and its colleagues (docs/WORKSPACE.md, "What an agent
- * can and can't know", "Agents know each other").
+ * chat, the roster, and its colleagues (docs.g1t.sh/guides/agent-access/,
+ * "What an agent can and can't know").
  *
  * Every tool goes through the reply's `Audience` before it reads
  * anything, and the check is here, in code:
@@ -457,8 +457,7 @@ export class ToolBox {
   private readonly notHere = new Set<string>();
   /**
    * Whether this turn read an artifact the whole workspace can't: then what
-   * it remembers is kept for the person who asked alone
-   * (docs/ARTIFACTS_MODE.md, section 4.3, rule 7).
+   * it remembers is kept for the person who asked alone.
    */
   private privateRead = false;
 
@@ -726,7 +725,7 @@ export class ToolBox {
   }
 
   /**
-   * Where a new artifact goes (docs/ARTIFACTS_MODE.md, section 4.1):
+   * Where a new artifact goes:
    * - a space named by its name or id, among those everyone here can read;
    * - "private": the asker's Private;
    * - "conversation": Private, plus `view` for this conversation's people;
@@ -757,9 +756,9 @@ export class ToolBox {
   }
 
   /**
-   * An artifact someone here can't read (docs/ARTIFACTS_MODE.md, section
-   * 4.3, rule 2): the link goes to the asker directly, and the agent says
-   * only that it found or made something, never what.
+   * An artifact someone here can't read: the link goes to the asker
+   * directly, and the agent says only that it found or made something,
+   * never what.
    */
   private async notForEveryone(asker: User, folio: FolioRef, folios: FoliosPorts, what: "found" | "made"): Promise<ToolResult> {
     this.notHere.add(folio.id);

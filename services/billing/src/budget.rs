@@ -27,8 +27,7 @@
 //!    the plan or an enterprise contract. Staff are emailed at once and sudo
 //!    shows a red bar; staff can lift it for the day.
 //!
-//! Zero for either variable turns that cap off. See
-//! docs/BILLING_OPERATIONS.md.
+//! Zero for either variable turns that cap off.
 
 use g1t_contracts::billing::{
     AdminLiftBreakerArgs, BillingAccount, CompedBudget, ComputeKind, PlanKind, SpendBucket, SpendCaps,

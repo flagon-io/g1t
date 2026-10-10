@@ -15,7 +15,7 @@
 //! response's `x-d1-bookmark` header, so the caller can start the next
 //! request where this one left off. Without the header nothing changes,
 //! so service-to-service calls ([`crate::call`]), queues and crons read the
-//! primary as before. docs/PERFORMANCE.md explains who sends what.
+//! primary as before. CONTRIBUTING.md ("Speed") says who sends what.
 //!
 //! Every response that goes through [`Served::finish`] also carries
 //! `server-timing: svc;dur=<ms>;desc="<how D1 was read>"`, which the site

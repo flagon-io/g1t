@@ -507,10 +507,10 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
 
 
 /**
- * The platform pause and the hourly usage watch (billing's platform.rs,
- * docs/SPEND-GUARDRAILS.md): four levels staff can pause across g1t, what
- * Cloudflare counted in the last hour against each threshold, and the
- * last day's breaches.
+ * The platform pause and the hourly usage watch (billing's platform.rs;
+ * docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails): four levels
+ * staff can pause across g1t, what Cloudflare counted in the last hour
+ * against each threshold, and the last day's breaches.
  */
 function PlatformSection({
   guard,

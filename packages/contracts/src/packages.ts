@@ -4,8 +4,9 @@ import type { Result } from "./result";
 
 /**
  * The packages service: the registries a workspace publishes to and
- * installs from, beside its code (docs/PACKAGES.md). Container images
- * first, on `g1t.sh/v2/`. Mirrors `crates/contracts/src/packages.rs`.
+ * installs from, beside its code (docs.g1t.sh/guides/packages/).
+ * Container images first, on `g1t.sh/v2/`. Mirrors
+ * `crates/contracts/src/packages.rs`.
  *
  * A package linked to a repository has its visibility and, unless its
  * admins turned inheriting off, its roles (Read pulls, Write publishes,

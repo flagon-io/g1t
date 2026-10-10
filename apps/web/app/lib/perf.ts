@@ -2,7 +2,7 @@
  * The pure parts of request timing and D1 read consistency for the site:
  * the `g1t_d1` cookie, which session each service call asks for, which
  * calls may write, and the `Server-Timing` header. perf.server.ts holds
- * the per-request state; docs/PERFORMANCE.md explains the whole.
+ * the per-request state; CONTRIBUTING.md, "Speed", says how to use it.
  */
 
 /** The cookie that carries D1 bookmarks between a person's requests. */

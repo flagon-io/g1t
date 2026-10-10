@@ -24,6 +24,6 @@ futures-util = { version = "0.3", default-features = false, features = ["alloc"]
 getrandom = { version = "0.2", features = ["js"] }
 
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
-# time (docs/DEPLOYING.md, "Build speed").
+# time.
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-O1"]

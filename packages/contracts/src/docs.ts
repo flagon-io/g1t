@@ -2,8 +2,7 @@
  * Docs: the workspace's written knowledge, kept by the docs service
  * (`services/docs`). Spaces hold trees of pages; each page is a CRDT
  * document (Yjs) edited live over a socket, saved with a Markdown
- * rendition that search, agents, export and the read view use. Plan and
- * decisions: docs/WORKSPACE.md, "Docs".
+ * rendition that search, agents, export and the read view use.
  *
  * Wire shapes are snake_case end to end: the site, agents and the live
  * socket all carry the same objects.

@@ -2,7 +2,7 @@
  * Where files put in pages are kept: behind this small interface, so a
  * self-hosted g1t can keep them in any S3-compatible store. The managed
  * service uses R2 (`r2FileStore`); `DOCS_FILES=s3` picks `s3FileStore`
- * (docs/SELF_HOSTING.md, "Files in Docs pages").
+ * (docs.g1t.sh/guides/self-hosting-architecture/, "Storage").
  */
 import { sha256Hex, sign } from "./sigv4.ts";
 

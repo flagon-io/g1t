@@ -11,7 +11,7 @@
 # workerd beside it, packages' files, backups and the clone pack cache in
 # RustFS (S3-compatible storage), and Mailpit for mail.
 # Agents, deployments, context search and billing are off. See
-# docs/SELF_HOSTING.md.
+# docs.g1t.sh/guides/self-hosting-architecture/.
 name: g1t
 
 services:
@@ -65,7 +65,7 @@ services:
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
       # Nightly backups' bundles and manifests, in a bucket of their own on
-      # the same store (docs/SELF_HOSTING.md, "Backups").
+      # the same store (docs.g1t.sh/guides/self-hosting-architecture/#storage).
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-g1t-backups}
       # Packs kept for fresh clones, so the next clone of the same commit
       # does not rebuild one; storage-setup expires them after 7 days.

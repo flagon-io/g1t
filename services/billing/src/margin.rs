@@ -24,7 +24,7 @@
 //! meter no one mapped); each workspace's cost, Cloudflare's figure shared
 //! out by each workspace's own meters; and price proposals when a unit's
 //! real cost has moved (`pricing`). Alerts go to staff by email and as a
-//! banner in sudo. See docs/BILLING_OPERATIONS.md.
+//! banner in sudo.
 
 use std::collections::{BTreeMap, BTreeSet};
 

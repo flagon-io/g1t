@@ -1,6 +1,6 @@
 /**
- * The header every artifact's page shares, whatever its kind
- * (docs/ARTIFACTS_MODE.md section 6.5): where it is (a space or Private,
+ * The header every artifact's page shares, whatever its kind: where it
+ * is (a space or Private,
  * then the docs it sits under), who is here, "Offline, changes will
  * sync", and Share, comments, history, favorite and the ⋯ menu. A kind's
  * own actions go in `actions`.

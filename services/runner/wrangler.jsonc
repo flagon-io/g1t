@@ -7,8 +7,9 @@
 	"workers_dev": false,
 	// One image (the base plus the runner binary), on three machine sizes.
 	// scripts/deploy.mjs deploys with each image set to the reference it
-	// built and pushed (docs/DEPLOYING.md, "The runner's images"), so a
-	// deploy builds nothing; "./Dockerfile" here is for building by hand.
+	// built and pushed ("The runner's images" in
+	// docs.g1t.sh/guides/deploy-to-cloudflare/), so a deploy builds
+	// nothing; "./Dockerfile" here is for building by hand.
 	"containers": [
 		{
 			"class_name": "AttemptSandbox",

@@ -26,7 +26,7 @@ export const DEFAULT_AUTONOMY: AgentAutonomy = {
   deploy_production: "approval",
   edit_docs: "suggest",
 };
-/** Tasks at once (docs/WORKSPACE.md, "Decisions to confirm"). */
+/** Tasks at once. */
 export const DEFAULT_CAPACITY = 3;
 export const MAX_CAPACITY = 10;
 

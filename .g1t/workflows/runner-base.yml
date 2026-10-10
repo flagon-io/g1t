@@ -15,7 +15,8 @@
 #
 #   node scripts/deploy.mjs build-base
 #
-# and commit services/runner/base.json. docs/DEPLOYING.md explains both.
+# and commit services/runner/base.json. "The runner's images" in
+# docs.g1t.sh/guides/deploy-to-cloudflare/ explains both.
 # Once a runner is registered, set the repository variable
 # RUNNER_BASE_SELF_HOSTED to "true" to turn this workflow's job on.
 name: Runner base image

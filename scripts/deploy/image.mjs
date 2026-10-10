@@ -1,5 +1,5 @@
 // The runner's Containers images, as the deploy tool builds and ships them
-// (docs/DEPLOYING.md, "The runner's images"):
+// (docs.g1t.sh/guides/deploy-to-cloudflare/#the-runners-images):
 //
 //   base    g1t-runner:base-<date>-<inputs>   services/runner/base/Dockerfile:
 //           the OS, toolchains and the Claude Code CLI. Rebuilt only when

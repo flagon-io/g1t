@@ -1,6 +1,7 @@
 //! The packages service: the registries a workspace publishes to and
-//! installs from, beside its code (docs/PACKAGES.md). Container images
-//! first, over OCI Distribution 1.1 on `g1t.sh/v2/` (oci.rs).
+//! installs from, beside its code (docs.g1t.sh/guides/packages/).
+//! Container images first, over OCI Distribution 1.1 on `g1t.sh/v2/`
+//! (oci.rs).
 //!
 //! Other services reach it over `POST /rpc/<method>`; see
 //! `g1t_contracts::packages` for the methods and their arguments. Any

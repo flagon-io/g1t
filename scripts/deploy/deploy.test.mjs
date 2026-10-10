@@ -421,7 +421,7 @@ test("decide: a change only to tests deploys nothing", () => {
 test("own folders, declared inputs and root files", () => {
   assert.deepEqual(ids(stack.units, ["services/pages/src/index.ts"]), ["pages"]);
   assert.deepEqual(ids(stack.units, ["apps/web/app/lib/roadmap.ts"]), ["og", "web"]);
-  assert.deepEqual(ids(stack.units, ["docs/PLAN.md", "README.md", "deploy/stack.jsonc"]), []);
+  assert.deepEqual(ids(stack.units, ["LICENSE", "README.md", "deploy/stack.jsonc"]), []);
   assert.deepEqual(ids(stack.units, ["scripts/build-rust-worker.mjs"]), stack.units.filter((u) => u.kind === "rust-worker").map((u) => u.id));
   // services/events is not a prefix of services/eventsx.
   assert.equal(touches(unit("events"), ["services/eventsx/a.rs"]), null);
@@ -759,9 +759,10 @@ test("self-hosting builds every Rust service the manifest says it runs", () => {
   for (const loop of loops) assert.deepEqual(loop, wanted);
 });
 
-test("docs/SELF_HOSTING.md's table names every unit", () => {
-  const doc = readFileSync(join(ROOT, "docs/SELF_HOSTING.md"), "utf8");
-  for (const u of stack.units) assert.ok(doc.includes(`| \`${u.path}\` |`), `${u.path} is missing from docs/SELF_HOSTING.md`);
+test("the self-hosting architecture page names every unit", () => {
+  const page = "apps/docs/src/content/docs/guides/self-hosting-architecture.md";
+  const doc = readFileSync(join(ROOT, page), "utf8");
+  for (const u of stack.units) assert.ok(doc.includes(`| \`${u.path}\` |`), `${u.path} is missing from ${page}`);
 });
 
 test("resolveStack works on a manifest with no workspace crates or packages", () => {

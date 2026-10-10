@@ -1,11 +1,11 @@
 /**
- * "Write this up as an artifact" from chat (docs/ARTIFACTS_MODE.md section
- * 4.4): where it goes (a space, Private, or shared with the conversation),
- * the agents that can write it, and the message that asks one to. Nothing
- * is written behind anyone's back: the person posts the ask in the thread,
- * as themselves, and the agent answers it the usual way (a session if it
- * needs one, then `create_artifact`). The kind is a doc until slides and
- * the other kinds ship. Pure, so it is tested on its own;
+ * "Write this up as an artifact" from chat (docs.g1t.sh/guides/artifacts/,
+ * "Write a thread up"): where it goes (a space, Private, or shared with
+ * the conversation), the agents that can write it, and the message that
+ * asks one to. Nothing is written behind anyone's back: the person posts
+ * the ask in the thread, as themselves, and the agent answers it the usual
+ * way (a session if it needs one, then `create_artifact`). The kind is a
+ * doc until slides and the other kinds ship. Pure, so it is tested on its own;
  * components/chat/write-up.tsx draws the dialog.
  */
 import type { DocRole, MemberProfile } from "@g1t/contracts";

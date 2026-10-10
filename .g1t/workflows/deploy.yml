@@ -1,6 +1,6 @@
 # Deploys g1t.sh from main, with g1t's own Actions. What it does is
-# scripts/deploy.mjs, the same tool a person runs; docs/DEPLOYING.md is the
-# guide.
+# scripts/deploy.mjs, the same tool a person runs; the guide is
+# docs.g1t.sh/guides/deploy-to-cloudflare/.
 #
 #   check    the deploy manifest is consistent, and the tool's tests pass
 #   plan     what changed since each Worker's live commit, and pending migrations
@@ -27,7 +27,7 @@
 # so with its own Docker Engine, on a larger machine. Optionally, the
 # secret STATUS_DEPLOY_TOKEN (the status Worker's secret of the same name)
 # and status.g1t.sh among the same workflow-only domains, so status.g1t.sh
-# hears each deploy start and finish. See docs/DEPLOYING.md.
+# hears each deploy start and finish.
 name: Deploy
 
 on:

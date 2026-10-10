@@ -5,7 +5,6 @@
 // (repos D1: `artifacts_meters`, every interaction by kind, and
 // `git_operations`, what workspaces are counted for), day by day, and says
 // which of g1t's meters line up with each of Cloudflare's events.
-// docs/ARTIFACTS.md (R1) explains how to read it.
 //
 // Read-only: one GraphQL query, and SELECTs against the g1t-repos database.
 //

@@ -211,8 +211,8 @@ roadmap.
   context, prices, typical run and when its provider last listed it, each
   with **Retire** or **Restore**. **Checks**: the latest checks of each
   provider. Every change names the staff member and why in the audit log
-  (account `models`). See docs/BILLING_OPERATIONS.md, "The model
-  catalogue".
+  (account `models`). The catalogue itself is billing's
+  (`services/billing/src/catalogue.rs`).
 - **Stripe**: whether billing's key is in test or live mode (or off), the
   webhook Stripe calls (URL, endpoint id, events, who registered it and
   when), and the events Stripe sent lately with what billing did with

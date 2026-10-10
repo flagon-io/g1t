@@ -1,8 +1,9 @@
 /**
- * Routines that run when something happens (docs/WORKSPACE.md,
- * "Routines"): the events service sends this service the events routines
- * can run on (`SUBSCRIBER_AGENTS`, crates/contracts subscribers.rs), and
- * each matching routine runs once for the one thing that happened.
+ * Routines that run when something happens
+ * (docs.g1t.sh/guides/agent-routines/, "When something happens"): the
+ * events service sends this service the events routines can run on
+ * (`SUBSCRIBER_AGENTS`, crates/contracts subscribers.rs), and each matching
+ * routine runs once for the one thing that happened.
  *
  * - **Which routines:** enabled ones in the event's workspace that run on
  *   its kind, and follow its repository (or every repository).

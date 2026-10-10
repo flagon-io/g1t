@@ -1,6 +1,6 @@
-//! Moving a repository from one git store namespace to another
-//! (docs/ARTIFACTS.md, R7), keeping its id, its path and everything g1t
-//! knows about it. Only its store key changes.
+//! Moving a repository from one git store namespace to another,
+//! keeping its id, its path and everything g1t knows about it. Only its
+//! store key changes.
 //!
 //! A move is asked for (`move_repository`, or a row an operator inserts
 //! with `scripts/ops/artifacts-namespaces.mjs move`) and run by the hourly

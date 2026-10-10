@@ -13,10 +13,11 @@
 // short-lived token the shim minted with the same secret.
 //
 // A key is a repository's name (`acme--rocket`), or a namespace and a name
-// (`g1t/acme--rocket`): hosted g1t's fallback store (docs/ARTIFACTS.md, R12)
-// keeps each Artifacts namespace's repositories in a directory of their
-// own, so a remote reads `<GITSTORE_URL>/git/<namespace>/<name>.git`, the
-// shape Artifacts gives remotes.
+// (`g1t/acme--rocket`): hosted g1t's fallback store
+// (scripts/ops/restore-to-gitstore.mjs) keeps each Artifacts namespace's
+// repositories in a directory of their own, so a remote reads
+// `<GITSTORE_URL>/git/<namespace>/<name>.git`, the shape Artifacts gives
+// remotes.
 //
 // GITSTORE_READ_ONLY=1 refuses everything that writes: pushes, creating,
 // forking, deleting, and minting write tokens. As a fallback the store

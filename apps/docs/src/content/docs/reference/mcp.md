@@ -767,7 +767,6 @@ email address gets `403` from every tool until it does; see
 | [`accept_repository_invitation`](/reference/api/access/accept-repo-invitation/) | Accept one; its role is yours at once. | `id` | `account:write` |
 | [`decline_repository_invitation`](/reference/api/access/decline-repo-invitation/) | Decline one. | `id` | `account:write` |
 
-
 ## `artifact`
 
 A workspace's artifacts: its docs, and later its slides, designs and
@@ -792,7 +791,7 @@ are not here yet. A workspace's own token cannot use this tool. See
 | [`query_data`](/reference/api/artifacts/query-workspace-dataset/) | Run a dataset `query` as you, over what you can read. Answers that dashboards are not here yet until they ship. | `workspace`, `query` | `artifacts:read` |
 | [`create`](/reference/api/artifacts/create-workspace-artifact/) | Make one from `markdown` or a `template_id`, in a `space`, under a `parent_id`, or in your Private. `kind` is `doc`; the others are not here yet. | `workspace` | `artifacts:write` |
 | [`update`](/reference/api/artifacts/update-workspace-artifact/) | Change its `title` or `icon`, or move it to a `space` (`private` for your Private) or under a `parent_id`. | `workspace`, `artifact_id` | `artifacts:write` |
-| [`edit`](/reference/api/artifacts/edit-workspace-artifact/) | Change its content: `markdown` with a `target` (`append`, `document`, a `section` by `heading`, or `blocks`). Made with the edit role; a suggestion with the comment role or `suggest_only`. | `workspace`, `artifact_id` | `artifacts:write` |
+| [`edit`](/reference/api/artifacts/edit-workspace-artifact/) | Change its content: `markdown` with a `target` (`append`, `document`, a `section` by `heading`, or `blocks`). Made with the edit role; a suggestion with the comment role or `suggest_only`. `note` says why; `marks_current` clears the doc's possibly out of date mark when the change is made or accepted. | `workspace`, `artifact_id` | `artifacts:write` |
 | [`trash`](/reference/api/artifacts/trash-workspace-artifact/) | Move it, and what is under it, to the trash; deleted for good after 30 days. | `workspace`, `artifact_id` | `artifacts:write` |
 | [`restore`](/reference/api/artifacts/restore-workspace-artifact/) | Bring it back from the trash. | `workspace`, `artifact_id` | `artifacts:write` |
 | [`restore_version`](/reference/api/artifacts/restore-workspace-artifact-version/) | Make an earlier version its content again, as a new version. | `workspace`, `artifact_id`, `version_id` | `artifacts:write` |

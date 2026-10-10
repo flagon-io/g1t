@@ -1,6 +1,7 @@
 /**
  * Who may do what in a space: pure, so the rules are tested apart from the
- * service (docs/WORKSPACE.md, "The asker's access caps the agent").
+ * service (docs.g1t.sh/guides/agent-access/, "Rule one: the asker's access
+ * caps the agent").
  *
  * - `workspace` spaces give every member `default_role`; `team` spaces give
  *   the team's members `default_role`; `private` spaces give nobody
@@ -114,7 +115,7 @@ export function memberKey(key: string): { kind: "user" | "agent" | "team"; id: s
   return { kind, id };
 }
 
-// ── Folios (Artifacts mode, docs/ARTIFACTS_MODE.md section 2.1) ─────────
+// ── Folios (Artifacts mode) ──────────────────────────────────────────────
 //
 // A person's role on a folio is the highest of:
 // 1. its owner → `manage` (and the owner of every ancestor it inherits

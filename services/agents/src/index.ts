@@ -1,7 +1,8 @@
 /**
- * The agents service: a workspace's own agents (docs/WORKSPACE.md,
- * "Agents"). Their definitions and every version of them, the templates
- * they start from, each agent's desk, and their replies in chat.
+ * The agents service: a workspace's own agents
+ * (docs.g1t.sh/guides/agents/). Their definitions and every version of
+ * them, the templates they start from, each agent's desk, and their replies
+ * in chat.
  *
  * `@g1t`, the platform's own agent, is not one of these.
  *

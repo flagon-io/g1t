@@ -33,7 +33,9 @@ Schedules are in UTC.
 | **An issue is opened** | By a person or an agent. |
 | **A deploy fails** | A production or preview deploy. |
 
-Each run is one session about the one thing that happened. Name the
+Each run is one session about the one thing that happened, and a routine
+runs at most 20 times an hour on events; events past that are skipped, so
+a burst can't run up the agent's budget. Name the
 **repositories** to follow, such as `acme/web, acme/api` (up to 20), or
 leave it empty for every repository the routine's sponsor can read.
 

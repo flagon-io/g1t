@@ -1,4 +1,5 @@
-//! g1t-wide pauses (billing's `platform_pause`; docs/SPEND-GUARDRAILS.md),
+//! g1t-wide pauses (billing's `platform_pause`; "Spend guardrails" in
+//! docs.g1t.sh/guides/deploy-to-cloudflare/),
 //! read cheaply: one call to billing per isolate every 30 seconds at most,
 //! never a database read per request.
 //!

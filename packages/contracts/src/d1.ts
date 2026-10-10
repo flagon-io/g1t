@@ -13,8 +13,8 @@
  * | a bookmark | any copy at least as new as the bookmark |
  *
  * Writes always go to the primary. The session's latest bookmark comes
- * back in the response's `x-d1-bookmark`. docs/PERFORMANCE.md says who
- * sends what.
+ * back in the response's `x-d1-bookmark`. The site's side is
+ * apps/web/app/lib/perf.ts.
  */
 
 /** The header that carries a session's constraint or bookmark, both ways. */

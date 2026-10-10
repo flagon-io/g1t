@@ -9,7 +9,8 @@ import { Input } from "../ui/input";
 import { SelectField } from "../ui/select";
 import { ORCHESTRATOR, type WritableSpace, type WriteUpAgent, type WriteUpWhere, defaultWhere, writableSpaces, writeUpMessage } from "../../lib/write-up";
 
-// "Write this up as an artifact" (docs/ARTIFACTS_MODE.md section 4.4):
+// "Write this up as an artifact" (docs.g1t.sh/guides/artifacts/, "Write a
+// thread up"):
 // where it goes, a title if you have one, and which agent writes it. The
 // kind is a doc for now. Sending posts the ask in the thread, as you,
 // where everyone sees it; the agent answers it as it answers any mention,

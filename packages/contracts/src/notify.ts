@@ -49,7 +49,7 @@ export type FeedNotification = {
    * session at its cap (Approve more, Stop, Open), a draft issue (File
    * issue, Discard). The toast and the notifications panel show these
    * actions, and pressing one goes to the site's `card_action`, exactly as
-   * on the card itself (docs/WORKSPACE.md, "Cards").
+   * on the card itself.
    */
   card?: NotificationCard | null;
   created_at: string;

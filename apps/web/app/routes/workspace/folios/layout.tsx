@@ -11,7 +11,7 @@ import { requireUser, roleIn } from "../../../lib/session.server";
 import { knownTimeZone } from "../../../lib/time-zone";
 
 /**
- * Artifacts mode (docs/ARTIFACTS_MODE.md; code says "folio"): what its
+ * Artifacts mode (code says "folio"): what its
  * sidebar shows (the shell draws it from this data: favorites, spaces and
  * their trees, Private, Shared, projects' docs), who can be mentioned or
  * shared with, and the viewer's time zone for the home list's days. Each

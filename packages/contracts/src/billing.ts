@@ -1779,7 +1779,8 @@ export type PlatformBreach = {
   emailed_at: string | null;
 };
 
-/** Billing's `admin_platform_guard`: the platform pause and usage watcher (docs/SPEND-GUARDRAILS.md). */
+/** Billing's `admin_platform_guard`: the platform pause and usage watcher
+ * (docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails). */
 export type PlatformGuard = {
   levels: PauseState[];
   /** The last hour read, `YYYY-MM-DDTHH:00:00Z`. */

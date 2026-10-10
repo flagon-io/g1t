@@ -1,7 +1,6 @@
 /**
  * Dashboards (`kind: "dashboard"`, beta): a dashboard's definition and the
- * changes agents make to it. Artifacts mode, docs/ARTIFACTS_MODE.md
- * section 3.4. Wire shapes are snake_case.
+ * changes agents make to it. Wire shapes are snake_case.
  *
  * In the Yjs document: `Y.Map("dashboard")` holds `DashboardSettings`;
  * `Y.Array("tiles")` holds one `Y.Map` per tile (`DashboardTile`). Only the

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { aclChain, type FolioAclNode, type FolioGrant, type Person, type SpaceRules } from "../access.ts";
 import { agentMayFind, agentReach, audienceRule, type AudienceRule } from "./agents.ts";
 
-// The leak rules of docs/ARTIFACTS_MODE.md section 4.3.
+// The leak rules (docs.g1t.sh/guides/agent-access/).
 
 const ana: Person = { user_id: "ana", owner: false, teams: new Set(["web"]) };
 const bo: Person = { user_id: "bo", owner: false, teams: new Set() };

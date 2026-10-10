@@ -84,7 +84,7 @@ function clock(at: string, zone: string | undefined): string {
   return new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: zone });
 }
 
-/** Whether the viewer uses Code in this workspace (docs/WORKSPACE.md, "Members without Code"). */
+/** Whether the viewer uses Code in this workspace. */
 export function useCodeAccess(slug: string): boolean {
   const root = useRouteLoaderData("root") as { user?: { workspaces?: { slug: string; code_access?: boolean }[] } | null } | undefined;
   return hasCodeAccess(root?.user?.workspaces?.find((m) => m.slug === slug) ?? null);

@@ -1,7 +1,7 @@
 /**
  * The docs service: a workspace's spaces and pages, their live documents,
- * history, comments, agents' suggestions, templates and search. Plan:
- * docs/WORKSPACE.md, "Docs".
+ * history, comments, agents' suggestions, templates and search
+ * (docs.g1t.sh/guides/artifacts/, "Docs").
  *
  * Reached through service bindings: `POST /rpc/<method>` with snake_case
  * bodies (`docsClient` in @g1t/contracts); `GET /live` for a page's socket
@@ -12,7 +12,7 @@
  * document. Everything that changes a page's content goes through the
  * room; this Worker decides who may ask.
  *
- * The docs service also hosts folios (Artifacts mode, docs/ARTIFACTS_MODE.md):
+ * The docs service also hosts folios (Artifacts mode):
  * docs, slides, designs and dashboards, in src/folios/ with their own
  * room (FolioRoom). `/rpc/<method>` asks the folio table (src/folios/rpc.ts)
  * first, then Docs' own switch below; `/live?folio=` and

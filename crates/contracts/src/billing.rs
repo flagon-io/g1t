@@ -3733,7 +3733,8 @@ pub struct AdminLiftBreakerArgs {
     pub by: String,
 }
 
-// ---- Platform pauses and the usage watcher (docs/SPEND-GUARDRAILS.md) ----
+// ---- Platform pauses and the usage watcher ----
+// docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails
 
 /// A g1t-wide pause, set by staff in sudo or by billing's hourly usage
 /// watcher on a severe breach. Each level is independent.

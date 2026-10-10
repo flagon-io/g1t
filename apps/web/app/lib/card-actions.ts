@@ -1,5 +1,5 @@
 /**
- * Cards people can act on in chat (docs/WORKSPACE.md, "Cards"): how a
+ * Cards people can act on in chat: how a
  * card's state reads, which of its actions are links and which run, and
  * the money and text people type into them. Pure, so it is tested on its
  * own; components/chat/card.tsx draws them.

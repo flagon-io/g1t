@@ -1,5 +1,5 @@
 /**
- * Sessions (docs/WORKSPACE.md, "Sessions"): the work an agent spins off
+ * Sessions (docs.g1t.sh/guides/agent-sessions/): the work an agent spins off
  * from a conversation, a routine's run, or its part in another session.
  *
  * A conversation with an agent is never one long context. Replies read the

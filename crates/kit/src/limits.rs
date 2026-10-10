@@ -3,8 +3,8 @@
 //!
 //! Every binding, its namespace id and its limit is listed in `RATE_LIMITS`
 //! (packages/contracts/src/rate-limits.ts), which apps/web's tests check
-//! each wrangler.jsonc against; docs/RATE-LIMITS.md says why each is what
-//! it is.
+//! each wrangler.jsonc against; CONTRIBUTING.md ("Rate limits") says how
+//! to change one.
 //!
 //! A limit fails open: a binding that is not there (self-hosted) or that
 //! fails lets the request through. A limit guards against floods; it is

@@ -43,8 +43,8 @@ import {
 // ── The desktop bridge ───────────────────────────────────────────────────
 
 /**
- * What the desktop app (an Electron shell loading this web app; see
- * docs/WORKSPACE.md, "Desktop app") exposes from its preload script with
+ * What the desktop app (an Electron shell loading this web app) exposes
+ * from its preload script with
  * `contextBridge.exposeInMainWorld("g1tDesktop", …)`. When it is there,
  * notifications go to it instead of the browser:
  *
@@ -233,7 +233,7 @@ export function settle(id: string): void {
   set({ settled: new Set(state.settled).add(id), toasts: dismissToast(state.toasts, id) });
 }
 
-/** The chat cards waiting on the person (docs/WORKSPACE.md, "Cards"), newest first, for the panel. */
+/** The chat cards waiting on the person, newest first, for the panel. */
 export function useWaitingCards(workspace?: string | null): FeedNotification[] {
   const s = useNotifyState();
   return waitingCards(s.recent, s.settled, Date.now(), workspace);

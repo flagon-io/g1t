@@ -33,7 +33,8 @@ fi
 echo "== Dispatch namespace and event queue"
 w dispatch-namespace list 2>/dev/null | grep -q "$NAMESPACE" || w dispatch-namespace create "$NAMESPACE"
 w queues list 2>/dev/null | grep -q g1t-events-deployments || w queues create g1t-events-deployments
-# Where every consumer sends what it gave up on (docs/DEPLOYING.md).
+# Where every consumer sends what it gave up on
+# (docs.g1t.sh/guides/deploy-to-cloudflare/#the-dead-letter-queue).
 w queues list 2>/dev/null | grep -q g1t-events-dlq || w queues create g1t-events-dlq
 
 echo "== DNS record and the service's token"

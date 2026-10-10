@@ -1,4 +1,6 @@
-//! The cold fallback for the git store (docs/ARTIFACTS.md, R12).
+//! The cold fallback for the git store. CONTRIBUTING.md ("Operating
+//! g1t.sh") says when to switch to it; scripts/ops/restore-to-gitstore.mjs
+//! has every step.
 //!
 //! When Artifacts is down for a namespace, the repos service can serve that
 //! namespace from a self-hosted git store instead

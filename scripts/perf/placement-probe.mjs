@@ -16,8 +16,7 @@
 //                                                    # write a placement into every config that should have it
 //   node scripts/perf/placement-probe.mjs apply '{"mode":"smart"}'   # back to Smart Placement
 //
-// docs/PERFORMANCE.md explains what to look for and which Workers `apply`
-// changes. Nothing here runs in CI.
+// Nothing here runs in CI.
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

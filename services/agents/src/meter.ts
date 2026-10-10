@@ -1,7 +1,7 @@
 /**
  * Metered model work: the one door every reply and every session step goes
  * through, so g1t meters and bills an agent's model work one way
- * (docs/WORKSPACE.md, "Budgets").
+ * (docs.g1t.sh/guides/agent-budgets/).
  *
  * 1. The paying agent's own monthly and daily caps (`budget.ts`), and the
  *    workspace's budget for all its agents together (`policy.ts`).

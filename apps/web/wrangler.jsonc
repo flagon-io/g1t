@@ -6,7 +6,7 @@
 	// AsyncLocalStorage, for per-request timings and D1 bookmarks
 	// (app/lib/perf.server.ts).
 	"compatibility_flags": ["nodejs_als"],
-	// Where it runs: docs/PERFORMANCE.md. Off runs it in the data centre
+	// Where it runs (CONTRIBUTING.md, "Speed"). Off runs it in the data centre
 	// nearest the visitor; scripts/perf/placement-probe.mjs measures the
 	// alternatives and `apply` changes every Worker's at once.
 	"placement": { "mode": "off" },

@@ -480,7 +480,7 @@ pub const NEVER: &[&str] = &[
     "restore_package_version",
     // Sharing an artifact and deleting one for good are for people: an
     // agent shares only through the agents service, with the people
-    // already in its conversation (docs/ARTIFACTS_MODE.md, section 4.3).
+    // already in its conversation.
     "set_workspace_artifact_access",
     "purge_workspace_artifact",
 ];

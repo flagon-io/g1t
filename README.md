@@ -19,14 +19,11 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
   unfinished.
 - **Coming**: planned, not built.
 
-The plan behind this is [docs/PLAN.md](docs/PLAN.md).
-
 ## Where things are
 
 - Site: <https://g1t.sh>
 - Docs: <https://docs.g1t.sh>
 - API: <https://api.g1t.sh> · MCP: <https://mcp.g1t.sh>
-- Plan: [docs/PLAN.md](docs/PLAN.md)
 - Limits you can hit today: [docs.g1t.sh/about/limitations](https://docs.g1t.sh/about/limitations/)
 
 ## What's in it
@@ -171,7 +168,9 @@ pull requests and code browsing work, and the API and MCP server answer at
 http://localhost:8789; packages and container images are kept in the
 bundled S3-compatible store, RustFS. Agents, deployments and context search
 are off in this version.
-[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) says what works and what is next.
+[Run g1t yourself](https://docs.g1t.sh/guides/self-hosting/) says what works,
+and [how a self-hosted g1t runs](https://docs.g1t.sh/guides/self-hosting-architecture/)
+what runs inside it.
 
 ### On Cloudflare
 
@@ -208,6 +207,8 @@ Both use your `wrangler login`, not a token in `.env`.
 
 Create the first account by registering on your site, or with
 `node services/identity/scripts/create-user.mjs <username>`.
+[Deploy g1t to Cloudflare](https://docs.g1t.sh/guides/deploy-to-cloudflare/)
+covers the deploy tool, the workflow and first-time setup in full.
 
 ## License
 

@@ -1,7 +1,6 @@
 /**
  * Slides (`kind: "slides"`): a deck's model and the changes agents make to
- * it. Artifacts mode, docs/ARTIFACTS_MODE.md section 3.2. Wire shapes are
- * snake_case.
+ * it. Wire shapes are snake_case.
  *
  * In the Yjs document: `Y.Map("deck")` holds `SlidesDeck`; `Y.Array("slides")`
  * holds one `Y.Map` per slide (`SlideMeta`); each slide region is a root
