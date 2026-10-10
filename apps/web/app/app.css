@@ -21,8 +21,8 @@
   --color-bg: light-dark(var(--g1t-light-bg), var(--g1t-bg));
   /*
    * The app's frame (components/shell.tsx, components/ui/sidebar.tsx):
-   * the page is a rounded panel on the shell; the sidebar sits flat on the
-   * same surface beside it, and the rail, the narrow column of icons at
+   * the page sits flat against the sidebar, a hairline between; the sidebar
+   * is the shell's surface, and the rail, the narrow column of icons at
    * the window's edge, is a step apart: white in the light theme, near
    * black in the dark one. The current row or icon is a muted fill.
    */
@@ -353,13 +353,13 @@ html[data-theme="dark"] {
 
 /*
  * The app's frame (components/shell.tsx), set on <body data-frame="app">:
- * the page is a rounded panel inset from the window, with the rail and the
- * sidebar beside it and, on a phone, the bottom bar under it. What sticks to the top or
- * the bottom of a page reads these:
- * --frame-top  the gap above the panel
- * --topbar-h   the panel's top edge plus its header: where sticky things sit
- * --tabbar-h   what the bottom takes: the gap under the panel, and the phone's bar
- * --page-h     the height left for a page that fills the panel (Chat)
+ * the page fills the window beside the rail and the sidebar; on a phone
+ * it is a rounded panel inset above the bottom bar. What sticks to the top
+ * or the bottom of a page reads these:
+ * --frame-top  the gap above the page (none on a computer)
+ * --topbar-h   that gap plus the top bar: where sticky things sit
+ * --tabbar-h   what the bottom takes: on a phone, the gap under the panel and the bar
+ * --page-h     the height left for a page that fills the window (Chat)
  * The public frame keeps a plain header 3.5rem tall and nothing at the bottom.
  */
 :root {
@@ -369,9 +369,7 @@ html[data-theme="dark"] {
   --page-h: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 }
 body[data-frame="app"] {
-  --frame-top: 0.5rem;
   --topbar-h: calc(var(--frame-top) + 3.5rem);
-  --tabbar-h: 0.5rem;
   --page-h: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 }
 @media (max-width: 767px) {

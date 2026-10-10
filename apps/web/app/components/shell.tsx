@@ -1940,10 +1940,11 @@ function useSidebarKey(): string {
  * The app: three surfaces that never blur together. The rail, a narrow
  * column of icons down the window's left edge; the mode's sidebar, flat
  * against it with a hairline between, which folds away with Ctrl B and is
- * a drawer below 1024px; and the page, a rounded panel inset from the
- * window, with its header across the top: the sidebar's toggle, where you
- * are, search, Ask g1t and Create new. On a phone the rail is a bar along
- * the bottom. Only for someone signed in; without a workspace yet, there
+ * a drawer below 1024px; and the page, flat against the sidebar and
+ * filling the rest of the window, with its top bar across the top and a
+ * line under it: the sidebar's toggle, where you are, search, Ask g1t and
+ * Create new. On a phone the rail is a bar along the bottom and the page
+ * a rounded panel above it. Only for someone signed in; without a workspace yet, there
  * is no rail. The rail and the sidebar are drawn from the sidebar kit
  * (components/ui/sidebar.tsx): one provider holds whether the sidebar is
  * open on a computer and whether the drawer is.
@@ -1976,15 +1977,6 @@ export function AppShell({
   usePaletteShortcut(() => setPalette((open) => !open));
   const leaving = useLeaving();
   useVisualViewport();
-  // Whether the page has scrolled under the top bar, which then draws its line (see data-page-head).
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 2);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
   const going = useNavigation().location?.pathname;
   const ws = shell.workspace;
   const mode = modeOf(going ?? pathname, ws?.slug ?? null);
@@ -2070,8 +2062,8 @@ export function AppShell({
   // On a phone (below 768px): the bottom bar, and a conversation full screen.
   const conversation = isConversation(going ?? pathname);
   // Where the page panel starts: 8px past the rail (56px), or 8px past the sidebar (56 + 240px) when it is open.
-  const left = ws ? (inline ? "md:left-16 lg:left-[19rem]" : "md:left-16") : inline ? "md:left-2 lg:left-[15.5rem]" : "md:left-2";
-  const pad = ws ? (inline ? "md:pl-16 lg:pl-[19rem]" : "md:pl-16") : inline ? "md:pl-2 lg:pl-[15.5rem]" : "md:pl-2";
+  // The page starts where the rail (3.5rem) and, open, the sidebar (15rem) end.
+  const pad = ws ? (inline ? "md:pl-14 lg:pl-[18.5rem]" : "md:pl-14") : inline ? "lg:pl-[15rem]" : "";
 
   return (
     <SidebarProvider open={!closed} onOpenChange={(open) => setClosed(!open)} openMobile={drawer} onOpenMobileChange={setDrawer} toggleSidebar={toggleSidebar}>
@@ -2100,14 +2092,12 @@ export function AppShell({
         </SidebarMobile>
       )}
 
-      <div className={`min-h-dvh px-1.5 pt-(--frame-top) pb-(--tabbar-h) md:pr-2 ${pad}`}>
-        {/* A page whose own header sits right under this bar (data-page-head: a conversation's, a project's) reads as one
-            block with it: no line between them until the page scrolls under the bar. A sticky one (data-page-head="sticky",
-            an open artifact's) stays under the bar, so the line is always its. */}
-        <div className="flex min-h-[calc(100dvh-var(--frame-top)-var(--tabbar-h))] min-w-0 flex-col rounded-[14px] bg-bg [&:has([data-page-head])>header:not([data-scrolled])]:border-b-transparent [&:has([data-page-head=sticky])>header]:border-b-transparent">
+      <div className={`min-h-dvh pt-(--frame-top) pb-(--tabbar-h) max-md:px-1.5 ${pad}`}>
+        {/* The top bar always has its line, so a page's own header (data-page-head: a conversation's, a project's,
+            a sticky one under an open artifact) sits under it as its own band. */}
+        <div className="flex min-h-[calc(100dvh-var(--frame-top)-var(--tabbar-h))] min-w-0 flex-col bg-bg max-md:rounded-[14px]">
           <header
-            data-scrolled={scrolled || undefined}
-            className={`sticky top-(--frame-top) z-30 flex h-14 items-center gap-1 rounded-t-[14px] border-b border-line bg-bg pr-2 pl-2 transition-[border-color] duration-150 sm:pr-3 ${inline ? "lg:pl-3.5" : ""} ${conversation ? "max-md:hidden" : ""}`}
+            className={`sticky top-(--frame-top) z-30 flex h-14 items-center gap-1 border-b border-line bg-bg pr-2 pl-2 max-md:rounded-t-[14px] sm:pr-3 ${inline ? "lg:pl-3.5" : ""} ${conversation ? "max-md:hidden" : ""}`}
           >
             {panel && (
               <SidebarTrigger
@@ -2155,11 +2145,11 @@ export function AppShell({
           </main>
         </div>
       </div>
-      {/* The panel's edge: a rounded frame over the page, with the background beyond it, so what scrolls stays inside.
-          Every page has it, a conversation too; only a phone's conversation, full screen over everything, goes without. */}
+      {/* On a phone the page is a rounded panel above the bottom bar: a frame over it, with the background beyond,
+          so what scrolls stays inside. A phone's conversation, full screen over everything, goes without. */}
       <div
         aria-hidden="true"
-        className={`pointer-events-none fixed top-(--frame-top) right-1.5 bottom-(--tabbar-h) left-1.5 z-[35] rounded-[14px] shadow-[0_0_0_1px_var(--color-line),0_0_0_100vmax_var(--color-shell)] md:right-2 ${left} ${conversation ? "max-md:hidden" : ""}`}
+        className={`pointer-events-none fixed top-(--frame-top) right-1.5 bottom-(--tabbar-h) left-1.5 z-[35] rounded-[14px] shadow-[0_0_0_1px_var(--color-line),0_0_0_100vmax_var(--color-shell)] md:hidden ${conversation ? "max-md:hidden" : ""}`}
       />
       {ws && <BottomBar user={user} workspace={ws} pins={shell.pins ?? []} unread={unread} onReselect={panel ? () => setDrawer(true) : undefined} />}
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} repo={shell.repo ? `${shell.repo.namespace}/${shell.repo.name}` : null} />

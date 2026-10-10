@@ -539,7 +539,7 @@ Each page has three parts:
 | --- | --- | --- |
 | **The rail** | A narrow column of icons down the left edge | g1t's mark, which goes to [Home](/guides/home/); the built-in apps; the apps you pinned; **Apps**; and at its foot **People**, **Workspace** and your account. Hold the pointer over an icon for its name. |
 | **The sidebar** | Flush against the rail | The workspace and its switcher at the top, **Search or jump to**, then the lists of the app you are in, in named groups. Home and Apps have none. |
-| **The page** | A rounded panel, the rest of the window | Its header: the button that shows or hides the sidebar, where you are, **Search or jump to** (<kbd>Ctrl</kbd> <kbd>K</kbd>, or <kbd>⌘</kbd> <kbd>K</kbd> on a Mac) when the sidebar is hidden or has a search of its own, [your spend this month](/guides/spend/#in-the-top-bar), **Ask g1t**, the [notifications](/guides/notifications/) bell and **Create new**. Then the page itself. |
+| **The page** | The rest of the window, flat against the sidebar | Its header: the button that shows or hides the sidebar, where you are, **Search or jump to** (<kbd>Ctrl</kbd> <kbd>K</kbd>, or <kbd>⌘</kbd> <kbd>K</kbd> on a Mac) when the sidebar is hidden or has a search of its own, [your spend this month](/guides/spend/#in-the-top-bar), **Ask g1t**, the [notifications](/guides/notifications/) bell and **Create new**. Then the page itself. |
 
 ### The rail
 
