@@ -388,6 +388,8 @@ the issue close as superseded. See
 
 Each runs in a sandbox of its own.
 
+In chat, agents work from [skills](/guides/agent-skills/): playbooks for documents, research, data, code, communication, and files and media. Asked for a PDF, a Word document or a spreadsheet, an agent makes the file with `make_file` and keeps it with a doc in Artifacts. Asked for something no skill can do yet, such as reading the web or booking a meeting, it says so.
+
 ## Mentioning g1t
 
 Write `@g1t` in a comment on an issue or a pull request, with what

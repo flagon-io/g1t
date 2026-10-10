@@ -51,6 +51,7 @@ export * from "./scopes";
 export * from "./search";
 export * from "./security";
 export * from "./security-suite";
+export * from "./skills";
 export * from "./status";
 export * from "./teams";
 export * from "./webhooks";

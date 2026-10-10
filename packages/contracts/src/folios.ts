@@ -660,6 +660,7 @@ export const FOLIO_RPC_METHODS = [
   "create_folio_as_agent",
   "edit_folio_as_agent",
   "share_folio_as_agent",
+  "attach_file_as_agent",
   "recall_folios_for_agent",
   "stale_folios_for_agent",
   "mark_folio_current",
@@ -749,6 +750,19 @@ export type FoliosApi = {
   editAsAgent(workspace: string, agentId: string, viewer: User, folioId: string, edit: FolioAgentEdit): Promise<Result<FolioAgentEditResult>>;
   /** `view` or `comment` for people already in the conversation, when the viewer has `manage`. Never general access, `edit` or `manage`. */
   shareAsAgent(workspace: string, agentId: string, viewer: User, folioId: string, input: { user_ids: string[]; role: "view" | "comment" }, audience: FolioAudience): Promise<Result<FolioAccessList>>;
+  /**
+   * A file an agent made (`make_file`: a PDF, a Word document, a
+   * spreadsheet) kept with a folio the viewer can edit, as people's
+   * uploads are: served from the usercontent origin at `url`
+   * (`/docs-files/<key>`, under that origin). `data` is the file in base64.
+   */
+  attachAsAgent(
+    workspace: string,
+    agentId: string,
+    viewer: User,
+    folioId: string,
+    file: { name: string; content_type: string; data: string },
+  ): Promise<Result<{ id: string; url: string; name: string; content_type: string; bytes: number }>>;
   recallForAgent(workspace: string, agentId: string, viewer: User, input: { query: string; limit?: number | null; spaces?: string[] | null; kinds?: FolioKind[] | null }, audience?: FolioAudience | null): Promise<Result<FolioPassage[]>>;
   staleForAgent(workspace: string, agentId: string, viewer: User, options?: { repo?: string | null; since?: string | null }, audience?: FolioAudience | null): Promise<Result<Folio[]>>;
   /** As the asker narrowed to repositories every audience member can read; spend only when the audience is the asker alone. */
@@ -812,6 +826,7 @@ export function foliosClient(service: ServiceBinding): FoliosApi {
     editAsAgent: (workspace, agentId, viewer, folioId, edit) => call("edit_folio_as_agent", { workspace, agent_id: agentId, viewer, folio_id: folioId, edit }),
     shareAsAgent: (workspace, agentId, viewer, folioId, input, audience) =>
       call("share_folio_as_agent", { workspace, agent_id: agentId, viewer, folio_id: folioId, ...input, audience }),
+    attachAsAgent: (workspace, agentId, viewer, folioId, file) => call("attach_file_as_agent", { workspace, agent_id: agentId, viewer, folio_id: folioId, file }),
     recallForAgent: (workspace, agentId, viewer, input, audience) =>
       call("recall_folios_for_agent", { workspace, agent_id: agentId, viewer, ...input, audience: audience ?? null }),
     staleForAgent: (workspace, agentId, viewer, options, audience) =>

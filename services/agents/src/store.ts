@@ -30,6 +30,7 @@ export type Row = {
   subagents: string | null;
   faces: string | null;
   reading?: string | null;
+  skills_off?: string | null;
   version: number;
   /** 1 for the workspace's built-in @g1t. */
   builtin: number;
@@ -81,6 +82,7 @@ export function definitionOf(row: Row): Definition {
     subagents: readList<SubagentDef>(row.subagents),
     faces: "internal",
     reading: readList<string>(row.reading ?? null),
+    skills_off: readList<string>(row.skills_off ?? null),
   };
 }
 
@@ -155,6 +157,7 @@ export const DEFINITION_COLUMNS = [
   "subagents",
   "faces",
   "reading",
+  "skills_off",
 ] as const;
 
 /** A definition's values, in `DEFINITION_COLUMNS` order. */
@@ -179,6 +182,7 @@ export function definitionColumns(d: Definition): (string | number | null)[] {
     JSON.stringify(d.subagents),
     d.faces,
     JSON.stringify(d.reading ?? []),
+    JSON.stringify(d.skills_off ?? []),
   ];
 }
 

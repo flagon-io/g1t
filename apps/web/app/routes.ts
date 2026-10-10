@@ -153,6 +153,7 @@ export default [
       route(":handle", "routes/workspace/agents/agent.tsx", [
         index("routes/workspace/agents/sessions.tsx"),
         route("sessions/:id", "routes/workspace/agents/session.tsx"),
+        route("skills", "routes/workspace/agents/skills.tsx"),
         route("memory", "routes/workspace/agents/memory.tsx"),
         route("routines", "routes/workspace/agents/routines.tsx"),
         route("spend", "routes/workspace/agents/spend.tsx"),

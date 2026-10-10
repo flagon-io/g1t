@@ -90,6 +90,7 @@ export default defineConfig({
 						{ label: 'Chat', slug: 'guides/chat' },
 						{ label: 'Agents', slug: 'guides/agents' },
 						{ label: 'Sessions', slug: 'guides/agent-sessions' },
+						{ label: 'Skills', slug: 'guides/agent-skills' },
 						{ label: 'Agent memory', slug: 'guides/agent-memory' },
 						{ label: 'Routines', slug: 'guides/agent-routines' },
 						{ label: 'Spend', slug: 'guides/spend' },

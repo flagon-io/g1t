@@ -125,6 +125,7 @@ test("the client calls exactly the docs service's folio methods", async () => {
     client.createAsAgent(ws, "agt_1", viewer, { kind: "doc", title: "Notes", where: "private" }),
     client.editAsAgent(ws, "agt_1", viewer, f, { kind: "slides", ops: [{ op: "delete_slides", slide_ids: ["s1"] }] }),
     client.shareAsAgent(ws, "agt_1", viewer, f, { user_ids: ["usr_2"], role: "view" }, { kind: "people", user_ids: ["usr_1", "usr_2"] }),
+    client.attachAsAgent(ws, "agt_1", viewer, f, { name: "q3.pdf", content_type: "application/pdf", data: "JVBERi0=" }),
     client.recallForAgent(ws, "agt_1", viewer, { query: "pricing" }),
     client.staleForAgent(ws, "agt_1", viewer),
     client.markCurrent(ws, viewer, f),

@@ -23,6 +23,7 @@ import { CHAT_MAX_HOPS } from "../../../packages/contracts/src/chat.ts";
 import type { Tokens } from "./budget.ts";
 import { handOffPort } from "./handoff.ts";
 import { HISTORY_LIMIT, fixedHello, helloAsk, systemPrompt, turns } from "./prompt.ts";
+import { skillsSection } from "./skills.ts";
 import { type Specialist, orchestratorInstructions, orchestratorTier, rosterLines } from "./orchestrator.ts";
 import { type MeterEnv, metered } from "./meter.ts";
 import { type RecallPlace, memorySection, recall } from "./memory.ts";
@@ -477,6 +478,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
           conversation: conversationHere,
           canHandOff: !!toolbox?.definitions().some((tool) => tool.name === "hand_off"),
           handedOffBy: sender?.handle ?? null,
+          skills: skillsSection(definition.skills_off, toolbox?.definitions().map((tool) => tool.name) ?? []),
         }),
         memorySection(facts),
         recallSection(passages),

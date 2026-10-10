@@ -101,6 +101,12 @@ export type WorkspaceAgent = {
    */
   reading: string[];
   /**
+   * g1t's foundational skills turned off for it, by id (./skills.ts):
+   * every one is on unless named here. Off takes the skill's playbook out of
+   * its instructions; its tools stay as they are.
+   */
+  skills_off: string[];
+  /**
    * Who it works with: `internal`, the workspace's own people (back
    * office), or `customers` (front office). Only `internal` for now.
    */
@@ -168,6 +174,8 @@ export type NewWorkspaceAgent = {
   subagents?: SubagentDef[];
   /** Docs spaces (by id) it reads first; at most 10. */
   reading?: string[];
+  /** Foundational skills to turn off, by id (./skills.ts). */
+  skills_off?: string[];
   /** Only `internal` for now; `customers` is refused. */
   faces?: AgentFaces;
   instructions: string;

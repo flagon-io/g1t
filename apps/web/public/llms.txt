@@ -751,6 +751,7 @@ https://docs.g1t.sh/guides/search/
 - [Talking to agents](https://docs.g1t.sh/guides/talking-to-agents/)
 - [Bring your own agent](https://docs.g1t.sh/guides/bring-your-own-agent/)
 - [Artifacts](https://docs.g1t.sh/guides/artifacts/)
+- [Agent skills](https://docs.g1t.sh/guides/agent-skills/): every workspace agent makes PDFs, Word documents and spreadsheets (`make_file`), writes reports with sources, charts data and reviews code, with the tools it already has
 - [The merge queue](https://docs.g1t.sh/guides/merge-queue/)
 - [Sessions and why-blame](https://docs.g1t.sh/guides/why-blame/)
 - [Forks and branches](https://docs.g1t.sh/concepts/forks/)

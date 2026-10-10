@@ -2168,6 +2168,41 @@ export class Folios {
   }
 
   /**
+   * A file an agent made (`make_file` in services/agents), kept with a
+   * folio as a person's upload is: only where the agent may edit for the
+   * person it acts for, up to the same size, served the same way.
+   */
+  async attachAsAgent(
+    a: AgentArgs & { folio_id: string; file: { name: string; content_type: string; data: string } },
+  ): Promise<Result<{ id: string; url: string; name: string; content_type: string; bytes: number }>> {
+    const found = await this.agentCtx({ ...a, audience: null });
+    if (!found.ok) return found;
+    const actx = found.value;
+    const opened = await this.agentOpen(actx, a.folio_id);
+    if (!opened.ok) return opened;
+    const { row, reach } = opened.value;
+    if (!reach.can.edit) return fail("forbidden", `${actx.viewer.username} can't edit this artifact, so nothing can be attached to it for them.`);
+    let bytes: Uint8Array;
+    try {
+      bytes = Uint8Array.from(atob(String(a.file?.data ?? "")), (c) => c.charCodeAt(0));
+    } catch {
+      return fail("invalid", "The file isn't base64.");
+    }
+    if (!bytes.length) return fail("invalid", "The file is empty.");
+    if (bytes.length > DOC_MAX_FILE_BYTES) return fail("invalid", `Files can be up to ${DOC_MAX_FILE_BYTES / 1024 / 1024} MB.`);
+    const name = safeName(a.file?.name ?? "file");
+    const contentType = servedType(a.file?.content_type ?? "");
+    const key = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const id = newId("fil");
+    await fileStore(this.env).put(`docs/${key}`, bytes, contentType);
+    await this.db
+      .prepare("INSERT INTO folio_files (id, workspace_id, folio_id, key, name, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(id, actx.workspace.id, row.id, key, name, contentType, bytes.length, actx.agentKey, now())
+      .run();
+    return ok({ id, url: `/docs-files/${key}`, name, content_type: contentType, bytes: bytes.length });
+  }
+
+  /**
    * What the workspace's artifacts (and projects' docs) say about a
    * query, for an agent about to answer: passages by meaning above the
    * floor, then by words, at most two per folio, only from folios its

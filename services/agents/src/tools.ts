@@ -21,7 +21,9 @@
 import type { DocEditTarget, FolioAgentEdit, FolioAgentEditResult, FolioAgentRead, FolioAudience, FolioKind, FolioPassage, FolioRef, User } from "@g1t/contracts";
 
 import { FOLIO_KINDS, folioIdFrom, isFolioKind } from "../../../packages/contracts/src/folios.ts";
+import type { MakeFileFormat } from "../../../packages/contracts/src/skills.ts";
 import { type Audience, type RepoRef, WITHHELD } from "./audience.ts";
+import { makeFile, previewTable, readSheets, sizeLabel } from "./files.ts";
 
 /** One tool, as the Messages API takes it. */
 export type ToolDef = { name: string; description: string; input_schema: Record<string, unknown> };
@@ -89,6 +91,12 @@ export interface FoliosPorts {
   edit(viewer: User, folioId: string, edit: FolioAgentEdit): Promise<FolioDone<FolioAgentEditResult>>;
   /** `view` or `comment` for people already in this conversation. */
   share(viewer: User, audience: FolioAudience, folioId: string, userIds: string[], role: "view" | "comment"): Promise<FolioDone<null>>;
+  /**
+   * Keeps a file the agent made with a doc the asker can edit; `url` is
+   * where it is served (on the usercontent origin). Absent where files
+   * can't be kept.
+   */
+  attach?(viewer: User, folioId: string, file: { name: string; content_type: string; bytes: Uint8Array }): Promise<FolioDone<{ url: string; name: string; bytes: number }>>;
   /** Sends the asker a link directly, as a message from the agent in their DM with it; false when it couldn't. */
   sendLink(asker: User, link: { title: string; path: string }, note: string): Promise<boolean>;
 }
@@ -423,7 +431,46 @@ const FOLIO_WRITE_TOOLS: ToolDef[] = [
   },
 ];
 
-const FOLIO_NAMES = new Set([...FOLIO_TOOLS, ...FOLIO_WRITE_TOOLS].map((tool) => tool.name));
+/**
+ * Files people asked for (the Documents, Data and Files and media skills):
+ * written here, kept with a doc the person who asked owns or can edit, and
+ * served from the usercontent origin like an upload.
+ */
+const MAKE_FILE: ToolDef = {
+  name: "make_file",
+  description:
+    'Make a file someone asked for and keep it with a doc in Artifacts: format "pdf" or "docx" (a Word document) from Markdown in content (headings, paragraphs, bold, italic, code, links, lists, quotes, code blocks, tables); "xlsx" (a spreadsheet, one or more sheets) or "csv" (one sheet) from sheets, each { name, rows }, the first row its header and numbers as numbers; or "md". Give a title (the file is named after it). Without artifact, a new doc is made holding the content (or a preview of the rows) with the file attached; with artifact (a doc\'s id or link you can edit), the file is attached to that doc. where works as for create_artifact. It returns the file\'s link: give it to them.',
+  input_schema: {
+    type: "object",
+    properties: {
+      format: { type: "string", enum: ["pdf", "docx", "xlsx", "csv", "md"] },
+      title: { type: "string" },
+      content: { type: "string", description: "Markdown, for pdf, docx and md." },
+      sheets: {
+        type: "array",
+        description: "For xlsx and csv.",
+        items: {
+          type: "object",
+          properties: { name: { type: "string" }, rows: { type: "array", items: { type: "array", items: {} } } },
+          required: ["rows"],
+        },
+      },
+      artifact: { type: "string", description: "A doc to attach it to: its id or link. Left out: a new doc." },
+      where: {
+        description: '{ "space": "<name or id>" }, "private" or "conversation", for a new doc.',
+        anyOf: [{ type: "string" }, { type: "object", properties: { space: { type: "string" } }, required: ["space"] }],
+      },
+    },
+    required: ["format", "title"],
+  },
+};
+
+const FOLIO_NAMES = new Set([...FOLIO_TOOLS, ...FOLIO_WRITE_TOOLS, MAKE_FILE].map((tool) => tool.name));
+
+/** Every tool an agent may be offered, by name: what skills may name (@g1t/contracts skills.ts). */
+export const TOOL_NAMES: ReadonlySet<string> = new Set(
+  [...CODE_TOOLS, ...CHAT_TOOLS, ...FOLIO_TOOLS, ...FOLIO_WRITE_TOOLS, MAKE_FILE, ASK_COLLEAGUE, HAND_OFF, REMEMBER, FORGET, DRAFT_ISSUE, COMMENT, REVIEW_PULL, START_SESSION, POST_UPDATE, USE_SUBAGENT, BRING_IN].map((tool) => tool.name),
+);
 
 const CODE_NAMES = new Set(CODE_TOOLS.map((tool) => tool.name));
 
@@ -498,6 +545,7 @@ export class ToolBox {
       // Artifacts are for everyone, Code or not: the docs service decides what this person and audience can read.
       ...(this.ports.folios && this.audience.asker ? FOLIO_TOOLS : []),
       ...(this.ports.folios && this.audience.asker && actions ? FOLIO_WRITE_TOOLS : []),
+      ...(this.ports.folios?.attach && this.audience.asker && actions ? [MAKE_FILE] : []),
       ...(roomForHop ? [ASK_COLLEAGUE] : []),
       ...(actions ? [REMEMBER, FORGET] : []),
       ...(this.canFile() ? [DRAFT_ISSUE] : []),
@@ -719,9 +767,64 @@ export class ToolBox {
         if (!done.ok) return { text: `It couldn't be shared: ${done.message}`, outcome: "refused" };
         return { text: `Shared with ${users.map((u) => `@${u.username}`).join(", ")}: they can ${role} it.`, outcome: "allowed" };
       }
+      case "make_file":
+        return this.makeFile(input, asker, folios);
       default:
         return { text: `There is no tool called ${name}.`, outcome: "refused" };
     }
+  }
+
+  /**
+   * A file someone asked for (files.ts), kept with a doc: the one named,
+   * which the asker must be able to edit, or a new one holding the content.
+   * Where not everyone here can read that doc, the link goes to the asker
+   * directly, as for any artifact.
+   */
+  private async makeFile(input: Record<string, unknown>, asker: User, folios: FoliosPorts): Promise<ToolResult> {
+    if (!folios.attach) return { text: "There is no tool called make_file here.", outcome: "refused" };
+    const title = String(input.title ?? "").trim().slice(0, 200);
+    const made = makeFile({ format: input.format, title, content: input.content, sheets: input.sheets });
+    if (!made.ok) return { text: made.message, outcome: "refused" };
+    const file = made.file;
+    const audience = this.folioAudience();
+    const given = String(input.artifact ?? "").trim().slice(0, 500);
+    let ref: FolioRef;
+    let hidden = false;
+    if (given) {
+      const id = folioRef(given);
+      if (!id) return { text: "Give the doc's id (fol_…) or its link, or leave artifact out for a new doc.", outcome: "refused" };
+      const found = await folios.read(asker, audience, id);
+      if (!found.ok) return found.code === "not_found" || found.code === "forbidden" ? this.withheld() : { text: found.message, outcome: "refused" };
+      if (!found.value.can.edit) return { text: "You can't edit that doc for them, so nothing can be attached to it. Leave artifact out to make a new doc.", outcome: "refused" };
+      ref = found.value.folio;
+      if (!this.audience.shared || !found.value.audience_can_read) this.privateRead = true;
+      hidden = !found.value.audience_can_read;
+    } else {
+      const place = await this.whereFor(input.where, asker, folios);
+      if (!place.ok) return { text: place.message, outcome: "refused" };
+      const body = docBody(file.format, title, input);
+      const make = (where: FolioWhere) => folios.create(asker, { kind: "doc", title, markdown: body, template_id: null, where, parent_id: null, source: null });
+      let created = await make(place.where);
+      if (!created.ok && place.fallback && created.code === "forbidden") created = await make("private");
+      if (!created.ok) return { text: `The doc to keep it in couldn't be made: ${created.message}`, outcome: "refused" };
+      ref = created.value;
+      if (this.othersHere(asker)) {
+        const check = await folios.read(asker, audience, ref.id).catch(() => null);
+        hidden = !check?.ok || !check.value.audience_can_read;
+      }
+    }
+    const kept = await folios.attach(asker, ref.id, { name: file.name, content_type: file.content_type, bytes: file.bytes });
+    if (!kept.ok) return { text: `The file was made but couldn't be kept: ${kept.message}`, outcome: "refused" };
+    const size = sizeLabel(kept.value.bytes);
+    // The doc links its file, so whoever opens the doc finds it.
+    await folios
+      .edit(asker, ref.id, { kind: "doc", target: { kind: "append" }, markdown: `**File:** [${kept.value.name.replace(/[[\]]/g, "")}](${kept.value.url}) (${size})`, note: `Attached ${kept.value.name}`, suggest_only: false, marks_current: false })
+      .catch(() => null);
+    if (hidden) return this.notForEveryone(asker, ref, folios, "made");
+    return {
+      text: `Made ${kept.value.name} (${file.summary}, ${size}) and kept it with the doc ${ref.title} (${ref.path}). Give them the file's link, ${kept.value.url}, and the doc's if it helps.`,
+      outcome: "allowed",
+    };
   }
 
   /**
@@ -936,6 +1039,24 @@ const NOT_YET = "Slides, designs and dashboards aren't available yet: only docs 
  * A folio id from an id or any artifact link (`/acme/-/artifacts/runbook-fol_…`,
  * with or without the site and a query); null when there is none.
  */
+/**
+ * What a doc made to hold a file says: the Markdown the file was made from
+ * (less a first heading repeating the title, which the doc has), or a
+ * preview of a spreadsheet's rows.
+ */
+export function docBody(format: MakeFileFormat, title: string, input: Record<string, unknown>): string {
+  let body = "";
+  if (format === "xlsx" || format === "csv") {
+    const read = readSheets(input.sheets);
+    if (read.ok) body = read.sheets.map((sheet) => `${read.sheets.length > 1 ? `## ${sheet.name}\n\n` : ""}${previewTable(sheet)}`).join("\n\n");
+  } else {
+    const markdown = String(input.content ?? "");
+    const first = /^\s*#\s+(.+?)\s*#*\s*(?:\n|$)/.exec(markdown);
+    body = (first && first[1]!.trim().toLowerCase() === title.trim().toLowerCase() ? markdown.slice(first[0].length).trimStart() : markdown).slice(0, 100_000);
+  }
+  return body.trim() ? body : "The file is attached below.";
+}
+
 export function folioRef(given: string): string | null {
   const last = given.trim().split(/[?#]/)[0].split("/").filter(Boolean).at(-1) ?? "";
   return folioIdFrom(last);

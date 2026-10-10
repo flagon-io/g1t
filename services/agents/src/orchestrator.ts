@@ -38,6 +38,7 @@ export function builtinDefinition(): Definition {
     subagents: [],
     faces: "internal",
     reading: [],
+    skills_off: [],
   };
 }
 

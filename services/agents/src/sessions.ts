@@ -49,6 +49,7 @@ import { type RecallPlace, MAX_FACTS, cleanFact, memorySection, recall, scopeFor
 import { readPolicy } from "./policy.ts";
 import { type PortsEnv, audiencePorts, toolPorts } from "./ports.ts";
 import { systemPrompt } from "./prompt.ts";
+import { skillsSection } from "./skills.ts";
 import { conversationFrom } from "./surface.ts";
 import { type Row, definitionOf, periods } from "./store.ts";
 import { type ActionPorts, type ToolCall, ToolBox } from "./tools.ts";
@@ -827,6 +828,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
           colleagues: roster,
           session: true,
           conversation: here,
+          skills: skillsSection(definition.skills_off, toolbox?.definitions().map((tool) => tool.name) ?? []),
         }),
         sessionSection(current, current.asked_by_username ? `@${current.asked_by_username}` : "the person who asked"),
         memorySection(facts),

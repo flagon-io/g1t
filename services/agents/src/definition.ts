@@ -11,6 +11,7 @@ import type {
   AgentFaces,
   SubagentDef,
 } from "@g1t/contracts";
+import { FOUNDATIONAL_SKILL_IDS } from "../../../packages/contracts/src/skills.ts";
 
 import { checkHandle } from "./handle.ts";
 import { isTier, limitsAgree } from "./routing.ts";
@@ -57,6 +58,8 @@ export type Definition = {
   faces: AgentFaces;
   /** Spaces whose artifacts it reads first. */
   reading: string[];
+  /** Foundational skills turned off for it, by id (@g1t/contracts skills.ts). */
+  skills_off: string[];
 };
 
 /** The one-line role a title and team (or department) make: "QA Engineer on the qa team". */
@@ -232,8 +235,9 @@ export function applyChanges(
     subagents: [],
     faces: "internal",
     reading: [],
+    skills_off: [],
   };
-  const next: Definition = { ...from };
+  const next: Definition = { ...from, skills_off: from.skills_off ?? [] };
   // Whether the role was made from the title and team, so it follows them.
   const roleDerived = !from.role || from.role === roleOf(from);
   if (creating || changes.handle !== undefined) {
@@ -312,6 +316,14 @@ export function applyChanges(
     if (ids.length > 10) return bad("An agent has at most 10 spaces of required reading.");
     if (ids.some((id) => !/^[A-Za-z0-9_-]{1,80}$/.test(id))) return bad("That isn't a space.");
     next.reading = ids;
+  }
+  if (changes.skills_off !== undefined) {
+    if (!Array.isArray(changes.skills_off)) return bad("Skills turned off are a list of skills.");
+    const ids = new Set(changes.skills_off.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean));
+    const unknown = [...ids].find((id) => !FOUNDATIONAL_SKILL_IDS.includes(id));
+    if (unknown) return bad(`There is no skill called ${unknown.slice(0, 40)}.`);
+    // In the skills' own order, so the same choice always reads the same.
+    next.skills_off = FOUNDATIONAL_SKILL_IDS.filter((id) => ids.has(id));
   }
   if (changes.faces !== undefined) {
     if (changes.faces === "customers") return bad("Customer-facing agents aren't available yet.");

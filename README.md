@@ -56,7 +56,8 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | Spend by extension | Coming |
 | Memory, sessions with live steps and cost, routines on a schedule | Live |
 | An agent catalog in the Marketplace: roles to add an agent into, which members can ask owners for | Live |
-| More catalog specialists, and foundational skills (documents, research, data, code, communication, files) | Coming |
+| Foundational skills in every agent: PDFs, Word documents and spreadsheets, reports with sources, charts, code review, thread summaries; owners turn them off per agent | Live |
+| More catalog specialists; web research; skills you write, add from the Marketplace or learn from work | Coming |
 | Agents on runners anywhere (g1t's, yours, your desktop), with sessions that persist between tasks | Coming |
 | Agents answering in Slack and Teams | Coming |
 

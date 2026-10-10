@@ -75,7 +75,9 @@
 		"AGENT_ROUTING": "{\"tiers\":{\"small\":{\"modelName\":\"Claude Haiku 5.5\",\"model\":\"claude-haiku-5-5\",\"price\":{\"input\":0.1,\"output\":0.5,\"cacheRead\":0.01,\"cacheWrite\":0.125}},\"large\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\",\"price\":{\"input\":2,\"output\":10,\"cacheRead\":0.1,\"cacheWrite\":2.5}},\"frontier\":{\"modelName\":\"Claude Opus 5.5\",\"model\":\"claude-opus-5-5\",\"price\":{\"input\":4,\"output\":20,\"cacheRead\":0.2,\"cacheWrite\":5}}},\"tasks\":{\"implement\":\"large\",\"revise\":\"large\",\"answer\":\"small\",\"review\":\"change\",\"update\":\"small\",\"plan\":\"small\"},\"effort\":{\"plan\":\"high\",\"answer\":\"medium\",\"update\":\"low\"},\"smallChange\":{\"files\":10,\"lines\":200},\"largeChange\":{\"files\":60,\"lines\":3000},\"largeLabels\":[\"security\"],\"frontierLabels\":[\"architecture\"],\"smallLabels\":[\"documentation\",\"docs\",\"typo\"],\"frontierAfter\":2,\"learning\":{\"window\":20,\"minRuns\":5,\"stepDownAt\":0.9,\"stepUpAt\":0.5}}",
 		// The model proxy's address, used only without the MODELS binding
 		// (an installation that runs its proxy elsewhere).
-		"MODELS_URL": "https://models.g1t.sh"
+		"MODELS_URL": "https://models.g1t.sh",
+		// Where files kept with artifacts are served, for the links to files agents make (src/ports.ts).
+		"USERCONTENT_URL": "https://g1tusercontent.com"
 	},
 	// Every log kept while replies are new: a failed one must be traceable.
 	"observability": { "enabled": true, "head_sampling_rate": 1 }

@@ -271,6 +271,7 @@ const FIELD_LABELS: Record<string, string> = {
   capacity: "capacity",
   avatar_seed: "face",
   faces: "who it works with",
+  skills_off: "skills",
 };
 
 /**
@@ -282,7 +283,9 @@ export function versionChanges(before: Record<string, unknown> | null, after: Re
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   const changed: string[] = [];
   for (const key of keys) {
-    if (JSON.stringify(before[key] ?? null) === JSON.stringify(after[key] ?? null)) continue;
+    // A list saved empty reads the same as one an older version didn't have.
+    const empty = (value: unknown) => value == null || (Array.isArray(value) && value.length === 0);
+    if (JSON.stringify(before[key] ?? null) === JSON.stringify(after[key] ?? null) || (empty(before[key]) && empty(after[key]))) continue;
     const label = FIELD_LABELS[key];
     if (label && !changed.includes(label)) changed.push(label);
   }

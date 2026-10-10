@@ -20,6 +20,7 @@ import {
 import type { AudiencePorts, RepoRef } from "./audience.ts";
 import type { FolioDone, FoliosPorts, FoundMessage, ToolPorts } from "./tools.ts";
 import { RECALL_LIMIT, passageSource } from "./recall.ts";
+import { base64 } from "./files.ts";
 
 export type PortsEnv = {
   DB: D1Database;
@@ -30,7 +31,18 @@ export type PortsEnv = {
   SEARCH: ServiceBinding;
   /** The docs service, for agents reading and writing artifacts; absent on an installation without it. */
   DOCS?: ServiceBinding;
+  /**
+   * Where files kept with artifacts are served (g1tusercontent.com for
+   * g1t.sh), for the links to files agents make. Empty: the site's own
+   * `/-/usercontent` path.
+   */
+  USERCONTENT_URL?: string;
 };
+
+/** The usercontent origin files are linked under, without a trailing slash. */
+export function usercontentBase(env: { USERCONTENT_URL?: string }): string {
+  return (env.USERCONTENT_URL ?? "").trim().replace(/\/+$/, "") || "/-/usercontent";
+}
 
 const refOf = (repo: { id: string; namespace: string; name: string; isPrivate: boolean; defaultBranch: string; forkOf?: string | null }): RepoRef => ({
   id: repo.id,
@@ -158,7 +170,7 @@ export function toolPorts(
       return `People:\n${people}${teamLines ? `\n\nTeams:\n${teamLines}` : ""}\n\nAgents:\n${agentLines}`;
     },
     consult,
-    ...(env.DOCS && agentId ? { folios: folioPorts(env.DOCS, env.CHAT, workspace, agentId) } : {}),
+    ...(env.DOCS && agentId ? { folios: folioPorts(env.DOCS, env.CHAT, workspace, agentId, usercontentBase(env)) } : {}),
   };
 }
 
@@ -171,7 +183,7 @@ const done = <T>(result: Result<T>): FolioDone<T> => (result.ok ? result : { ok:
  * from the docs service's `spaces_for_agent`: spaces are shared by pages
  * and folios, and have no folio method of their own.
  */
-function folioPorts(docs: ServiceBinding, chatBinding: ServiceBinding, workspace: string, agentId: string): FoliosPorts {
+function folioPorts(docs: ServiceBinding, chatBinding: ServiceBinding, workspace: string, agentId: string, usercontent: string): FoliosPorts {
   const folios = foliosClient(docs);
   const where = (f: { title: string; path: string; id: string }) => `${f.title} (${f.path}, id ${f.id})`;
   return {
@@ -228,6 +240,10 @@ function folioPorts(docs: ServiceBinding, chatBinding: ServiceBinding, workspace
     async share(viewer, audience, folioId, userIds, role) {
       const shared = await folios.shareAsAgent(workspace, agentId, viewer, folioId, { user_ids: userIds, role }, audience);
       return shared.ok ? { ok: true, value: null } : done(shared);
+    },
+    async attach(viewer, folioId, file) {
+      const kept = await folios.attachAsAgent(workspace, agentId, viewer, folioId, { name: file.name, content_type: file.content_type, data: base64(file.bytes) });
+      return kept.ok ? { ok: true, value: { url: `${usercontent}${kept.value.url}`, name: kept.value.name, bytes: kept.value.bytes } } : done(kept);
     },
     async sendLink(asker, link, note) {
       const chat = chatClient(chatBinding);

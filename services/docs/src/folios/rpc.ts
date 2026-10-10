@@ -56,6 +56,7 @@ export const FOLIO_RPC: Record<FolioRpcMethod, Handler> = {
   create_folio_as_agent: (s, a) => s.createAsAgent(a),
   edit_folio_as_agent: (s, a) => s.editAsAgent(a),
   share_folio_as_agent: (s, a) => s.shareAsAgent(a),
+  attach_file_as_agent: (s, a) => s.attachAsAgent(a),
   recall_folios_for_agent: (s, a) => s.recallForAgent(a),
   stale_folios_for_agent: (s, a) => s.staleForAgent(a),
   mark_folio_current: (s, a) => s.markCurrent(a),
