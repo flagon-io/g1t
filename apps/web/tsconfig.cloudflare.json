@@ -23,6 +23,9 @@
       "~/*": ["./app/*"]
     },
     "esModuleInterop": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    // Browser modules tested under Node (`npm test`) name the files they
+    // import with their extension, as Node needs (components/folios/provider.ts).
+    "allowImportingTsExtensions": true
   }
 }

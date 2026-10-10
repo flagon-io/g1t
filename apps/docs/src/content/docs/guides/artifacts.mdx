@@ -190,6 +190,24 @@ faces at the top are who's there now, agents included. When your connection
 drops, the header says **Offline, changes will sync** and sends your changes
 when you're back.
 
+### How a doc opens
+
+A doc's text is in the page itself, so it reads from the first moment, before
+any script runs. The page then connects to the doc's live room and loads the
+editor together, and the editor opens on the document the page carried: you
+can read and type at once, and the room only sends what changed since the
+doc was last saved. Anything you type before the room answers is kept and
+sent then, so nothing is lost. The dot in the header says where things stand:
+
+| Dot | Meaning |
+| --- | --- |
+| Faint, pulsing | Connecting to the live room. You can already read and edit. |
+| Green | Live: everyone's changes show as they happen. |
+| **Offline, changes will sync** | The connection dropped; your changes are kept and sent when it's back. |
+
+A doc that was never saved since this started, or one far larger than usual,
+waits for the room's copy before the editor opens, as every doc once did.
+
 ### Comments
 
 Select text and choose **Comment** for a passage, or write in **Discussion**

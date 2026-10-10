@@ -2,10 +2,10 @@ import { env } from "cloudflare:workers";
 
 import type { User } from "@g1t/contracts";
 
-import { getViewer } from "./session.server";
+import { getViewer, roleIn } from "./session.server";
 import { identity } from "./services.server";
-import { ticketViewer } from "./socket-ticket";
-import { websiteUser } from "./website-token";
+import { issueTicket, socketPath, ticketViewer } from "./socket-ticket";
+import { bearerToken, websiteUser } from "./website-token";
 
 let isolateSecret: string | null = null;
 
@@ -22,6 +22,23 @@ export function ticketSecret(): string {
     isolateSecret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   }
   return isolateSecret;
+}
+
+/**
+ * A socket ticket minted with a page, for a page opened with an access
+ * token: what `GET /-/live/ticket?path=` would answer, so the page's
+ * first socket opens without that round trip (lib/live-socket.ts
+ * `offerTicket`). Null for a session (its sockets carry the cookie) and
+ * for a path that is not one of the site's sockets, or not the viewer's
+ * workspace's.
+ */
+export async function socketTicketFor(context: Parameters<typeof getViewer>[0], request: Request, path: string): Promise<{ ticket: string; expires_at: string } | null> {
+  const viewer = getViewer(context);
+  const token = bearerToken(request);
+  if (!viewer || !token || !viewer.token?.website) return null;
+  const socket = socketPath(path);
+  if (!socket || (socket.workspace && !roleIn(viewer, socket.workspace))) return null;
+  return issueTicket(ticketSecret(), { token, userId: viewer.id, path: socket.path });
 }
 
 /**

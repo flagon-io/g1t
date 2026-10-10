@@ -57,6 +57,23 @@ export type Space = { row: SpaceRow; members: { principal: string; role: DocRole
 
 export const now = () => new Date().toISOString();
 
+/**
+ * Kept across requests in this isolate: the workspace behind a slug for
+ * half a minute (identity answers it in ~80 ms, and every folio call
+ * starts with it), and which workspaces already have their General
+ * space (made once, never unmade). A rename reaches the old slug within
+ * that half minute, which is what the site's own redirect allows.
+ */
+const WORKSPACE_TTL_MS = 30_000;
+const workspaces = new Map<string, { at: number; value: Promise<Workspace | null> }>();
+const defaultsMade = new Set<string>();
+
+/** For tests: forgets everything kept across requests. */
+export function forgetKept(): void {
+  workspaces.clear();
+  defaultsMade.clear();
+}
+
 export function rulesOf(space: Pick<Space, "row" | "members">): SpaceRules {
   return { kind: space.row.kind, team: space.row.team, default_role: space.row.default_role, members: space.members };
 }
@@ -83,7 +100,16 @@ export class Who {
     const key = String(slug ?? "").toLowerCase();
     let found = this.workspaces.get(key);
     if (!found) {
-      found = identityClient(this.env.IDENTITY).getWorkspace(key).catch(() => null);
+      const kept = workspaces.get(key);
+      if (kept && Date.now() - kept.at < WORKSPACE_TTL_MS) found = kept.value;
+      else {
+        found = identityClient(this.env.IDENTITY).getWorkspace(key).catch(() => null);
+        workspaces.set(key, { at: Date.now(), value: found });
+        // Only an answer is kept: a miss or a failure is asked again next time.
+        void found.then((w) => {
+          if (!w) workspaces.delete(key);
+        });
+      }
       this.workspaces.set(key, found);
     }
     return found;
@@ -246,9 +272,13 @@ export class Who {
 
   /** Makes the workspace's General space, once. */
   async ensureDefault(workspace: Workspace, viewer: User): Promise<void> {
+    if (defaultsMade.has(workspace.id)) return;
     const db = this.env.DB;
     const found = await db.prepare("SELECT id FROM spaces WHERE workspace_id = ? AND is_default = 1").bind(workspace.id).first<{ id: string }>();
-    if (found) return;
+    if (found) {
+      defaultsMade.add(workspace.id);
+      return;
+    }
     const taken = new Set((await db.prepare("SELECT slug FROM spaces WHERE workspace_id = ?").bind(workspace.id).all<{ slug: string }>()).results.map((r) => r.slug));
     await db
       .prepare(
@@ -256,6 +286,7 @@ export class Who {
       )
       .bind(newId("spc"), workspace.id, freeSlug("general", taken), userKey(viewer), now())
       .run();
+    defaultsMade.add(workspace.id);
     this.forgetSpaces();
   }
 

@@ -191,6 +191,11 @@ export async function saveFolio(env: SaveFolioEnv, input: SaveFolio, now = new D
   const last = input.editors[input.editors.length - 1] ?? null;
   const statements: D1PreparedStatement[] = [];
   const preview = r.preview ? JSON.stringify(r.preview) : null;
+  // The document itself, so a page opens from it before its room answers
+  // (folios/service.ts `page`), and an emptied room is refilled with the
+  // very same document (`ready`). Too large for a row: none is kept, and
+  // the page waits for the room as before.
+  statements.push(db.prepare("UPDATE folios SET state = ? WHERE id = ?").bind(input.state.byteLength <= MAX_VERSION_STATE ? input.state : null, folio.id));
   // A folio made from text that already reads as the kind renders it still needs its card.
   if (!changed && preview !== folio.preview) statements.push(db.prepare("UPDATE folios SET preview = ? WHERE id = ?").bind(preview, folio.id));
   if (changed) {

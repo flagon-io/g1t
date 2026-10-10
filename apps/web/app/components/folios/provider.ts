@@ -9,6 +9,12 @@
  *
  * It reconnects with backoff when the socket drops, and says where it is
  * (`status`) so the page can show "Offline, changes will sync".
+ *
+ * Given the document as the page's data carries it (the state the room
+ * last saved), it starts from that: the editor opens on it at once, and
+ * the room's answer to our state vector is only what changed since. Any
+ * edit made before the room answers stays in the document and goes out
+ * in that same exchange (sync step 2), so nothing typed early is lost.
  * Browser-only.
  */
 import type { FoliosLiveEvent } from "@g1t/contracts";
@@ -18,8 +24,9 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
-import { openLive } from "../../lib/live-socket";
-import { heldOpen } from "../../lib/notify-store";
+// With extensions, so provider.test.ts runs under Node as the other tests do.
+import { openLive } from "../../lib/live-socket.ts";
+import { heldOpen } from "../../lib/notify-store.ts";
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
@@ -27,10 +34,22 @@ const MESSAGE_QUERY_AWARENESS = 3;
 
 export type LiveStatus = "connecting" | "synced" | "offline" | "closed";
 
+/** The document a page carries (base64 of a Yjs update), as bytes; null when it carries none or it is not base64. */
+export function pageStateBytes(state: string | null | undefined): Uint8Array | null {
+  if (!state) return null;
+  try {
+    return Uint8Array.from(atob(state), (c) => c.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
 export class FolioProvider {
   readonly doc: Y.Doc;
   readonly awareness: awarenessProtocol.Awareness;
   status: LiveStatus = "connecting";
+  /** Whether the document started from the page's saved state (so the editor need not wait for the room). */
+  readonly seeded: boolean;
   private socket: WebSocket | null = null;
   private attempts = 0;
   /** When the current connection opened; the backoff starts over only once one holds. */
@@ -43,11 +62,22 @@ export class FolioProvider {
   private readonly statusListeners = new Set<(status: LiveStatus) => void>();
   private readonly eventListeners = new Set<(event: FoliosLiveEvent) => void>();
 
-  constructor(
-    private readonly url: string,
-    doc?: Y.Doc,
-  ) {
-    this.doc = doc ?? new Y.Doc();
+  private readonly url: string;
+
+  constructor(url: string, options: { doc?: Y.Doc; state?: Uint8Array | null } = {}) {
+    this.url = url;
+    this.doc = options.doc ?? new Y.Doc();
+    let seeded = false;
+    if (options.state?.byteLength) {
+      try {
+        // No origin of our own: the seed is the room's work, not an edit to send it.
+        Y.applyUpdate(this.doc, options.state, "seed");
+        seeded = true;
+      } catch (error) {
+        console.error("artifacts: the saved document could not be read; waiting for the room", error);
+      }
+    }
+    this.seeded = seeded;
     this.awareness = new awarenessProtocol.Awareness(this.doc);
     this.doc.on("update", this.onDocUpdate);
     this.awareness.on("update", this.onAwarenessUpdate);

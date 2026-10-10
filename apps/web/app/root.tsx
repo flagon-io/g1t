@@ -50,7 +50,8 @@ import { addresses } from "./lib/addresses.server";
 import { RELOADED_KEY, RELOAD_GIVE_UP_MS, clientNavigated, reloadFixes, reloadedBefore } from "./lib/stale-build";
 import { useNonce } from "./lib/nonce";
 import { isNeedsSignIn } from "./lib/website-token";
-import { setLiveViaToken } from "./lib/live-socket";
+import { offerTicket, setLiveViaToken } from "./lib/live-socket";
+import { socketTicketFor } from "./lib/socket-ticket.server";
 import { LiveNotifications } from "./components/notifications/live-notifications";
 import { THEME_COLOR, THEME_COOKIE, readTheme, themeAttribute, useThemeChoice } from "./lib/theme";
 
@@ -102,6 +103,9 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   return {
     user,
     shell,
+    // For a page opened with an access token: the feed socket's ticket,
+    // minted here so the feed opens without asking for one (lib/live-socket.ts).
+    liveTicket: user?.token?.website ? await socketTicketFor(context, request, "/-/live") : null,
     // Whether they folded the sidebar away, so the page is drawn that way from the start.
     sidebarClosed: sidebarClosed(readCookie(cookies, SIDEBAR_COOKIE)),
     // Their Appearance, so the page is drawn in it from the first byte (lib/theme.ts).
@@ -342,7 +346,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const root = loaded ?? (inBrowser ? lastRoot : undefined);
   const user = root?.user;
   // A page opened with an access token signs its live sockets in with tickets (lib/live-socket.ts).
-  if (inBrowser) setLiveViaToken(Boolean(user?.token?.website));
+  if (inBrowser) {
+    setLiveViaToken(Boolean(user?.token?.website));
+    offerTicket("/-/live", root?.liveTicket);
+  }
   const { pathname, search } = useLocation();
   // Drawn around the error page too: a 404 keeps the sidebar out of a
   // project or workspace the viewer cannot see.

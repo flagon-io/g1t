@@ -109,6 +109,30 @@ the databases, so start calls together and add no rounds.
   signed-in pages under 400 ms, streamed panels within a second.
 - Workers run without Smart Placement; `scripts/perf/placement-probe.mjs`
   measures a placement before you pin one.
+- A TypeScript service reports its database time too (`db;dur`, from
+  `openD1` in `@g1t/contracts`): the round trips a method makes are what
+  it costs, so start them together (`Promise.all`), keep what never
+  changes across requests in the isolate (the artifacts service keeps a
+  workspace's slug for 30 s and whether its General space exists), and
+  don't wake a Durable Object for a read D1 can answer.
+- Nothing live gates a page. A page carries what it shows (a doc's text
+  and its saved document), opens its sockets as it hydrates rather than
+  from inside the code they feed, keeps what is typed until they answer,
+  and says so with a dot, never a spinner. A page opened with an access
+  token gets its socket tickets with the page (the root loader mints the
+  feed's, an artifact's loader its room's) rather than asking for each.
+- Code that only the browser runs (the doc editor) is still fetched with
+  the page: `vite.config.ts` notes the chunk and what it imports for the
+  route's `links`, and a link to such a page warms the chunk on hover.
+  Modules several routes share are grouped by who shares them
+  (`codeSplitting.groups`), so a page fetches tens of files, not a
+  hundred and more. Before this, opening a doc fetched 124 files
+  (1,049 KB) in three waves and the editor appeared at 2.8–3.3 s; a doc
+  now fetches 71 files (1,026 KB) in one wave, and against the deployed
+  services the editor appears at 2.1 s, of which the room's answer is
+  0.65 s and the editor's own start 0.4 s. The room's part (the saved
+  document in the page, one call to the room, the context in one round)
+  is measured after deploy.
 
 ## Rate limits
 

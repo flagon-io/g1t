@@ -68,10 +68,19 @@ export function FolioHeader({
       <div className="min-w-0 grow">
         <Crumbs items={crumbs} />
       </div>
-      {status === "offline" && (
+      {status === "offline" ? (
         <Hint label="Your changes are kept and sync when the connection is back.">
-          <span className="flex items-center gap-1 text-xs text-warn" tabIndex={0}>
+          <span className="flex items-center gap-1 text-xs text-warn" tabIndex={0} data-live={status}>
             <WifiOff size={13} /> <span className="max-sm:hidden">Offline, changes will sync</span>
+          </span>
+        </Hint>
+      ) : (
+        // A quiet dot: green once the room is in step with this page, faint
+        // until then. The page is readable and editable either way; what is
+        // typed before the room answers goes to it then (provider.ts).
+        <Hint label={status === "synced" ? "Live: everyone's changes show as they happen." : status === "closed" ? "No longer live." : "Connecting to the live document…"}>
+          <span className="flex size-8 shrink-0 items-center justify-center" tabIndex={0} aria-label={status === "synced" ? "Live" : status === "closed" ? "Not live" : "Connecting"} data-live={status}>
+            <span className={`size-2 rounded-full ${status === "synced" ? "bg-success" : status === "closed" ? "bg-line" : "bg-faint/50 animate-pulse"}`} aria-hidden="true" />
           </span>
         </Hint>
       )}

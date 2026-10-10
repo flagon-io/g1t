@@ -230,19 +230,24 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
 
   /**
    * Names the folio and its kind, and fills an empty document: from a
-   * Yjs state (a duplicate), or the kind's seed from text or a spec (a
-   * template, an agent's new folio, or blank).
+   * Yjs state (a duplicate, or what D1 saved), or the kind's seed from
+   * text or a spec (a template, an agent's new folio, or blank). Returns
+   * whether the document has content afterwards: called with nothing to
+   * fill it with, an empty room says false and the service reads what
+   * was saved, so the usual open costs one call and no D1 read.
    */
-  async ensure(init: { folio_id: string; kind: FolioKind; workspace_slug: string; text?: string | null; spec?: unknown; state?: Uint8Array | null }): Promise<void> {
+  async ensure(init: { folio_id: string; kind: FolioKind; workspace_slug: string; text?: string | null; spec?: unknown; state?: Uint8Array | null }): Promise<boolean> {
     this.setMeta("folio_id", init.folio_id);
     this.setMeta("kind", init.kind);
     if (init.workspace_slug) this.setMeta("workspace_slug", init.workspace_slug);
     const doc = this.load();
     const model = this.model();
-    if (!model.isEmpty(doc)) return;
+    if (!model.isEmpty(doc)) return true;
+    if (init.text === undefined && init.spec === undefined && init.state == null) return false;
     // No origin: filling a new room is its "created" version (written by the service), nobody's edit.
     if (init.state) Y.applyUpdate(doc, init.state);
     else doc.transact(() => model.seed(doc, { text: init.text ?? null, spec: init.spec }));
+    return true;
   }
 
   /** The folio in its agent form. */

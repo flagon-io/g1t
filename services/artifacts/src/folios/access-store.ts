@@ -40,6 +40,8 @@ export type FolioRow = {
   edited_at: string;
   trashed_at: string | null;
   trashed_by: string | null;
+  /** The saved Yjs state (migration 0006), only when a read asks for it. */
+  state?: ArrayBuffer | number[] | null;
 };
 
 /** Every column but the text, as lists read them. */

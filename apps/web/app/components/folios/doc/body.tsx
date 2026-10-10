@@ -33,7 +33,7 @@ function useHydrated() {
   return hydrated;
 }
 
-export default function DocBody({ slug, page, folio, role, showComments, onPresence, onStatus, onFolio, onRole, onError }: FolioBodyProps) {
+export default function DocBody({ slug, page, folio, live, role, showComments, onPresence, onFolio, onRole, onError }: FolioBodyProps) {
   const layout = useFoliosData();
   const root = useRouteLoaderData("root");
   const usercontent = usercontentFrom(root);
@@ -87,6 +87,8 @@ export default function DocBody({ slug, page, folio, role, showComments, onPrese
     },
     [navigate, slug, revalidator, onFolio, onRole],
   );
+  // The room's notices (a rename, a suggestion, a change of access), from the page's connection.
+  useEffect(() => live?.onEvent(onEvent), [live, onEvent]);
 
   const decide = async (id: string, decision: "accept" | "reject") => {
     setSuggestions((was) => was.filter((s) => s.id !== id));
@@ -259,12 +261,13 @@ export default function DocBody({ slug, page, folio, role, showComments, onPrese
 
         {/* The doc itself: live once the editor loads; its saved Markdown until then. */}
         <div className="mt-6">
-          {hydrated && !trashed ? (
+          {hydrated && live && !trashed ? (
             <Suspense fallback={<ReadView markdown={page.text} />}>
               <DocEditor
                 key={folio.id}
                 slug={slug}
                 folioId={folio.id}
+                provider={live}
                 role={role}
                 me={layout?.me ?? { key: "", name: "", display_name: "", avatar: null }}
                 mentionables={layout?.mentionables ?? []}
@@ -272,8 +275,6 @@ export default function DocBody({ slug, page, folio, role, showComments, onPrese
                 suggestions={suggestions}
                 showComments={showComments}
                 onPresence={onPresence}
-                onStatus={onStatus}
-                onEvent={onEvent}
                 onPageThreads={setThreads}
                 renderSuggestion={(s) => <SuggestionCard suggestion={s} canDecide={editable} onDecide={decide} />}
                 projects={[]}

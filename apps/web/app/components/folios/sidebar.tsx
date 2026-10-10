@@ -20,6 +20,7 @@ import { Skeleton } from "../ui/skeleton";
 import { foliosRequest, useFoliosAction, useFoliosData } from "./actions";
 import { RepoDocsDialog } from "./doc/code";
 import { FOLIO_KIND_UI, FolioGlyph, KindIcon } from "./kinds";
+import { warmOnIntent } from "./list";
 import { SpaceIcon } from "./parts";
 
 const ROW = "group flex h-8 items-center gap-1.5 rounded-md pr-1 text-[0.8125rem] transition-colors";
@@ -122,7 +123,7 @@ function TreeRow({ slug, place, item, current, open, toggle, drag, setDrag, onDr
         >
           <ChevronRight size={13} className={`transition-transform ${expanded ? "rotate-90" : ""}`} />
         </button>
-        <NavLink to={`/${slug}/-/artifacts/${folioSlug(item.title, item.id)}`} prefetch="intent" className="flex min-w-0 grow items-center gap-1.5">
+        <NavLink to={`/${slug}/-/artifacts/${folioSlug(item.title, item.id)}`} prefetch="intent" {...warmOnIntent(item)} className="flex min-w-0 grow items-center gap-1.5">
           <span className="flex w-4 shrink-0 justify-center">
             <FolioGlyph folio={item} size={14} />
           </span>

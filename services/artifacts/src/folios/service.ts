@@ -110,7 +110,7 @@ import {
 } from "./access-store.ts";
 import { agentMayFind, agentReach, audienceRule, type AgentReach, type AudienceRule } from "./agents.ts";
 import { publishFolioEvent } from "./events.ts";
-import { MAX_DEPTH, cleanCover, cleanIcon, cleanNote, cleanSource, cleanTarget, cleanTitle, decodeCursor, depthOf, encodeCursor, listLimit, sharedTops, slugOf, subtreeHeight, treeNodes } from "./list.ts";
+import { MAX_DEPTH, cleanCover, cleanIcon, cleanNote, cleanSource, cleanTarget, cleanTitle, decodeCursor, depthOf, encodeCursor, listLimit, pageState, sharedTops, slugOf, subtreeHeight, treeNodes } from "./list.ts";
 import { REQUEST_RECIPIENTS, claimAccessRequest } from "./requests.ts";
 import type { FolioRoom } from "./room.ts";
 import { builtinFolioTemplate, builtinFolioTemplates } from "./templates.ts";
@@ -205,12 +205,19 @@ export class Folios {
     );
   }
 
-  /** The room, named and given its kind and (when empty) its saved text. */
+  /**
+   * The room, named and given its kind. A room that is empty (new, or its
+   * storage gone) is filled from what D1 saved: the document's state when
+   * there is one, so it stays the very document every reader was given
+   * (`page` hands the same state to the browser), else its text. The
+   * common case, a room with the document already, costs one call.
+   */
   private async ready(workspace: Workspace, row: FolioRow) {
     const room = this.room(row.id);
-    let text = row.text;
-    if (!text) text = (await this.db.prepare("SELECT text FROM folios WHERE id = ?").bind(row.id).first<{ text: string }>())?.text ?? "";
-    await room.ensure({ folio_id: row.id, kind: row.kind, workspace_slug: workspace.slug, text });
+    const named = { folio_id: row.id, kind: row.kind, workspace_slug: workspace.slug };
+    if (await room.ensure(named)) return room;
+    const saved = await this.db.prepare("SELECT text, state FROM folios WHERE id = ?").bind(row.id).first<{ text: string; state: ArrayBuffer | number[] | null }>();
+    await room.ensure({ ...named, text: saved?.text ?? row.text ?? "", state: saved?.state ? new Uint8Array(saved.state as ArrayBuffer) : null });
     return room;
   }
 
@@ -221,8 +228,10 @@ export class Folios {
     if (!found.ok) return found;
     const workspace = found.value;
     const user = viewer!;
-    await this.who.ensureDefault(workspace, user);
-    const person = await this.who.viewerPerson(workspace, user);
+    // Their teams (identity), the spaces (D1) and the General check (D1,
+    // once per isolate) start together: one round, not three.
+    const [person] = await Promise.all([this.who.viewerPerson(workspace, user), this.who.ensureDefault(workspace, user), this.who.allSpaces(workspace)]);
+    // Read again only when General was just made (which forgets the spaces).
     const spaces = await this.who.spacesFor(workspace, person);
     return ok({ workspace, viewer: user, key: userKey(user), person, spaces, spaceById: new Map(spaces.map((s) => [s.row.id, s])), owner: this.who.viewerOwner(user, workspace.slug) });
   }
@@ -243,8 +252,9 @@ export class Folios {
    * read it at all. `opening` counts as opening its link (the `folio`
    * read and the live socket), which is what makes a link folio readable.
    */
-  private async open(ctx: Ctx, folioId: unknown, need: DocRole, options: { trashed?: boolean; opening?: boolean; text?: boolean } = {}): Promise<Result<{ row: FolioRow; role: DocRole; found: Ancestry }>> {
-    const columns = options.text ? FOLIO_COLUMNS.replace("'' AS text", "text") : FOLIO_COLUMNS;
+  private async open(ctx: Ctx, folioId: unknown, need: DocRole, options: { trashed?: boolean; opening?: boolean; text?: boolean; state?: boolean } = {}): Promise<Result<{ row: FolioRow; role: DocRole; found: Ancestry }>> {
+    let columns = options.text ? FOLIO_COLUMNS.replace("'' AS text", "text") : FOLIO_COLUMNS;
+    if (options.state) columns += ", state";
     const row = await this.db.prepare(`SELECT ${columns} FROM folios WHERE id = ? AND workspace_id = ?`).bind(String(folioId ?? ""), ctx.workspace.id).first<FolioRow>();
     if (!row) return fail("not_found", "No such artifact.");
     if (row.trashed_at && !options.trashed) return fail("not_found", "That artifact is in the trash.");
@@ -274,16 +284,17 @@ export class Folios {
     const readable = rows.filter((r) => roles.get(r.id));
     if (!readable.length) return [];
     const ids = readable.map((r) => r.id);
-    const [favorites, counts, kids, stale] = await Promise.all([
+    // The people (identity, the slow part) with the rows' D1 reads, not after them.
+    const [favorites, counts, kids, stale, people] = await Promise.all([
       this.db.prepare("SELECT folio_id FROM folio_favorites WHERE user_id = ? AND folio_id IN (SELECT value FROM json_each(?))").bind(ctx.viewer.id, json(ids)).all<{ folio_id: string }>(),
       this.db.prepare("SELECT folio_id, COUNT(*) AS n FROM folio_grants WHERE folio_id IN (SELECT value FROM json_each(?)) GROUP BY folio_id").bind(json(ids)).all<{ folio_id: string; n: number }>(),
       this.db.prepare("SELECT DISTINCT parent_id FROM folios WHERE parent_id IN (SELECT value FROM json_each(?)) AND trashed_at IS NULL").bind(json(ids)).all<{ parent_id: string }>(),
       this.staleIds(ids),
+      this.who.profiles(
+        ctx.workspace,
+        readable.flatMap((r) => [r.owner, r.created_by, ...(r.edited_by ? [r.edited_by] : [])]),
+      ),
     ]);
-    const people = await this.who.profiles(
-      ctx.workspace,
-      readable.flatMap((r) => [r.owner, r.created_by, ...(r.edited_by ? [r.edited_by] : [])]),
-    );
     const fav = new Set(favorites.results.map((f) => f.folio_id));
     const shared = new Map(counts.results.map((c) => [c.folio_id, c.n]));
     const parents = new Set(kids.results.map((k) => k.parent_id));
@@ -431,12 +442,17 @@ export class Folios {
   }
 
   async sidebar(a: Args): Promise<Result<FoliosSidebar>> {
-    const found = await this.ctx(a.workspace, a.viewer);
+    // The spaces they joined need only who they are: read with the context, not after it.
+    const [found, joined] = await Promise.all([
+      this.ctx(a.workspace, a.viewer),
+      this.db
+        .prepare("SELECT space_id FROM space_joins WHERE user_id = ?")
+        .bind(String(a.viewer?.id ?? ""))
+        .all<{ space_id: string }>(),
+    ]);
     if (!found.ok) return found;
     const ctx = found.value;
-    const joins = new Set(
-      (await this.db.prepare("SELECT space_id FROM space_joins WHERE user_id = ?").bind(ctx.viewer.id).all<{ space_id: string }>()).results.map((r) => r.space_id),
-    );
+    const joins = new Set(joined.results.map((r) => r.space_id));
     // Joined open spaces (General always), team spaces of theirs, Members-only spaces they're in.
     const shown = ctx.spaces.filter((s) => s.role && !s.row.archived_at && (s.row.kind !== "workspace" || s.row.is_default || joins.has(s.row.id)));
     const keys = personKeys(ctx.person);
@@ -480,11 +496,12 @@ export class Folios {
     ]);
     const all = [...spaceRows.results, ...privateRows.results, ...sharedRows.results, ...favoriteRows.results];
     const unique = [...new Map(all.map((r) => [r.id, r])).values()];
-    const { roles } = await this.roles(ctx, unique);
+    // Roles and staleness together: staleness is asked of every tree row, and read only for the readable ones.
+    const [{ roles }, staleAll] = await Promise.all([this.roles(ctx, unique), this.staleIds([...spaceRows.results, ...privateRows.results].map((r) => r.id))]);
     const can = (r: FolioRow) => !!roles.get(r.id);
     const inSpaces = spaceRows.results.filter(can);
     const mine = privateRows.results.filter(can);
-    const stale = await this.staleIds([...inSpaces, ...mine].map((r) => r.id));
+    const stale = new Set([...inSpaces, ...mine].map((r) => r.id).filter((id) => staleAll.has(id)));
     const elsewhere = new Set([...inSpaces, ...mine].map((r) => r.id));
     const spaceCounts = new Map<string, number>();
     for (const r of inSpaces) spaceCounts.set(r.space_id!, (spaceCounts.get(r.space_id!) ?? 0) + 1);
@@ -541,7 +558,7 @@ export class Folios {
     const found = await this.ctx(a.workspace, a.viewer);
     if (!found.ok) return found;
     const ctx = found.value;
-    const opened = await this.open(ctx, a.folio_id, "view", { trashed: true, opening: true, text: true });
+    const opened = await this.open(ctx, a.folio_id, "view", { trashed: true, opening: true, text: true, state: true });
     if (!opened.ok) return opened;
     const { row, role } = opened.value;
     const at = now();
@@ -552,26 +569,31 @@ export class Folios {
         .run(),
     );
     const above = row.path.split("/").filter((id) => id && id !== row.id);
-    const [aboveRows, childRows, linkRows] = await Promise.all([
+    // The ancestors' and the parents' rows are already known: the folio
+    // itself, its suggestions, and what sits around it, all in one round.
+    const known = { roles: new Map([[row.id, role]]), found: opened.value.found };
+    const [aboveRows, childRows, linkRows, [folio], suggestions] = await Promise.all([
       foliosById(this.db, above),
       this.db.prepare(`SELECT ${FOLIO_COLUMNS} FROM folios WHERE parent_id = ? AND trashed_at IS NULL ORDER BY position LIMIT 200`).bind(row.id).all<FolioRow>(),
       this.db
         .prepare(`SELECT ${folioColumns("f")} FROM folio_links l JOIN folios f ON f.id = l.from_folio WHERE l.to_folio = ? AND f.workspace_id = ? AND f.trashed_at IS NULL LIMIT 200`)
         .bind(row.id, ctx.workspace.id)
         .all<FolioRow>(),
+      this.toFolios(ctx, [row], known),
+      row.kind === "doc" ? this.openSuggestions(ctx, row) : Promise.resolve([] as FolioSuggestion[]),
     ]);
     const parents = above.map((id) => aboveRows.get(id)).filter((r): r is FolioRow => !!r);
     const others = [...parents, ...childRows.results, ...linkRows.results.filter((r) => r.id !== row.id)];
     const { roles } = await this.roles(ctx, others);
     const readable = (list: FolioRow[]) => list.filter((r) => roles.get(r.id)).map((r) => this.ref(ctx.workspace.slug, r));
-    const [folio] = await this.toFolios(ctx, [row], { roles: new Map([[row.id, role]]), found: opened.value.found });
     return ok({
       folio: folio!,
       text: row.text,
+      state: pageState(row.state),
       breadcrumbs: readable(parents),
       children: readable(childRows.results),
       backlinks: readable(linkRows.results.filter((r) => r.id !== row.id)),
-      suggestions: row.kind === "doc" ? await this.openSuggestions(ctx, row) : [],
+      suggestions,
     });
   }
 
@@ -2449,8 +2471,8 @@ export class Folios {
     const { row, role } = opened.value;
     if (row.trashed_at) return new Response("That artifact is in the trash\n", { status: 410 });
     if (!kindModel(row.kind)) return new Response("That kind of artifact isn't here yet\n", { status: 409 });
-    const room = await this.ready(ctx.workspace, row);
-    const member = (await this.who.profiles(ctx.workspace, [ctx.key])).get(ctx.key)!;
+    // The room (one call, when it has the document) and who this is (identity) together.
+    const [room, member] = await Promise.all([this.ready(ctx.workspace, row), this.who.profiles(ctx.workspace, [ctx.key]).then((people) => people.get(ctx.key)!)]);
     const headers = new Headers(request.headers);
     headers.delete(DOCS_VIEWER_HEADER);
     headers.set(ROOM_MEMBER_HEADER, JSON.stringify({ folio_id: row.id, workspace_slug: ctx.workspace.slug, key: ctx.key, member, role }));

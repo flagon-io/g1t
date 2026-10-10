@@ -270,6 +270,13 @@ export type FolioPage = {
   folio: Folio;
   /** Its text rendition when last saved (a doc's Markdown): what shows until the live editor loads. */
   text: string;
+  /**
+   * The document as last saved (a Yjs update, base64), so the editor
+   * opens from it at once and syncs the difference with its room; null
+   * when none is kept yet or it is too large to carry, and the editor
+   * waits for the room.
+   */
+  state: string | null;
   /** The docs it sits under, from the top, that the viewer can read. */
   breadcrumbs: FolioRef[];
   /** What sits under it (a doc's sub-pages) that the viewer can read. */

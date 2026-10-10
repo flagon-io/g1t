@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { cleanCover, cleanIcon, cleanSource, cleanTarget, cleanTitle, decodeCursor, depthOf, encodeCursor, listLimit, sharedTops, subtreeHeight, treeNodes } from "./list.ts";
+import { MAX_PAGE_STATE, cleanCover, cleanIcon, cleanSource, cleanTarget, cleanTitle, decodeCursor, depthOf, encodeCursor, listLimit, pageState, sharedTops, subtreeHeight, treeNodes } from "./list.ts";
+
+test("a page carries the saved document as base64, and none when there is none or it is too large", () => {
+  assert.equal(pageState(null), null);
+  assert.equal(pageState(new Uint8Array(0).buffer), null);
+  const bytes = new Uint8Array(70_000).map((_, i) => i % 251);
+  const carried = pageState(bytes.buffer);
+  assert.ok(carried);
+  assert.deepEqual(Uint8Array.from(atob(carried!), (c) => c.charCodeAt(0)), bytes);
+  // D1 may hand a BLOB back as an array of numbers.
+  assert.equal(pageState([104, 105]), btoa("hi"));
+  assert.equal(pageState(new Uint8Array(MAX_PAGE_STATE + 1).buffer), null);
+});
 
 test("titles, icons, covers and sources are cleaned", () => {
   assert.equal(cleanTitle("  Q4   roadmap \n"), "Q4 roadmap");

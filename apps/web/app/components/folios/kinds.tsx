@@ -9,22 +9,24 @@ import { FOLIO_KIND_LABELS, type DocRole, type Folio, type FolioKind, type Folio
 import { FileText, LayoutDashboard, type LucideIcon, PenTool, Presentation } from "lucide-react";
 import { type ComponentType, type LazyExoticComponent, lazy } from "react";
 
-import type { LiveStatus } from "./provider";
+import type { FolioProvider } from "./provider";
 import type { Presence } from "./shell";
 
 /**
  * What a kind's page body is given: the folio's page and the folio as it
- * is now, the viewer's role, and the header's comment toggle; it tells the
- * header who is here, how the connection is, and what changed live.
+ * is now, its live connection (opened by the page as it hydrates, before
+ * the body's code arrives), the viewer's role, and the header's comment
+ * toggle; it tells the header who is here and what changed live.
  */
 export type FolioBodyProps = {
   slug: string;
   page: FolioPage;
   folio: Folio;
+  /** The folio's live document and presence; null until the page hydrates. */
+  live: FolioProvider | null;
   role: DocRole;
   showComments: boolean;
   onPresence: (people: Presence[]) => void;
-  onStatus: (status: LiveStatus) => void;
   /** A rename or another change to the folio, from the room. */
   onFolio: (folio: Folio) => void;
   /** The viewer's role changed; null: their access ended. */
@@ -45,8 +47,33 @@ export type FolioKindUi = {
   Body: LazyExoticComponent<ComponentType<FolioBodyProps>> | null;
 };
 
+/**
+ * Starts fetching the doc editor's code (BlockNote, Yjs, the blocks) in
+ * the browser, so it is here by the time it is wanted: as a doc's page
+ * hydrates, together with its body rather than after it, and when a
+ * link to a doc is hovered or focused. Nothing is fetched twice.
+ */
+let editorWarmed = false;
+export function warmDocEditor(): void {
+  if (editorWarmed || import.meta.env.SSR) return;
+  editorWarmed = true;
+  void import("./doc/editor").catch(() => {
+    editorWarmed = false;
+  });
+}
+
 export const FOLIO_KIND_UI: Record<FolioKind, FolioKindUi> = {
-  doc: { label: FOLIO_KIND_LABELS.doc, icon: FileText, tone: "text-info bg-info/12", ready: true, mobileEditable: true, Body: lazy(() => import("./doc/body")) },
+  doc: {
+    label: FOLIO_KIND_LABELS.doc,
+    icon: FileText,
+    tone: "text-info bg-info/12",
+    ready: true,
+    mobileEditable: true,
+    Body: lazy(() => {
+      warmDocEditor();
+      return import("./doc/body");
+    }),
+  },
   slides: { label: FOLIO_KIND_LABELS.slides, icon: Presentation, tone: "text-warn bg-warn/12", ready: false, mobileEditable: false, Body: null },
   design: { label: FOLIO_KIND_LABELS.design, icon: PenTool, tone: "text-merged bg-merged/12", ready: false, mobileEditable: false, Body: null },
   dashboard: { label: FOLIO_KIND_LABELS.dashboard, icon: LayoutDashboard, tone: "text-success bg-success/12", ready: false, beta: true, mobileEditable: false, Body: null },

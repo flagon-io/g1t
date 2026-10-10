@@ -17,6 +17,29 @@ export function setLiveViaToken(on: boolean): void {
   viaToken = on;
 }
 
+/** A ticket a page's loader minted with the page, as routes/notify/ticket.ts would have. */
+export type OfferedTicket = { ticket: string; expires_at: string };
+
+const offered = new Map<string, OfferedTicket>();
+
+/**
+ * A ticket minted on the server with the page (the root loader's for the
+ * feed, an artifact's for its room), so the first socket opens without
+ * first asking `/-/live/ticket`: one round trip less before anything is
+ * live. Each is used once, and never past its minute.
+ */
+export function offerTicket(path: string, ticket: OfferedTicket | null | undefined): void {
+  if (ticket) offered.set(path, ticket);
+}
+
+/** The offered ticket for `path`, if one is left and still good. */
+export function takeOfferedTicket(path: string, now = Date.now()): string | null {
+  const found = offered.get(path);
+  if (!found) return null;
+  offered.delete(path);
+  return Date.parse(found.expires_at) - now > 5_000 ? found.ticket : null;
+}
+
 /** `wss://<this site><path>?<params>`, with a ticket when one was given. */
 export function liveAddress(path: string, params: Record<string, string | null | undefined>, ticket: string | null): string {
   const url = new URL(path, location.href);
@@ -56,6 +79,11 @@ export function openLive(
 ): void {
   if (!viaToken) {
     open(liveAddress(path, params(), null));
+    return;
+  }
+  const minted = takeOfferedTicket(path);
+  if (minted) {
+    open(liveAddress(path, params(), minted));
     return;
   }
   void ticketFor(path).then((ticket) => {

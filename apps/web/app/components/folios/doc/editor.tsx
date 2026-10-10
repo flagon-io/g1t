@@ -13,7 +13,7 @@ import { RESTYjsThreadStore, withCollaboration } from "@blocknote/core/yjs";
 import { syntaxHighlighter } from "@blocknote/code-block";
 import { BlockNoteViewEditor, SuggestionMenuController, ThreadsSidebar, getDefaultReactSlashMenuItems, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
-import type { DocFile, DocRole, FolioSearchHit, FolioSuggestion, FoliosLiveEvent, Result } from "@g1t/contracts";
+import type { DocFile, DocRole, FolioSearchHit, FolioSuggestion, Result } from "@g1t/contracts";
 import { AlertTriangle, AtSign, Calendar, CheckCircle2, FileCode2, FileText, GitPullRequest, Info, Link2, Sigma, Workflow } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -23,7 +23,7 @@ import { schema, type DocEditorInstance } from "./blocks";
 import { CiteDialog } from "./code";
 import { EditorSkeleton } from "./editor-skeleton";
 import type { PageThread } from "./page-parts";
-import { FolioProvider, type LiveStatus } from "../provider";
+import type { FolioProvider } from "../provider";
 import type { Presence } from "../shell";
 import { whoAre } from "../who";
 
@@ -33,6 +33,8 @@ export type DocMentionable = { kind: "user" | "agent"; id: string; name: string;
 export type DocEditorProps = {
   slug: string;
   folioId: string;
+  /** The folio's live document, opened by the page as it hydrated (routes/workspace/folios/folio.tsx). */
+  provider: FolioProvider;
   role: DocRole;
   me: { key: string; name: string; display_name: string; avatar: string | null };
   mentionables: DocMentionable[];
@@ -40,8 +42,6 @@ export type DocEditorProps = {
   suggestions: FolioSuggestion[];
   showComments: boolean;
   onPresence?: (people: Presence[]) => void;
-  onStatus?: (status: LiveStatus) => void;
-  onEvent?: (event: FoliosLiveEvent) => void;
   /** The suggestion cards' own UI, drawn by the page beside the blocks each one changes. */
   renderSuggestion?: (suggestion: FolioSuggestion) => ReactNode;
   /** Comments on the whole doc (not on a passage), live from the document. */
@@ -82,38 +82,30 @@ class ReadOnlyAuth extends ThreadStoreAuth {
 }
 
 export default function DocEditor(props: DocEditorProps) {
-  const { slug, folioId } = props;
-  const [provider, setProvider] = useState<FolioProvider | null>(null);
-  const [synced, setSynced] = useState(false);
-
+  const { provider } = props;
+  // A document the page carried is here already: the editor opens on it
+  // now, and the room's answer (what changed since the save) merges in
+  // as it arrives. Without one, the editor waits for the room's copy, so
+  // it never starts from an empty document of its own; offline, after a
+  // moment, from what we have.
+  const [ready, setReady] = useState(provider.seeded || provider.status === "synced");
   useEffect(() => {
-    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const live = new FolioProvider(`${scheme}://${window.location.host}/${slug}/-/artifacts/live?folio=${encodeURIComponent(folioId)}`);
-    setProvider(live);
-    setSynced(false);
-    // Mount the editor once the document is here, so it never starts from
-    // an empty doc of its own; offline, after a moment, from what we have.
-    const fallback = setTimeout(() => setSynced(true), 4000);
-    const off = live.onStatus((status) => {
-      props.onStatus?.(status);
-      if (status === "synced") setSynced(true);
+    if (provider.seeded) return;
+    const fallback = setTimeout(() => setReady(true), 4000);
+    const off = provider.onStatus((status) => {
+      if (status === "synced") setReady(true);
     });
-    const offEvent = live.onEvent((event) => props.onEvent?.(event));
     return () => {
       clearTimeout(fallback);
       off();
-      offEvent();
-      live.destroy();
     };
-    // The callbacks are read through props each time; reconnect only for a new folio.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, folioId]);
+  }, [provider]);
 
-  if (!provider || !synced) return <EditorSkeleton />;
-  return <LiveEditor {...props} provider={provider} />;
+  if (!ready) return <EditorSkeleton />;
+  return <LiveEditor {...props} />;
 }
 
-function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, suggestions, showComments, onPresence, renderSuggestion, onPageThreads, projects, provider }: DocEditorProps & { provider: FolioProvider }) {
+function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, suggestions, showComments, onPresence, renderSuggestion, onPageThreads, projects, provider }: DocEditorProps) {
   const editable = canDo(role, "edit");
   // BlockNote's own parts follow the page's Appearance (lib/theme.ts).
   const theme = useDrawnTheme();

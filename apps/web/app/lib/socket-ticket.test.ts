@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { User, Viewer } from "@g1t/contracts";
 
-import { liveAddress, openLive, setLiveViaToken } from "./live-socket.ts";
+import { liveAddress, offerTicket, openLive, setLiveViaToken, takeOfferedTicket } from "./live-socket.ts";
 import { TICKET_PARAM, TICKET_ROUTE, TICKET_SECONDS, issueTicket, openTicket, socketPath, ticketViewer } from "./socket-ticket.ts";
 import { tokenVerdict, websiteUser } from "./website-token.ts";
 
@@ -156,6 +156,22 @@ test("a session's page opens its sockets at once and adds no ticket; a token's p
     openLive(CHAT, () => ({}), () => (late = true), () => true);
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(late, false);
+
+    // A ticket the page's loader minted opens the first socket with no
+    // request; it is used once, and not when its minute is nearly up.
+    asked.length = 0;
+    offerTicket(CHAT, { ticket: "st1.minted", expires_at: new Date(Date.now() + 50_000).toISOString() });
+    const minted: string[] = [];
+    openLive(CHAT, () => ({ channel: "ch_2" }), (address) => minted.push(address), () => false);
+    assert.deepEqual(minted, ["wss://g1t.sh/acme/-/chat/live?channel=ch_2&ticket=st1.minted"], "synchronously, from the offered ticket");
+    assert.deepEqual(asked, []);
+    const again = await new Promise<string>((resolve) => openLive(CHAT, () => ({ channel: "ch_2" }), resolve, () => false));
+    assert.equal(again, "wss://g1t.sh/acme/-/chat/live?channel=ch_2&ticket=st1.abc", "the next socket asks, as the offer was used");
+    assert.deepEqual(asked, [`/-/live/ticket?path=${encodeURIComponent(CHAT)}`]);
+    offerTicket(CHAT, { ticket: "st1.stale", expires_at: new Date(Date.now() + 2_000).toISOString() });
+    assert.equal(takeOfferedTicket(CHAT), null, "an offer about to expire is not used");
+    offerTicket(CHAT, null);
+    assert.equal(takeOfferedTicket(CHAT), null);
   } finally {
     setLiveViaToken(false);
     Object.defineProperty(globalThis, "location", { value: was.location, configurable: true });

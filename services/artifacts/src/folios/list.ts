@@ -16,6 +16,22 @@ export const DEFAULT_LIMIT = 30;
 export const MAX_LIMIT = 100;
 /** A note on an edit, a template's description: at most this long. */
 export const MAX_NOTE = 500;
+/**
+ * The largest saved document a page carries to the browser (base64, in
+ * the page's data). Past it the editor waits for the room, as it did for
+ * every doc before the state was kept.
+ */
+export const MAX_PAGE_STATE = 512 * 1024;
+
+/** A folio's saved Yjs state as the page carries it: base64, or null when none is kept or it is too large. */
+export function pageState(state: ArrayBuffer | ArrayLike<number> | null | undefined): string | null {
+  if (!state) return null;
+  const bytes = new Uint8Array(state as ArrayBuffer);
+  if (!bytes.byteLength || bytes.byteLength > MAX_PAGE_STATE) return null;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
 
 export function cleanTitle(title: unknown, max = MAX_TITLE): string {
   return [...String(title ?? "").replace(/\s+/g, " ").trim()].slice(0, max).join("");
