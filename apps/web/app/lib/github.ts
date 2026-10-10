@@ -72,6 +72,65 @@ export function newState(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** An installation as GitHub lists it to the person, with the workspaces of theirs that have it. */
+export type SeenInstallation = {
+  id: number;
+  account: string;
+  accountType: string;
+  repositorySelection: string;
+  suspended: boolean;
+  recordedIn: string[];
+};
+
+/**
+ * The installations the person can see on GitHub that `workspace` has not
+ * added yet: the app installed on GitHub directly, or from a return that
+ * lost g1t's state.
+ */
+export function notYetAdded<T extends SeenInstallation>(seen: T[], workspace: string): T[] {
+  return seen.filter((item) => !item.recordedIn.includes(workspace));
+}
+
+/** How an installation is described in a list: `Organization · all repositories`. */
+export function installationSummary(item: { accountType: string; repositorySelection: string }): string {
+  const kind = item.accountType === "Organization" ? "Organization" : "Personal";
+  return `${kind} · ${item.repositorySelection === "all" ? "all repositories" : "selected repositories"}`;
+}
+
+/**
+ * The workspaces an installation can be added to from the setup page: the
+ * ones the person owns, each saying whether it has the installation already.
+ */
+export function setupChoices(
+  workspaces: { slug: string; name?: string | null; role: string }[],
+  installation: SeenInstallation | null,
+): { slug: string; name: string; added: boolean }[] {
+  return workspaces
+    .filter((membership) => membership.role === "owner")
+    .map((membership) => ({
+      slug: membership.slug,
+      name: membership.name ?? membership.slug,
+      added: installation?.recordedIn.includes(membership.slug) ?? false,
+    }));
+}
+
+/**
+ * What the Integrations directory and the Marketplace say about GitHub
+ * from the installations a workspace has recorded: nothing until there is
+ * one, then the accounts it is on and any that GitHub has suspended.
+ */
+export function githubConnected(
+  installations: { account: string; suspended: boolean }[],
+): { detail: string; problem: string | null; manage: null } | null {
+  if (installations.length === 0) return null;
+  const suspended = installations.find((installation) => installation.suspended);
+  return {
+    detail: `On ${installations.map((installation) => installation.account).join(", ")}`,
+    problem: suspended ? `The installation on ${suspended.account} is suspended on GitHub.` : null,
+    manage: null,
+  };
+}
+
 /** What each way of bringing a repository across does, for the picker. */
 export const MODES = [
   {

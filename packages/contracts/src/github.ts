@@ -65,6 +65,22 @@ export type GithubInstallation = {
   createdAt: string;
 };
 
+/**
+ * An installation of the app the person's own GitHub account can see,
+ * from `github_visible_installations`: how one installed on GitHub
+ * directly is found and added to a workspace.
+ */
+export type GithubVisibleInstallation = {
+  id: number;
+  account: string;
+  accountType: string;
+  repositorySelection: "all" | "selected" | string;
+  suspended: boolean;
+  settingsUrl: string;
+  /** The person's workspaces it is recorded in already. */
+  recordedIn: string[];
+};
+
 export type GithubAppStatus = {
   configured: boolean;
   installUrl: string | null;
@@ -145,6 +161,7 @@ export function githubAppClient(integrations: ServiceBinding) {
     status: (viewer: User, workspace: string) => call<Result<GithubAppStatus>>("github_status", { viewer, workspace }),
     addInstallation: (actor: User, workspace: string, installationId: number) =>
       call<Result<GithubInstallation>>("github_add_installation", { actor, workspace, installationId }),
+    visibleInstallations: (actor: User) => call<Result<GithubVisibleInstallation[]>>("github_visible_installations", { actor }),
     removeInstallation: (actor: User, workspace: string, installationId: number) =>
       call<Result<boolean>>("github_remove_installation", { actor, workspace, installationId }),
     repositories: (actor: User, workspace: string, installationId: number, page?: number) =>

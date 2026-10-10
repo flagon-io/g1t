@@ -75,7 +75,9 @@ workspace you belong to, as `github.sign_in`, `github.linked` and
 3. If no GitHub account is connected to the workspace, a workspace owner
    chooses **Install on GitHub**, picks the GitHub account or organization,
    and chooses which repositories the app may see. GitHub returns you to
-   g1t, which records the installation for the workspace.
+   g1t, which records the installation for the workspace. If the app is
+   installed on GitHub already, add it instead: see
+   [already installed the app on GitHub](#already-installed-the-app-on-github).
 4. Tick the repositories to bring across. You see only repositories that
    both you and the app can reach.
 5. Choose how they come across, and whether to copy their issues.
@@ -95,6 +97,29 @@ whenever you want to work on g1t for a while, **take over** in its
 **Settings → Mirroring**, and **hand back** when you're done. You can also
 run its GitHub workflows on g1t while GitHub's don't run, or move it to g1t
 for good. See [mirroring](/guides/mirroring/).
+
+### Already installed the app on GitHub?
+
+g1t adds an installation to a workspace when GitHub sends you back to g1t
+after you install the app. If you installed it on GitHub directly, in
+another browser, or the return to g1t was lost, add it from g1t instead:
+
+1. Make sure your GitHub account is linked: **Connect GitHub** on the import
+   page, or **Link GitHub** in [Settings → GitHub](https://g1t.sh/settings/github).
+2. Open `g1t.sh/new/github?workspace=<workspace>`. You can also get there
+   from **Connect** beside GitHub in the workspace's Integrations or
+   Marketplace.
+3. Under **Already installed on GitHub**, choose **Add to** the workspace
+   beside the GitHub account or organization.
+
+Only a workspace owner can add one, and only an installation your own
+GitHub account can see: on your account, or on an organization you belong
+to. Once added, GitHub shows as connected in the workspace's Integrations
+and Marketplace.
+
+If GitHub sends you to g1t after an installation that did not start from
+g1t, g1t asks which of the workspaces you own to add it to. It is the same
+check: the installation must be one your GitHub account can see.
 
 ### What comes across
 

@@ -5,7 +5,11 @@
 //! back to `g1t.sh/integrations/github/setup`. The site asks this service
 //! to record the installation against a workspace, which it does only after
 //! checking with the person's own GitHub user token (from identity) that
-//! the installation is one they can see. Repositories are listed with that
+//! the installation is one they can see. An installation made on GitHub
+//! directly, or whose return lost g1t's state, is added the same way from
+//! the list `github_visible_installations` gives: what the person's token
+//! can see, and which of their workspaces have it already. The webhook
+//! never adds one, since it names no workspace. Repositories are listed with that
 //! same user token, so a person only ever sees what both they and the app
 //! can reach.
 //!
@@ -269,6 +273,37 @@ fn refused<T>(actor: &User, row: &LinkRow, capability: Capability) -> Option<Out
     }
 }
 
+const SETTINGS_URL: &str = "https://github.com/settings/installations";
+
+/// One entry of GitHub's `GET /user/installations` (or an `installation`
+/// webhook's), as g1t shows it, with the workspaces it is recorded in.
+/// `None` without an id or an account.
+pub fn visible(item: &Value, recorded: &HashMap<u64, Vec<String>>) -> Option<GithubVisibleInstallation> {
+    let id = item["id"].as_u64()?;
+    let account = item["account"]["login"].as_str().filter(|login| !login.is_empty())?.to_owned();
+    Some(GithubVisibleInstallation {
+        id,
+        account,
+        account_type: item["account"]["type"].as_str().or(item["target_type"].as_str()).unwrap_or("User").to_owned(),
+        repository_selection: item["repository_selection"].as_str().unwrap_or("selected").to_owned(),
+        suspended: item["suspended_at"].as_str().is_some(),
+        settings_url: item["html_url"].as_str().unwrap_or(SETTINGS_URL).to_owned(),
+        recorded_in: recorded.get(&id).cloned().unwrap_or_default(),
+    })
+}
+
+/// GitHub's listing as g1t shows it: by account, each once.
+pub fn visible_installations(listed: &[Value], recorded: &HashMap<u64, Vec<String>>) -> Vec<GithubVisibleInstallation> {
+    let mut seen: Vec<GithubVisibleInstallation> = Vec::new();
+    for item in listed.iter().filter_map(|item| visible(item, recorded)) {
+        if !seen.iter().any(|known| known.id == item.id) {
+            seen.push(item);
+        }
+    }
+    seen.sort_by_key(|item| item.account.to_lowercase());
+    seen
+}
+
 fn null_or(value: Option<&str>) -> JsValue {
     value.map_or(JsValue::NULL, Into::into)
 }
@@ -444,22 +479,11 @@ impl GithubApp {
             Outcome::Ok(token) => token,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        let mut found = None;
-        for page in 1..=5 {
-            let answer = self
-                .github(Method::Get, &format!("/user/installations?per_page=100&page={page}"), &token, None)
-                .await?;
-            if !answer.ok() {
-                return Ok(fail(FailureCode::Conflict, answer.problem("GitHub")));
-            }
-            let body = answer.json();
-            let listed = body["installations"].as_array().cloned().unwrap_or_default();
-            found = listed.iter().find(|item| item["id"].as_u64() == Some(a.installation_id)).cloned();
-            if found.is_some() || listed.len() < 100 {
-                break;
-            }
-        }
-        let Some(item) = found else {
+        let listed = match self.user_installations(&token).await? {
+            Ok(listed) => listed,
+            Err(problem) => return Ok(fail(FailureCode::Conflict, problem)),
+        };
+        let Some(item) = listed.into_iter().find(|item| item["id"].as_u64() == Some(a.installation_id)) else {
             return Ok(fail(
                 FailureCode::Forbidden,
                 "Your GitHub account cannot see that installation. Install the app from your own GitHub account or an organization you manage.",
@@ -472,7 +496,7 @@ impl GithubApp {
             account: item["account"]["login"].as_str().unwrap_or_default().to_owned(),
             account_type: item["account"]["type"].as_str().or(item["target_type"].as_str()).unwrap_or("User").to_owned(),
             repository_selection: item["repository_selection"].as_str().unwrap_or("selected").to_owned(),
-            settings_url: item["html_url"].as_str().unwrap_or("https://github.com/settings/installations").to_owned(),
+            settings_url: item["html_url"].as_str().unwrap_or(SETTINGS_URL).to_owned(),
             suspended_at: item["suspended_at"].as_str().map(str::to_owned),
             created_at: now,
         };
@@ -499,6 +523,70 @@ impl GithubApp {
             .run()
             .await?;
         Ok(Outcome::Ok(row.into()))
+    }
+
+    /// Every installation of the app the person's GitHub user token can
+    /// see: on their own account, and on organizations they belong to.
+    async fn user_installations(&self, token: &str) -> Result<std::result::Result<Vec<Value>, String>> {
+        let mut all = Vec::new();
+        for page in 1..=5 {
+            let answer = self
+                .github(Method::Get, &format!("/user/installations?per_page=100&page={page}"), token, None)
+                .await?;
+            if !answer.ok() {
+                return Ok(Err(answer.problem("GitHub")));
+            }
+            let listed = answer.json()["installations"].as_array().cloned().unwrap_or_default();
+            let more = listed.len() == 100;
+            all.extend(listed);
+            if !more {
+                break;
+            }
+        }
+        Ok(Ok(all))
+    }
+
+    /// The app's installations the person can see on GitHub, each with the
+    /// workspaces of theirs it is recorded in, so one installed on GitHub
+    /// directly can be added to a workspace.
+    pub async fn visible_installations(&self, a: GithubVisibleArgs) -> Result<Outcome<Vec<GithubVisibleInstallation>>> {
+        if a.actor.kind != PrincipalKind::User {
+            return Ok(fail(FailureCode::Forbidden, "Only a person can see their GitHub installations."));
+        }
+        if !self.config.configured() {
+            return Ok(fail(FailureCode::NotFound, NOT_SET_UP));
+        }
+        let token = match self.user_token(&a.actor).await? {
+            Outcome::Ok(token) => token,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let listed = match self.user_installations(&token).await? {
+            Ok(listed) => listed,
+            Err(problem) => return Ok(fail(FailureCode::Conflict, problem)),
+        };
+        let ids: Vec<u64> = listed.iter().filter_map(|item| item["id"].as_u64()).collect();
+        let mut recorded: HashMap<u64, Vec<String>> = HashMap::new();
+        if !ids.is_empty() {
+            #[derive(Deserialize)]
+            struct Recorded {
+                id: u64,
+                workspace: String,
+            }
+            let marks = vec!["?"; ids.len()].join(", ");
+            let bind: Vec<JsValue> = ids.iter().map(|id| number(*id)).collect();
+            let rows = self
+                .db
+                .prepare(format!("SELECT id, workspace FROM github_installations WHERE id IN ({marks}) ORDER BY workspace"))
+                .bind(&bind)?
+                .all()
+                .await?
+                .results::<Recorded>()?;
+            // Only the person's own workspaces are named back to them.
+            for row in rows.into_iter().filter(|row| a.actor.is_member(&row.workspace)) {
+                recorded.entry(row.id).or_default().push(row.workspace);
+            }
+        }
+        Ok(Outcome::Ok(visible_installations(&listed, &recorded)))
     }
 
     /// Forgets an installation in a workspace; its mirrors stop. The app
@@ -940,6 +1028,28 @@ impl GithubApp {
         let action = payload["action"].as_str().unwrap_or_default();
         let installation = payload["installation"]["id"].as_u64();
         match (event, action) {
+            // An installation recorded already (GitHub sent its creation
+            // again, or new permissions were accepted there) is kept in
+            // step. One nobody added from g1t names no workspace: it waits
+            // for an owner to add it from New project.
+            ("installation", "created") | ("installation", "new_permissions_accepted") => {
+                let Some(id) = installation else { return Ok(()) };
+                if let Some(seen) = visible(&payload["installation"], &HashMap::new()) {
+                    self.db
+                        .prepare(
+                            "UPDATE github_installations SET account = ?2, repository_selection = ?3, settings_url = ?4
+                             WHERE id = ?1",
+                        )
+                        .bind(&[
+                            number(id),
+                            seen.account.as_str().into(),
+                            seen.repository_selection.as_str().into(),
+                            seen.settings_url.as_str().into(),
+                        ])?
+                        .run()
+                        .await?;
+                }
+            }
             ("installation", "deleted") | ("installation", "suspend") | ("installation", "unsuspend") => {
                 let Some(id) = installation else { return Ok(()) };
                 match action {
@@ -1098,6 +1208,7 @@ async fn handle(method: &str, body: Value, env: &Env, ctx: &Context) -> Result<R
     match method {
         "github_status" => reply(&app.status(args(body)?).await?),
         "github_add_installation" => reply(&app.add_installation(args(body)?).await?),
+        "github_visible_installations" => reply(&app.visible_installations(args(body)?).await?),
         "github_remove_installation" => {
             let mirrors = crate::remotes::Mirrors::new(env).ok();
             reply(&app.remove_installation(args(body)?, mirrors.as_ref()).await?)
@@ -1239,5 +1350,47 @@ mod tests {
         assert_eq!(config.install_url(), "https://github.com/apps/g1t-sh/installations/new");
         config.private_key = None;
         assert!(!config.configured());
+    }
+
+    #[test]
+    fn installations_seen_on_github_say_where_they_are_recorded() {
+        let listed = vec![
+            json!({
+                "id": 2,
+                "account": { "login": "syntaqx", "type": "User" },
+                "repository_selection": "selected",
+                "html_url": "https://github.com/settings/installations/2",
+                "suspended_at": null,
+            }),
+            json!({
+                "id": 1,
+                "account": { "login": "flagon-io", "type": "Organization" },
+                "repository_selection": "all",
+                "html_url": "https://github.com/organizations/flagon-io/settings/installations/1",
+                "suspended_at": "2026-10-01T00:00:00Z",
+            }),
+            // Listed twice across pages, and one with no account: shown once, and not at all.
+            json!({ "id": 1, "account": { "login": "flagon-io", "type": "Organization" } }),
+            json!({ "id": 3, "account": null }),
+        ];
+        let recorded = HashMap::from([(2, vec!["syntaqx".to_owned()])]);
+        let seen = visible_installations(&listed, &recorded);
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0].account, "flagon-io");
+        assert_eq!(seen[0].account_type, "Organization");
+        assert_eq!(seen[0].repository_selection, "all");
+        assert!(seen[0].suspended);
+        assert!(seen[0].recorded_in.is_empty());
+        assert_eq!(seen[1].account, "syntaqx");
+        assert_eq!(seen[1].recorded_in, vec!["syntaqx".to_owned()]);
+        assert!(!seen[1].suspended);
+    }
+
+    #[test]
+    fn an_installation_without_its_settings_link_points_at_githubs_list() {
+        let seen = visible(&json!({ "id": 9, "account": { "login": "ada" }, "target_type": "User" }), &HashMap::new()).unwrap();
+        assert_eq!(seen.settings_url, SETTINGS_URL);
+        assert_eq!(seen.repository_selection, "selected");
+        assert_eq!(seen.account_type, "User");
     }
 }

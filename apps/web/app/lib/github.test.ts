@@ -1,7 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { INSTALL_COOKIE, STATE_COOKIE, cookie, installCookieValue, installWorkspace, newState, readCookie, sameString, stateMatches } from "./github.ts";
+import { connectorsFor } from "@g1t/contracts/connectors";
+
+import {
+  INSTALL_COOKIE,
+  STATE_COOKIE,
+  cookie,
+  githubConnected,
+  installCookieValue,
+  installWorkspace,
+  installationSummary,
+  newState,
+  notYetAdded,
+  readCookie,
+  sameString,
+  setupChoices,
+  stateMatches,
+} from "./github.ts";
+import { integrationListings } from "./marketplace.ts";
 
 test("the state must come back exactly as it was given", () => {
   const state = newState();
@@ -37,4 +54,61 @@ test("an installation returns to the workspace it was started for", () => {
   assert.equal(installWorkspace(value, null), null);
   assert.equal(installWorkspace(null, state), null);
   assert.equal(installWorkspace(`${state}.`, state), null);
+});
+
+const seen = (id: number, account: string, recordedIn: string[], accountType = "Organization") => ({
+  id,
+  account,
+  accountType,
+  repositorySelection: "all",
+  suspended: false,
+  settingsUrl: `https://github.com/organizations/${account}/settings/installations/${id}`,
+  recordedIn,
+});
+
+test("an installation made on GitHub directly is offered to the workspaces that lack it", () => {
+  const listed = [seen(1, "flagon-io", []), seen(2, "syntaqx", ["syntaqx"], "User"), seen(3, "acme", ["flagon-io"])];
+  assert.deepEqual(
+    notYetAdded(listed, "flagon-io").map((item) => item.account),
+    ["flagon-io", "syntaqx"],
+  );
+  assert.deepEqual(
+    notYetAdded(listed, "syntaqx").map((item) => item.id),
+    [1, 3],
+  );
+  assert.equal(installationSummary(listed[0]!), "Organization · all repositories");
+  assert.equal(installationSummary({ accountType: "User", repositorySelection: "selected" }), "Personal · selected repositories");
+});
+
+test("the setup page offers only workspaces the person owns, saying which have it", () => {
+  const workspaces = [
+    { slug: "flagon-io", name: "Flagon", role: "owner" },
+    { slug: "acme", role: "member" },
+    { slug: "syntaqx", name: null, role: "owner" },
+  ];
+  assert.deepEqual(setupChoices(workspaces, seen(1, "flagon-io", ["syntaqx"])), [
+    { slug: "flagon-io", name: "Flagon", added: false },
+    { slug: "syntaqx", name: "syntaqx", added: true },
+  ]);
+  assert.deepEqual(
+    setupChoices(workspaces, null).map((choice) => choice.added),
+    [false, false],
+  );
+});
+
+test("once an installation is recorded, the Marketplace and Integrations say GitHub is connected", () => {
+  assert.equal(githubConnected([]), null);
+  const state = githubConnected([{ account: "flagon-io", suspended: false }]);
+  assert.deepEqual(state, { detail: "On flagon-io", problem: null, manage: null });
+  const listings = integrationListings(connectorsFor("workspace"), { github: state! }, [], "ana", "flagon-io");
+  const github = listings.find((listing) => listing.view.id === "github");
+  assert.equal(github?.connected?.detail, "On flagon-io");
+  assert.equal(listings[0]!.view.id, "github");
+  assert.equal(
+    githubConnected([
+      { account: "a", suspended: false },
+      { account: "b", suspended: true },
+    ])?.problem,
+    "The installation on b is suspended on GitHub.",
+  );
 });

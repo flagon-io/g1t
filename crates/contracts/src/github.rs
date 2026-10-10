@@ -30,6 +30,8 @@
 //!   `Outcome<GithubInstallation>`.
 //! - `github_remove_installation` takes `GithubInstallationArgs`, returns
 //!   `Outcome<bool>`.
+//! - `github_visible_installations` takes `GithubVisibleArgs`, returns
+//!   `Outcome<Vec<GithubVisibleInstallation>>`.
 //! - `github_repositories` takes `GithubRepositoriesArgs`, returns
 //!   `Outcome<GithubRepositories>`.
 //! - `github_import` takes `GithubImportArgs`, returns `Outcome<GithubRepoLink>`.
@@ -279,6 +281,32 @@ pub struct GithubInstallationArgs {
     pub installation_id: u64,
 }
 
+/// `github_visible_installations`: the app's installations the person's
+/// own GitHub account can see, for claiming one that was installed on
+/// GitHub directly rather than from g1t.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubVisibleArgs {
+    pub actor: User,
+}
+
+/// An installation of the app, as the person's GitHub account sees it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubVisibleInstallation {
+    pub id: u64,
+    /// The GitHub user or organization it is installed on.
+    pub account: String,
+    /// `User` or `Organization`.
+    pub account_type: String,
+    /// `all` or `selected` repositories.
+    pub repository_selection: String,
+    pub suspended: bool,
+    pub settings_url: String,
+    /// The person's workspaces it is recorded in already.
+    pub recorded_in: Vec<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GithubRepositoriesArgs {
@@ -368,4 +396,27 @@ pub struct GithubReceiveArgs {
     /// Header names in lowercase.
     pub headers: HashMap<String, String>,
     pub body: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_visible_installation_reads_as_the_site_expects() {
+        let item = GithubVisibleInstallation {
+            id: 7,
+            account: "flagon-io".into(),
+            account_type: "Organization".into(),
+            repository_selection: "all".into(),
+            suspended: false,
+            settings_url: "https://github.com/organizations/flagon-io/settings/installations/7".into(),
+            recorded_in: vec!["flagon-io".into()],
+        };
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["accountType"], "Organization");
+        assert_eq!(json["repositorySelection"], "all");
+        assert_eq!(json["recordedIn"][0], "flagon-io");
+        assert_eq!(serde_json::from_value::<GithubVisibleInstallation>(json).unwrap(), item);
+    }
 }

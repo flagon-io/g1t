@@ -9,6 +9,7 @@ import { PROVIDERS } from "@g1t/contracts";
 import { CONNECTORS } from "@g1t/contracts/connectors";
 
 import type { ConnectedState } from "./connectors";
+import { githubConnected } from "./github";
 import { githubApp } from "./github.server";
 import { integrationsSection } from "./integration-sections";
 import { integrations, webhooks } from "./services.server";
@@ -35,14 +36,8 @@ export async function connectedStates(slug: string, viewer: User): Promise<Recor
       };
     }
   }
-  if (github?.ok && github.value.installations.length > 0) {
-    const suspended = github.value.installations.find((installation) => installation.suspended);
-    connected.github = {
-      detail: `On ${github.value.installations.map((installation) => installation.account).join(", ")}`,
-      problem: suspended ? `The installation on ${suspended.account} is suspended on GitHub.` : null,
-      manage: null,
-    };
-  }
+  const fromGithub = github?.ok ? githubConnected(github.value.installations) : null;
+  if (fromGithub) connected.github = fromGithub;
   const ours = hooks?.ok ? hooks.value.filter((hook) => hook.scope === "workspace") : [];
   if (ours.length > 0) {
     const failing = ours.filter((hook) => hook.lastStatus === "failed");

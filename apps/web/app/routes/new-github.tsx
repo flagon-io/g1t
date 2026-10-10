@@ -7,7 +7,7 @@ import { ButtonLink, ErrorText, Pill, SubmitButton } from "../components/ui";
 import { CheckboxOption } from "../components/ui/checkbox";
 import { FieldLegend, FieldSet } from "../components/ui/field";
 import { RadioCard, RadioGroup } from "../components/ui/radio-group";
-import { MODES } from "../lib/github";
+import { MODES, installationSummary, notYetAdded } from "../lib/github";
 import { githubApp } from "../lib/github.server";
 import { page } from "../lib/meta";
 import { assertSameOrigin, requireUser, roleIn } from "../lib/session.server";
@@ -27,9 +27,21 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (workspaces.length === 0) throw redirect("/workspaces/new");
   const asked = url.searchParams.get("workspace")?.toLowerCase();
   const workspace = workspaces.find((option) => option.slug === asked)?.slug ?? workspaces[0].slug;
-  const status = await githubApp.status(user, workspace);
+  // What the person can see on GitHub is asked for alongside the status:
+  // an installation made there directly is offered here to be added.
+  const [status, visible] = await Promise.all([
+    githubApp.status(user, workspace),
+    githubApp.visibleInstallations(user).catch(() => null),
+  ]);
   if (!status.ok || !status.value.configured) throw redirect(`/new?workspace=${workspace}`);
   const { installations, linked } = status.value;
+  const recorded = new Set(installations.map((item) => item.id));
+  const claimable =
+    linked && visible?.ok
+      ? notYetAdded(visible.value, workspace)
+          .filter((item) => !recorded.has(item.id))
+          .map((item) => ({ ...item, summary: installationSummary(item) }))
+      : [];
   const wanted = Number(url.searchParams.get("installation"));
   const installation = installations.find((item) => item.id === wanted) ?? installations[0] ?? null;
   const pageNumber = Math.max(1, Number(url.searchParams.get("page")) || 1);
@@ -46,6 +58,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     owner: roleIn(user, workspace) === "owner",
     linked,
     installations,
+    claimable,
     installation,
     repositories,
     error,
@@ -59,6 +72,11 @@ export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   const workspace = String(form.get("workspace") ?? "");
   const installationId = Number(form.get("installation"));
+  if (form.get("intent") === "add-installation") {
+    const added = await githubApp.addInstallation(user, workspace, installationId);
+    if (!added.ok) return { error: null, addError: added.error.message, results: [] };
+    throw redirect(`/new/github?workspace=${encodeURIComponent(workspace)}&installation=${installationId}`);
+  }
   if (form.get("intent") === "remove-installation") {
     const removed = await githubApp.removeInstallation(user, workspace, installationId);
     // Shown by the list it was removed from, which is there with or without an account chosen.
@@ -84,7 +102,9 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 export default function NewFromGithub({ loaderData, actionData }: Route.ComponentProps) {
-  const { workspace, workspaces, installations, installation, repositories, linked, owner } = loaderData;
+  const { workspace, workspaces, installations, claimable, installation, repositories, linked, owner } = loaderData;
+  const workspaceName = workspaces.find((option) => option.slug === workspace)?.name ?? workspace;
+  const these = claimable.length === 1 ? "this account" : "these accounts";
   const here = `/new/github?workspace=${workspace}`;
   const names = new Map((repositories?.repositories ?? []).map((repo) => [repo.id, repo.fullName]));
   return (
@@ -119,7 +139,8 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
         <section className="mt-8 rounded-lg border border-line p-6">
           <h2 className="font-medium">Connect your GitHub account</h2>
           <p className="mt-1.5 text-sm text-muted">
-            g1t lists the repositories you can reach on GitHub as you, so it needs your GitHub account linked first.
+            g1t lists the repositories you can reach on GitHub as you, so it needs your GitHub account linked first. If
+            the app is installed on GitHub already, it is listed here to add once your account is linked.
           </p>
           <div className="mt-4">
             <a
@@ -149,11 +170,49 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                 Your request went to the organization's owners on GitHub. Once one approves it, add the account here again.
               </p>
             )}
+            {claimable.length > 0 && (
+              <div className="mt-3 rounded-lg border border-accent/30 bg-accent/5 p-4">
+                <h3 className="text-sm font-medium">Already installed on GitHub</h3>
+                <p className="mt-1 text-sm text-muted">
+                  {owner
+                    ? `The app is installed on ${these}, but not added to ${workspaceName} yet.`
+                    : `The app is installed on ${these}. An owner of ${workspaceName} can add ${claimable.length === 1 ? "it" : "them"} here.`}
+                </p>
+                <ul className="mt-3 divide-y divide-line rounded-md border border-line bg-bg">
+                  {claimable.map((item) => (
+                    <li key={item.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 text-sm">
+                      <GithubMark className="size-4 shrink-0 text-muted" />
+                      <span className="font-mono">{item.account}</span>
+                      <span className="whitespace-nowrap text-xs text-faint">{item.summary}</span>
+                      {item.suspended && <Pill>Suspended</Pill>}
+                      {owner && (
+                        <Form method="post" className="ml-auto">
+                          <input type="hidden" name="intent" value="add-installation" />
+                          <input type="hidden" name="workspace" value={workspace} />
+                          <input type="hidden" name="installation" value={item.id} />
+                          <SubmitButton
+                            pending="Adding…"
+                            match={{ intent: "add-installation", installation: String(item.id) }}
+                          >
+                            Add to {workspaceName}
+                          </SubmitButton>
+                        </Form>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <ErrorText>{actionData && "addError" in actionData ? actionData.addError : null}</ErrorText>
+              </div>
+            )}
             {installations.length === 0 ? (
               <div className="mt-3 rounded-lg border border-dashed border-line p-6 text-sm text-muted">
                 {owner ? (
                   <>
-                    <p>Install g1t's GitHub App on your GitHub account or an organization, and choose the repositories it may see.</p>
+                    <p>
+                      {claimable.length > 0
+                        ? "Or install g1t's GitHub App on another GitHub account or organization, and choose the repositories it may see."
+                        : "Install g1t's GitHub App on your GitHub account or an organization, and choose the repositories it may see."}
+                    </p>
                     <div className="mt-4">
                       <a
                         href={`/integrations/github/install?workspace=${workspace}`}
