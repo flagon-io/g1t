@@ -13,9 +13,9 @@ export function meta(args: Route.MetaArgs) {
   const plan = args.loaderData?.book?.plans?.find((p) => p.feature === "plan") ?? DEFAULT_PLAN;
   return [
     ...page(args, {
-      title: `g1t pricing - $${plan.monthlyCents / 100} per workspace, never per seat, cost-plus AI`,
+      title: `g1t pricing - $${plan.monthlyCents / 100} per workspace, never per seat, models at cost`,
       description:
-        "People chat free on every plan, and the forge is free. One plan, $20 a month per workspace with $10 of usage included. Agents pay the model's price plus a flat agent rate, from each agent's budget. No seats, ever.",
+        "People chat free on every plan, and the forge is free. One plan, $20 a month per workspace with $10 of usage included. Models at the provider's price, plus a flat agent rate for what g1t runs around every model call; everything else g1t runs at cost plus 20%. Your own runners are free. No seats, ever.",
     }),
     application(plan.monthlyCents / 100),
     faqPage(FAQ),
@@ -31,7 +31,8 @@ export async function loader() {
 function money(micros: number): string {
   const dollars = micros / MICROS_PER_DOLLAR;
   if (dollars >= 1) return `$${dollars.toFixed(2)}`;
-  if (dollars >= 0.01) return `$${dollars.toFixed(3)}`;
+  // Three places for a fraction of a cent ($0.024), two when the third is 0 ($0.25).
+  if (dollars >= 0.01) return `$${dollars.toFixed(3).replace(/(\.\d\d)0$/, "$1")}`;
   return `$${dollars.toPrecision(2)}`;
 }
 
@@ -61,6 +62,7 @@ const SHOWN_APART = new Set([
   "gateway_models",
   "card_fee_percent",
   "card_fee_fixed",
+  "security_activation",
 ]);
 
 /** How each kind of token counts toward the agent rate, from the price book: `input ×1, …`. */
@@ -92,13 +94,14 @@ const DEFAULT_PLAN: FeaturePlan = {
   title: "g1t",
   monthlyCents: 2000,
   includes: [
-    "$10 of usage each month at cost plus 20%, used first",
+    "$10 of usage each month, used first: models at the provider's price with the g1t agent rate, everything else g1t runs at cost plus 20%",
     "Everyone in the workspace at one price, never per person",
     "Unlimited projects, previews and repositories",
-    "Agents, checks, workflows, the merge queue, deployments and semantic search",
-    "Usage past $10 is charged at cost plus 20%, up to your spend limit",
+    "Agents, checks, workflows, the merge queue, deployments, semantic search, and Security and quality on private repositories",
+    "Usage past $10 is charged the same way, up to your spend limit",
   ],
-  overage: "Everything is metered from the first unit at what it costs g1t plus 20%. Unused included usage does not roll over.",
+  overage:
+    "Everything g1t runs is metered from the first unit at what it costs g1t plus 20%. Models are billed at the provider's price, with no markup, plus the g1t agent rate on their tokens, on your own model keys too. Your own runners cost nothing. Unused included usage does not roll over.",
 };
 
 /** How each part of a workspace is charged. */
@@ -114,11 +117,15 @@ const WORKSPACE_CHARGES: { what: string; how: string; soon?: boolean }[] = [
   },
   {
     what: "An agent working on code",
-    how: "The same model price and agent rate, plus sandbox time at cost plus 20%.",
+    how: "The same model price and agent rate, plus sandbox time at cost plus 20%. On your own runner, that time is free.",
   },
   {
     what: "An agent on your own provider",
-    how: "Your provider bills you for the model directly. g1t charges the agent rate for your own model key only.",
+    how: "Your provider bills you for the model directly. g1t charges the agent rate, for passing its calls through g1t's model gateway with your key kept secret.",
+  },
+  {
+    what: "How hard an agent works",
+    how: "Each agent has an effort setting, Auto, Low, Medium, High or Max, shown with what a typical task has cost at each level. Lower effort starts on a cheaper model, reasons less and takes fewer steps.",
   },
   {
     what: "Files in chat and Docs",
@@ -146,6 +153,14 @@ const FAQ: { q: string; a: string }[] = [
     a: "Give it a monthly budget and a cap per task. At its budget it stops taking new work and says so in the channel. The workspace's spend limit and the per-run caps still apply above it.",
   },
   {
+    q: "How do I spend less without worse work?",
+    a: "Lower an agent's effort, or let Spend suggest it. Every week g1t checks each agent's finished sessions: when a cheaper effort level was accepted as often on the same agent's work, Spend shows the suggestion with the numbers and an Apply button. With too little history, it says so instead.",
+  },
+  {
+    q: "Why is there an agent rate on my own model keys?",
+    a: "Your agents' calls still go through g1t: its model gateway keeps your key out of every sandbox, routes each call, adds the context and passes it to your provider. The agent rate pays for running that. Your provider bills the model itself.",
+  },
+  {
     q: "Can agents use our own model provider?",
     a: "Yes. Connect a provider in Integrations and limit an agent to it. The provider bills you for the model; g1t charges the agent rate for your own model key only.",
   },
@@ -169,7 +184,7 @@ const ENTERPRISE_MAIL = "mailto:hey@flagon.io?subject=Enterprise%20billing%20for
 const HOW = [
   {
     title: "Our cost, passed through",
-    body: "Every sandbox second, build and app request costs g1t money at Cloudflare. Each is metered and charged at that cost plus 20%, from the first second and the first request. Models are charged at the provider's price with no markup, plus a flat agent rate per million tokens for what g1t adds around them, from prepaid AI credit. Use a little, pay a little.",
+    body: "Every sandbox second, build and app request costs g1t money at Cloudflare. Each is metered and charged at that cost plus 20%, from the first second and the first request. Models are charged at the provider's price with no markup, plus a flat agent rate per million tokens for what g1t runs around every model call, from prepaid AI credit. Use a little, pay a little.",
   },
   {
     title: "Prices follow costs, by themselves",
@@ -178,6 +193,10 @@ const HOW = [
   {
     title: "The 20% is the overhead",
     body: "It pays for running g1t and for building and keeping up the features you use. The same 20% on everything but models, whose overhead is the agent rate, and nothing bundled in.",
+  },
+  {
+    title: "Your own runners are free",
+    body: "Agents, checks and workflows on your own hardware cost nothing here. On your own model keys, your provider bills the model and g1t charges only the agent rate.",
   },
   {
     title: "No seats, ever",
@@ -269,7 +288,7 @@ function rows(tier: Required<FreeTier>): Row[] {
       what: "Secret scanning, push protection, vulnerability alerts, security updates",
       free: "Included",
       plan: "Included",
-      note: "Custom patterns, validity checks, code scanning, dependency review and the security overview on private repositories are the Security and quality activation. On public repositories they are free.",
+      note: "Custom patterns, validity checks, code scanning, dependency review and the security overview on private repositories come with the plan, with no price of their own: their scans are charged at cost plus 20%. On public repositories they are free.",
     },
     { what: "Single sign-on", free: "On every plan, once it is built", plan: "On every plan, once it is built" },
     {
@@ -292,10 +311,14 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
   const given = Object.fromEntries(Object.entries(book?.free ?? {}).filter(([, value]) => value != null));
   const tier: Required<FreeTier> = { ...DEFAULT_FREE, ...given };
   const plan = book?.plans?.find((p) => p.feature === "plan") ?? DEFAULT_PLAN;
-  // The Security and quality activation, as the price book prices it.
-  const securityPlan = book?.plans?.find((p) => p.feature === "security") ?? null;
   const price = plan.monthlyCents / 100;
   const dollars = wholeDollars;
+  // What g1t's own metered work is marked up, from the price book: one figure today.
+  const runMarkups = (book?.prices ?? [])
+    .filter((p) => !SHOWN_APART.has(p.meter) && p.meter !== "security_activation" && p.costMicros > 0)
+    .map((p) => p.markupPercent);
+  const markup = runMarkups.length && Math.min(...runMarkups) === Math.max(...runMarkups) ? `${runMarkups[0]}%` : "20%";
+  const modelMarkup = book?.modelMarginPercent ?? 0;
   const agentRate = book?.prices.find((p) => p.meter === "agent_tokens");
   const agentRateComing = book?.changes.find((c) => c.meter === "agent_tokens" && c.effectiveAt);
   const agentRateLine =
@@ -304,15 +327,43 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
       : agentRateComing
         ? `$0, and ${money(agentRateComing.newCostMicros)} per million tokens from ${agentRateComing.effectiveAt!.slice(0, 10)}`
         : "as listed under Usage below";
+  // The summary tile: the rate in force, or the one coming and its day ("from Oct 22").
+  const comingDay = agentRateComing
+    ? new Date(agentRateComing.effectiveAt!).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+    : null;
+  const agentRateTile =
+    agentRate && agentRate.priceMicros > 0
+      ? `${money(agentRate.priceMicros)} per million tokens`
+      : agentRateComing
+        ? `${money(agentRateComing.newCostMicros)} per million tokens from ${comingDay}`
+        : "Per million tokens";
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
       <p className="text-sm font-medium text-accent">Pricing</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">People chat free. What runs is priced at cost.</h1>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Models at cost. What g1t runs, at cost plus {markup}.</h1>
       <p className="mt-3 max-w-2xl text-muted">
-        People chatting and the forge are free for everyone. Agents and the work that runs on g1t's machines are metered
-        at what they cost g1t, plus a flat agent rate for models and 20% for everything else. The numbers on this page are
-        the live price book g1t charges from. Prices exclude tax, which is added where it applies.
+        People chatting and the forge are free for everyone. Models are billed at the provider&apos;s price
+        {modelMarkup ? ` plus ${modelMarkup}%` : ", with no markup"}. The agent rate pays for what g1t runs around every model
+        call: the model gateway, secrets, routing, context and pass-through to your own provider, so it applies on your own
+        keys too. Everything else g1t runs is billed at what it costs g1t plus {markup}. Your own runners are free, and there
+        are no seats. The numbers on this page are the live price book g1t charges from. Prices exclude tax, which is added
+        where it applies.
       </p>
+      <ul className="mt-6 grid gap-px overflow-hidden rounded-xl border border-line bg-line text-sm sm:grid-cols-2 lg:grid-cols-5">
+        {[
+          ["Models", modelMarkup ? `Provider price + ${modelMarkup}%` : "The provider's price", "No markup on tokens"],
+          ["Agent rate", agentRateTile, "Gateway, secrets, routing and pass-through, on your own keys too"],
+          ["Everything else g1t runs", `At cost + ${markup}`, "Sandboxes, builds, hosting, storage, search and scans"],
+          ["Your own runners", "Free", "Agents, checks and workflows on your hardware"],
+          ["People", "No seats", "Everyone in the workspace at one price"],
+        ].map(([what, price, about]) => (
+          <li key={what} className="bg-surface px-4 py-3">
+            <p className="text-xs text-muted">{what}</p>
+            <p className="mt-0.5 font-medium">{price}</p>
+            <p className="mt-0.5 text-xs text-faint">{about}</p>
+          </li>
+        ))}
+      </ul>
       {free && (
         <div className="mt-5 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3 text-sm">
           <span className="font-medium">Free while g1t is being built out.</span>{" "}
@@ -372,37 +423,6 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         <p className="mt-5 text-sm text-muted">An owner starts the plan from the workspace's Billing page.</p>
       </section>
 
-      {securityPlan && (
-        <section id="security" className="mt-6 rounded-xl border border-line bg-surface p-6">
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h2 className="text-xl font-semibold tracking-tight">{securityPlan.title}</h2>
-            <p>
-              <span className="text-3xl font-semibold tabular-nums">${(securityPlan.monthlyCents / 100).toFixed(securityPlan.monthlyCents % 100 ? 2 : 0)}</span>{" "}
-              <span className="text-sm text-muted">a month per workspace</span>
-              <span className="block text-right text-xs text-faint">
-                {securityPlan.cardFeeCents
-                  ? `+ $${(securityPlan.cardFeeCents / 100).toFixed(2)} card processing fee, plus tax where it applies`
-                  : "Plus tax where it applies"}
-              </span>
-            </p>
-          </div>
-          <p className="mt-2 text-sm text-muted">
-            An activation, with or without the plan: the security suite's paid parts for a workspace's private repositories.
-          </p>
-          <ul className="mt-4 space-y-1.5 text-sm text-muted">
-            {securityPlan.includes.map((line) => (
-              <li key={line} className="flex gap-2">
-                <span aria-hidden className="text-accent">
-                  ✓
-                </span>
-                {line}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-faint">{securityPlan.overage}</p>
-        </section>
-      )}
-
       <section id="workspace" className="mt-14">
         <h2 className="text-xl font-semibold tracking-tight">Chat, Docs and agents</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted">
@@ -432,6 +452,34 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           </a>
           .
         </p>
+      </section>
+
+      <section id="spend-less" className="mt-14">
+        <h2 className="text-xl font-semibold tracking-tight">Help spending less</h2>
+        <p className="mt-1 max-w-3xl text-sm text-muted">Prices near cost are half of it. The other half is not spending more than the work needs.</p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <section className="rounded-xl border border-line bg-surface p-5">
+            <h3 className="font-medium">Effort per agent</h3>
+            <p className="mt-1.5 text-sm text-muted">
+              Auto, Low, Medium, High or Max: how hard an agent works, from the model tier it starts on to how hard it reasons and how
+              many steps a session takes. Each level shows what a typical task has cost that agent.
+            </p>
+          </section>
+          <section className="rounded-xl border border-line bg-surface p-5">
+            <h3 className="font-medium">Suggestions checked against your work</h3>
+            <p className="mt-1.5 text-sm text-muted">
+              Every week, each agent&apos;s finished sessions are checked. A cheaper level is suggested only when its work was accepted
+              as often, with the numbers it rests on and an Apply button. With too little history, Spend says so instead.
+            </p>
+          </section>
+          <section className="rounded-xl border border-line bg-surface p-5">
+            <h3 className="font-medium">Budgets that hold</h3>
+            <p className="mt-1.5 text-sm text-muted">
+              Workspace, team, person, agent and task budgets are checked before work starts. An agent at its budget stops taking new
+              work and says so.
+            </p>
+          </section>
+        </div>
       </section>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Free and the plan, side by side</h2>
@@ -647,7 +695,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                   <tr>
                     <td className="px-4 py-3">
                       <p className="font-medium">g1t agent rate</p>
-                      <p className="text-xs text-faint">Context, memory, routing and orchestration, on every token an agent run uses</p>
+                      <p className="text-xs text-faint">The model gateway, secrets, routing, context and pass-through, on every token an agent run uses</p>
                       <p className="text-xs text-faint">Tokens count by kind: {tokenWeights(book?.prices ?? [])}</p>
                     </td>
                     <td className="px-4 py-3 text-muted">A flat rate</td>
@@ -659,7 +707,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                   <tr>
                     <td className="px-4 py-3">
                       <p className="font-medium">g1t agent rate, your own model key</p>
-                      <p className="text-xs text-faint">The same, on runs that use your own provider; its models are billed by your provider, not g1t</p>
+                      <p className="text-xs text-faint">The same, on runs that pass through to your own provider; its models are billed by your provider, not g1t</p>
                     </td>
                     <td className="px-4 py-3 text-muted">A flat rate</td>
                     <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
@@ -696,6 +744,15 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                 </>
               );
             })()}
+            <tr>
+              <td className="px-4 py-3">
+                <p className="font-medium">Your own runners</p>
+                <p className="text-xs text-faint">Agents, checks and workflows on your own hardware</p>
+              </td>
+              <td className="px-4 py-3 text-muted">Nothing</td>
+              <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
+              <td className="px-4 py-3 text-muted">Free</td>
+            </tr>
             <tr>
               <td className="px-4 py-3">
                 <p className="font-medium">Projects, previews and apps</p>

@@ -1,20 +1,53 @@
 import { data, useOutletContext } from "react-router";
 
-import type { AgentSpendBreakdown, WorkspaceAgent } from "@g1t/contracts";
+import type { AgentEffortCosts, AgentRecommendations, AgentSpendBreakdown, WorkspaceAgent } from "@g1t/contracts";
 
 import type { Route } from "./+types/spend";
-import { readOrNull } from "../../../components/agents/actions.server";
+import { agentsAction, answer, readOrNull } from "../../../components/agents/actions.server";
+import { EffortCard, Savings } from "../../../components/effort";
+import { readEffort } from "../../../lib/agent-form";
+import { effortSetting } from "../../../lib/effort";
 import { meterTone, monthName, shareOf } from "../../../components/agents/format";
 import { DailyBars, Meter, Panel, Quiet, SessionRow, SliceList } from "../../../components/agents/parts";
 import { requireUser, roleIn } from "../../../lib/session.server";
 import { workspaceAgents } from "../../../lib/services.server";
 import { money } from "../../../lib/usage";
 
-/** Where this agent's month went. */
-export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ spend: AgentSpendBreakdown | null }> {
+/** Where this agent's month went, what each effort level has cost it, and ways to spend less. */
+export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{
+  spend: AgentSpendBreakdown | null;
+  costs: AgentEffortCosts | null;
+  recs: AgentRecommendations | null;
+  owner: boolean;
+}> {
   const viewer = requireUser(context, request);
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  return { spend: await readOrNull(workspaceAgents.spend(params.owner.toLowerCase(), viewer, params.handle.toLowerCase())) };
+  const role = roleIn(viewer, params.owner);
+  if (!role) throw data(null, { status: 404 });
+  const slug = params.owner.toLowerCase();
+  const handle = params.handle.toLowerCase();
+  const [spend, costs, recs] = await Promise.all([
+    readOrNull(workspaceAgents.spend(slug, viewer, handle)),
+    readOrNull(workspaceAgents.effortCosts(slug, handle, viewer)),
+    readOrNull(workspaceAgents.recommendations(slug, viewer, handle)),
+  ]);
+  return { spend, costs, recs, owner: role === "owner" };
+}
+
+/** Owners set the agent's effort, and apply or dismiss a suggestion. */
+export async function action({ params, context, request }: Route.ActionArgs) {
+  const { viewer, slug, isOwner, form } = await agentsAction(request, context, params.owner);
+  const intent = String(form.get("intent") ?? "");
+  if (!isOwner) return { ok: false as const, intent, error: "Only the workspace's owners change this." };
+  if (intent === "effort") {
+    const effort = readEffort(form.get("effort"));
+    if (!effort) return { ok: false as const, intent, error: "Pick Auto, Low, Medium, High or Max." };
+    return answer(intent, workspaceAgents.update(slug, params.handle.toLowerCase(), viewer, { routing: { effort } }));
+  }
+  if (intent === "recommendation") {
+    const what = form.get("do") === "apply" ? "apply" : "dismiss";
+    return answer(intent, workspaceAgents.resolveRecommendation(slug, viewer, String(form.get("id") ?? ""), what));
+  }
+  return { ok: false as const, intent, error: "Unknown request." };
 }
 
 /**
@@ -24,7 +57,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
  */
 export default function Spend({ loaderData, params }: Route.ComponentProps) {
   const agent = useOutletContext<WorkspaceAgent>();
-  const { spend } = loaderData;
+  const { spend, costs, recs, owner } = loaderData;
+  const here = `/${params.owner}/-/agents/${params.handle}/spend`;
   const spent = spend?.total_micros ?? agent.spent_month_micros ?? 0;
   const cap = agent.budget.monthly_micros;
   const share = shareOf(spent, cap);
@@ -51,6 +85,15 @@ export default function Spend({ loaderData, params }: Route.ComponentProps) {
           <Stat label="While idle" value="Costs nothing" />
           <Stat label="Rolls up to" value="The workspace's bill" />
         </dl>
+      </section>
+
+      <EffortCard value={effortSetting(agent.routing)} costs={costs} owner={owner} action={here} name={agent.display_name} />
+
+      <section aria-labelledby="savings" className="space-y-3">
+        <h2 id="savings" className="text-base font-semibold tracking-tight">
+          Spend less, keep quality
+        </h2>
+        <Savings recs={recs} owner={owner} action={here} showAgent={false} />
       </section>
 
       {!spend ? (

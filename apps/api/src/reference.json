@@ -7501,7 +7501,7 @@
       ],
       "entitled": true
     },
-    "notes": "A repository's list includes its workspace's patterns, with `scope` `workspace`. `entitled` says whether they run here: always on a public repository, and on a private one with the Security and quality activation."
+    "notes": "A repository's list includes its workspace's patterns, with `scope` `workspace`. `entitled` says whether they run here: always on a public repository, and on a private one when the workspace is on the g1t plan."
   },
   "list_custom_patterns_for_workspace": {
     "params": {

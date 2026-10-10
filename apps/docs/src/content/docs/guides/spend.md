@@ -1,6 +1,6 @@
 ---
 title: Spend
-description: What the workspace spent and where it went, by agent, person, channel, model and product; the budgets from the workspace down to one task, and what happens at each; a receipt for every task; and how it is priced.
+description: What the workspace spent and where it went, by agent, person, channel, model and product; suggestions to spend less that are checked against your own past work; the budgets from the workspace down to one task; a receipt for every task; and how it is priced.
 ---
 
 **Spend** is the front of the workspace's money:
@@ -53,6 +53,51 @@ Slice the period's spend with the tabs:
 
 A slice is part of the page's address (`?by=channel`), so you can share it.
 
+## Spend less, keep quality
+
+Every week, g1t checks each agent's finished sessions and asks one
+question: would a cheaper [effort](/guides/agents/#effort) have done the
+work as well? The answers are under **Spend less, keep quality**, on Spend
+for every agent and on each agent's **Spend** tab for that agent.
+
+How a suggestion is made:
+
+1. **What counts.** Each agent's own sessions that finished in the last 28
+   days, at the effort level each recorded, with what each was charged as
+   budgets count it: the model at the provider's price and the
+   [agent rate](/guides/usage-and-billing/#the-agent-rate). A session is
+   **accepted** when it finished with nobody having to step in: no one
+   steered it, and it was not stopped or failed. Helpers and subagents
+   count as part of the session that started them.
+2. **What is compared.** The level the agent runs at now (for Auto, the
+   level most of its sessions ran at) against the level below.
+3. **When it suggests.** Both levels have at least 10 sessions; the
+   cheaper level's sessions were accepted at least as often, give or take
+   5 points, even on a cautious estimate; and a typical session at the
+   cheaper level cost at most 85% of one at the current level.
+4. **What it says.** The suggestion names the numbers it rests on, such as
+   *At Medium, 12 of its 12 sessions finished with nobody stepping in,
+   against 19 of 20 at High; a typical one cost $0.21 instead of $0.48*,
+   and about what it would save a month at the agent's recent pace.
+
+When either level has fewer than 10 sessions, Spend says **Not enough
+history yet**, with how many it has, instead of suggesting anything. When
+the cheaper level was measured and did worse, or would save little,
+nothing is shown.
+
+To act on one, as an owner:
+
+1. Open **Spend** and find **Spend less, keep quality**.
+2. Read the reason under the suggestion.
+3. Choose **Apply** to change the agent's effort (a new version of the
+   agent, recorded in the [audit log](/guides/audit-log/) with who applied
+   it), or **Dismiss** to put it away. A dismissed suggestion is not made
+   again for the same setting.
+
+Applied and dismissed suggestions stay listed under **Decided lately** for
+30 days. A suggestion made for a setting that has since changed is put
+away at the next check.
+
 ## Budgets
 
 Budgets nest, from the widest to the narrowest. Before every agent reply
@@ -99,6 +144,7 @@ for its receipt, at `g1t.sh/<workspace>/-/spend/receipts/<session>`:
 - Each session of its tree: the agent's own, and every helper and subagent
   it brought in, with their tokens, the model at the provider's price, and
   what each was charged.
+- Each session's model and the [effort](/guides/agents/#effort) it ran at.
 - **Models, at the provider's price**: every session's model answers
   together.
 - **g1t's agent rate**: the rest, at the rate in the price book.
@@ -115,11 +161,12 @@ The page's last section reads the [price book](/guides/usage-and-billing/#how-pr
 | | Price |
 | --- | --- |
 | **Models** | What the model provider charges, with no markup. |
-| **Agent rate** | Per million tokens an agent's run uses, for context, memory, routing and orchestration. |
-| **Everything g1t runs** | Sandboxes, builds, hosting, storage and search, at cost plus 20%. |
-| **Your own model keys** | Your provider bills the model; only the agent rate is charged. Local models the same. |
+| **Agent rate** | Per million tokens an agent's run uses, for what g1t runs around every model call: the model gateway, secrets, routing, context and pass-through to your own provider. |
+| **Everything else g1t runs** | Sandboxes, builds, hosting, storage, search and security scans, at cost plus 20%. |
+| **Your own model keys** | Your provider bills the model; the agent rate still applies. Local models the same. |
 | **Your own runners** | $0. |
 | **People** | No seats. |
+| **Spending less** | [Effort](/guides/agents/#effort) on each agent, and the weekly suggestions above. |
 
 ## In the top bar
 
@@ -133,6 +180,7 @@ sidebar instead.
 
 ## Next
 
+- [Effort](/guides/agents/#effort): how hard each agent works, and what each level costs.
 - [Agent budgets and spend](/guides/agent-budgets/): who pays for a session tree.
 - [Usage and billing](/guides/usage-and-billing/): the spend limit, caps, AI credit and rates.
 - [Sessions](/guides/agent-sessions/): caps and approving more spend.

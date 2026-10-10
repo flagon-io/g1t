@@ -12,7 +12,7 @@ import { securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
-import { activationPrice } from "../../lib/security-suite.server";
+import { planPrice } from "../../lib/security-suite.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Security settings · ${params.owner}/${params.repo} · g1t` });
@@ -22,7 +22,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context) ?? requireUser(context, request);
   const { access } = await requireInsider(context, params, "push");
   const repo = { namespace: params.owner, name: params.repo };
-  const [view, price] = await Promise.all([securitySuite.settings(repo, viewer), activationPrice(params.owner, viewer)]);
+  const [view, price] = await Promise.all([securitySuite.settings(repo, viewer), planPrice(params.owner, viewer)]);
   return { view: unwrap(view), price, can: access.can, owner: managesSecurity(viewer, params.owner) };
 }
 

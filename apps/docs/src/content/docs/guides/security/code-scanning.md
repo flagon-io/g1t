@@ -17,7 +17,7 @@ the standard format for them. You run the tool, in a
   and it blocks merges, for people and agents alike.
 
 Code scanning is free on public repositories and part of the
-[Security and quality activation](/guides/security/pricing/) on private
+g1t plan, as [Security and quality](/guides/security/pricing/), on private
 ones.
 
 ## Set it up

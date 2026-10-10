@@ -7,9 +7,10 @@
 //! What is free and what is paid: secret scanning, push protection,
 //! vulnerability alerts and security updates are free everywhere. On a
 //! public repository everything here is free too. On a private one, the
-//! features in [`PaidFeature`] need the workspace's Security and quality
-//! activation (billing's `Feature::Security`); a refusal is a
-//! `PaymentRequired` failure whose message says how to turn it on.
+//! features in [`PaidFeature`] come with the g1t plan (billing's
+//! `Feature::Security`, which has no price of its own: its scans are
+//! metered like everything else); a refusal is a `PaymentRequired` failure
+//! whose message says how to start the plan.
 
 use serde::{Deserialize, Serialize};
 
@@ -64,11 +65,11 @@ impl PaidFeature {
     }
 }
 
-/// What a refusal for want of the activation says.
+/// What a refusal for want of the plan says.
 pub fn needs_activation(feature: PaidFeature, workspace: &str) -> String {
     format!(
-        "{} on private repositories comes with the Security and quality activation, which {workspace} does not have. \
-         An owner can turn it on at /{workspace}/-/billing. Public repositories have it free.",
+        "{} on private repositories comes with the g1t plan, which {workspace} does not have; its scans are charged at cost plus 20%. \
+         An owner can start the plan at /{workspace}/-/billing. Public repositories have it free.",
         feature.title()
     )
 }
@@ -1129,9 +1130,9 @@ mod tests {
     }
 
     #[test]
-    fn the_refusal_says_how_to_turn_it_on() {
+    fn the_refusal_says_how_to_start_the_plan() {
         let message = needs_activation(PaidFeature::CodeScanning, "acme");
-        assert!(message.starts_with("Code scanning on private repositories comes with the Security and quality activation"));
+        assert!(message.starts_with("Code scanning on private repositories comes with the g1t plan"));
         assert!(message.contains("/acme/-/billing") && message.contains("Public repositories have it free"));
     }
 }

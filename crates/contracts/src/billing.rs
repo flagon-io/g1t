@@ -1001,10 +1001,10 @@ pub enum Feature {
     /// Previews per pull request and production on g1t.page: part of the
     /// plan.
     Deployments,
-    /// The Security and quality activation: the security suite's paid
-    /// features on private repositories, for a monthly price per workspace
-    /// from the price book (`security_activation`). Sold on its own; it
-    /// does not need the plan, and the plan does not include it.
+    /// Security and quality: the security suite's paid features on private
+    /// repositories. It comes with the plan; the price book's
+    /// `security_activation` is $0, and its scans are metered like
+    /// everything else.
     Security,
 }
 

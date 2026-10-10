@@ -54,6 +54,7 @@ import { conversationFrom } from "./surface.ts";
 import { type Row, definitionOf, periods } from "./store.ts";
 import { type ActionPorts, type ToolCall, ToolBox } from "./tools.ts";
 import { type ModelMessage, SESSION_LIMITS, runTurn } from "./turn.ts";
+import { effortOf, effortPlan, higherEffort, isLevel } from "./routing.ts";
 import { recallQuery, recallSection } from "./recall.ts";
 import { rosterLines } from "./orchestrator.ts";
 import { teamsSection } from "./teammates.ts";
@@ -71,7 +72,10 @@ export type SessionEnv = MeterEnv &
     DESKS: DurableObjectNamespace<Desk>;
   };
 
-/** Steps one session takes at most before it must report. */
+/**
+ * Steps one session takes at most before it must report, at medium effort;
+ * its agent's effort setting moves it (routing.ts `SESSION_STEPS`).
+ */
 export const MAX_STEPS = 8;
 /** Children one session may have running at once. */
 export const MAX_CHILDREN = 4;
@@ -124,6 +128,9 @@ export type SessionRow = {
   charged_micros: number;
   cap_micros: number | null;
   model: string | null;
+  /** The effort level it ran at (the highest, when Auto raised it). Null on sessions from before. */
+  effort?: string | null;
+  tier?: string | null;
   outputs: string;
   step_started_at: string | null;
   created_at: string;
@@ -181,6 +188,7 @@ export function toSession(row: SessionRow, agent: { handle: string; display_name
     cost_micros: row.cost_micros,
     cap_micros: row.cap_micros,
     model: row.model,
+    effort: isLevel(row.effort) ? row.effort : null,
     outputs: visible ? json<SessionOutput[]>(row.outputs, []) : [],
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -652,7 +660,7 @@ async function treeDepth(db: D1Database, row: SessionRow): Promise<number> {
 }
 
 /** The section of the system prompt that says what a session is and how to finish. */
-function sessionSection(row: SessionRow, asker: string): string {
+function sessionSection(row: SessionRow, asker: string, steps = MAX_STEPS): string {
   const report =
     row.kind === "helper" || row.kind === "subagent"
       ? "Your final answer goes back to the agent who asked for your help, not into chat."
@@ -662,7 +670,7 @@ function sessionSection(row: SessionRow, asker: string): string {
   return [
     "## This session",
     "",
-    `You are working a session: "${row.title}". It is bounded: work through it with your tools, step by step, and finish within ${MAX_STEPS} steps.`,
+    `You are working a session: "${row.title}". It is bounded: work through it with your tools, step by step, and finish within ${steps} steps.`,
     `- ${report} Make it the report: what you found or did, with links (issues, files, threads), and anything left open.`,
     "- Use post_update for real milestones or a question for the people following, not for every step.",
     "- When part of the work belongs to a subagent or a colleague, hand it over with use_subagent or bring_in and end your step saying what you're waiting for; their results come back to you.",
@@ -695,7 +703,13 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
     if (row.status !== "waiting") await setStatus(env, row, "waiting", null);
     return;
   }
-  if (row.steps >= MAX_STEPS && json<Inbound[]>(row.inbox, []).length === 0) {
+  // Its effort setting: the tier a step starts on, how hard the model
+  // reasons, and how many steps it may take. Auto works harder on a
+  // session someone had to steer.
+  const steered = json<Inbound[]>(row.inbox, []).some((item) => item.kind === "steer") || row.effort === "high" || row.effort === "max";
+  const setting = effortOf(definitionOf(agent).routing);
+  const plan = effortPlan(setting, "large", { raised: setting === "auto" && steered });
+  if (row.steps >= plan.steps && json<Inbound[]>(row.inbox, []).length === 0) {
     await setStatus(env, row, "done", null, { summary: row.summary ?? "Stopped at the step limit." });
     return finished(env, row.id);
   }
@@ -730,7 +744,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
   const subagent = row.subagent ? definition.subagents.find((s) => s.name === row!.subagent) ?? null : null;
   const events: D1PreparedStatement[] = [];
   const calls: ToolCall[] = [];
-  const startTier: ModelTier = "large";
+  const startTier: ModelTier = plan.start;
   const asker = { id: row.asked_by, username: row.asked_by_username };
   const current = row;
   // Its teams, from their pages: told every step, and their budgets apply.
@@ -744,6 +758,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
       slug,
       task: "session",
       start: startTier,
+      effort: plan.level,
       askerName: row.asked_by_username,
       person: row.asked_by_username,
       leftMicros: row.cap_micros != null ? row.cap_micros - row.charged_micros : null,
@@ -835,7 +850,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
           conversation: here,
           skills: skillsSection(definition.skills_off, toolbox?.definitions().map((tool) => tool.name) ?? []),
         }),
-        sessionSection(current, current.asked_by_username ? `@${current.asked_by_username}` : "the person who asked"),
+        sessionSection(current, current.asked_by_username ? `@${current.asked_by_username}` : "the person who asked", plan.steps),
         memorySection(facts),
         recallSection(passages),
       ]
@@ -847,6 +862,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
         messages: alternate(context),
         tools: toolbox,
         price: model.ownModel ? null : model.model.price,
+        effort: model.effort,
         maxRounds: SESSION_LIMITS.rounds,
         inputBudget: SESSION_LIMITS.input,
         maxOutput: SESSION_LIMITS.output,
@@ -878,7 +894,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
   await db
     .prepare(
       `UPDATE agent_sessions SET steps = steps + 1, tool_calls = tool_calls + ?, input_tokens = input_tokens + ?, output_tokens = output_tokens + ?,
-         cost_micros = cost_micros + ?, charged_micros = charged_micros + ?, model = ?, context = ?, step_started_at = NULL, updated_at = ? WHERE id = ?`,
+         cost_micros = cost_micros + ?, charged_micros = charged_micros + ?, model = ?, effort = ?, tier = ?, context = ?, step_started_at = NULL, updated_at = ? WHERE id = ?`,
     )
     .bind(
       calls.length,
@@ -887,6 +903,8 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
       outcome.cost,
       outcome.charged,
       outcome.model,
+      higherEffort(isLevel(row.effort) ? row.effort : null, plan.level),
+      outcome.tier,
       JSON.stringify(context),
       iso(),
       id,
@@ -909,7 +927,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
     return;
   }
   // Something arrived during the step: another step reads it.
-  if (json<Inbound[]>(row.inbox, []).length && row.steps < MAX_STEPS + 2) {
+  if (json<Inbound[]>(row.inbox, []).length && row.steps < plan.steps + 2) {
     if (answer.text) await db.batch([eventStatement(db, id, "text", agent.handle, answer.text)]);
     await wake(env, row.agent_id, id);
     return;

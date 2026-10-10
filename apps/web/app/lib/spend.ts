@@ -81,26 +81,43 @@ export type Pricing = {
   modelMarkupPercent: number;
   /** What g1t's own metered work is marked up: one figure, or the range across meters. */
   markup: { min: number; max: number } | null;
-  /** g1t's agent rate per million tokens, on g1t's models and on your own key. Null when the book has none. */
+  /** g1t's agent rate per million tokens, on g1t's models and on your own key, in force now. Null when the book has none. */
   agentRateMicros: number | null;
   agentRateOwnMicros: number | null;
+  /** The agent rate still to come, when it is $0 now and a dated version waits: its price and the day it starts. */
+  agentRateComing: { micros: number; from: string } | null;
 };
 
-const AGENT_METERS = new Set(["agent_models", "agent_tokens", "agent_tokens_own"]);
+/**
+ * Meters that are not something g1t runs at a cost: models (at the
+ * provider's price), AI Gateway, card fees (Stripe's), flat activations,
+ * and per-token rates with their weights.
+ */
+const NOT_RUN = (meter: string) =>
+  meter === "agent_models" || meter === "gateway_models" || meter.startsWith("agent_token") || meter.startsWith("card_fee") || meter === "security_activation";
 
 export function pricingOf(book: PriceBook): Pricing {
-  const run = book.prices.filter((p) => !AGENT_METERS.has(p.meter) && p.costMicros > 0);
+  const run = book.prices.filter((p) => !NOT_RUN(p.meter) && p.costMicros > 0);
   const markups = run.map((p) => p.markupPercent);
   const rate = (meter: string) => {
     const price = book.prices.find((p) => p.meter === meter);
     return price ? price.priceMicros : null;
   };
+  const coming = book.changes.find((c) => c.meter === "agent_tokens" && c.effectiveAt);
   return {
     modelMarkupPercent: book.modelMarginPercent,
     markup: markups.length ? { min: Math.min(...markups), max: Math.max(...markups) } : null,
     agentRateMicros: rate("agent_tokens"),
     agentRateOwnMicros: rate("agent_tokens_own"),
+    agentRateComing: coming ? { micros: coming.newCostMicros, from: coming.effectiveAt!.slice(0, 10) } : null,
   };
+}
+
+/** "$0.25 per million tokens", or "$0.25 per million tokens from 2026-10-22" while it waits for its date. */
+export function agentRateLabel(pricing: Pick<Pricing, "agentRateMicros" | "agentRateComing">, money: (micros: number) => string): string {
+  if (pricing.agentRateMicros && pricing.agentRateMicros > 0) return `${money(pricing.agentRateMicros)} per million tokens`;
+  if (pricing.agentRateComing) return `${money(pricing.agentRateComing.micros)} per million tokens from ${pricing.agentRateComing.from}`;
+  return "Per million tokens";
 }
 
 /** "20%", or "15–20%" when meters differ. */

@@ -19,15 +19,18 @@ import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.serv
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   const role = roleIn(viewer, params.owner);
-  const [teams, versions, spaces] = await Promise.all([
+  const [teams, versions, spaces, effortCosts] = await Promise.all([
     identity.listTeams(viewer, params.owner).catch(() => null),
     readOrNull(workspaceAgents.versions(params.owner.toLowerCase(), params.handle.toLowerCase(), viewer)),
     readingSpaces(params.owner.toLowerCase(), viewer),
+    // What each effort level has cost it, beside the control.
+    readOrNull(workspaceAgents.effortCosts(params.owner.toLowerCase(), params.handle.toLowerCase(), viewer)),
   ]);
   return {
     teams: teams?.ok ? teams.value.map((team) => ({ slug: team.slug, name: team.name })) : [],
     versions,
     spaces,
+    effortCosts,
     owner: role === "owner",
     viewerId: viewer.id,
   };
@@ -127,6 +130,7 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
           teams={personal ? [] : loaderData.teams}
           personal={personal}
           spaces={loaderData.spaces}
+          effortCosts={loaderData.effortCosts}
           seed={agent.avatar_seed || agent.id}
         />
       )}

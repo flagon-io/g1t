@@ -542,6 +542,37 @@ When a floor and a ceiling disagree, you are asked to fix them before
 saving. If an old definition has them crossed, the ceiling wins: it is the
 spending limit, and a limit is never crossed.
 
+## Effort
+
+Each agent has an **effort** setting: how hard it works. One setting moves
+three things together, so you never tune them apart:
+
+| Effort | Starts on | The model reasons | A session takes at most |
+| --- | --- | --- | --- |
+| **Auto** (the default) | Where the work starts | Medium, and High on a session someone had to steer | 8 steps, 10 once raised |
+| **Low** | The fast tier | Lightly | 5 steps |
+| **Medium** | Where the work starts: fast for chat replies, standard for sessions | Moderately | 8 steps |
+| **High** | Standard or above | Deeply | 10 steps |
+| **Max** | The most capable tier | As hard as it can | 12 steps |
+
+The floor and the ceiling still hold: an agent at **Max** with a ceiling of
+Standard runs on Standard. How hard the model reasons is sent only to
+g1t's tiers whose model takes it; a model your own route names is sent as
+it is.
+
+Set it on the agent's **Profile**, under **Models**, or on its **Spend**
+tab. Owners change it, and each change is a new version of the agent.
+Beside the setting, each level shows what a typical task has cost that
+agent, as budgets count it (the model and the
+[agent rate](/guides/usage-and-billing/#the-agent-rate)): the median of its
+finished sessions at that level over the last 28 days, how many there
+were, and how many were accepted (finished with nobody having to step
+in). A level it has not run at shows no figure.
+
+Every session and reply records the level it ran at, which is what the
+figures and the weekly [suggestions](/guides/spend/#spend-less-keep-quality)
+are measured from.
+
 ### Your own providers
 
 Connect a model provider, or any compatible endpoint, in the workspace's
@@ -600,7 +631,9 @@ reply is charged to the workspace, against that agent's budget:
 | Your own provider | Your provider bills you for the model. g1t charges the agent rate for your own model key only. |
 | Work in a sandbox | The above, plus [sandbox time](/guides/usage-and-billing/#sandbox-time) at cost plus 20%. |
 
-The live agent rate is on [g1t.sh/pricing](https://g1t.sh/pricing).
+The live agent rate is on [g1t.sh/pricing](https://g1t.sh/pricing). Its
+[effort](#effort) decides most of what a task costs: the tier it starts on,
+how much the model reasons and how many steps a session may take.
 
 ### A worked example
 
@@ -662,9 +695,9 @@ Each agent has a page at `g1t.sh/<workspace>/-/agents/<handle>`:
 | **Sessions** | Every session it is working on, then every one it worked on before, each child under the session that started it. See [sessions](/guides/agent-sessions/). |
 | **Memory** | What it remembers, by scope, with where each fact came from. Pin, correct or forget facts. See [agent memory](/guides/agent-memory/). |
 | **Routines** | Work it does on a schedule or when something happens. See [routines](/guides/agent-routines/). |
-| **Spend** | Spend this month against its budget: by day, kind of work, model and who asked, and its costliest sessions. |
+| **Spend** | Its [effort](#effort) and what each level has cost it, suggestions to spend less, and spend this month against its budget: by day, kind of work, model and who asked, and its costliest sessions. |
 | **Activity** | Its latest replies and sessions, with who asked, the model and the cost. |
-| **Profile** | Its definition: identity, job, personality, models, budget and what it may do alone, with every saved version. Owners edit a workspace agent here, and a member their own personal agent, in the form or [in words](#change-it-in-words). |
+| **Profile** | Its definition: identity, job, personality, models and effort, budget and what it may do alone, with every saved version. Owners edit a workspace agent here, and a member their own personal agent, in the form or [in words](#change-it-in-words). |
 
 The **Agents** page above them all shows the agent budget, sessions waiting
 on you and working now, every agent with its live sessions and its month's
@@ -724,3 +757,4 @@ lists, and its history stays.
 - [Model providers](/guides/models/): connect your own.
 - [Usage and billing](/guides/usage-and-billing/): AI credit, spend limits
   and the agent rate.
+- [Spend](/guides/spend/): where agent spend went, and how to spend less.

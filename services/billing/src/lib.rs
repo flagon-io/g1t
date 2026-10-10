@@ -1314,6 +1314,9 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         if let Err(error) = billing.retire_deployments_plans().await {
             worker::console_error!("ending Deployments plans failed: {error}");
         }
+        if let Err(error) = billing.retire_security_activations().await {
+            worker::console_error!("ending Security and quality activations failed: {error}");
+        }
         if let Err(error) = billing.sweep_reservations().await {
             worker::console_error!("clearing reservations failed: {error}");
         }

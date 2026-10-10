@@ -470,35 +470,14 @@ export function AddOns({ plan, security, owner, enabled, error }: { plan: Featur
   const planOn = !!plan?.on;
   const rows: { key: string; name: string; about: string; price: string; on: boolean; label: string; control: ReactNode }[] = [];
   if (security) {
-    const status = security.subscription?.status;
     rows.push({
       key: "security",
       name: security.plan.title,
-      about: `Custom patterns, validity checks, code scanning and dependency review on private repositories. ${
-        security.plan.cardFeeCents ? `Plus a ${dollars(security.plan.cardFeeCents * 10_000)} card processing fee a month, and tax where it applies.` : "Plus tax where it applies."
-      }`,
-      price: `$${(security.plan.monthlyCents / 100).toFixed(security.plan.monthlyCents % 100 ? 2 : 0)} / month`,
+      about: "Custom patterns, validity checks, code scanning and dependency review on private repositories. No price of its own: scans are charged at cost plus 20%.",
+      price: "With the plan",
       on: security.on,
-      label: security.included ? "Included" : status === "canceling" ? "Ends at the period's end" : security.on ? "On" : "Off",
-      control:
-        !owner || !enabled || security.included ? null : (
-          <Form method="post">
-            <input type="hidden" name="feature" value="security" />
-            {!security.on ? (
-              <SubmitButton variant="quiet" name="intent" value="subscribe" pending="Opening Stripe…">
-                Turn on
-              </SubmitButton>
-            ) : status === "canceling" ? (
-              <SubmitButton variant="quiet" name="intent" value="resume" pending="Saving…">
-                Keep it on
-              </SubmitButton>
-            ) : (
-              <SubmitButton variant="quiet" name="intent" value="cancel" pending="Saving…">
-                Turn off
-              </SubmitButton>
-            )}
-          </Form>
-        ),
+      label: security.on ? "On" : "Needs the plan",
+      control: null,
     });
   }
   rows.push({

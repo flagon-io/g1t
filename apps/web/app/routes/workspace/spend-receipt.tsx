@@ -7,6 +7,7 @@ import { AgentAvatar } from "../../components/agent-avatar";
 import { KindBadge, PrivateTitle, StatusChip, sessionHref } from "../../components/agents/parts";
 import { whereLabel } from "../../components/agents/format";
 import { TimeAgo } from "../../components/ui";
+import { effortLabel } from "../../lib/effort";
 import { page } from "../../lib/meta";
 import { requireUser, roleIn } from "../../lib/session.server";
 import { loadPricing } from "../../lib/spend.server";
@@ -100,7 +101,8 @@ export default function Receipt({ loaderData }: Route.ComponentProps) {
                   </p>
                   <p className="mt-0.5 truncate text-xs text-faint">
                     {session.agent_name}
-                    {session.model ? ` · ${session.model}` : ""} · {session.steps} {session.steps === 1 ? "step" : "steps"} · {session.tool_calls} {session.tool_calls === 1 ? "tool" : "tools"}
+                    {session.model ? ` · ${session.model}` : ""}
+                    {session.effort ? ` · ${effortLabel(session.effort)} effort` : ""} · {session.steps} {session.steps === 1 ? "step" : "steps"} · {session.tool_calls} {session.tool_calls === 1 ? "tool" : "tools"}
                   </p>
                 </div>
               </div>

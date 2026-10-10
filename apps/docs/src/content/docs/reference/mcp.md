@@ -537,7 +537,7 @@ dependency review, settings, and a workspace's
 [overview](/guides/security/security-overview/). `secret_alerts` is the
 default action. Findings are shown only to those with Write on the
 repository, and to the workspace's security managers; on private repositories, some actions need the
-[Security and quality activation](/guides/security/pricing/), and are
+g1t plan, as [Security and quality](/guides/security/pricing/), and are
 refused with `402` without it.
 
 | Action | What it does | Required | Scope |

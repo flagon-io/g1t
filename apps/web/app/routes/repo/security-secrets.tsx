@@ -11,7 +11,7 @@ import { Badge } from "../../components/ui/badge";
 import { security, securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
-import { activationPrice } from "../../lib/security-suite.server";
+import { planPrice } from "../../lib/security-suite.server";
 import { countStates, keepSecret, secretFilters, secretTypes } from "../../lib/security-suite";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -25,7 +25,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const [overview, patterns, price] = await Promise.all([
     security.overview(repo, viewer),
     securitySuite.patterns(params.owner, repo, viewer),
-    activationPrice(params.owner, viewer),
+    planPrice(params.owner, viewer),
   ]);
   return {
     overview: unwrap(overview),

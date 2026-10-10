@@ -12,7 +12,7 @@ import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { repos, security, securitySuite } from "../../lib/services.server";
 import { getViewer, managesSecurity, roleIn, unwrap } from "../../lib/session.server";
-import { activationPrice } from "../../lib/security-suite.server";
+import { planPrice } from "../../lib/security-suite.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Security · ${params.owner} · g1t` });
@@ -26,7 +26,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     repos.list(viewer, { namespace: params.owner.toLowerCase() }),
     securitySuite.overview(params.owner, viewer, 30),
     securitySuite.bypassRequests(params.owner, viewer, "pending"),
-    activationPrice(params.owner, viewer),
+    planPrice(params.owner, viewer),
   ]);
   // Only repositories that are still there: a deleted one's alerts stay
   // with it for its 30 days, but not on this page.
@@ -70,7 +70,7 @@ const TYPE_LABEL: Record<string, string> = {
 
 export default function WorkspaceSecurity({ loaderData, params }: Route.ComponentProps) {
   const { projects, total, overview, pending, price, owner } = loaderData;
-  // The full overview counts private repositories with the activation; without it, a workspace
+  // The full overview counts private repositories with the plan; without it, a workspace
   // with private ones sees the free list of every repository's open alerts.
   const full = overview && (overview.activated || overview.privateHidden === 0);
   return (

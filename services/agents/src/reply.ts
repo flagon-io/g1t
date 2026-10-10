@@ -28,7 +28,7 @@ import { type Specialist, orchestratorInstructions, orchestratorTier, rosterLine
 import { type MeterEnv, metered } from "./meter.ts";
 import { type RecallPlace, memorySection, recall } from "./memory.ts";
 import { recallQuery, recallSection } from "./recall.ts";
-import { REPLY_TIER, allowedProviders, replyModel } from "./routing.ts";
+import { REPLY_TIER, allowedProviders, effortOf, effortPlan, replyModel } from "./routing.ts";
 import { type SessionEnv, type SessionRow, actionPorts, sessionRow, startSession, steer } from "./sessions.ts";
 import { type Row, definitionOf, periods, selectAgents, toAgent } from "./store.ts";
 import { type SurfaceMessage, surfaceFor } from "./surface.ts";
@@ -213,6 +213,8 @@ type Outcome = {
   tokens?: Tokens;
   cost?: number;
   charged?: number;
+  /** The effort level it ran at. */
+  effort?: string | null;
 };
 
 /**
@@ -271,7 +273,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
       db
         .prepare(
           `UPDATE agent_replies SET status = ?, error = ?, reply_id = ?, model = ?, tier = ?, input_tokens = ?, output_tokens = ?,
-             cost_micros = ?, charged_micros = ?, tool_count = ?, finished_at = ? WHERE id = ?`,
+             cost_micros = ?, charged_micros = ?, tool_count = ?, finished_at = ?, effort = ? WHERE id = ?`,
         )
         .bind(
           outcome.status,
@@ -285,6 +287,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
           outcome.charged ?? 0,
           toolCalls.length,
           new Date().toISOString(),
+          outcome.effort ?? null,
           id,
         ),
       // Every tool call: what was asked, for whom, and whether it was read or withheld.
@@ -358,8 +361,9 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
     // Every agent knows its colleagues; @g1t also steps up a tier to decide
     // who gets the work in a long thread.
     const specialists = await team(db, row.workspace_id, row.id, now);
-    const start = row.builtin ? orchestratorTier(history.length, specialists.filter((a) => a.handle !== "g1t").length) : REPLY_TIER;
     const definition = definitionOf(row);
+    // Its effort setting decides where the reply starts and how hard the model reasons.
+    const plan = effortPlan(effortOf(definition.routing), row.builtin ? orchestratorTier(history.length, specialists.filter((a) => a.handle !== "g1t").length) : REPLY_TIER);
     const hops = Math.max(0, Math.floor(delivery.hops || 0));
     const chain = delivery.chain ?? [];
     const sender = chain.length ? await db.prepare("SELECT handle FROM agents WHERE id = ?").bind(chain[chain.length - 1]).first<{ handle: string }>() : null;
@@ -367,7 +371,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
     let posted: string | null = null;
     let spinOffs = 0;
 
-    const done = await metered(env, { row, payer: row, slug, task: "reply", start, askerName, person: delivery.asker?.username ?? null, teams: teamsHere }, async (model) => {
+    const done = await metered(env, { row, payer: row, slug, task: "reply", start: plan.start, effort: plan.level, askerName, person: delivery.asker?.username ?? null, teams: teamsHere }, async (model) => {
       // What colleagues consulted along the way used: billed to this reply.
       const consulted = { tokens: NO_TOKENS, cost: 0 };
       let toolbox: ToolBox | null = null;
@@ -499,7 +503,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
         .filter(Boolean)
         .join("\n\n");
       toolCalls = toolbox?.calls ?? [];
-      const answer = await runTurn(model.send, { model: model.model.model, system, messages: conversation as ModelMessage[], tools: toolbox, price: model.ownModel ? null : model.model.price });
+      const answer = await runTurn(model.send, { model: model.model.model, system, messages: conversation as ModelMessage[], tools: toolbox, price: model.ownModel ? null : model.model.price, effort: model.effort });
       // Post as soon as there is an answer; the bill is settled after.
       // It wakes nobody, @mentions or not: colleagues get work only through hand_off.
       if (answer.text) posted = await surface.post(answer.text);
@@ -512,7 +516,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
     });
 
     if (!done.ok) return await notice(noticeFor(done.reason, done.message), done.reason);
-    usage = { model: done.model, tier: done.tier, tokens: done.tokens, cost: done.cost, charged: done.charged };
+    usage = { model: done.model, tier: done.tier, tokens: done.tokens, cost: done.cost, charged: done.charged, effort: plan.level };
     if (!done.value.text) {
       const apology = await surface.post(APOLOGY).catch(() => null);
       return await finish({ status: "failed", error: "the model gave no text", reply_id: apology, ...usage });

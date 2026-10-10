@@ -25,7 +25,7 @@ import { TimeAgo } from "./ui";
 import { dollarsField } from "../lib/agent-form";
 import { cn } from "../lib/cn";
 import type { AgentBudgetRow, Budgets, PillData } from "../lib/spend.server";
-import { AT_LIMIT, type Pricing, type SpendScope, markupLabel, percentLabel, shareOfBudget } from "../lib/spend";
+import { AT_LIMIT, type Pricing, type SpendScope, agentRateLabel, markupLabel, percentLabel, shareOfBudget } from "../lib/spend";
 import { money } from "../lib/usage";
 
 
@@ -508,23 +508,23 @@ export function PricingCard({ pricing }: { pricing: Pricing | null }) {
     {
       icon: <Sparkles size={15} />,
       title: "Agent rate",
-      value: pricing.agentRateMicros != null ? `${money(pricing.agentRateMicros)} per million tokens` : "None",
-      about: "For context, memory, routing and orchestration around each model call, on every token an agent's run uses.",
+      value: agentRateLabel(pricing, money),
+      about: "For what g1t runs around every model call: the model gateway, secrets, routing, context and pass-through to your own provider.",
     },
     {
       icon: <Coins size={15} />,
-      title: "Everything g1t runs",
+      title: "Everything else g1t runs",
       value: pricing.markup ? `At cost + ${markupLabel(pricing.markup)}` : "At cost",
-      about: "Sandboxes, builds, hosting, storage and search, at what they cost g1t.",
+      about: "Sandboxes, builds, hosting, storage, search and security scans, at what they cost g1t.",
     },
     {
       icon: <KeyRound size={15} />,
       title: "Your own model keys",
-      value: pricing.agentRateOwnMicros != null ? `${money(pricing.agentRateOwnMicros)} per million tokens` : "Agent rate only",
-      about: "Your provider bills the model; only the agent rate is charged here. Local models the same.",
+      value: "Agent rate only",
+      about: "Your provider bills the model; g1t charges the agent rate for passing it through. Local models the same.",
     },
     { icon: <Building2 size={15} />, title: "Your own runners", value: "$0", about: "Time on your own hardware is never charged." },
-    { icon: <Users size={15} />, title: "People", value: "No seats", about: "Invite everyone; people chatting costs nothing." },
+    { icon: <Users size={15} />, title: "People", value: "No seats", about: "Invite everyone; people chatting costs nothing. Effort and weekly suggestions help agents spend less." },
   ];
   return (
     <ul className="grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">

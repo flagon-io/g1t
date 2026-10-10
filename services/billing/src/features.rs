@@ -13,6 +13,16 @@
 //! plan, and a Deployments subscription from before keeps working until
 //! its period ends. Billing sets each one to end then, once
 //! (`retire_deployments_plans`), so no one pays for both.
+//!
+//! Security and quality was once a $10 monthly activation of its own. It
+//! comes with the g1t plan now, at no price of its own (migration 0053 sets
+//! `security_activation` to $0): its scans are metered at cost plus the
+//! margin like everything else. `has_feature(security)` answers whether
+//! the workspace has the plan (or the activation's old inclusion), and
+//! billing ends every activation subscription at once, daily until none is
+//! left, then archives its product at Stripe
+//! (`retire_security_activations`). No refund is made for the part of a
+//! month already paid.
 
 use g1t_contracts::billing::deployment_costs as costs;
 use g1t_contracts::billing::*;
@@ -119,8 +129,8 @@ pub(crate) fn per_units(each: f64, units: f64) -> String {
 
 /// The price book's meter for the Security and quality activation.
 pub(crate) const SECURITY_METER: &str = "security_activation";
-/// Its price when the price book cannot be read: $10 a month.
-const SECURITY_FALLBACK_MICROS: f64 = 10_000_000.0;
+/// Its price when the price book cannot be read: none, as the book says.
+const SECURITY_FALLBACK_MICROS: f64 = 0.0;
 
 /// The Security and quality activation at the price book's price.
 pub(crate) fn security_plan_at(book: &std::collections::BTreeMap<&str, f64>) -> Plan {
@@ -131,11 +141,11 @@ pub(crate) fn security_plan_at(book: &std::collections::BTreeMap<&str, f64>) -> 
         monthly_cents: (micros / 10_000.0).round().max(0.0) as u32,
         card_fee_cents: 0,
         includes: vec![
-            "For every private repository in the workspace; public repositories have it free".to_owned(),
+            "With the g1t plan, for every private repository in the workspace; public repositories have it free".to_owned(),
             "Custom secret patterns, validity checks with issuers, and delegated push protection bypass".to_owned(),
             "Code scanning from SARIF, with pull request checks that can block merges".to_owned(),
             "Dependency review on pull requests, and the workspace's security overview".to_owned(),
-            "Everyone in the workspace at one price, never per person".to_owned(),
+            "No price of its own: scans are charged at cost plus 20%, like everything g1t runs".to_owned(),
         ],
         overage: "Fixes by g1t's agent are charged as agent usage, like any other agent run. Secret scanning, push protection, vulnerability alerts and security updates stay free.".to_owned(),
     }
@@ -190,21 +200,20 @@ impl Billing {
             card_fee_cents: 0,
             includes: vec![
                 format!(
-                    "{} of usage each month at cost plus {}%, used first",
+                    "{} of usage each month, used first: models at the provider's price with the g1t agent rate, everything else g1t runs at cost plus {}%",
                     dollars(p.plan_included_micros),
                     self.margin_percent
                 ),
                 "Everyone in the workspace at one price, never per person".to_owned(),
                 "Unlimited projects, previews and repositories".to_owned(),
-                "Agents, checks, workflows, the merge queue, deployments and semantic search".to_owned(),
+                "Agents, checks, workflows, the merge queue, deployments, semantic search, and Security and quality on private repositories".to_owned(),
                 format!(
-                    "Usage past {} is charged at cost plus {}%, up to your spend limit",
+                    "Usage past {} is charged the same way, up to your spend limit",
                     dollars(p.plan_included_micros),
-                    self.margin_percent
                 ),
             ],
             overage: format!(
-                "Everything is metered from the first unit at what it costs g1t plus {}%: sandbox time and deploy builds by the second ({} a build minute), models at what the provider charged, {} per million app requests, {} per million CPU milliseconds, {} a month per custom domain, private storage past the free {} at {} per GB-month, and git operations past the free {} a month at {} per 1,000. Unused included usage does not roll over.",
+                "Everything g1t runs is metered from the first unit at what it costs g1t plus {}%: sandbox time and deploy builds by the second ({} a build minute), {} per million app requests, {} per million CPU milliseconds, {} a month per custom domain, private storage past the free {} at {} per GB-month, and git operations past the free {} a month at {} per 1,000. Unused included usage does not roll over.",
                 self.margin_percent,
                 price_of("build_second", costs::MICROS_PER_BUILD_SECOND, 60.0),
                 price_of("app_requests", costs::MICROS_PER_MILLION_REQUESTS, 1.0),
@@ -214,7 +223,7 @@ impl Billing {
                 price_of("private_storage", crate::storage::STORAGE_MICROS_PER_GB_MONTH, 1.0),
                 thousands(p.git_included),
                 price_of("git_operations", crate::storage::GIT_MICROS_PER_THOUSAND, 1.0),
-            ),
+            ) + " Models are billed at the provider's price, with no markup, plus the g1t agent rate on their tokens, on your own model keys too. Your own runners cost nothing.",
         }
     }
 
@@ -314,8 +323,10 @@ impl Billing {
     /// Security and quality activation is its own subscription.
     async fn state(&self, workspace: &str, feature: Feature) -> Result<FeatureState> {
         if feature == Feature::Security {
+            // It comes with the plan; an activation still running until
+            // billing ends it keeps it on meanwhile.
             let subscription = self.current(workspace, Feature::Security).await?.and_then(|row| row.subscription());
-            let included = self.security_included(workspace).await?;
+            let included = self.security_included(workspace).await? || self.has_plan(workspace).await?;
             return Ok(FeatureState {
                 plan: self.plan(Feature::Security).await?,
                 on: included || self.stripe.is_none() || subscription.as_ref().is_some_and(|s| s.status.on()),
@@ -410,6 +421,66 @@ impl Billing {
         Ok(())
     }
 
+    /// Ends every Security and quality activation at once: it has no price
+    /// any more and comes with the plan. Stripe ends each subscription now,
+    /// without proration or refund; its row is recorded as canceled and the
+    /// account's audit log says why. Once none is left, the activation's
+    /// product at Stripe is archived, so no price of it can be sold again.
+    pub(crate) async fn retire_security_activations(&self) -> Result<()> {
+        let Some(stripe) = &self.stripe else { return Ok(()) };
+        #[derive(Deserialize)]
+        struct Live {
+            workspace: String,
+            subscription_id: String,
+            started_by: String,
+        }
+        let live = self
+            .db
+            .prepare(
+                "SELECT workspace, subscription_id, started_by FROM subscriptions
+                 WHERE feature = 'security' AND status <> 'canceled' LIMIT 20",
+            )
+            .all()
+            .await?
+            .results::<Live>()?;
+        let mut left = false;
+        for activation in &live {
+            match stripe.cancel_now(&activation.subscription_id).await {
+                Ok(subscription) => {
+                    self.record(&activation.workspace, Feature::Security, &subscription, &activation.started_by).await?;
+                    let account = self.account_of(&activation.workspace).await?;
+                    self.audit(
+                        &account.id,
+                        "migration",
+                        &format!(
+                            "{}: the Security and quality activation ended; it comes with the g1t plan now, with no price of its own",
+                            activation.workspace
+                        ),
+                        "billing",
+                    )
+                    .await?;
+                }
+                Err(error) if is_missing(&error) => {
+                    self.db
+                        .prepare("UPDATE subscriptions SET status = 'canceled', updated_at = ? WHERE workspace = ? AND feature = 'security'")
+                        .bind(&[rfc3339(now_ms()).into(), activation.workspace.as_str().into()])?
+                        .run()
+                        .await?;
+                }
+                Err(error) => {
+                    left = true;
+                    worker::console_error!("could not end {}'s Security and quality activation: {error}", activation.workspace);
+                }
+            }
+        }
+        if !left && live.len() < 20 {
+            if let Err(error) = stripe.archive_product("security").await {
+                worker::console_error!("could not archive the Security and quality product: {error}");
+            }
+        }
+        Ok(())
+    }
+
     /// Whether the workspace's plan for the feature is paid up.
     pub(crate) async fn plan_on(&self, workspace: &str, feature: Feature) -> Result<bool> {
         Ok(self
@@ -443,9 +514,15 @@ impl Billing {
                 "Payments are not set up on this g1t, so the plan is already on.",
             ));
         };
-        // Deployments come with the plan: asking for them starts the plan.
-        // The Security and quality activation is its own subscription.
-        let feature = if a.feature == Feature::Security { Feature::Security } else { Feature::Plan };
+        // Deployments and Security and quality come with the plan: there is
+        // nothing of their own to start.
+        if a.feature == Feature::Security {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                format!("Security and quality comes with the g1t plan, with no price of its own. Start the plan at /{workspace}/-/billing."),
+            ));
+        }
+        let feature = Feature::Plan;
         let name = if feature == Feature::Security { "The Security and quality activation" } else { "The g1t plan" };
         let state = self.state(&workspace, feature).await?;
         if state.included {
@@ -664,8 +741,7 @@ impl Billing {
             return Ok(Outcome::fail(
                 FailureCode::PaymentRequired,
                 format!(
-                    "This needs the Security and quality activation ({} a month for the workspace), and {workspace} does not have it. An owner can turn it on at /{workspace}/-/billing.",
-                    dollars(i64::from(state.plan.monthly_cents) * 10_000)
+                    "Security and quality on private repositories comes with the g1t plan ($20 a month for the workspace, with $10 of usage included; scans at cost plus 20%), and {workspace} does not have it. An owner can start it at /{workspace}/-/billing."
                 ),
             ));
         }
@@ -833,13 +909,14 @@ mod security_activation {
 
     #[test]
     fn the_activation_is_priced_from_the_price_book() {
-        let book = std::collections::BTreeMap::from([(SECURITY_METER, 12_000_000.0)]);
+        let book = std::collections::BTreeMap::from([(SECURITY_METER, 0.0)]);
         let plan = security_plan_at(&book);
-        assert_eq!((plan.feature, plan.monthly_cents), (Feature::Security, 1200));
+        assert_eq!((plan.feature, plan.monthly_cents), (Feature::Security, 0));
         assert_eq!(plan.title, "Security and quality");
-        // The price book unreadable: $10, as the migration seeds it.
-        assert_eq!(security_plan_at(&std::collections::BTreeMap::new()).monthly_cents, 1000);
+        // The price book unreadable: no price, as the book says.
+        assert_eq!(security_plan_at(&std::collections::BTreeMap::new()).monthly_cents, 0);
         assert!(plan.includes.iter().any(|line| line.contains("public repositories have it free")));
+        assert!(plan.includes.iter().any(|line| line.contains("cost plus 20%")));
         assert!(plan.overage.contains("agent usage"));
     }
 }

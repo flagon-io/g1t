@@ -23,11 +23,11 @@ Security settings.
 
 ## Private repositories
 
-The overview counts private repositories with the
-[Security and quality activation](/guides/security/pricing/). A workspace
-without it, with private repositories, sees each repository's open secret
-and vulnerability alerts as a list instead, which is free, and the
-activation's prompt. A workspace with only public repositories sees the
+The overview counts private repositories on the g1t plan, which
+[Security and quality](/guides/security/pricing/) comes with. A workspace
+without the plan, with private repositories, sees each repository's open
+secret and vulnerability alerts as a list instead, which is free, and a
+prompt to start the plan. A workspace with only public repositories sees the
 whole overview free.
 
 ## API

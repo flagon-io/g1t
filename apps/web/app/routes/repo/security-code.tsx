@@ -11,7 +11,7 @@ import { TimeAgo } from "../../components/ui";
 import { securitySuite } from "../../lib/services.server";
 import { getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
 import { requireInsider } from "../../lib/access.server";
-import { activationPrice } from "../../lib/security-suite.server";
+import { planPrice } from "../../lib/security-suite.server";
 import { codeFilters, countStates, keepCode } from "../../lib/security-suite";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -22,7 +22,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context) ?? requireUser(context, request);
   const { access } = await requireInsider(context, params, "security_alerts");
   const repo = { namespace: params.owner, name: params.repo };
-  const [scanning, price] = await Promise.all([securitySuite.codeScanning(repo, viewer), activationPrice(params.owner, viewer)]);
+  const [scanning, price] = await Promise.all([securitySuite.codeScanning(repo, viewer), planPrice(params.owner, viewer)]);
   return { scanning: unwrap(scanning), price, can: access.can, owner: managesSecurity(viewer, params.owner) };
 }
 

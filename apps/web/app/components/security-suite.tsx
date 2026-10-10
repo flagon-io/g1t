@@ -53,9 +53,9 @@ export function SectionHeader({ title, about, actions }: { title: string; about:
 }
 
 /**
- * What a private repository's paid feature needs: the Security and quality
- * activation, its price from the price book, and who can turn it on. No
- * pressure: what stays free is said too.
+ * What a private repository's paid feature needs: the g1t plan, which
+ * Security and quality comes with at no price of its own, and who can
+ * start it. No pressure: what stays free is said too.
  */
 export function ActivationPrompt({
   workspace,
@@ -65,7 +65,7 @@ export function ActivationPrompt({
 }: {
   workspace: string;
   feature: string;
-  /** From billing's price book; null when it could not be read. */
+  /** The g1t plan's monthly price, from billing; null when it could not be read. */
   monthlyCents: number | null;
   isOwner: boolean;
 }) {
@@ -74,21 +74,21 @@ export function ActivationPrompt({
     <div className={`${CARD} flex flex-col gap-4 p-5 sm:flex-row sm:items-start`}>
       <Lock size={18} className="mt-0.5 shrink-0 text-accent" />
       <div className="min-w-0 grow">
-        <p className="font-medium">{feature} on private repositories comes with Security and quality</p>
+        <p className="font-medium">{feature} on private repositories comes with the g1t plan</p>
         <p className="mt-1.5 text-sm text-muted">
-          The activation turns on custom patterns, validity checks, delegated bypass, code scanning, dependency review and the
-          security overview for every private repository in {workspace}
-          {price ? `, for ${price}, whoever is in the workspace` : ""}. Fixes by g1t's agent are charged as agent usage. Public
-          repositories have all of it free, and secret scanning, push protection, vulnerability alerts and security updates stay
-          free everywhere.
+          Security and quality has no price of its own. With the plan{price ? ` (${price} for the workspace)` : ""}, custom patterns,
+          validity checks, delegated bypass, code scanning, dependency review and the security overview are on for every private
+          repository in {workspace}, and their scans are charged at cost plus 20%, like everything g1t runs. Fixes by g1t's agent
+          are charged as agent usage. Public repositories have all of it free, and secret scanning, push protection, vulnerability
+          alerts and security updates stay free everywhere.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
           {isOwner ? (
-            <Link to={`/${workspace}/-/billing#security`} className={PRIMARY}>
-              Turn it on
+            <Link to={`/${workspace}/-/billing`} className={PRIMARY}>
+              Start the plan
             </Link>
           ) : (
-            <span className="text-muted">An owner of {workspace} can turn it on in Billing.</span>
+            <span className="text-muted">An owner of {workspace} can start the plan in Billing.</span>
           )}
           <a href="https://docs.g1t.sh/guides/security/pricing/" className="text-muted underline underline-offset-2 hover:text-fg">
             What's free and what's paid

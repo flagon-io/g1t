@@ -14,9 +14,9 @@ whether it still works.
 | --- | --- | --- |
 | Secret scanning and push protection | Free | Free |
 | Bypass with a reason | Free | Free |
-| Custom patterns | Free | Security and quality activation |
-| Delegated bypass | Free | Security and quality activation |
-| Validity checks | Free | Security and quality activation |
+| Custom patterns | Free | With the g1t plan |
+| Delegated bypass | Free | With the g1t plan |
+| Validity checks | Free | With the g1t plan |
 
 See [What's free and what's paid](/guides/security/pricing/).
 

@@ -7,7 +7,7 @@ import { WorkspaceSecurityHeading, WorkspaceSecurityTabs } from "../../component
 import { Switch } from "../../components/ui/switch";
 import { securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesSecurity, requireUser, roleIn, unwrap } from "../../lib/session.server";
-import { activationPrice } from "../../lib/security-suite.server";
+import { planPrice } from "../../lib/security-suite.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Security settings · ${params.owner} · g1t` });
@@ -17,7 +17,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const role = roleIn(viewer, params.owner);
   if (!role) throw data(null, { status: 404 });
-  const [view, price] = await Promise.all([securitySuite.workspaceSettings(params.owner, viewer), activationPrice(params.owner, viewer)]);
+  const [view, price] = await Promise.all([securitySuite.workspaceSettings(params.owner, viewer), planPrice(params.owner, viewer)]);
   return { view: unwrap(view), price, owner: managesSecurity(viewer, params.owner) };
 }
 
@@ -81,7 +81,7 @@ export default function WorkspaceSecuritySettings({ loaderData, params }: Route.
           {fetcher.data?.error && <span className="text-sm text-danger">{fetcher.data.error}</span>}
         </div>
       </fetcher.Form>
-      <p className="mt-4 text-xs text-faint">On private repositories both need the Security and quality activation; on public ones they are free.</p>
+      <p className="mt-4 text-xs text-faint">On private repositories both come with the g1t plan; on public ones they are free.</p>
     </div>
   );
 }

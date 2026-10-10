@@ -12,9 +12,9 @@ import type { AlertActivity, AlertState, DismissReason, SecretFinding, Severity,
  *
  * Free everywhere: secret scanning, push protection, vulnerability alerts
  * and security updates. Free on public repositories: everything here. On a
- * private repository the features in `PaidFeature` need the workspace's
- * Security and quality activation (billing's `security` feature); a refusal
- * is a `payment_required` failure saying how to turn it on.
+ * private repository the features in `PaidFeature` come with the g1t plan
+ * (billing's `security` feature, with no price of its own); a refusal is a
+ * `payment_required` failure saying how to start the plan.
  */
 
 export type PaidFeature =

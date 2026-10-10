@@ -14,7 +14,7 @@ alerts and [security updates](/guides/security/#security-updates).
 | --- | --- | --- |
 | Dependency graph and SBOM | Free | Free |
 | Vulnerability alerts and security updates | Free | Free |
-| Dependency review | Free | Security and quality activation |
+| Dependency review | Free | With the g1t plan |
 
 ## The dependency graph
 

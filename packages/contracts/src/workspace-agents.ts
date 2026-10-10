@@ -40,7 +40,24 @@ export type AgentRouting = {
   providers: string[];
   /** Advanced: a fixed `provider/model`, for own endpoints. Usually null. */
   pinned: string | null;
+  /**
+   * How hard it works (docs.g1t.sh/guides/agents/#effort): the tier its
+   * work starts on, how hard the model reasons, and how many steps a
+   * session may take. `auto` (the default; absent means it) picks per
+   * piece of work. The floor and ceiling still hold.
+   */
+  effort?: AgentEffort;
 };
+
+/** An agent's effort setting, cheapest first after `auto`. */
+export type AgentEffort = "auto" | "low" | "medium" | "high" | "max";
+
+export const AGENT_EFFORTS: readonly AgentEffort[] = ["auto", "low", "medium", "high", "max"];
+
+/** A level work actually ran at: what `auto` resolves to each time. */
+export type EffortLevel = Exclude<AgentEffort, "auto">;
+
+export const EFFORT_LEVELS: readonly EffortLevel[] = ["low", "medium", "high", "max"];
 
 export type AgentBudget = {
   /** Monthly cap in micro-dollars. Null: only the workspace limit applies. */
@@ -430,6 +447,8 @@ export type AgentSession = {
   /** The most it may spend before someone approves more. */
   cap_micros: number | null;
   model: string | null;
+  /** The effort level it ran at (the highest, when `auto` raised it); null for sessions from before effort was recorded. */
+  effort: EffortLevel | null;
   /** What it produced: issues filed, sessions started. */
   outputs: SessionOutput[];
   created_at: string;
@@ -660,6 +679,85 @@ export type AgentSpendBreakdown = {
   days: { day: string; micros: number }[];
 };
 
+/**
+ * What each effort level has cost one agent, from its own finished
+ * sessions (docs.g1t.sh/guides/spend/#effort): measured, never estimated
+ * from other agents or list prices. A level it has not run at has no
+ * figures.
+ */
+export type EffortCost = {
+  effort: EffortLevel;
+  /** Its sessions (with everything they brought in) that finished in the window. */
+  sessions: number;
+  /** The median charged for one of them: a typical task. Null with none. */
+  typical_micros: number | null;
+  /** Of those, the share finished with nobody having to step in: no steering, not stopped or failed. Null with none. */
+  accepted_share: number | null;
+};
+
+export type AgentEffortCosts = {
+  handle: string;
+  /** Its setting now. */
+  effort: AgentEffort;
+  /** Days of history the figures cover. */
+  window_days: number;
+  levels: EffortCost[];
+};
+
+/** One side of a recommendation's evidence: the agent's sessions at one level. */
+export type EffortEvidence = {
+  effort: EffortLevel;
+  sessions: number;
+  /** Finished with nobody having to step in. */
+  accepted: number;
+  typical_micros: number;
+  mean_micros: number;
+};
+
+/**
+ * A way to spend less without losing quality, checked against the agent's
+ * own past work (docs.g1t.sh/guides/spend/#spend-less-keep-quality). The
+ * weekly check proposes one only when the cheaper level's measured
+ * outcomes hold up; when there is too little history to tell, it says so
+ * (`thin`) instead of proposing anything.
+ */
+export type AgentRecommendation = {
+  id: string;
+  agent_id: string;
+  agent_handle: string;
+  agent_name: string;
+  agent_avatar_seed: string;
+  /** Lowering its effort setting. */
+  kind: "effort";
+  /** `thin`: not enough history to recommend anything yet. */
+  status: "open" | "applied" | "dismissed" | "thin";
+  from_effort: AgentEffort;
+  to_effort: EffortLevel;
+  /** What it says to do, in a line. */
+  title: string;
+  /** Why, from the numbers in `evidence`, in a sentence. */
+  reason: string;
+  /** What it was measured on: the level it runs at now, and the cheaper one. Null sides had no sessions. */
+  evidence: { window_days: number; current: EffortEvidence | null; cheaper: EffortEvidence | null; needed: number };
+  /** About what a month it would save at the recent pace, from the measured costs. Null when thin. */
+  saving_month_micros: number | null;
+  checked_at: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+};
+
+export type AgentRecommendations = {
+  /** When the check last ran for the workspace; null before the first. */
+  checked_at: string | null;
+  window_days: number;
+  /** To act on, largest saving first. */
+  open: AgentRecommendation[];
+  /** Agents with too little history to say. */
+  thin: AgentRecommendation[];
+  /** Applied or dismissed in the last 30 days. */
+  resolved: AgentRecommendation[];
+};
+
 /** Agents mode's front page. */
 export type AgentsOverview = {
   policy: AgentPolicy;
@@ -807,6 +905,15 @@ export type WorkspaceAgentsApi = {
    */
   setPersonBudget(workspace: string, viewer: User, username: string, monthlyMicros: number | null): Promise<Result<PersonBudgets>>;
   activity(workspace: string, handle: string, viewer: User): Promise<Result<AgentActivity[]>>;
+  /** What each effort level has cost this agent, from its own finished sessions. Members only. */
+  effortCosts(workspace: string, handle: string, viewer: User): Promise<Result<AgentEffortCosts>>;
+  /** Ways to spend less, checked against past work: every agent's, or one's. Members only. */
+  recommendations(workspace: string, viewer: User, handle?: string | null): Promise<Result<AgentRecommendations>>;
+  /**
+   * Owners apply one (the agent's effort changes, as a new version, and
+   * the audit log says so) or dismiss it.
+   */
+  resolveRecommendation(workspace: string, viewer: User, id: string, action: "apply" | "dismiss"): Promise<Result<AgentRecommendation>>;
   /** What an agent is told about its teams this turn, word for word. Members only. */
   teamContext(workspace: string, handle: string, viewer: User): Promise<Result<AgentTeamContext>>;
   versions(workspace: string, handle: string, viewer: User): Promise<Result<AgentVersion[]>>;
@@ -899,6 +1006,9 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     setPersonBudget: (workspace, viewer, username, monthlyMicros) =>
       call("set_person_budget", { workspace, viewer, username, monthly_micros: monthlyMicros }),
     activity: (workspace, handle, viewer) => call("activity", { workspace, handle, viewer }),
+    effortCosts: (workspace, handle, viewer) => call("effort_costs", { workspace, handle, viewer }),
+    recommendations: (workspace, viewer, handle) => call("recommendations", { workspace, viewer, handle: handle ?? null }),
+    resolveRecommendation: (workspace, viewer, id, action) => call("resolve_recommendation", { workspace, viewer, id, action }),
     versions: (workspace, handle, viewer) => call("versions", { workspace, handle, viewer }),
     cardAction: (input) => call("card_action", input),
     policy: (workspace, viewer) => call("policy", { workspace, viewer }),

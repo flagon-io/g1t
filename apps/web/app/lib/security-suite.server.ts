@@ -1,6 +1,6 @@
 /**
- * What the security pages ask the services for beyond one call: the
- * activation's price (always the price book's, through billing), and
+ * What the security pages ask the services for beyond one call: the g1t
+ * plan's price (always billing's), which Security and quality comes with, and
  * "Set up code scanning", which commits the starter workflow on a new
  * branch as the person asking and opens it as their pull request, as
  * "Add CI" does.
@@ -10,11 +10,11 @@ import { type RepoPath, STARTER_WORKFLOW_PATH, type User, type Viewer } from "@g
 import { billing, repos, work } from "./services.server";
 import { codeScanningBranch, codeScanningPullBody, codeScanningWorkflow } from "./security-suite";
 
-/** The Security and quality activation's monthly price, in cents, or null. */
-export async function activationPrice(workspace: string, viewer: Viewer): Promise<number | null> {
+/** The g1t plan's monthly price, in cents, or null: Security and quality comes with it. */
+export async function planPrice(workspace: string, viewer: Viewer): Promise<number | null> {
   const states = await billing.features(workspace, viewer).catch(() => null);
   if (!states?.ok) return null;
-  return states.value.find((state) => state.plan.feature === "security")?.plan.monthlyCents ?? null;
+  return states.value.find((state) => state.plan.feature === "plan")?.plan.monthlyCents ?? null;
 }
 
 export async function setupCodeScanning(user: User, path: RepoPath): Promise<{ ok: true; number: number } | { ok: false; message: string }> {

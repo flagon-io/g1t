@@ -62,13 +62,13 @@ export default function WorkspacePatterns({ loaderData, params }: Route.Componen
     <div>
       <WorkspaceSecurityHeading
         title="Custom patterns"
-        about="Secret formats of the workspace's own, found in every repository's pushes and history alongside the built-in ones. Without the Security and quality activation they cover public repositories only."
+        about="Secret formats of the workspace's own, found in every repository's pushes and history alongside the built-in ones. Without the g1t plan they cover public repositories only."
       />
       <WorkspaceSecurityTabs owner={params.owner} />
       {!list.entitled && (
         <p className="mb-4 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
-          This workspace has no Security and quality activation: its patterns run on public repositories only. An owner can turn it
-          on in Billing.
+          This workspace is not on the g1t plan, which Security and quality comes with: its patterns run on public repositories only.
+          An owner can start the plan in Billing.
         </p>
       )}
       {owner && editing === null && (

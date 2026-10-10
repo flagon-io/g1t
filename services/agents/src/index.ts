@@ -21,6 +21,9 @@ import {
   type ExtensionInstall,
   type InstallRequest,
   type InstallRequests,
+  type AgentEffortCosts,
+  type AgentRecommendation,
+  type AgentRecommendations,
   type NewWorkspaceAgent,
   type Result,
   type ServiceBinding,
@@ -55,6 +58,8 @@ import { runDue } from "./routines.ts";
 import { onEvents } from "./triggers.ts";
 import { cardAction } from "./cards.ts";
 import { type SessionEnv, sweep } from "./sessions.ts";
+import { EFFORT_NAMES, checkDue, effortCostsOf, markResolved, outcomesSince, readRecommendations, recommendationRow, sinceWindow, toRecommendation } from "./recommend.ts";
+import { effortOf } from "./routing.ts";
 import * as views from "./views.ts";
 import { monthKey } from "./budget.ts";
 import * as extensions from "./extensions.ts";
@@ -655,6 +660,73 @@ class Agents {
     return ok(toAgent(saved!, new Date()));
   }
 
+  /** What each effort level has cost one agent, from its own finished sessions. */
+  async effortCosts(a: { workspace: string; handle: string; viewer: User | null }): Promise<Result<AgentEffortCosts>> {
+    if (a?.viewer && awaitsConfirmation(a.viewer)) return UNVERIFIED;
+    const seen = await this.seen(a?.workspace ?? "", a?.viewer ?? null);
+    if (!seen.ok) return seen;
+    const row = await this.row(seen.value, a.handle);
+    if (!row) return fail("not_found", `There is no agent called @${a.handle}.`);
+    const outcomes = await outcomesSince(this.db, seen.value, sinceWindow(), row.id);
+    return ok(effortCostsOf(row.handle, effortOf(definitionOf(row).routing), outcomes.get(row.id) ?? []));
+  }
+
+  /** Ways to spend less, checked against past work: every agent's, or one's. */
+  async recommendations(a: { workspace: string; viewer: User | null; handle?: string | null }): Promise<Result<AgentRecommendations>> {
+    if (a?.viewer && awaitsConfirmation(a.viewer)) return UNVERIFIED;
+    const seen = await this.seen(a?.workspace ?? "", a?.viewer ?? null);
+    if (!seen.ok) return seen;
+    let agentId: string | null = null;
+    if (a.handle) {
+      const row = await this.row(seen.value, a.handle);
+      if (!row) return fail("not_found", `There is no agent called @${a.handle}.`);
+      agentId = row.id;
+    }
+    return ok(await readRecommendations(this.db, seen.value, agentId));
+  }
+
+  /**
+   * Owners apply a suggestion (the agent's effort changes as a new version
+   * of it, and the audit log says so) or dismiss it. Only an open one, and
+   * only while the agent's setting is still the one it was made for.
+   */
+  async resolveRecommendation(a: { workspace: string; viewer: User | null; id: string; action: string }): Promise<Result<AgentRecommendation>> {
+    const managed = await this.managed(a?.workspace ?? "", a?.viewer ?? null);
+    if (!managed.ok) return managed;
+    if (a.action !== "apply" && a.action !== "dismiss") return fail("invalid", "Apply or dismiss.");
+    const found = await recommendationRow(this.db, managed.value, String(a.id ?? ""));
+    if (!found) return fail("not_found", "There is no such suggestion.");
+    if (found.status !== "open") return fail("conflict", "This suggestion was already decided, or is no longer current.");
+    const by = a.viewer!.username;
+    if (a.action === "dismiss") {
+      if (!(await markResolved(this.db, found.id, "dismissed", by))) return fail("conflict", "This suggestion was decided meanwhile.");
+      this.audit(a.viewer!, a.workspace, "dismiss_recommendation", found.handle ?? found.agent_id, `Dismissed "${found.title}"`);
+    } else {
+      const agent = await this.row(managed.value, found.handle);
+      if (!agent || agent.id !== found.agent_id) return fail("not_found", "That agent is gone.");
+      if (effortOf(definitionOf(agent).routing) !== found.from_effort) {
+        await this.db.prepare("UPDATE agent_recommendations SET status = 'stale' WHERE id = ? AND status = 'open'").bind(found.id).run();
+        return fail("conflict", `@${agent.handle}'s effort was changed since this was suggested. The next check looks again.`);
+      }
+      // Claimed first, so two owners pressing Apply change the agent once.
+      if (!(await markResolved(this.db, found.id, "applied", by))) return fail("conflict", "This suggestion was decided meanwhile.");
+      const changed = await this.update({ workspace: a.workspace, handle: agent.handle, viewer: a.viewer, changes: { routing: { effort: found.to_effort as never } } });
+      if (!changed.ok) {
+        await this.db.prepare("UPDATE agent_recommendations SET status = 'open', resolved_by = NULL, resolved_at = NULL WHERE id = ?").bind(found.id).run();
+        return changed;
+      }
+      this.audit(
+        a.viewer!,
+        a.workspace,
+        "apply_recommendation",
+        agent.handle,
+        `Applied "${found.title}": @${agent.handle}'s effort from ${EFFORT_NAMES[found.from_effort as keyof typeof EFFORT_NAMES] ?? found.from_effort} to ${EFFORT_NAMES[found.to_effort as keyof typeof EFFORT_NAMES] ?? found.to_effort}`,
+      );
+    }
+    const after = await recommendationRow(this.db, managed.value, found.id);
+    return ok(toRecommendation(after!));
+  }
+
   async archive(a: { workspace: string; handle: string; viewer: User | null }): Promise<Result<null>> {
     const found = await this.visible(a.workspace, a.viewer, a.handle);
     if (!found.ok) return found;
@@ -850,6 +922,12 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
       return Response.json(await service.setExtensionBudget(args));
     case "uninstall_extension":
       return Response.json(await service.uninstallExtension(args));
+    case "effort_costs":
+      return Response.json(await service.effortCosts(args));
+    case "recommendations":
+      return Response.json(await service.recommendations(args));
+    case "resolve_recommendation":
+      return Response.json(await service.resolveRecommendation(args));
     case "set_policy":
       return Response.json(await service.view(args, (ctx) => views.setPolicy(ctx, args.policy)));
     default:
@@ -874,13 +952,15 @@ export default {
     batch.ackAll();
   },
 
-  /** Every few minutes: routines that are due, and session steps a desk lost. */
+  /** Every few minutes: routines that are due, session steps a desk lost, and once an hour the spend check. */
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const sessions = env as unknown as SessionEnv;
     ctx.waitUntil(
       Promise.all([
         runDue(sessions).catch((error: unknown) => console.error("agents: routines did not run", String(error))),
         sweep(sessions).catch((error: unknown) => console.error("agents: the session sweep failed", String(error))),
+        // Spend less, keep quality: each workspace checked weekly (src/recommend.ts).
+        checkDue(env.DB).catch((error: unknown) => console.error("agents: the spend check failed", String(error))),
       ]),
     );
   },

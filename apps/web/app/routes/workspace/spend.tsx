@@ -23,6 +23,8 @@ import {
   TileSkeleton,
 } from "../../components/spend";
 import { Meter } from "../../components/agents/parts";
+import { Savings } from "../../components/effort";
+import { readOrNull } from "../../components/agents/actions.server";
 import { Skeleton } from "../../components/ui/skeleton";
 import { microsFromDollars } from "../../lib/agent-form";
 import { cn } from "../../lib/cn";
@@ -75,6 +77,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     usage,
     budgets: loadBudgets(viewer, slug, month),
     pricing: loadPricing(),
+    // Spend less, keep quality: the weekly check's suggestions.
+    recs: readOrNull(workspaceAgents.recommendations(slug, viewer)),
   };
 }
 
@@ -86,8 +90,13 @@ function readSlice(raw: string | null, scope: SpendScope): SliceKey {
 /** Owners set the agent budgets: every agent together, each person, a new agent, a session; and one person's own. */
 export async function action({ params, context, request }: Route.ActionArgs) {
   const { viewer, slug, isOwner, form } = await agentsAction(request, context, params.owner);
-  if (!isOwner) return { ok: false as const, error: "Only the workspace's owners set budgets." };
   const intent = form.get("intent");
+  if (intent === "recommendation") {
+    if (!isOwner) return { ok: false as const, intent, error: "Only the workspace's owners apply suggestions." };
+    const what = form.get("do") === "apply" ? "apply" : "dismiss";
+    return answer(intent, workspaceAgents.resolveRecommendation(slug, viewer, String(form.get("id") ?? ""), what));
+  }
+  if (!isOwner) return { ok: false as const, error: "Only the workspace's owners set budgets." };
   if (intent === "policy") {
     const monthly = microsFromDollars(form.get("monthly"));
     const person = microsFromDollars(form.get("person"));
@@ -119,7 +128,7 @@ function hrefFor(slug: string, q: { scope: SpendScope; period: string; by: Slice
 }
 
 export default function SpendPage({ loaderData }: Route.ComponentProps) {
-  const { slug, me, owner, mayWorkspace, scope, period, by, span, breakdown, usage, budgets, pricing } = loaderData;
+  const { slug, me, owner, mayWorkspace, scope, period, by, span, breakdown, usage, budgets, pricing, recs } = loaderData;
   const q = { scope, period, by };
   const href = (change: Partial<typeof q>) => hrefFor(slug, q, change);
   const label = periodLabel(period).toLowerCase();
@@ -228,6 +237,21 @@ export default function SpendPage({ loaderData }: Route.ComponentProps) {
           }
         >
           <Await resolve={Promise.all([breakdown, usage])}>{([spent, used]) => <Slices by={by} spent={spent} used={used} slug={slug} me={me} scope={scope} />}</Await>
+        </Suspense>
+      </Section>
+
+      {/* Spend less, keep quality. */}
+      <Section
+        id="savings"
+        title="Spend less, keep quality"
+        aside={
+          <Link to={`/${slug}/-/agents`} className="inline-flex items-center gap-1 hover:text-fg">
+            Set an agent&apos;s effort on its Spend tab <ArrowRight size={11} />
+          </Link>
+        }
+      >
+        <Suspense fallback={<Skeleton className="h-28 w-full rounded-xl" />}>
+          <Await resolve={recs}>{(value) => <Savings recs={value} owner={owner} action={`/${slug}/-/spend`} />}</Await>
         </Suspense>
       </Section>
 

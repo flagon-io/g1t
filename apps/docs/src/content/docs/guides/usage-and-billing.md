@@ -97,14 +97,18 @@ excludes tax ([Tax](#tax)), and paid by card it carries Stripe's
 [card processing fee](#card-processing-fee) as its own line, $0.91 a month
 on $20.
 
-- **$10 of usage each month** at cost plus 20%, used first.
+- **$10 of usage each month**, used first: models at the provider's price
+  with the [agent rate](#the-agent-rate), everything else g1t runs at cost
+  plus 20%.
 - **Everyone in the workspace** at one price, never per person.
 - **Unlimited** projects, previews and repositories.
 - Agents, workflows, the merge queue,
-  [deployments](/guides/deployments/) and semantic search.
+  [deployments](/guides/deployments/), semantic search, and
+  [Security and quality](/guides/security/pricing/) on private
+  repositories.
 - **90 days** of [audit log](/guides/audit-log/#how-long-it-is-kept), in
   place of a free workspace's 7.
-- Usage past $10 is charged at cost plus 20%, **up to your
+- Usage past $10 is charged the same way, **up to your
   [spend limit](#limits)**.
 
 There are **no quotas** on the plan: no count of projects, previews,
@@ -117,15 +121,28 @@ work.
 **Included usage** pays for the month's usage first, at the same prices as
 everything else: agents, sandbox time, builds, app traffic, custom domains,
 storage, git operations, search embeddings and security scans. Past it,
-usage is charged at cost plus 20%. It starts again on the 1st of each
+usage is charged at the same prices. It starts again on the 1st of each
 month (UTC). **Unused included usage does not roll over.** Billing shows
 how much of it this month's usage has drawn.
 
 ### What it costs
 
-Every price is what g1t pays plus 20%, except models: they are charged at
-the provider's price with no markup, and g1t's own part is the agent rate.
-The live figures are on [g1t.sh/pricing](https://g1t.sh/pricing).
+Pricing has four rules:
+
+1. **Models at the provider's price.** Tokens on g1t's models are charged
+   what the provider charged, with no markup.
+2. **The [agent rate](#the-agent-rate) for what runs around every model
+   call.** g1t's model gateway, secrets, routing, context and pass-through
+   to your own provider run on every call an agent makes, so the rate
+   applies on your own model keys too.
+3. **Everything else g1t runs at cost plus 20%.** Sandboxes, builds,
+   hosting, storage, git operations, search and security scans: what g1t
+   pays for them, plus 20%.
+4. **Your own runners are free.** Jobs on your
+   [own runners](/guides/self-hosted-runners/) cost nothing here.
+
+There are no seats. The live figures are on
+[g1t.sh/pricing](https://g1t.sh/pricing).
 
 | What | Unit | Costs g1t | You pay |
 | --- | --- | --- | --- |
@@ -264,7 +281,10 @@ On your [own model provider](/guides/models/), only the agent rate is
 charged here. Every reply also counts against that agent's own
 [budget](/guides/agents/#budgets). An idle agent costs nothing. See
 [what an agent costs](/guides/agents/#what-an-agent-costs) for a worked
-example.
+example. How hard each agent works, and so what a typical task costs, is
+its [effort](/guides/agents/#effort);
+[Spend](/guides/spend/#spend-less-keep-quality) suggests cheaper settings
+that held up on past work.
 
 ## What is charged
 
@@ -289,9 +309,8 @@ Each run is charged when it finishes: what the model provider charged for
 it, with no markup; the agent rate on the tokens it used, on a line of its
 own (*g1t agent rate: 1,240,000 tokens for work on acme/api#12*); and its
 sandbox time. A small change costs a few cents. Tokens counted after a run
-reports are charged when it is settled. Until Oct 22, 2026 the agent rate is
-$0, and from Oct 8, 2026 models carry no markup (before, cost plus 20%); both
-are dated changes on the pricing page.
+reports are charged when it is settled. The agent rate starts on Oct 22,
+2026, a dated change on the pricing page.
 
 Work a workspace routes to [its own model providers](/guides/models/) is
 paid for at those providers instead. Such a run is charged here for its
@@ -301,9 +320,11 @@ model key: 980,000 tokens for work on acme/api#12*).
 
 ### The agent rate
 
-The agent rate pays for what g1t adds around the model: context, memory,
-routing and orchestration. It is charged per million tokens a run used,
-on g1t's models and on your own model key alike:
+The agent rate pays for what g1t runs around every model call: the model
+gateway that keeps keys out of sandboxes, secrets, routing, context and
+memory, and the pass-through to your own provider. That runs whichever
+model answers, so the rate is charged per million tokens a run used, on
+g1t's models and on your own model key alike:
 
 1. g1t's model proxy counts each answer's tokens as it passes: input,
    output, and prompt-cache reads and writes. The sandbox reports what its
@@ -325,19 +346,18 @@ repository needs the Write [role](/guides/access-and-roles/) or higher on it.
 
 ## Add-ons
 
-An add-on is a monthly price per workspace that turns on more of g1t. Each
-is its own line on the workspace's Stripe subscription and is turned on or
-off from **Billing → Add-ons**.
+**Billing → Add-ons** lists what comes with the plan beside its usage, and
+whether it is on:
 
 | Add-on | Price | What it adds |
 | --- | --- | --- |
-| Security and quality | $10 a month | Custom secret patterns, validity checks, delegated bypass, code scanning, dependency review and the security overview on **private** repositories. Public repositories get all of it free. |
+| Security and quality | With the plan, no price of its own | Custom secret patterns, validity checks, delegated bypass, code scanning, dependency review and the security overview on **private** repositories. Its scans are charged at cost plus 20%. Public repositories get all of it free. |
+| Production deployments | With the plan | Previews per pull request and production on g1t.page, metered at cost plus 20%. |
 
 Secret scanning, push protection, vulnerability alerts, security updates,
-the dependency graph and SBOMs are free everywhere, without the add-on. An
-add-on does not need the plan, and the plan does not include one. Agent work
-it starts, such as **Fix with g1t**, is ordinary usage. See
-[What's free and what's paid](/guides/security/pricing/).
+the dependency graph and SBOMs are free everywhere, on every plan. Agent
+work Security and quality starts, such as **Fix with g1t**, is ordinary
+usage. See [What's free and what's paid](/guides/security/pricing/).
 
 ## How prices are set
 
@@ -840,9 +860,8 @@ stores card numbers. On **Settings → Billing and plans**:
   applies.
 - **Invoices** lists every invoice Stripe sent (the plan, add-ons, AI
   credit and month-end usage), each with **View** and **PDF**.
-- **Add-ons** lists what can be turned on beside the plan, such as the
-  [Security and quality activation](/guides/security/), with its price and
-  **Turn on** or **Turn off**.
+- **Add-ons** lists what comes with the plan, such as
+  [Security and quality](/guides/security/pricing/), and whether it is on.
 
 g1t support never takes card details by phone or email.
 
@@ -890,9 +909,9 @@ with the same CSV and JSON export, and secret scanning, push protection,
 vulnerability alerts and security updates. The rest of the security suite
 (custom patterns, validity checks, delegated bypass, code scanning,
 dependency review and the security overview) is free on public
-repositories and, on private ones, the **Security and quality**
-activation: a monthly price per workspace from the price book ($10 today),
-turned on from the Billing page, with or without the plan. See
+repositories and, on private ones, comes with the plan as **Security and
+quality**, with no price of its own: its scans are charged at cost plus
+20%. See
 [what's free and what's paid](/guides/security/pricing/). What the plan changes is how long the log is
 kept: [7 days free, 90 on the plan](/guides/audit-log/#how-long-it-is-kept),
 and longer by arrangement. Single sign-on through your identity provider is not

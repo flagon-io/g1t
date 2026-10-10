@@ -19,7 +19,7 @@ test("a new agent gets safe defaults", () => {
   assert.equal(made.value.capacity, DEFAULT_CAPACITY);
   assert.deepEqual(made.value.autonomy, DEFAULT_AUTONOMY);
   assert.equal(made.value.autonomy.merge, "approval");
-  assert.deepEqual(made.value.routing, { floor: null, ceiling: null, providers: [], pinned: null });
+  assert.deepEqual(made.value.routing, { floor: null, ceiling: null, providers: [], pinned: null, effort: "auto" });
 });
 
 test("a new agent needs a handle, a name, a role and instructions", () => {

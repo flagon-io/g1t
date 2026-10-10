@@ -857,9 +857,9 @@ export type Trial = {
 };
 
 /**
- * What a workspace pays a monthly price for: the g1t plan (`plan`), and the
- * Security and quality activation (`security`), sold on its own. Deployments
- * are part of the plan; `has_feature` for `deployments` answers whether the
+ * What a workspace has: the g1t plan (`plan`), and Security and quality
+ * (`security`), which comes with the plan at no price of its own. Deployments
+ * are part of the plan too; `has_feature` for either answers whether the
  * workspace has the plan. Mirrors `Feature` in `crates/contracts/src/billing.rs`.
  */
 export type Feature = "plan" | "deployments" | "security";

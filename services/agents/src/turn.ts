@@ -52,6 +52,11 @@ export type TurnOptions = {
   onText?: (text: string) => void;
   /** Asked before each round; true ends the turn with what it has (a session was stopped). */
   stopped?: () => Promise<boolean>;
+  /**
+   * How hard the model reasons (`output_config.effort`), from the agent's
+   * effort setting; null or absent leaves it to the model.
+   */
+  effort?: string | null;
 };
 
 export async function runTurn(
@@ -73,6 +78,7 @@ export async function runTurn(
       system: input.system,
       messages,
       max_tokens: input.maxOutput ?? MAX_OUTPUT_TOKENS,
+      ...(input.effort ? { output_config: { effort: input.effort } } : {}),
       // Tools stay listed once the conversation has used them, so their
       // results still read; past the rails, the model must answer in text.
       ...(definitions.length ? { tools: definitions, tool_choice: { type: canUse ? "auto" : "none" } } : {}),

@@ -16714,7 +16714,7 @@
           "Billing"
         ],
         "summary": "List a workspace's invoices",
-        "description": "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, activations, AI credit and usage), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar; `amount_micros` is the usage, and the card processing fee (`fee_micros`) and tax (`tax_micros`) are on top. Prices exclude tax: Stripe adds it where it applies. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Members of the workspace only.\n\n`invoices` are in cents (`total_cents`); `usage_invoices` and `upcoming` in millionths of a dollar. A usage invoice's `reason` is `month` (the month closed) or `threshold` (charged near the limit), and its `status` `paid`, `open`, `failed` or `void`. An invoice's `status` is `paid`, `open`, `void`, `uncollectible` or `draft`.",
+        "description": "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, AI credit and usage), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar; `amount_micros` is the usage, and the card processing fee (`fee_micros`) and tax (`tax_micros`) are on top. Prices exclude tax: Stripe adds it where it applies. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Members of the workspace only.\n\n`invoices` are in cents (`total_cents`); `usage_invoices` and `upcoming` in millionths of a dollar. A usage invoice's `reason` is `month` (the month closed) or `threshold` (charged near the limit), and its `status` `paid`, `open`, `failed` or `void`. An invoice's `status` is `paid`, `open`, `void`, `uncollectible` or `draft`.",
         "x-operation": "list_invoices",
         "x-mcp-tool": "billing",
         "x-mcp-action": "invoices",
@@ -18765,7 +18765,7 @@
           "Secret scanning"
         ],
         "summary": "Check whether a secret still works",
-        "description": "Ask a landed secret's issuer whether it still works, and mark the alert active or inactive. The check is the issuer's own read-only identity call over HTTPS; the secret goes nowhere else. Needs validity checks on for the workspace (and the Security and quality activation on a private repository). Formats with no safe check answer unsupported.\n\nMade for GitHub, GitLab, Stripe, Slack, npm, OpenAI, Anthropic and SendGrid tokens, with the issuer's own read-only call. Other formats answer `unsupported`; a secret that never landed answers `unknown`.",
+        "description": "Ask a landed secret's issuer whether it still works, and mark the alert active or inactive. The check is the issuer's own read-only identity call over HTTPS; the secret goes nowhere else. Needs validity checks on for the workspace (and the g1t plan on a private repository). Formats with no safe check answer unsupported.\n\nMade for GitHub, GitLab, Stripe, Slack, npm, OpenAI, Anthropic and SendGrid tokens, with the issuer's own read-only call. Other formats answer `unsupported`; a secret that never landed answers `unknown`.",
         "x-operation": "check_secret_validity",
         "x-mcp-tool": "security",
         "x-mcp-action": "check_validity",
@@ -19517,7 +19517,7 @@
           "Secret scanning"
         ],
         "summary": "List custom patterns",
-        "description": "List custom secret patterns: a repository's own and the ones it inherits from its workspace (with repo), or a workspace's (with workspace).\n\nA repository's list includes its workspace's patterns, with `scope` `workspace`. `entitled` says whether they run here: always on a public repository, and on a private one with the Security and quality activation.",
+        "description": "List custom secret patterns: a repository's own and the ones it inherits from its workspace (with repo), or a workspace's (with workspace).\n\nA repository's list includes its workspace's patterns, with `scope` `workspace`. `entitled` says whether they run here: always on a public repository, and on a private one when the workspace is on the g1t plan.",
         "x-operation": "list_custom_patterns",
         "x-mcp-tool": "security",
         "x-mcp-action": "patterns",
@@ -19634,7 +19634,7 @@
           "Secret scanning"
         ],
         "summary": "Create a custom pattern",
-        "description": "Create a custom secret pattern: a name, a regular expression for the secret, optional regular expressions for what comes right before and after it, and test strings. Patterns run in linear time (no look-around or back-references) and within size limits. With publish true, push protection and scans use it at once and the history is scanned again for it; otherwise it is a draft. A repository's takes Admin; a workspace's, an owner. On a private repository it needs the Security and quality activation.\n\n`tests` gives, for each test string, where the pattern matched (start and end, in characters), or `null`. A pattern that does not compile, matches an empty string, or is too complex is refused with `422` and says why.",
+        "description": "Create a custom secret pattern: a name, a regular expression for the secret, optional regular expressions for what comes right before and after it, and test strings. Patterns run in linear time (no look-around or back-references) and within size limits. With publish true, push protection and scans use it at once and the history is scanned again for it; otherwise it is a draft. A repository's takes Admin; a workspace's, an owner. On a private repository it needs the g1t plan.\n\n`tests` gives, for each test string, where the pattern matched (start and end, in characters), or `null`. A pattern that does not compile, matches an empty string, or is too complex is refused with `422` and says why.",
         "x-operation": "create_custom_pattern",
         "x-mcp-tool": "security",
         "x-mcp-action": "create_pattern",
@@ -19928,7 +19928,7 @@
           "Secret scanning"
         ],
         "summary": "Create a custom pattern for a workspace",
-        "description": "Create a custom secret pattern: a name, a regular expression for the secret, optional regular expressions for what comes right before and after it, and test strings. Patterns run in linear time (no look-around or back-references) and within size limits. With publish true, push protection and scans use it at once and the history is scanned again for it; otherwise it is a draft. A repository's takes Admin; a workspace's, an owner. On a private repository it needs the Security and quality activation.",
+        "description": "Create a custom secret pattern: a name, a regular expression for the secret, optional regular expressions for what comes right before and after it, and test strings. Patterns run in linear time (no look-around or back-references) and within size limits. With publish true, push protection and scans use it at once and the history is scanned again for it; otherwise it is a draft. A repository's takes Admin; a workspace's, an owner. On a private repository it needs the g1t plan.",
         "x-operation": "create_custom_pattern",
         "x-mcp-tool": "security",
         "x-mcp-action": "create_pattern",
@@ -21534,7 +21534,7 @@
           "Code scanning"
         ],
         "summary": "Upload a SARIF file",
-        "description": "Upload a SARIF 2.1.0 file: sarif is the file gzipped and base64-encoded; commit_sha the full commit; ref refs/heads/<branch> or refs/pull/<number>/head. For the default branch, new results open alerts and results no longer reported fix theirs. For a pull request, its results new to it on lines it changes become review comments and the Code scanning check, which fails at the repository's threshold. Read at once; the answer says complete or failed and why. Needs the Security and quality activation on a private repository.\n\n`sarif` is the SARIF 2.1.0 file gzipped, then base64-encoded: `gzip -c results.sarif | base64 -w0`. The upload is read at once: `processing_status` is `complete` or `failed`, with `errors` saying why. For `refs/pull/<number>/head`, the results become the pull request's `Code scanning` check instead of alerts.",
+        "description": "Upload a SARIF 2.1.0 file: sarif is the file gzipped and base64-encoded; commit_sha the full commit; ref refs/heads/<branch> or refs/pull/<number>/head. For the default branch, new results open alerts and results no longer reported fix theirs. For a pull request, its results new to it on lines it changes become review comments and the Code scanning check, which fails at the repository's threshold. Read at once; the answer says complete or failed and why. Needs the g1t plan on a private repository.\n\n`sarif` is the SARIF 2.1.0 file gzipped, then base64-encoded: `gzip -c results.sarif | base64 -w0`. The upload is read at once: `processing_status` is `complete` or `failed`, with `errors` saying why. For `refs/pull/<number>/head`, the results become the pull request's `Code scanning` check instead of alerts.",
         "x-operation": "upload_sarif",
         "x-mcp-tool": "security",
         "x-mcp-action": "upload_sarif",
@@ -22865,7 +22865,7 @@
           "Supply chain"
         ],
         "summary": "Compare dependencies",
-        "description": "Compare the dependencies at two commits, branches or tags (basehead, as base...head): what was added and removed per lockfile, with the known vulnerabilities of what was added and whether it passes the repository's dependency review policy. Needs the Security and quality activation on a private repository.",
+        "description": "Compare the dependencies at two commits, branches or tags (basehead, as base...head): what was added and removed per lockfile, with the known vulnerabilities of what was added and whether it passes the repository's dependency review policy. Needs the g1t plan on a private repository.",
         "x-operation": "compare_dependencies",
         "x-mcp-tool": "security",
         "x-mcp-action": "compare_dependencies",
@@ -23307,7 +23307,7 @@
           "Security settings"
         ],
         "summary": "Get a workspace's security settings",
-        "description": "Get a workspace's security settings (delegated bypass, validity checks) and whether it has the Security and quality activation.",
+        "description": "Get a workspace's security settings (delegated bypass, validity checks) and whether it has Security and quality, which comes with the g1t plan.",
         "x-operation": "get_workspace_security_settings",
         "x-mcp-tool": "security",
         "x-mcp-action": "workspace_settings",
@@ -23522,7 +23522,7 @@
           "Security settings"
         ],
         "summary": "Get the security overview",
-        "description": "Get a workspace's security overview: open alerts by type and severity, how many opened and closed in the last days (7 to 90, 30 by default), a daily trend, and for each repository which features are on and what is open, most in need first. Private repositories count with the Security and quality activation only.",
+        "description": "Get a workspace's security overview: open alerts by type and severity, how many opened and closed in the last days (7 to 90, 30 by default), a daily trend, and for each repository which features are on and what is open, most in need first. Private repositories count only on the g1t plan.",
         "x-operation": "get_security_overview",
         "x-mcp-tool": "security",
         "x-mcp-action": "overview",

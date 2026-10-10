@@ -1130,6 +1130,29 @@ impl Stripe {
         Ok(created.id)
     }
 
+    /// Archives one of g1t's products (by its `metadata[g1t]` tag), so it
+    /// is never sold again; past invoices keep pointing at it. Nothing to
+    /// do when there is no such active product.
+    pub async fn archive_product(&self, tag: &str) -> Result<()> {
+        #[derive(Deserialize)]
+        struct Product {
+            id: String,
+            #[serde(default)]
+            metadata: Option<std::collections::HashMap<String, String>>,
+        }
+        #[derive(Deserialize)]
+        struct List {
+            data: Vec<Product>,
+        }
+        let list: List = self.call(Method::Get, "/products?active=true&limit=100", None).await?;
+        for product in list.data.into_iter().filter(|p| p.metadata.as_ref().and_then(|m| m.get("g1t")).map(String::as_str) == Some(tag)) {
+            let _: serde_json::Value = self
+                .call(Method::Post, &format!("/products/{}", encode(&product.id)), Some(form(&[("active", "false".to_owned())])))
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Starts the monthly plan on a saved card, at once, with tax worked
     /// out by Stripe Tax on every invoice and the card fee as a monthly item
     /// of its own. Fails rather than leaving it half-started when the card's

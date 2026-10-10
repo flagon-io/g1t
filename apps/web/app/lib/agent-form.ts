@@ -3,7 +3,13 @@
  * it: what each field means, and the checks made before it is sent. Pure,
  * so it is tested on its own.
  */
-import type { ModelTier, NewWorkspaceAgent, PersonalityPreset, SubagentDef, WorkspaceAgent } from "@g1t/contracts";
+import type { AgentEffort, ModelTier, NewWorkspaceAgent, PersonalityPreset, SubagentDef, WorkspaceAgent } from "@g1t/contracts";
+
+/** An effort setting from a form: one of the five, or null. */
+export function readEffort(value: FormDataEntryValue | null): AgentEffort | null {
+  const text = String(value ?? "");
+  return text === "auto" || text === "low" || text === "medium" || text === "high" || text === "max" ? text : null;
+}
 
 /** The tiers, cheapest first: `MODEL_TIERS` in the contracts. */
 const MODEL_TIERS: ModelTier[] = ["small", "large", "frontier"];
@@ -96,6 +102,8 @@ export function readAgentForm(form: FormData, options: { orchestrator?: boolean 
   if (!Number.isInteger(capacity) || capacity < 1 || capacity > 20) errors.capacity = "Between 1 and 20.";
   const providers = String(form.get("providers") ?? "any");
   const pinned = String(form.get("pinned") ?? "").trim();
+  // How hard it works; a form without the control leaves it as it is.
+  const effort = readEffort(form.get("effort"));
   if (pinned && !/^[\w.-]+\/[\w.:@-]+$/.test(pinned)) errors.pinned = "As provider/model.";
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   return {
@@ -119,6 +127,7 @@ export function readAgentForm(form: FormData, options: { orchestrator?: boolean 
         ceiling,
         providers: providers === "any" ? [] : [providers],
         pinned: pinned || null,
+        ...(effort ? { effort } : {}),
       },
       budget,
       autonomy: {
@@ -214,7 +223,7 @@ export const BLANK_DRAFT: AgentDraft = {
   instructions: "",
   personality_preset: "crisp",
   personality: "",
-  routing: { floor: null, ceiling: null, providers: [], pinned: null },
+  routing: { floor: null, ceiling: null, providers: [], pinned: null, effort: "auto" },
   budget: { monthly_micros: 50_000_000, daily_micros: null, task_micros: 5_000_000 },
   autonomy: { open_pull_requests: "alone", merge: "approval", deploy_production: "approval", edit_docs: "suggest" },
   capacity: 3,

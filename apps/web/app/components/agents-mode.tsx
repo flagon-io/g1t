@@ -2,7 +2,7 @@ import { Activity, Brain, ChevronRight, Dices, LayoutTemplate, Network, Plus, Ro
 import { type ReactNode, useState } from "react";
 import { Form, NavLink, useLocation, useNavigation, useRouteLoaderData } from "react-router";
 
-import type { AgentTemplate, ModelTier, WorkspaceAgent } from "@g1t/contracts";
+import type { AgentEffortCosts, AgentTemplate, ModelTier, WorkspaceAgent } from "@g1t/contracts";
 
 import { type AgentLike, AgentAvatar, PixelCreature } from "./agent-avatar";
 import { StatusDot, statusLabel } from "./chat/marks";
@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Skeleton } from "./ui/skeleton";
 import { AUTONOMY, type AgentDraft, PRESETS, TIER_LABELS, cleanHandle, dollarsField } from "../lib/agent-form";
 import { Hint } from "./ui/hint";
+import { EffortPicker } from "./effort";
+import { effortSetting } from "../lib/effort";
 import { DEPARTMENTS, RoleFields, SubagentsField } from "./agent-role";
 import type { AgentsLayoutData } from "../routes/workspace/agents/layout";
 
@@ -454,11 +456,14 @@ export function AgentForm({
   spaces = [],
   hidden = {},
   personal = false,
+  effortCosts,
 }: {
   /** A personal agent: on no team. */
   personal?: boolean;
   /** Fields the form carries without showing: a drafted agent's scope, skills and face. */
   hidden?: Record<string, string>;
+  /** What each effort level has cost this agent, when it has a history; a new agent has none. */
+  effortCosts?: AgentEffortCosts | null;
   /** The workspace's teams, to put it on one. */
   teams?: { slug: string; name: string }[];
   /** The Docs spaces the person editing can read, for its required reading. */
@@ -699,6 +704,10 @@ export function AgentForm({
               Replies and triage run on Fast; making changes on Standard; planning, hard reviews and retries after a failure on Most capable. It steps up after a failure and back down when the cheaper tier works.
             </p>
           </div>
+        </div>
+        <div>
+          <Label hint="Tier, reasoning and steps together">Effort</Label>
+          <EffortPicker value={effortSetting(draft.routing)} costs={effortCosts} />
         </div>
         <div className="grid gap-5 sm:grid-cols-3">
           <div>

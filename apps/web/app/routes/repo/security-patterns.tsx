@@ -7,7 +7,7 @@ import { ActivationPrompt, PatternEditor, SectionHeader, patternFields } from ".
 import { securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
-import { activationPrice } from "../../lib/security-suite.server";
+import { planPrice } from "../../lib/security-suite.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Custom pattern · ${params.owner}/${params.repo} · g1t` });
@@ -18,7 +18,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   await requireInsider(context, params, "manage_integrations");
   const repo = { namespace: params.owner, name: params.repo };
   const id = new URL(request.url).searchParams.get("id");
-  const [list, price] = await Promise.all([securitySuite.patterns(params.owner, repo, viewer), activationPrice(params.owner, viewer)]);
+  const [list, price] = await Promise.all([securitySuite.patterns(params.owner, repo, viewer), planPrice(params.owner, viewer)]);
   const patterns = unwrap(list);
   const pattern = id ? patterns.patterns.find((found) => found.id === id && found.scope === "repository") : null;
   if (id && !pattern) throw data("No such pattern.", { status: 404 });

@@ -636,8 +636,8 @@ every pull request that changes a lockfile. Fix what either reports in your
 own pull request; both can be required checks. Also: custom patterns,
 validity checks, `GET {repo}/dependency-graph/sbom` (SPDX 2.3, in `sbom`),
 `GET {repo}/dependency-graph/compare/{base...head}`, and a workspace
-overview. On private repositories these need the Security and quality
-activation (`402` without it); public repositories have them free.
+overview. On private repositories these come with the g1t plan, with no
+price of their own (`402` without it); public repositories have them free.
 Guides: https://docs.g1t.sh/guides/security/secret-protection/,
 https://docs.g1t.sh/guides/security/code-scanning/,
 https://docs.g1t.sh/guides/security/supply-chain/

@@ -25,7 +25,7 @@
  * session, or a subagent, works on the budget of the agent at the root of
  * the session's tree, so a chain never escapes the budget that started it.
  */
-import { type ModelSession, type ModelTier, type RunTicket, ComputeGate, MODEL_ESTIMATE_MICROS, billingClient, integrationsClient } from "@g1t/contracts";
+import { type EffortLevel, type ModelSession, type ModelTier, type RunTicket, ComputeGate, MODEL_ESTIMATE_MICROS, billingClient, integrationsClient } from "@g1t/contracts";
 
 import { hostedOpen } from "../../runner/src/hosted.ts";
 import { type AgentRouting as Policy, routingReader } from "../../runner/src/model-env.ts";
@@ -35,7 +35,7 @@ import { BUILTIN_NO_MODEL } from "./orchestrator.ts";
 import { type PolicyRow, alertDue, markAlerted, policyBlock, readPolicy, workspaceSpendStatements } from "./policy.ts";
 import { dollars } from "./money.ts";
 import { type TeamsHere, teamBudgetBlock, teamSpends } from "./teammates.ts";
-import { type ReplyModel, allowedProviders, replyModel } from "./routing.ts";
+import { type ReplyModel, allowedProviders, reasoningEffort, replyModel } from "./routing.ts";
 import { type Row, definitionOf, periods, spendStatements } from "./store.ts";
 import type { ModelAnswer, Send } from "./turn.ts";
 import type { ServiceBinding } from "@g1t/contracts";
@@ -135,6 +135,8 @@ export type Model = {
   model: ReplyModel;
   /** The workspace's own provider pays for the model (g1t charges only the agent rate). */
   ownModel: boolean;
+  /** The reasoning effort to send with each request, or null to leave it to the model. */
+  effort: EffortLevel | null;
   policy: Policy;
   /** The model the workspace's route names, on its own provider. */
   sessionModel: string | null;
@@ -153,8 +155,10 @@ export type MeterInput = {
   /** The workspace's slug. */
   slug: string;
   task: "reply" | "session";
-  /** The tier the work starts on, before the agent's limits. */
+  /** The tier the work starts on, before the agent's limits: from its effort plan (routing.ts `effortPlan`). */
   start: ModelTier;
+  /** The reasoning level its effort plan asks for; sent where the model takes it. */
+  effort?: EffortLevel | null;
   /** Who asked, by username, for billing's record. */
   askerName: string | null;
   /** The person the work is for, by username: their budget counts it. Null for work no person asked for. */
@@ -301,7 +305,8 @@ export async function metered<T extends WorkUsage>(env: MeterEnv, input: MeterIn
     if (cap.length) await integrations.capModelSessions([await sha256Hex(session.token)], Math.min(...cap)).catch(() => 0);
 
     // 6. The work.
-    const result = await work({ send: sendFor(env, session.token), model, ownModel, policy: routing, sessionModel: session.model, own: own?.id ?? null });
+    const effort = input.effort ? reasoningEffort(input.effort, routing.tiers[model.tier] ?? null, !!named || (ownModel && model.price == null)) : null;
+    const result = await work({ send: sendFor(env, session.token), model, ownModel, effort, policy: routing, sessionModel: session.model, own: own?.id ?? null });
     const priced = await priceTerms(env.BILLING);
     const charged = chargedMicros({
       costMicros: result.cost,

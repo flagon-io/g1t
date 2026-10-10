@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { AgentSession, PriceBook } from "@g1t/contracts";
 
-import { daySeries, markupLabel, percentLabel, pricingOf, readPeriod, readScope, receiptOf, spanFor, tokenCount } from "./spend.ts";
+import { agentRateLabel, daySeries, markupLabel, percentLabel, pricingOf, readPeriod, readScope, receiptOf, spanFor, tokenCount } from "./spend.ts";
 
 const OCT_8 = new Date("2026-10-08T15:00:00Z");
 
@@ -36,23 +36,34 @@ test("a day series has every day, products added together, zeros where nothing w
   ]);
 });
 
-test("pricing comes from the price book: the model markup, the run markup, the agent rate", () => {
+test("pricing comes from the price book: models at the provider's price, what g1t runs at its markup", () => {
   const book = {
     modelMarginPercent: 0,
     changes: [],
     prices: [
       { meter: "sandbox_second", costMicros: 10, markupPercent: 20, priceMicros: 12 },
       { meter: "build_second", costMicros: 10, markupPercent: 20, priceMicros: 12 },
-      { meter: "agent_tokens", costMicros: 0, markupPercent: 0, priceMicros: 250_000 },
-      { meter: "agent_tokens_own", costMicros: 0, markupPercent: 0, priceMicros: 250_000 },
+      { meter: "agent_models", costMicros: 1_000_000, markupPercent: 0, priceMicros: 1_000_000 },
+      { meter: "gateway_models", costMicros: 1_000_000, markupPercent: 0, priceMicros: 1_000_000 },
+      { meter: "card_fee_percent", costMicros: 29_000, markupPercent: 0, priceMicros: 29_000 },
+      { meter: "agent_token_weight_input", costMicros: 1_000_000, markupPercent: 0, priceMicros: 1_000_000 },
+      { meter: "agent_tokens", costMicros: 0, markupPercent: 0, priceMicros: 0 },
+      { meter: "agent_tokens_own", costMicros: 0, markupPercent: 0, priceMicros: 0 },
     ],
   } as unknown as PriceBook;
+  (book as { changes: unknown[] }).changes = [{ meter: "agent_tokens", newCostMicros: 250_000, effectiveAt: "2026-10-22T00:00:00Z" }];
   const pricing = pricingOf(book);
   assert.equal(pricing.modelMarkupPercent, 0);
+  // Models, the gateway, card fees and weights are not things g1t runs: the markup is one figure.
   assert.deepEqual(pricing.markup, { min: 20, max: 20 });
   assert.equal(markupLabel(pricing.markup!), "20%");
   assert.equal(markupLabel({ min: 15, max: 20 }), "15–20%");
-  assert.equal(pricing.agentRateMicros, 250_000);
+  // The agent rate, $0 until its dated version starts.
+  assert.equal(pricing.agentRateMicros, 0);
+  assert.deepEqual(pricing.agentRateComing, { micros: 250_000, from: "2026-10-22" });
+  const dollars = (m: number) => `$${(m / 1_000_000).toFixed(2)}`;
+  assert.equal(agentRateLabel(pricing, dollars), "$0.25 per million tokens from 2026-10-22");
+  assert.equal(agentRateLabel({ agentRateMicros: 250_000, agentRateComing: null }, dollars), "$0.25 per million tokens");
 });
 
 const session = (over: Partial<AgentSession>): AgentSession =>

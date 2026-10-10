@@ -14,11 +14,11 @@ import type {
 import { FOUNDATIONAL_SKILL_IDS } from "../../../packages/contracts/src/skills.ts";
 
 import { checkHandle } from "./handle.ts";
-import { isTier, limitsAgree } from "./routing.ts";
+import { isEffort, isTier, limitsAgree } from "./routing.ts";
 
 export const PRESETS: PersonalityPreset[] = ["crisp", "friendly", "socratic", "terse"];
 
-export const DEFAULT_ROUTING: AgentRouting = { floor: null, ceiling: null, providers: [], pinned: null };
+export const DEFAULT_ROUTING: AgentRouting = { floor: null, ceiling: null, providers: [], pinned: null, effort: "auto" };
 export const DEFAULT_BUDGET: AgentBudget = { monthly_micros: null, daily_micros: null, task_micros: null };
 /** What an agent may do alone until someone says otherwise: open pull requests; the rest asks. */
 export const DEFAULT_AUTONOMY: AgentAutonomy = {
@@ -101,6 +101,10 @@ function routingOf(base: AgentRouting, given: unknown): Checked<AgentRouting> {
     const providers = [...new Set(g.providers.map((p) => p.trim()))];
     if (providers.length > LIMITS.providers) return bad(`An agent names at most ${LIMITS.providers} providers.`);
     next.providers = providers;
+  }
+  if (g.effort !== undefined) {
+    if (g.effort !== null && !isEffort(g.effort)) return bad("Effort is auto, low, medium, high or max.");
+    next.effort = g.effort ?? "auto";
   }
   if (g.pinned !== undefined) {
     if (g.pinned === null || g.pinned === "") next.pinned = null;

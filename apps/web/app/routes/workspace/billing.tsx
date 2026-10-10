@@ -186,7 +186,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       throw redirect(started.value.url);
     }
     case "subscribe": {
-      // The plan, or the Security and quality activation.
+      // The plan. Security and quality comes with it: billing refuses it on its own.
       const feature = form.get("feature") === "security" ? "security" : "plan";
       const started = await billing.subscribe(user, slug, feature, `${here}?plan=${feature}`);
       if (!started.ok) return fail(feature, started.error.message);
