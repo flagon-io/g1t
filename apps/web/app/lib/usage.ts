@@ -10,7 +10,9 @@
 
 import type { MeterLine, UsageDay, UsageReport, UsageTotals } from "@g1t/contracts";
 
-const MICROS_PER_DOLLAR = 1_000_000;
+import { MICROS_PER_DOLLAR, money } from "./money.ts";
+import { monthSpan } from "./spend.ts";
+
 const DAY_MS = 86_400_000;
 
 /** The product families in order, with their names and colors (the chart's categorical slots, validated against the dark surface). */
@@ -74,7 +76,8 @@ export function resolveRange(
     const days = Number(period.slice(0, -1));
     return { period, from: day(new Date(today.getTime() - (days - 1) * DAY_MS)), until: day(today) };
   }
-  return { period: "cycle", from: day(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1))), until: day(today) };
+  // This month is the one range Spend and the top bar read too (`spend.ts` `monthSpan`).
+  return { period: "cycle", ...monthSpan(today) };
 }
 
 /** `Oct 1 – Oct 8, 2026`. */
@@ -168,23 +171,6 @@ export function ticks(max: number, count = 4): number[] {
   return out;
 }
 
-/** Money, to the cent; under a cent, to as many places as it takes to say something (`$0.004`). */
-export function money(micros: number): string {
-  const sign = micros < 0 ? "−" : "";
-  const d = Math.abs(micros) / MICROS_PER_DOLLAR;
-  // Under a hundredth of a cent there is nothing worth saying: "$0.00".
-  const digits = d < 0.0001 || d >= 0.01 ? 2 : d >= 0.001 ? 3 : 4;
-  return `${sign}$${d.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
-}
-
-/** An axis label: `$0`, `$0.50`, `$2`, `$1.2K`. */
-export function axisMoney(micros: number): string {
-  const d = micros / MICROS_PER_DOLLAR;
-  if (d >= 1000) return `$${(d / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 })}K`;
-  if (Number.isInteger(d)) return `$${d}`;
-  return `$${d.toLocaleString("en-US", { minimumFractionDigits: d < 0.1 ? 3 : 2, maximumFractionDigits: d < 0.1 ? 3 : 2 })}`;
-}
-
 function compact(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toLocaleString("en-US", { maximumFractionDigits: 1 })}B`;
   if (n >= 1e6) return `${(n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 1 })}M`;
@@ -238,6 +224,20 @@ export function receipt(totals: UsageTotals, discountPercent: number | null | un
   if (totals.creditsMicros > 0) lines.push({ label: "Credits applied", micros: totals.creditsMicros, minus: true });
   lines.push({ label: "Charged", micros: totals.chargedMicros, minus: false });
   return lines;
+}
+
+/**
+ * The note under the receipt: what is metered this month and not yet
+ * closed, with the fraction of a cent it carries (it explains a gap of
+ * one), and what of it the close will charge on the account's terms. An
+ * older billing says only that it is charged at the close.
+ */
+export function pendingSentence(totals: Pick<UsageTotals, "pendingMicros" | "pendingChargedMicros">): string {
+  const pending = money(totals.pendingMicros, { precise: true });
+  const charged = totals.pendingChargedMicros;
+  if (charged == null) return `${pending} of it is metered this month and not yet closed; it is charged when the month closes.`;
+  const part = charged <= 0 ? "nothing" : charged >= totals.pendingMicros ? "all of it" : `${money(charged, { precise: true })} of it`;
+  return `${pending} of it is metered this month and not yet closed; ${part} will be charged when the month closes, after your discount and included usage.`;
 }
 
 /** Rows of the breakdown when grouped by project: each project's usage across every meter. */

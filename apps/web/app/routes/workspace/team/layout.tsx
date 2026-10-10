@@ -13,7 +13,7 @@ import { Hint } from "../../../components/ui/hint";
 import { TabStrip } from "../../../components/ui/tab-strip";
 import { agentsOn, agentPath, peopleAgent, personPath } from "../../../lib/people";
 import { teamPath } from "../../../lib/teams";
-import { money } from "../../../lib/usage";
+import { money } from "../../../lib/money";
 import { identity, workspaceAgents } from "../../../lib/services.server";
 import { getViewer, roleIn } from "../../../lib/session.server";
 

@@ -10,7 +10,7 @@ import { Hint } from "../ui/hint";
 import { TimeAgo } from "../ui";
 import { Card } from "../ui/card";
 import { cn } from "../../lib/cn";
-import { money } from "../../lib/usage";
+import { money } from "../../lib/money";
 import { kindLabel, meterTone, monthDays, sessionStatus, shareOf, shortDay, topSlices, whereLabel } from "./format";
 
 /** Where a session's page is. */

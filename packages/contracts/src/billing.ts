@@ -1895,6 +1895,8 @@ export type UsageTotals = {
   chargedMicros: number;
   /** Metered this month, charged when it closes. */
   pendingMicros: number;
+  /** What of `pendingMicros` will be charged at the close, after the discount and what g1t covers; absent from an older billing. */
+  pendingChargedMicros?: number;
   costMicros: number;
 };
 

@@ -8,6 +8,7 @@
 import type { AgentRun, CheckStatus, ChangedFile, Confidence, ConfidenceLevel, Lifecycle, RepoPath, RunKind, Stage } from "@g1t/contracts";
 
 import type { Need } from "./mission";
+import { microsOf, money } from "./money.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -197,12 +198,6 @@ export function isTestFile(path: string): boolean {
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
-/** "$0.42", or "<$0.01" for a sliver. */
-export function usd(value: number): string {
-  if (value > 0 && value < 0.01) return "<$0.01";
-  return `$${value.toFixed(2)}`;
-}
-
 /**
  * What is known about a pull request without opening it: its checks, how
  * much it changes, the tests it touches, how often the agent was sent back,
@@ -240,7 +235,7 @@ export function pullFacts(input: {
     const cost = costs.reduce((sum, run) => sum + (run.costUsd ?? 0), 0);
     facts.push({
       label: "Agent runs",
-      value: costs.length > 0 ? `${agentRuns.length} · ${usd(cost)}` : String(agentRuns.length),
+      value: costs.length > 0 ? `${agentRuns.length} · ${money(microsOf(cost))}` : String(agentRuns.length),
       tone: null,
     });
   }
@@ -380,7 +375,7 @@ export function waitingRows(input: {
     const started = Date.parse(run.startedAt ?? run.createdAt);
     const runFacts: Fact[] = [
       { label: "Run", value: RUN_LABEL[run.kind], tone: null },
-      ...(run.costUsd != null ? [{ label: "Cost so far", value: usd(run.costUsd), tone: null }] : []),
+      ...(run.costUsd != null ? [{ label: "Cost so far", value: money(microsOf(run.costUsd)), tone: null }] : []),
     ];
     if (existing) {
       existing.live = true;

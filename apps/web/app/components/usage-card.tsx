@@ -5,7 +5,8 @@ import { Link } from "react-router";
 import { ButtonLink } from "./ui";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
-import { type UsageGlance, dollars, share, usageTask } from "../lib/billing";
+import { type UsageGlance, share, usageTask } from "../lib/billing";
+import { money, wholeDollars } from "../lib/money";
 
 /** Line items shown before Show more. */
 const FIRST_LINES = 3;
@@ -55,7 +56,7 @@ export function UsageCard({ slug, glance, owner }: { slug: string; glance: Usage
             <span className="text-xs text-faint">This month</span>
           </div>
           <p className="mt-3 flex items-baseline justify-between gap-3">
-            <span className="text-2xl font-semibold tracking-tight tabular-nums">{dollars(glance.spentMicros)}</span>
+            <span className="text-2xl font-semibold tracking-tight tabular-nums">{money(glance.spentMicros)}</span>
             <span
               className={`rounded-full px-2 py-0.5 text-xs ${
                 glance.kind === "forge" ? "border border-line text-muted" : "bg-accent/15 text-accent"
@@ -79,8 +80,8 @@ export function UsageCard({ slug, glance, owner }: { slug: string; glance: Usage
               <div className="flex justify-between gap-3">
                 <span className="text-muted">{glance.credit.label}</span>
                 <span className="tabular-nums">
-                  {dollars(glance.credit.usedMicros)}
-                  <span className="text-faint"> / {dollars(glance.credit.ofMicros)}</span>
+                  {money(glance.credit.usedMicros)}
+                  <span className="text-faint"> / {money(glance.credit.ofMicros)}</span>
                 </span>
               </div>
               <Bar used={glance.credit.usedMicros} of={glance.credit.ofMicros} warns={glance.kind === "trial"} />
@@ -90,9 +91,9 @@ export function UsageCard({ slug, glance, owner }: { slug: string; glance: Usage
             <div className="mt-3 flex justify-between gap-3 text-sm">
               <span className="text-muted">On-demand charges</span>
               <span className="tabular-nums">
-                {dollars(glance.onDemand.micros)}
+                {money(glance.onDemand.micros)}
                 {glance.onDemand.limitMicros != null && (
-                  <span className="text-faint"> / {dollars(glance.onDemand.limitMicros, 0)}</span>
+                  <span className="text-faint"> / {wholeDollars(glance.onDemand.limitMicros)}</span>
                 )}
               </span>
             </div>
@@ -106,7 +107,7 @@ export function UsageCard({ slug, glance, owner }: { slug: string; glance: Usage
                 <li key={line.key} className="flex items-center gap-2">
                   <span className="size-2 shrink-0 rounded-sm" style={{ background: usageTask(line.key).color }} />
                   <span className="min-w-0 grow truncate text-muted">{line.label}</span>
-                  <span className="shrink-0 font-mono text-xs tabular-nums">{dollars(line.micros)}</span>
+                  <span className="shrink-0 font-mono text-xs tabular-nums">{money(line.micros)}</span>
                 </li>
               ))}
             </ul>

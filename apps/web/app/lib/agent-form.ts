@@ -5,6 +5,8 @@
  */
 import type { AgentEffort, ModelTier, NewWorkspaceAgent, PersonalityPreset, SubagentDef, WorkspaceAgent } from "@g1t/contracts";
 
+import { plainDollars } from "./money.ts";
+
 /** An effort setting from a form: one of the five, or null. */
 export function readEffort(value: FormDataEntryValue | null): AgentEffort | null {
   const text = String(value ?? "");
@@ -229,11 +231,10 @@ export const BLANK_DRAFT: AgentDraft = {
   template: null,
 };
 
-/** Dollars from micro-dollars, for a form field: empty for none. */
+/** Dollars from micro-dollars, for a form field: empty for none, `20` for a whole sum, else to the cent. */
 export function dollarsField(micros: number | null | undefined): string {
   if (micros == null) return "";
-  const dollars = micros / 1_000_000;
-  return Number.isInteger(dollars) ? String(dollars) : dollars.toFixed(2);
+  return plainDollars(micros, { whole: true });
 }
 
 /** Micro-dollars from a form field in dollars: null when empty, NaN when not a sum. */
@@ -243,11 +244,5 @@ export function microsFromDollars(value: FormDataEntryValue | null): number | nu
   const dollars = Number(text);
   if (!Number.isFinite(dollars) || dollars < 0) return Number.NaN;
   return Math.round(dollars * 1_000_000);
-}
-
-/** "$12.40" from micro-dollars. */
-export function formatDollars(micros: number): string {
-  const dollars = micros / 1_000_000;
-  return `$${dollars < 10 && dollars > 0 && !Number.isInteger(dollars) ? dollars.toFixed(2) : dollars.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: Number.isInteger(dollars) ? 0 : 2 })}`;
 }
 

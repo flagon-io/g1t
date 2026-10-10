@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import type { GatewayRequest } from "@g1t/contracts";
 
 import { cacheKinds, duration, formatLabel, servedBy, shortCount, statusTone, tokenKinds } from "../lib/gateway";
-import { money } from "../lib/usage";
+import { money } from "../lib/money";
 import { TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
@@ -72,7 +72,7 @@ function Row({ request }: { request: GatewayRequest }) {
             </span>
           </Hint>
         ) : (
-          money(request.chargedMicros)
+          money(request.chargedMicros, { precise: true })
         )}
       </td>
       <td className="px-3 py-2 whitespace-nowrap">

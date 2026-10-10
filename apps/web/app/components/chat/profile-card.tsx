@@ -16,7 +16,7 @@ import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Skeleton } from "../ui/skeleton";
-import { formatDollars } from "../../lib/agent-form";
+import { wholeDollars } from "../../lib/money";
 import type { UserCard } from "../../lib/hovercard";
 import { localTime } from "../../lib/time-zone";
 
@@ -182,7 +182,7 @@ function AgentBody({ agent, ctx }: { agent: WorkspaceAgent; ctx: CardContextValu
             <p className="flex justify-between text-xs">
               <span>This month</span>
               <span className="tabular-nums">
-                {formatDollars(agent.spent_month_micros)} of {formatDollars(cap)}
+                {wholeDollars(agent.spent_month_micros)} of {wholeDollars(cap)}
               </span>
             </p>
             <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line">

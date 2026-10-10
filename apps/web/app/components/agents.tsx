@@ -43,6 +43,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { shownStep } from "../lib/agent-step";
 import { inlinePlain } from "../lib/inline-markdown";
 import { InlineMarkdown } from "./inline-markdown";
+import { microsOf, money } from "../lib/money";
 
 /** How often a page with something running asks again. */
 export const LIVE_MS = 4000;
@@ -53,9 +54,7 @@ export function useLiveRefresh(live: boolean) {
 }
 
 export function formatCost(usd: number | null | undefined): string | null {
-  if (usd == null) return null;
-  if (usd > 0 && usd < 0.01) return "<$0.01";
-  return `$${usd.toFixed(2)}`;
+  return usd == null ? null : money(microsOf(usd));
 }
 
 function span(ms: number): string {

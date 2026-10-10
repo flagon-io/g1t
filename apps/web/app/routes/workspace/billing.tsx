@@ -30,7 +30,6 @@ import {
 import { StatementView } from "../../components/statement";
 import {
   cardCheckResult,
-  dollars,
   parseAiPurchase,
   parseAiReload,
   parseBudgetAlerts,
@@ -40,8 +39,8 @@ import {
   parsePrepay,
   parseSpendLimit,
   planStatus,
-  wholeDollars,
 } from "../../lib/billing";
+import { money, wholeDollars } from "../../lib/money";
 import { isStaff } from "../../lib/usage";
 import { page } from "../../lib/meta";
 import { billing } from "../../lib/services.server";
@@ -405,7 +404,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               </li>
               <li>
                 Agent runs: the model at the provider's price{ai && ai.modelMarkupPercent ? ` plus ${ai.modelMarkupPercent}%` : ", with no markup"}, plus
-                g1t's agent rate per million tokens{ai && ai.agentRateMicros > 0 ? ` (${dollars(ai.agentRateMicros)})` : ""}. AI Gateway: the
+                g1t's agent rate per million tokens{ai && ai.agentRateMicros > 0 ? ` (${money(ai.agentRateMicros, { precise: true })})` : ""}. AI Gateway: the
                 provider's price, free of markup while in beta.
               </li>
               <li>AI usage draws on prepaid AI credit first; at $0, new runs on g1t's models wait for more credit or auto-reload.</li>
@@ -419,7 +418,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               </li>
               <li>
                 Each month closes with an itemised invoice. No card is charged less than{" "}
-                {dollars(entitlements?.minChargeMicros ?? 5 * MICROS_PER_DOLLAR, 0)}; less carries over.
+                {wholeDollars(entitlements?.minChargeMicros ?? 5 * MICROS_PER_DOLLAR)}; less carries over.
               </li>
               <li>
                 Prices exclude tax. Stripe adds tax where it applies, worked out from the billing address under Invoice details, and it
@@ -473,7 +472,7 @@ function InvoiceList({ invoices }: { invoices: WorkspaceInvoice[] }) {
                 >
                   {invoice.status === "paid" ? "Paid" : invoice.status === "failed" ? "Payment failed" : invoice.status}
                 </span>
-                <span className="ml-auto font-mono tabular-nums">{dollars(invoice.amountMicros)}</span>
+                <span className="ml-auto font-mono tabular-nums">{money(invoice.amountMicros)}</span>
                 {invoice.hostedUrl && (
                   <a href={invoice.hostedUrl} className="text-xs text-muted hover:text-fg">
                     View
@@ -489,19 +488,19 @@ function InvoiceList({ invoices }: { invoices: WorkspaceInvoice[] }) {
                 {invoice.lines.map((line) => (
                   <li key={line.description} className="flex justify-between gap-4">
                     <span>{line.description}</span>
-                    <span className="font-mono tabular-nums">{dollars(line.amountMicros)}</span>
+                    <span className="font-mono tabular-nums">{money(line.amountMicros)}</span>
                   </li>
                 ))}
                 {(invoice.feeMicros ?? 0) > 0 && (
                   <li className="flex justify-between gap-4">
                     <span>Card processing fee</span>
-                    <span className="font-mono tabular-nums">{dollars(invoice.feeMicros ?? 0)}</span>
+                    <span className="font-mono tabular-nums">{money(invoice.feeMicros ?? 0)}</span>
                   </li>
                 )}
                 {(invoice.taxMicros ?? 0) > 0 && (
                   <li className="flex justify-between gap-4">
                     <span>Tax</span>
-                    <span className="font-mono tabular-nums">{dollars(invoice.taxMicros ?? 0)}</span>
+                    <span className="font-mono tabular-nums">{money(invoice.taxMicros ?? 0)}</span>
                   </li>
                 )}
               </ul>

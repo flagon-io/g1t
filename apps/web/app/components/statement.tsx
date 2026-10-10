@@ -2,7 +2,8 @@ import { ChevronRight, Download } from "lucide-react";
 import { useState } from "react";
 import { Link, useFetcher, useNavigate } from "react-router";
 
-import { MICROS_PER_DOLLAR, type LedgerEntry, type Statement } from "@g1t/contracts";
+import type { LedgerEntry, Statement } from "@g1t/contracts";
+import { money } from "../lib/money";
 
 import { EmptyState, TimeAgo } from "./ui";
 import { Button } from "./ui/button";
@@ -11,15 +12,9 @@ import { SkeletonRows } from "./ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
-/** Millionths of a dollar as dollars, to the cent or finer. */
-function dollars(micros: number, digits = 2): string {
-  const sign = micros < 0 ? "−" : "";
-  return `${sign}$${(Math.abs(micros) / MICROS_PER_DOLLAR).toFixed(digits)}`;
-}
-
-/** Charges to the cent, but a fraction of a cent shown as such rather than $0.00. */
+/** A charge, with the fraction of a cent it carries (`lib/money.ts`): a statement adds up to the micro. */
 function charge(micros: number): string {
-  return micros !== 0 && Math.abs(micros) < 10_000 ? dollars(micros, 4) : dollars(micros);
+  return money(micros, { precise: true });
 }
 
 /** A usage entry at its price: what was charged, what paid for it first, and what the discount took off. */
@@ -124,7 +119,7 @@ export function StatementView({
             </div>
             <div className="px-4 py-3">
               <dt className="text-xs text-faint">Paid and credited</dt>
-              <dd className="mt-0.5 font-mono tabular-nums">{dollars(totals.paidMicros)}</dd>
+              <dd className="mt-0.5 font-mono tabular-nums">{money(totals.paidMicros)}</dd>
             </div>
           </dl>
         </Card>
@@ -137,7 +132,7 @@ export function StatementView({
             </div>
             <div className="px-4 py-3">
               <dt className="text-xs text-faint">Paid and credited</dt>
-              <dd className="mt-0.5 font-mono tabular-nums">{dollars(totals.paidMicros)}</dd>
+              <dd className="mt-0.5 font-mono tabular-nums">{money(totals.paidMicros)}</dd>
             </div>
             <div className="px-4 py-3">
               <dt className="text-xs text-faint">Entries</dt>
@@ -149,8 +144,8 @@ export function StatementView({
 
       {((totals.taxMicros ?? 0) !== 0 || (totals.cardFeeMicros ?? 0) !== 0) && (
         <p className="mt-2 text-xs text-faint">
-          Paid with this month's payments on top of what they credited: tax {dollars(totals.taxMicros ?? 0)}, card processing fees{" "}
-          {dollars(totals.cardFeeMicros ?? 0)}. Prices exclude tax; neither comes from your balance.
+          Paid with this month's payments on top of what they credited: tax {money(totals.taxMicros ?? 0)}, card processing fees{" "}
+          {money(totals.cardFeeMicros ?? 0)}. Prices exclude tax; neither comes from your balance.
         </p>
       )}
       {((totals.covered?.length ?? 0) > 0 || (totals.carriedMicros ?? 0) > 0) && (
@@ -196,7 +191,7 @@ export function StatementView({
                         <span className="grow truncate text-muted">
                           {line.kind} <span className="text-xs text-faint">· paid with the payment, not from the balance</span>
                         </span>
-                        <span className="w-24 shrink-0 text-right font-mono tabular-nums text-muted">{dollars(line.passedMicros ?? 0)}</span>
+                        <span className="w-24 shrink-0 text-right font-mono tabular-nums text-muted">{money(line.passedMicros ?? 0)}</span>
                       </li>
                     ) : (
                     <StatementLineRow
@@ -299,7 +294,7 @@ function StatementLineRow({
         <span
           className={`w-24 shrink-0 text-right font-mono tabular-nums ${moneyIn ? "text-success" : "text-fg"}`}
         >
-          {moneyIn ? `+${dollars(-chargedMicros)}` : charge(chargedMicros)}
+          {moneyIn ? `+${money(-chargedMicros)}` : charge(chargedMicros)}
         </span>
       </button>
       {open && (
@@ -322,7 +317,7 @@ function StatementLineRow({
                   </p>
                 </div>
                 <span className="shrink-0 text-right font-mono text-xs tabular-nums text-muted">
-                  {entry.amountMicros > 0 ? `+${dollars(entry.amountMicros)}` : charge(entryPrice(entry))}
+                  {entry.amountMicros > 0 ? `+${money(entry.amountMicros)}` : charge(entryPrice(entry))}
                   {(entry.discountMicros ?? 0) > 0 && (
                     <span className="block text-[0.6875rem] text-success">{charge(-(entry.discountMicros ?? 0))} discount</span>
                   )}

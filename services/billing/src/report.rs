@@ -159,6 +159,16 @@ pub(crate) struct Pending {
     pub discount: i64,
 }
 
+/// Whether a range of days reaches into the current month, so the month's
+/// usage not yet closed (`pending_usage`, which has no day of its own) is
+/// counted in it. `today` is billing's own UTC day, so the top bar, Spend,
+/// Home and Usage, which all ask for the first of the month to today, get
+/// the same answer whatever `until` they send: a range need not reach
+/// month end to include what the month has metered so far.
+pub(crate) fn reaches_this_month(from: &str, until: &str, today: &str) -> bool {
+    from <= today && until >= &format!("{}-01", &today[..7])[..]
+}
+
 /// One agent's and one asker's agent-product lines over the range.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub(crate) struct Attributed {
@@ -281,6 +291,7 @@ pub(crate) fn shape(
             }
             totals.price_micros += p.micros;
             totals.pending_micros += p.micros;
+            totals.pending_charged_micros += p.micros - p.covered - p.discount;
             totals.included_micros += p.covered;
             totals.discount_micros += p.discount;
         }
@@ -329,7 +340,7 @@ impl Billing {
         let measure = if self.free { "COALESCE(cost_micros, 0)" } else { PRICE_SQL };
         let now = rfc3339(now_ms());
         let month = now[..7].to_owned();
-        let this_month = from.as_str() <= now.as_str() && until.as_str() >= &format!("{month}-01")[..];
+        let this_month = reaches_this_month(&from, &until, &now[..10]);
 
         let cells = async {
             self.db
@@ -633,6 +644,7 @@ mod tests {
         let (_, _, totals, _) = shape(&days, &[], &[], &pending, &[], &[]);
         assert_eq!(totals.price_micros, 11_400);
         assert_eq!(totals.pending_micros, 11_400);
+        assert_eq!(totals.pending_charged_micros, 11_400 - totals.included_micros - totals.discount_micros);
         assert_eq!(totals.included_micros, 2_400);
         assert_eq!(totals.discount_micros, 9_000);
         assert_eq!(charged(&totals), 0);
@@ -719,5 +731,19 @@ mod tests {
         assert_eq!(feature_of("implement").0, "runs");
         assert_eq!(meter_of_pending("package_storage"), "packages");
         assert_eq!(meter_of_pending("nonsense"), "other");
+    }
+
+    #[test]
+    fn pending_usage_counts_in_any_range_that_reaches_into_this_month() {
+        // The first of the month to today, as every page asks: counted.
+        assert!(reaches_this_month("2026-10-01", "2026-10-10", "2026-10-10"));
+        // To month end, or only the last week: counted too.
+        assert!(reaches_this_month("2026-10-01", "2026-10-31", "2026-10-10"));
+        assert!(reaches_this_month("2026-10-04", "2026-10-10", "2026-10-10"));
+        // Last month, or a month that has not started: not this month's.
+        assert!(!reaches_this_month("2026-09-01", "2026-09-30", "2026-10-10"));
+        assert!(!reaches_this_month("2026-11-01", "2026-11-30", "2026-10-10"));
+        // The month has turned on billing's clock: September's range no longer has it.
+        assert!(!reaches_this_month("2026-09-01", "2026-09-30", "2026-10-01"));
     }
 }

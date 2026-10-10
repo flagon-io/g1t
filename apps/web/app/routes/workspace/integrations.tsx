@@ -30,6 +30,7 @@ import { trialClosed } from "../../lib/trial";
 import { GatewayModelsField, MODEL_CATALOG, ModelCatalog, ModelProviderFields, ProviderMark, ProviderTiles, Routing } from "../../components/model-providers";
 import { parseGatewayModels } from "../../lib/gateway";
 import { integrationsSection, sectionKind } from "../../lib/integration-sections";
+import { money } from "../../lib/money";
 import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
@@ -200,10 +201,6 @@ const PROVIDER_BLURB: Partial<Record<Provider, string>> = {
   linear: "Agents read ENG-42 when work mentions it. Import issues; they hear back.",
 };
 
-function dollars(micros: number): string {
-  return `$${(micros / 1_000_000).toFixed(2)}`;
-}
-
 export default function WorkspaceIntegrations({ loaderData, actionData }: Route.ComponentProps) {
   const { slug, role, kind, connections, deliveries, repos: repoNames, adding, free, marginPercent, hostedOpen, hostedPreview, trial, routes } =
     loaderData;
@@ -248,8 +245,8 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
               <CheckCircle2 size={15} className="shrink-0 text-accent" />
               {trial?.open
                 ? trial.granted
-                  ? `All work runs on g1t's models, paid by ${slug}'s trial credit first: ${dollars(Math.max(0, trial.limitMicros - trial.usedMicros))} of ${dollars(trial.limitMicros)} left. Connect a provider of your own for more, or to choose models.`
-                  : `All work runs on g1t's models. ${slug} gets ${dollars(trial.limitMicros)} of trial credit the first time its agents work. Connect a provider of your own for more, or to choose models.`
+                  ? `All work runs on g1t's models, paid by ${slug}'s trial credit first: ${money(Math.max(0, trial.limitMicros - trial.usedMicros))} of ${money(trial.limitMicros)} left. Connect a provider of your own for more, or to choose models.`
+                  : `All work runs on g1t's models. ${slug} gets ${money(trial.limitMicros)} of trial credit the first time its agents work. Connect a provider of your own for more, or to choose models.`
                 : free
                   ? "All work runs on g1t's models, free while g1t is being built out. Connect a provider of your own to choose models and pay for them there."
                   : "All work runs on g1t's models, charged to your AI credit at the provider's price plus the agent rate. Auto picks the model for each job; choose one per kind of work below, or connect a provider of your own and pay for its models there."}

@@ -14,7 +14,7 @@ import { requireUser, roleIn } from "../../lib/session.server";
 import { loadPricing } from "../../lib/spend.server";
 import { receiptOf, tokenCount } from "../../lib/spend";
 import { workspaceAgents } from "../../lib/services.server";
-import { money } from "../../lib/usage";
+import { money } from "../../lib/money";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Receipt · ${params.owner} · g1t` });
@@ -75,7 +75,7 @@ export default function Receipt({ loaderData }: Route.ComponentProps) {
         </div>
         <div className="shrink-0 text-right">
           <p className="text-xs text-muted">Total</p>
-          <p className="text-2xl font-semibold tracking-tight tabular-nums">{money(receipt.chargedMicros)}</p>
+          <p className="text-2xl font-semibold tracking-tight tabular-nums">{money(receipt.chargedMicros, { precise: true })}</p>
         </div>
       </header>
 
@@ -110,13 +110,13 @@ export default function Receipt({ loaderData }: Route.ComponentProps) {
                     </p>
                   </div>
                 </div>
-                <span className="text-right text-sm tabular-nums sm:hidden">{money(ownMicros)}</span>
+                <span className="text-right text-sm tabular-nums sm:hidden">{money(ownMicros, { precise: true })}</span>
                 <span className="col-span-2 text-xs text-faint tabular-nums sm:col-span-1 sm:text-right sm:text-sm sm:text-muted max-sm:pl-(--indent)" style={{ "--indent": `${depth * 1.25 + (depth ? 1.3 : 0)}rem` } as CSSProperties}>
                   <span className="sm:hidden">Tokens </span>
                   {tokenCount(session.input_tokens)} in · {tokenCount(session.output_tokens)} out
                 </span>
-                <span className="hidden text-right text-sm text-muted tabular-nums sm:block">{money(session.cost_micros ?? 0)}</span>
-                <span className="hidden text-right text-sm tabular-nums sm:block">{money(ownMicros)}</span>
+                <span className="hidden text-right text-sm text-muted tabular-nums sm:block">{money(session.cost_micros ?? 0, { precise: true })}</span>
+                <span className="hidden text-right text-sm tabular-nums sm:block">{money(ownMicros, { precise: true })}</span>
               </li>
             ))}
           </ul>
@@ -128,18 +128,18 @@ export default function Receipt({ loaderData }: Route.ComponentProps) {
           <dl className="space-y-2 text-sm">
             <Row
               label={receipt.chargedMicros < receipt.providerMicros ? "Models, billed by your own provider, not here" : "Models, at the provider's price"}
-              value={money(receipt.providerMicros)}
+              value={money(receipt.providerMicros, { precise: true })}
             />
             <Row
               label={
                 pricing?.agentRateMicros != null
-                  ? `g1t's agent rate, ${money(pricing.agentRateMicros)} per million tokens${pricing.modelMarkupPercent > 0 ? `, and the ${pricing.modelMarkupPercent}% model markup` : ""}`
+                  ? `g1t's agent rate, ${money(pricing.agentRateMicros, { precise: true })} per million tokens${pricing.modelMarkupPercent > 0 ? `, and the ${pricing.modelMarkupPercent}% model markup` : ""}`
                   : "g1t's part"
               }
-              value={money(g1tPart)}
+              value={money(g1tPart, { precise: true })}
             />
             <div className="border-t border-line pt-2">
-              <Row label="Total, as budgets count it" value={money(receipt.chargedMicros)} strong />
+              <Row label="Total, as budgets count it" value={money(receipt.chargedMicros, { precise: true })} strong />
             </div>
           </dl>
           <p className="mt-3 text-xs text-faint">

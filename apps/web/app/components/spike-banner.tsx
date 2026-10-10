@@ -3,7 +3,7 @@ import { Form } from "react-router";
 
 import type { Entitlements } from "@g1t/contracts";
 
-import { dollars } from "../lib/billing";
+import { money } from "../lib/money";
 import { SubmitButton } from "./ui";
 
 /**
@@ -25,7 +25,7 @@ export function SpikeBanner({
   const spike = entitlements.spike?.status === "open" ? entitlements.spike : null;
   if (!spike && !entitlements.paused) return null;
   const text = spike
-    ? `Spending spiked: ${dollars(spike.hourMicros)} in the last hour, against a usual ${dollars(spike.averageMicros)}. New agents, checks and builds wait until an owner decides; work already running finishes.`
+    ? `Spending spiked: ${money(spike.hourMicros)} in the last hour, against a usual ${money(spike.averageMicros)}. New agents, checks and builds wait until an owner decides; work already running finishes.`
     : `g1t paused new compute for this workspace: ${entitlements.paused}`;
   return (
     <div

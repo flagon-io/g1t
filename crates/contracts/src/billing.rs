@@ -4050,6 +4050,11 @@ pub struct UsageTotals {
     /// Metered this month and charged when it closes (storage, git
     /// operations, scans, embeddings, domains), at price.
     pub pending_micros: i64,
+    /// What of `pending_micros` the workspace will be charged when the
+    /// month closes: its price less what g1t covers and what the discount
+    /// takes off, as the close will enter it. Credit comes off at the close.
+    #[serde(default)]
+    pub pending_charged_micros: i64,
     /// What it cost g1t, before any markup.
     pub cost_micros: i64,
 }

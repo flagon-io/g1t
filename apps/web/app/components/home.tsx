@@ -42,12 +42,12 @@ import {
   OUTCOME_LABEL,
   SOURCE_LABEL,
   WINDOWS,
-  dollars,
   trendLabel,
   waited,
   whenShort,
 } from "../lib/home";
 import { cn } from "../lib/cn";
+import { money } from "../lib/money";
 import { ButtonLink } from "./ui";
 import { Skeleton } from "./ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -651,9 +651,10 @@ export function SpendCard({ spend, slug, span }: { spend: Spend | null; slug: st
         <Quiet>Billing didn&apos;t answer, so spend can&apos;t be shown right now.</Quiet>
       ) : (
         <div className="px-5 pb-5">
-          <div className="text-3xl font-semibold tracking-tight text-fg tabular-nums">{dollars(spend.totalMicros)}</div>
+          <div className="text-3xl font-semibold tracking-tight text-fg tabular-nums">{money(spend.totalMicros)}</div>
           <p className="mt-1 text-xs text-muted">
-            {spend.from === spend.to ? utcDay(spend.from) : `${utcDay(spend.from)} – ${utcDay(spend.to)}`} · {dollars(spend.monthMicros)} this month so far
+            {spend.from === spend.to ? utcDay(spend.from) : `${utcDay(spend.from)} – ${utcDay(spend.to)}`}
+            {spend.monthMicros != null && ` · ${money(spend.monthMicros)} this month so far`}
           </p>
           {spend.lines.length === 0 ? (
             <p className="mt-4 text-sm text-muted">Nothing on the statement {inSpan(span)}.</p>
@@ -669,7 +670,7 @@ export function SpendCard({ spend, slug, span }: { spend: Spend | null; slug: st
                   <li key={line.kind} className="flex items-center gap-2 text-sm">
                     <span className={`size-2 shrink-0 rounded-[2px] ${kindColour(line.kind)}`} aria-hidden />
                     <span className="min-w-0 grow truncate text-fg-soft">{line.kind}</span>
-                    <span className="text-fg tabular-nums">{dollars(line.micros)}</span>
+                    <span className="text-fg tabular-nums">{money(line.micros)}</span>
                   </li>
                 ))}
               </ul>

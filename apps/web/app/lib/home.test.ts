@@ -578,13 +578,14 @@ test("spend in the span: the UTC days it covers across months, at price, without
     ],
     totals: { chargedMicros: 12_600_000, paidMicros: 50_000_000, costMicros: 0, entries: 4, priceMicros: 13_600_000 },
   };
-  const spend = spendIn([september, october], { from: Date.parse("2026-09-29T15:00:00Z"), now: NOW });
+  const spend = spendIn([september, october], { from: Date.parse("2026-09-29T15:00:00Z"), now: NOW }, 13_609_000);
   assert.deepEqual([spend.from, spend.to], ["2026-09-29", "2026-10-09"]);
   assert.equal(spend.totalMicros, 5_600_000);
   assert.deepEqual(spend.lines.map((l) => [l.kind, l.micros, l.count]), [
     ["Agent runs", 5_000_000, 14],
     ["Sandbox time", 600_000, 12],
   ]);
-  // The month so far is the current month's statement.
-  assert.equal(spend.monthMicros, 13_600_000);
+  // The month so far is billing's usage report, the top bar's figure, not the statement: it carries what is not yet closed.
+  assert.equal(spend.monthMicros, 13_609_000);
+  assert.equal(spendIn([september, october], { from: Date.parse("2026-09-29T15:00:00Z"), now: NOW }, null).monthMicros, null);
 });

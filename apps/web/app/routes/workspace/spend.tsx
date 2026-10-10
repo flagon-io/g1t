@@ -32,9 +32,9 @@ import { cn } from "../../lib/cn";
 import { page } from "../../lib/meta";
 import { workspaceAgents } from "../../lib/services.server";
 import { managesBilling, requireUser, roleIn } from "../../lib/session.server";
-import { SPEND_PERIODS, type SpendScope, agentMicros, agentSpendHref, attributionSlices, daySeries, periodLabel, readPeriod, readScope, spanFor, usageByDay, withoutSelf } from "../../lib/spend";
+import { SPEND_PERIODS, type SpendScope, agentMicros, agentSpendHref, attributionSlices, daySeries, periodLabel, readPeriod, readScope, spanFor, spentMicros, usageByDay, withoutSelf } from "../../lib/spend";
 import { loadBreakdown, loadBudgets, loadPricing, loadUsage } from "../../lib/spend.server";
-import { money } from "../../lib/usage";
+import { money } from "../../lib/money";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Spend · ${params.owner} · g1t` });
@@ -195,7 +195,7 @@ export default function SpendPage({ loaderData }: Route.ComponentProps) {
             <div className="grid gap-3 sm:grid-cols-3">
               {scope === "workspace" ? (
                 <>
-                  <Tile label={`Spent, ${label}`} value={used ? money(used.free ? used.totals.costMicros : used.totals.priceMicros) : "—"} sub={used ? (used.free ? "At cost: g1t charges nothing for now" : "Usage at price, every product") : "Usage couldn't be read"} />
+                  <Tile label={`Spent, ${label}`} value={used ? money(spentMicros(used)) : "—"} sub={used ? (used.free ? "At cost: g1t charges nothing for now" : "Usage at price, every product") : "Usage couldn't be read"} />
                   <Tile
                     label={`Agents, ${label}`}
                     value={used ? money(agentMicros(used)) : spent ? money(spent.total_micros) : "—"}

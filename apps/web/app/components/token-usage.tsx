@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import { cn } from "../lib/cn";
-import { usd } from "../lib/mission-control";
+import { money } from "../lib/money";
 import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import {
@@ -96,7 +96,7 @@ function Figures({ usage, usageHref }: { usage: TokenUsageView; usageHref: strin
     <>
       <dl className="mt-4 grid grid-cols-2 gap-2">
         <Tile label="Tokens" value={compactTokens(usage.totalTokens)} />
-        <Tile label="Cost" value={usd(usage.costMicros / 1e6)} title="What these runs cost, whoever paid" />
+        <Tile label="Cost" value={money(usage.costMicros)} title="What these runs cost, whoever paid" />
         <Tile label="Active days" value={String(usage.activeDays)} hint={`of ${usage.days}`} />
         <Tile label="From cache" value={share == null ? "—" : `${Math.round(share * 100)}%`} title="Prompt tokens read from the model's cache" />
       </dl>

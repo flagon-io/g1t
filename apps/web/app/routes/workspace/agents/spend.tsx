@@ -11,7 +11,7 @@ import { meterTone, monthName, shareOf } from "../../../components/agents/format
 import { DailyBars, Meter, Panel, Quiet, SessionRow, SliceList } from "../../../components/agents/parts";
 import { requireUser, roleIn } from "../../../lib/session.server";
 import { workspaceAgents } from "../../../lib/services.server";
-import { money } from "../../../lib/usage";
+import { money } from "../../../lib/money";
 
 /** Where this agent's month went, what each effort level has cost it, and ways to spend less. */
 export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{

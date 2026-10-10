@@ -4,7 +4,7 @@ import { Link } from "react-router";
 
 import { RUN_KIND_LABEL, type Runner, type RunKind } from "@g1t/contracts";
 
-import { dollars } from "../lib/billing";
+import { money } from "../lib/money";
 import { type CloudWork, machineTime, perMinute } from "../lib/runners";
 import type { RunnersAction, RunnersPageData } from "../lib/runners.server";
 import { Groups, NewRunner, RunnerRow, RunnerSettingsForm, STATUS } from "./runners";
@@ -190,7 +190,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
           <Figure label="This month" hint="Agent sandbox time and sandbox time on your usage, at price, from the first of the month.">
             {cost ? (
               <>
-                {machineTime(cost.cloudSeconds)} · {dollars(cost.cloudMicros)}
+                {machineTime(cost.cloudSeconds)} · {money(cost.cloudMicros)}
               </>
             ) : (
               <Unknown what="Billing" />
@@ -237,7 +237,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
           <Figure label="This month" hint="Self-hosted runner time on your usage, from the first of the month. It is never charged.">
             {cost ? (
               <>
-                {machineTime(cost.ownSeconds)} · {dollars(0)}
+                {machineTime(cost.ownSeconds)} · {money(0)}
               </>
             ) : (
               <Unknown what="Billing" />
@@ -404,13 +404,13 @@ function TimeSplit({ data }: { data: RunnersPageData }) {
           <span className="size-2 shrink-0 rounded-[2px] bg-info" aria-hidden />
           <span className="min-w-0 grow truncate text-fg-soft">g1t cloud</span>
           <span className="text-muted tabular-nums">{machineTime(cost.cloudSeconds)}</span>
-          <span className="w-20 text-right text-fg tabular-nums">{dollars(cost.cloudMicros)}</span>
+          <span className="w-20 text-right text-fg tabular-nums">{money(cost.cloudMicros)}</span>
         </li>
         <li className="flex items-center gap-2">
           <span className="size-2 shrink-0 rounded-[2px] bg-success" aria-hidden />
           <span className="min-w-0 grow truncate text-fg-soft">Your runners</span>
           <span className="text-muted tabular-nums">{machineTime(cost.ownSeconds)}</span>
-          <span className="w-20 text-right text-fg tabular-nums">{dollars(0)}</span>
+          <span className="w-20 text-right text-fg tabular-nums">{money(0)}</span>
         </li>
       </ul>
       <p className="mt-4 text-[0.6875rem] leading-relaxed text-faint">

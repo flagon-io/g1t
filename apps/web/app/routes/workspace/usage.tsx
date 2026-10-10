@@ -111,8 +111,9 @@ export function UsageView({
       />
       <Breakdown report={report} group={filters.group as GroupBy} columns={cols} projectHref={fixedProject ? undefined : (project) => `/${project}/usage`} />
       <p className="text-xs text-faint">
-        Every amount is usage at price: what was charged, plus what included usage, credit or a discount paid for it. Storage, git
-        operations, scans and search are metered through the month and charged when it closes.
+        Every amount is usage at price: what was charged, plus what included usage, credit or a discount paid for it, to the cent; under a
+        cent reads &lt;$0.01. Storage, git operations, scans and search are metered through the month and counted in it as they go; they
+        are charged when it closes, on the same terms as the rest.
         {!fixedProject && (
           <>
             {" "}

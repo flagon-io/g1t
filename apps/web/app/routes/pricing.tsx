@@ -3,7 +3,7 @@ import { ArrowUpRight } from "lucide-react";
 import { type FeaturePlan, type FreeTier, MICROS_PER_DOLLAR, type Price } from "@g1t/contracts";
 
 import type { Route } from "./+types/pricing";
-import { wholeDollars } from "../lib/billing";
+import { money as sum, wholeDollars } from "../lib/money";
 import { page } from "../lib/meta";
 import { application, faqPage } from "../lib/structured-data";
 import { TimeAgo } from "../components/ui";
@@ -28,13 +28,9 @@ export async function loader() {
   return { book, free: status?.free ?? false };
 }
 
-/** A price in dollars, with as many digits as it needs to say anything. */
+/** A price, with the fraction of a cent it is set to: `$0.024`, `$0.25`. */
 function money(micros: number): string {
-  const dollars = micros / MICROS_PER_DOLLAR;
-  if (dollars >= 1) return `$${dollars.toFixed(2)}`;
-  // Three places for a fraction of a cent ($0.024), two when the third is 0 ($0.25).
-  if (dollars >= 0.01) return `$${dollars.toFixed(3).replace(/(\.\d\d)0$/, "$1")}`;
-  return `$${dollars.toPrecision(2)}`;
+  return sum(micros, { precise: true });
 }
 
 /** Per second is easier to read per minute. */

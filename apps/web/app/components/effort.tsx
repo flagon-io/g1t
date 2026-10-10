@@ -17,7 +17,7 @@ import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { cn } from "../lib/cn";
 import { EFFORT_OPTIONS, acceptedLabel, costAt, costLine, effortLabel, savingLabel, totalSaving } from "../lib/effort";
-import { money } from "../lib/usage";
+import { money } from "../lib/money";
 
 /**
  * The five settings as one segmented control, radio inputs underneath so
@@ -105,7 +105,7 @@ export function EffortCosts({ costs }: { costs: AgentEffortCosts | null }) {
                 {effortLabel(level.effort)}
                 {costs.effort === level.effort && <span className="ml-1.5 text-faint">now</span>}
               </td>
-              <td className="py-1.5 pr-3">{at ? money(at.typical_micros!) : <span className="text-faint">Not measured</span>}</td>
+              <td className="py-1.5 pr-3">{at ? money(at.typical_micros!, { precise: true }) : <span className="text-faint">Not measured</span>}</td>
               <td className="py-1.5 pr-3 text-muted">{level.sessions}</td>
               <td className="py-1.5 text-muted">{acceptedLabel(at) || "—"}</td>
             </tr>

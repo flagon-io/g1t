@@ -11,7 +11,6 @@ import {
   cardFeeCents,
   feeAndTax,
   creditLine,
-  dollars,
   needsAttention,
   usageGlance,
   parseCaps,
@@ -24,7 +23,6 @@ import {
   share,
   spendPath,
   spendRange,
-  wholeDollars,
 } from "./billing.ts";
 
 test("a credit from g1t reads in a line, with what is left and when it expires", () => {
@@ -49,11 +47,7 @@ test("the card fee shown before paying is the one billing charges, and prices ex
   assert.equal(feeAndTax(0), "Plus tax where it applies");
 });
 
-test("money reads as dollars", () => {
-  assert.equal(dollars(9_500_000), "$9.50");
-  assert.equal(dollars(-1_250_000), "−$1.25");
-  assert.equal(wholeDollars(1_000_000_000), "$1,000");
-  assert.equal(wholeDollars(100_000), "$0.10");
+test("dollars are read from what people type", () => {
   assert.equal(readDollars("$1,000"), 1_000_000_000);
   assert.equal(readDollars(""), null);
   assert.equal(readDollars("lots"), null);

@@ -7,6 +7,7 @@
 import type { CardAction, MessageCard } from "@g1t/contracts";
 
 import type { SessionChip } from "./session-card";
+import { microsOf, plainDollars } from "./money.ts";
 
 /** A card's state chip, as a session's is, outlined only when it is waiting quietly. */
 export type CardChip = { tone: SessionChip["tone"] | "merged"; live: boolean; outline?: boolean };
@@ -56,7 +57,7 @@ export function moneyValue(input: string | null | undefined): string | null {
   if (!/^\d+(\.\d{0,2})?$|^\.\d{1,2}$/.test(text)) return null;
   const amount = Number(text);
   if (!Number.isFinite(amount) || amount <= 0) return null;
-  return amount.toFixed(2);
+  return plainDollars(microsOf(amount));
 }
 
 /** What a money field starts with: the suggestion as an amount, or empty. */

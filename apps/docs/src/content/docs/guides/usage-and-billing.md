@@ -538,6 +538,24 @@ to disagree with it.
 | **Agents** | The agent product within Spent: model tokens, the [agent rate](#the-agent-rate) and agents' sandbox time, for every agent's chat replies, sessions and runs on repositories. Each entry names the agent that did the work (g1t's own runs on your repositories are **@g1t**) and the person who asked, so **by agent** and **by person** are the same money sliced two ways, and the agents add up to the product. | The top bar's spend pill, Spend's **Agents** tile and its **Agents** and **People** slices, Usage's **Agent** product |
 | **Charged** | What is left for the workspace to pay this month: usage at price, less your discount, less what included usage, the trial, a pool or g1t paid, less what [credit](#credits-from-g1t) paid. Never below zero: a workspace with a 100% discount is charged exactly nothing. Usage metered through the month and charged when it closes (storage, git operations, scans, embeddings, domains, app traffic) counts now on the same terms. | Billing's plan card, Spend's **Charged**, the top bar's **Workspace** view, and the figure your [spend limit](#your-spend-limit) is measured against |
 
+**This month** is the calendar month in UTC, from its first day to today,
+on every page: the top bar's pill, Spend's **This month**, Home's "this
+month so far" and Usage's current billing cycle ask billing for the same
+days and show the same figure. Usage metered through the month and
+charged when it closes (storage, git operations, scans, embeddings,
+domains, app traffic) has no day of its own, so it counts in any range
+that reaches into the current month, and Usage's receipt says what of it
+will be charged at the close on your terms: your discount and included
+usage come off it then, the same as the rest.
+
+Every amount is written the same way: to the cent, rounded half up on
+whole millionths of a dollar, so the same sum never reads differently on
+two pages. Under a cent reads **<$0.01** rather than $0.00 on a total,
+and exactly nothing is $0.00. Where the fraction of a cent is the point,
+the [statement](#the-statement), a session's receipt, the
+[price book](https://g1t.sh/pricing) and an agent's effort costs, amounts carry up to
+four places (`$0.0063`).
+
 The [agent budgets](/guides/agent-budgets/) count the same entries at
 the same price, before any discount or included usage: an agent's chat
 replies and sessions against its own budget, its team's, the person's and
@@ -545,7 +563,7 @@ the workspace's agent budget. Budgets at list price are what makes them
 predictable; the spend limit is on what is charged.
 
 Through the API, `GET /workspaces/:workspace/usage` answers with the
-products, `by_agent` and `by_person`, and `totals.charged_micros`;
+products, `by_agent` and `by_person`, and `totals.charged_micros`, with `totals.pending_charged_micros` for what of the pending usage the close will charge;
 `GET /workspaces/:workspace/budget` answers with the spend limit and
 `spent_micros`, the same charged figure.
 
@@ -1120,7 +1138,7 @@ month's usage in six lines, `agents`, `builds`, `requests`, `domains`,
 before included usage or a pool paid for it) and a `quantity` such as
 *42 build minutes*, each at price (what was charged plus what paid for it), as Usage measures it.
 
-**`usage_report`** (`workspace`, `viewer`, `from`, `until`, optional `products` and `projects`; members only) is what the Usage page reads: totals (`priceMicros`, `discountMicros`, `includedMicros`, `creditsMicros`, `chargedMicros`, `pendingMicros`), each day's usage by product, and every product family with its meters, their daily figures and their projects.
+**`usage_report`** (`workspace`, `viewer`, `from`, `until`, optional `products` and `projects`; members only) is what the Usage page reads: totals (`priceMicros`, `discountMicros`, `includedMicros`, `creditsMicros`, `chargedMicros`, `pendingMicros`, `pendingChargedMicros`), each day's usage by product, and every product family with its meters, their daily figures and their projects.
 
 **`reserve`** holds the work's estimated cost before it starts, so starts
 at the same moment cannot overshoot together. `kind` is `agent`, `check`,

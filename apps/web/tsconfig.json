@@ -9,6 +9,9 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "strict": true,
-    "noEmit": true
+    "noEmit": true,
+    // Pure modules in app/lib import each other by file (`./money.ts`), the
+    // way the tests do, so node runs them as they are and Vite bundles them.
+    "allowImportingTsExtensions": true
   }
 }

@@ -64,8 +64,7 @@ pub(crate) struct PendingSplit {
 }
 
 impl PendingSplit {
-    /// What the workspace will be charged for it.
-    #[cfg(test)]
+    /// What the workspace will be charged for it when the month closes.
     pub fn charged(&self) -> i64 {
         self.price - self.covered - self.discount
     }
@@ -81,10 +80,12 @@ pub(crate) fn pending_split(cost: i64, charge: i64, margin_percent: u32, percent
 }
 
 /// Counts a pending line into the totals: at price (and as pending), with
-/// what g1t covers as included and the discount as discount.
+/// what g1t covers as included, the discount as discount, and what is
+/// left as what the close will charge.
 pub(crate) fn add_pending(totals: &mut UsageTotals, split: &PendingSplit) {
     totals.price_micros += split.price;
     totals.pending_micros += split.price;
+    totals.pending_charged_micros += split.charged();
     totals.included_micros += split.covered;
     totals.discount_micros += split.discount;
 }
@@ -139,6 +140,7 @@ mod tests {
         let pending = [pending_split(7_500, with_margin(7_500, MARGIN), MARGIN, 100)];
         assert_eq!(pending[0], PendingSplit { price: 9_000, covered: 0, discount: 9_000 });
         let totals = month_totals(10_290_000, 10_290_000, 0, 0, &pending);
+        assert_eq!((totals.pending_micros, totals.pending_charged_micros), (9_000, 0));
         assert_eq!(totals.price_micros, 10_299_000);
         assert_eq!(totals.discount_micros, 10_299_000);
         assert_eq!(totals.charged_micros, 0);

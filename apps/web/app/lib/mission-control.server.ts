@@ -57,7 +57,6 @@ import {
   reachesBack,
   reasonFor,
   summaryLine,
-  usd,
   waitingRows,
   weekOf,
   historyCovers,
@@ -80,6 +79,7 @@ import {
 import { roleIn } from "./session.server";
 import { runners } from "./runners.server";
 import { readableRepos } from "./access.server";
+import { microsOf, money } from "./money";
 
 /** The viewer's time zone, which mission control sets, so the greeting fits their day. */
 const TZ_COOKIE = "g1t_tz";
@@ -476,7 +476,7 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
         { label: "Run", value: RUN_LABEL[run.kind], tone: null },
         { label: "Quiet for", value: waitedFor(minutes), tone: "warn" },
         { label: "Steps so far", value: String(run.stepCount), tone: null },
-        ...(run.costUsd != null ? [{ label: "Cost so far", value: usd(run.costUsd), tone: null }] : []),
+        ...(run.costUsd != null ? [{ label: "Cost so far", value: money(microsOf(run.costUsd)), tone: null }] : []),
       ],
       open: run.number != null ? `/${run.repo.namespace}/${run.repo.name}/pull/${run.number}` : undefined,
     });

@@ -16,6 +16,7 @@ import { Card } from "../../../components/ui/card";
 import { isOrchestrator } from "../../../components/orchestrator";
 import { readAgentForm } from "../../../lib/agent-form";
 import { docs, workspaceAgents } from "../../../lib/services.server";
+import { wholeDollars } from "../../../lib/money";
 import { agentTeamsFor, changeAgentTeam } from "../../../lib/agent-teams.server";
 import { AgentTeamsEditor } from "../../../components/teams";
 import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.server";
@@ -294,7 +295,7 @@ function summaryOf(definition: Record<string, unknown>): [string, string][] {
   if (voice) out.push(["Personality", [voice, text(definition.personality)].filter(Boolean).join(" · ")]);
   const budget = definition.budget as { monthly_micros?: number | null; task_micros?: number | null } | undefined;
   if (budget && (budget.monthly_micros != null || budget.task_micros != null)) {
-    const dollars = (m: number) => `$${(m / 1_000_000).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+    const dollars = wholeDollars;
     out.push(["Budget", [budget.monthly_micros != null ? `${dollars(budget.monthly_micros)} a month` : null, budget.task_micros != null ? `${dollars(budget.task_micros)} a session` : null].filter(Boolean).join(", ")]);
   }
   const duties = Array.isArray(definition.responsibilities) ? (definition.responsibilities as string[]) : [];

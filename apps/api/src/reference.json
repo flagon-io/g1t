@@ -6241,6 +6241,7 @@
         "credits_micros": 18000000,
         "charged_micros": 10210000,
         "pending_micros": 1340000,
+        "pending_charged_micros": 1340000,
         "cost_micros": 40100000
       },
       "days": [

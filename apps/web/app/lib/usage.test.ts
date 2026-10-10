@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { axisMoney, byProject, columns, defaultGrain, isStaff, money, quantity, receipt, resolveRange, ticks, usageCsv } from "./usage.ts";
+import { money } from "./money.ts";
+import { monthSpan, spanFor } from "./spend.ts";
+import { byProject, columns, defaultGrain, isStaff, pendingSentence, quantity, receipt, resolveRange, ticks, usageCsv } from "./usage.ts";
+
+const axisMoney = (micros: number) => money(micros, { compact: true });
 
 const NOW = new Date("2026-10-08T15:00:00Z");
 
 test("periods resolve to whole UTC days, both ends included", () => {
   assert.deepEqual(resolveRange(null, {}, NOW), { period: "cycle", from: "2026-10-01", until: "2026-10-08" });
+  // The current cycle is the one "this month" Spend and the top bar ask billing for.
+  assert.deepEqual(resolveRange("cycle", {}, NOW), { period: "cycle", ...monthSpan(NOW) });
+  assert.deepEqual(spanFor("month", NOW), monthSpan(NOW));
   assert.deepEqual(resolveRange("last_cycle", {}, NOW), { period: "last_cycle", from: "2026-09-01", until: "2026-09-30" });
   assert.deepEqual(resolveRange("7d", {}, NOW), { period: "7d", from: "2026-10-02", until: "2026-10-08" });
   assert.deepEqual(resolveRange("custom", { from: "2026-10-05", until: "2026-09-20" }, NOW), { period: "custom", from: "2026-09-20", until: "2026-10-05" });
@@ -49,10 +56,7 @@ test("the money axis has clean ticks, never the same label twice", () => {
   assert.equal(axisMoney(1_500_000_000), "$1.5K");
 });
 
-test("money and quantities read in their units", () => {
-  assert.equal(money(2_760_000), "$2.76");
-  assert.equal(money(4_000), "$0.004");
-  assert.equal(money(0), "$0.00");
+test("quantities read in their units", () => {
   assert.equal(quantity(1_234_567, "tokens"), "1.2M tokens");
   assert.equal(quantity(3_725, "seconds"), "1h 2m");
   assert.equal(quantity(504_000_000, "bytes"), "504 MB");
@@ -93,9 +97,20 @@ test("test-mode hints are for g1t's own people", () => {
   assert.ok(!isStaff(null));
 });
 
-test("money under a hundredth of a cent reads $0.00, never $0.0000", () => {
-  assert.equal(money(3), "$0.00");
-  assert.equal(money(0), "$0.00");
-  assert.equal(money(4_000), "$0.004");
-  assert.equal(money(250), "$0.0003");
+test("the pending note says what the close will charge, with the fraction of a cent that explains a gap", () => {
+  // A comped workspace: $0.009 pending, nothing of it charged.
+  assert.equal(
+    pendingSentence({ pendingMicros: 9_000, pendingChargedMicros: 0 }),
+    "$0.009 of it is metered this month and not yet closed; nothing will be charged when the month closes, after your discount and included usage.",
+  );
+  assert.equal(
+    pendingSentence({ pendingMicros: 9_000, pendingChargedMicros: 6_300 }),
+    "$0.009 of it is metered this month and not yet closed; $0.0063 of it will be charged when the month closes, after your discount and included usage.",
+  );
+  assert.equal(
+    pendingSentence({ pendingMicros: 1_340_000, pendingChargedMicros: 1_340_000 }),
+    "$1.34 of it is metered this month and not yet closed; all of it will be charged when the month closes, after your discount and included usage.",
+  );
+  // An older billing, with no split yet.
+  assert.equal(pendingSentence({ pendingMicros: 9_000 }), "$0.009 of it is metered this month and not yet closed; it is charged when the month closes.");
 });

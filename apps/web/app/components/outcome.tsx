@@ -15,6 +15,7 @@ import { Link } from "react-router";
 
 import type { IssueProgress, Plan } from "@g1t/contracts";
 import { Avatar } from "./ui/avatar";
+import { money } from "../lib/money";
 
 type Look = { label: string; icon: ReactNode; ring: string; text: string; bar: string; live?: boolean };
 
@@ -233,7 +234,7 @@ export function Outcome({ plan, base, costMicros }: { plan: Plan; base: string; 
           ["Needs you", String(needsYou), needsYou > 0 ? "text-warn" : "text-muted"],
           [
             "Agents have cost",
-            costMicros == null ? "—" : `$${(costMicros / 1_000_000).toFixed(2)}`,
+            costMicros == null ? "—" : money(costMicros),
             "text-fg",
           ],
         ].map(([label, value, tone]) => (

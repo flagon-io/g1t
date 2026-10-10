@@ -23,10 +23,10 @@ import {
   parseTab,
   signedPercent,
   sortRows,
-  usd,
   whyFor,
 } from "../lib/mission-control";
 import { cn } from "../lib/cn";
+import { microsOf, money } from "../lib/money";
 import { AgentComposer, type ComposerResult } from "./agent-composer";
 import { AgentSetup } from "./agent-setup";
 import { InboxNeedsCard } from "./inbox";
@@ -54,7 +54,7 @@ const TZ_COOKIE = "g1t_tz";
 /** Rows a tab shows before "See all". */
 const ROWS = 6;
 
-const dollars = (micros: number) => `$${(Math.max(0, micros) / 1_000_000).toFixed(2)}`;
+const dollars = (micros: number) => money(Math.max(0, micros));
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 // --- Small pieces -----------------------------------------------------------------
@@ -1151,7 +1151,7 @@ export default function MissionControl({
                   to={`/${workspace}/-/usage`}
                   className="mt-4 flex items-center justify-between border-t border-line pt-3 text-xs text-muted hover:text-fg"
                 >
-                  <span>Usage at price this week: {usd(stats.weekCost)}</span>
+                  <span>Usage at price this week: {money(microsOf(stats.weekCost))}</span>
                   <ChevronRight size={12} />
                 </Link>
               )}

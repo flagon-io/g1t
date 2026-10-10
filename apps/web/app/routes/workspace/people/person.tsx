@@ -26,7 +26,7 @@ import {
   teamsOfPerson,
 } from "../../../lib/people";
 import { teamPath } from "../../../lib/teams";
-import { money } from "../../../lib/usage";
+import { money } from "../../../lib/money";
 import { chat, identity, workspaceAgents } from "../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../../lib/session.server";
 

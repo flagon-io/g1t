@@ -27,6 +27,7 @@ import { deployments } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
 import { useRefreshWhile } from "../../lib/refresh";
+import { money } from "../../lib/money";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Domains · ${params.owner}/${params.repo} · g1t` });
@@ -77,7 +78,7 @@ const STATUS: Record<DomainStatus, { label: string; tone: string; live?: boolean
 
 /** A custom domain's monthly price, to the cent: `$0.12`. */
 function domainPrice(micros: number | undefined): string {
-  return `$${((micros ?? 120_000) / 1_000_000).toFixed(2)}`;
+  return money(micros ?? 120_000);
 }
 
 function StatusBadge({ status }: { status: DomainStatus }) {

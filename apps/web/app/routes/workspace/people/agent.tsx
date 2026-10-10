@@ -10,7 +10,7 @@ import { Badge } from "../../../components/ui/badge";
 import { page } from "../../../lib/meta";
 import { agentsOn, leads, peopleAgent, teamsOfAgent } from "../../../lib/people";
 import { teamPath } from "../../../lib/teams";
-import { money } from "../../../lib/usage";
+import { money } from "../../../lib/money";
 import { identity, workspaceAgents } from "../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../../lib/session.server";
 import { agentTeamsFor, changeAgentTeam } from "../../../lib/agent-teams.server";

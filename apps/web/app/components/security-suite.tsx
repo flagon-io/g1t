@@ -31,6 +31,7 @@ import { Hint } from "./ui/hint";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { wholeDollars } from "../lib/money";
 
 type Done = { ok: boolean; error?: string } | undefined;
 
@@ -70,7 +71,7 @@ export function ActivationPrompt({
   monthlyCents: number | null;
   isOwner: boolean;
 }) {
-  const price = monthlyCents == null ? null : `$${(monthlyCents / 100).toFixed(monthlyCents % 100 ? 2 : 0)} a month`;
+  const price = monthlyCents == null ? null : `${wholeDollars(monthlyCents * 10_000)} a month`;
   return (
     <div className={`${CARD} flex flex-col gap-4 p-5 sm:flex-row sm:items-start`}>
       <Lock size={18} className="mt-0.5 shrink-0 text-accent" />

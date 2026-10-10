@@ -1,4 +1,5 @@
 import type { GuardrailSettings, RunKind, WorkflowDomain } from "@g1t/contracts";
+import { microsOf, money } from "./money.ts";
 
 /** What a level's form field means: inherit, or a choice of its own. */
 export type Tri = "inherit" | "on" | "off";
@@ -91,7 +92,7 @@ export function settingsFromForm(
 
 /** A cost in dollars, or "no cap". */
 export function formatCap(usd: number | null | undefined): string {
-  return usd == null ? "no cap" : `$${usd.toFixed(2)}`;
+  return usd == null ? "no cap" : money(microsOf(usd));
 }
 
 /** How full a cap is, from 0 to 1, or null with no cap. */

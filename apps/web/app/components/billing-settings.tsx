@@ -12,8 +12,8 @@ import { Form, Link } from "react-router";
 
 import type { AiCredit, BillingDetails, FeatureState, Limit, UsageReport } from "@g1t/contracts";
 
-import { PLUS_TAX, type PlanStatus, cardFeeCents, dollars, feeAndTax, wholeDollars } from "../lib/billing";
-import { money } from "../lib/usage";
+import { PLUS_TAX, type PlanStatus, cardFeeCents, feeAndTax } from "../lib/billing";
+import { money, wholeDollars } from "../lib/money";
 import { Card } from "./billing";
 import { ErrorText, SubmitButton } from "./ui";
 import { Checkbox } from "./ui/checkbox";
@@ -106,7 +106,7 @@ export function PlanSummary({
           <span className="block text-xs text-faint">with {wholeDollars(report?.included?.of ?? 10_000_000)} of usage included</span>
           {status.kind !== "comped" && status.kind !== "enterprise" && (
             <span className="block text-xs text-faint">
-              {plan?.cardFeeCents ? `+ ${dollars(plan.cardFeeCents * 10_000)} card processing fee, ` : ""}
+              {plan?.cardFeeCents ? `+ ${money(plan.cardFeeCents * 10_000)} card processing fee, ` : ""}
               {plan?.cardFeeCents ? PLUS_TAX : "Plus tax where it applies"}
             </span>
           )}
@@ -214,7 +214,7 @@ export function AiCreditCard({ credit, owner, enabled, staff, error }: { credit:
   // What is chosen, so the fee shows before Stripe's page does.
   const [chosenCents, setChosenCents] = useState(2_500);
   const chosenFee = cardFeeCents(chosenCents, fee);
-  const stripeFee = `Stripe's ${(fee.percentMicros / 10_000).toFixed(1)}% + ${dollars(fee.fixedCents * 10_000)}`;
+  const stripeFee = `Stripe's ${(fee.percentMicros / 10_000).toFixed(1)}% + ${money(fee.fixedCents * 10_000)}`;
   const feeText = !fee.on
     ? `${feeAndTax(0)}.`
     : chosenCents > 0
@@ -237,7 +237,7 @@ export function AiCreditCard({ credit, owner, enabled, staff, error }: { credit:
           ? "Agent and AI Gateway usage is free for this workspace under its discount: shown at its price, then the discount."
           : credit.postpaid
             ? "This workspace's enterprise is invoiced for Agent and AI Gateway usage after use: no credit needed."
-            : `Prepaid credit for Agent and AI Gateway usage, spent before anything else. Models at the provider's price${credit.modelMarkupPercent ? ` plus ${credit.modelMarkupPercent}%` : ""}, plus the agent rate${rate > 0 ? ` (${dollars(rate)} per million tokens)` : ""}. Credit expires ${credit.expiresDays === 365 ? "1 year" : `${credit.expiresDays} days`} after purchase.`
+            : `Prepaid credit for Agent and AI Gateway usage, spent before anything else. Models at the provider's price${credit.modelMarkupPercent ? ` plus ${credit.modelMarkupPercent}%` : ""}, plus the agent rate${rate > 0 ? ` (${money(rate)} per million tokens)` : ""}. Credit expires ${credit.expiresDays === 365 ? "1 year" : `${credit.expiresDays} days`} after purchase.`
       }
       aside={
         <p className="shrink-0 sm:text-right">

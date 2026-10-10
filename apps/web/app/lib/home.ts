@@ -20,6 +20,8 @@ import type {
   Statement,
 } from "@g1t/contracts";
 
+import { money } from "./money.ts";
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
@@ -732,13 +734,6 @@ export function codeRow(need: CodeNeed): AttentionRow {
   }
 }
 
-/** "$4.20", or "<$0.01" for a sliver. */
-export function dollars(micros: number): string {
-  const value = micros / 1_000_000;
-  if (value > 0 && value < 0.01) return "<$0.01";
-  return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 /** A session stopped at its spend cap that the viewer may approve more for. */
 export function sessionCapRow(session: AgentSession, slug: string): AttentionRow {
   const cap = session.cap_micros;
@@ -747,7 +742,7 @@ export function sessionCapRow(session: AgentSession, slug: string): AttentionRow
     kind: "session_cap",
     title: session.visible ? session.title : `A session of @${session.agent_handle}`,
     detail: `@${session.agent_handle} stopped at its spend cap${session.channel_name ? ` in #${session.channel_name}` : ""}.`,
-    stake: { text: cap != null ? `${dollars(session.charged_micros)} of ${dollars(cap)} cap` : `${dollars(session.charged_micros)} spent`, tone: "warn" },
+    stake: { text: cap != null ? `${money(session.charged_micros)} of ${money(cap)} cap` : `${money(session.charged_micros)} spent`, tone: "warn" },
     action: { label: "Approve more", to: `/${slug}/-/agents/${session.agent_handle}/sessions/${session.id}` },
     owner: { name: session.agent_handle, agent: true },
     at: Date.parse(session.updated_at),
@@ -780,7 +775,7 @@ export function agentRow(agent: AgentLike, slug: string): AttentionRow | null {
       kind: "agent_budget",
       title: `${agent.display_name} is out of budget`,
       detail: `@${agent.handle} takes no new work this month until its budget is raised.`,
-      stake: { text: budget != null ? `${dollars(Math.max(0, budget - agent.spent_month_micros))} left` : "Budget used", tone: "danger" },
+      stake: { text: budget != null ? `${money(Math.max(0, budget - agent.spent_month_micros))} left` : "Budget used", tone: "danger" },
       action: { label: "Raise the budget", to: `/${slug}/-/agents/${agent.handle}/spend` },
     };
   }
@@ -893,7 +888,7 @@ export function limitRow(input: { alert: number | null; spentMicros: number; sin
     key: "limit:agents",
     kind: "limit",
     title: "Agents used up the workspace's budget",
-    detail: `${dollars(input.spentMicros)} spent this month. Agents start nothing new until the budget is raised or the month turns.`,
+    detail: `${money(input.spentMicros)} spent this month. Agents start nothing new until the budget is raised or the month turns.`,
     stake: { text: "No new agent work", tone: "danger" },
     action: { label: "Raise the budget", to: `/${slug}/-/spend` },
     owner: null,
@@ -978,8 +973,8 @@ export type Spend = {
   totalMicros: number;
   /** A line per kind of charge, as the statement names it, most first. */
   lines: { kind: string; micros: number; count: number }[];
-  /** Usage at price this month so far. */
-  monthMicros: number;
+  /** Usage at price this month so far, the top bar's and Usage's figure; null when it could not be read. */
+  monthMicros: number | null;
 };
 
 /** The UTC months (`YYYY-MM`) the span touches, oldest first: the statements Home reads. */
@@ -1008,8 +1003,11 @@ export function spanMonths(span: Pick<Span, "from" | "now">): string[] {
  * discount paid of it), leaving out money in. The statement keeps whole
  * UTC days, so the span is counted from the start of the UTC day it began.
  * `statements` is the months of `spanMonths`, the current one last.
+ * `monthMicros` is this month so far as billing's usage report counts it,
+ * the month's usage not yet closed included: the figure the top bar's
+ * pill, Spend and Usage show, so Home shows no other.
  */
-export function spendIn(statements: Pick<Statement, "groups" | "totals">[], span: Pick<Span, "from" | "now">): Spend {
+export function spendIn(statements: Pick<Statement, "groups" | "totals">[], span: Pick<Span, "from" | "now">, monthMicros: number | null): Spend {
   const from = new Date(span.from).toISOString().slice(0, 10);
   const to = new Date(span.now).toISOString().slice(0, 10);
   const byKind = new Map<string, { micros: number; count: number }>();
@@ -1028,13 +1026,12 @@ export function spendIn(statements: Pick<Statement, "groups" | "totals">[], span
     .map(([kind, value]) => ({ kind, ...value }))
     .filter((line) => line.micros > 0)
     .sort((a, b) => b.micros - a.micros || a.kind.localeCompare(b.kind));
-  const current = statements.at(-1);
   return {
     from,
     to,
     totalMicros: lines.reduce((sum, line) => sum + line.micros, 0),
     lines,
-    monthMicros: current ? (current.totals.priceMicros ?? current.totals.chargedMicros) : 0,
+    monthMicros,
   };
 }
 

@@ -8,6 +8,7 @@ import { env } from "cloudflare:workers";
 import { type AgentSession, type AgentsOverview, type Deployment, type InstallRequests, type Memory, type ProjectDeploys, type Repo, type User, notifyClient } from "@g1t/contracts";
 
 import { type CodePull, type CodeWork, type SessionWork, type Span, type Spend, pullKey, spanMonths, spendIn } from "./home";
+import { monthSpan, spentMicros } from "./spend";
 import { agents, billing, deployments, repos, work, workspaceAgents } from "./services.server";
 
 /** Pull requests read per project and list: `LIST_PAGE` in services/work. */
@@ -153,14 +154,26 @@ export async function loadDeploys(
   return { overview: overview.value, projects, complete: projects.length === recent.length };
 }
 
-/** The span's spend from the statements of the months it touches. Null when billing did not answer. */
+/**
+ * The span's spend from the statements of the months it touches, and the
+ * month so far from the usage report the top bar, Spend and Usage read
+ * (`spend.ts` `monthSpan`, `spentMicros`), so Home's figure is theirs. Null
+ * when billing did not answer; the month alone null when only it did not.
+ */
 export async function loadSpend(viewer: User, slug: string, span: Pick<Span, "from" | "now">): Promise<Spend | null> {
   const months = spanMonths(span);
-  const statements = await Promise.all(months.map((month) => billing.statement(slug, viewer, month, "day").catch(warn(`statement ${month}`))));
+  const [statements, month] = await Promise.all([
+    Promise.all(months.map((month) => billing.statement(slug, viewer, month, "day").catch(warn(`statement ${month}`)))),
+    billing
+      .usageReport(slug, viewer, monthSpan(new Date(span.now)))
+      .then((result) => (result.ok ? spentMicros(result.value) : null))
+      .catch(warn("month usage")),
+  ]);
   if (statements.some((statement) => !statement?.ok)) return null;
   return spendIn(
     statements.map((statement) => (statement as Extract<typeof statement, { ok: true }>).value),
     span,
+    month,
   );
 }
 

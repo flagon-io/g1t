@@ -63,6 +63,28 @@ export function readScope(raw: string | null | undefined, mayWorkspace: boolean)
 const iso = (at: Date) => at.toISOString().slice(0, 10);
 
 /**
+ * This month, in UTC: its first day to today, both included. The one
+ * range "this month" means on every page: the top bar's pill, Spend's
+ * "This month", Home's "this month so far" and Usage's current cycle all
+ * read it, so the same month shows the same number everywhere. Billing
+ * adds the month's usage not yet closed (`pending_micros`) to any range
+ * that reaches into the current month, so `until` need not be month end.
+ */
+export function monthSpan(now: Date): { from: string; until: string } {
+  return { from: iso(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))), until: iso(now) };
+}
+
+/**
+ * What the workspace used over the report's range, at price: the figure
+ * the pill, Spend's "Spent", Home's "this month so far" and Usage's
+ * "Usage at price" all show. Billing already measures at cost while g1t
+ * is free, so the report's price is the one figure in every mode.
+ */
+export function spentMicros(report: Pick<UsageReport, "totals">): number {
+  return report.totals.priceMicros;
+}
+
+/**
  * The days a period covers in UTC, both ends included, as the agents
  * service counts them (services/agents/src/budget.ts `spendSpan`).
  */
@@ -78,7 +100,7 @@ export function spanFor(period: SpendPeriod, now: Date): { from: string; until: 
     case "30d":
       return { from: iso(new Date(Date.UTC(y, m, d - 29))), until: iso(now) };
     default:
-      return { from: iso(new Date(Date.UTC(y, m, 1))), until: iso(now) };
+      return monthSpan(now);
   }
 }
 

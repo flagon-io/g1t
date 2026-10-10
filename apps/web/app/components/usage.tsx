@@ -18,9 +18,8 @@ import {
   type GroupBy,
   PERIODS,
   type Period,
-  axisMoney,
   byProject,
-  money,
+  pendingSentence,
   productStyle,
   quantity,
   rangeLabel,
@@ -29,6 +28,7 @@ import {
   ticks,
   usageCsv,
 } from "../lib/usage";
+import { money } from "../lib/money";
 import { cn } from "../lib/cn";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -270,9 +270,7 @@ export function IncludedAndCredit({ report, billingHref, owner }: { report: Usag
               </div>
             ))}
           </dl>
-          {report.totals.pendingMicros > 0 && (
-            <p className="mt-1 text-xs text-faint">{money(report.totals.pendingMicros)} of it is metered this month and charged when it closes.</p>
-          )}
+          {report.totals.pendingMicros > 0 && <p className="mt-1 text-xs text-faint">{pendingSentence(report.totals)}</p>}
         </div>
       </section>
     </Card>
@@ -353,7 +351,7 @@ export function UsageChart({
           <div className="relative w-12 shrink-0 text-right text-[0.6875rem] text-faint tabular-nums" style={{ height: CHART_HEIGHT }} aria-hidden="true">
             {scale.map((t) => (
               <span key={t} className="absolute right-0 -translate-y-1/2" style={{ top: `${100 - (t / top) * 100}%` }}>
-                {axisMoney(t)}
+                {money(t, { compact: true })}
               </span>
             ))}
           </div>
@@ -523,7 +521,7 @@ function MeterRow({ meter, color, projectHref }: { meter: MeterLine; color: stri
       </span>
       <span className="text-right tabular-nums">
         {money(meter.micros)}
-        {(meter.pendingMicros ?? 0) > 0 && <span className="block text-[0.6875rem] text-faint">{money(meter.pendingMicros ?? 0)} pending</span>}
+        {(meter.pendingMicros ?? 0) > 0 && <span className="block text-[0.6875rem] text-faint">{money(meter.pendingMicros ?? 0, { precise: true })} not yet closed</span>}
       </span>
     </>
   );

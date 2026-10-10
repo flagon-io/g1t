@@ -8,6 +8,8 @@
 import type { AgentBudget, AgentRouting, NewWorkspaceAgent, PersonalityPreset, WorkspaceAgent, WorkspaceAgentScope } from "@g1t/contracts";
 import { connectorById, connectorPath } from "@g1t/contracts/connectors";
 
+import { wholeDollars } from "./money.ts";
+
 /** The draft as the page keeps it while it is edited: everything `create` takes, and its scope. */
 export type BuilderDefinition = NewWorkspaceAgent & { scope: WorkspaceAgentScope; avatar_seed?: string };
 
@@ -104,7 +106,7 @@ export function lineDiff(before: string, after: string): DiffLine[] {
 /** One field a drafted change touches: its name, and the before and after as people read them. */
 export type ChangeRow = { field: string; label: string; before: string; after: string; lines?: DiffLine[] };
 
-const dollars = (micros: number | null | undefined) => (micros == null ? "No cap" : `$${(micros / 1_000_000).toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
+const dollars = (micros: number | null | undefined) => (micros == null ? "No cap" : wholeDollars(micros));
 const tierWord = (tier: string | null | undefined) => (tier === "small" ? "Fast" : tier === "large" ? "Standard" : tier === "frontier" ? "Most capable" : "None");
 
 /**

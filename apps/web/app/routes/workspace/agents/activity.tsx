@@ -11,7 +11,7 @@ import { Card } from "../../../components/ui/card";
 import { channelPath } from "../../../lib/chat";
 import { workspaceAgents } from "../../../lib/services.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
-import { money } from "../../../lib/usage";
+import { money } from "../../../lib/money";
 
 /** Everything the agent did lately: its replies and its sessions, newest first. */
 export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ activity: AgentActivity[] | null }> {

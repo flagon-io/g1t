@@ -20,15 +20,14 @@ import {
   alertTone,
   cardFeeCents,
   creditLine,
-  dollars,
   gigabytes,
   requestStatus,
   share,
   shortDay,
   shownMeters,
   spendRange,
-  wholeDollars,
 } from "../lib/billing";
+import { money, wholeDollars } from "../lib/money";
 import { ErrorText, SubmitButton } from "./ui";
 import { Badge } from "./ui/badge";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
@@ -126,8 +125,8 @@ export function Meter({
       <div className="flex flex-wrap justify-between gap-x-4 text-sm">
         <span className="text-muted">{label}</span>
         <span className="tabular-nums">
-          {dollars(used)}
-          {of != null && <span className="text-faint"> of {dollars(of)}</span>}
+          {money(used)}
+          {of != null && <span className="text-faint"> of {money(of)}</span>}
         </span>
       </div>
       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line" role="presentation">
@@ -236,7 +235,7 @@ export function PlanCard({
           <span className="text-sm text-muted"> / month</span>
           <span className="block text-xs text-faint">per workspace, never per seat</span>
           <span className="block text-xs text-faint">
-            {plan?.cardFeeCents ? `+ ${dollars(plan.cardFeeCents * 10_000)} card processing fee, ${PLUS_TAX}` : "Plus tax where it applies"}
+            {plan?.cardFeeCents ? `+ ${money(plan.cardFeeCents * 10_000)} card processing fee, ${PLUS_TAX}` : "Plus tax where it applies"}
           </span>
         </p>
       }
@@ -348,7 +347,7 @@ function MonthUsage({
                 <span className="block truncate text-xs text-faint">{row.quantity ?? "None yet"}</span>
               )}
             </span>
-            <span className={`shrink-0 tabular-nums ${row.micros > 0 ? "" : "text-faint"}`}>{dollars(row.micros)}</span>
+            <span className={`shrink-0 tabular-nums ${row.micros > 0 ? "" : "text-faint"}`}>{money(row.micros)}</span>
           </li>
         ))}
       </ul>
@@ -356,13 +355,13 @@ function MonthUsage({
         {/* At price, before the plan's included usage, the trial and the pools paid
             their part: Usage shows what was charged. */}
         <span className="font-medium">Total at price</span>
-        <span className="font-medium tabular-nums">{dollars(total)}</span>
+        <span className="font-medium tabular-nums">{money(total)}</span>
       </div>
       <p className="mt-2 text-xs text-faint">
         {comped
           ? "What this workspace's usage comes to at price. Its 100% discount takes all of it off."
           : on
-            ? `Drawn from the included usage first, then charged up to your spend limit. Projects, previews and repositories are never charged, and the first ${freeStorage} of private storage and ${freeGit} git operations a month are free. App traffic, custom domains, storage and git operations are counted through the month and charged when it closes.`
+            ? `Drawn from the included usage first, then charged up to your spend limit. Projects, previews and repositories are never charged, and the first ${freeStorage} of private storage and ${freeGit} git operations a month are free. App traffic, custom domains, storage and git operations are counted through the month and charged when it closes, after the included usage and any discount, like the rest.`
             : `The forge is free: ${freeStorage} of private storage and ${freeGit} git operations a month. Agents run from the trial, and checks, workflows and the merge queue on public repositories from the open-source pool; together they pay part of this total: Usage shows what was charged.`}
       </p>
     </div>
@@ -628,7 +627,7 @@ export function CreditsCard({ credits }: { credits: Credits }) {
       aside={
         <p className="shrink-0 sm:text-right">
           <span className="block text-xs text-muted">Credit left</span>
-          <span className="text-xl font-semibold tabular-nums">{dollars(credits.leftMicros)}</span>
+          <span className="text-xl font-semibold tabular-nums">{money(credits.leftMicros)}</span>
         </p>
       }
     >
@@ -664,7 +663,7 @@ export function PrepayCard({
   cardFee?: { on: boolean; percentMicros: number; fixedCents: number } | null;
   error?: string;
 }) {
-  const fees = PREPAY.presets.map((amount) => `${dollars(cardFeeCents(amount * 100, cardFee) * 10_000)} on ${wholeDollars(amount * 1_000_000)}`);
+  const fees = PREPAY.presets.map((amount) => `${money(cardFeeCents(amount * 100, cardFee) * 10_000)} on ${wholeDollars(amount * 1_000_000)}`);
   return (
     <Card
       id="prepay"
@@ -674,7 +673,7 @@ export function PrepayCard({
       aside={
         <p className="shrink-0 sm:text-right">
           <span className="block text-xs text-muted">Prepaid balance</span>
-          <span className="text-xl font-semibold tabular-nums">{dollars(prepaidMicros)}</span>
+          <span className="text-xl font-semibold tabular-nums">{money(prepaidMicros)}</span>
         </p>
       }
     >

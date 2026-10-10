@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field";
 import { Input, InputAddon, InputGroup } from "../ui/input";
 import { dollarsField } from "../../lib/agent-form";
-import { money } from "../../lib/usage";
+import { money } from "../../lib/money";
 import { PrivateTitle, SpendOfCap } from "./parts";
 
 /** What Agents mode's actions answer. */

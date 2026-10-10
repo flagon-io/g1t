@@ -20,7 +20,7 @@ import { page } from "../../lib/meta";
 import { useRefreshWhile } from "../../lib/refresh";
 import { workspaceAgents } from "../../lib/services.server";
 import { requireUser, roleIn } from "../../lib/session.server";
-import { money } from "../../lib/usage";
+import { money } from "../../lib/money";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Agents · ${params.owner} · g1t` });

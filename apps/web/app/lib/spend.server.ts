@@ -9,7 +9,7 @@
  */
 import type { AgentPolicy, AgentSpendBreakdown, Limit, PersonBudgets, SpendPeriod, UsageReport, User, WorkspaceAgent } from "@g1t/contracts";
 
-import { type Pricing, type SpendScope, agentMicros, attributionSlices, pricingOf, spanFor } from "./spend";
+import { type Pricing, type SpendScope, agentMicros, attributionSlices, pricingOf, spanFor, spentMicros } from "./spend";
 import { billing, workspaceAgents } from "./services.server";
 
 const warn = (what: string) => (error: unknown) => {
@@ -114,7 +114,7 @@ export async function loadPill(viewer: User, slug: string, mayWorkspace: boolean
     me: mine ? { spentMicros: mine.total_micros, budgetMicros: budget, byKind: mine.by_kind, byAgent: mine.by_agent } : null,
     workspace: mayWorkspace
       ? {
-          spentMicros: usage ? (usage.free ? usage.totals.costMicros : usage.totals.priceMicros) : null,
+          spentMicros: usage ? spentMicros(usage) : null,
           chargedMicros: limit?.spentMicros ?? null,
           limitMicros: limit ? (limit.spendLimitMicros ?? limit.ceilingMicros) : null,
           agentsMicros: usage ? agentMicros(usage) : (everyone?.total_micros ?? null),

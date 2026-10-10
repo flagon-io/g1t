@@ -5,23 +5,7 @@
 
 import type { CreditGrant, Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, Usage, UsageAlert } from "@g1t/contracts";
 
-/** Millionths of a dollar in one dollar, as `MICROS_PER_DOLLAR`; here so the tests need no build of the contracts. */
-const MICROS_PER_DOLLAR = 1_000_000;
-
-/** Millionths of a dollar as dollars, to the cent or finer. */
-export function dollars(micros: number, digits = 2): string {
-  const sign = micros < 0 ? "−" : "";
-  return `${sign}$${(Math.abs(micros) / MICROS_PER_DOLLAR).toFixed(digits)}`;
-}
-
-/** Whole dollars when they are whole, with thousands separated: "$1,000", "$0.10". */
-export function wholeDollars(micros: number): string {
-  const d = micros / MICROS_PER_DOLLAR;
-  const sign = d < 0 ? "−" : "";
-  const abs = Math.abs(d);
-  const digits = Number.isInteger(abs) ? 0 : 2;
-  return `${sign}$${abs.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
-}
+import { MICROS_PER_DOLLAR, money, wholeDollars } from "./money.ts";
 
 /** Prices on g1t exclude tax; Stripe adds it at checkout from the billing address. */
 export const PLUS_TAX = "plus tax where it applies";
@@ -41,7 +25,7 @@ export function cardFeeCents(cents: number, fee: { on: boolean; percentMicros: n
 
 /** "Card processing fee $1.06, plus tax where it applies", as shown before paying. */
 export function feeAndTax(feeCents: number): string {
-  return feeCents > 0 ? `Card processing fee ${dollars(feeCents * 10_000)}, ${PLUS_TAX}` : `Plus tax where it applies`;
+  return feeCents > 0 ? `Card processing fee ${money(feeCents * 10_000)}, ${PLUS_TAX}` : `Plus tax where it applies`;
 }
 
 /** A form's dollar amount as micros, or null when it is empty or not a number. */
@@ -249,7 +233,7 @@ const METERS: Record<string, string> = {
 export function alertText(alert: UsageAlert): string {
   const what = METERS[alert.meter] ?? alert.meter.replace(/_/g, " ");
   const reached = alert.level >= 100 ? `All of ${what}` : `${alert.level}% of ${what}`;
-  return `${reached}: ${dollars(alert.usedMicros)} of ${dollars(alert.limitMicros)}.`;
+  return `${reached}: ${money(alert.usedMicros)} of ${money(alert.limitMicros)}.`;
 }
 
 /** How loud an alert is. */
@@ -380,9 +364,9 @@ export function shortDay(at: string, now = new Date()): string {
  * once it is spent, expired or withdrawn, says so.
  */
 export function creditLine(grant: Pick<CreditGrant, "amountMicros" | "leftMicros" | "expiresAt" | "state">, now = new Date()): string {
-  const parts = [`${dollars(grant.amountMicros)} credit`];
+  const parts = [`${money(grant.amountMicros)} credit`];
   if (grant.state === "open") {
-    parts.push(`${dollars(grant.leftMicros)} left`);
+    parts.push(`${money(grant.leftMicros)} left`);
     if (grant.expiresAt) parts.push(`expires ${shortDay(grant.expiresAt, now)}`);
   } else {
     parts.push(grant.state === "used" ? "all used" : grant.state === "expired" ? "expired" : "withdrawn");

@@ -28,7 +28,7 @@ import { dollarsField } from "../lib/agent-form";
 import { cn } from "../lib/cn";
 import type { AgentBudgetRow, Budgets, PillData } from "../lib/spend.server";
 import { AT_LIMIT, type Pricing, type SpendScope, agentRateLabel, markupLabel, percentLabel, shareOfBudget } from "../lib/spend";
-import { money } from "../lib/usage";
+import { money } from "../lib/money";
 
 
 /** A figure at the top of the page: what it is, the amount, and a line under it. */
@@ -510,7 +510,7 @@ export function PricingCard({ pricing }: { pricing: Pricing | null }) {
     {
       icon: <Sparkles size={15} />,
       title: "Agent rate",
-      value: agentRateLabel(pricing, money),
+      value: agentRateLabel(pricing, (micros) => money(micros, { precise: true })),
       about: "For what g1t runs around every model call: the model gateway, secrets, routing, context and pass-through to your own provider.",
     },
     {

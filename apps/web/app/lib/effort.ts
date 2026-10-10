@@ -6,12 +6,7 @@
  */
 import type { AgentEffort, AgentEffortCosts, AgentRecommendation, AgentRecommendations, EffortCost, EffortLevel } from "@g1t/contracts";
 
-/** Dollars as lib/usage.ts `money` writes them; here so this file imports nothing at run time. */
-function money(micros: number): string {
-  const d = Math.abs(micros) / 1_000_000;
-  const digits = d < 0.0001 || d >= 0.01 ? 2 : d >= 0.001 ? 3 : 4;
-  return `${micros < 0 ? "−" : ""}$${d.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
-}
+import { money } from "./money.ts";
 
 export const EFFORT_OPTIONS: { key: AgentEffort; label: string; about: string }[] = [
   { key: "auto", label: "Auto", about: "Picks per piece of work: medium, and high on a session someone has had to steer." },
@@ -46,7 +41,7 @@ export function costLine(costs: AgentEffortCosts | null, effort: AgentEffort): s
   const days = `in the last ${costs.window_days} days`;
   if (!at) return effort === "auto" ? `No sessions at Medium ${days}, so no figure yet.` : `No sessions at ${effortLabel(effort)} ${days}, so no figure yet.`;
   const sessions = `${at.sessions.toLocaleString("en-US")} session${at.sessions === 1 ? "" : "s"}`;
-  return `${money(at.typical_micros!)} a typical task${effort === "auto" ? " at Medium" : ""}, from ${sessions} ${days}`;
+  return `${money(at.typical_micros!, { precise: true })} a typical task${effort === "auto" ? " at Medium" : ""}, from ${sessions} ${days}`;
 }
 
 /** "92%" of sessions finished with nobody stepping in, or empty. */

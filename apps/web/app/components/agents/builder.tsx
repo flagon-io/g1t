@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { type BuilderDefinition, type ChangeRow, changeRows, integrationHint } from "../../lib/agent-builder";
 import { PRESETS, TIER_LABELS, cleanHandle, dollarsField, microsFromDollars } from "../../lib/agent-form";
 import { cn } from "../../lib/cn";
-import { money } from "../../lib/usage";
+import { money } from "../../lib/money";
 
 const FIELD =
   "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim";
