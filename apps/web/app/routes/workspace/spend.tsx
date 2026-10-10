@@ -186,7 +186,7 @@ export default function SpendPage({ loaderData }: Route.ComponentProps) {
                   <Tile label={`Spent, ${label}`} value={used ? money(used.free ? used.totals.costMicros : used.totals.priceMicros) : "—"} sub={used ? (used.free ? "At cost: g1t charges nothing for now" : "Usage at price, every product") : "Usage couldn't be read"} />
                   <Tile label={`Agents, ${label}`} value={spent ? money(spent.total_micros) : "—"} sub={spent ? `${countOf(spent.by_kind)} replies and sessions` : "The agents service didn't answer"} />
                   <Tile
-                    label="Spend limit, this month"
+                    label="Charged, this month"
                     value={levels.limit?.spentMicros != null ? money(levels.limit.spentMicros) : "—"}
                     sub={levels.limit ? limitLine(levels.limit.spentMicros ?? 0, levels.limit.spendLimitMicros ?? levels.limit.ceilingMicros) : "Billing couldn't be read"}
                   >
@@ -285,8 +285,8 @@ function countOf(slices: SpendSlice[]): string {
 }
 
 function limitLine(spent: number, limit: number | null): string {
-  if (limit == null) return "No spend limit";
-  return `Charged, of ${money(limit)} · ${Math.round((spent / Math.max(1, limit)) * 100)}%`;
+  if (limit == null) return "No spend limit set";
+  return `Of a ${money(limit)} spend limit · ${Math.round((spent / Math.max(1, limit)) * 100)}%`;
 }
 
 /** Your own figures: what agents spent for you, and your budget. */

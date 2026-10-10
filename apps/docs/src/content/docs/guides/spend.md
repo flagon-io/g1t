@@ -31,7 +31,7 @@ UTC. Budgets are always this month's, whatever the period.
 
 | View | Figures |
 | --- | --- |
-| **Workspace** | **Spent**: usage at price over the period, every product, the same figure as [Usage](/guides/usage-and-billing/#the-usage-page). **Agents**: every agent's replies and sessions. **Spend limit**: what was charged this month against the workspace's spend limit. |
+| **Workspace** | **Spent**: usage at price over the period, every product, the same figure as [Usage](/guides/usage-and-billing/#the-usage-page). **Agents**: every agent's replies and sessions. **Charged**: what the workspace was charged this month, against its spend limit when it has one. |
 | **You** | **Agents for you** over the period. **Your budget** this month, and what is spent against it. **Your chats with agents**: the replies agents wrote you. |
 
 **By day** shows the period one day at a time. Hover or focus a day for
