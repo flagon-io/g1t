@@ -66,8 +66,9 @@ test("the prompt names each skill and when to use it; the playbooks stay out unt
   assert.match(someOff, /^- documents:/m);
   assert.equal(skillsSection(shelfFrom(FOUNDATIONAL_SKILL_IDS, []).skills, all), null);
   assert.equal(skillsOn(["data"]).length, 5);
-  // A skill that needs a computer is marked.
-  assert.match(skillsSection(shelfFrom([], [library({ requires_computer: 1 })]).skills, all)!, /release-notes: .* Needs a computer of its own \(not available yet\)\./);
+  // A skill that needs a computer is marked: as usable when the session has one (run_command offered), as out of reach otherwise.
+  assert.match(skillsSection(shelfFrom([], [library({ requires_computer: 1 })]).skills, all)!, /release-notes: .* Uses your computer\./);
+  assert.match(skillsSection(shelfFrom([], [library({ requires_computer: 1 })]).skills, all.filter((t) => t !== "run_command"))!, /release-notes: .* Needs your computer, which you don't have in this turn\./);
   const prompt = systemPrompt({
     agent: { id: "agt_1", handle: "ship", display_name: "Ship", role: "Release manager", instructions: "Ship.", personality_preset: "crisp", personality: "" },
     workspace: "acme",
@@ -150,7 +151,7 @@ test("use_skill reads a skill the agent has: the playbook with what isn't here, 
   assert.deepEqual(reads, ["skl_01k7a0b1c2d3e4f5g6h7j8k9mn@3"], "the pinned version is read");
   assert.match(notes.text, /^# release-notes \(your workspace's skill, version 3\)\n\n# Release notes\n\nGroup changes by area\./);
   assert.doesNotMatch(notes.text, /^name:/m, "front-matter isn't repeated");
-  assert.match(notes.text, /needs a computer of its own, which agents don't have yet: its scripts can't run/);
+  assert.match(notes.text, /needs a computer of its own, which you don't have in this turn: its scripts can't run/, "a reply has no computer");
   assert.match(notes.text, /Its files, which you can read with use_skill and file: resources\/template\.md \(19 B\), scripts\/collect\.py \(12 B\), resources\/logo\.png \(8 B\)\./);
   const template = await tools.run("use_skill", { name: "release-notes", file: "resources/template.md" });
   assert.match(template.text, /## Added/);

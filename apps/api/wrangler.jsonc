@@ -35,7 +35,9 @@
 		// Packages: list_packages, their settings, deleting and restoring them.
 		{ "binding": "PACKAGES", "service": "g1t-packages" },
 		// Artifacts (folios): the artifact tool and /workspaces/{ws}/artifacts.
-		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" }
+		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" },
+		// Workspace agents' own computers: /workspaces/{ws}/agents/{agent}/computer.
+		{ "binding": "AGENTS", "service": "g1t-agents" }
 	],
 	// GitHub Actions artifacts older runners kept, in chunks, with KV's own
 	// expiry, read until it passes (and cache

@@ -13,9 +13,10 @@
 //! into issues, `queue` builds and checks a state of the merge queue,
 //! `mergecheck` finds out whether a pull request merges cleanly,
 //! `actions` runs one job of a GitHub Actions workflow, `backup` cuts a
-//! repository's nightly backup bundle, and `bump` makes a
-//! security update: one package raised in its lockfiles, pushed as g1t.
-//! See the modules of those names.
+//! repository's nightly backup bundle, `bump` makes a
+//! security update: one package raised in its lockfiles, pushed as g1t,
+//! and `computer` is a workspace agent's own computer, served for as long
+//! as it is awake. See the modules of those names.
 //!
 //! Configuration comes from the environment:
 //!
@@ -38,6 +39,7 @@ mod backup;
 mod bump;
 mod checks;
 mod clone;
+mod computer;
 mod confidence;
 mod deploy;
 mod docker;
@@ -235,6 +237,8 @@ fn main() {
         Ok("backup") => std::process::exit(backup::main()),
         Ok("bump") => std::process::exit(bump::main()),
         Ok("checks") => std::process::exit(checks::main()),
+        // An agent's own computer: serves until it is put to sleep.
+        Ok("computer") => std::process::exit(computer::main()),
         Ok("deploy") => std::process::exit(deploy::main()),
         Ok("update") => std::process::exit(update::main()),
         Ok("review") => std::process::exit(review::main()),

@@ -129,6 +129,8 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::Packages(_) => return as_is,
         // Artifacts are shaped by the API itself, in `snake_case`.
         Op::Folios(_) => return as_is,
+        // Agents' computers travel in `snake_case` from the agents service.
+        Op::GetAgentComputer | Op::WakeAgentComputer | Op::SleepAgentComputer | Op::ResetAgentComputer | Op::ListAgentComputerCommands => return as_is,
         // Built by the API itself, in `snake_case`.
         Op::ListSecurityAlerts => return through::<Vec<crate::alerts::SecurityAlert>>(op, as_is),
         Op::DismissSecurityAlert | Op::ReopenSecurityAlert => {

@@ -70,6 +70,30 @@ started it. The children make a **tree**, and the session page shows it.
 - **Everything in a tree is paid by the agent at its root, within the root's
   cap.** A chain of sessions can never escape the budget that started it.
 
+## Commands on its computer
+
+A session is where an agent uses [its own computer](/guides/agents/#its-computer).
+When its shell or files ability is on, the session has `run_command`,
+`computer_read_file` and `computer_write_file`; the first command wakes the
+computer, which takes a few seconds, and it sleeps ten minutes after the
+last one. Each session works in its own directory, `/home/agent/sessions/<id>`,
+in the agent's home, so what one session cloned or installed is there for
+the next.
+
+Every command is an entry in the session's transcript: the command, the
+directory it ran in, its exit code and how long it took, with its output
+folded under it (cut at 8,000 characters there; the computer's own page
+keeps up to 64 KB). The **Computer** section under the transcript lists the
+session's commands together, and links to the agent's Computer tab, which
+lists every session's.
+
+A command the abilities say to ask first waits on a card, like any other
+[Ask-first](/guides/agent-abilities/#the-levels) call: the session pauses
+at the end of its step until someone allows or denies it, and the command
+runs when it is allowed. A computer that cannot wake, because the
+workspace is paused or past its spend limit, is said in the agent's report
+rather than worked around.
+
 ## Statuses
 
 | Status | Means |

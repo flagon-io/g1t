@@ -10,6 +10,7 @@ import type { WebhooksApi } from "./webhooks";
 import type { ReposApi } from "./repos";
 import type { PullDetail, WorkApi } from "./work";
 import type { Result } from "./result";
+import type { RunnerComputerApi } from "./runner";
 import type { RunnersApi } from "./runners";
 
 /** A service binding, as far as these clients need it. */
@@ -965,5 +966,25 @@ export function projectsClient(service: ServiceBinding): ProjectsApi {
     reorderPins: (actor, workspace, slugs) => call("reorder_pins", { actor, workspace, slugs }),
     visited: (actor, projectId) => call("visited", { actor, projectId }),
     publicLinks: (repos) => call("public_links", { repos }),
+  };
+}
+
+/**
+ * An agent's own computer, on the runner (services/runner `AgentComputer`):
+ * what the agents service calls for a session's `run_command` and file
+ * tools, and for the Computer tab. Arguments and answers are snake_case.
+ */
+export function runnerComputerClient(service: ServiceBinding): RunnerComputerApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    computerStatus: (agentId) => call("computer_status", { agent_id: agentId }),
+    computerWake: (args) => call("computer_wake", args),
+    computerExec: (args) => call("computer_exec", args),
+    computerReadFile: (args) => call("computer_read_file", args),
+    computerWriteFile: (args) => call("computer_write_file", args),
+    computerSleep: (agentId) => call("computer_sleep", { agent_id: agentId }),
+    computerReset: (agentId) => call("computer_reset", { agent_id: agentId }),
+    computerForget: (agentId) => call("computer_forget", { agent_id: agentId }),
+    computerCommands: (agentId, sessionId) => call("computer_commands", { agent_id: agentId, session_id: sessionId ?? null }),
   };
 }

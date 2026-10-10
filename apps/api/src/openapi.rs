@@ -510,6 +510,17 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Agents' computers",
+        "Each workspace agent has a computer of its own on g1t cloud: a persistent home its sessions run commands on, which sleeps when idle and is saved as it was. Its state and recent commands, and waking, sleeping and resetting it.",
+        &[
+            Op::GetAgentComputer,
+            Op::WakeAgentComputer,
+            Op::SleepAgentComputer,
+            Op::ResetAgentComputer,
+            Op::ListAgentComputerCommands,
+        ],
+    ),
+    (
         "Webhooks",
         "Signed HTTPS requests sent to your own address as things happen, for a repository or a whole workspace.",
         &[
@@ -697,6 +708,11 @@ fn title(op: Op) -> &'static str {
         Op::DeleteActionsVariable => "Delete a variable",
         Op::ListRunners => "List self-hosted runners",
         Op::ListRunnerGroups => "List runner groups",
+        Op::GetAgentComputer => "Get an agent's computer",
+        Op::WakeAgentComputer => "Wake an agent's computer",
+        Op::SleepAgentComputer => "Put an agent's computer to sleep",
+        Op::ResetAgentComputer => "Reset an agent's computer",
+        Op::ListAgentComputerCommands => "List an agent's computer's commands",
         Op::GetRunnerSettings => "Get runner settings",
         Op::CreateRunnerRegistrationToken => "Create a runner registration token",
         Op::RemoveRunner => "Remove a self-hosted runner",
@@ -787,6 +803,7 @@ fn title(op: Op) -> &'static str {
 fn may_need_payment(op: Op) -> Option<&'static str> {
     match op {
         Op::AssignIssue | Op::PlanWork | Op::ApplyPlan => Some("The workspace has no agent credit."),
+        Op::WakeAgentComputer => Some("The workspace's plan refuses compute: it is paused, or over its limit."),
         Op::UpdateRepo | Op::SetRepoVisibility | Op::TransferRepo => Some(
             "A free workspace's private storage has no room for this private repository.",
         ),

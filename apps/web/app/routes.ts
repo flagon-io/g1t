@@ -168,6 +168,8 @@ export default [
         route("sessions/:id", "routes/workspace/agents/session.tsx"),
         route("skills", "routes/workspace/agents/skills.tsx"),
         route("abilities", "routes/workspace/agents/abilities.tsx"),
+        // Its own computer: state, disk and the commands it ran.
+        route("computer", "routes/workspace/agents/computer.tsx"),
         route("memory", "routes/workspace/agents/memory.tsx"),
         route("routines", "routes/workspace/agents/routines.tsx"),
         route("spend", "routes/workspace/agents/spend.tsx"),

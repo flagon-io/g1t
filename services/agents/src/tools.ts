@@ -18,7 +18,7 @@
  *
  * Pure apart from its ports, so the rules are tested adversarially.
  */
-import type { Ability, AbilitySection, AbilitySource, DocEditTarget, FolioAgentEdit, FolioAgentEditResult, FolioAgentRead, FolioAudience, FolioKind, FolioPassage, FolioRef, McpServer, McpTool, User } from "@g1t/contracts";
+import type { Ability, AbilityGroup, AbilitySection, AbilitySource, AgentComputerCommand, DocEditTarget, FolioAgentEdit, FolioAgentEditResult, FolioAgentRead, FolioAudience, FolioKind, FolioPassage, FolioRef, McpServer, McpTool, User } from "@g1t/contracts";
 
 import { askedFor, levelWords, mcpToolName } from "../../../packages/contracts/src/abilities.ts";
 import { FOLIO_KINDS, folioIdFrom, isFolioKind } from "../../../packages/contracts/src/folios.ts";
@@ -560,6 +560,56 @@ export interface AbilityPorts {
 /** What a gate decided: go on, or what the agent is told instead. */
 type Gated = { ok: true } | { ok: false; result: ToolResult };
 
+/**
+ * The agent's own computer, in a session (computer.ts): what carries a
+ * command or a file to it. Every call here comes after `gate` allowed it
+ * under the `computer:shell` or `computer:files` ability.
+ */
+export interface ComputerPorts {
+  /** This session's directory under the home, where commands run unless told otherwise. */
+  cwd: string;
+  exec(cmd: string, cwd: string | null, timeoutSeconds: number | null): Promise<OutsideDone<AgentComputerCommand>>;
+  readFile(path: string): Promise<OutsideDone<{ path: string; text: string; bytes: number }>>;
+  writeFile(path: string, text: string): Promise<OutsideDone<{ path: string; bytes: number }>>;
+}
+
+const RUN_COMMAND: ToolDef = {
+  name: "run_command",
+  description:
+    "Run a shell command on your own computer (bash -lc, with git, Node, Python, Go, Rust, Java, .NET and Ruby installed). It runs in this session's directory unless cwd names another under /home/agent, your home, which persists between sessions: clones, installed tools and notes stay. Output comes back when the command ends, so chain steps with && and avoid anything that waits for input or runs forever; a command is killed at timeout_seconds (120 unless given, 1800 at most). Quote real output; never say you ran something you didn't.",
+  input_schema: {
+    type: "object",
+    properties: {
+      command: { type: "string" },
+      cwd: { type: "string", description: "A directory under /home/agent; made if missing." },
+      timeout_seconds: { type: "integer", description: "1 to 1800." },
+    },
+    required: ["command"],
+  },
+};
+
+const COMPUTER_READ_FILE: ToolDef = {
+  name: "computer_read_file",
+  description: "Read a text file from your computer's home (/home/agent), by path: absolute under the home, or relative to it. Up to 5 MB. For a file in a repository on g1t, read_file reads it without the computer.",
+  input_schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+};
+
+const COMPUTER_WRITE_FILE: ToolDef = {
+  name: "computer_write_file",
+  description: "Write a text file on your computer, by path under /home/agent (parents are made). Up to 5 MB. It replaces what was there.",
+  input_schema: { type: "object", properties: { path: { type: "string" }, text: { type: "string" } }, required: ["path", "text"] },
+};
+
+const COMPUTER_TOOLS: ToolDef[] = [RUN_COMMAND, COMPUTER_READ_FILE, COMPUTER_WRITE_FILE];
+const COMPUTER_NAMES = new Set(COMPUTER_TOOLS.map((tool) => tool.name));
+
+/**
+ * Words in what the person said that count as asking for the computer, for
+ * a shell set to "alone when asked for it": the work named running,
+ * building, testing or the like.
+ */
+export const COMPUTER_ASKED_WORDS: readonly string[] = ["run", "shell", "command", "terminal", "script", "computer", "install", "build", "test", "clone", "execute", "compile", "benchmark", "reproduce"];
+
 const FOLIO_NAMES = new Set([...FOLIO_TOOLS, ...FOLIO_WRITE_TOOLS, MAKE_FILE].map((tool) => tool.name));
 
 /** Every tool an agent may be offered, by name: what skills may name (@g1t/contracts skill-format.ts `AGENT_TOOL_NAMES`, which a test keeps equal). */
@@ -570,6 +620,7 @@ export const TOOL_NAMES: ReadonlySet<string> = new Set(
     ...FOLIO_TOOLS,
     ...FOLIO_WRITE_TOOLS,
     ...OUTSIDE_TOOLS,
+    ...COMPUTER_TOOLS,
     MAKE_FILE,
     ASK_COLLEAGUE,
     HAND_OFF,
@@ -640,10 +691,23 @@ export class ToolBox {
     this.actions = actions;
   }
 
+  /** The agent's own computer this session (computer.ts); null in a reply, which never has one. */
+  private computer: ComputerPorts | null = null;
+
   /** Gives the agent its skills: `use_skill` is offered while it has any. */
   useShelf(shelf: readonly ShelfSkill[], read: SkillReader): void {
     this.shelf = shelf;
     this.readSkill = read;
+  }
+
+  /**
+   * Gives a session its agent's computer. The tools are offered only once
+   * `useAbilities` said what the shell and files abilities allow, and only
+   * in a session: a reply is never given a computer.
+   */
+  useComputer(ports: ComputerPorts): void {
+    if (!this.context.session) return;
+    this.computer = ports;
   }
 
   /**
@@ -660,7 +724,7 @@ export class ToolBox {
   }
 
   /** The abilities of one group's sources, flat, with their source. */
-  private abilities(group: "integration" | "mcp"): { ability: Ability; source: AbilitySource }[] {
+  private abilities(group: AbilityGroup): { ability: Ability; source: AbilitySource }[] {
     return (this.sections ?? []).filter((section) => section.group === group).flatMap((section) => section.sources.flatMap((source) => source.abilities.map((ability) => ({ ability, source }))));
   }
 
@@ -734,7 +798,19 @@ export class ToolBox {
       ...(this.shelf.length ? [USE_SKILL] : []),
       ...this.outsideTools(),
       ...this.mcpTools().map((entry) => entry.def),
+      ...this.computerTools(),
     ];
+  }
+
+  /**
+   * The computer's tools offered: in a session with a computer, each tool
+   * of a shell or files ability that is ready and not Never, for a person
+   * the agent acts for.
+   */
+  private computerTools(): ToolDef[] {
+    if (!this.computer || !this.context.session || !this.sections || !this.audience.asker) return [];
+    const live = this.abilities("computer").filter(({ ability }) => ability.status === "ready" && ability.level !== "never");
+    return COMPUTER_TOOLS.filter((tool) => live.some(({ ability }) => ability.tools.includes(tool.name)));
   }
 
   /**
@@ -806,6 +882,7 @@ export class ToolBox {
   private async dispatch(name: string, input: Record<string, unknown>): Promise<ToolResult> {
     const asker = this.audience.asker;
     if (OUTSIDE_NAMES.has(name)) return this.outside(name, input);
+    if (COMPUTER_NAMES.has(name)) return this.computerCall(name, input);
     const mcp = this.mcpTools().find((entry) => entry.def.name === name);
     if (mcp) return this.mcp(mcp, input);
     if (FOLIO_NAMES.has(name)) {
@@ -1179,6 +1256,61 @@ export class ToolBox {
         const done = await actions.handOff!(handle, brief);
         if (done.ok) this.handOffs++;
         return said(done);
+      }
+      default:
+        return { text: `There is no tool called ${name}.`, outcome: "refused" };
+    }
+  }
+
+  /**
+   * The computer's tools, each gated by its ability (`computer:shell` for
+   * commands, `computer:files` for files) before the runner is asked. A
+   * computer that could not wake because the plan refused is said plainly,
+   * so the agent reports it rather than trying another way.
+   */
+  private async computerCall(name: string, input: Record<string, unknown>): Promise<ToolResult> {
+    const asker = this.audience.asker;
+    const ports = this.computer;
+    if (!ports || !asker || !this.definitions().some((tool) => tool.name === name)) return { text: `There is no tool called ${name} here.`, outcome: "refused" };
+    const own = this.abilities("computer").find(({ ability }) => ability.tools.includes(name));
+    if (!own) return { text: `There is no tool called ${name} here.`, outcome: "refused" };
+    const text = (key: string, max: number) => String(input[key] ?? "").trim().slice(0, max);
+    const failed = (done: { code: string; message: string }, what: string): ToolResult =>
+      done.code === "payment_required"
+        ? { text: `Your computer couldn't wake: ${done.message} Say so in your report; don't try another way.`, outcome: "refused" }
+        : { text: `${what}: ${done.message}`, outcome: done.code === "not_found" || done.code === "invalid" ? "refused" : "error" };
+    switch (name) {
+      case "run_command": {
+        const command = text("command", 8000);
+        if (!command) return { text: "Give the command to run.", outcome: "refused" };
+        const cwd = text("cwd", 500) || null;
+        const timeout = Number.isFinite(Number(input.timeout_seconds)) && Number(input.timeout_seconds) > 0 ? Math.min(1800, Math.floor(Number(input.timeout_seconds))) : null;
+        const gated = await this.gate(own, { tool: name, args: input, summary: `Run \`${command.split("\n")[0].slice(0, 80)}\` on its computer`, keys: [...COMPUTER_ASKED_WORDS, own.ability.label] }, asker);
+        if (!gated.ok) return gated.result;
+        const done = await ports.exec(command, cwd, timeout);
+        if (!done.ok) return failed(done, "The command couldn't run");
+        const ran = done.value;
+        const how = [`exit ${ran.exit_code}`, `${(ran.duration_ms / 1000).toFixed(1)} s`, ran.timed_out ? "killed at the timeout" : null, ran.truncated ? "output cut" : null].filter(Boolean).join(", ");
+        return { text: `$ ${ran.cmd}\n(${how}; in ${ran.cwd})\n${untrusted("run_command on your computer", ran.output || "(no output)")}`, outcome: "allowed" };
+      }
+      case "computer_read_file": {
+        const path = text("path", 1000);
+        if (!path) return { text: "Give the file's path under /home/agent.", outcome: "refused" };
+        const gated = await this.gate(own, { tool: name, args: input, summary: `Read ${path} on its computer`, keys: [path, "read", "file", "open", "look", own.ability.label] }, asker);
+        if (!gated.ok) return gated.result;
+        const done = await ports.readFile(path);
+        if (!done.ok) return failed(done, "The file couldn't be read");
+        return { text: untrusted(`${done.value.path} on your computer`, done.value.text), outcome: "allowed" };
+      }
+      case "computer_write_file": {
+        const path = text("path", 1000);
+        const body = String(input.text ?? "");
+        if (!path) return { text: "Give the file's path under /home/agent.", outcome: "refused" };
+        const gated = await this.gate(own, { tool: name, args: input, summary: `Write ${path} on its computer`, keys: [path, "write", "save", "create", "file", "note", own.ability.label] }, asker);
+        if (!gated.ok) return gated.result;
+        const done = await ports.writeFile(path, body);
+        if (!done.ok) return failed(done, "The file couldn't be written");
+        return { text: `Wrote ${done.value.bytes} bytes to ${done.value.path}.`, outcome: "allowed" };
       }
       default:
         return { text: `There is no tool called ${name}.`, outcome: "refused" };

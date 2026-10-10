@@ -56,6 +56,8 @@ import { readVersion } from "./skill-library.ts";
 import { conversationFrom } from "./surface.ts";
 import { type Row, definitionOf, periods } from "./store.ts";
 import { abilitiesFor, abilitiesSection, abilityPorts, pendingRequests, saidText } from "./abilities.ts";
+import { computerPorts, hasComputer } from "./computer.ts";
+import { commandEvent, eventStatement } from "./transcript.ts";
 import { type ActionPorts, type ToolCall, ToolBox } from "./tools.ts";
 import { type ModelMessage, SESSION_LIMITS, runTurn } from "./turn.ts";
 import { effortOf, effortPlan, higherEffort, isLevel } from "./routing.ts";
@@ -77,6 +79,8 @@ export type SessionEnv = MeterEnv &
     INTEGRATIONS: ServiceBinding;
     /** The audit log, for refusals. */
     EVENTS: ServiceBinding;
+    /** The runner, for agents' own computers (computer.ts). Absent: sessions have none. */
+    RUNNER?: ServiceBinding;
     DESKS: DurableObjectNamespace<Desk>;
   };
 
@@ -246,15 +250,9 @@ export function cardFor(
   };
 }
 
-/** Appends to a session's transcript. */
-export function eventStatement(db: D1Database, id: string, kind: SessionEvent["kind"], by: string | null, body: string, tool: string | null = null, outcome: string | null = null): D1PreparedStatement {
-  return db
-    .prepare(
-      `INSERT INTO agent_session_events (session_id, seq, kind, by_name, body, tool, outcome, created_at)
-       SELECT ?1, COALESCE(MAX(seq), 0) + 1, ?2, ?3, ?4, ?5, ?6, ?7 FROM agent_session_events WHERE session_id = ?1`,
-    )
-    .bind(id, kind, by, body.slice(0, 20_000), tool, outcome, iso());
-}
+// Appending to a session's transcript lives in transcript.ts, so that the
+// cards and the computer can write entries without needing sessions.ts.
+export { eventStatement } from "./transcript.ts";
 
 /**
  * The working context, kept bounded: the goal, then a summary of what is
@@ -815,6 +813,8 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
       }
       // Its abilities outside g1t (abilities.ts), for the person it acts for: offered and enforced by the tool box.
       let abilitiesText: string | null = null;
+      // Its own computer (computer.ts), in sessions only: offered when its shell or files ability isn't Never.
+      let computerCwd: string | null = null;
       if (toolbox && current.asked_by) {
         const askerUser = await identityClient(env.IDENTITY)
           .usersForAudience([current.asked_by])
@@ -836,6 +836,19 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
             definition.abilities.mcp_servers,
           );
           abilitiesText = abilitiesSection(sections);
+          if (hasComputer(sections)) {
+            const computer = computerPorts(env, {
+              agent,
+              workspace: slug,
+              session: { id: current.id },
+              asker,
+              onCommand: (command) => events.push(commandEvent(db, current.id, agent.handle, command)),
+            });
+            if (computer) {
+              toolbox.useComputer(computer);
+              computerCwd = computer.cwd;
+            }
+          }
         }
       }
       // What the workspace's artifacts say about the work: its goal, and whatever arrived for this step.
@@ -887,6 +900,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
           conversation: here,
           skills: skillsSection(shelf, toolbox?.definitions().map((tool) => tool.name) ?? []),
           abilities: abilitiesText,
+          computer: computerCwd ? { cwd: computerCwd } : null,
         }),
         sessionSection(current, current.asked_by_username ? `@${current.asked_by_username}` : "the person who asked", plan.steps),
         memorySection(facts),

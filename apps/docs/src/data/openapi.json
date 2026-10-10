@@ -556,6 +556,17 @@
       ]
     },
     {
+      "name": "Agents' computers",
+      "description": "Each workspace agent has a computer of its own on g1t cloud: a persistent home its sessions run commands on, which sleeps when idle and is saved as it was. Its state and recent commands, and waking, sleeping and resetting it.",
+      "x-tools": [
+        "get_agent_computer",
+        "wake_agent_computer",
+        "sleep_agent_computer",
+        "reset_agent_computer",
+        "list_agent_computer_commands"
+      ]
+    },
+    {
       "name": "Webhooks",
       "description": "Signed HTTPS requests sent to your own address as things happen, for a repository or a whole workspace.",
       "x-tools": [
@@ -52424,6 +52435,639 @@
         "x-example-params": {
           "workspace": "flagon-io",
           "id": "rng_01kq2m7r2a5d8g1j4m7p0s3v6z"
+        }
+      }
+    },
+    "/workspaces/{workspace}/agents/{agent}/computer": {
+      "get": {
+        "operationId": "get_agent_computer",
+        "tags": [
+          "Agents' computers"
+        ],
+        "summary": "Get an agent's computer",
+        "description": "A workspace agent's own computer: its `status` (`state` asleep, waking, awake or sleeping, and `since`; `disk_used_bytes` of `disk_cap_bytes`, 5 GB; `last_woke_at`, `last_slept_at`; the saved home's `snapshot_bytes` and `snapshot_at`; `where`, g1t_cloud; `disk_attached`, false while the installation has no storage for homes; a `problem` the owner should know of; `delete_after` once the agent was archived), its recent `commands` newest first, and `can_manage`, whether you may wake, sleep or reset it. Members of the workspace; a personal agent's only its member and the owners.\n\nThe computer is asleep until a session or a person wakes it; while awake its time is sandbox time on the workspace's usage, under the agent and whoever asked. `disk_cap_bytes` is 5 GB, included, with no disk charge; `disk_attached` is false while the installation has no storage for homes, in which case the home is forgotten at every sleep.",
+        "x-operation": "get_agent_computer",
+        "x-mcp-tool": "agent",
+        "x-mcp-action": "computer",
+        "x-scope": "agents:run",
+        "security": [
+          {
+            "token": [
+              "agents:run"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "agent",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The agent's handle, without the @."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "status": {
+                    "agent_id": "agt_01k7a0b1c2d3e4f5g6h7j8k9mn",
+                    "state": "asleep",
+                    "since": "2026-10-10T09:42:10.000Z",
+                    "disk_used_bytes": 734003200,
+                    "disk_cap_bytes": 5000000000,
+                    "last_woke_at": "2026-10-10T09:12:03.000Z",
+                    "last_slept_at": "2026-10-10T09:42:10.000Z",
+                    "snapshot_bytes": 212337664,
+                    "snapshot_at": "2026-10-10T09:42:08.000Z",
+                    "where": "g1t_cloud",
+                    "disk_attached": true,
+                    "problem": null,
+                    "delete_after": null
+                  },
+                  "commands": [
+                    {
+                      "id": "cmd_4f1c9e2a7b3d5f6081a2",
+                      "session_id": "asn_01k7b2c3d4e5f6g7h8j9k0mnpq",
+                      "asked_by": "ana",
+                      "started_at": "2026-10-10T09:31:44.000Z",
+                      "cmd": "npm test",
+                      "cwd": "/home/agent/sessions/asn_01k7b2c3d4e5f6g7h8j9k0mnpq/web",
+                      "exit_code": 0,
+                      "duration_ms": 41230,
+                      "output": "> web@1.0.0 test\n> node --test\n\nℹ tests 128\nℹ pass 128\nℹ fail 0",
+                      "truncated": false,
+                      "timed_out": false
+                    }
+                  ],
+                  "can_manage": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "agent": "margo"
+        }
+      }
+    },
+    "/workspaces/{workspace}/agents/{agent}/computer/wake": {
+      "post": {
+        "operationId": "wake_agent_computer",
+        "tags": [
+          "Agents' computers"
+        ],
+        "summary": "Wake an agent's computer",
+        "description": "Wake an agent's computer: the container starts, its saved home is restored, and its time is metered as sandbox time under the agent until it sleeps. Sessions wake it by themselves; this is for a person. Refused with `payment_required` when the workspace's plan refuses compute. Owners, or the member whose personal agent it is. Returns what get_agent_computer returns.",
+        "x-operation": "wake_agent_computer",
+        "x-mcp-tool": "agent",
+        "x-mcp-action": "wake_computer",
+        "x-scope": "agents:run",
+        "security": [
+          {
+            "token": [
+              "agents:run"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "agent",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The agent's handle, without the @."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "status": {
+                    "agent_id": "agt_01k7a0b1c2d3e4f5g6h7j8k9mn",
+                    "state": "awake",
+                    "since": "2026-10-10T10:02:17.000Z",
+                    "disk_used_bytes": 734003200,
+                    "disk_cap_bytes": 5000000000,
+                    "last_woke_at": "2026-10-10T10:02:17.000Z",
+                    "last_slept_at": "2026-10-10T09:42:10.000Z",
+                    "snapshot_bytes": 212337664,
+                    "snapshot_at": "2026-10-10T09:42:08.000Z",
+                    "where": "g1t_cloud",
+                    "disk_attached": true,
+                    "problem": null,
+                    "delete_after": null
+                  },
+                  "commands": [],
+                  "can_manage": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "The workspace's plan refuses compute: it is paused, or over its limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "agent": "margo"
+        }
+      }
+    },
+    "/workspaces/{workspace}/agents/{agent}/computer/sleep": {
+      "post": {
+        "operationId": "sleep_agent_computer",
+        "tags": [
+          "Agents' computers"
+        ],
+        "summary": "Put an agent's computer to sleep",
+        "description": "Put an agent's computer to sleep: its home is saved and the container stops, with its time on the ledger. Refused with `conflict` while a command is running, or when the home is over its 5 GB cap and can't be saved (the message names the largest directories). Owners, or the member whose personal agent it is. Returns what get_agent_computer returns.",
+        "x-operation": "sleep_agent_computer",
+        "x-mcp-tool": "agent",
+        "x-mcp-action": "sleep_computer",
+        "x-scope": "agents:run",
+        "security": [
+          {
+            "token": [
+              "agents:run"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "agent",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The agent's handle, without the @."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "status": {
+                    "agent_id": "agt_01k7a0b1c2d3e4f5g6h7j8k9mn",
+                    "state": "asleep",
+                    "since": "2026-10-10T10:20:51.000Z",
+                    "disk_used_bytes": 751239168,
+                    "disk_cap_bytes": 5000000000,
+                    "last_woke_at": "2026-10-10T10:02:17.000Z",
+                    "last_slept_at": "2026-10-10T10:20:51.000Z",
+                    "snapshot_bytes": 219152384,
+                    "snapshot_at": "2026-10-10T10:20:49.000Z",
+                    "where": "g1t_cloud",
+                    "disk_attached": true,
+                    "problem": null,
+                    "delete_after": null
+                  },
+                  "commands": [],
+                  "can_manage": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "agent": "margo"
+        }
+      }
+    },
+    "/workspaces/{workspace}/agents/{agent}/computer/reset": {
+      "post": {
+        "operationId": "reset_agent_computer",
+        "tags": [
+          "Agents' computers"
+        ],
+        "summary": "Reset an agent's computer",
+        "description": "Reset an agent's computer: it is stopped if awake, its saved home is deleted, and its command history is cleared. The agent's memory and artifacts are untouched. Owners, or the member whose personal agent it is. Returns what get_agent_computer returns.",
+        "x-operation": "reset_agent_computer",
+        "x-mcp-tool": "agent",
+        "x-mcp-action": "reset_computer",
+        "x-scope": "agents:run",
+        "security": [
+          {
+            "token": [
+              "agents:run"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "agent",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The agent's handle, without the @."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "status": {
+                    "agent_id": "agt_01k7a0b1c2d3e4f5g6h7j8k9mn",
+                    "state": "asleep",
+                    "since": "2026-10-10T10:25:00.000Z",
+                    "disk_used_bytes": 0,
+                    "disk_cap_bytes": 5000000000,
+                    "last_woke_at": "2026-10-10T10:02:17.000Z",
+                    "last_slept_at": "2026-10-10T10:20:51.000Z",
+                    "snapshot_bytes": null,
+                    "snapshot_at": null,
+                    "where": "g1t_cloud",
+                    "disk_attached": true,
+                    "problem": null,
+                    "delete_after": null
+                  },
+                  "commands": [],
+                  "can_manage": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "agent": "margo"
+        }
+      }
+    },
+    "/workspaces/{workspace}/agents/{agent}/computer/commands": {
+      "get": {
+        "operationId": "list_agent_computer_commands",
+        "tags": [
+          "Agents' computers"
+        ],
+        "summary": "List an agent's computer's commands",
+        "description": "The commands an agent's computer ran most recently, newest first, up to 50: each with its `cmd`, `cwd`, `exit_code`, `duration_ms`, `output` (cut at 64 KB, `truncated` when so), `timed_out`, the `session_id` it ran in and who `asked_by`. Members of the workspace; a personal agent's only its member and the owners.",
+        "x-operation": "list_agent_computer_commands",
+        "x-mcp-tool": "agent",
+        "x-mcp-action": "computer_commands",
+        "x-scope": "agents:run",
+        "security": [
+          {
+            "token": [
+              "agents:run"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "agent",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The agent's handle, without the @."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "cmd_4f1c9e2a7b3d5f6081a2",
+                    "session_id": "asn_01k7b2c3d4e5f6g7h8j9k0mnpq",
+                    "asked_by": "ana",
+                    "started_at": "2026-10-10T09:31:44.000Z",
+                    "cmd": "npm test",
+                    "cwd": "/home/agent/sessions/asn_01k7b2c3d4e5f6g7h8j9k0mnpq/web",
+                    "exit_code": 0,
+                    "duration_ms": 41230,
+                    "output": "> web@1.0.0 test\n> node --test\n\nℹ tests 128\nℹ pass 128\nℹ fail 0",
+                    "truncated": false,
+                    "timed_out": false
+                  },
+                  {
+                    "id": "cmd_0a9b8c7d6e5f4a3b2c1d",
+                    "session_id": "asn_01k7b2c3d4e5f6g7h8j9k0mnpq",
+                    "asked_by": "ana",
+                    "started_at": "2026-10-10T09:30:02.000Z",
+                    "cmd": "git clone https://g1t.sh/flagon-io/web.git && cd web && npm ci",
+                    "cwd": "/home/agent/sessions/asn_01k7b2c3d4e5f6g7h8j9k0mnpq",
+                    "exit_code": 0,
+                    "duration_ms": 58904,
+                    "output": "Cloning into 'web'...\nadded 412 packages in 48s",
+                    "truncated": false,
+                    "timed_out": false
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "agent": "margo"
         }
       }
     },

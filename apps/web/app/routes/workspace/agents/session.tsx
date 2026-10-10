@@ -13,6 +13,7 @@ import { ArrowLeft,
   MessageSquare,
   Send,
   Square,
+  Terminal,
   Wrench,
 } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
@@ -30,8 +31,10 @@ import { KindBadge, Meter, PrivateTitle, SpendOfCap, StatusChip, sessionHref, st
 import { skillsPath } from "../../../components/agents/skills";
 import { Markdown } from "../../../components/markdown";
 import { ButtonLink, TimeAgo } from "../../../components/ui";
+import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
 import { Hint } from "../../../components/ui/hint";
 import { Textarea } from "../../../components/ui/textarea";
 import { microsFromDollars } from "../../../lib/agent-form";
@@ -127,6 +130,7 @@ export default function SessionPage({ loaderData, params }: Route.ComponentProps
             <>
               {session.summary && !events.some((e) => e.kind === "result") && <Report body={session.summary} />}
               <Transcript events={events} agentHandle={session.agent_handle} agentSeed={session.agent_avatar_seed} live={live} />
+              <ComputerSection slug={slug} handle={session.agent_handle} events={events} />
               {detail.can_steer && <Steer session={session} live={live} />}
             </>
           )}
@@ -294,6 +298,54 @@ function Transcript({ events, agentHandle, agentSeed, live }: { events: SessionE
   );
 }
 
+/**
+ * The commands this session ran on the agent's own computer, each with its
+ * output folded under it; nothing when it ran none. The computer's own page
+ * lists every session's.
+ */
+function ComputerSection({ slug, handle, events }: { slug: string; handle: string; events: SessionEvent[] }) {
+  const commands = events.filter((event) => event.kind === "command");
+  if (commands.length === 0) return null;
+  return (
+    <section aria-labelledby="computer" className="space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 id="computer" className="flex items-center gap-2 text-sm font-semibold">
+          <Terminal size={14} className="text-muted" aria-hidden />
+          Computer
+          <span className="font-normal text-muted">
+            {commands.length} {commands.length === 1 ? "command" : "commands"}
+          </span>
+        </h2>
+        <Link to={`/${slug}/-/agents/${handle}/computer`} className="text-xs text-muted hover:text-fg">
+          Its computer
+        </Link>
+      </div>
+      <Card divided>
+        {commands.map((event) => {
+          const [cmd, ...rest] = event.body.split("\n");
+          const output = rest.join("\n");
+          const failed = Boolean(event.outcome && !event.outcome.startsWith("exit 0"));
+          return (
+            <Collapsible key={event.seq}>
+              <CollapsibleTrigger className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-raised/60">
+                <span className="min-w-0 grow truncate font-mono text-xs text-fg">$ {cmd}</span>
+                {event.outcome && <Badge tone={failed ? "danger" : "success"}>{event.outcome}</Badge>}
+                <span className="shrink-0 text-[0.6875rem] text-faint">
+                  <TimeAgo at={event.created_at} />
+                </span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="px-4 pb-3">
+                {event.tool && <p className="mb-1.5 font-mono text-xs text-faint">in {event.tool}</p>}
+                <pre className="max-h-80 overflow-auto rounded-md border border-line bg-bg px-3 py-2 font-mono text-xs whitespace-pre-wrap text-muted">{output || "(no output)"}</pre>
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        })}
+      </Card>
+    </section>
+  );
+}
+
 function Rail({ children }: { children: ReactNode }) {
   return <span className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-bg ring-1 ring-line">{children}</span>;
 }
@@ -361,6 +413,32 @@ function EventItem({ event, agentHandle, agentSeed }: { event: SessionEvent; age
                 {when}
               </p>
             )}
+          </div>
+        </li>
+      );
+    }
+    case "command": {
+      const [cmd, ...rest] = event.body.split("\n");
+      const output = rest.join("\n");
+      const failed = Boolean(event.outcome && !event.outcome.startsWith("exit 0"));
+      return (
+        <li className="relative flex gap-3 py-1">
+          <Rail>
+            <Hint label={failed ? "The command failed" : "Ran on its computer"}>
+              <span className="flex" aria-label={failed ? "The command failed" : "Ran on its computer"}>
+                <Terminal size={12} className={failed ? "text-danger" : "text-success"} />
+              </span>
+            </Hint>
+          </Rail>
+          <div className="min-w-0 grow pt-0.5">
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-[0.8125rem] [&::-webkit-details-marker]:hidden">
+                <span className="min-w-0 truncate font-mono text-fg">$ {cmd}</span>
+                {event.outcome && <span className="shrink-0 text-xs text-faint">{event.outcome}</span>}
+                {when}
+              </summary>
+              <pre className="mt-1.5 overflow-x-auto rounded-md border border-line bg-bg px-3 py-2 font-mono text-xs whitespace-pre-wrap text-muted">{output || "(no output)"}</pre>
+            </details>
           </div>
         </li>
       );

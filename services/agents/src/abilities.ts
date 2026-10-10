@@ -18,6 +18,7 @@ import { type Ability, type AbilitySection, type AbilitySource, type McpServer, 
 import { CONNECTORS, connectorPath, connectorView } from "../../../packages/contracts/src/connectors.ts";
 import { findAbility, resolveAbilities } from "../../../packages/contracts/src/abilities.ts";
 import { abilityCard, connectCard, requestCard } from "./card-views.ts";
+import { computerPorts } from "./computer.ts";
 export { abilitiesSection, saidText } from "./abilities-prompt.ts";
 import type { Definition } from "./definition.ts";
 import { callMcpTool } from "./mcp-client.ts";
@@ -31,6 +32,8 @@ export type AbilityEnv = {
   IDENTITY: ServiceBinding;
   EVENTS: ServiceBinding;
   NOTIFY?: ServiceBinding;
+  /** The runner, for a call on the agent's computer allowed from a card (computer.ts). */
+  RUNNER?: ServiceBinding;
   /** The site's address (https://g1t.sh), for links that leave g1t. */
   SITE_URL?: string;
 };
@@ -190,9 +193,9 @@ export function abilityPorts(
   };
 }
 
-/** A card's preview of what a call would write: the text of a comment or note. */
+/** A card's preview of what a call would write or run: the text of a comment or note, or the command. */
 function bodyOf(args: Record<string, unknown>): string | null {
-  const text = typeof args.text === "string" ? args.text.trim() : "";
+  const text = typeof args.text === "string" ? args.text.trim() : typeof args.command === "string" ? `$ ${args.command.trim()}` : "";
   return text ? text.slice(0, 900) : null;
 }
 
@@ -304,6 +307,30 @@ export async function runAllowed(env: AbilityEnv, request: AbilityRequestRow, ag
         const action = args.action === "resolve" ? "resolve" : "comment";
         const done = await ports.act(by, reference, action, String(args.text ?? "").trim().slice(0, 8000));
         return done.ok ? { ok: true, message: `${action === "resolve" ? "Resolved" : "Commented on"} ${done.value.key} (${done.value.url}).` } : { ok: false, message: done.message };
+      }
+      case "run_command":
+      case "computer_read_file":
+      case "computer_write_file": {
+        // On the agent's own computer, in the session that asked (or a directory of its own for a reply's card).
+        const computer = computerPorts(env, { agent, workspace: request.workspace, session: { id: request.session_id ?? `card-${request.id}` }, asker: { username: by.username }, onCommand: () => undefined });
+        if (!computer) return { ok: false, message: "Agents' computers aren't available on this installation." };
+        const path = String(args.path ?? "").trim();
+        if (request.tool === "run_command") {
+          const command = String(args.command ?? "").trim();
+          if (!command) return { ok: false, message: "The call named no command." };
+          const timeout = Number.isFinite(Number(args.timeout_seconds)) && Number(args.timeout_seconds) > 0 ? Math.min(1800, Math.floor(Number(args.timeout_seconds))) : null;
+          const ran = await computer.exec(command, typeof args.cwd === "string" && args.cwd.trim() ? args.cwd.trim() : null, timeout);
+          if (!ran.ok) return { ok: false, message: ran.message };
+          const how = [`exit ${ran.value.exit_code}`, `${(ran.value.duration_ms / 1000).toFixed(1)} s`, ran.value.timed_out ? "killed at the timeout" : null, ran.value.truncated ? "output cut" : null].filter(Boolean).join(", ");
+          return { ok: ran.value.exit_code === 0, message: `$ ${ran.value.cmd}\n(${how}; in ${ran.value.cwd})\n${ran.value.output || "(no output)"}`.slice(0, 20_000) };
+        }
+        if (!path) return { ok: false, message: "The call named no path." };
+        if (request.tool === "computer_read_file") {
+          const read = await computer.readFile(path);
+          return read.ok ? { ok: true, message: read.value.text.slice(0, 20_000) } : { ok: false, message: read.message };
+        }
+        const wrote = await computer.writeFile(path, String(args.text ?? ""));
+        return wrote.ok ? { ok: true, message: `Wrote ${wrote.value.bytes} bytes to ${wrote.value.path}.` } : { ok: false, message: wrote.message };
       }
       default: {
         // An MCP tool: `<server>__<tool>`.

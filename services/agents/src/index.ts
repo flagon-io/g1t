@@ -65,6 +65,7 @@ import { EFFORT_NAMES, checkDue, effortCostsOf, markResolved, outcomesSince, rea
 import { moveAgentTeams } from "./team-move.ts";
 import { effortOf } from "./routing.ts";
 import * as views from "./views.ts";
+import { computerCommands, computerView, forgetComputer, resetComputer, sleepComputer, wakeComputer } from "./computer.ts";
 import { monthKey } from "./budget.ts";
 import * as extensions from "./extensions.ts";
 import { skillPushes, skillRpc } from "./skill-rpc.ts";
@@ -76,6 +77,8 @@ type Env = ReplyEnv & {
   IDENTITY: ServiceBinding;
   /** The audit log. */
   EVENTS: ServiceBinding;
+  /** The runner, for agents' own computers (./computer.ts). */
+  RUNNER?: ServiceBinding;
   DESKS: DurableObjectNamespace<Desk>;
 };
 
@@ -857,6 +860,8 @@ class Agents {
     const now = new Date().toISOString();
     await this.db.prepare("UPDATE agents SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL").bind(now, now, row.id).run();
     this.audit(a.viewer!, a.workspace, "archive_agent", row.handle, `Archived @${row.handle}`);
+    // Its computer goes to sleep now; its disk is kept 30 days, then deleted (computer.ts).
+    this.defer(forgetComputer(this.env, row.id));
     return ok(null);
   }
 
@@ -1008,6 +1013,17 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
       return Response.json(await service.view(args, (ctx) => views.approveSession(ctx, args.id, args.cap_micros)));
     case "steer_session":
       return Response.json(await service.view(args, (ctx) => views.steerSession(ctx, args.id, args.body)));
+    // The agent's own computer (./computer.ts).
+    case "computer":
+      return Response.json(await service.view(args, (ctx) => computerView(ctx, args.handle)));
+    case "computer_wake":
+      return Response.json(await service.view(args, (ctx) => wakeComputer(ctx, args.handle)));
+    case "computer_sleep":
+      return Response.json(await service.view(args, (ctx) => sleepComputer(ctx, args.handle)));
+    case "computer_reset":
+      return Response.json(await service.view(args, (ctx) => resetComputer(ctx, args.handle)));
+    case "computer_commands":
+      return Response.json(await service.view(args, (ctx) => computerCommands(ctx, args.handle, args.session_id ?? null)));
     case "memories":
       return Response.json(await service.view(args, (ctx) => views.memories(ctx, args.handle)));
     case "remember":

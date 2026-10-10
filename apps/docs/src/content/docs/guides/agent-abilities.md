@@ -62,10 +62,24 @@ Changing one here changes it there, and the other way round.
 
 ### Its computer
 
-A shell, files, a browser and web search, on a computer of the agent's
-own. These are listed so you can see what is coming, and are marked
-**Coming** until the agent computer exists. Nothing can be set for them
-yet.
+What the agent may do on [its own computer](/guides/agents/#its-computer),
+in its sessions. Chat replies never use the computer, whatever is set here.
+
+| Ability | Tools it offers | Kind | Default |
+| --- | --- | --- | --- |
+| Shell | `run_command` | Write | Alone when asked for it |
+| Files | `computer_read_file` · `computer_write_file` | Write | Alone |
+| Browser | — | Send | Coming |
+| Web search | — | Read | Coming |
+
+Set to **Never**, an ability's tools are not offered to the agent at all,
+and a call for one anyway is refused with the rule. For the shell at
+**Alone when asked for it**, the session's goal or a message steering it
+counts as asking when it names running, building, testing, installing,
+cloning or the like; otherwise the command waits on an Ask-first card, with
+the command on it. Files are alone by default, since nothing leaves the
+computer. A browser and web search are marked **Coming** until they exist;
+nothing can be set for them yet.
 
 ### Integrations
 
@@ -182,6 +196,13 @@ with `abilities: { settings }` replaces its settings, and is a new
 version like any change. MCP servers are added and removed with the
 agents service's `add_mcp_server`, `refresh_mcp_server` and
 `remove_mcp_server`; they never travel with a change.
+
+The computer itself has routes of its own under the agent:
+`GET /workspaces/{workspace}/agents/{agent}/computer` for its state and
+recent commands, `POST …/computer/wake`, `…/computer/sleep` and
+`…/computer/reset`, and `GET …/computer/commands`; in MCP, the `agent`
+tool's `computer`, `wake_computer`, `sleep_computer`, `reset_computer` and
+`computer_commands` actions, all under `agents:run`.
 
 ## Next
 

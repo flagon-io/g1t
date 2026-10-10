@@ -9,6 +9,7 @@ import { type CloudWork, machineTime, perMinute } from "../lib/runners";
 import type { RunnersAction, RunnersPageData } from "../lib/runners.server";
 import { Groups, NewRunner, RunnerRow, RunnerSettingsForm, STATUS } from "./runners";
 import { EmptyState, ErrorText, TimeAgo } from "./ui";
+import { Badge } from "./ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** The most of what runs on g1t's cloud the card lists before saying how many more. */
@@ -179,7 +180,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
           icon={<Cloud size={15} />}
           title="g1t cloud"
           tag={<span className="rounded-full bg-raised px-2 py-0.5 text-xs text-fg-soft">Managed by g1t</span>}
-          about="A fresh sandbox for every agent run and workflow job, stopped when it ends. Billed by the second at the price below."
+          about="A fresh sandbox for every agent run and workflow job, stopped when it ends; workspace agents keep a computer that sleeps when idle. Billed by the second at the price below."
           headline={
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-semibold tracking-tight tabular-nums">{running ?? "–"}</span>
@@ -338,10 +339,11 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
         <Groups groups={data.groups} repositories={data.repositories} manage action={action} />
       </Section>
 
-      <Section title="Coming to runners">
+      <Section title="Agents' computers and more">
         <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
-          <ComingRow icon={<Cpu size={15} />} title="Sessions that persist">
-            An agent keeps its runner&apos;s disk between tasks, its checkouts, caches and notes, and picks up where it left off.
+          <ComingRow icon={<Cpu size={15} />} title="Sessions that persist" live>
+            Each workspace agent has a computer of its own on g1t cloud: its home, clones, caches and notes stay between sessions, and it sleeps when idle. Its page is the
+            agent&apos;s Computer tab. Pinning it to one of your runners is coming.
           </ComingRow>
           <ComingRow icon={<Boxes size={15} />} title="An official agent image">
             One image with git, Node and the agent&apos;s tools, so agent work runs on any runner with Docker without an image of your own.
@@ -365,14 +367,15 @@ function WhereCard({ icon, title, coming, children }: { icon: ReactNode; title: 
   );
 }
 
-function ComingRow({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+/** One thing runners do or will do: live, or marked Coming. */
+function ComingRow({ icon, title, live = false, children }: { icon: ReactNode; title: string; live?: boolean; children: ReactNode }) {
   return (
     <li className="flex items-start gap-3 px-4 py-3">
       <span className="mt-0.5 text-muted">{icon}</span>
       <div className="min-w-0 grow">
         <p className="flex items-center gap-2 text-sm font-medium">
           {title}
-          <Coming />
+          {live ? <Badge tone="success">Live</Badge> : <Coming />}
         </p>
         <p className="mt-0.5 text-sm text-muted">{children}</p>
       </div>

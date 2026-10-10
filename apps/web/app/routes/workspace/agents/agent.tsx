@@ -114,6 +114,9 @@ export default function AgentPage({ loaderData, params }: Route.ComponentProps) 
         <TabLink to={`${base}/abilities`} icon={null}>
           Abilities
         </TabLink>
+        <TabLink to={`${base}/computer`} icon={null}>
+          Computer
+        </TabLink>
         <TabLink to={`${base}/memory`} icon={null}>
           Memory
         </TabLink>

@@ -133,7 +133,16 @@ export async function loadShelf(
   return shelfFrom(agent.skills_off, rows).skills;
 }
 
-const NEEDS_COMPUTER = "needs a computer of its own, which agents don't have yet: its scripts can't run, so follow the parts that don't need them and never say you ran one";
+/**
+ * What a skill that needs the agent's computer is told: how to run its
+ * scripts when the computer is here (run_command is offered), and that
+ * they can't run when it isn't (a reply, or the ability set to Never).
+ */
+function needsComputer(offered: ReadonlySet<string>): string {
+  return offered.has("run_command")
+    ? "needs your computer: read its scripts with use_skill and file, write them under your session's directory with computer_write_file, and run them with run_command"
+    : "needs a computer of its own, which you don't have in this turn: its scripts can't run, so follow the parts that don't need them and never say you ran one";
+}
 
 /**
  * The "Your skills" section: one line per skill, by name and when to use
@@ -144,7 +153,7 @@ export function skillsSection(shelf: readonly ShelfSkill[], offered: Iterable<st
   const tools = new Set(offered);
   if (!shelf.length || !tools.has("use_skill")) return null;
   const line = (skill: ShelfSkill) => {
-    const marks = skill.kind === "library" ? [skill.requires_computer ? `Needs a computer of its own (not available yet).` : null].filter(Boolean) : [];
+    const marks = skill.kind === "library" ? [skill.requires_computer ? (tools.has("run_command") ? "Uses your computer." : "Needs your computer, which you don't have in this turn.") : null].filter(Boolean) : [];
     return `- ${skill.name}: ${skill.description}${marks.length ? ` ${marks.join(" ")}` : ""}`;
   };
   return [
@@ -189,7 +198,7 @@ export function skillText(skill: Extract<ShelfSkill, { kind: "library" }>, store
     if (!found) return `${skill.name} has no file called ${file}. Its files: ${stored.files.map((f) => f.path).join(", ") || "none"}.`;
     if (found.encoding === "base64") return `${found.path} in ${skill.name} isn't text (${skillSize(skillFileBytes(found))}), so it can't be read here.`;
     const text = found.content.length > MAX_FILE_TEXT ? `${found.content.slice(0, MAX_FILE_TEXT)}\n[cut: ${found.content.length - MAX_FILE_TEXT} more characters]` : found.content;
-    const script = found.path.startsWith("scripts/") ? `\n\nThis is a script: it ${NEEDS_COMPUTER}.` : "";
+    const script = found.path.startsWith("scripts/") ? `\n\nThis is a script: it ${needsComputer(offered)}.` : "";
     return `# ${found.path} (from the ${skill.name} skill, version ${skill.version})\n\n${text}${script}`;
   }
   const split = splitFrontMatter(stored.skill_md);
@@ -198,7 +207,7 @@ export function skillText(skill: Extract<ShelfSkill, { kind: "library" }>, store
   const notes: string[] = [];
   const missing = skill.tools.filter((tool) => !offered.has(tool));
   if (missing.length) notes.push(`- Not available in this conversation: ${list(missing)}. Where the skill needs ${missing.length === 1 ? "it" : "them"}, say you can't do that part here.`);
-  if (skill.requires_computer) notes.push(`- This skill ${NEEDS_COMPUTER}.`);
+  if (skill.requires_computer) notes.push(`- This skill ${needsComputer(offered)}.`);
   const others = stored.files.filter((f) => f.path !== "SKILL.md");
   if (others.length) {
     notes.push(

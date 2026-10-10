@@ -42,9 +42,12 @@ A runner is **Idle** when it is online with nothing to do, **Busy** while it
 runs a job or an agent run, and **Offline** when it has not polled for 90
 seconds. When a service does not answer, only its part of the page says so.
 
-A runner in the desktop app, sessions that persist on a runner between
-tasks, and an official agent image are coming, and the page labels them
-so.
+Sessions that persist are here for workspace agents: each has
+[a computer of its own](/guides/agents/#its-computer) on g1t cloud, whose
+home stays between sessions and which sleeps when idle; the page says so
+under **Agents' computers and more**. Pinning an agent's computer to one of
+your own runners, a runner in the desktop app, and an official agent image
+are coming, and the page labels them so.
 
 ## Add a runner
 

@@ -151,6 +151,7 @@ There are no seats. The live figures are on
 | g1t agent rate, your own model key | The same, on runs that use [your own provider](/guides/models/) | — | $0.25, from Oct 22, 2026 |
 | [AI Gateway](/guides/ai-gateway/) | A request | What the provider charged | The model's list price per token: free of markup during beta |
 | Sandbox time (agents, workflows, the merge queue) | Second | About $0.001 a minute | About $0.0012 a minute |
+| [An agent's computer](#agents-computers), while awake | Second | The same as a sandbox second | The same as a sandbox second; its 5 GB of disk is included |
 | [Larger machines](#workflow-jobs-on-larger-machines) for workflow jobs (`g1t-2core`, `g1t-4core`) | Second | About 2.8 and 5.1 times a sandbox second | Cost + 20% |
 | Deploy builds | Second | About $0.001 a minute | About $0.0012 a minute |
 | App requests | Million | $0.30 | $0.36 |
@@ -437,6 +438,22 @@ Each sandbox is one line on the [statement](#the-statement), such as
 *Checks on acme/api#12: 3m 12s of sandbox time*. Deploy builds are not
 counted here: [Deployments](/guides/deployments/) charges them by the
 second, from the first, under **Builds**.
+
+### Agents' computers
+
+A workspace agent's [own computer](/guides/agents/#its-computer) is a
+sandbox that keeps its home. Its time is sandbox time, priced the same, for
+every second it is awake: from the moment it wakes (restoring its home
+included) to the moment it has been saved and stops. Asleep it costs
+nothing. Each stretch awake is one line on the statement, such as
+*@margo's computer, awake: 24m 10s of sandbox time*, under the agent and
+whoever asked for the session that woke it, so it shows in that agent's
+share of [Spend](/guides/agents/#budgets).
+
+Its disk, 5 GB, is included with the agent: there is no charge for it,
+and it is a hard cap rather than a price. Waking a computer is admitted
+the way an agent run is, so a paused workspace, or one past its spend
+limit, is refused.
 
 ### Workflow jobs on larger machines
 

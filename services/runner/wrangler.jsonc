@@ -36,19 +36,43 @@
 			"instance_type": "standard-4",
 			"max_instances": 10,
 			"rollout_active_grace_period": 7200
+		},
+		{
+			// Workspace agents' own computers (src/computer.ts): the same image
+			// in MODE=computer, one per agent, awake only while a session uses
+			// it. Modest to start; raise it as agents get computers.
+			"class_name": "AgentComputer",
+			"image": "./Dockerfile",
+			"instance_type": "standard-1",
+			"max_instances": 20,
+			"rollout_active_grace_period": 7200
 		}
 	],
 	"durable_objects": {
 		"bindings": [
 			{ "name": "SANDBOX", "class_name": "AttemptSandbox" },
 			{ "name": "SANDBOX_2CORE", "class_name": "Sandbox2Core" },
-			{ "name": "SANDBOX_4CORE", "class_name": "Sandbox4Core" }
+			{ "name": "SANDBOX_4CORE", "class_name": "Sandbox4Core" },
+			{ "name": "COMPUTER", "class_name": "AgentComputer" }
 		]
 	},
 	"migrations": [
 		{ "tag": "v1", "new_sqlite_classes": ["AttemptSandbox"] },
-		{ "tag": "v2", "new_sqlite_classes": ["Sandbox2Core", "Sandbox4Core"] }
+		{ "tag": "v2", "new_sqlite_classes": ["Sandbox2Core", "Sandbox4Core"] },
+		{ "tag": "v3", "new_sqlite_classes": ["AgentComputer"] }
 	],
+	// Where agents' computers keep their homes between wakes (src/computer.ts).
+	// NOT YET ENABLED: the bucket does not exist, and a deploy with a binding
+	// to a missing bucket fails. The operator creates it, then uncomments
+	// this block ("Agents' computers" in docs.g1t.sh/guides/deploy-to-cloudflare/):
+	//
+	//   npx wrangler r2 bucket create g1t-agent-homes
+	//   npx wrangler r2 bucket lifecycle add g1t-agent-homes abort-uploads homes/ --abort-multipart-days 1
+	//
+	// Until then computers work but forget their home when they sleep, and
+	// the Computer tab says the disk isn't attached yet.
+	//
+	// "r2_buckets": [{ "binding": "HOMES", "bucket_name": "g1t-agent-homes" }],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },

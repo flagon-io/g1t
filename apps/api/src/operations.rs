@@ -72,6 +72,8 @@ pub struct Services {
     /// The artifacts service (services/artifacts): docs, slides, designs and
     /// dashboards (folios), for the artifact routes and tool.
     pub artifacts: Fetcher,
+    /// The agents service (services/agents): workspace agents' own computers.
+    pub agents: Fetcher,
     /// Where the request came in, for its audit entries.
     pub audit: crate::audit::AuditContext,
     /// Set for a request made with an agent's token: all it may do.
@@ -99,6 +101,7 @@ impl Services {
             deployments: env.service("DEPLOYMENTS")?,
             packages: env.service("PACKAGES")?,
             artifacts: env.service("ARTIFACTS")?,
+            agents: env.service("AGENTS")?,
             scope: None,
             audit: crate::audit::AuditContext::default(),
             addresses: crate::addresses::Addresses::from_env(env),
@@ -239,6 +242,12 @@ pub enum Op {
     UpdateRunnerGroup,
     DeleteRunnerGroup,
     UpdateRunnerSettings,
+    // A workspace agent's own computer (services/agents computer.ts).
+    GetAgentComputer,
+    WakeAgentComputer,
+    SleepAgentComputer,
+    ResetAgentComputer,
+    ListAgentComputerCommands,
     ListCollaborators,
     AddCollaborator,
     UpdateCollaborator,
@@ -698,7 +707,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 345] = [
+    pub const ALL: [Op; 350] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -830,6 +839,11 @@ impl Op {
         Op::UpdateRunnerGroup,
         Op::DeleteRunnerGroup,
         Op::UpdateRunnerSettings,
+        Op::GetAgentComputer,
+        Op::WakeAgentComputer,
+        Op::SleepAgentComputer,
+        Op::ResetAgentComputer,
+        Op::ListAgentComputerCommands,
         Op::ListCollaborators,
         Op::AddCollaborator,
         Op::UpdateCollaborator,
@@ -1184,6 +1198,11 @@ impl Op {
             Op::UpdateRunnerGroup => "update_runner_group",
             Op::DeleteRunnerGroup => "delete_runner_group",
             Op::UpdateRunnerSettings => "update_runner_settings",
+            Op::GetAgentComputer => "get_agent_computer",
+            Op::WakeAgentComputer => "wake_agent_computer",
+            Op::SleepAgentComputer => "sleep_agent_computer",
+            Op::ResetAgentComputer => "reset_agent_computer",
+            Op::ListAgentComputerCommands => "list_agent_computer_commands",
             Op::ListCollaborators => "list_collaborators",
             Op::AddCollaborator => "add_collaborator",
             Op::UpdateCollaborator => "update_collaborator",
@@ -1615,6 +1634,21 @@ impl Op {
             Op::DeleteRunnerGroup => "Delete a runner group. Its runners join the default group, which cannot be deleted. Owners only.",
             Op::UpdateRunnerSettings => {
                 "Change where g1t agent work runs and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository."
+            }
+            Op::GetAgentComputer => {
+                "A workspace agent's own computer: its `status` (`state` asleep, waking, awake or sleeping, and `since`; `disk_used_bytes` of `disk_cap_bytes`, 5 GB; `last_woke_at`, `last_slept_at`; the saved home's `snapshot_bytes` and `snapshot_at`; `where`, g1t_cloud; `disk_attached`, false while the installation has no storage for homes; a `problem` the owner should know of; `delete_after` once the agent was archived), its recent `commands` newest first, and `can_manage`, whether you may wake, sleep or reset it. Members of the workspace; a personal agent's only its member and the owners."
+            }
+            Op::WakeAgentComputer => {
+                "Wake an agent's computer: the container starts, its saved home is restored, and its time is metered as sandbox time under the agent until it sleeps. Sessions wake it by themselves; this is for a person. Refused with `payment_required` when the workspace's plan refuses compute. Owners, or the member whose personal agent it is. Returns what get_agent_computer returns."
+            }
+            Op::SleepAgentComputer => {
+                "Put an agent's computer to sleep: its home is saved and the container stops, with its time on the ledger. Refused with `conflict` while a command is running, or when the home is over its 5 GB cap and can't be saved (the message names the largest directories). Owners, or the member whose personal agent it is. Returns what get_agent_computer returns."
+            }
+            Op::ResetAgentComputer => {
+                "Reset an agent's computer: it is stopped if awake, its saved home is deleted, and its command history is cleared. The agent's memory and artifacts are untouched. Owners, or the member whose personal agent it is. Returns what get_agent_computer returns."
+            }
+            Op::ListAgentComputerCommands => {
+                "The commands an agent's computer ran most recently, newest first, up to 50: each with its `cmd`, `cwd`, `exit_code`, `duration_ms`, `output` (cut at 64 KB, `truncated` when so), `timed_out`, the `session_id` it ran in and who `asked_by`. Members of the workspace; a personal agent's only its member and the owners."
             }
             Op::ImportIssue => {
                 "Open an issue from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The issue is linked to it: agents read the original, and when the work lands the ticket is told. Importing the same ticket again returns the issue already made. With assign, a g1t agent starts on it."
@@ -2759,6 +2793,13 @@ impl Op {
                 &["setting"],
             ),
             Op::ListRunners | Op::GetRunnerSettings => object(runners_owner(json!({})), &[]),
+            Op::GetAgentComputer | Op::WakeAgentComputer | Op::SleepAgentComputer | Op::ResetAgentComputer | Op::ListAgentComputerCommands => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "agent": { "type": "string", "description": "The agent's handle, without the @." },
+                }),
+                &["workspace", "agent"],
+            ),
             Op::CreateRunnerRegistrationToken => object(
                 runners_owner(json!({
                     "group": { "type": "string", "description": "A workspace's runner group, by name or id, for the runners it registers. The default group if left out." },
@@ -3452,6 +3493,11 @@ impl Op {
                 | Op::UpdateRunnerGroup
                 | Op::DeleteRunnerGroup
                 | Op::UpdateRunnerSettings
+                | Op::GetAgentComputer
+                | Op::WakeAgentComputer
+                | Op::SleepAgentComputer
+                | Op::ResetAgentComputer
+                | Op::ListAgentComputerCommands
                 | Op::ListMyRepoInvitations
                 | Op::AcceptRepoInvitation
                 | Op::DeclineRepoInvitation
@@ -3653,6 +3699,7 @@ impl Op {
             integrations,
             webhooks,
             actions,
+            agents,
             ..
         } = services;
         let workspace = || text(input, "workspace").to_lowercase();
@@ -5062,6 +5109,26 @@ impl Op {
             }
             Op::ListRunnerGroups => {
                 pass(actions, "runner_groups", &json!({ "actor": actor(), "workspace": workspace() })).await
+            }
+            // A workspace agent's own computer: the agents service checks who may
+            // see it and who may act on it (services/agents computer.ts).
+            Op::GetAgentComputer
+            | Op::WakeAgentComputer
+            | Op::SleepAgentComputer
+            | Op::ResetAgentComputer
+            | Op::ListAgentComputerCommands => {
+                let handle = text(input, "agent").trim().trim_start_matches('@').to_lowercase();
+                if workspace().is_empty() || handle.is_empty() {
+                    return failed(FailureCode::Invalid, "Name the workspace and the agent's handle.");
+                }
+                let method = match self {
+                    Op::GetAgentComputer => "computer",
+                    Op::WakeAgentComputer => "computer_wake",
+                    Op::SleepAgentComputer => "computer_sleep",
+                    Op::ResetAgentComputer => "computer_reset",
+                    _ => "computer_commands",
+                };
+                pass(agents, method, &json!({ "workspace": workspace(), "handle": handle, "viewer": actor() })).await
             }
             Op::CreateRunnerGroup | Op::UpdateRunnerGroup => {
                 let mut args = json!({ "actor": actor(), "workspace": workspace() });

@@ -7,7 +7,9 @@
  *   colleagues) are always on, within the access of the person it acts
  *   for. The four that write code and docs keep the agent's `autonomy`
  *   choices, shown here as levels.
- * - **Its computer** (shell, files, browser, web search) is coming.
+ * - **Its computer**: a shell and files on a computer of its own, which
+ *   it uses in sessions (docs.g1t.sh/guides/agents/, "Its computer"); a
+ *   browser and web search are coming.
  * - **Integrations**: every connector the workspace has connected lists
  *   what an agent can do through it, one row per action, from the
  *   connector catalog (./connectors.ts) and what the integrations service
@@ -100,6 +102,8 @@ export type AbilityDef = {
    * and docs abilities, with the levels that field allows.
    */
   autonomy?: { key: keyof AgentAutonomy; levels: AbilityLevel[] } | null;
+  /** The level it starts at, when that is not what its kind would say. */
+  default?: AbilityLevel | null;
 };
 
 /** What an agent keeps for one ability. Absent fields mean the default. */
@@ -318,12 +322,21 @@ export function autonomyOfLevel(key: keyof AgentAutonomy, level: AbilityLevel): 
 
 // Its computer -----------------------------------------------------------
 
+/**
+ * The agent's own computer: a persistent home on g1t cloud that its
+ * sessions use and that sleeps when idle. Running commands is a write it
+ * does alone when asked for it; reading and writing its own files is alone,
+ * since nothing leaves the computer. Chat replies never use it.
+ */
 export const COMPUTER_ABILITIES: AbilityDef[] = [
-  { id: "computer:shell", group: "computer", label: "Shell", about: "Run commands on its own computer, with a persistent home.", kind: "write", tools: [], status: "coming" },
-  { id: "computer:files", group: "computer", label: "Files", about: "Read and write files on its computer.", kind: "write", tools: [], status: "coming" },
+  { id: "computer:shell", group: "computer", label: "Shell", about: "Run commands on its own computer, with a persistent home, from its sessions.", kind: "write", tools: ["run_command"], status: "ready" },
+  { id: "computer:files", group: "computer", label: "Files", about: "Read and write files in its computer's home.", kind: "write", tools: ["computer_read_file", "computer_write_file"], status: "ready", default: "alone" },
   { id: "computer:browser", group: "computer", label: "Browser", about: "Open sites in a browser of its own, signed in where you let it be.", kind: "send", tools: [], status: "coming" },
   { id: "computer:web", group: "computer", label: "Web search", about: "Search and read the open web, as its team's web access allows.", kind: "read", tools: [], status: "coming" },
 ];
+
+/** The tools the computer offers, by ability id: what a session offers once the ability is not Never. */
+export const COMPUTER_TOOLS: Record<string, string[]> = Object.fromEntries(COMPUTER_ABILITIES.filter((def) => def.status === "ready").map((def) => [def.id, def.tools]));
 
 // Integrations -----------------------------------------------------------
 
@@ -478,7 +491,7 @@ export function resolveOne(def: AbilityDef, input: ResolveInput, connected = tru
     choices = [];
     canChange = false;
   } else {
-    const wanted = setting.level ?? defaultLevel(def.kind);
+    const wanted = setting.level ?? def.default ?? defaultLevel(def.kind);
     level = withinLevel(wanted, max) ? wanted : max;
     choices = ABILITY_LEVELS.filter((l) => withinLevel(l, max));
     canChange = true;
@@ -512,8 +525,8 @@ export function resolveAbilities(input: ResolveInput): AbilitySection[] {
     {
       group: "computer",
       title: "Its computer",
-      about: "A computer of its own, with a shell, files, a browser and web search. Coming.",
-      sources: [{ id: "computer", name: "Computer", connected: false, href: null, note: null, abilities: COMPUTER_ABILITIES.map((def) => resolveOne(def, input, false)) }],
+      about: "A computer of its own on g1t cloud, used in its sessions: a shell and files now, a browser and web search coming. It sleeps when idle and keeps its home.",
+      sources: [{ id: "computer", name: "Computer", connected: true, href: null, note: null, abilities: COMPUTER_ABILITIES.map((def) => resolveOne(def, input)) }],
     },
   ];
   // Every connected connector, then the ones with abilities that aren't connected yet.
@@ -599,14 +612,20 @@ const lower = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 export function abilitiesSummary(sections: AbilitySection[]): string {
   const by: Record<AbilityLevel, string[]> = { alone: [], asked: [], ask: [], never: [] };
   for (const section of sections) {
-    if (section.group === "computer") continue;
     for (const source of section.sources) {
       if (!source.connected) continue;
       for (const ability of source.abilities) {
         if (ability.status !== "ready") continue;
         // g1t's always-on reads go without saying; its choices and everything outside are the point.
         if (section.group === "g1t" && !ability.autonomy) continue;
-        const what = section.group === "g1t" ? lower(ability.label) : section.group === "mcp" ? `call ${ability.label} on ${source.name}` : `${lower(ability.label)} in ${source.name}`;
+        const what =
+          section.group === "g1t"
+            ? lower(ability.label)
+            : section.group === "computer"
+              ? computerWords(ability.id)
+              : section.group === "mcp"
+                ? `call ${ability.label} on ${source.name}`
+                : `${lower(ability.label)} in ${source.name}`;
         by[ability.level].push(what);
       }
     }
@@ -619,6 +638,11 @@ export function abilitiesSummary(sections: AbilitySection[]): string {
   if (!parts.length) return "Reads code, chat, issues and artifacts within the asker's access; nothing outside g1t yet.";
   const text = parts.join("; ");
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
+}
+
+/** A computer ability as what the agent does with it. */
+function computerWords(id: string): string {
+  return id === "computer:shell" ? "run commands on its computer" : "change files on its computer";
 }
 
 /** "read issues in Linear" → "reads issues in Linear". */

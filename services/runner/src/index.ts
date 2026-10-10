@@ -118,6 +118,10 @@ import {
 
 // Outbound interception, which network guardrails use, needs this exported.
 export { ContainerProxy } from "@cloudflare/containers";
+// Workspace agents' own computers: a Durable Object class of its own (computer.ts).
+export { AgentComputer } from "./computer";
+import type { AgentComputer } from "./computer";
+import { type ComputerExecArgs, type ComputerWakeArgs } from "@g1t/contracts";
 
 export interface RunnerEnv {
   SANDBOX: DurableObjectNamespace<AttemptSandbox>;
@@ -127,6 +131,14 @@ export interface RunnerEnv {
    */
   SANDBOX_2CORE?: DurableObjectNamespace<Sandbox2Core>;
   SANDBOX_4CORE?: DurableObjectNamespace<Sandbox4Core>;
+  /** Workspace agents' own computers (computer.ts): one object per agent, `computer:<agent_id>`. */
+  COMPUTER?: DurableObjectNamespace<AgentComputer>;
+  /**
+   * Where agents' homes are kept between wakes (`g1t-agent-homes`). Optional:
+   * without it computers run but forget their home when they sleep, and say
+   * so. The binding is enabled in wrangler.jsonc once the bucket exists.
+   */
+  HOMES?: R2Bucket;
   IDENTITY: ServiceBinding;
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
@@ -1250,7 +1262,44 @@ export default class RunnerService
         }),
       );
     }
+    // Workspace agents' own computers (computer.ts), for the agents service:
+    // `computer_status`, `computer_wake`, `computer_exec`, `computer_read_file`,
+    // `computer_write_file`, `computer_sleep`, `computer_reset`,
+    // `computer_forget` and `computer_commands`, each naming its `agent_id`.
+    if (request.method === "POST" && pathname.startsWith("/rpc/computer_")) {
+      return Response.json(await this.computer(pathname.slice("/rpc/".length), (await request.json()) as Record<string, unknown>));
+    }
     return new Response("Not found\n", { status: 404 });
+  }
+
+  /** One call on an agent's computer, by its object. */
+  private async computer(method: string, args: Record<string, unknown>): Promise<unknown> {
+    const agentId = typeof args.agent_id === "string" ? args.agent_id.trim() : "";
+    if (!agentId) return fail("invalid", "Name the agent as agent_id.");
+    if (!this.env.COMPUTER) return fail("unavailable", "Agents' computers aren't set up on this installation.");
+    const computer = this.env.COMPUTER.get(this.env.COMPUTER.idFromName(`computer:${agentId}`));
+    switch (method) {
+      case "computer_status":
+        return ok(await computer.status(agentId));
+      case "computer_commands":
+        return ok(await computer.commands(agentId, typeof args.session_id === "string" ? args.session_id : null));
+      case "computer_wake":
+        return computer.wake(args as unknown as ComputerWakeArgs);
+      case "computer_exec":
+        return computer.exec(args as unknown as ComputerExecArgs);
+      case "computer_read_file":
+        return computer.readFile(args as unknown as ComputerWakeArgs & { path: string });
+      case "computer_write_file":
+        return computer.writeFile(args as unknown as ComputerWakeArgs & { path: string; text: string });
+      case "computer_sleep":
+        return computer.sleep(agentId);
+      case "computer_reset":
+        return computer.reset(agentId);
+      case "computer_forget":
+        return computer.forget(agentId);
+      default:
+        return fail("not_found", `There is no method called ${method}.`);
+    }
   }
 
   // ---- The compute gate (@g1t/contracts compute.ts) -------------------------

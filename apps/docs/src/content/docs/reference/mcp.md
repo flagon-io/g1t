@@ -384,8 +384,14 @@ opens the issue.
 | [`message`](/reference/api/pull-requests/message-agent/) | Send the agent working on a pull request a message, received at its next step. g1t sends a `question` or a `handoff`, with its own pull request as `from_number`. | `repo`, `number`, `body` | `agents:run` |
 | [`answer`](/reference/api/pull-requests/answer-message/) | Answer a question or a handoff by the message's id; `decline` a handoff that is not yours. The answer reaches the asking agent at its next step. | `repo`, `id`, `body` | `agents:run` |
 | [`take_messages`](/reference/api/pull-requests/take-messages/) | For g1t at work: the messages it has not seen yet, each returned once. | `repo`, `number` | `agents:run` |
+| [`computer`](/reference/api/agents-computers/get-agent-computer/) | A workspace agent's [own computer](/guides/agents/#its-computer): its `status` (state, disk, saved home, where it runs), recent `commands`, and `can_manage`. Members; a personal agent's only its member and the owners. | `workspace`, `agent` | `agents:run` |
+| [`wake_computer`](/reference/api/agents-computers/wake-agent-computer/) | Wake it: its home is restored and its time is metered until it sleeps. Owners, or a personal agent's member. `payment_required` when the plan refuses compute. | `workspace`, `agent` | `agents:run` |
+| [`sleep_computer`](/reference/api/agents-computers/sleep-agent-computer/) | Save its home and stop it. `conflict` while a command runs, or when the home is over its 5 GB cap. | `workspace`, `agent` | `agents:run` |
+| [`reset_computer`](/reference/api/agents-computers/reset-agent-computer/) | Wipe its home and command history; memory and artifacts are kept. | `workspace`, `agent` | `agents:run` |
+| [`computer_commands`](/reference/api/agents-computers/list-agent-computer-commands/) | The commands it ran most recently, newest first, with output cut at 64 KB. | `workspace`, `agent` | `agents:run` |
 
-See [talk to agents](/guides/talking-to-agents/).
+See [talk to agents](/guides/talking-to-agents/), and
+[its computer](/guides/agents/#its-computer) for what the computer is.
 
 ## `plan`
 

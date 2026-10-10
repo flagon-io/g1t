@@ -119,7 +119,7 @@ export default function AbilitiesTab({ loaderData, params }: Route.ComponentProp
                 <div className="min-w-0">
                   <h2 id={`group-${section.group}`} className="flex flex-wrap items-center gap-2 text-sm font-semibold">
                     {section.title}
-                    {section.group === "computer" && <Badge tone="neutral">Coming</Badge>}
+                    {section.group === "computer" && section.sources.every((source) => source.abilities.every((ability) => ability.status === "coming")) && <Badge tone="neutral">Coming</Badge>}
                     {section.group === "mcp" && <McpServerCount servers={servers} max={MAX_MCP_SERVERS} />}
                   </h2>
                   <p className="text-sm text-muted">{section.about}</p>

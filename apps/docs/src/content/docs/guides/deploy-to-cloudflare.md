@@ -192,14 +192,19 @@ namespaces; its `setup` and `secrets` say the rest.
    `resources.kv` in the manifest, and put the ids in the configs.
 4. Queues: `npx wrangler queues create <queue>` for each queue in the
    manifest, including the dead-letter queue `g1t-events-dlq`.
-5. R2: create `g1t-screenshots`, `g1t-actions-cache` and `g1t-git-packs`,
-   with lifecycle rules:
+5. R2: create `g1t-screenshots`, `g1t-actions-cache`, `g1t-git-packs` and
+   `g1t-agent-homes`, with lifecycle rules:
 
    ```sh
    npx wrangler r2 bucket lifecycle add g1t-actions-cache expire-cache c/ --expire-days 30 --abort-multipart-days 1
    npx wrangler r2 bucket lifecycle add g1t-actions-cache expire-artifacts a/ --expire-days 91 --abort-multipart-days 1
    npx wrangler r2 bucket lifecycle add g1t-git-packs expire-packs packs/ --expire-days 7 --abort-multipart-days 1
+   npx wrangler r2 bucket lifecycle add g1t-agent-homes abort-uploads homes/ --abort-multipart-days 1
    ```
+
+   `g1t-agent-homes` holds [agents' computers'](/guides/agents/#its-computer)
+   saved homes, and is the one bucket a Worker does not bind until it
+   exists: see [Agents' computers](#agents-computers) below.
 
 6. The runner's base image: `node scripts/deploy.mjs build-base`, then
    commit `services/runner/base.json`.
@@ -302,6 +307,39 @@ Docker Engine.
 sandboxes' errors over the last 7 days into expected ones (a deploy
 resetting them, no free capacity, a container that stopped) and ones to
 read.
+
+## Agents' computers
+
+Workspace agents' [own computers](/guides/agents/#its-computer) run on the
+same runner image, in a fourth Containers class, `AgentComputer`
+(`services/runner/wrangler.jsonc`, `standard-1`, 20 instances to start):
+one Durable Object per agent, named `computer:<agent id>`, whose container
+runs the runner binary in `MODE=computer` and serves the object over HTTP
+for as long as the computer is awake (`crates/runner/src/computer.rs`,
+`services/runner/src/computer.ts`). The agents service reaches it through
+its `RUNNER` binding, and the API through `AGENTS`.
+
+Saved homes live in the R2 bucket `g1t-agent-homes`, one `homes/<agent
+id>.tar.zst` each, uploaded in parts as the container streams them. The
+binding to it is **off** in `services/runner/wrangler.jsonc` until the
+bucket exists, because a deploy with a binding to a missing bucket fails.
+Without it, computers run but forget their home every time they sleep, and
+each Computer tab says the disk isn't attached yet. To turn it on:
+
+1. Create the bucket and its lifecycle rule (abandoned multipart uploads
+   go after a day):
+
+   ```sh
+   npx wrangler r2 bucket create g1t-agent-homes
+   npx wrangler r2 bucket lifecycle add g1t-agent-homes abort-uploads homes/ --abort-multipart-days 1
+   ```
+
+2. Uncomment the `r2_buckets` block in `services/runner/wrangler.jsonc`
+   (`HOMES` → `g1t-agent-homes`) and deploy the runner.
+
+An archived agent's home is deleted by the object itself 30 days later;
+nothing else expires in the bucket. Reset deletes the agent's object at
+once.
 
 ## Rolling back
 

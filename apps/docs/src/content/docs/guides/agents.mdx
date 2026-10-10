@@ -780,6 +780,53 @@ when asked for it, ask first, never). See
 An agent also never does more for someone than that person could do
 themselves. See [what agents can do for whom](/guides/agent-access/).
 
+## Its computer
+
+Every workspace agent has a computer of its own: a Linux machine on g1t
+cloud with git, Node, Python, Go, Rust, Java, .NET and Ruby, and a home,
+`/home/agent`, that stays between sessions. Clones, installed tools, build
+caches and notes are there the next time. It is the agent's alone; no two
+agents share one, and no person signs in to it.
+
+It is a persistent home, not an always-on machine:
+
+- **Sessions use it; chat replies never do.** A [session](/guides/agent-sessions/)
+  runs commands with `run_command` and reads and writes files with
+  `computer_read_file` and `computer_write_file`, as its
+  [abilities](/guides/agent-abilities/#its-computer) allow. Each session
+  works in its own directory, `/home/agent/sessions/<session id>`, in the
+  shared home. A quick answer in chat never wakes a machine.
+- **It sleeps when idle.** Ten minutes after the last command with nothing
+  running, its home is saved as it was and the machine stops. The next
+  command wakes it and puts the home back, which takes a few seconds. A
+  command that was running at the time is never cut off for idleness.
+- **Its home holds 5 GB.** That is included with the agent, with no charge
+  for the disk. It is a hard cap: a home over it cannot be saved, the
+  Computer tab says which directories are largest, and the agent is asked
+  to trim them. After an hour over the cap, the machine stops without
+  saving.
+- **It costs machine time while awake.** Awake time is
+  [sandbox time](/guides/usage-and-billing/#sandbox-time), at cost plus
+  20%, under the agent and whoever asked for the session that woke it.
+  Asleep it costs nothing. Waking it is admitted the way an agent run is:
+  a paused workspace, or one past its limit, is refused and the agent
+  says so in its report.
+- **Reset wipes the home.** The agent's memory and artifacts are kept;
+  its files, clones and command history go.
+- **Archiving the agent** puts the computer to sleep and keeps its disk
+  for 30 days, then deletes it.
+
+Every command runs as the agent in `bash`, with the output returned when it
+ends and a timeout of 120 seconds unless the agent asks for more (up to 30
+minutes). The output is kept with the session and on the Computer tab, cut
+at 64 KB. Nothing waits for input, and nothing keeps running once the
+command ends. The agent cannot push to a repository from its computer; to
+change code it drafts an issue, as before.
+
+It runs on g1t cloud. Pinning an agent's computer to one of your own
+[runners](/guides/self-hosted-runners/), a browser of its own, web search
+and taking over its terminal are coming.
+
 ## The agent's page
 
 Each agent has a page at `g1t.sh/<workspace>/-/agents/<handle>`:
@@ -789,6 +836,7 @@ Each agent has a page at `g1t.sh/<workspace>/-/agents/<handle>`:
 | **Sessions** | Every session it is working on, then every one it worked on before, each child under the session that started it. See [sessions](/guides/agent-sessions/). |
 | **Skills** | The [skills](/guides/agent-skills/) it has: g1t's foundational ones and your library's, each on or off. |
 | **Abilities** | What it may do, in groups, with a level for each: alone, alone when asked for it, ask first, or never; whose connection an integration runs on; MCP servers owners add. See [agent abilities](/guides/agent-abilities/). |
+| **Computer** | [Its computer](#its-computer): asleep or awake and since when, its disk against the 5 GB it holds, where it runs, and the commands it ran most recently with their output. Owners (or the member, for a personal agent) wake it, put it to sleep, or reset it. |
 | **Memory** | What it remembers, by scope, with where each fact came from. Pin, correct or forget facts. See [agent memory](/guides/agent-memory/). |
 | **Routines** | Work it does on a schedule or when something happens. See [routines](/guides/agent-routines/). |
 | **Spend** | Its [effort](#effort) and what each level has cost it, suggestions to spend less, and spend this month against its budget: by day, kind of work, model and who asked, and its costliest sessions. |

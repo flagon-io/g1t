@@ -17,6 +17,7 @@ import type { ModelTier } from "./integrations";
 import type { ExtensionInstall, InstallRequest, InstallRequestStatus, InstallRequests } from "./marketplace";
 import type { AgentAbilities, AgentAbilitiesChange, McpServer } from "./abilities";
 import type { AgentLook } from "./agent-look";
+import type { AgentComputerCommand, AgentComputerStatus } from "./runner";
 
 /** The built-in orchestrator's handle; nobody else's agent may take it. */
 export const BUILTIN_AGENT_HANDLE = "g1t";
@@ -486,14 +487,25 @@ export type SessionOutput =
 /** One entry of a session's transcript, as its page shows it. */
 export type SessionEvent = {
   seq: number;
-  kind: "goal" | "text" | "tool" | "steer" | "update" | "child" | "result" | "note";
+  kind: "goal" | "text" | "tool" | "command" | "steer" | "update" | "child" | "result" | "note";
   /** Who: the agent's handle, a person's username (steering), or null for g1t's notes. */
   by: string | null;
+  /** For `command`: the command on its first line, then its output, cut. */
   body: string;
-  /** For `tool`: the tool, and whether it read, was withheld, refused or failed. */
+  /** For `tool`: the tool, and whether it read, was withheld, refused or failed. For `command`: the directory it ran in. */
   tool: string | null;
+  /** For `command`: `exit <code> · <duration>`, with `timed out` or `truncated` when so. */
   outcome: string | null;
   created_at: string;
+};
+
+/** An agent's computer as its Computer tab shows it (docs.g1t.sh/guides/agents/, "Its computer"). */
+export type AgentComputerView = {
+  status: AgentComputerStatus;
+  /** The most recent commands, newest first. */
+  commands: AgentComputerCommand[];
+  /** Whether the viewer may wake, sleep and reset it: owners, and the member of a personal agent. */
+  can_manage: boolean;
 };
 
 export type AgentSessionDetail = {
@@ -903,6 +915,19 @@ export type WorkspaceAgentsApi = {
   approveSession(workspace: string, id: string, viewer: User, capMicros: number): Promise<Result<AgentSession>>;
   /** A person's message to a session, running or finished: it reads it and goes on. */
   steerSession(workspace: string, id: string, viewer: User, body: string): Promise<Result<AgentSession>>;
+  /**
+   * The agent's computer: its state, disk and recent commands. Anyone who
+   * may see the agent; `can_manage` says whether the viewer may act on it.
+   */
+  computer(workspace: string, handle: string, viewer: User): Promise<Result<AgentComputerView>>;
+  /** Wakes it, restoring its home; metered until it sleeps. Owners, or a personal agent's member. */
+  wakeComputer(workspace: string, handle: string, viewer: User): Promise<Result<AgentComputerView>>;
+  /** Saves its home and stops it. Owners, or a personal agent's member. */
+  sleepComputer(workspace: string, handle: string, viewer: User): Promise<Result<AgentComputerView>>;
+  /** Wipes its home and its command history; memory and artifacts are kept. Owners, or a personal agent's member. */
+  resetComputer(workspace: string, handle: string, viewer: User): Promise<Result<AgentComputerView>>;
+  /** Its recent commands, newest first; `sessionId` narrows them to one session's. */
+  computerCommands(workspace: string, handle: string, viewer: User, sessionId?: string | null): Promise<Result<AgentComputerCommand[]>>;
   memories(workspace: string, handle: string, viewer: User): Promise<Result<AgentMemory[]>>;
   remember(
     workspace: string,
@@ -1026,6 +1051,11 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     stopSession: (workspace, id, viewer) => call("stop_session", { workspace, id, viewer }),
     approveSession: (workspace, id, viewer, capMicros) => call("approve_session", { workspace, id, viewer, cap_micros: capMicros }),
     steerSession: (workspace, id, viewer, body) => call("steer_session", { workspace, id, viewer, body }),
+    computer: (workspace, handle, viewer) => call("computer", { workspace, handle, viewer }),
+    wakeComputer: (workspace, handle, viewer) => call("computer_wake", { workspace, handle, viewer }),
+    sleepComputer: (workspace, handle, viewer) => call("computer_sleep", { workspace, handle, viewer }),
+    resetComputer: (workspace, handle, viewer) => call("computer_reset", { workspace, handle, viewer }),
+    computerCommands: (workspace, handle, viewer, sessionId) => call("computer_commands", { workspace, handle, viewer, session_id: sessionId ?? null }),
     memories: (workspace, handle, viewer) => call("memories", { workspace, handle, viewer }),
     remember: (workspace, handle, viewer, input) => call("remember", { workspace, handle, viewer, input }),
     updateMemory: (workspace, handle, viewer, id, changes) => call("update_memory", { workspace, handle, viewer, id, changes }),

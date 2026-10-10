@@ -56,6 +56,115 @@ export type RepoInstructions = {
   limits: { fileChars: number; totalChars: number };
 };
 
+// ── An agent's own computer ────────────────────────────────────────────────
+
+/**
+ * What an agent's computer is doing (docs.g1t.sh/guides/agents/, "Its
+ * computer"): asleep with its home saved, waking (the container starting
+ * and the home restored), awake and metered, or sleeping (the home being
+ * saved, then the container stopped).
+ */
+export type AgentComputerState = "asleep" | "waking" | "awake" | "sleeping";
+
+/** How much the home may hold in v1: a hard cap, with no disk charge. */
+export const COMPUTER_DISK_CAP_BYTES = 5_000_000_000;
+/** How long a computer stays awake with nothing running before it sleeps. */
+export const COMPUTER_IDLE_MINUTES = 10;
+/** Where an archived agent's disk is kept before it is deleted. */
+export const COMPUTER_KEEP_DAYS = 30;
+/** How many of the most recent commands a computer keeps for its page. */
+export const COMPUTER_TRANSCRIPTS_KEPT = 50;
+/** How much of one command's output a kept transcript holds. */
+export const COMPUTER_TRANSCRIPT_BYTES = 64 * 1024;
+
+/** The computer as the runner reports it. Wire shape: snake_case. */
+export type AgentComputerStatus = {
+  agent_id: string;
+  state: AgentComputerState;
+  /** RFC 3339: when it entered this state. */
+  since: string;
+  /** What the home holds, as last measured (live while awake; the snapshot's size while asleep). */
+  disk_used_bytes: number;
+  disk_cap_bytes: number;
+  last_woke_at: string | null;
+  last_slept_at: string | null;
+  /** The saved home's size and when it was saved; null while there is none. */
+  snapshot_bytes: number | null;
+  snapshot_at: string | null;
+  /** Where it runs. Pinning to a self-hosted runner group comes later. */
+  where: "g1t_cloud";
+  /** False when this installation has no object storage for homes yet: the computer works, and forgets its home when it sleeps. */
+  disk_attached: boolean;
+  /** Something the owner should know: the home is over its cap and could not be saved, say. */
+  problem: string | null;
+  /** When the disk will be deleted, after its agent was archived. */
+  delete_after: string | null;
+};
+
+/** One command a computer ran, as kept for its page and the session's. */
+export type AgentComputerCommand = {
+  id: string;
+  session_id: string | null;
+  asked_by: string | null;
+  started_at: string;
+  cmd: string;
+  cwd: string;
+  exit_code: number;
+  duration_ms: number;
+  /** stdout and stderr lines in order, cut to `COMPUTER_TRANSCRIPT_BYTES`. */
+  output: string;
+  truncated: boolean;
+  timed_out: boolean;
+};
+
+export type ComputerWakeArgs = {
+  agent_id: string;
+  workspace: string;
+  /** The agent's handle, which its sandbox time is attributed to on the ledger. */
+  agent_handle: string;
+  /** Who asked for the session that woke it, by username; null for a routine's. */
+  asked_by: string | null;
+};
+
+export type ComputerExecArgs = ComputerWakeArgs & {
+  cmd: string;
+  /** Under the home; the home itself when absent. */
+  cwd?: string | null;
+  timeout_seconds?: number | null;
+  session_id?: string | null;
+};
+
+/** What `computer_exec` returns: the command as kept, in full (up to the transcript cap). */
+export type ComputerExecResult = { command: AgentComputerCommand; status: AgentComputerStatus };
+
+/** What `computer_wake` and the others return. */
+export type ComputerResult<T> = Result<T>;
+
+/**
+ * The runner's side of an agent's computer, which the agents service calls
+ * through its RUNNER binding (`POST /rpc/computer_*`, snake_case). One
+ * Durable Object per agent, named `computer:<agent_id>`.
+ */
+export interface RunnerComputerApi {
+  computerStatus(agentId: string): Promise<Result<AgentComputerStatus>>;
+  /** Starts it (restoring the saved home) and begins the meter; `payment_required` when the workspace's plan refuses. */
+  computerWake(args: ComputerWakeArgs): Promise<Result<AgentComputerStatus>>;
+  /** Runs a command, waking it first if asleep. */
+  computerExec(args: ComputerExecArgs): Promise<Result<ComputerExecResult>>;
+  /** Reads a small file of the home as text. */
+  computerReadFile(args: ComputerWakeArgs & { path: string; session_id?: string | null }): Promise<Result<{ path: string; text: string; bytes: number }>>;
+  /** Writes a small file into the home. */
+  computerWriteFile(args: ComputerWakeArgs & { path: string; text: string; session_id?: string | null }): Promise<Result<{ path: string; bytes: number }>>;
+  /** Saves the home and stops the container; the sandbox time goes on the ledger. */
+  computerSleep(agentId: string): Promise<Result<AgentComputerStatus>>;
+  /** Stops it if awake, deletes the saved home and its commands. Memory and artifacts are untouched. */
+  computerReset(agentId: string): Promise<Result<AgentComputerStatus>>;
+  /** An archived agent's: stopped now, its disk deleted after `COMPUTER_KEEP_DAYS`. */
+  computerForget(agentId: string): Promise<Result<AgentComputerStatus>>;
+  /** The most recent commands, newest first; `session_id` narrows them to one session's. */
+  computerCommands(agentId: string, sessionId?: string | null): Promise<Result<AgentComputerCommand[]>>;
+}
+
 export interface RunnerApi {
   /**
    * The repository's instructions for agents (`AGENTS.md`, `CLAUDE.md`,

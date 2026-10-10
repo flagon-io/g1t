@@ -51,6 +51,8 @@ export const AGENT_TOOL_GROUPS: { group: string; tools: string[] }[] = [
   { group: "Teamwork", tools: ["ask_colleague", "hand_off", "start_session", "post_update", "use_subagent", "bring_in", "use_skill"] },
   { group: "Memory", tools: ["remember", "forget"] },
   { group: "Outside g1t", tools: ["lookup_outside", "import_outside", "act_outside", "request_ability"] },
+  // Its own computer (docs.g1t.sh/guides/agents/, "Its computer"): offered in sessions, as its abilities allow.
+  { group: "Its computer", tools: ["run_command", "computer_read_file", "computer_write_file"] },
 ];
 
 /** Every tool a skill may name. */

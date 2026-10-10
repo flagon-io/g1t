@@ -1076,6 +1076,13 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("plan_work", Scope::AgentsRun),
     ("message_agent", Scope::AgentsRun),
     ("answer_message", Scope::AgentsRun),
+    // A workspace agent's own computer: waking it spends the workspace's
+    // money, so the same scope covers reading and managing it.
+    ("get_agent_computer", Scope::AgentsRun),
+    ("wake_agent_computer", Scope::AgentsRun),
+    ("sleep_agent_computer", Scope::AgentsRun),
+    ("reset_agent_computer", Scope::AgentsRun),
+    ("list_agent_computer_commands", Scope::AgentsRun),
     ("take_messages", Scope::AgentsRun),
     // Workflows.
     ("list_workflows", Scope::WorkflowsRead),

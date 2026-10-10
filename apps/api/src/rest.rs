@@ -866,6 +866,12 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/workspaces/:workspace/actions/runner-groups", Op::CreateRunnerGroup, &[]),
     route("PATCH", "/workspaces/:workspace/actions/runner-groups/:id", Op::UpdateRunnerGroup, &[]),
     route("DELETE", "/workspaces/:workspace/actions/runner-groups/:id", Op::DeleteRunnerGroup, &[]),
+    // A workspace agent's own computer.
+    route("GET", "/workspaces/:workspace/agents/:agent/computer", Op::GetAgentComputer, &[]),
+    route("POST", "/workspaces/:workspace/agents/:agent/computer/wake", Op::WakeAgentComputer, &[]),
+    route("POST", "/workspaces/:workspace/agents/:agent/computer/sleep", Op::SleepAgentComputer, &[]),
+    route("POST", "/workspaces/:workspace/agents/:agent/computer/reset", Op::ResetAgentComputer, &[]),
+    route("GET", "/workspaces/:workspace/agents/:agent/computer/commands", Op::ListAgentComputerCommands, &[]),
     route("POST", "/repos/:owner/:name/plans", Op::PlanWork, &[]),
     route("GET", "/repos/:owner/:name/plans/:plan", Op::GetPlan, &[]),
     route(

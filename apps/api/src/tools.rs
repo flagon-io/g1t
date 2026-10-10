@@ -195,6 +195,11 @@ pub const TOOLS: &[Tool] = &[
             a("message", Op::MessageAgent, "Tell the agent on a pull request something, or ask another agent"),
             a("answer", Op::AnswerMessage, "Answer a question or handoff sent to you"),
             a("take_messages", Op::TakeMessages, "For a g1t agent: messages not seen yet"),
+            a("computer", Op::GetAgentComputer, "A workspace agent's own computer: state, disk, recent commands"),
+            a("wake_computer", Op::WakeAgentComputer, "Wake a workspace agent's computer (metered until it sleeps)"),
+            a("sleep_computer", Op::SleepAgentComputer, "Save its home and put it to sleep"),
+            a("reset_computer", Op::ResetAgentComputer, "Wipe its home; memory and artifacts are kept"),
+            a("computer_commands", Op::ListAgentComputerCommands, "The commands it ran most recently, with output"),
         ],
     },
     Tool {
