@@ -180,46 +180,48 @@ export function AppsLauncher({ slug, pins, onToggle, onClose }: { slug: string; 
   const installed = loader.data?.apps;
   const wanted = query.trim().toLowerCase();
   const apps = (installed ?? []).filter((app) => !wanted || app.name.toLowerCase().includes(wanted) || app.about.toLowerCase().includes(wanted));
+  const loading = installed == null && !loader.data;
+  const failed = installed == null && !!loader.data;
   return (
     <div className="flex flex-col gap-2">
-      {installed == null && loader.data ? (
+      {/* The search is there from the first frame, so the launcher keeps its shape while the apps are read. */}
+      {(loading || (installed && installed.length > 0)) && (
+        <Card asChild tone="bg" radius="lg" className="flex h-9 items-center gap-2 px-2.5 text-sm focus-within:border-line-strong">
+          <label>
+            <Search size={15} className="shrink-0 text-faint" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Find an app"
+              aria-label="Find an app"
+              autoComplete="off"
+              className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
+            />
+          </label>
+        </Card>
+      )}
+      {failed ? (
         <p className="px-2 py-6 text-center text-sm text-muted">Apps can't be listed right now. Try again in a moment.</p>
-      ) : installed == null ? (
-        <div className="grid grid-cols-4 gap-1 p-1 max-sm:grid-cols-3" aria-busy="true" aria-label="Loading apps">
+      ) : loading ? (
+        <div className="grid grid-cols-4 gap-1 max-sm:grid-cols-3" aria-busy="true" aria-label="Loading apps">
           {Array.from({ length: 4 }, (_, n) => (
             <div key={n} className="flex flex-col items-center gap-2 px-1 pt-3 pb-2.5">
               <Skeleton className="size-10 rounded-xl" />
               <Skeleton className="h-2.5 w-12" />
+              <Skeleton className="h-2 w-8" />
             </div>
           ))}
         </div>
-      ) : installed.length === 0 ? (
+      ) : installed!.length === 0 ? (
         <NoApps slug={slug} onOpen={onClose} compact />
+      ) : apps.length === 0 ? (
+        <p className="px-2 py-6 text-center text-sm text-muted">No installed app matches.</p>
       ) : (
-        <>
-          <Card asChild tone="bg" radius="lg" className="flex h-9 items-center gap-2 px-2.5 text-sm focus-within:border-line-strong">
-            <label>
-              <Search size={15} className="shrink-0 text-faint" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Find an app"
-                aria-label="Find an app"
-                autoComplete="off"
-                className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
-              />
-            </label>
-          </Card>
-          {apps.length === 0 ? (
-            <p className="px-2 py-6 text-center text-sm text-muted">No installed app matches.</p>
-          ) : (
-            <div className="grid max-h-[min(23.5rem,60dvh)] grid-cols-4 gap-1 overflow-y-auto max-sm:grid-cols-3">
-              {apps.map((app) => (
-                <AppTile key={app.key} app={app} pinned={pins.includes(app.key)} onToggle={onToggle} onOpen={onClose} />
-              ))}
-            </div>
-          )}
-        </>
+        <div className="grid max-h-[min(23.5rem,60dvh)] grid-cols-4 gap-1 overflow-y-auto max-sm:grid-cols-3">
+          {apps.map((app) => (
+            <AppTile key={app.key} app={app} pinned={pins.includes(app.key)} onToggle={onToggle} onOpen={onClose} />
+          ))}
+        </div>
       )}
       <div className="flex items-center justify-between border-t border-line pt-2">
         <Link

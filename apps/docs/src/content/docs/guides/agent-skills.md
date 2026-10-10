@@ -127,7 +127,9 @@ Artifacts:
   conversation in a direct message or private channel, the General space in
   a public channel.
 - **With a doc named**, it attaches the file to that doc. The person who
-  asked must be able to edit it.
+  asked must be able to edit it; whether the space lets agents edit or only
+  suggest makes no difference, since a file beside the doc changes nothing
+  in it.
 
 Either way, the doc gets a link to the file, and the agent answers with the
 file's link. Files are served from the usercontent address

@@ -80,12 +80,18 @@ export function readableByWorkspace(space: SpaceRules): boolean {
   return space.kind === "workspace" && atLeast(space.default_role, "view");
 }
 
-/** What an agent may do for a person whose role is `asker`, in a space whose agents `mode`. */
+/**
+ * What an agent may do for a person whose role is `asker`, in a space whose
+ * agents `mode`. Editing the body follows the mode; attaching a file it
+ * made only needs the person to be able to edit, since the body stays as
+ * it is.
+ */
 export function agentAbilities(asker: DocRole | null, mode: DocAgentMode): DocAgentAbilities {
   return {
     read: atLeast(asker, "view"),
     suggest: atLeast(asker, "comment"),
     edit: atLeast(asker, "edit") && mode === "edit",
+    attach: atLeast(asker, "edit"),
   };
 }
 

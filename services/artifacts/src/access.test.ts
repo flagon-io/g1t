@@ -51,11 +51,11 @@ test("an audience reads a space only if every person in it can", () => {
 });
 
 test("an agent is capped by the person it acts for and by the space's agent mode", () => {
-  assert.deepEqual(agentAbilities("edit", "suggest"), { read: true, suggest: true, edit: false });
-  assert.deepEqual(agentAbilities("edit", "edit"), { read: true, suggest: true, edit: true });
-  assert.deepEqual(agentAbilities("view", "edit"), { read: true, suggest: false, edit: false });
-  assert.deepEqual(agentAbilities("comment", "edit"), { read: true, suggest: true, edit: false });
-  assert.deepEqual(agentAbilities(null, "edit"), { read: false, suggest: false, edit: false });
+  assert.deepEqual(agentAbilities("edit", "suggest"), { read: true, suggest: true, edit: false, attach: true }, "a file can be attached where the person could edit, whatever the agent mode");
+  assert.deepEqual(agentAbilities("edit", "edit"), { read: true, suggest: true, edit: true, attach: true });
+  assert.deepEqual(agentAbilities("view", "edit"), { read: true, suggest: false, edit: false, attach: false });
+  assert.deepEqual(agentAbilities("comment", "edit"), { read: true, suggest: true, edit: false, attach: false });
+  assert.deepEqual(agentAbilities(null, "edit"), { read: false, suggest: false, edit: false, attach: false });
 });
 
 test("roles order view < comment < edit < manage", () => {

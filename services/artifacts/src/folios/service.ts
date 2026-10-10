@@ -1117,7 +1117,7 @@ export class Folios {
       space: this.spaceOf(ctx, row),
       content: read.content,
       ...(read.blocks ? { blocks: read.blocks } : {}),
-      can: { read: true, suggest: atLeast(role, "comment"), edit: atLeast(role, "edit") },
+      can: { read: true, suggest: atLeast(role, "comment"), edit: atLeast(role, "edit"), attach: atLeast(role, "edit") },
       audience_can_read: true,
     });
   }
@@ -2074,7 +2074,7 @@ export class Folios {
       page.items.map((f) => f.id),
     );
     const reach = await this.reach(actx, [...rows.values()]);
-    return ok({ items: page.items.filter((f) => agentMayFind(reach.get(f.id) ?? { asker_role: null, audience_can_read: false, can: { read: false, suggest: false, edit: false } })), next_cursor: page.next_cursor });
+    return ok({ items: page.items.filter((f) => agentMayFind(reach.get(f.id) ?? { asker_role: null, audience_can_read: false, can: { read: false, suggest: false, edit: false, attach: false } })), next_cursor: page.next_cursor });
   }
 
   async readForAgent(a: AgentArgs & { folio_id: string }): Promise<Result<FolioAgentRead>> {
@@ -2226,7 +2226,7 @@ export class Folios {
     const opened = await this.agentOpen(actx, a.folio_id);
     if (!opened.ok) return opened;
     const { row, reach } = opened.value;
-    if (!reach.can.edit) return fail("forbidden", `${actx.viewer.username} can't edit this artifact, so nothing can be attached to it for them.`);
+    if (!reach.can.attach) return fail("forbidden", `${actx.viewer.username} can't edit this artifact, so nothing can be attached to it for them.`);
     let bytes: Uint8Array;
     try {
       bytes = Uint8Array.from(atob(String(a.file?.data ?? "")), (c) => c.charCodeAt(0));

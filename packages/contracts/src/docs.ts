@@ -415,8 +415,13 @@ export type DocBlockOutline = {
   markdown: string;
 };
 
-/** What an agent may do on a page, for the person it acts for. */
-export type DocAgentAbilities = { read: boolean; suggest: boolean; edit: boolean };
+/**
+ * What an agent may do on a page, for the person it acts for: read it,
+ * suggest changes, edit its body (only in a space whose agents edit), and
+ * attach a file it made (whenever the person could edit: a file beside the
+ * page changes nothing in it).
+ */
+export type DocAgentAbilities = { read: boolean; suggest: boolean; edit: boolean; attach: boolean };
 
 export type DocAgentPage = {
   page: DocPageRef & { updated_at: string };

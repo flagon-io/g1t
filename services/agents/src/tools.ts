@@ -1089,7 +1089,7 @@ export class ToolBox {
       if (!id) return { text: "Give the doc's id (fol_…) or its link, or leave artifact out for a new doc.", outcome: "refused" };
       const found = await folios.read(asker, audience, id);
       if (!found.ok) return found.code === "not_found" || found.code === "forbidden" ? this.withheld() : { text: found.message, outcome: "refused" };
-      if (!found.value.can.edit) return { text: "You can't edit that doc for them, so nothing can be attached to it. Leave artifact out to make a new doc.", outcome: "refused" };
+      if (!found.value.can.attach) return { text: "They can't edit that doc, so nothing can be attached to it for them. Leave artifact out to make a new doc.", outcome: "refused" };
       ref = found.value.folio;
       if (!this.audience.shared || !found.value.audience_can_read) this.privateRead = true;
       hidden = !found.value.audience_can_read;

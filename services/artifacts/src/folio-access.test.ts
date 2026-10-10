@@ -237,7 +237,7 @@ test("an agent is capped by its asker and narrowed by its audience", () => {
   const asker = roleIn(nodes, grants, "f", bo);
   assert.equal(asker, "view");
   assert.equal(agentFolioRole(asker, true), "view");
-  assert.deepEqual(agentAbilities(agentFolioRole(asker, true), "edit"), { read: true, suggest: false, edit: false });
+  assert.deepEqual(agentAbilities(agentFolioRole(asker, true), "edit"), { read: true, suggest: false, edit: false, attach: false });
   // Someone in the conversation can't read it: the agent can't either.
   assert.equal(agentFolioRole("manage", false), null);
   // Someone who can't read it gets nothing from the agent's grant.

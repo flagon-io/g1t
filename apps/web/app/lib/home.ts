@@ -381,7 +381,16 @@ export type ActorKind = "person" | "agent";
 export const G1T_ACTOR = "user:usr_g1t_agent";
 
 export function actorKind(key: string, agents?: ReadonlySet<string>): ActorKind {
-  return key.startsWith("agent:") || key === G1T_ACTOR || agents?.has(key) ? "agent" : "person";
+  return key.startsWith("agent:") || key === G1T_ACTOR || isRobotKey(key) || agents?.has(key) ? "agent" : "person";
+}
+
+/**
+ * A member key that names a robot under `user:`: an agent by its own id,
+ * or g1t's upkeep as the workspace or as `g1t`. Events normalise these
+ * (services/events digest), so this is the safety net for older ones.
+ */
+export function isRobotKey(key: string): boolean {
+  return key.startsWith("user:agt_") || key.startsWith("user:wsp_") || key === "user:g1t";
 }
 
 /** Whether a username is an agent's: g1t, or an agent account. */

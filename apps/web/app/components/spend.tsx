@@ -124,7 +124,7 @@ export const SLICES: { key: SliceKey; label: string; icon: ReactNode; workspaceO
 export function SliceTabs({ current, scope, href }: { current: SliceKey; scope: SpendScope; href: (key: SliceKey) => string }) {
   const shown = SLICES.filter((s) => scope === "workspace" || !s.workspaceOnly);
   return (
-    <nav aria-label="Slice spend by" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
+    <nav aria-label="Slice spend by" className="-mx-1 -my-1 flex gap-1 overflow-x-auto p-1 [scrollbar-width:none]">
       {shown.map((s) => (
         <Link
           key={s.key}

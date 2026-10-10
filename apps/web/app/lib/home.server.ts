@@ -192,9 +192,10 @@ export async function loadNames(keys: string[], agentsList: Pick<WorkspaceAgent,
   const userIds: string[] = [];
   const byAgentId = new Map((agentsList ?? []).map((agent) => [agent.id, agent.handle]));
   for (const key of keys.slice(0, MAX_NAMES)) {
-    if (key === G1T_ACTOR) names[key] = "g1t";
-    else if (key.startsWith("agent:")) {
-      const handle = byAgentId.get(key.slice("agent:".length));
+    if (key === G1T_ACTOR || key === "user:g1t" || key.startsWith("user:wsp_")) names[key] = "g1t";
+    else if (key.startsWith("agent:") || key.startsWith("user:agt_")) {
+      // An agent, by its own id: under `agent:` as events name it, or under `user:` from older ones.
+      const handle = byAgentId.get(key.replace(/^(agent|user):/, ""));
       if (handle) names[key] = handle;
     } else if (key.startsWith("user:")) userIds.push(key.slice("user:".length));
   }

@@ -88,9 +88,9 @@ test("an agent's grant never widens what it can do for its asker", () => {
   const grants = { f: [{ principal: "agent:ag1", role: "manage" as const }, { principal: "user:bo", role: "comment" as const }] };
   const r = reach(n, grants, null, { kind: "asker" }, [], [], bo);
   assert.equal(r.asker_role, "comment");
-  assert.deepEqual(r.can, { read: true, suggest: true, edit: false });
+  assert.deepEqual(r.can, { read: true, suggest: true, edit: false, attach: false }, "a commenter can't have a file attached for them either");
   const none = reach(n, grants, null, { kind: "asker" }, [], [], ana);
   assert.equal(none.asker_role, null);
-  assert.deepEqual(none.can, { read: false, suggest: false, edit: false });
+  assert.deepEqual(none.can, { read: false, suggest: false, edit: false, attach: false });
   assert.equal(agentMayFind(none), false);
 });

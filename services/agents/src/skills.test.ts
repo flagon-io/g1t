@@ -190,7 +190,7 @@ function fakeFolios(opts: { audienceCanRead?: boolean; canEdit?: boolean } = {})
     search: async () => "",
     read: async (_v, _a, id) => ({
       ok: true,
-      value: { folio: { ...ref(id, "Existing"), edited_at: "2026-10-10" }, space: null, content: "", can: { read: true, suggest: true, edit: opts.canEdit ?? true }, audience_can_read: opts.audienceCanRead ?? true } as never,
+      value: { folio: { ...ref(id, "Existing"), edited_at: "2026-10-10" }, space: null, content: "", can: { read: true, suggest: true, edit: opts.canEdit ?? true, attach: opts.canEdit ?? true }, audience_can_read: opts.audienceCanRead ?? true } as never,
     }),
     stale: async () => "",
     create: async (_v, input) => {

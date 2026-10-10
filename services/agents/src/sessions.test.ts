@@ -303,7 +303,7 @@ const agentRead = (id: string, title: string, content: string, audience_can_read
   space: { id: "spc_general", slug: "general", name: "General", agent_mode: "suggest" },
   content,
   blocks: [{ id: "b1", type: "heading", level: 1, markdown: `# ${title}` }],
-  can: { read: true, suggest: true, edit: false },
+  can: { read: true, suggest: true, edit: false, attach: true },
   audience_can_read,
 });
 
