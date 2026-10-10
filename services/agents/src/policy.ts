@@ -2,7 +2,8 @@
  * The workspace's say over all its agents together
  * (docs.g1t.sh/guides/agent-budgets/): one monthly budget across every
  * agent, the budget a new agent starts with, the cap a session starts with,
- * and alerts at 75, 90 and 100% of the monthly budget. Owners set it. Pure
+ * the budget each person's agents share, and alerts at 75, 90 and 100% of
+ * the monthly budget. Owners set it. Pure
  * apart from the statements it builds, so the rules are tested on their
  * own.
  */
@@ -22,13 +23,18 @@ export type PolicyRow = AgentPolicy & {
   alerted: number;
 };
 
-export const DEFAULT_POLICY: AgentPolicy = { monthly_micros: null, default_agent_monthly_micros: null, default_session_micros: DEFAULT_SESSION_MICROS };
+export const DEFAULT_POLICY: AgentPolicy = {
+  monthly_micros: null,
+  default_agent_monthly_micros: null,
+  default_session_micros: DEFAULT_SESSION_MICROS,
+  person_monthly_micros: null,
+};
 
 /** The workspace's policy and this month's spend across its agents. */
 export async function readPolicy(db: D1Database, workspaceId: string, month: string): Promise<PolicyRow> {
   const [policy, spend] = await Promise.all([
     db
-      .prepare("SELECT monthly_micros, default_agent_monthly_micros, default_session_micros FROM agent_policies WHERE workspace_id = ?")
+      .prepare("SELECT monthly_micros, default_agent_monthly_micros, default_session_micros, person_monthly_micros FROM agent_policies WHERE workspace_id = ?")
       .bind(workspaceId)
       .first<AgentPolicy>(),
     db
@@ -40,6 +46,7 @@ export async function readPolicy(db: D1Database, workspaceId: string, month: str
     monthly_micros: positive(policy?.monthly_micros),
     default_agent_monthly_micros: positive(policy?.default_agent_monthly_micros),
     default_session_micros: positive(policy?.default_session_micros) ?? DEFAULT_SESSION_MICROS,
+    person_monthly_micros: positive(policy?.person_monthly_micros),
     spent: spend?.micros ?? 0,
     alerted: spend?.alerted ?? 0,
   };
@@ -92,7 +99,7 @@ export async function markAlerted(db: D1Database, workspaceId: string, month: st
  */
 export function checkPolicy(current: AgentPolicy, changes: Partial<AgentPolicy>): { ok: true; value: AgentPolicy } | { ok: false; message: string } {
   const next = { ...current };
-  for (const key of ["monthly_micros", "default_agent_monthly_micros"] as const) {
+  for (const key of ["monthly_micros", "default_agent_monthly_micros", "person_monthly_micros"] as const) {
     if (!(key in changes)) continue;
     const value = changes[key];
     if (value === null || value === 0) next[key] = null;
@@ -108,3 +115,4 @@ export function checkPolicy(current: AgentPolicy, changes: Partial<AgentPolicy>)
   }
   return { ok: true, value: next };
 }
+

@@ -3,8 +3,9 @@
  * through, so g1t meters and bills an agent's model work one way
  * (docs.g1t.sh/guides/agent-budgets/).
  *
- * 1. The paying agent's own monthly and daily caps (`budget.ts`), and the
- *    workspace's budget for all its agents together (`policy.ts`).
+ * 1. The paying agent's own monthly and daily caps (`budget.ts`), the
+ *    workspace's budget for all its agents together (`policy.ts`), and the
+ *    budget of the person who asked (`person-budget.ts`).
  * 2. Whether the agent may use a model at all: g1t's hosted models are open
  *    as the runner decides (`hostedOpen`, `HOSTED_AGENT_WORKSPACES` and
  *    billing's status), or the workspace's own provider; the agent's
@@ -28,7 +29,8 @@ import { type ModelSession, type ModelTier, type RunTicket, ComputeGate, MODEL_E
 
 import { hostedOpen } from "../../runner/src/hosted.ts";
 import { type AgentRouting as Policy, routingReader } from "../../runner/src/model-env.ts";
-import { type Spent, type Tokens, budgetBlock, chargedMicros, replyCapMicros, totalTokens } from "./budget.ts";
+import { type Spent, type Tokens, budgetBlock, chargedMicros, personBlock, personLimit, replyCapMicros, totalTokens } from "./budget.ts";
+import { monthStart, ownBudget, personSpent } from "./person-budget.ts";
 import { BUILTIN_NO_MODEL } from "./orchestrator.ts";
 import { type PolicyRow, alertDue, markAlerted, policyBlock, readPolicy, workspaceSpendStatements } from "./policy.ts";
 import { dollars } from "./money.ts";
@@ -154,6 +156,8 @@ export type MeterInput = {
   start: ModelTier;
   /** Who asked, by username, for billing's record. */
   askerName: string | null;
+  /** The person the work is for, by username: their budget counts it. Null for work no person asked for. */
+  person?: string | null;
   /** What is left of a session's cap, so one step never overruns it. */
   leftMicros?: number | null;
   /** Agent tier limits narrower than the agent's own (a subagent's). */
@@ -181,12 +185,14 @@ export async function metered<T extends WorkUsage>(env: MeterEnv, input: MeterIn
   // 1. The paying agent's caps, and the workspace's budget for every agent.
   const payerDefinition = definitionOf(payer);
   const [month, day] = periods(now);
-  const [spentRows, policy] = await Promise.all([
+  const asker = input.person ? input.person.toLowerCase() : null;
+  const [spentRows, policy, ownCap] = await Promise.all([
     db
       .prepare("SELECT period, micros FROM agent_spend WHERE agent_id = ? AND period IN (?, ?)")
       .bind(payer.id, month, day)
       .all<{ period: string; micros: number }>(),
     readPolicy(db, row.workspace_id, month),
+    asker ? ownBudget(db, row.workspace_id, asker) : Promise.resolve(null),
   ]);
   const spent: Spent = {
     month: spentRows.results.find((r) => r.period === month)?.micros ?? 0,
@@ -199,6 +205,11 @@ export async function metered<T extends WorkUsage>(env: MeterEnv, input: MeterIn
   }
   const pool = policyBlock(policy);
   if (pool) return { ok: false, reason: "workspace_agent_budget", message: pool };
+  // The budget of the person the work is for, summed only when one applies.
+  const personCap = asker ? personLimit(policy.person_monthly_micros, ownCap) : null;
+  const personUsed = asker && personCap != null ? await personSpent(db, row.workspace_id, asker, monthStart(now)) : 0;
+  const personStop = asker ? personBlock(asker, personCap, personUsed, now) : null;
+  if (personStop) return { ok: false, reason: "person_budget", message: personStop };
 
   // 2. Whether it may use a model at all.
   const definition = definitionOf(row);
@@ -279,6 +290,7 @@ export async function metered<T extends WorkUsage>(env: MeterEnv, input: MeterIn
     if (input.leftMicros != null) caps.push(Math.max(1, Math.floor(input.leftMicros)));
     const left = policy.monthly_micros ? policy.monthly_micros - policy.spent : null;
     if (left != null) caps.push(Math.max(1, left));
+    if (personCap != null) caps.push(Math.max(1, personCap - personUsed));
     const cap = caps.filter((c): c is number => c != null);
     if (cap.length) await integrations.capModelSessions([await sha256Hex(session.token)], Math.min(...cap)).catch(() => 0);
 

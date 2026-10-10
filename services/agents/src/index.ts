@@ -442,7 +442,11 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
     case "run_routine":
       return Response.json(await service.view(args, (ctx) => views.runRoutineNow(ctx, args.handle, args.id)));
     case "spend":
-      return Response.json(await service.view(args, (ctx) => views.spend(ctx, args.handle ?? null)));
+      return Response.json(await service.view(args, (ctx) => views.spend(ctx, args.handle ?? null, { period: args.period, person: args.person })));
+    case "person_budgets":
+      return Response.json(await service.view(args, (ctx) => views.personBudgetsView(ctx)));
+    case "set_person_budget":
+      return Response.json(await service.view(args, (ctx) => views.setPersonBudget(ctx, args.username, args.monthly_micros)));
     case "activity":
       return Response.json(await service.view(args, (ctx) => views.activity(ctx, args.handle)));
     case "versions":

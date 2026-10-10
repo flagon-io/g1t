@@ -537,7 +537,7 @@ Each page has three parts:
 | --- | --- | --- |
 | **The dock** | A rounded bar down the left | g1t's mark, which goes to [Today](/guides/today/); the built-in apps; the apps you pinned; **Apps**; and at its foot **People**, **Workspace** and your account. |
 | **The sidebar** | Beside the dock | The workspace and its switcher at the top, then the lists of the app you are in. Today and Apps have none. |
-| **The page** | A rounded panel, the rest of the window | Its header: the button that shows or hides the sidebar, where you are, **Search or jump to** (<kbd>Ctrl</kbd> <kbd>K</kbd>, or <kbd>⌘</kbd> <kbd>K</kbd> on a Mac), **Ask g1t**, the [notifications](/guides/notifications/) bell and **Create new**. Then the page itself. |
+| **The page** | A rounded panel, the rest of the window | Its header: the button that shows or hides the sidebar, where you are, **Search or jump to** (<kbd>Ctrl</kbd> <kbd>K</kbd>, or <kbd>⌘</kbd> <kbd>K</kbd> on a Mac), [your spend this month](/guides/spend/#in-the-top-bar), **Ask g1t**, the [notifications](/guides/notifications/) bell and **Create new**. Then the page itself. |
 
 ### The dock
 
@@ -633,7 +633,8 @@ list when you open one, with **‹ All projects** at the top to go back. Its
 for the roles that can use it. A link straight to any of these pages opens
 the sidebar already there.
 
-Workspace's sidebar lists the workspace's **Overview**, **Usage**,
+Workspace's sidebar lists the workspace's **Overview**; under **Money**,
+[**Spend**](/guides/spend/), **Usage**,
 **Billing and plans**, **Integrations**, its security policies, the
 **Audit log** and **Settings**, which slides over to how the workspace is
 set up:

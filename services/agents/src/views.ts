@@ -21,6 +21,7 @@ import {
   type AgentsOverview,
   type AgentMemoryScope,
   type NewRoutine,
+  type PersonBudgets,
   type Result,
   type RoutineSuggestion,
   type SessionEvent,
@@ -33,7 +34,8 @@ import {
   ok,
 } from "@g1t/contracts";
 
-import { monthKey } from "./budget.ts";
+import { monthKey, spendSpan } from "./budget.ts";
+import { cleanUsername, personBudgets } from "./person-budget.ts";
 import { type MemoryRow, type MemoryViewer, changeableBy, cleanFact, toMemory, visibleTo } from "./memory.ts";
 import { DEFAULT_POLICY, checkPolicy, readPolicy } from "./policy.ts";
 import { type RoutineRow, MAX_ROUTINES, checkRoutine, newRoutineId, nextRun, runRoutine, toRoutine } from "./routines.ts";
@@ -371,14 +373,78 @@ function slices(rows: { key: string | null; micros: number; n: number }[], label
     .sort((a, b) => b.micros - a.micros);
 }
 
+/** The most channels named in a breakdown; the rest of the channels fold into one slice. */
+const CHANNEL_SLICES = 12;
+
 /**
- * Where the month went, for one agent (what it was paid for: its replies and
- * every session it paid for, colleagues' help included) or for every agent.
+ * Spend by where it was asked: the costliest channels by name, if the
+ * viewer can read them; direct messages together; channels they can't
+ * read, and channels past the first few, folded together without names.
  */
-export async function spend(ctx: ViewContext, handle: string | null): Promise<Result<AgentSpendBreakdown>> {
+async function channelSlices(ctx: ViewContext, rows: { key: string | null; label: string | null; micros: number; n: number }[]): Promise<SpendSlice[]> {
+  const ranked = rows.filter((r) => r.micros > 0 || r.n > 0).sort((a, b) => b.micros - a.micros);
+  const named = ranked.filter((r) => r.key && r.key !== "dm").slice(0, CHANNEL_SLICES);
+  const can = await readable(ctx, named.map((r) => r.key!));
+  const out: SpendSlice[] = [];
+  const hidden: SpendSlice = { key: "private", label: "Channels you're not in", micros: 0, count: 0 };
+  const rest: SpendSlice = { key: "other", label: "Other channels", micros: 0, count: 0 };
+  for (const row of ranked) {
+    if (row.key === "dm") out.push({ key: "dm", label: "Direct messages", micros: row.micros, count: row.n });
+    else if (!named.includes(row)) (rest.micros += row.micros), (rest.count += row.n);
+    else if (can.has(row.key!)) out.push({ key: row.key!, label: row.label ? `#${row.label}` : "A channel", micros: row.micros, count: row.n });
+    else (hidden.micros += row.micros), (hidden.count += row.n);
+  }
+  for (const folded of [hidden, rest]) if (folded.count > 0) out.push(folded);
+  return out.sort((a, b) => b.micros - a.micros);
+}
+
+/**
+ * Budgets per person this month (person-budget.ts): owners see everyone's,
+ * anyone else only their own.
+ */
+export async function personBudgetsView(ctx: ViewContext): Promise<Result<PersonBudgets>> {
   const now = new Date();
-  const month = monthKey(now);
-  const from = `${month}-01T00:00:00.000Z`;
+  const policyRow = await readPolicy(ctx.db, ctx.workspaceId, monthKey(now));
+  const only = ctx.owner ? null : ctx.viewer.kind === "workspace" ? null : ctx.viewer.username.toLowerCase();
+  return ok(await personBudgets(ctx.db, ctx.workspaceId, policyRow.person_monthly_micros, now, only));
+}
+
+/** Gives a person a budget of their own (0: none at all), or with null puts them back on the default. Owners only. */
+export async function setPersonBudget(ctx: ViewContext, username: unknown, monthly: unknown): Promise<Result<PersonBudgets>> {
+  if (!ctx.owner) return fail("forbidden", "Only the workspace's owners set budgets for people.");
+  const name = cleanUsername(username);
+  if (!name) return fail("invalid", "That isn't a username.");
+  if (monthly === null || monthly === undefined) {
+    await ctx.db.prepare("DELETE FROM person_budgets WHERE workspace_id = ? AND username = ?").bind(ctx.workspaceId, name).run();
+  } else {
+    const value = Number(monthly);
+    if (!Number.isFinite(value) || value < 0 || value > 1_000_000_000_000) return fail("invalid", "A budget is a positive amount, or none.");
+    await ctx.db
+      .prepare(
+        `INSERT INTO person_budgets (workspace_id, username, monthly_micros, updated_by, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (workspace_id, username) DO UPDATE SET monthly_micros = ?3, updated_by = ?4, updated_at = ?5`,
+      )
+      .bind(ctx.workspaceId, name, Math.floor(value), ctx.viewer.username, new Date().toISOString())
+      .run();
+  }
+  return personBudgetsView(ctx);
+}
+
+/**
+ * Where the spend went over a span of days (this month unless asked), for
+ * one agent (what it was paid for: its replies and every session it paid
+ * for, colleagues' help included) or for every agent; for everyone, or only
+ * the work one person asked for.
+ */
+export async function spend(ctx: ViewContext, handle: string | null, options: { period?: unknown; person?: unknown } = {}): Promise<Result<AgentSpendBreakdown>> {
+  const now = new Date();
+  const span = spendSpan(options.period, now);
+  const from = `${span.from}T00:00:00.000Z`;
+  const end = new Date(`${span.until}T00:00:00.000Z`);
+  end.setUTCDate(end.getUTCDate() + 1);
+  const to = end.toISOString();
+  const person = options.person == null || options.person === "" ? null : cleanUsername(options.person);
+  if (options.person != null && options.person !== "" && !person) return fail("invalid", "That isn't a username.");
   let agentId: string | null = null;
   if (handle) {
     const agent = await agentByHandle(ctx, handle);
@@ -386,24 +452,34 @@ export async function spend(ctx: ViewContext, handle: string | null): Promise<Re
     agentId = agent.id;
   }
   const db = ctx.db;
-  const rFilter = agentId ? "agent_id = ?2" : "workspace_id = ?2";
-  const sFilter = agentId ? "payer_agent_id = ?2" : "workspace_id = ?2";
-  const scope = agentId ?? ctx.workspaceId;
-  const union = `SELECT 'reply' AS kind, agent_id AS agent, asked_by_username AS person, model, charged_micros AS micros, substr(created_at, 1, 10) AS day FROM agent_replies WHERE ${rFilter} AND created_at >= ?1
-     UNION ALL SELECT kind, payer_agent_id AS agent, asked_by_username AS person, model, charged_micros AS micros, substr(created_at, 1, 10) AS day FROM agent_sessions WHERE ${sFilter} AND created_at >= ?1 AND parent_id IS NULL
-     UNION ALL SELECT kind, payer_agent_id AS agent, asked_by_username AS person, model, 0 AS micros, substr(created_at, 1, 10) AS day FROM agent_sessions WHERE ${sFilter} AND created_at >= ?1 AND parent_id IS NOT NULL`;
+  const who = person ? " AND asked_by_username = ?4" : "";
+  const rFilter = `${agentId ? "agent_id = ?2" : "workspace_id = ?2"} AND created_at >= ?1 AND created_at < ?3${who}`;
+  const sFilter = `${agentId ? "payer_agent_id = ?2" : "workspace_id = ?2"} AND created_at >= ?1 AND created_at < ?3${who}`;
+  const binds: string[] = [from, agentId ?? ctx.workspaceId, to, ...(person ? [person] : [])];
+  // Where it was asked: a channel by id; direct messages (a reply's channel has no name) together.
+  const union = `SELECT 'reply' AS kind, agent_id AS agent, asked_by_username AS person, model, charged_micros AS micros, substr(created_at, 1, 10) AS day,
+       CASE WHEN channel_name IS NULL THEN 'dm' ELSE channel_id END AS channel, channel_name AS channel_label FROM agent_replies WHERE ${rFilter}
+     UNION ALL SELECT kind, payer_agent_id AS agent, asked_by_username AS person, model, charged_micros AS micros, substr(created_at, 1, 10) AS day,
+       CASE WHEN channel_kind = 'dm' THEN 'dm' ELSE channel_id END AS channel, channel_name AS channel_label FROM agent_sessions WHERE ${sFilter} AND parent_id IS NULL
+     UNION ALL SELECT kind, payer_agent_id AS agent, asked_by_username AS person, model, 0 AS micros, substr(created_at, 1, 10) AS day,
+       CASE WHEN channel_kind = 'dm' THEN 'dm' ELSE channel_id END AS channel, channel_name AS channel_label FROM agent_sessions WHERE ${sFilter} AND parent_id IS NOT NULL`;
   // A child's spend is already counted on its root (sessions.ts), so children add counts, not money.
   const group = (column: string) =>
-    db.prepare(`SELECT ${column} AS key, COALESCE(SUM(micros), 0) AS micros, COUNT(*) AS n FROM (${union}) GROUP BY ${column}`).bind(from, scope).all<{ key: string | null; micros: number; n: number }>();
-  const [byKind, byModel, byPerson, byAgent, byDay, top, agents] = await Promise.all([
+    db.prepare(`SELECT ${column} AS key, COALESCE(SUM(micros), 0) AS micros, COUNT(*) AS n FROM (${union}) GROUP BY ${column}`).bind(...binds).all<{ key: string | null; micros: number; n: number }>();
+  const [byKind, byModel, byPerson, byAgent, byDay, byChannel, top, agents] = await Promise.all([
     group("kind"),
     group("model"),
     group("person"),
     group("agent"),
     group("day"),
-    db.prepare(`SELECT * FROM agent_sessions WHERE ${sFilter} AND created_at >= ?1 AND parent_id IS NULL ORDER BY charged_micros DESC LIMIT 8`).bind(from, scope).all<SessionRow>(),
+    db
+      .prepare(`SELECT channel AS key, MAX(channel_label) AS label, COALESCE(SUM(micros), 0) AS micros, COUNT(*) AS n FROM (${union}) GROUP BY channel`)
+      .bind(...binds)
+      .all<{ key: string | null; label: string | null; micros: number; n: number }>(),
+    db.prepare(`SELECT * FROM agent_sessions WHERE ${sFilter} AND parent_id IS NULL ORDER BY charged_micros DESC LIMIT 8`).bind(...binds).all<SessionRow>(),
     faces(ctx),
   ]);
+  const channels = await channelSlices(ctx, byChannel.results);
   const byTeamMap = new Map<string, SpendSlice>();
   for (const row of byAgent.results) {
     const face = agents.get(row.key ?? "");
@@ -415,7 +491,11 @@ export async function spend(ctx: ViewContext, handle: string | null): Promise<Re
   }
   const total = byKind.results.reduce((n, r) => n + r.micros, 0);
   return ok({
-    period: month,
+    period: span.period,
+    span: span.span,
+    from: span.from,
+    until: span.until,
+    person,
     total_micros: total,
     by_kind: slices(byKind.results, (k) => KIND_LABELS[k] ?? k),
     by_model: slices(byModel.results, (k) => k || "No model"),
@@ -425,6 +505,7 @@ export async function spend(ctx: ViewContext, handle: string | null): Promise<Re
       return face ? `${face.display_name} (@${face.handle})` : "An archived agent";
     }),
     by_team: [...byTeamMap.values()].sort((a, b) => b.micros - a.micros),
+    by_channel: channels,
     top_sessions: await sessionsOut(ctx, top.results, agents),
     days: byDay.results.map((r) => ({ day: r.key ?? "", micros: r.micros })).sort((a, b) => a.day.localeCompare(b.day)),
   });
@@ -510,7 +591,16 @@ export async function versions(ctx: ViewContext, handle: string): Promise<Result
 
 export async function policy(ctx: ViewContext): Promise<Result<AgentPolicy>> {
   const row = await readPolicy(ctx.db, ctx.workspaceId, monthKey(new Date()));
-  return ok({ monthly_micros: row.monthly_micros, default_agent_monthly_micros: row.default_agent_monthly_micros, default_session_micros: row.default_session_micros });
+  return ok(policyOf(row));
+}
+
+function policyOf(row: AgentPolicy): AgentPolicy {
+  return {
+    monthly_micros: row.monthly_micros,
+    default_agent_monthly_micros: row.default_agent_monthly_micros,
+    default_session_micros: row.default_session_micros,
+    person_monthly_micros: row.person_monthly_micros,
+  };
 }
 
 export async function setPolicy(ctx: ViewContext, changes: Partial<AgentPolicy>): Promise<Result<AgentPolicy>> {
@@ -521,11 +611,11 @@ export async function setPolicy(ctx: ViewContext, changes: Partial<AgentPolicy>)
   const p = checked.value;
   await ctx.db
     .prepare(
-      `INSERT INTO agent_policies (workspace_id, monthly_micros, default_agent_monthly_micros, default_session_micros, updated_by, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-       ON CONFLICT (workspace_id) DO UPDATE SET monthly_micros = ?2, default_agent_monthly_micros = ?3, default_session_micros = ?4, updated_by = ?5, updated_at = ?6`,
+      `INSERT INTO agent_policies (workspace_id, monthly_micros, default_agent_monthly_micros, default_session_micros, person_monthly_micros, updated_by, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+       ON CONFLICT (workspace_id) DO UPDATE SET monthly_micros = ?2, default_agent_monthly_micros = ?3, default_session_micros = ?4, person_monthly_micros = ?5, updated_by = ?6, updated_at = ?7`,
     )
-    .bind(ctx.workspaceId, p.monthly_micros, p.default_agent_monthly_micros, p.default_session_micros, ctx.viewer.username, new Date().toISOString())
+    .bind(ctx.workspaceId, p.monthly_micros, p.default_agent_monthly_micros, p.default_session_micros, p.person_monthly_micros, ctx.viewer.username, new Date().toISOString())
     .run();
   return ok(p);
 }
@@ -554,7 +644,7 @@ export async function overview(ctx: ViewContext): Promise<Result<AgentsOverview>
   for (const s of live.results) liveByAgent[s.agent_id] = (liveByAgent[s.agent_id] ?? 0) + 1;
   const level = policyRow.monthly_micros ? [100, 90, 75].find((l) => (policyRow.spent * 100) / policyRow.monthly_micros! >= l) ?? null : null;
   return ok({
-    policy: { monthly_micros: policyRow.monthly_micros, default_agent_monthly_micros: policyRow.default_agent_monthly_micros, default_session_micros: policyRow.default_session_micros },
+    policy: policyOf(policyRow),
     spent_month_micros: policyRow.spent,
     alert: level,
     agents,
@@ -566,7 +656,13 @@ export async function overview(ctx: ViewContext): Promise<Result<AgentsOverview>
       const face = agentFaces.get(r.agent_id);
       return { ...toRoutine(r), agent_handle: face?.handle ?? "agent", agent_name: face?.display_name ?? "An agent" };
     }),
-    spend: breakdown.ok ? breakdown.value : { period: monthKey(now), total_micros: 0, by_kind: [], by_model: [], by_person: [], by_agent: [], by_team: [], top_sessions: [], days: [] },
+    spend: breakdown.ok ? breakdown.value : emptySpend(now),
     can_manage: ctx.owner,
   });
+}
+
+/** A breakdown with nothing in it, for this month. */
+function emptySpend(now: Date): AgentSpendBreakdown {
+  const span = spendSpan("month", now);
+  return { ...span, person: null, total_micros: 0, by_kind: [], by_model: [], by_person: [], by_agent: [], by_team: [], by_channel: [], top_sessions: [], days: [] };
 }

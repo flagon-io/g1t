@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { agentStatus, budgetBlock, chargedMicros, costMicros, dayKey, monthKey, replyCapMicros, totalTokens } from "./budget.ts";
+import { agentStatus, budgetBlock, chargedMicros, costMicros, dayKey, monthKey, personBlock, personLimit, replyCapMicros, spendSpan, totalTokens } from "./budget.ts";
 
 const OCT_8 = new Date("2026-10-08T15:00:00Z");
 const none = { monthly_micros: null, daily_micros: null, task_micros: null };
@@ -10,6 +10,32 @@ test("spend rolls up by UTC month and day", () => {
   assert.equal(monthKey(OCT_8), "2026-10");
   assert.equal(dayKey(OCT_8), "2026-10-08");
   assert.equal(dayKey(new Date("2026-10-31T23:59:59Z")), "2026-10-31");
+});
+
+test("a breakdown's span: this month by default, last month whole, or the last 7 or 30 days", () => {
+  assert.deepEqual(spendSpan(null, OCT_8), { span: "month", from: "2026-10-01", until: "2026-10-08", period: "2026-10" });
+  assert.deepEqual(spendSpan("nonsense", OCT_8), spendSpan("month", OCT_8));
+  assert.deepEqual(spendSpan("last_month", OCT_8), { span: "last_month", from: "2026-09-01", until: "2026-09-30", period: "2026-09" });
+  assert.deepEqual(spendSpan("last_month", new Date("2026-01-15T00:00:00Z")), { span: "last_month", from: "2025-12-01", until: "2025-12-31", period: "2025-12" });
+  assert.deepEqual(spendSpan("7d", OCT_8), { span: "7d", from: "2026-10-02", until: "2026-10-08", period: "2026-10" });
+  assert.deepEqual(spendSpan("30d", OCT_8), { span: "30d", from: "2026-09-09", until: "2026-10-08", period: "2026-10" });
+});
+
+test("a person's own budget wins over the default; 0 of their own is no budget at all", () => {
+  assert.equal(personLimit(null, null), null);
+  assert.equal(personLimit(20_000_000, null), 20_000_000);
+  assert.equal(personLimit(20_000_000, 50_000_000), 50_000_000);
+  assert.equal(personLimit(20_000_000, 0), null);
+  assert.equal(personLimit(0, null), null);
+});
+
+test("a person's budget blocks at 100%, naming them and where it is raised", () => {
+  assert.equal(personBlock("ana", null, 9e9, OCT_8), null);
+  assert.equal(personBlock("ana", 10_000_000, 9_999_999, OCT_8), null);
+  assert.equal(
+    personBlock("ana", 10_000_000, 10_000_000, OCT_8),
+    "@ana has used their agent budget for October. An owner can raise it under Workspace → Spend.",
+  );
 });
 
 test("no caps, no block; a cap of zero is no cap", () => {

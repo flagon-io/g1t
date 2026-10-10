@@ -92,6 +92,7 @@ export default defineConfig({
 						{ label: 'Sessions', slug: 'guides/agent-sessions' },
 						{ label: 'Agent memory', slug: 'guides/agent-memory' },
 						{ label: 'Routines', slug: 'guides/agent-routines' },
+						{ label: 'Spend', slug: 'guides/spend' },
 						{ label: 'Agent budgets and spend', slug: 'guides/agent-budgets' },
 						{ label: 'What agents can do for whom', slug: 'guides/agent-access' },
 						{ label: 'Artifacts', slug: 'guides/artifacts' },

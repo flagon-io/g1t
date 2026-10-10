@@ -347,8 +347,14 @@ export type AgentSession = {
   tool_calls: number;
   input_tokens: number;
   output_tokens: number;
-  /** At list price, what it counts against budgets. */
+  /**
+   * At list price, what it counts against budgets: the model at the
+   * provider's price with billing's model margin, plus g1t's agent rate on
+   * every token. A root session's includes everything its tree spent.
+   */
   charged_micros: number;
+  /** What its own steps' model answers cost at the provider's price, its tree's not included. */
+  cost_micros: number;
   /** The most it may spend before someone approves more. */
   cap_micros: number | null;
   model: string | null;
@@ -514,13 +520,48 @@ export type AgentPolicy = {
   default_agent_monthly_micros: number | null;
   /** The cap one session starts with, unless its agent's per-task cap is lower. */
   default_session_micros: number;
+  /**
+   * What the agents working for one person (their replies and sessions,
+   * asked for by that person) may spend together in a month, unless the
+   * person has a budget of their own. Null: no budget per person.
+   */
+  person_monthly_micros: number | null;
+};
+
+/** One person's budget: what agents working for them may spend in a month, and what they have. */
+export type PersonBudget = {
+  username: string;
+  /** The budget that applies: their own, or the workspace's per-person default. Null: none. */
+  monthly_micros: number | null;
+  /** Whether it is their own, set by an owner, rather than the default. */
+  own: boolean;
+  /** What agents spent for them this month (UTC). */
+  spent_micros: number;
+};
+
+/** Budgets per person: the default, and each person who has one of their own or has spent this month. */
+export type PersonBudgets = {
+  period: string;
+  default_micros: number | null;
+  /** Owners see everyone; anyone else sees only themselves. Most spent first. */
+  people: PersonBudget[];
 };
 
 export type SpendSlice = { key: string; label: string; micros: number; count: number };
 
-/** Where an agent's (or every agent's) month went. */
+/** Which days a breakdown covers: this month (the default), last month, or the last 7 or 30 days, in UTC. */
+export type SpendPeriod = "month" | "last_month" | "7d" | "30d";
+
+/** Where an agent's (or every agent's) spend went over a period. */
 export type AgentSpendBreakdown = {
+  /** `YYYY-MM` for a month; for a span of days, the month it ends in. */
   period: string;
+  /** The span asked for, and its first and last day (`YYYY-MM-DD`, both included). */
+  span: SpendPeriod;
+  from: string;
+  until: string;
+  /** The one person it is about (work asked for by them), or null for everyone's. */
+  person: string | null;
   total_micros: number;
   /** Chat replies, sessions, routines, helping colleagues. */
   by_kind: SpendSlice[];
@@ -529,9 +570,15 @@ export type AgentSpendBreakdown = {
   by_person: SpendSlice[];
   by_agent: SpendSlice[];
   by_team: SpendSlice[];
-  /** The costliest sessions this month. */
+  /**
+   * Where it was asked: a channel by id (labelled `#name`), direct
+   * messages together (`dm`), and channels the viewer can't read together
+   * (`private`).
+   */
+  by_channel: SpendSlice[];
+  /** The costliest sessions in the period. */
   top_sessions: AgentSession[];
-  /** Spend by day this month. */
+  /** Spend by day in the period. */
   days: { day: string; micros: number }[];
 };
 
@@ -644,8 +691,19 @@ export type WorkspaceAgentsApi = {
   deleteRoutine(workspace: string, handle: string, viewer: User, id: string): Promise<Result<null>>;
   /** Runs a routine now, as a session. */
   runRoutine(workspace: string, handle: string, viewer: User, id: string): Promise<Result<AgentSession>>;
-  /** Where the month went: one agent's, or every agent's. */
-  spend(workspace: string, viewer: User, handle?: string | null): Promise<Result<AgentSpendBreakdown>>;
+  /**
+   * Where the spend went: one agent's, or every agent's; this month unless
+   * `period` says otherwise; for everyone, or only the work one `person`
+   * (by username) asked for.
+   */
+  spend(workspace: string, viewer: User, handle?: string | null, options?: { period?: SpendPeriod | null; person?: string | null }): Promise<Result<AgentSpendBreakdown>>;
+  /** Budgets per person this month: owners see everyone's, anyone else their own. */
+  personBudgets(workspace: string, viewer: User): Promise<Result<PersonBudgets>>;
+  /**
+   * Gives one person a monthly budget of their own (`monthly_micros`; 0 for
+   * no budget at all), or with null puts them back on the default. Owners only.
+   */
+  setPersonBudget(workspace: string, viewer: User, username: string, monthlyMicros: number | null): Promise<Result<PersonBudgets>>;
   activity(workspace: string, handle: string, viewer: User): Promise<Result<AgentActivity[]>>;
   versions(workspace: string, handle: string, viewer: User): Promise<Result<AgentVersion[]>>;
   /**
@@ -695,7 +753,11 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     saveRoutine: (workspace, handle, viewer, input, id) => call("save_routine", { workspace, handle, viewer, input, id: id ?? null }),
     deleteRoutine: (workspace, handle, viewer, id) => call("delete_routine", { workspace, handle, viewer, id }),
     runRoutine: (workspace, handle, viewer, id) => call("run_routine", { workspace, handle, viewer, id }),
-    spend: (workspace, viewer, handle) => call("spend", { workspace, viewer, handle: handle ?? null }),
+    spend: (workspace, viewer, handle, options) =>
+      call("spend", { workspace, viewer, handle: handle ?? null, period: options?.period ?? null, person: options?.person ?? null }),
+    personBudgets: (workspace, viewer) => call("person_budgets", { workspace, viewer }),
+    setPersonBudget: (workspace, viewer, username, monthlyMicros) =>
+      call("set_person_budget", { workspace, viewer, username, monthly_micros: monthlyMicros }),
     activity: (workspace, handle, viewer) => call("activity", { workspace, handle, viewer }),
     versions: (workspace, handle, viewer) => call("versions", { workspace, handle, viewer }),
     cardAction: (input) => call("card_action", input),

@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PanelLeft, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Sun, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PanelLeft, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Sun, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -7,6 +7,7 @@ import { type Abilities, type ChatSidebarEntry, type InboxCounts, type Workspace
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
 import { NotificationsBell } from "./inbox";
+import { SpendPill } from "./spend";
 import { PinButton } from "./pin-button";
 import { Hint } from "./ui/hint";
 import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
@@ -1166,7 +1167,10 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
           Overview
         </SidebarLink>
       </div>
-      <SidebarGroup title="Usage and billing" className="mt-3">
+      <SidebarGroup title="Money" className="mt-3">
+        <SidebarLink to={`/${slug}/-/spend`} icon={<Coins size={15} />} current={at("spend")}>
+          Spend
+        </SidebarLink>
         <SidebarLink to={`/${slug}/-/usage`} icon={<BarChart3 size={15} />} current={at("usage", "gateway")}>
           Usage
         </SidebarLink>
@@ -1376,6 +1380,8 @@ const SECTIONS: Record<string, string> = {
   teams: "Teams",
   tokens: "Access tokens",
   "personal-access-tokens": "Personal access tokens",
+  spend: "Spend",
+  receipts: "Receipts",
   usage: "Usage",
   gateway: "AI Gateway",
   billing: "Billing and plans",
@@ -1607,6 +1613,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       { label: displayName(membership), hint: `Workspace · ${membership.slug}`, to: `/${membership.slug}`, icon: <Avatar name={membership.slug} image={membership.avatar} size={15} square /> },
       { label: "All projects", hint: membership.slug, to: `/${membership.slug}/-/projects`, icon: <LayoutGrid size={15} /> },
       { label: "People", hint: membership.slug, to: `/${membership.slug}/-/people`, icon: <Users size={15} /> },
+      { label: "Spend", hint: `${membership.slug} · Budgets and receipts`, to: `/${membership.slug}/-/spend`, icon: <Coins size={15} /> },
       { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
       { label: "AI Gateway", hint: `${membership.slug} Â· Usage`, to: `/${membership.slug}/-/gateway`, icon: <Network size={15} /> },
       { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
@@ -1960,6 +1967,12 @@ export function AppShell({
                 <span className="hidden grow truncate text-left text-[0.8125rem] md:inline">Search or jump to</span>
                 <PaletteKey className="hidden rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line md:inline" />
               </button>
+              {/* Your spend this month, or the workspace's for owners and billing managers; on a phone it is on Spend. */}
+              {ws && (
+                <span className="max-md:hidden">
+                  <SpendPill slug={ws.slug} mayWorkspace={ws.role === "owner" || !!ws.org_roles?.includes("billing_manager")} />
+                </span>
+              )}
               {ws && <AskG1tButton slug={ws.slug} />}
               {/* On a phone, Notifications is in the bottom bar. */}
               <span className="max-md:hidden">

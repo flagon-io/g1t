@@ -51,7 +51,9 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | `@g1t`, the orchestrator every workspace has, which hands work to the right agent with `hand_off` | Live |
 | Your own model providers' keys (14 providers), and the AI Gateway | Live |
 | g1t's hosted models (open to invited workspaces during the alpha) | Preview |
-| Budgets per workspace, agent and task; guardrails; agents act with the asker's access | Live |
+| Budgets per workspace, person, agent and task; guardrails; agents act with the asker's access | Live |
+| Spend: where the money went by agent, person, channel, model and product, every budget, a receipt for each task, and your spend in the top bar | Preview |
+| Spend by extension | Coming |
 | Memory, sessions with live steps and cost, routines on a schedule | Live |
 | An agent catalog of specialists, and foundational skills (documents, research, data, code, communication, files) | Coming |
 | Agents on runners anywhere (g1t's, yours, your desktop), with sessions that persist between tasks | Coming |

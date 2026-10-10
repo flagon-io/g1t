@@ -150,6 +150,7 @@ const PAGE_MODES: Record<string, ModeKey> = {
   members: "people",
   teams: "people",
   workspace: "workspace",
+  spend: "workspace",
   usage: "workspace",
   gateway: "workspace",
   billing: "workspace",

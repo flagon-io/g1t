@@ -354,7 +354,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
     let posted: string | null = null;
     let spinOffs = 0;
 
-    const done = await metered(env, { row, payer: row, slug, task: "reply", start, askerName }, async (model) => {
+    const done = await metered(env, { row, payer: row, slug, task: "reply", start, askerName, person: delivery.asker?.username ?? null }, async (model) => {
       // What colleagues consulted along the way used: billed to this reply.
       const consulted = { tokens: NO_TOKENS, cost: 0 };
       let toolbox: ToolBox | null = null;

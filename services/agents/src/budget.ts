@@ -4,8 +4,8 @@
  *
  * Spend is limited at several levels (docs.g1t.sh/guides/agent-budgets/).
  * The workspace's own limit and AI credit are billing's, checked by the
- * compute gate. The agent's monthly and daily caps are checked here, from
- * the spend this service rolls up per agent, before anything is reserved.
+ * compute gate. The agent's monthly and daily caps, and the budget of the
+ * person who asked, are checked here, before anything is reserved.
  * Spend counts what a reply costs at price: the model at the provider's
  * price with billing's model margin, plus g1t's agent rate on every token.
  * The ledger (with comped terms and discounts) is billing's; the agent's
@@ -66,6 +66,50 @@ export function replyCapMicros(budget: AgentBudget, spent: Spent, planRunCapMicr
   if (capSet(budget.task_micros)) caps.push(budget.task_micros);
   if (capSet(planRunCapMicros)) caps.push(planRunCapMicros);
   return caps.length ? Math.max(1, Math.floor(Math.min(...caps))) : null;
+}
+
+export type Span = { span: "month" | "last_month" | "7d" | "30d"; from: string; until: string; period: string };
+
+/**
+ * The days a spend breakdown covers, in UTC, both ends included: this
+ * month to today (anything not asked for), last month whole, or the last
+ * 7 or 30 days to today. `period` is the month it ends in.
+ */
+export function spendSpan(asked: unknown, now: Date): Span {
+  const today = dayKey(now);
+  const day = (offset: number) => dayKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset)));
+  switch (asked) {
+    case "last_month": {
+      const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
+      const until = dayKey(end);
+      return { span: "last_month", from: `${until.slice(0, 7)}-01`, until, period: until.slice(0, 7) };
+    }
+    case "7d":
+      return { span: "7d", from: day(-6), until: today, period: monthKey(now) };
+    case "30d":
+      return { span: "30d", from: day(-29), until: today, period: monthKey(now) };
+    default:
+      return { span: "month", from: `${monthKey(now)}-01`, until: today, period: monthKey(now) };
+  }
+}
+
+/**
+ * The budget that applies to one person: their own when an owner set one
+ * (0 there means none at all), else the workspace's per-person default.
+ * Null: no budget.
+ */
+export function personLimit(defaultMicros: number | null | undefined, own: number | null | undefined): number | null {
+  if (typeof own === "number" && Number.isFinite(own)) return own > 0 ? Math.floor(own) : null;
+  return capSet(defaultMicros) ? Math.floor(defaultMicros) : null;
+}
+
+/**
+ * Why work asked for by `username` may not start: what agents spent for
+ * them this month has reached their budget. Null when it may.
+ */
+export function personBlock(username: string, limit: number | null, spent: number, now: Date): string | null {
+  if (!capSet(limit) || spent < limit) return null;
+  return `@${username} has used their agent budget for ${MONTHS[now.getUTCMonth()]}. An owner can raise it under Workspace → Spend.`;
 }
 
 /** The tokens one answer used, by kind. */

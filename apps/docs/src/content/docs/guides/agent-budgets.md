@@ -17,6 +17,7 @@ widest to the narrowest. The first one that is used up stops the work.
 | --- | --- | --- |
 | **The workspace's spend limit and AI credit** | Owners and billing managers, under [Billing](/guides/usage-and-billing/#your-spend-limit). | A hard stop for everything, agents included. |
 | **The agent budget** | Owners, under **Agents → Budget**. | Every agent's work together, each month. At 100% no agent takes new work until the 1st, or until an owner raises it. |
+| **A person's budget** | Owners, under [Workspace → Spend](/guides/spend/#budgets): a default for everyone, and a budget of their own for anyone. | What agents spend on the work one person asks for, each month. At 100% agents take no new work for that person until the 1st, and say so where they were asked. |
 | **An agent's own budget** | Owners, on the agent's **Profile**. | Monthly, and optionally daily. At 100% that agent takes no new work. |
 | **A session's cap** | The workspace's session cap, or the agent's lower per-session cap. | The session stops at **Needs approval** until an owner approves more. |
 
@@ -52,6 +53,9 @@ one cap, and one agent's spend. See [sessions](/guides/agent-sessions/).
 
 ## Where the month went
 
+[Spend](/guides/spend/) has the same breakdown over any period, by
+channel too, with each task's receipt; everyone can see their own there.
+
 The **Agents** page breaks down every agent's spend this month:
 
 | View | Shows |
@@ -78,6 +82,7 @@ grouped by agent, team and asker instead of by product.
 
 ## Next
 
+- [Spend](/guides/spend/): every budget in one place, and receipts.
 - [Sessions](/guides/agent-sessions/): caps and approving more spend.
 - [Agents](/guides/agents/#budgets): an agent's own budget.
 - [Usage and billing](/guides/usage-and-billing/): spend limits, AI credit and rates.

@@ -119,6 +119,10 @@ export default [
     route("-/tokens/:id", "routes/workspace/token.tsx"),
     // Its rules for members' personal access tokens, and approving them.
     route("-/personal-access-tokens", "routes/workspace/personal-access-tokens.tsx"),
+    // Spend, the front of its money: where it went, budgets, receipts; and the top bar's pill.
+    route("-/spend", "routes/workspace/spend.tsx"),
+    route("-/spend/pill", "routes/workspace/spend-pill.ts"),
+    route("-/spend/receipts/:id", "routes/workspace/spend-receipt.tsx"),
     route("-/usage", "routes/workspace/usage.tsx"),
     route("-/gateway", "routes/workspace/gateway.tsx"),
     route("-/billing", "routes/workspace/billing.tsx"),
