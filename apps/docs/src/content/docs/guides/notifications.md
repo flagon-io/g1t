@@ -1,21 +1,23 @@
 ---
-title: Your inbox
+title: Notifications
 description: What needs you, and what you follow, as it happens. One thread per issue, pull request, workflow or deployment, with why you were told. Choose what you hear of with subscriptions, watching and email settings.
 ---
 
-Your **inbox** tells you when something needs you, or when something
+**Notifications** tell you when something needs you, or when something
 happens to work you answer for or follow: an agent is waiting on you,
 someone asked you to review a pull request, checks failed on your pull
 request, a deployment failed, someone mentioned you. You are never told
 about what you did yourself.
 
-Open it from the bell in the top bar. The number on the bell is what is
-unread. It is amber while something is waiting on you, red while a failure
-is unread, and green otherwise.
+Open them from **Notifications** in the dock, or from the bottom bar on a
+phone. The number on it is what is unread. The bell at the right of the
+page's header opens the same notifications in a panel beside the page; its
+number is amber while something is waiting on you, red while a failure is
+unread, and lavender otherwise.
 
 ## Threads
 
-Your inbox holds one **thread** for each thing you were told about:
+Notifications hold one **thread** for each thing you were told about:
 
 - an issue
 - a pull request
@@ -24,7 +26,7 @@ Your inbox holds one **thread** for each thing you were told about:
 - a workflow run waiting for your review to deploy to an environment
 
 When something new happens on a thread, it comes back to the top of your
-inbox, unread, even if you had marked it done. It is not added a second
+notifications, unread, even if you had marked it done. It is not added a second
 time. A thread that is snoozed stays snoozed until its time.
 
 Each card shows the latest activity's title, why you were told (see
@@ -44,7 +46,7 @@ table is shown.
 | Reason | Shown as | Why you were told |
 | --- | --- | --- |
 | `agent` | agent waiting | An agent is waiting on you: it asked a question, or it stopped until a person steps in. |
-| `review_requested` | review requested | Someone asked you, or a team you are in, to review a pull request; it changes files you own; or you are one of its reviewers. Also a workflow run waiting for you, as one of an [environment's reviewers](/guides/actions/#environments), to approve its deployment, and, for a workspace's owners, a member's token made for the workspace waiting for [approval](/guides/authentication/#a-workspaces-rules-for-tokens) (in the inbox only, never emailed). |
+| `review_requested` | review requested | Someone asked you, or a team you are in, to review a pull request; it changes files you own; or you are one of its reviewers. Also a workflow run waiting for you, as one of an [environment's reviewers](/guides/actions/#environments), to approve its deployment, and, for a workspace's owners, a member's token made for the workspace waiting for [approval](/guides/authentication/#a-workspaces-rules-for-tokens) (in Notifications only, never emailed). |
 | `assign` | assigned | You were assigned, or you are an assignee. |
 | `mention` | mentioned | Someone mentioned you with `@username`, or you were mentioned on it before. |
 | `team_mention` | team mentioned | Someone mentioned a [team](/guides/teams/#mentions) you are in with `@workspace/team`, or a team you are in was mentioned on it before. |
@@ -101,7 +103,7 @@ Some threads close themselves once they no longer need you:
 New activity brings either back, as with any thread.
 
 You only see items about repositories you can read. If you lose access to a
-repository, its items leave your inbox the next time you open it.
+repository, its items leave your notifications the next time you open them.
 
 ## Subscriptions
 
@@ -201,48 +203,52 @@ holds your choices:
 
 The count beside each tab is what is unread under it.
 
+## The Notifications page
+
+**Notifications** in the dock opens
+[g1t.sh/notifications](https://g1t.sh/notifications): every thread, a page
+at a time, under the same tabs. Its sidebar chooses what you look at:
+
+| In the sidebar | Shows |
+| --- | --- |
+| **Everything** | Threads you have not marked done, with how many are unread |
+| **Saved** | Threads you saved, done or not |
+| **Done** | Threads you marked done. Select ↶ on one to move it back |
+| **Why you were told** | Only threads told for one [reason](#reasons), or **Any reason** |
+
+The reason is kept in the address as `?reason=`, such as
+[g1t.sh/notifications?reason=review_requested](https://g1t.sh/notifications?reason=review_requested),
+so you can bookmark it. On a phone, and on a narrow window, where the
+sidebar is a drawer, the page shows the views as tabs and the reason as a
+menu above the list.
+
 ## Work through it
 
-1. Select the bell in the top bar. The inbox opens beside the page.
-2. Select an item to open what it is about. It is marked read, and the inbox
-   closes.
+1. Open the Notifications page, or select the bell in the page's header to
+   work through them in a panel beside the page.
+2. Select an item to open what it is about. It is marked read, and the
+   panel closes.
 3. Point at an item (on a phone, the buttons are always there) to act on it
    without opening it:
 
 | Action | What it does |
 | --- | --- |
-| **Done** (✓) | Moves the thread out of the inbox and into Done, until something new happens on it |
+| **Done** (✓) | Moves the thread out of Everything and into Done, until something new happens on it |
 | **Mark as read** / **Mark as unread** | Changes whether it counts as unread |
 | **Save** | Keeps it under Saved, even after it is done |
 | **Snooze until** | Hides it for 3 hours, until tomorrow, or for a week, then brings it back |
 
 **Mark all read** marks everything under the tab you are on as read.
+**Open Notifications**, at the foot of the panel, goes to the page.
 
-## The full inbox
-
-**Open inbox**, at the foot of the panel, goes to
-[g1t.sh/inbox](https://g1t.sh/inbox). It has the same tabs, every thread a
-page at a time, and two more views:
-
-| View | Shows |
-| --- | --- |
-| **Saved** | Threads you saved, done or not |
-| **Done** | Threads you marked done. Select ↶ on one to move it back |
-
-Beside the tabs, the **Reason** filter shows only threads told for one
-reason: select **Any reason** or one of the [reasons](#reasons). It is kept
-in the address as `?reason=`, such as
-[g1t.sh/inbox?reason=review_requested](https://g1t.sh/inbox?reason=review_requested),
-so you can bookmark it.
-
-Mission control shows a **Needs you** card with the newest unread threads
-waiting on you, then failures. It is hidden when there are none.
+[Today](/guides/today/) shows the newest unread threads waiting on you, with
+what else needs you across the workspace.
 
 ## From the API and agents
 
 Everything here is also in the REST API and the MCP server, for a personal
 access token or an OAuth sign-in. A workspace's token cannot use it, and
-neither can g1t's own agents: they act as `g1t`, which has no inbox.
+neither can g1t's own agents: they act as `g1t`, which has no notifications.
 Reading needs the `notifications:read` scope, and changing anything
 `notifications:write`; the Agent [preset](/guides/authentication/#presets)
 has both.

@@ -13,8 +13,8 @@ import {
   GitMerge,
   GitPullRequest,
   Hash,
-  Home,
-  Inbox,
+  Sun,
+  Bell,
   MessagesSquare,
   Paperclip,
   SendHorizontal,
@@ -114,12 +114,12 @@ function PullCard() {
 }
 
 const RAIL: { icon: ReactNode; label: string; on?: boolean }[] = [
-  { icon: <Home size={16} />, label: "Home" },
+  { icon: <Sun size={16} />, label: "Today" },
   { icon: <Code2 size={16} />, label: "Code" },
   { icon: <MessagesSquare size={16} />, label: "Chat", on: true },
   { icon: <BookOpen size={16} />, label: "Docs" },
   { icon: <Bot size={16} />, label: "Agents" },
-  { icon: <Inbox size={16} />, label: "Inbox" },
+  { icon: <Bell size={16} />, label: "Notifications" },
 ];
 
 const CHANNELS: { name: string; on?: boolean; unread?: number }[] = [

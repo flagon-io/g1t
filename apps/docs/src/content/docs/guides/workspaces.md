@@ -358,9 +358,9 @@ sidebar):
 
 - **By username**: they get a
   [workspace invitation](/guides/authentication/#workspace-invitations) in
-  their inbox and by email, and join with that role when they accept at
+  their notifications and by email, and join with that role when they accept at
   [g1t.sh/invitations](https://g1t.sh/invitations). If they decline, you
-  are told in your inbox. It costs nothing.
+  are told in your notifications. It costs nothing.
 - **By email address**: g1t emails an invite that only that address can
   use. With a g1t account, it is a workspace invitation like the one above
   and costs nothing. Without one, the invitation also lets them make the
@@ -523,66 +523,109 @@ The Projects page, `g1t.sh/<workspace>/-/projects`, is made for workspaces with 
 Everything you choose is in the address, so a filtered list can be
 bookmarked or shared.
 
-## The sidebar
+## The dock, the sidebar and the page
 
-The sidebar is always about one workspace: the one the switcher at its top
-names. On a workspace's pages, and on a project in one of your workspaces,
-that is the workspace the page belongs to; on a project somewhere you are
-not a member, it stays the one you chose last. Choose the workspace's name
-to open its page, or the arrows beside it to switch, or for **Workspace
-overview** and **All projects**.
-[Explore](https://g1t.sh/explore), public projects from all of g1t, is in
-the top bar, beside **Docs**.
+Signed in, g1t is always about one workspace: the one you are in. On a
+workspace's pages, and on a project in one of your workspaces, that is the
+workspace the page belongs to; anywhere else, even on public pages such as
+[Explore](https://g1t.sh/explore), someone's profile or another
+workspace's public project, it stays the one you chose last.
 
-It has two parts, a rule apart. Above the rule is what is yours in every
-workspace: **Mission control**, your **Inbox** with how many items are
-unread, and the repositories **Shared with you** in workspaces you do not
-belong to. Below it, under the workspace's name, is the workspace:
+Each page has three parts:
 
-1. **Overview**, the [workspace's page](#the-workspaces-page).
-2. Its [projects](#pinned-and-recent-projects), ending with **All projects**.
-3. The places work happens across them: **Agents**, **Context**,
-   **Memory**, **Security** and [**Packages**](/guides/packages/), with
-   **Insights**, **Boards** and **Roadmap** soon.
-4. **People**, [**Teams**](/guides/teams/), **Usage**, what g1t's runs have
-   cost (see [usage and billing](/guides/usage-and-billing/)), **Support**
-   and **Settings**.
-
-One row is lit wherever you are: **Teams** on a team's pages, **Packages**
-on a package's, and **Settings** on every page it opens. An item with an arrow opens a list of its own in the sidebar:
-**Settings** slides over to how the workspace is set up and connected, and
-the row at the top, **‹ Settings**, slides back:
-
-| Settings | Who | |
+| Part | Where | What it holds |
 | --- | --- | --- |
-| **General** | Owners | The icon, the display name, a one-line description, the address (the slug), [who can create teams](/guides/teams/#who-can-create-teams), and [data residency](#data-residency). |
-| **Repositories** | Members | The workspace's repositories. Owners also see **Recently deleted**, where a [deleted repository](/guides/managing-repositories/#restore-a-repository) can be restored, or purged, for 30 days. |
-| **Access tokens** | Members | The workspace's own tokens. Owners create and delete them. |
-| **Guardrails** | Members | What agents may do and spend across the workspace. Owners change them. |
-| [**Secrets and variables**](/guides/secrets-and-variables/) | Members | What runs and deployments are given. Owners change them. |
-| **Runners** | Owners | The workspace's self-hosted machines, their groups and registration tokens. |
-| [**Integrations**](/guides/integrations/) | Members | Every tool the workspace connects to, by category: what is connected, what is available, and what is coming. Owners connect and remove them. |
-| [**Webhooks**](/guides/webhooks/) | Members | Where the workspace's events are sent. Owners add and change them. |
-| **Billing and plans** | Members | [The g1t plan](/guides/usage-and-billing/#the-g1t-plan), [limits](/guides/usage-and-billing/#limits) and the statement. Owners start the plan, check a card, prepay and set limits. |
-| **Audit log** | Members | [Every action agents, people and tokens took](/guides/audit-log/). |
+| **The dock** | A rounded bar down the left | g1t's mark, which goes to [Today](/guides/today/); the built-in apps; the apps you pinned; **Apps**; and at its foot **People**, **Workspace** and your account. |
+| **The sidebar** | Beside the dock | The workspace and its switcher at the top, then the lists of the app you are in. Today and Apps have none. |
+| **The page** | A rounded panel, the rest of the window | Its header: the button that shows or hides the sidebar, where you are, **Search or jump to** (<kbd>Ctrl</kbd> <kbd>K</kbd>, or <kbd>⌘</kbd> <kbd>K</kbd> on a Mac), **Ask g1t**, the [notifications](/guides/notifications/) bell and **Create new**. Then the page itself. |
 
-**People** is in the main list, for every member to see; owners add and
-remove people there, set the
-[base permission](/guides/access-and-roles/#the-base-permission), and see
-the **Outside collaborators** tab. Each member's row also shows the
-[teams](/guides/teams/) they are in that you can see.
+### The dock
 
-Opening a [project](/guides/projects/) slides the sidebar over to the
-project's own list, with **‹ All projects** at the top to go back. Its
+The built-in apps are always in the dock, each with its name and what is
+unread:
+
+| App | Opens |
+| --- | --- |
+| **Today** | What needs you across the workspace. See [Today](/guides/today/). |
+| **Chat** | Channels and messages. See [Chat](/guides/chat/). |
+| **Notifications** | Reviews, mentions, failures and what agents wait on. See [notifications](/guides/notifications/). |
+| **Agents** | The workspace's agents and their sessions. See [agents](/guides/agents/). |
+| **Code** | Projects, pull requests and checks. Not shown to a member without [Code access](/guides/agent-access/). |
+| **Artifacts** | Documents, decks and pages. See [artifacts](/guides/artifacts/). |
+| **People** | Everyone in the workspace, and its [teams](/guides/teams/). |
+| **Workspace** | Usage, billing, integrations, policies and settings. |
+
+A bar on the dock's edge marks the app you are in. Your account is the
+avatar at the foot: your status, your profile and settings, the
+documentation, support, status, the keyboard's shortcuts, and signing out.
+
+### Apps
+
+Every other app in the workspace is a page you can pin to your dock:
+**Projects**, **Packages**, **Security**, **Context** and **Memory** (for
+members with Code access), **Teams**, **Usage**, **AI Gateway**,
+**Integrations** and **Audit log**. A pinned app shows as its icon under
+the built-in ones, in the order you pinned them.
+
+To pin an app:
+
+1. Select **Apps** near the foot of the dock, or open the Apps page at
+   `g1t.sh/<workspace>/-/apps`.
+2. Find the app, by name if you like.
+3. Select the pin on its tile. Select it again to unpin it.
+
+Your pins are yours alone, kept per workspace in this browser, so another
+browser or device starts with none. There is no marketplace yet: it shows
+as coming.
+
+### The sidebar
+
+The sidebar's top row names the workspace you are in. Select it to switch
+to another of your workspaces, make a new one, or open your profile or
+settings. The button beside it hides the sidebar, and the same button at
+the left of the page's header brings it back; <kbd>Ctrl</kbd> <kbd>B</kbd>
+(<kbd>⌘</kbd> <kbd>B</kbd> on a Mac) does both, except while you type. g1t
+remembers which you chose. When the sidebar is hidden, or the app has none,
+the page's header starts with the same switcher.
+
+Below it are the lists of the app you are in. Code's lists the workspace's
+[projects](#pinned-and-recent-projects), and drills into a project's own
+list when you open one, with **‹ All projects** at the top to go back. Its
 **Settings** opens one level further: **General**, **Deployments**,
 **Domains**, **Agents**, **Guardrails**, **Repository**, **Access**,
 **Branches and merging**, **Secrets and variables** and **Webhooks**, each
 for the roles that can use it. A link straight to any of these pages opens
 the sidebar already there.
 
+Workspace's sidebar lists the workspace's **Overview**, **Usage**,
+**Billing and plans**, **Integrations**, its security policies, the
+**Audit log** and **Settings**, which slides over to how the workspace is
+set up:
+
+| Settings | Who | |
+| --- | --- | --- |
+| **General** | Owners | The icon, the display name, a one-line description, the address (the slug), [who can create teams](/guides/teams/#who-can-create-teams), and [data residency](#data-residency). |
+| **Chat** | Members | What members may do in chat. Owners change it. |
+| **Repositories** | Members | The workspace's repositories. Owners also see **Recently deleted**, where a [deleted repository](/guides/managing-repositories/#restore-a-repository) can be restored, or purged, for 30 days. |
+| **Access tokens** | Members | The workspace's own tokens. Owners create and delete them. |
+| **Personal access tokens** | Owners | The workspace's rules for members' tokens, and approving them. |
+| [**Webhooks**](/guides/webhooks/) | Members | Where the workspace's events are sent. Owners add and change them. |
+| **Emoji** | Members | The workspace's own emoji. |
+| [**Secrets and variables**](/guides/secrets-and-variables/) | Members | What runs and deployments are given. Owners change them. |
+| **Actions** | Members | How workflows run in the workspace. |
+| **Runners** | Owners | The workspace's self-hosted machines, their groups and registration tokens. |
+
+**People** is for every member to see; owners add and remove people there,
+set the [base permission](/guides/access-and-roles/#the-base-permission),
+and see the **Outside collaborators** tab. Each member's row also shows the
+[teams](/guides/teams/) they are in that you can see.
+
+Below 1024px wide, the sidebar opens over the page from the left, from the
+header's button, and closes when you open a page.
+
 ### Pinned and recent projects
 
-However many projects a workspace has, its sidebar lists a few:
+However many projects a workspace has, Code's sidebar lists a few:
 
 - **Pinned**: the projects you pinned, in your order, up to eight a
   workspace. Pin one with **Pin** on its page, or the pin on its row of the
@@ -608,10 +651,11 @@ them within reach of your thumb:
 
 | | What it does |
 | --- | --- |
-| **The tabs along the bottom** | **Home**, **Code** (or **Artifacts**, if you don't use Code in this workspace), **Chat**, **Agents** and **Inbox**, each with what is unread. They step aside while the keyboard is up and inside a conversation. |
-| **The menu button** (☰), beside the workspace's icon at the top left | Opens the sidebar of the mode you are in from the left: the same lists and links as on a computer. Inside a project, that is the project's own list; on a workspace or settings page, the Workspace or account sidebar. Tap outside it, or open a page, and it closes. |
-| **The tab you are already on** | Tap it again to open that mode's sidebar too. |
-| **The workspace's icon** at the top left | Everything else, from the bottom: **Artifacts** first, then the workspace's **Overview**, **People**, **Teams**, **Usage and billing**, **Integrations** and **Settings**; switching workspaces; help; and your status, profile, settings and signing out. |
+| **The bar along the bottom** | **Today**, **Chat**, **Notifications**, **Agents** and **Code** (for members with Code access), each with what is unread, and **More**. It steps aside while the keyboard is up and inside a conversation. |
+| **More** | A panel above the bar with **All apps**, the Marketplace (coming), your pinned apps, **Artifacts**, **People**, **Workspace**, and **You and help**: your status, profile and settings, the documentation, support, status, the keyboard's shortcuts and signing out. |
+| **The sidebar button**, at the left of the page's header | Opens the sidebar of the app you are in from the left: the same lists and links as on a computer. Tap outside it, or open a page, and it closes. |
+| **The tab you are already on** | Tap it again to open that app's sidebar too. |
+| **The workspace's name** in the page's header | Switches workspace, or opens your profile or settings. |
 
 Inside a [project](/guides/projects/), its pages (**Overview**, **Code**,
 **Issues**, **Pull requests**, **Agents**, **Workflows**, **Deployments**,
@@ -625,11 +669,22 @@ Menus stay inside the screen, dialogs rise from the bottom and sit on top
 of the keyboard while you type, and nothing scrolls the page sideways: a
 wide file, diff or table scrolls within its own box.
 
+### Signed out, and signing in
+
+Signing in, signing up, an invite link, the two-factor step, choosing a new
+password and making your first workspace each stand on their own: the g1t
+logo, the form, and links to the terms, privacy policy, docs, status and
+support at the foot. Someone who is not signed in reads public pages, such
+as Explore, a profile or a public project, under a plain header with
+**Explore**, **Docs**, **Sign in** and **Sign up**; a project's pages run in
+the row under its name.
+
 ## Mission control
 
-Mission control, `g1t.sh` when you are signed in, is your home page. It
-shows where you are needed in the workspace you have chosen in the
-sidebar, what its agents are doing, and what landed without you.
+Mission control is Code's **Overview**, at `g1t.sh/<workspace>/-/overview`.
+It shows where you are needed in the workspace's code, what its agents are
+doing, and what landed without you. Signed in, `g1t.sh` itself opens
+[Today](/guides/today/) in the workspace you are in.
 
 Under the greeting, one line sums up the week, such as *Agents landed 37
 of their 39 changes this week without you, and people landed 8 changes of
@@ -788,8 +843,8 @@ a public project; nothing else, and their calendar counts only work in
 public repositories. The link preview for a profile uses only public work.
 
 **How it is laid out.** Signed out, a profile, Explore and Search are
-shown with g1t's public top bar (search, Explore, signing in) and the page
-at full width, with no workspace sidebar. Signed in, the rail stays, but
+shown with g1t's public header (search, Explore, Docs, signing in) and the page
+at full width, with no workspace sidebar. Signed in, the dock stays, but
 no mode is lit and no mode's sidebar opens beside these pages: they are
 nobody's workspace, and the profile's own left column says whose it is.
 

@@ -45,7 +45,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function Verify({ loaderData }: Route.ComponentProps) {
   return (
-    <main className="mx-auto max-w-md px-4 py-32 text-center">
+    <main className="mx-auto max-w-md pt-10 text-center">
       {loaderData.ok ? (
         <>
           <CircleCheck size={40} className="mx-auto text-success" />

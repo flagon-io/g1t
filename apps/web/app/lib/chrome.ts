@@ -1,23 +1,26 @@
 /**
- * Which frame a page is drawn in, and what the sidebar offers someone who
- * is not signed in.
+ * Which frame a page is drawn in.
  *
- * Someone signed in always gets the app's frame: the rail and its modes.
- * A visitor gets it on projects, workspaces and not-found pages, where the
- * sidebar is the project's own menu. g1t's public pages that belong to no
- * workspace (a person's profile, Explore, Search) are drawn for a visitor
- * in the public frame instead: the top bar with the mark, search and
- * signing in, the page at full width, and the footer. So do the front page
- * and the pages about signing in, paying and trust.
+ * - `standalone`: signing in, signing up and choosing a workspace. The
+ *   page alone, centred, with the logo and a quiet row of links at the
+ *   foot: no header, no sidebar, no dock.
+ * - `app`: someone signed in, everywhere else. The dock, the mode's
+ *   sidebar and the page in its panel, always about their current
+ *   workspace, even on public pages such as Explore, a profile or another
+ *   workspace's public project.
+ * - `public`: a visitor who is not signed in (or has not confirmed their
+ *   address yet), on every other page: a plain header with the logo,
+ *   Explore, Docs and signing in, the page at full width, and the footer.
  */
 
 import type { Abilities, Capability } from "@g1t/contracts";
 
-/** Pages a visitor sees in the marketing frame. */
-const MARKETING = new Set([
-  "/",
-  "/pricing",
+export type Frame = "standalone" | "public" | "app";
+
+/** Pages that are drawn on their own, whoever opens them. */
+const STANDALONE = new Set([
   "/login",
+  "/login/two-factor",
   "/register",
   "/logout",
   "/verify",
@@ -25,44 +28,30 @@ const MARKETING = new Set([
   "/forgot",
   "/reset",
   "/device",
-  // Who makes g1t, and the promises it keeps: the policies, security,
-  // support and status.
-  "/policies",
-  "/security",
-  "/support",
-  "/status",
-  // These send a visitor to sign in; the frame matters only for a moment.
-  "/new",
-  "/settings",
+  "/oauth/authorize",
   "/workspaces/new",
+  "/integrations/github/setup",
 ]);
 
-/** g1t's public pages that are no workspace's: a visitor reads them in the public frame. */
-const PUBLIC_PAGES = new Set(["/explore", "/search"]);
-
-/** Whether the page is drawn in the app's sidebar frame. */
-export function usesAppShell(pathname: string, signedIn: boolean): boolean {
-  if (signedIn) return true;
-  const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  if (MARKETING.has(path) || PUBLIC_PAGES.has(path)) return false;
-  // A person's profile: theirs, not any workspace's.
-  if (/^\/u\/[^/]+$/.test(path)) return false;
-  if (path === "/oauth" || path.startsWith("/oauth/")) return false;
-  // An invite link is the front door: the marketing frame, like /register.
-  if (path.startsWith("/invite/")) return false;
-  if (path.startsWith("/policies/")) return false;
-  // Your settings pages, like /settings: a visitor is sent to sign in.
-  if (path.startsWith("/settings/")) return false;
-  return true;
+/** The page's path without a trailing slash or a click's `.data`. */
+function framePath(pathname: string): string {
+  const path = pathname.replace(/\.data$/, "");
+  return path.length > 1 ? path.replace(/\/+$/, "") : path;
 }
 
-export type SidebarItem = { label: string; to: string };
-
-/** The visitor's sidebar menu: where to browse from. */
-export const VISITOR_LINKS: SidebarItem[] = [
-  { label: "Explore", to: "/explore" },
-  { label: "Search", to: "/search" },
-];
+/**
+ * The frame for `pathname`. `viewer` says whether someone is signed in and
+ * confirmed (`signedIn`), and whether they belong to a workspace yet: until
+ * they do, answering an invitation is part of getting started too.
+ */
+export function frameOf(pathname: string, viewer: { signedIn: boolean; workspace: boolean }): Frame {
+  const path = framePath(pathname);
+  if (STANDALONE.has(path)) return "standalone";
+  // An invite link, and signing in with GitHub, are the front door.
+  if (path.startsWith("/invite/") || path === "/auth/github" || path.startsWith("/auth/github/")) return "standalone";
+  if (path === "/invitations" && viewer.signedIn && !viewer.workspace) return "standalone";
+  return viewer.signedIn ? "app" : "public";
+}
 
 /** The project pages the sidebar lists, by key, for a member or not. */
 export type ProjectPage =

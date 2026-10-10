@@ -307,7 +307,7 @@ The flow above is: `issue` `get`, `memory` `recall`, `pull_request`
 commit's checks say. `agent` `delegate` and `agent` `assign` hand work
 to g1t's agent; `plan` `create`, `get` and `apply` plan an outcome;
 `memory` `remember` saves a fact. `notifications` reads and answers the
-inbox of the person a token acts for: `list` (unread threads, each with a
+notifications of the person a token acts for: `list` (unread threads, each with a
 `reason` such as `agent` or `review_requested`), `done`, `subscribe`,
 `watch` and more; g1t's own token cannot use it. `search` runs `code`,
 `notifications` runs `list` and `account` runs `whoami` when `action` is

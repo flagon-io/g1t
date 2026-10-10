@@ -5,7 +5,7 @@ description: Watch every agent at work, stop or steer a run, read past sessions,
 
 Every project has an **Agents** section, beside its pull requests: who is
 working on it right now, what each agent did before, and what agents have
-learned about the project. Across the workspace, **Agents** in the rail
+learned about the project. Across the workspace, **Agents** in the dock
 shows every agent, its [sessions](/guides/agent-sessions/) and what it
 costs, and **Memory** holds what agents know in every project.
 
@@ -17,7 +17,7 @@ costs, and **Memory** holds what agents know in every project.
 | Teach every agent something about this code | **Agents → Memory** |
 | Teach every agent something true in every project | **Memory**, in the workspace's sidebar |
 | Review what agents, reviews and docs taught | **Agents → Memory**, or **Context → Memory** for the workspace |
-| See every agent across the workspace, and its cost | **Agents** in the rail: the overview, then each agent's **Spend** |
+| See every agent across the workspace, and its cost | **Agents** in the dock: the overview, then each agent's **Spend** |
 
 ## Runs
 

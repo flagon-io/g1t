@@ -136,7 +136,7 @@ export default function SecretAlert({ loaderData, params }: Route.ComponentProps
           <h3 className="text-sm font-semibold">{detail.canRequestBypass ? "Ask to push it anyway" : "Push it anyway"}</h3>
           <p className="mt-1 mb-3 text-sm text-muted">
             {detail.canRequestBypass
-              ? "This workspace asks an owner or the repository's admins to approve each bypass. They are told in their inbox."
+              ? "This workspace asks an owner or the repository's admins to approve each bypass. They are told in their notifications."
               : "Take it out of the commit and push again if you can. If it has to go through, say why."}
           </p>
           {pending ? (

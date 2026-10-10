@@ -54,7 +54,7 @@ export default function NewWorkspace({
   const { user, first, free, invitations, next } = loaderData;
   const said = actionData as { error?: string; invitationError?: string; invitationId?: string; declined?: string } | undefined;
   return (
-    <main className="mx-auto max-w-lg px-4 py-12">
+    <main className="mx-auto max-w-lg pt-8">
       <h1 className="text-xl font-semibold">
         {first ? "Create your workspace or ask to join one" : "New workspace"}
       </h1>
@@ -74,7 +74,7 @@ export default function NewWorkspace({
           ) : (
             <p className="text-sm text-muted">
               To join a team that is on g1t already, ask one of its workspace's owners to invite you by your username,{" "}
-              <span className="font-mono text-fg">{user.username}</span>. Their invitation shows here and in your inbox.
+              <span className="font-mono text-fg">{user.username}</span>. Their invitation shows here and in your notifications.
             </p>
           )}
           <h2 className="mt-8 text-sm font-medium">Or create your own</h2>

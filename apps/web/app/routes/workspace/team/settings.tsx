@@ -120,7 +120,7 @@ export default function TeamSettings({ loaderData, actionData }: Route.Component
           )}
           <input type="hidden" name="notify-shown" value="1" />
           <SwitchCard name="notify" defaultChecked={team.notify} title="Notify the team when it is mentioned">
-            Everyone in it, and in its child teams, hears of @{team.workspace}/{team.slug} in their inbox.
+            Everyone in it, and in its child teams, hears of @{team.workspace}/{team.slug} in their notifications.
           </SwitchCard>
           <ErrorText>{said("profile")?.error ?? null}</ErrorText>
           <div className="flex items-center gap-3">

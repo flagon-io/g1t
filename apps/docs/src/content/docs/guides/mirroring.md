@@ -83,7 +83,7 @@ You choose how much more happens, per link, in **Settings → Mirroring**:
 
 | Setting | Default | Options |
 | --- | --- | --- |
-| When the remote stops answering | Show it on the repository | Also tell the workspace's owners in their [inbox](/guides/inbox/) |
+| When the remote stops answering | Show it on the repository | Also tell the workspace's owners in their [notifications](/guides/notifications/) |
 | Take over automatically | Off | After 5 to 1440 minutes unreachable |
 | Hand back on its own | When every branch goes back cleanly | Only when someone hands it back |
 | Keep CI warm | Off | Run `.g1t/workflows` on each push copied in |

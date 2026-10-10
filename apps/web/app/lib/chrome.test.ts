@@ -1,51 +1,52 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { VISITOR_LINKS, projectPageAt, projectPages, usesAppShell } from "./chrome.ts";
+import { frameOf, projectPageAt, projectPages } from "./chrome.ts";
 
-test("someone signed in always gets the sidebar", () => {
-  for (const path of ["/", "/pricing", "/acme/web", "/explore", "/does/not/exist"]) {
-    assert.equal(usesAppShell(path, true), true, path);
-  }
-});
+const visitor = { signedIn: false, workspace: false };
+const member = { signedIn: true, workspace: true };
+const newcomer = { signedIn: true, workspace: false };
 
-test("a visitor gets the sidebar on app pages", () => {
+test("signing in, signing up and choosing a workspace stand alone, for everyone", () => {
   for (const path of [
-    "/acme/web",
-    "/acme/web/code",
-    "/acme/web/issues/4",
-    "/acme",
-    "/nothing/here/at/all",
+    "/login",
+    "/login/two-factor",
+    "/register",
+    "/register/",
+    "/invite/abc123",
+    "/verify",
+    "/confirm-email",
+    "/forgot",
+    "/reset",
+    "/device",
+    "/oauth/authorize",
+    "/auth/github/callback",
+    "/auth/github/username",
+    "/workspaces/new",
+    "/workspaces/new.data",
   ]) {
-    assert.equal(usesAppShell(path, false), true, path);
+    for (const viewer of [visitor, member, newcomer]) assert.equal(frameOf(path, viewer), "standalone", path);
   }
 });
 
-test("a visitor gets the marketing frame on the front, pricing and sign-in pages", () => {
-  for (const path of ["/", "/pricing", "/pricing/", "/login", "/register", "/verify", "/confirm-email", "/forgot", "/reset", "/device", "/oauth/authorize"]) {
-    assert.equal(usesAppShell(path, false), false, path);
+test("answering an invitation stands alone until you belong to a workspace", () => {
+  assert.equal(frameOf("/invitations", newcomer), "standalone");
+  assert.equal(frameOf("/invitations", member), "app");
+});
+
+test("someone signed in gets the app everywhere else, public pages included", () => {
+  for (const path of ["/", "/explore", "/u/ada", "/other/web", "/acme/-/today", "/notifications", "/pricing", "/does/not/exist"]) {
+    assert.equal(frameOf(path, member), "app", path);
+    assert.equal(frameOf(path, newcomer), "app", path);
   }
 });
 
-test("a visitor reads profiles, Explore and Search in the public frame, with no sidebar", () => {
-  for (const path of ["/u/ada", "/u/ada/", "/explore", "/explore/", "/search"]) {
-    assert.equal(usesAppShell(path, false), false, path);
+test("a visitor gets the public frame everywhere else", () => {
+  for (const path of ["/", "/explore", "/search", "/u/ada", "/acme", "/acme/web", "/acme/web/issues/4", "/policies/privacy", "/nothing/here/at/all"]) {
+    assert.equal(frameOf(path, visitor), "public", path);
   }
-  // A workspace named like a page is still a workspace.
-  assert.equal(usesAppShell("/u", false), true);
-  assert.equal(usesAppShell("/explorers", false), true);
-});
-
-test("a visitor reads the policies, security, support and status in the marketing frame", () => {
-  for (const path of ["/policies", "/policies/terms", "/policies/privacy/", "/security", "/support", "/status"]) {
-    assert.equal(usesAppShell(path, false), false, path);
-  }
-  // A workspace's own security page is still the app's.
-  assert.equal(usesAppShell("/acme/-/security", false), true);
-});
-
-test("a visitor's sidebar offers Explore and Search", () => {
-  assert.deepEqual(VISITOR_LINKS.map((link) => link.to), ["/explore", "/search"]);
+  // A workspace named like a page is still a workspace, and still public to a visitor.
+  assert.equal(frameOf("/loginx", visitor), "public");
 });
 
 test("a project's menu hides member-only pages from everyone else", () => {

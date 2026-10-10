@@ -130,7 +130,7 @@ export default function Authorize({ loaderData, actionData }: Route.ComponentPro
 
   if (!request.ok) {
     return (
-      <main className="mx-auto max-w-md px-4 py-32 text-center">
+      <main className="mx-auto max-w-md pt-10 text-center">
         <CircleX size={40} className="mx-auto text-muted" />
         <h1 className="mt-6 text-2xl font-semibold tracking-tight">This link cannot be used</h1>
         <p className="mt-2 text-muted">{request.problem}</p>
@@ -141,7 +141,7 @@ export default function Authorize({ loaderData, actionData }: Route.ComponentPro
 
   const destination = new URL(request.redirectUri);
   return (
-    <main className="mx-auto max-w-md px-4 py-24">
+    <main className="mx-auto max-w-md pt-8">
       <KeyRound size={36} className="text-accent" />
       <h1 className="mt-6 text-2xl font-semibold tracking-tight">
         Sign in to {request.clientName}

@@ -6,7 +6,6 @@ import { USERNAME_PATTERN } from "@g1t/contracts";
 
 import type { Route } from "./+types/invite";
 import { page } from "../lib/meta";
-import { Mark } from "../components/logo";
 import { ContinueWithGithub, OrDivider } from "../components/github";
 import { Honeypot } from "../components/honeypot";
 import { Avatar, ButtonLink, ErrorText, Field, Input, SubmitButton } from "../components/ui";
@@ -437,8 +436,7 @@ export default function Invite({ loaderData, actionData }: Route.ComponentProps)
   const error = (actionData && "error" in actionData ? actionData.error : null) ?? loaderData.acceptError;
   const usable = invite?.status === "pending";
   return (
-    <main className="mx-auto flex max-w-md flex-col px-4 pt-16 pb-12 sm:pt-20">
-      <Mark className="size-9" />
+    <main className="mx-auto flex max-w-md flex-col pt-8">
       {usable ? (
         <>
           <div className="mt-8">

@@ -60,8 +60,8 @@ export default function Invitations({ loaderData, actionData }: Route.ComponentP
               {hasWorkspace ? (
                 <>
                   When someone invites you to a workspace, it shows here and in your{" "}
-                  <Link to="/inbox" className="underline underline-offset-4 hover:text-fg">
-                    inbox
+                  <Link to="/notifications" className="underline underline-offset-4 hover:text-fg">
+                    notifications
                   </Link>
                   .
                 </>

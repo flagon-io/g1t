@@ -363,8 +363,8 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
   };
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-line pr-2.5 pl-4">
-        <h2 className="min-w-0 grow truncate text-[0.9375rem] font-semibold">Artifacts</h2>
+      <div className="flex h-9 shrink-0 items-center gap-1 pr-1 pl-3">
+        <h2 className="min-w-0 grow truncate text-xs font-medium text-faint">Artifacts</h2>
         <NewMenu onMake={make}>
           <button type="button" aria-label="New" className="flex h-8 items-center gap-0.5 rounded-md px-1.5 text-faint transition-colors hover:bg-raised hover:text-fg">
             <Plus size={16} />

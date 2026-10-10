@@ -139,10 +139,10 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
 
   return (
     // The colour behind it, for the dots cut out of people's avatars.
-    <div className="flex h-full flex-col [--chat-sidebar-bg:color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))]">
+    <div className="flex h-full flex-col [--chat-sidebar-bg:var(--color-shell)]">
       {heading && (
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-line pr-2.5 pl-4">
-          <h2 className="text-[0.9375rem] font-semibold">Chat</h2>
+        <div className="flex h-9 shrink-0 items-center justify-between pr-1 pl-3">
+          <h2 className="text-xs font-medium text-faint">Chat</h2>
           <NewMessageButton slug={slug} />
         </div>
       )}

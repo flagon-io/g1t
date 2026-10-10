@@ -118,7 +118,7 @@ workspace's [audit log](/guides/audit-log/) as
 With **Delegated bypass** on, in the workspace's Security settings
 (`g1t.sh/<owner>/-/security/settings`), someone who pushed a blocked
 secret asks instead: **Ask to bypass** records a request, and the
-workspace's owners are told in their [inbox](/guides/inbox/). The
+workspace's owners are told in their [notifications](/guides/notifications/). The
 workspace's owners and the repository's admins review requests at
 `g1t.sh/<owner>/-/security/bypass-requests`:
 

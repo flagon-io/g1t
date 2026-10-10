@@ -7,7 +7,7 @@ import { CreateChannelButton, NewMessageButton } from "./actions";
 /** A calm full-height panel for a conversation that cannot be shown. */
 function Panel({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] items-center justify-center px-6 lg:h-dvh">
+    <div className="flex h-(--page-h) items-center justify-center px-6">
       <div className="max-w-sm text-center">
         <div className="mx-auto flex size-12 items-center justify-center rounded-xl border border-line bg-surface text-muted">{icon}</div>
         <h1 className="mt-4 text-base font-semibold">{title}</h1>

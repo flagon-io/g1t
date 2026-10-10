@@ -27,7 +27,7 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
   },
   notifications: {
     title: "Notifications",
-    about: "What you are also emailed for, and how you watch repositories. Everything comes to your inbox either way.",
+    about: "What you are also emailed for, and how you watch repositories. Everything comes to your notifications either way.",
   },
   // The invite to g1t, not a workspace's invitation (lib/invites.ts, G1T_INVITES).
   invites: {

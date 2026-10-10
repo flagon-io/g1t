@@ -433,7 +433,7 @@ function FileSection({
     >
       <header
         // Sticks under the change's toolbar (its height is --diff-toolbar), not behind it.
-        className={`sticky top-[calc(3.5rem+var(--diff-toolbar,0px))] z-20 flex items-center gap-2 border-line bg-surface/95 px-2 py-2 backdrop-blur sm:gap-2.5 sm:px-3 ${
+        className={`sticky top-[calc(var(--topbar-h)+var(--diff-toolbar,0px))] z-20 flex items-center gap-2 border-line bg-surface/95 px-2 py-2 backdrop-blur sm:gap-2.5 sm:px-3 ${
           collapsed ? "rounded-xl" : "rounded-t-xl border-b"
         }`}
       >
@@ -869,7 +869,7 @@ export function DiffView({
       )}
       <div className="flex gap-4">
         {files.length > 1 && (
-          <aside className="sticky top-28 hidden max-h-[calc(100vh-8rem)] w-60 shrink-0 flex-col self-start xl:flex">
+          <aside className="sticky top-[calc(var(--topbar-h)+3.5rem)] hidden max-h-[calc(100vh-var(--topbar-h)-4.5rem)] w-60 shrink-0 flex-col self-start xl:flex">
             <div className="relative">
               <Search size={13} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
               <input

@@ -522,3 +522,49 @@ site-search button[data-open-modal]:hover {
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 }
+
+/* Feature tables with a Live, Preview or Coming badge (components/Status.astro):
+   on a phone each row stacks, the name and its badge on one line and what it
+   does under them, rather than three narrow columns. */
+@media (max-width: 50rem) {
+	.sl-markdown-content table:has(.status),
+	.sl-markdown-content table:has(.status) tbody {
+		display: block;
+		width: 100%;
+	}
+	.sl-markdown-content table:has(.status) thead {
+		display: none;
+	}
+	.sl-markdown-content table:has(.status) tr {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) max-content;
+		width: 100%;
+		column-gap: 0.75rem;
+		padding-block: 0.5rem;
+		border-bottom: 1px solid var(--sl-color-hairline);
+	}
+	.sl-markdown-content table:has(.status) td {
+		border: 0;
+		padding: 0.15rem 0;
+		width: auto;
+	}
+	.sl-markdown-content table:has(.status) td:first-child {
+		font-weight: 600;
+	}
+	.sl-markdown-content table:has(.status) td:nth-child(2) {
+		grid-column: 1 / -1;
+		grid-row: 2;
+		color: var(--sl-color-gray-2);
+	}
+	.sl-markdown-content table:has(.status) td:nth-child(3) {
+		grid-column: 2;
+		grid-row: 1;
+		justify-self: end;
+		align-self: center;
+		width: max-content;
+		min-width: 0;
+	}
+	.sl-markdown-content table:has(.status) td + td {
+		margin-top: 0;
+	}
+}

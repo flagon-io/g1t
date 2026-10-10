@@ -606,7 +606,7 @@ export function ChannelView({ data }: { data: Loaded }) {
     <CardContext.Provider value={cardContext}>
     <div
       {...swipe}
-      className="flex h-[calc(100dvh-3.5rem)] min-h-0 lg:h-dvh max-md:fixed max-md:inset-x-0 max-md:top-(--vv-top,0px) max-md:z-30 max-md:h-(--vv-height,100dvh) max-md:bg-bg"
+      className="flex h-(--page-h) min-h-0 max-md:fixed max-md:inset-x-0 max-md:top-(--vv-top,0px) max-md:z-30 max-md:h-(--vv-height,100dvh) max-md:bg-bg"
     >
       {/* What pressing a card's action did (components/chat/card.tsx). */}
       <CardToasts />

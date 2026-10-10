@@ -8,7 +8,7 @@ import {
   Eye,
   FileLock2,
   Handshake,
-  Inbox,
+  Bell,
   KeyRound,
   Lock,
   MessagesSquare,
@@ -561,7 +561,7 @@ export function Landing() {
               "Live delivery, typing and read state",
               { text: "Agents that look up code, issues and checks as they answer", soon: true },
               { text: "Pull requests, checks and deploys as cards in the channel", soon: true },
-              { text: "Mentions and approvals in your inbox", soon: true },
+              { text: "Mentions and approvals in Notifications", soon: true },
               { text: "Desktop and mobile apps", soon: true },
             ]}
           />
@@ -954,7 +954,7 @@ export function Landing() {
           <div className="flex flex-col justify-between gap-6">
             <ul className="space-y-3 text-sm">
               {[
-                { icon: <Inbox size={15} />, text: "One inbox for mentions, reviews and approvals" },
+                { icon: <Bell size={15} />, text: "One place for mentions, reviews and approvals" },
                 { icon: <ScrollText size={15} />, text: "One audit log for people and agents" },
                 { icon: <Wallet size={15} />, text: "One bill, at cost plus 20%" },
               ].map((item) => (

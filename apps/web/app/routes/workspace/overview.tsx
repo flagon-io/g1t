@@ -30,9 +30,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const slug = params.owner.toLowerCase();
   const role = roleIn(viewer, slug);
-  // A member's way in is Home (Mission control's old address); this page
+  // A member's way in is Today; this page
   // is the workspace as a visitor sees it.
-  if (role) throw redirect(`/${slug}/-/home`);
+  if (role) throw redirect(`/${slug}/-/today`);
   const [listed, members, deploys, usage, published, shortcuts] = await Promise.all([
     // The listing the sidebar and the Projects tab share.
     workspaceProjects(slug, viewer),

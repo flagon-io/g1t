@@ -5,7 +5,6 @@ import { CONFIRM_TTL_SECONDS, tidyConfirmCode } from "@g1t/contracts";
 
 import type { Route } from "./+types/confirm-email";
 import { page } from "../lib/meta";
-import { Mark } from "../components/logo";
 import { ButtonLink, ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { Hint } from "../components/ui/hint";
 import { afterConfirming, confirmedLine } from "../lib/confirm-gate";
@@ -82,7 +81,7 @@ export default function ConfirmEmail({ loaderData, actionData }: Route.Component
 
   if (said?.confirmed || loaderData.verified) {
     return (
-      <main className="mx-auto flex max-w-sm flex-col px-4 pt-20 pb-10">
+      <main className="mx-auto flex w-full max-w-85 flex-col pt-8">
         <CircleCheck size={36} className="text-success" aria-hidden="true" />
         <h1 className="mt-6 text-2xl font-semibold tracking-tight">Email confirmed</h1>
         <p className={`mt-2 text-sm leading-6 ${said?.lapsed ? "text-fg" : "text-muted"}`} role="status">
@@ -96,10 +95,9 @@ export default function ConfirmEmail({ loaderData, actionData }: Route.Component
   }
 
   return (
-    <main className="mx-auto flex max-w-sm flex-col px-4 pt-20 pb-10">
-      <Mark className="size-9" />
-      <h1 className="mt-6 text-2xl font-semibold tracking-tight">Confirm your email</h1>
-      <p className="text-2xl tracking-tight text-faint">One step before you start</p>
+    <main className="mx-auto flex w-full max-w-85 flex-col pt-8">
+      <h1 className="text-center text-xl font-semibold tracking-tight">Confirm your email</h1>
+      <p className="mt-1 text-center text-sm text-muted">One step before you start</p>
 
       {address ? (
         <p className="mt-6 text-sm leading-6 text-muted">

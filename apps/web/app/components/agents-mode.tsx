@@ -98,7 +98,7 @@ export function AgentsSidebar({
         <span className="relative shrink-0">
           <AgentFace agent={{ ...agent, builtin: isOrchestrator(agent) }} size={26} />
           {!isOrchestrator(agent) && (
-            <StatusDot status={agent.status} className="absolute -right-0.5 -bottom-0.5 ring-2 ring-[color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))]" />
+            <StatusDot status={agent.status} className="absolute -right-0.5 -bottom-0.5 ring-2 ring-shell" />
           )}
         </span>
         <span className="min-w-0 grow leading-tight">
@@ -121,8 +121,8 @@ export function AgentsSidebar({
   );
   return (
     <div className="flex h-full flex-col">
-      <div className={`flex h-14 shrink-0 items-center justify-between border-b border-line pr-2.5 pl-4 ${phone ? "hidden" : ""}`}>
-        <h2 className="text-[0.9375rem] font-semibold">Agents</h2>
+      <div className={`flex h-9 shrink-0 items-center justify-between pr-1 pl-3 ${phone ? "hidden" : ""}`}>
+        <h2 className="text-xs font-medium text-faint">Agents</h2>
         <NavLink
           to={`/${slug}/-/agents/new`}
           aria-label="New agent"

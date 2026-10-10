@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { SETTINGS_PAGES, WORKSPACE_PAGES, pagePath, sidebarCurrent, underWorkspace, workspacePage, workspaceRedirect } from "./workspace-nav.ts";
+import { pagePath, underWorkspace, workspacePage, workspaceRedirect } from "./workspace-nav.ts";
 
 test("a path is one of the workspace's pages, or none", () => {
   assert.equal(workspacePage("/acme", "acme"), "overview");
@@ -21,34 +21,9 @@ test("a path is one of the workspace's pages, or none", () => {
   assert.equal(workspacePage("/other", "acme"), null);
 });
 
-test("every page that once had a tab has a sidebar row", () => {
-  for (const page of ["overview", ...WORKSPACE_PAGES] as const) {
-    const path = page === "overview" ? "/acme" : `/acme/-/${page}`;
-    assert.equal(sidebarCurrent(path, "acme"), page, path);
-  }
-});
-
-test("one sidebar row is current wherever you are in the workspace", () => {
-  assert.equal(sidebarCurrent("/", "acme"), "mission");
-  assert.equal(sidebarCurrent("/inbox", "acme"), "inbox");
-  assert.equal(sidebarCurrent("/support", "acme"), "support");
-  assert.equal(sidebarCurrent("/acme/-/projects.data", "acme"), "projects");
-  // Within a team or a package, its row stays lit.
-  assert.equal(sidebarCurrent("/acme/-/teams/web/settings", "acme"), "teams");
-  assert.equal(sidebarCurrent("/acme/-/packages/npm/web", "acme"), "packages");
-  assert.equal(sidebarCurrent("/acme/-/agents", "acme"), "agents");
-  assert.equal(sidebarCurrent("/acme/-/usage", "acme"), "usage");
-  // Every page the Settings row drills into.
-  for (const page of SETTINGS_PAGES) assert.equal(sidebarCurrent(`/acme/-/${page}`, "acme"), "settings", page);
-  // Another workspace's pages, a project and a person light nothing here.
-  assert.equal(sidebarCurrent("/other/-/projects", "acme"), null);
-  assert.equal(sidebarCurrent("/acme/web", "acme"), null);
-  assert.equal(sidebarCurrent("/u/ada", "acme"), null);
-  assert.equal(sidebarCurrent("/acme", null), null);
-});
-
 test("old addresses go to where their pages are now", () => {
   assert.equal(workspaceRedirect("/acme/-/members"), "/acme/-/people");
+  assert.equal(workspaceRedirect("/acme/-/home", "?x=1"), "/acme/-/today?x=1");
   // Code's Overview lives at -/overview now: not an old address.
   assert.equal(workspaceRedirect("/acme/-/overview"), null);
   assert.equal(workspaceRedirect("/acme/-/soon/teams"), "/acme/-/teams");
@@ -90,16 +65,16 @@ test("a click's data request for an alias leads to the page, not its data", () =
   );
 });
 
-test("the rail's mode follows the address", async () => {
+test("the dock's mode follows the address", async () => {
   const { modeOf, modeHome, homePath } = await import("./workspace-nav.ts");
-  assert.equal(modeOf("/", "acme"), "home");
-  assert.equal(modeOf("/acme", "acme"), "home");
-  assert.equal(modeOf("/acme/-/home", "acme"), "home");
+  assert.equal(modeOf("/", "acme"), "today");
+  assert.equal(modeOf("/acme", "acme"), "today");
+  assert.equal(modeOf("/acme/-/today", "acme"), "today");
   // g1t's own public pages light no mode.
   assert.equal(modeOf("/explore", "acme"), "site");
   assert.equal(modeOf("/u/ada", "acme"), "site");
   assert.equal(modeOf("/search.data", "acme"), "site");
-  assert.equal(modeOf("/inbox", "acme"), "inbox");
+  assert.equal(modeOf("/notifications", "acme"), "notifications");
   assert.equal(modeOf("/settings/emails", "acme"), "account");
   assert.equal(modeOf("/acme/-/chat/general", "acme"), "chat");
   assert.equal(modeOf("/acme/-/chat/dm/c1.data", "acme"), "chat");
@@ -115,7 +90,9 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/acme/-/projects", "acme"), "code");
   assert.equal(modeOf("/acme/-/security", "acme"), "code");
   assert.equal(modeOf("/acme/-/security/settings", "acme"), "workspace");
-  assert.equal(modeOf("/acme/-/people", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/people", "acme"), "people");
+  assert.equal(modeOf("/acme/-/teams/web", "acme"), "people");
+  assert.equal(modeOf("/acme/-/apps", "acme"), "apps");
   assert.equal(modeOf("/acme/-/billing", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/tokens", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/workspace", "acme"), "workspace");
@@ -123,10 +100,13 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/new", "acme"), "code");
   // Another workspace's chat is not this one's mode; its repositories are Code's.
   assert.equal(modeOf("/other/-/chat", "acme"), "code");
-  assert.equal(modeHome("home", "acme"), "/acme/-/home");
+  assert.equal(modeHome("today", "acme"), "/acme/-/today");
+  assert.equal(modeHome("notifications", "acme"), "/notifications");
+  assert.equal(modeHome("people", "acme"), "/acme/-/people");
+  assert.equal(modeHome("apps", "acme"), "/acme/-/apps");
   assert.equal(modeHome("code", "acme"), "/acme/-/overview");
   assert.equal(modeHome("workspace", "acme"), "/acme/-/workspace");
-  assert.equal(homePath("acme"), "/acme/-/home");
+  assert.equal(homePath("acme"), "/acme/-/today");
   assert.equal(homePath("acme", "?agent=new"), "/acme/-/overview?agent=new");
   assert.equal(homePath("acme", "?tab=landed&_routes=x"), "/acme/-/overview?tab=landed");
 });
@@ -134,9 +114,9 @@ test("the rail's mode follows the address", async () => {
 test("a member without Code access is sent around Code's pages", async () => {
   const { codeGate } = await import("./workspace-nav.ts");
   const none = ["acme"];
-  assert.equal(codeGate("/", "", none, "acme"), "/acme/-/home");
+  assert.equal(codeGate("/", "", none, "acme"), "/acme/-/today");
   assert.equal(codeGate("/", "", none, "other"), null);
-  assert.equal(codeGate("/acme", "", none, "acme"), "/acme/-/home");
+  assert.equal(codeGate("/acme", "", none, "acme"), "/acme/-/today");
   assert.equal(codeGate("/acme/web/pull/3", "?x=1", none, "acme"), "/acme/-/code-access?from=%2Facme%2Fweb%2Fpull%2F3%3Fx%3D1");
   assert.equal(codeGate("/acme/-/projects", "", none, "acme"), "/acme/-/code-access?from=%2Facme%2F-%2Fprojects");
   assert.equal(codeGate("/acme/-/chat/general", "", none, "acme"), null);

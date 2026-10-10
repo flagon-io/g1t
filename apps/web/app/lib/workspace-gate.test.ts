@@ -16,7 +16,7 @@ test("someone with no workspace is sent to make one or answer an invitation, nev
 });
 
 test("the pages someone without a workspace needs stay open", () => {
-  for (const page of [NO_WORKSPACE_PATH, "/invitations", "/settings", "/settings/invites", "/logout", "/invite/g1t-k7m2", "/acme/rocket/invitations", "/inbox", "/u/ada", "/-/hovercard/user/ada"]) {
+  for (const page of [NO_WORKSPACE_PATH, "/invitations", "/settings", "/settings/invites", "/logout", "/invite/g1t-k7m2", "/acme/rocket/invitations", "/notifications", "/inbox", "/u/ada", "/-/hovercard/user/ada"]) {
     assert.equal(workspaceGate(page, "", nobody), null, page);
   }
 });

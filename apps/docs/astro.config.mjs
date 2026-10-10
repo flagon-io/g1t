@@ -12,6 +12,7 @@ export default defineConfig({
 	// Pages that moved, so links already shared still arrive.
 	redirects: {
 		'/guides/g1t-agents/': '/guides/working-with-g1t/',
+		'/guides/inbox/': '/guides/notifications/',
 	},
 	integrations: [
 		starlight({
@@ -67,7 +68,8 @@ export default defineConfig({
 					items: [
 						{ label: 'Quickstart', slug: 'quickstart' },
 						{ label: 'How g1t works', slug: 'concepts/overview' },
-						{ label: 'Your inbox', slug: 'guides/inbox' },
+						{ label: 'Today', slug: 'guides/today' },
+						{ label: 'Notifications', slug: 'guides/notifications' },
 						{ label: 'Search and Explore', slug: 'guides/search' },
 						{ label: 'Status and incidents', slug: 'guides/status' },
 					],

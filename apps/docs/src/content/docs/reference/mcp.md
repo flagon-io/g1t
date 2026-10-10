@@ -715,7 +715,7 @@ billing, whatever their scopes, and no preset but full access includes
 
 ## `notifications`
 
-Your [inbox](/guides/inbox/): one thread per issue, pull request, workflow
+Your [notifications](/guides/notifications/): one thread per issue, pull request, workflow
 on a branch or deployment, with why you were told (`reason`), and what you
 subscribe to and watch. `list` is the default action. It is your own: a
 personal access token or an OAuth sign-in can use it, a workspace's token
@@ -816,7 +816,7 @@ actions it may use depends on the kind of run.
 | Catch up | The reading actions only. |
 
 No agent's token can use the `workspace`, `access`, `team`, `secret`, `webhook` or
-`notifications` tools (g1t acts as `g1t`, which has no inbox), the controls of `workflow`, or `pull_request` `merge`, `agent`
+`notifications` tools (g1t acts as `g1t`, which has no notifications), the controls of `workflow`, or `pull_request` `merge`, `agent`
 `assign` and `delegate`, `plan` `create` and `apply`, `issue` `import`, or
 any `repository` action that creates, changes, renames, archives,
 transfers, deletes, restores or purges a repository, or dismisses or

@@ -46,7 +46,7 @@ export default function Device({ loaderData, actionData }: Route.ComponentProps)
     const approved = actionData.done === "approved";
     const Icon = approved ? CircleCheck : CircleX;
     return (
-      <main className="mx-auto max-w-md px-4 py-32 text-center">
+      <main className="mx-auto max-w-md pt-10 text-center">
         <Icon size={40} className={`mx-auto ${approved ? "text-success" : "text-muted"}`} />
         <h1 className="mt-6 text-2xl font-semibold tracking-tight">
           {approved ? "Connected" : "Request denied"}
@@ -61,7 +61,7 @@ export default function Device({ loaderData, actionData }: Route.ComponentProps)
   }
 
   return (
-    <main className="mx-auto max-w-md px-4 py-24">
+    <main className="mx-auto max-w-md pt-8">
       <KeyRound size={36} className="text-accent" />
       <h1 className="mt-6 text-2xl font-semibold tracking-tight">
         Connect an application

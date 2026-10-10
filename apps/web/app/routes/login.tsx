@@ -65,8 +65,8 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
       : `/register?next=${encodeURIComponent(loaderData.next)}`;
   return (
     <AuthCard
-      title="Welcome back"
-      subtitle="Sign in to g1t"
+      title="Sign in to g1t"
+      subtitle="Welcome back"
       footer={
         <>
           New to g1t?{" "}

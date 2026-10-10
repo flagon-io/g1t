@@ -1,34 +1,17 @@
-import {
-  BookOpen,
-  ChevronDown,
-  Compass,
-  CreditCard,
-  LayoutDashboard,
-  LogIn,
-  LogOut,
-  Menu,
-  Plus,
-  Search,
-  Settings,
-} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Form,
   isRouteErrorResponse,
   Link,
   Links,
   Meta,
-  NavLink,
   Outlet,
   Scripts,
   ScrollRestoration,
   type ShouldRevalidateFunctionArgs,
   useLocation,
   useMatches,
-  useParams,
   useRouteError,
   useRouteLoaderData,
-  useSubmit,
 } from "react-router";
 
 import { type User, awaitsConfirmation, hasAccessIn, sharedWorkspaces } from "@g1t/contracts";
@@ -37,18 +20,10 @@ import type { Route } from "./+types/root";
 import appCss from "./app.css?url";
 import displayFont from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2?url";
 import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
-import { Logo } from "./components/logo";
-import { Avatar, ButtonLink, SubmitButton, notACredential } from "./components/ui";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./components/ui/dropdown-menu";
+import { ButtonLink } from "./components/ui";
 import { AppShell, Progress, type ShellData, useLeaving } from "./components/shell";
 import { SiteFooter } from "./components/footer";
+import { PublicHeader } from "./components/public-header";
 import { SpikeBanner } from "./components/spike-banner";
 import { PolicyNotice } from "./components/policy-notice";
 import { identify } from "./lib/analytics.client";
@@ -58,8 +33,9 @@ import { readCookie } from "./lib/mission";
 import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { PageMain } from "./components/landmark";
 import { NotFound } from "./components/not-found";
-import { usesAppShell } from "./lib/chrome";
-import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./components/command-palette";
+import { frameOf } from "./lib/chrome";
+import { DOCK_COOKIE, SIDEBAR_COOKIE, pinsIn, sidebarClosed } from "./lib/apps";
+import { StandaloneFrame } from "./components/standalone";
 import { billing, chat, inbox, projects, workspaceAgents } from "./lib/services.server";
 import { unreadTotals } from "./lib/chat";
 import { countsFor, readableRepos } from "./lib/access.server";
@@ -68,7 +44,6 @@ import { getViewer, viewerMiddleware } from "./lib/session.server";
 import { shortcutOf, workspaceProjects } from "./lib/workspace-projects.server";
 import { registrationMode } from "./lib/registration.server";
 import { addresses } from "./lib/addresses.server";
-import { useSignUpCopy } from "./lib/registration";
 import { RELOADED_KEY, RELOAD_GIVE_UP_MS, clientNavigated, reloadFixes, reloadedBefore } from "./lib/stale-build";
 import { useNonce } from "./lib/nonce";
 import { isNeedsSignIn } from "./lib/website-token";
@@ -97,7 +72,9 @@ export const middleware: Route.MiddlewareFunction[] = [viewerMiddleware];
 
 export async function loader({ context, params, request }: Route.LoaderArgs) {
   const user = getViewer(context);
-  const chosen = readCookie(request.headers.get("cookie"), WORKSPACE_COOKIE);
+  const cookies = request.headers.get("cookie");
+  const chosen = readCookie(cookies, WORKSPACE_COOKIE);
+  const dock = readCookie(cookies, DOCK_COOKIE);
   // Whether sign-up takes an invite: the sign-up page says so, and
   // Settings → Invites offers invites to g1t only then. Cached per isolate.
   const [shell, mode] = await Promise.all([
@@ -113,10 +90,14 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
       : visitorShell(params, context),
     registrationMode(),
   ]);
+  // The apps this person pinned to their dock here, from their cookie (lib/apps.ts).
+  if (shell.workspace) shell.pins = pinsIn(dock, shell.workspace.slug);
   // Where this g1t lives, for clone lines, agent setup and link previews.
   return {
     user,
     shell,
+    // Whether they folded the sidebar away, so the page is drawn that way from the start.
+    sidebarClosed: sidebarClosed(readCookie(cookies, SIDEBAR_COOKIE)),
     inviteOnly: mode !== "open",
     addresses: addresses(),
     // Visitors from where the law asks first are asked before analytics runs.
@@ -330,215 +311,6 @@ async function sharedRepos(user: User): Promise<ShellData["shared"]> {
     .sort((a, b) => `${a.namespace}/${a.name}`.localeCompare(`${b.namespace}/${b.name}`));
 }
 
-function HeaderLink({ to, children }: { to: string; children: React.ReactNode }) {
-  return (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        `rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-raised hover:text-fg ${
-          isActive ? "text-fg" : "text-muted"
-        }`
-      }
-    >
-      {children}
-    </NavLink>
-  );
-}
-
-/** What the palette offers someone without the app's sidebar. */
-const PUBLIC_COMMANDS: PaletteCommand[] = [
-  { label: "Explore", hint: "Public projects", to: "/explore", icon: <Compass size={15} /> },
-  { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
-  { label: "Pricing", to: "/pricing", icon: <CreditCard size={15} /> },
-  { label: "Documentation", to: "https://docs.g1t.sh/", icon: <BookOpen size={15} /> },
-  { label: "Sign in", to: "/login", icon: <LogIn size={15} /> },
-  { label: "Sign up", to: "/register", icon: <Plus size={15} /> },
-];
-
-/** Sign up: the sign-up page says whether it takes an invite. */
-function SignUpButton() {
-  const copy = useSignUpCopy();
-  return <ButtonLink to="/register">{copy.primary}</ButtonLink>;
-}
-
-function Header({ user }: { user: User | null | undefined }) {
-  const submit = useSubmit();
-  const signUp = useSignUpCopy();
-  const [palette, setPalette] = useState(false);
-  usePaletteShortcut(() => setPalette((open) => !open));
-  const params = useParams();
-  const repo = params.owner && params.repo ? `${params.owner}/${params.repo}` : null;
-  return (
-    <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
-        <Link to="/" aria-label="g1t home" className="mr-2 flex">
-          <Logo />
-        </Link>
-        <Form action="/search" role="search" className="relative hidden grow sm:block sm:max-w-xs">
-          <Search
-            size={14}
-            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint"
-          />
-          <input
-            name="q"
-            {...notACredential()}
-            placeholder="Search g1t"
-            aria-label="Search g1t"
-            className="w-full rounded-md border border-line bg-bg py-1.5 pr-12 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
-          />
-          <PaletteKey className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line" />
-        </Form>
-        <button
-          type="button"
-          aria-label="Search g1t"
-          onClick={() => setPalette(true)}
-          className="flex size-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-fg sm:hidden"
-        >
-          <Search size={18} />
-        </button>
-        <CommandPalette
-          open={palette}
-          onOpenChange={setPalette}
-          commands={user ? [{ label: "Home", to: "/", icon: <LayoutDashboard size={15} /> }, ...PUBLIC_COMMANDS.slice(0, 4)] : PUBLIC_COMMANDS.map((command) => (command.to === "/register" ? { ...command, label: signUp.primary } : command))}
-          repo={repo}
-        />
-        <nav aria-label="Main" className="hidden items-center gap-0.5 sm:flex">
-          <HeaderLink to="/explore">Explore</HeaderLink>
-          <HeaderLink to="/pricing">Pricing</HeaderLink>
-          <HeaderLink to="https://docs.g1t.sh/">Docs</HeaderLink>
-        </nav>
-        <div className="ml-auto flex items-center gap-2">
-          {/* On a phone the links fold into one menu, so the bar fits. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label="Menu"
-              className="flex size-10 items-center justify-center rounded-md text-muted outline-none transition-colors hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised data-[state=open]:text-fg sm:hidden"
-            >
-              <Menu size={18} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem asChild className="min-h-11">
-                <Link to="/explore">
-                  <Compass />
-                  Explore
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild className="min-h-11">
-                <Link to="/pricing">
-                  <CreditCard />
-                  Pricing
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild className="min-h-11">
-                <Link to="https://docs.g1t.sh/">
-                  <BookOpen />
-                  Docs
-                </Link>
-              </DropdownMenuItem>
-              {!user && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild className="min-h-11">
-                    <Link to="/login">
-                      <LogIn />
-                      Sign in
-                    </Link>
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {user ? (
-            <>
-              <Link
-                to="/new"
-                aria-label="New project"
-                className="rounded-md border border-line p-1.5 text-muted transition-colors hover:border-line-strong hover:text-fg"
-              >
-                <Plus size={16} />
-              </Link>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  aria-label="Account menu"
-                  className="flex items-center gap-1.5 rounded-md p-1 outline-none transition-colors hover:bg-raised focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised"
-                >
-                  <Avatar name={user.username} image={user.avatar} size={24} />
-                  <ChevronDown size={14} className="text-faint" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>
-                    Signed in as{" "}
-                    <span className="font-mono font-medium text-fg">
-                      {user.username}
-                    </span>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {(user.workspaces ?? []).map((membership) => (
-                    <DropdownMenuItem asChild key={membership.slug}>
-                      <Link to={`/${membership.slug}`}>
-                        <Avatar name={membership.slug} image={membership.avatar} size={16} square />
-                        <span className="min-w-0 truncate">{membership.name || membership.slug}</span>
-                      </Link>
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuItem asChild>
-                    <Link to="/workspaces/new">
-                      <Plus />
-                      New workspace
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link to="/">
-                      <LayoutDashboard />
-                      Mission control
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/new">
-                      <Plus />
-                      New project
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link to="/settings/profile">
-                      <Settings />
-                      Settings
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="https://docs.g1t.sh/quickstart/">
-                      <BookOpen />
-                      Documentation
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {/* Submitted from here: the menu closes on select, and a button
-                      that has left the page cannot submit a form. */}
-                  <DropdownMenuItem
-                    onSelect={() => submit(null, { method: "post", action: "/logout" })}
-                  >
-                    <LogOut />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          ) : (
-            <>
-              <span className="hidden sm:contents">
-                <HeaderLink to="/login">Sign in</HeaderLink>
-              </span>
-              <SignUpButton />
-            </>
-          )}
-        </div>
-      </div>
-    </header>
-  );
-}
-
 /**
  * The root's data as the browser last had it. When a navigation fails in a
  * way that takes the root's data with it, the error is still drawn in the
@@ -588,6 +360,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // has not turned it on: they keep their place, and cannot use it yet.
   const held = user?.held && user.held.length > 0 && pathname !== "/settings/two-factor" && <PolicyNotice held={user.held} />;
   const leaving = useLeaving();
+  // Which frame the page is drawn in (lib/chrome.ts): on its own, the app's, or the public one.
+  const frame = frameOf(pathname, {
+    signedIn: user != null && !awaitsConfirmation(user),
+    workspace: (user?.workspaces ?? []).length > 0,
+  });
   const banner =
     paused || verify || held ? (
       <>
@@ -612,7 +389,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Meta />
         <Links nonce={nonce} />
       </head>
-      <body className="flex min-h-screen flex-col">
+      <body className="flex min-h-screen flex-col" data-frame={frame === "app" && user && root?.shell ? "app" : frame}>
         {/* The first stop for the keyboard: past the menus, to the page. */}
         <a
           href="#content"
@@ -620,14 +397,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
         >
           Skip to content
         </a>
-        {root?.shell && usesAppShell(pathname, user != null && !awaitsConfirmation(user)) ? (
-          <AppShell user={user ?? null} shell={root.shell} missing={missing} banner={banner}>
+        {frame === "standalone" ? (
+          <StandaloneFrame>{children}</StandaloneFrame>
+        ) : frame === "app" && user && root?.shell ? (
+          <AppShell user={user} shell={root.shell} missing={missing} banner={banner} sidebarClosed={root.sidebarClosed}>
             {children}
           </AppShell>
         ) : (
           <>
             <Progress />
-            <Header user={user} />
+            <PublicHeader user={user} />
             {banner}
             <div id="content" tabIndex={-1} {...leaving} className={`grow outline-none ${leaving.className}`}>
               {children}

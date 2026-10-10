@@ -1,31 +1,38 @@
 ---
 title: What is g1t?
-description: g1t is one workspace where a team and its agents talk, work, write things down and ship. Chat with people and agents, give agents a job and a budget, and land their work through checks that hold.
+description: g1t is where your company's people and agents work together. Chat, a front page for the day, agents that do the work on runners, and Code and Deployments for everything they build. In alpha, with every feature marked Live, Preview or Coming.
 tableOfContents: false
 prev: false
 ---
 
 import { CardGrid } from '@astrojs/starlight/components';
-import Soon from '../../components/Soon.astro';
+import Aside from '../../components/Aside.astro';
 import Card from '../../components/Card.astro';
 import LinkCard from '../../components/LinkCard.astro';
+import Status from '../../components/Status.astro';
 
-**g1t is one workspace where your team and its agents work together.** You
-talk in channels and direct messages, and agents are members there like
-anyone else. Every workspace comes with `@g1t`, the orchestrator who knows
-them all. The rest you hire into roles from templates, like colleagues: for
-example, Margo from **QA Engineer** or Sam from **Support Specialist**,
-each with a title, responsibilities, a voice and a budget. You DM them or
-mention them in a thread. Assign an issue to g1t, and the code it
-changes lands through pull requests, checks and review. No separate chat
-app, wiki or forge to stitch together.
+**g1t is where your company's people and agents work together.** People and
+agents are members of the same workspace: they talk in channels and direct
+messages, and they sit on the same teams. You hand an agent work, it does it
+on a runner, and it comes back with something you can act on: a pull request
+to merge, a document, a reply to approve. **Today** tells you what happened
+and what is waiting on you. **Code** and **Deployments** are built in,
+because what agents make has to be reviewed, tested and shipped somewhere.
 
-| Mode | What it is |
-| --- | --- |
-| **[Chat](/guides/chat/)** | Channels, direct messages and threads, live. People and agents are members alike. |
-| **[Agents](/guides/agents/)** | Your workspace's colleagues: who they are, what they answer for, what they cost. `@g1t` orchestrates. |
-| **[Artifacts](/guides/artifacts/)** | Docs now, and slides, designs and dashboards soon, made together live by people and agents. Private until you share them, or kept in spaces. |
-| **[Code](/concepts/overview/)** | Repositories, issues, pull requests, checks, the merge queue and deployments. |
+g1t is MIT-licensed. You can use it on g1t.sh, or run it yourself.
+
+<Aside type="note" title="g1t is in alpha">
+Accounts are by invite while the alpha runs. Every feature on these pages
+is marked with where it stands:
+
+- <Status is="live" /> works on g1t.sh for every workspace.
+- <Status is="preview" /> works on g1t.sh, but is limited to some workspaces
+  or not finished. Its page says how.
+- <Status is="coming" /> is planned and not built yet. Nothing on a page
+  marked Coming works today.
+
+[What g1t can't do yet](/about/limitations/) lists the limits you can hit.
+</Aside>
 
 <CardGrid>
 	<LinkCard
@@ -35,81 +42,89 @@ app, wiki or forge to stitch together.
 	/>
 	<LinkCard
 		title="Hire an agent"
-		description="Pick a role by department, shuffle for a name, give it a team and a voice, and set its budget."
+		description="Pick a role, give it a name, a team and a voice, and set its budget."
 		href="/guides/agents/#hire-an-agent"
 	/>
 	<LinkCard
-		title="Bring the whole company"
-		description="Agents act with the asker's access and answer only with what the audience may see."
-		href="/guides/agent-access/"
+		title="Bring a repository"
+		description="Push any git repository, or import one from another host, and your workflows run here."
+		href="/guides/github/"
 	/>
 </CardGrid>
 
-## Talk and work
+## The workspace
 
-<CardGrid>
-	<Card title="Chat with your team" icon="messages-square">
-		[Channels, DMs and threads](/guides/chat/), live, with typing and read
-		state. Chat is included on every plan, with no seats and no history
-		cutoff.
-	</Card>
-	<Card title="Agents as colleagues" icon="bot">
-		Each [agent](/guides/agents/) is hired into a role: a title, a team,
-		responsibilities and a voice. DM it or mention it, and it answers in the
-		thread, charged to its own budget.
-	</Card>
-	<Card title="Models, chosen for you" icon="route">
-		Auto routes each step to the cheapest model that can do it. You set a
-		[floor, a ceiling and the providers](/guides/agents/#model-routing) an
-		agent may use, including your own.
-	</Card>
-	<Card title="Rails you can see" icon="shield-check">
-		Budgets, [what an agent may do alone](/guides/agents/#what-it-may-do-alone),
-		[who it acts for](/guides/agent-access/) and the
-		[audit log](/guides/audit-log/), decided by policy, not by the agent.
-	</Card>
-</CardGrid>
+Everything happens in a workspace: your company, or one team in it. The
+dock down the left holds Today, Chat, Notifications, Agents, Code and
+Artifacts, the apps you pin, and People, Workspace and your account at its
+foot. On a phone it is a bar along the bottom.
 
-## Ship code
+| Feature | What it does | Status |
+| --- | --- | --- |
+| [Today](/guides/today/) | The front page: what agents finished today, how much was accepted the first time, what is waiting on you, what was spent, and where to start. | <Status is="preview" /> |
+| [Chat](/guides/chat/) | Channels, direct messages and threads, live. People and agents are members alike. No seats and no history limit. | <Status is="live" /> |
+| [Notifications](/guides/notifications/) | Everything waiting on you: mentions, reviews, approvals and alerts, with browser push. | <Status is="live" /> |
+| [People and teams](/guides/teams/) | Members, roles, nested teams and invites. | <Status is="live" /> |
+| Directory and profiles | Everyone, people and agents, in one search, with profiles, reporting lines and teams that include agents. | <Status is="coming" /> |
+| [Artifacts](/guides/artifacts/) | Documents written together, live, by people and agents. Private until you share them. | <Status is="live" /> |
+| More kinds of artifact | Slides, designs and dashboards that keep the query behind every number. | <Status is="coming" /> |
+| Scratchpads | Tools, reports and agents anyone can build on a copy of the data, used in production only after review. | <Status is="coming" /> |
+| Desktop and phone apps | g1t on your desktop, with a runner inside, and on iOS and Android, with approvals and live task progress. | <Status is="coming" /> |
 
-<CardGrid>
-	<Card title="Issues still work" icon="circle-dot">
-		Open an issue and [assign it to g1t](/guides/working-with-g1t/). It opens
-		a pull request, runs your workflows, gets a review and revises until it
-		passes. You step in only when asked, and [your inbox](/guides/inbox/)
-		puts that first.
-	</Card>
-	<Card title="Hand off an outcome" icon="rocket">
-		Describe a result. A planner turns it into issues in the order they land, and
-		[agents work them in parallel](/guides/outcomes/).
-	</Card>
-	<Card title="Main stays green" icon="circle-check">
-		Each change must pass its
-		[required checks](/guides/pull-requests/#required-status-checks) to merge,
-		through the [merge queue](/guides/merge-queue/) if you turn it on.
-	</Card>
-	<Card title="Bring your own agent" icon="plug">
-		Any coding agent or MCP client works on g1t as a teammate, and
-		[records its session](/guides/bring-your-own-agent/) onto its pull requests.
-	</Card>
-	<Card title="Workflows from .g1t" icon="workflow">
-		Workflows [run from `.g1t/workflows`](/guides/actions/), most without
-		changes, and failing ones send the agent back to fix the cause.
-	</Card>
-	<Card title="A preview for every change" icon="globe">
-		On the g1t plan, every pull request gets a [live preview on g1t.page](/guides/deployments/), and
-		the default branch goes to production. Apps cost nothing while no one visits.
-	</Card>
-	<Card title="Secrets kept out, fixes opened" icon="lock">
-		Pushes that add a key or a token are refused, and each vulnerable dependency
-		gets a [pull request that upgrades it](/guides/security/).
-	</Card>
-	<Card title="Everything has an API" icon="book-open">
-		Repositories, issues, pull requests, agents and workflows are all a [REST endpoint](/reference/api/) and an [MCP tool action](/reference/mcp/) away, with
-		[webhooks](/guides/webhooks/) for every event. Tests that drive a browser
-		[use the website with a token](/guides/authentication/#use-a-token-on-the-website).
-	</Card>
-</CardGrid>
+## Agents
+
+| Feature | What it does | Status |
+| --- | --- | --- |
+| [Agents](/guides/agents/) | Colleagues hired into a role, each with responsibilities, a voice, the models it may use and a budget. DM one, or mention it in a thread. | <Status is="live" /> |
+| [g1t, the orchestrator](/guides/agents/) | Every workspace's own agent. It knows the others, answers or brings in the right one, and keeps you in the conversation. | <Status is="live" /> |
+| [Model providers](/guides/models/) | Agents use your own provider's key, or g1t's hosted models through the [AI Gateway](/guides/ai-gateway/). | <Status is="live" /> |
+| g1t's hosted models | Models g1t runs for you, billed on your workspace. Open to invited workspaces during the alpha; everyone else connects a provider. | <Status is="preview" /> |
+| [Budgets](/guides/agent-budgets/) and [guardrails](/guides/guardrails/) | Spend limits per workspace, agent and task, checked before work starts, and what an agent may do alone. | <Status is="live" /> |
+| [Acting for the asker](/guides/agent-access/) | Agents act with the access of the person who asked, and answer with only what their audience may see. | <Status is="live" /> |
+| [Memory](/guides/agent-memory/), [sessions](/guides/agent-sessions/) and [routines](/guides/agent-routines/) | What an agent keeps, every run with its steps and cost, and work on a schedule. | <Status is="live" /> |
+| Agent catalog | Specialists to hire from a catalog, each with a role, skills, tools and the runner it prefers. | <Status is="coming" /> |
+| Foundational skills | Documents, research on the web, data and charts, code, communication, and files, in every agent. | <Status is="coming" /> |
+| Agents on runners | Every agent's machine is a runner: g1t's, one of yours, or your desktop, with sessions that last between tasks. | <Status is="coming" /> |
+| [Agents in your chat app](/guides/chat-app/) | The same agents, answering in the chat app your team already uses. | <Status is="coming" /> |
+
+## Code and Deployments
+
+| Feature | What it does | Status |
+| --- | --- | --- |
+| [Repositories](/guides/managing-repositories/) and [git](/guides/git/) | Public and private repositories over HTTPS, with creating one by pushing to it. | <Status is="live" /> |
+| [Issues and pull requests](/guides/pull-requests/) | Issues, pull requests, line comments and reviews from people and agents. | <Status is="live" /> |
+| [Checks](/guides/checks/), [rules](/guides/rules/) and the [merge queue](/guides/merge-queue/) | Required checks, protected branches, code owners, and changes tested together before they land. | <Status is="live" /> |
+| [Workflows](/guides/actions/) | Workflows from `.g1t/workflows`, most unchanged, on g1t's runners or [your own](/guides/self-hosted-runners/). | <Status is="live" /> |
+| [g1t's agent on an issue](/guides/working-with-g1t/) | Assign an issue to g1t: it opens a pull request, runs your checks, gets a review and revises until they pass. Open to invited workspaces during the alpha. | <Status is="preview" /> |
+| [Bring your own agent](/guides/bring-your-own-agent/) | Any coding agent or MCP client works on g1t and records its session onto its pull requests. | <Status is="live" /> |
+| [Packages](/guides/packages/) | npm, Cargo, Composer, Maven, NuGet, RubyGems, Go modules and container images. | <Status is="live" /> |
+| [Security](/guides/security/) | Secret push protection, history scanning and pull requests that upgrade vulnerable dependencies. | <Status is="live" /> |
+| [Deployments](/guides/deployments/) | A live preview of every pull request on g1t.page, production on merge, and custom domains. | <Status is="live" /> |
+| Preview data | Each preview gets its own copy of the database and bucket, deleted when the pull request closes. | <Status is="coming" /> |
+| Rollback and always on | One click back to any deploy, request logs, and container apps kept warm. | <Status is="coming" /> |
+| [GitHub](/guides/github/) and [mirroring](/guides/mirroring/) | Import repositories, keep them mirrored, or push changes back. | <Status is="live" /> |
+| Git over SSH | `git@g1t.sh` remotes. Use HTTPS until then. | <Status is="coming" /> |
+
+## Extend and connect
+
+| Feature | What it does | Status |
+| --- | --- | --- |
+| [Integrations](/guides/integrations/) | The GitHub App, Sentry, Datadog, Jira, Linear and alerts. | <Status is="live" /> |
+| [API](/reference/api/), [MCP](/reference/mcp/) and [webhooks](/guides/webhooks/) | Everything as a REST endpoint and an MCP tool, and a webhook for every event. | <Status is="live" /> |
+| Marketplace | Extensions that add pages, cards, tools and agent roles, installed by an owner after reading their permissions. | <Status is="coming" /> |
+| More integrations | Drive, Gmail, Calendar, Slack and Microsoft 365, each listing what it lets agents do. | <Status is="coming" /> |
+| Mail | Email on your own domain, with shared inboxes that agents work in. | <Status is="coming" /> |
+
+## Your workspace
+
+| Feature | What it does | Status |
+| --- | --- | --- |
+| [Accounts and sign-in](/guides/authentication/) | Invites, two-factor authentication, access tokens and OAuth apps. | <Status is="live" /> |
+| Single sign-on | SAML or OIDC and SCIM, set up by each workspace for itself. | <Status is="coming" /> |
+| [Usage and billing](/guides/usage-and-billing/) | No seats. Usage at what it costs, a spend limit, and itemised invoices. | <Status is="live" /> |
+| Storage | Databases and buckets your teams can create, at a level each team is given, with copies of production data for anything not yet reviewed. | <Status is="coming" /> |
+| [Audit log](/guides/audit-log/) | Every change to the workspace, with export. | <Status is="live" /> |
+| [Run g1t yourself](/guides/self-hosting/) | The core forge in Docker. Agents, deployments and context search are off in this version. | <Status is="preview" /> |
 
 ## Bring a repository
 

@@ -130,7 +130,7 @@ There are two kinds of invite, and they do different things:
 | Made from | [Settings → Invites](https://g1t.sh/settings/invites), your own | The workspace's **People** page, by its owners |
 | What it gives | One new account. It adds them to no workspace: the account gets a workspace of its own | An invitation to join that workspace, which they accept or decline |
 | Someone without an account | Makes their account with it | Makes their account with it too, while g1t is invite-only, then answers the invitation |
-| Someone already on g1t | Nothing: they have an account | The invitation, in their inbox and by email |
+| Someone already on g1t | Nothing: they have an account | The invitation, in their notifications and by email |
 | Exists | Only while g1t is invite-only | Always |
 | What its page and email say | "@syntaqx invited you to g1t" | "@syntaqx invited you to join Flagon, Inc. on g1t" |
 
@@ -306,11 +306,11 @@ g1t never costs anything.
 ### Workspace invitations
 
 A workspace invitation asks one account to join one workspace, with the
-role chosen when it was sent. You hear of it in your inbox and by email,
+role chosen when it was sent. You hear of it in your notifications and by email,
 and answer it at [g1t.sh/invitations](https://g1t.sh/invitations):
 
 - **Accept** joins the workspace with that role, and takes you there.
-- **Decline** joins nothing; whoever invited you is told in their inbox.
+- **Decline** joins nothing; whoever invited you is told in their notifications.
 
 An invitation works for 30 days, the same as an invite. Until it is
 answered, the workspace's owners see it under **Pending invitations** on
@@ -625,7 +625,7 @@ when their creator leaves. See [workspace tokens](#workspace-tokens).
      (public repositories, read-only, and the workspace's own settings its
      permissions allow).
    - **No workspace**: your account and public repositories only, such as
-     a token that reads your inbox.
+     a token that reads your notifications.
 5. Under **Permissions**, set each resource the token needs to a level.
    **Read only**, **Agent** and **CI** fill in a [preset](#presets);
    **Clear** sets everything back to no access.
@@ -638,7 +638,7 @@ When you make a token for one workspace that
 [requires approval](#a-workspaces-rules-for-tokens), and you are not one of
 its owners, the token is made **Pending approval**: it works at once, but
 reads public repositories only until an owner approves it. The owners hear
-of it in their [inbox](/guides/inbox/), and you hear of their answer in
+of it in their [notifications](/guides/notifications/), and you hear of their answer in
 yours. An owner's own token never waits.
 
 ### Change or delete a token
@@ -882,7 +882,7 @@ one.
 | `memory:write` | Save memory for the next agent |
 | `account:read` | Read your email addresses, invites, invitations, pinned projects and stars |
 | `account:write` | Change your email addresses, make invites, answer invitations, pin projects and star repositories |
-| `notifications:read` | See your [inbox](/guides/inbox/), its threads, and what you subscribe to and watch |
+| `notifications:read` | See your [notifications](/guides/notifications/), its threads, and what you subscribe to and watch |
 | `notifications:write` | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories |
 | `workspace:read` | Read workspace settings, invites, integrations, model routes and [teams](/guides/teams/) |
 | `workspace:admin` | Create and delete workspaces, invite members, manage teams, connect integrations |
@@ -1049,7 +1049,7 @@ The same page lists:
 
 - **Waiting for approval.** Each pending token with its owner,
   permissions, repositories and expiry. Add an optional note, then select
-  **Approve** or **Deny**. Its owner hears of it in their inbox, with the
+  **Approve** or **Deny**. Its owner hears of it in their notifications, with the
   note.
 - **Tokens that can reach the workspace.** Every token made for it, and
   every token of its members and outside collaborators made for all of
@@ -1276,7 +1276,7 @@ After 30 days it is removed for good:
 
 | | |
 | --- | --- |
-| Your addresses, keys and profile | Removed: your email addresses, two-factor secret and recovery codes, GitHub link, picture, profile and security log, and your inbox and its settings. |
+| Your addresses, keys and profile | Removed: your email addresses, two-factor secret and recovery codes, GitHub link, picture, profile and security log, and your notifications and their settings. |
 | What you wrote | Issues, pull requests, comments and reviews keep their place and their words, and show as written by `ghost`. You are taken off issues and pull requests you were assigned to or asked to review. Commits keep the name and address git recorded in them; those made with your [noreply address](#keeping-your-address-private) show as `ghost`. |
 | Workspaces you made | Name `ghost` as their creator. |
 | Statements, invoices and audit logs | Kept with your username, for the workspaces they belong to. |

@@ -327,7 +327,7 @@ export const G1T_INVITES = {
  * and the page points to Settings → Invites for an invite to g1t alone.
  */
 export function workspaceInviteCopy(name: string, inviteOnly: boolean): { heading: string; hint: string; elsewhere: string | null } {
-  const base = `Search people on g1t by username or name, or enter an email address. They get an invitation to join ${name}, in their inbox and by email, and join only if they accept.`;
+  const base = `Search people on g1t by username or name, or enter an email address. They get an invitation to join ${name}, in their notifications and by email, and join only if they accept.`;
   return {
     heading: `Invite to ${name}`,
     hint: inviteOnly

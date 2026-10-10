@@ -1,4 +1,4 @@
-import { AlarmClock, Bell, Bookmark, Check, CheckCheck, CircleCheck, CircleX, Ellipsis, Hand, Inbox, Info, Mail, MailOpen, Sparkles, Undo2 } from "lucide-react";
+import { AlarmClock, Bell, Bookmark, Check, CheckCheck, CircleCheck, CircleX, Ellipsis, Hand, Info, Mail, MailOpen, Undo2 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
@@ -12,14 +12,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
 import { Skeleton } from "./ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { cn } from "../lib/cn";
 import { isPending } from "../lib/pending";
 import { INBOX_TABS, type InboxTab, REASON_LABEL, SEVERITY_LABEL, SNOOZES, bellCount, emptyFor, isUnread, tabCount, updatesLabel, whenShort } from "../lib/inbox";
 import type { InboxPanelData } from "../routes/inbox-json";
 
-/** Where every inbox form posts (routes/inbox.tsx). */
-const ACTION = "/inbox";
+/** Where every notifications form posts (routes/notifications.tsx). */
+const ACTION = "/notifications";
 /** How often the bell asks for its count while the page is in view. */
 const COUNT_EVERY_MS = 60_000;
 
@@ -93,12 +92,12 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
         <Link
           to={item.url}
           onClick={open}
-          className="block truncate pr-14 text-sm font-semibold text-fg outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-accent"
+          className="block truncate pr-14 text-sm font-semibold text-fg outline-none [@media(hover:none)]:pr-24 after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-accent"
         >
           {item.title}
         </Link>
         {item.body && <p className="mt-0.5 truncate text-xs text-muted">{item.body}</p>}
-        <div className="mt-2 flex min-w-0 items-center gap-2 text-xs text-faint">
+        <div className="mt-2 flex min-w-0 items-center gap-2 text-xs text-faint [@media(hover:none)]:pr-24">
           <time dateTime={item.updatedAt} suppressHydrationWarning className="shrink-0 whitespace-nowrap">
             {whenShort(item.updatedAt, now)}
           </time>
@@ -126,8 +125,8 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
         {item.doneAt ? (
           <fetcher.Form method="post" action={ACTION}>
             <Fields intent="undone" id={item.id} />
-            <Hint label="Move back to the inbox">
-              <SubmitButton fetcher={fetcher} icon aria-label="Move back to the inbox" className={ICON_BUTTON}>
+            <Hint label="Move back to Notifications">
+              <SubmitButton fetcher={fetcher} icon aria-label="Move back to Notifications" className={ICON_BUTTON}>
                 <Undo2 size={14} />
               </SubmitButton>
             </Hint>
@@ -182,7 +181,7 @@ export function InboxEmpty({ tab, view }: { tab: InboxTab; view?: "inbox" | "sav
   const { title, detail } = emptyFor(tab, view);
   return (
     <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-line px-6 py-12 text-center">
-      <Inbox size={20} className="text-faint" aria-hidden="true" />
+      <Bell size={20} className="text-faint" aria-hidden="true" />
       <p className="text-sm font-medium">{title}</p>
       <p className="max-w-64 text-xs text-muted">{detail}</p>
     </div>
@@ -239,11 +238,11 @@ export function MarkAllRead({ tab, disabled }: { tab: InboxTab; disabled: boolea
 
 /**
  * The bell in the top bar, and the panel it opens from the right: the
- * inbox's tabs and newest items, to work through without leaving the page.
+ * notifications's tabs and newest items, to work through without leaving the page.
  * Its count comes with the page (root.tsx), and is asked for again every
  * minute while the page is in view, and after anything is marked.
  */
-export function InboxBell({ counts: loaded }: { counts: InboxCounts | null }) {
+export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | null }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<InboxTab>("all");
   const list = useFetcher<InboxPanelData>({ key: "inbox-panel" });
@@ -274,7 +273,7 @@ export function InboxBell({ counts: loaded }: { counts: InboxCounts | null }) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
-        aria-label={unread ? `Inbox, ${unread} unread` : "Inbox"}
+        aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
         className="relative flex size-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-fg"
       >
         <Bell size={17} />
@@ -298,7 +297,7 @@ export function InboxBell({ counts: loaded }: { counts: InboxCounts | null }) {
         }}
       >
         <SheetHeader className="flex-row items-center justify-between gap-3">
-          <SheetTitle>Inbox</SheetTitle>
+          <SheetTitle>Notifications</SheetTitle>
           <MarkAllRead tab={tab} disabled={tabCount(counts, tab) === 0} />
         </SheetHeader>
         <div className="border-b border-line px-5 py-3">
@@ -309,7 +308,7 @@ export function InboxBell({ counts: loaded }: { counts: InboxCounts | null }) {
           <WaitingCards onNavigate={() => setOpen(false)} />
           {items == null ? (
             list.state === "idle" && list.data?.tab === tab ? (
-              <p className="text-sm text-muted">The inbox could not be loaded. Try again in a moment.</p>
+              <p className="text-sm text-muted">Notifications could not be loaded. Try again in a moment.</p>
             ) : (
               <ul aria-busy="true" className="space-y-2">
                 {Array.from({ length: 4 }, (_, index) => (
@@ -334,10 +333,10 @@ export function InboxBell({ counts: loaded }: { counts: InboxCounts | null }) {
           )}
         </div>
         <SheetFooter className="justify-between">
-          <SheetDescription className="text-xs">Done, saved and snoozed items are in the full inbox.</SheetDescription>
+          <SheetDescription className="text-xs">Done, saved and snoozed items are on the Notifications page.</SheetDescription>
           <SheetClose asChild>
-            <Link to={tab === "all" ? "/inbox" : `/inbox?tab=${tab}`} className="shrink-0 text-sm font-medium text-accent hover:underline">
-              Open inbox
+            <Link to={tab === "all" ? "/notifications" : `/notifications?tab=${tab}`} className="shrink-0 text-sm font-medium text-accent hover:underline">
+              Open Notifications
             </Link>
           </SheetClose>
         </SheetFooter>
@@ -347,44 +346,9 @@ export function InboxBell({ counts: loaded }: { counts: InboxCounts | null }) {
 }
 
 /**
- * Agent: g1t's agent to talk to, here to say it is coming, and not yet usable. A disabled button
- * gets no pointer events, so the tooltip hangs on a span around it: shown on hover and focus,
- * and on a tap, since a touch screen has no hover.
- */
-export function AgentButton() {
-  const [open, setOpen] = useState(false);
-  return (
-    <Tooltip open={open} onOpenChange={setOpen}>
-      <TooltipTrigger asChild>
-        <span
-          tabIndex={0}
-          // A tap opens it; without preventDefault the trigger's own click would close it again.
-          onClick={(event) => {
-            event.preventDefault();
-            setOpen(true);
-          }}
-          className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <button
-            type="button"
-            disabled
-            aria-label="Agent"
-            className="pointer-events-none flex h-9 items-center gap-1.5 rounded-md border border-line px-2.5 text-sm text-muted opacity-60 sm:px-3"
-          >
-            <Sparkles size={15} className="text-accent" />
-            <span className="hidden sm:inline">Agent</span>
-          </button>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>Agent is coming soon</TooltipContent>
-    </Tooltip>
-  );
-}
-
-/**
- * Mission control's card of what is unread in the person's inbox and
+ * Mission control's card of what is unread in the person's notifications and
  * worth a look: items an agent is waiting on, then failures. Titled for
- * the inbox, not "Needs you", which on mission control is the work list's
+ * notifications, not "Needs you", which on mission control is the work list's
  * own count. Not shown when there are none.
  */
 export function InboxNeedsCard({ items, total }: { items: InboxItem[]; total: number }) {
@@ -393,12 +357,12 @@ export function InboxNeedsCard({ items, total }: { items: InboxItem[]; total: nu
     <section className="rounded-xl border border-line bg-surface p-5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
-          <Inbox size={14} className="text-warn" aria-hidden="true" />
-          From your inbox
+          <Bell size={14} className="text-warn" aria-hidden="true" />
+          From your notifications
           <span className="rounded-full bg-warn/15 px-1.5 text-[0.6875rem] font-medium tabular-nums text-warn">{total}</span>
         </h2>
-        <Link to="/inbox" className="text-xs font-medium text-accent hover:underline">
-          Open inbox
+        <Link to="/notifications" className="text-xs font-medium text-accent hover:underline">
+          Open Notifications
         </Link>
       </div>
       <ul className="mt-3 space-y-2">

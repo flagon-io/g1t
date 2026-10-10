@@ -95,7 +95,7 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="truncate pr-6">Share “{folio.title || "Untitled"}”</DialogTitle>
-          <DialogDescription>{canShare ? "People you add get an inbox item with a link." : `Only people with full access can change who can open it. Ask ${access?.owner.display_name ?? "its owner"} to share it.`}</DialogDescription>
+          <DialogDescription>{canShare ? "People you add get a notification with a link." : `Only people with full access can change who can open it. Ask ${access?.owner.display_name ?? "its owner"} to share it.`}</DialogDescription>
         </DialogHeader>
 
         {canShare && (

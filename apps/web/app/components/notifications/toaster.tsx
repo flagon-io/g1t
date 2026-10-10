@@ -1,4 +1,4 @@
-import { AtSign, BellRing, CornerDownLeft, GitPullRequest, Hourglass, Inbox, MessageCircle, MessagesSquare, X } from "lucide-react";
+import { AtSign, BellRing, CornerDownLeft, GitPullRequest, Hourglass, Bell, MessageCircle, MessagesSquare, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import type { FeedNotification, NotificationKind } from "@g1t/contracts";
@@ -13,7 +13,7 @@ const KIND: Record<NotificationKind, { label: string; icon: ReactNode }> = {
   dm: { label: "Direct message", icon: <MessageCircle /> },
   mention: { label: "Mentioned you", icon: <AtSign /> },
   thread_reply: { label: "Replied in a thread", icon: <MessagesSquare /> },
-  inbox: { label: "Inbox", icon: <Inbox /> },
+  inbox: { label: "Notifications", icon: <Bell /> },
   agent_waiting: { label: "Waiting on you", icon: <Hourglass /> },
   approval: { label: "Needs your review", icon: <GitPullRequest /> },
 };

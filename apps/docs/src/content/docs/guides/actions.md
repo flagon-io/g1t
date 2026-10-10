@@ -1326,7 +1326,7 @@ To set them:
 
 A run whose jobs wait shows **Waiting for review** at the top of its page,
 with the environments, the jobs each holds, its reviewers and when its
-wait timer runs out. Reviewers are told in their [inbox](/guides/inbox/);
+wait timer runs out. Reviewers are told in their [notifications](/guides/notifications/);
 on the run's page they choose **Approve and deploy** or **Reject**, with
 room for a comment. One review covers every job of the run that names the
 environment. A rejected job fails, and so does anything that needs it. The

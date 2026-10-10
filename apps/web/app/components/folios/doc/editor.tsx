@@ -316,7 +316,7 @@ function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, sugges
           </div>
           {showComments && (
             <aside ref={comments} aria-label="Comments" className="scroll-mt-20 max-xl:border-t max-xl:border-line max-xl:pt-6">
-              <div className="xl:sticky xl:top-20 xl:max-h-[calc(100dvh-6rem)] xl:overflow-y-auto xl:[scrollbar-width:thin]">
+              <div className="xl:sticky xl:top-[calc(var(--topbar-h)+1.5rem)] xl:max-h-[calc(100dvh-var(--topbar-h)-2.5rem)] xl:overflow-y-auto xl:[scrollbar-width:thin]">
                 <ThreadsSidebar filter="all" sort="position" />
               </div>
             </aside>

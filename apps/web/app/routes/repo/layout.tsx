@@ -227,9 +227,9 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
           />
           {/* On the files' pages, About shows them. */}
           {!filesPage && <Topics topics={repo.topics} />}
-          {/* A phone: the project's pages, which the sidebar lists from 768px. */}
-          <div className="mt-3 md:hidden">
-            <ProjectStrip base={base} member={member} can={access.can} settings={seesSettings(access)} counts={loaderData.open} />
+          {/* A phone, or a visitor: the project's pages, which the sidebar lists for someone signed in. */}
+          <div className={signedIn ? "mt-3 md:hidden" : "mt-3"}>
+            <ProjectStrip base={base} member={member} can={access.can} settings={seesSettings(access)} counts={loaderData.open} always={!signedIn} />
           </div>
           {tabs && (
             <div className="mt-3">

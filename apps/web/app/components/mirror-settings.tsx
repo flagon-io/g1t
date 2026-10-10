@@ -514,7 +514,7 @@ function LeaderSettings({
         >
           <RadioGroup name="notify" defaultValue={settings.notify} className="gap-3">
             <RadioOption value="banner" label="Show it on the repository" description={`A line across ${full}'s pages, and an amber dot beside its name.`} />
-            <RadioOption value="inbox" label="Also tell workspace owners in their inbox" description="Once when it stops answering, and once when it answers again." />
+            <RadioOption value="inbox" label="Also tell workspace owners in their notifications" description="Once when it stops answering, and once when it answers again." />
           </RadioGroup>
           <div className="rounded-xl border border-line bg-surface p-4">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">

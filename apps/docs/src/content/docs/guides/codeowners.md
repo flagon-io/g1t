@@ -219,7 +219,7 @@ who owns the files it changes and asks them to review it:
 - owners of optional sections too;
 - a draft once it is marked ready.
 
-The inbox tells them **acme/api#42 changes files you own**, or **acme/api#42
+Notifications tell them **acme/api#42 changes files you own**, or **acme/api#42
 changes files @acme/backend owns**, with the reason `review_requested`.
 Webhooks get `pull.review_requested` with `data.code_owners` set to `true`.
 

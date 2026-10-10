@@ -61,7 +61,7 @@ export default function WorkspaceSecuritySettings({ loaderData, params }: Route.
         <Row
           name="delegatedBypass"
           title="Delegated bypass"
-          about="Someone who pushes a blocked secret asks to push it anyway, and an owner or the repository's admins approve or deny the request, told in their inbox. Off: they bypass it themselves, with a reason."
+          about="Someone who pushes a blocked secret asks to push it anyway, and an owner or the repository's admins approve or deny the request, told in their notifications. Off: they bypass it themselves, with a reason."
           checked={view.settings.delegatedBypass}
           disabled={disabled}
         />

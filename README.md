@@ -1,125 +1,98 @@
 # g1t
 
-One open-source workspace where a team and its agents talk, work, write
-things down and ship. No separate chat app, wiki or forge to stitch
-together. It runs on Cloudflare Workers and Artifacts.
+g1t is where a company's people and agents work together. People and agents
+are members of the same workspace: they talk in channels and direct
+messages and sit on the same teams. You hand an agent work, it does it, and
+it comes back with something you can act on: a pull request to merge, a
+document, a reply to approve. Today says what happened and what is waiting
+on you. Code and Deployments are built in, because what agents make has to
+be reviewed, tested and shipped. Everything specific to your business will
+come from extensions and integrations.
 
-- **Chat.** Channels, direct messages and threads, live. People and agents
-  are members alike: DM an agent, or mention it in a thread, and it answers
-  there. Chat is included on every plan, with no seats and no history
-  cutoff.
-- **Agents.** A workspace's own agents, each with a role, a job, a
-  personality, limits on which models Auto may route it to (including the
-  workspace's own providers) and a budget. Start from templates: planner,
-  implementer, reviewer, triage, documenter, release manager, on-call.
-- **Docs** (coming soon). Specs, runbooks and decisions, written together,
-  read by agents and kept current by them.
-- **Code.** Git over HTTPS, issues, pull requests and reviews. Assign an
-  issue to g1t or connect any coding agent over MCP; hand g1t an outcome and
-  a planner splits it into issues that agents take up as they unblock.
-  Checks run by g1t in clean sandboxes, workflows from `.g1t/workflows`, a
-  merge queue that tests changes together, why-blame from any line to the
-  session that wrote it, and a preview of every pull request on `g1t.page`.
-- **Rails.** Budgets per workspace, agent and task; agents act with the
-  asker's access and answer only with what their audience may see;
-  approvals for merges and production deploys; an audit log on every
-  workspace.
-- **Open and fair.** MIT licensed and self-hostable (an early Docker Compose
-  version of the core forge, in `deploy/self-host`). People chat free and
-  the forge is free; agents pay the model's price plus a flat agent rate,
-  and other compute is what it costs plus 20%, never per seat.
+g1t is MIT-licensed. Use it on [g1t.sh](https://g1t.sh), or run it
+yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 
-The plan for the workspace is [docs/WORKSPACE.md](docs/WORKSPACE.md).
+**g1t is in alpha.** Accounts are by invite. Each feature below is marked:
 
-g1t is made by Flagon, Inc. It is also an entry in Cloudflare's **Build the
-Next-Gen Git Platform** competition, which asks what a git platform looks
-like when many of the people using it are agents
-([the challenge](https://blog.cloudflare.com/next-git-platform-on-cloudflare/),
-[rules and dates](https://www.cloudflare.com/git-competition/)).
-[docs/PLAN.md](docs/PLAN.md) says how g1t answers the brief and what is
-built so far.
+- **Live**: works on g1t.sh for every workspace.
+- **Preview**: works on g1t.sh, but is limited to some workspaces or
+  unfinished.
+- **Coming**: planned, not built.
+
+The plan behind this is [docs/PLAN.md](docs/PLAN.md).
 
 ## Where things are
 
 - Site: <https://g1t.sh>
 - Docs: <https://docs.g1t.sh>
 - API: <https://api.g1t.sh> · MCP: <https://mcp.g1t.sh>
-- Plan and design: [docs/PLAN.md](docs/PLAN.md)
-- Demo walk-through: [docs/DEMO.md](docs/DEMO.md)
+- Plan: [docs/PLAN.md](docs/PLAN.md)
+- Limits you can hit today: [docs.g1t.sh/about/limitations](https://docs.g1t.sh/about/limitations/)
 
-## Status
+## What's in it
 
-Working today:
+### The workspace
 
-- Accounts with email verification and password reset. Applications sign
-  in through the browser with OAuth 2.1, so connecting an MCP client needs
-  no pasted token; tools without a browser use a device code.
-- Workspaces that own repositories, with members and roles. Every account
-  creates one before anything else, and usernames and workspaces share one
-  namespace.
-- Access tokens that belong to a workspace instead of a person, for CI and
-  integrations, so nothing needs a shared service account.
-- Public and private repositories, and git over HTTPS, including creating a
-  repository by pushing to it.
-- Issues with labels and comments; a description can say what done means,
-  under a Definition of done.
-- Pull requests with a diff and a recorded agent session: in a
-  fork of their own, which is how agents work, or from a branch pushed to
-  the repository. Several can be made for one issue.
-- Checks: the repository's workflows run on every pull request, a
-  person's or an agent's, and report a check each. The default branch
-  names the required checks a merge needs; an agent whose change fails a
-  check is sent back with the failing jobs' logs. A repository with no
-  workflows gets a starter CI workflow in one click.
-- Review: comments on lines of a change, and approve or request-changes
-  verdicts, from people and from agents.
-- Overlap: each pull request shows which others in progress change the
-  same files, while the work is still going on.
-- Catch-up: when `main` has moved under a pull request, g1t merges it in,
-  and g1t resolves any conflict.
-- Reviews written by g1t, on request: line comments, a summary and
-  a verdict.
-- Importing a public repository from any git host by its address, and
-  public or private repositories through g1t's GitHub App, imported once,
-  mirrored, or pushed back to GitHub.
-- Merging: lands a pull request on `main`, closes its issue naming the pull
-  request that resolved it, and closes the others for that issue as
-  superseded. When `main` has moved, the pull request is brought up to date
-  first, or refused where the repository requires that, so no commit is
-  lost.
-- g1t agents: g1t's own agents working on an issue in sandboxes on
-  Cloudflare Containers, seeing each pull request through checks, an
-  agent's review, revisions and catch-up.
-- Outcomes: a brief planned into issues with dependencies, which agents
-  take up as their dependencies land.
-- The merge queue: pull requests tested together with what is ahead of
-  them before they land, with failures sent back to the agent that wrote
-  them. Required approvals and checks per repository.
-- Checks in detail on every pull request, and conflicts worked out on
-  every push, before a merge is tried.
-- Agents as records: every run with its live steps, cost and session, Stop
-  and Message, and memory at two levels (project and workspace) that
-  agents write and read.
-- Projects with deployments on g1t.page: a preview for every pull request,
-  production on merge, custom domains.
-- GitHub Actions workflows from `.g1t/workflows`, secrets and variables,
-  webhooks and integrations (Sentry, Datadog, Jira, Linear).
-- Profiles, workspaces with display names, icons and renameable slugs.
-- Usage billing with no seats: what it costs g1t plus a markup, a public
-  price book, usage limits and itemised invoices.
-- A REST API, an OpenAPI document and an MCP server over the same operations.
-- An event bus: every state change is published, logged and delivered to
-  subscribers.
+| Feature | Status |
+| --- | --- |
+| The dock: Today, Chat, Notifications, Agents, Code, Artifacts and your pinned apps, with People, Workspace and your account at its foot; a bottom bar on phones | Live |
+| Today: what agents finished, how much was accepted the first time, what's waiting on you, what was spent, and where to start | Preview |
+| Chat: channels, direct messages and threads, live, with people and agents as members | Live |
+| Notifications: mentions, reviews, approvals and alerts, with browser push | Live |
+| People and teams: members, roles, nested teams, invites | Live |
+| A directory of people and agents, profiles, org chart, teams with agent members | Coming |
+| Artifacts: documents written together, live, by people and agents | Live |
+| Slides, designs and dashboards as artifacts | Coming |
+| Scratchpads: tools, reports and agents anyone can build on a copy of the data, promoted after review | Coming |
+| Desktop app (Tauri, with a runner inside) and phone app (Expo) | Coming |
 
-Not built yet: what the Soon pages in each project's menu describe. Git
-over SSH waits on inbound TCP on port 22, which on Cloudflare
-means Workers inbound TCP, a beta g1t has applied for and is waiting on.
-Use HTTPS until then. See the build order in the plan.
+### Agents
+
+| Feature | Status |
+| --- | --- |
+| Agents hired into roles from templates, each with responsibilities, a voice, model limits and a budget | Live |
+| `@g1t`, the orchestrator every workspace has, which hands work to the right agent with `hand_off` | Live |
+| Your own model providers' keys (14 providers), and the AI Gateway | Live |
+| g1t's hosted models (open to invited workspaces during the alpha) | Preview |
+| Budgets per workspace, agent and task; guardrails; agents act with the asker's access | Live |
+| Memory, sessions with live steps and cost, routines on a schedule | Live |
+| An agent catalog of specialists, and foundational skills (documents, research, data, code, communication, files) | Coming |
+| Agents on runners anywhere (g1t's, yours, your desktop), with sessions that persist between tasks | Coming |
+| Agents answering in Slack and Teams | Coming |
+
+### Code and Deployments
+
+| Feature | Status |
+| --- | --- |
+| Public and private repositories, git over HTTPS, creating a repository by pushing to it | Live |
+| Issues, pull requests, line comments, reviews from people and agents | Live |
+| Required checks, rulesets, CODEOWNERS, the merge queue | Live |
+| Workflows from `.g1t/workflows` on g1t's runners or self-hosted ones (`crates/runner`) | Live |
+| Assign an issue to g1t: a pull request, checks, a review and revisions until it passes (invited workspaces) | Preview |
+| Any coding agent over MCP, recording its session onto its pull requests; why-blame | Live |
+| Packages: npm, Cargo, Composer, Maven, NuGet, RubyGems, Go modules, container images | Live |
+| Secret push protection, history scanning, dependency upgrade pull requests | Live |
+| A preview of every pull request on `g1t.page`, production on merge, custom domains | Live |
+| GitHub import, mirroring and pushing back | Live |
+| A copy of the data for every preview, instant rollback, container apps kept warm | Coming |
+| Git over SSH (waits on inbound TCP on Workers; use HTTPS) | Coming |
+
+### Extend and run
+
+| Feature | Status |
+| --- | --- |
+| Integrations: the GitHub App, Sentry, Datadog, Jira, Linear, alerts | Live |
+| REST API, OpenAPI, MCP server, webhooks, an event bus | Live |
+| Usage billing with no seats, a public price book, spend limits, itemised invoices | Live |
+| Marketplace of extensions, shared from public repositories; Drive, Gmail, Calendar and Slack integrations; Mail | Coming |
+| Single sign-on (SAML, OIDC) and SCIM per workspace | Coming |
+| Storage: databases and buckets per team, with copies of production for anything unreviewed | Coming |
+| Self-hosting: the core forge in Docker Compose (agents, deployments and context search off) | Preview |
 
 ## Try it
 
 ```sh
-# 1. Create an account and a workspace at https://g1t.sh/register.
+# 1. Create an account and a workspace at https://g1t.sh/register (you need an invite).
 
 # 2. Connect Claude Code, then run /mcp in it to sign in through your browser.
 claude mcp add --transport http g1t https://mcp.g1t.sh
@@ -153,16 +126,24 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 | `services/pages` | Serves every app deployed on `g1t.page`, and custom domains. | TypeScript |
 | `services/models` | The model proxy at `models.g1t.sh`. | TypeScript |
 | `services/context` | The context hub: catalog, search and scorecards. | TypeScript |
+| `services/chat` | Channels, direct messages, threads and their live sockets. | TypeScript |
+| `services/agents` | The workspace's agents: definitions, templates, desks, memory and runs. | TypeScript |
+| `services/docs` | Artifacts: documents, their spaces, sharing and live editing. | TypeScript |
+| `services/notify` | Notifications: each person's feed, live counts and browser push. | TypeScript |
+| `services/packages` | The package registries and container images. | Rust |
 | `services/og` | Social cards at `og.g1t.sh`: a PNG per page, showing only what anyone may see. | TypeScript |
 | `apps/status` | The status page at `status.g1t.sh`. | TypeScript |
 | `apps/sudo` | g1t's own staff console. | TypeScript |
 | `crates/runner` | The program inside a sandbox: runs an agent, a workflow job or a merge queue build, and reports back. | Rust |
 | `crates/contracts` | Types and service interfaces for the Rust services. | Rust |
 | `crates/kit` | Plumbing shared by Rust services on Workers. | Rust |
+| `crates/g1t` | The `g1t` command line. | Rust |
+| `crates/rules` | The rules engine for rulesets on branches and tags. | Rust |
+| `crates/blobstore` | Object storage: R2 on Cloudflare, any S3-compatible store self-hosted. | Rust |
 | `crates/actions` | Reads workflows and evaluates their expressions. | Rust |
 | `crates/scan` | Secret and lockfile scanning, shared by services. | Rust |
 | `crates/secrets` | Secrets at rest and signatures. | Rust |
-| `crates/sshd` | Git over SSH, bridged to Artifacts. Not deployed yet. | Rust |
+| `crates/sshd` | Git over SSH, bridged to Cloudflare Artifacts. Not deployed yet. | Rust |
 | `packages/contracts` | The same interfaces for TypeScript callers. | TypeScript |
 | `packages/theme` | Design tokens and the logo, shared by the site and the docs. | CSS |
 | `deploy` | `stack.jsonc`, every deployable part and its resources; `self-host`, the Docker Compose version. | JSON, Docker Compose |
@@ -194,8 +175,8 @@ are off in this version.
 
 ### On Cloudflare
 
-You need a Cloudflare account on the Workers Paid plan (Artifacts requires
-it), Node 22.22 or newer (`engines` in `package.json`; g1t is built on
+You need a Cloudflare account on the Workers Paid plan (Cloudflare
+Artifacts, where repositories are stored, requires it), Node 22.22 or newer (`engines` in `package.json`; g1t is built on
 Node 24), Rust with the `wasm32-unknown-unknown` target, and
 Docker to build the sandbox image.
 
@@ -207,7 +188,7 @@ npx wrangler login
 Then, once:
 
 1. Create the resources each part needs: D1 databases, queues, KV
-   namespaces, R2 buckets and the Artifacts namespace (`npx wrangler d1
+   namespaces, R2 buckets and the Cloudflare Artifacts namespace (`npx wrangler d1
    create <name>`, `npx wrangler queues create <name>`, and so on), and set
    each part's secrets. `deploy/stack.jsonc` lists them all.
 2. Put your own `account_id`, database ids and hostnames in each

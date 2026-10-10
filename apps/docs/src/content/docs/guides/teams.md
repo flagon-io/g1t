@@ -190,7 +190,7 @@ from the team.
 Write `@<workspace>/<team>`, such as `@acme/backend`, in a comment, or in
 the description of an issue or pull request when you open it, and the
 people of that team and its child teams are told in their
-[inbox](/guides/inbox/), with the reason `team_mention`:
+[notifications](/guides/notifications/), with the reason `team_mention`:
 
 ```text
 ana mentioned @acme/backend on acme/api#42
@@ -289,7 +289,7 @@ zed opens a pull request and asks `@acme/backend` to review it:
 
 The timeline records who asked whom: **ana requested a review from
 @acme/backend**, and, when people are picked, **requested a review from
-cy**. The inbox says **ana asked @acme/backend to review acme/api#42** to
+cy**. Notifications say **ana asked @acme/backend to review acme/api#42** to
 the team's people, and **ana asked you to review acme/api#42** to each
 person picked. A request made by a CODEOWNERS file reads **acme/api#42
 changes files @acme/backend owns**.

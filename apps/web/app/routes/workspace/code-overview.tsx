@@ -39,7 +39,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
  */
 export function shouldRevalidate({ currentUrl, nextUrl, formMethod, formAction, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
   if (!formMethod && currentUrl.pathname === nextUrl.pathname && currentUrl.search !== nextUrl.search) return false;
-  if (formAction === "/inbox") return false;
+  if (formAction === "/notifications") return false;
   return defaultShouldRevalidate;
 }
 

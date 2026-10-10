@@ -25,27 +25,6 @@ export function workspacePage(pathname: string, slug: string): WorkspacePageKey 
   return (WORKSPACE_PAGES as readonly string[]).includes(parts[2]!) ? (parts[2] as WorkspacePageKey) : null;
 }
 
-/**
- * The sidebar's rows. The first two are the person's own, whichever
- * workspace they are in; the rest are the workspace's.
- */
-export type SidebarKey =
-  | "mission"
-  | "inbox"
-  | "overview"
-  | "projects"
-  | "agents"
-  | "context"
-  | "memory"
-  | "security"
-  | "packages"
-  | "insights"
-  | "people"
-  | "teams"
-  | "usage"
-  | "support"
-  | "settings";
-
 /** The workspace's pages that its Settings row drills into. */
 export const SETTINGS_PAGES = [
   "settings",
@@ -63,41 +42,6 @@ export const SETTINGS_PAGES = [
   "audit",
 ] as const;
 
-/** Pages under `-/` whose sidebar row has another name. */
-const ROW_OF: Record<string, SidebarKey> = {
-  projects: "projects",
-  agents: "agents",
-  context: "context",
-  memory: "memory",
-  security: "security",
-  packages: "packages",
-  insights: "insights",
-  people: "people",
-  teams: "teams",
-  usage: "usage",
-  // The AI Gateway's requests are usage.
-  gateway: "usage",
-};
-
-/**
- * The sidebar row that is current on a path: one row at most, so the
- * sidebar always says where you are. `slug` is the workspace the sidebar
- * is about; another workspace's pages light nothing.
- */
-export function sidebarCurrent(pathname: string, slug: string | null): SidebarKey | null {
-  const path = pagePath(pathname);
-  if (path === "/") return "mission";
-  if (path === "/inbox" || path.startsWith("/inbox/")) return "inbox";
-  if (path === "/support" || path.startsWith("/support/")) return "support";
-  const parts = path.split("/").filter(Boolean);
-  if (!slug || parts[0]?.toLowerCase() !== slug.toLowerCase()) return null;
-  if (parts.length === 1) return "overview";
-  if (parts[1] !== "-") return null;
-  const page = parts[2] ?? "";
-  if ((SETTINGS_PAGES as readonly string[]).includes(page)) return "settings";
-  return ROW_OF[page] ?? null;
-}
-
 /** `?tab=` as people write it, from the tabs the workspace page once had: the page it means. */
 const TAB_WORDS: Record<string, string> = {
   overview: "",
@@ -114,6 +58,7 @@ const TAB_WORDS: Record<string, string> = {
 
 /** Workspace pages that moved, by their old name under `-/`. */
 const MOVED: Record<string, string> = {
+  home: "-/today",
   members: "-/people",
   "soon/teams": "-/teams",
   "soon/insights": "-/insights",
@@ -168,28 +113,41 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 }
 
 /**
- * The rail's modes (docs/WORKSPACE.md, "Shell"). Home, Code, Chat,
- * Artifacts and Agents are where work happens; the Inbox spans them; Workspace is the
- * workspace itself: its people, money, policies and settings. `account` is
- * your own settings, under the avatar. `site` is g1t's own public pages
- * (a profile, Explore, Search): no workspace's, so no mode is lit and no
- * mode's sidebar sits beside them. Each mode has a sidebar of its own, or
- * none, and which one is lit follows the address.
+ * The dock's modes (docs/WORKSPACE.md, "Shell"). Today is the front page;
+ * Chat, Agents, Code and Artifacts are where work happens; Notifications
+ * spans them; People is who belongs; Workspace is the workspace itself:
+ * its money, policies and settings; Apps is everything installed that you
+ * can use. `account` is your own settings, under the avatar. `site` is
+ * g1t's own public pages (a profile, Explore, Search): no workspace's, so
+ * no mode is lit and no mode's sidebar sits beside them. Each mode has a
+ * sidebar of its own, or none, and which one is lit follows the address.
  */
-export type ModeKey = "home" | "chat" | "artifacts" | "agents" | "code" | "inbox" | "workspace" | "account" | "site";
+export type ModeKey =
+  | "today"
+  | "chat"
+  | "notifications"
+  | "agents"
+  | "code"
+  | "artifacts"
+  | "people"
+  | "workspace"
+  | "apps"
+  | "account"
+  | "site";
 
 /** Workspace pages under `-/`, by the mode they belong to. Anything else of the workspace's is Code's. */
 const PAGE_MODES: Record<string, ModeKey> = {
-  home: "home",
+  today: "today",
   chat: "chat",
   artifacts: "artifacts",
   agents: "agents",
   context: "agents",
   memory: "agents",
+  apps: "apps",
+  people: "people",
+  members: "people",
+  teams: "people",
   workspace: "workspace",
-  people: "workspace",
-  members: "workspace",
-  teams: "workspace",
   usage: "workspace",
   gateway: "workspace",
   billing: "workspace",
@@ -218,13 +176,13 @@ const SITE_PAGES = new Set(["explore", "search", "support", "policies", "securit
  */
 export function modeOf(pathname: string, slug: string | null): ModeKey {
   const path = pagePath(pathname);
-  if (path === "/") return "home";
-  if (path === "/inbox" || path.startsWith("/inbox/")) return "inbox";
+  if (path === "/") return "today";
+  if (path === "/notifications" || path.startsWith("/notifications/")) return "notifications";
   if (path === "/settings" || path.startsWith("/settings/")) return "account";
   const parts = path.split("/").filter(Boolean);
   if (SITE_PAGES.has(parts[0] ?? "")) return "site";
   if (slug && parts[0]?.toLowerCase() === slug.toLowerCase()) {
-    if (parts.length === 1) return "home";
+    if (parts.length === 1) return "today";
     if (parts[1] === "-") {
       // The workspace's security settings are a policy; its alerts are Code's.
       if (parts[2] === "security" && parts[3] === "settings") return "workspace";
@@ -234,13 +192,13 @@ export function modeOf(pathname: string, slug: string | null): ModeKey {
   return "code";
 }
 
-/** Where each mode's rail button goes, in the workspace `slug`. */
+/** Where each mode's button in the dock goes, in the workspace `slug`. */
 export function modeHome(mode: ModeKey, slug: string): string {
   switch (mode) {
-    case "home":
-      return `/${slug}/-/home`;
-    case "inbox":
-      return "/inbox";
+    case "today":
+      return todayPath(slug);
+    case "notifications":
+      return "/notifications";
     case "chat":
       return `/${slug}/-/chat`;
     case "artifacts":
@@ -249,8 +207,12 @@ export function modeHome(mode: ModeKey, slug: string): string {
       return `/${slug}/-/agents`;
     case "code":
       return `/${slug}/-/overview`;
+    case "people":
+      return `/${slug}/-/people`;
     case "workspace":
       return `/${slug}/-/workspace`;
+    case "apps":
+      return `/${slug}/-/apps`;
     case "account":
       return "/settings";
     case "site":
@@ -258,10 +220,15 @@ export function modeHome(mode: ModeKey, slug: string): string {
   }
 }
 
+/** A workspace's front page: Today. */
+export function todayPath(slug: string): string {
+  return `/${slug}/-/today`;
+}
+
 /**
- * Where Mission control's old addresses (`/`, `/<workspace>`) lead in the
- * workspace `slug`: Home, or Code's Overview when the query asks for its
- * panels (a tab, or `?agent=new` to put an agent on something).
+ * Where g1t's front door (`/`) and a workspace's own address lead someone
+ * in the workspace `slug`: Today, or Code's Overview when the query asks
+ * for its panels (a tab, or `?agent=new` to put an agent on something).
  */
 export function homePath(slug: string, search = ""): string {
   const params = new URLSearchParams(search);
@@ -269,7 +236,7 @@ export function homePath(slug: string, search = ""): string {
   params.delete("index");
   const query = params.toString();
   if (params.has("agent") || params.has("tab") || params.has("sort")) return `/${slug}/-/overview?${query}`;
-  return `/${slug}/-/home`;
+  return todayPath(slug);
 }
 
 /** The page a member without Code access sees in place of anything of Code's. */
@@ -283,23 +250,24 @@ const CODE_PAGES = new Set(["overview", "projects", "repositories", "packages", 
 /**
  * Where a member without Code access goes instead of `pathname`, or null
  * when the page is open to them. `noCode` is the workspaces (by slug) where
- * they lack it; `chosen` is the one they are in. Mission control (`/`) is
- * their Home in that workspace; its overview, its projects and every
- * repository page is the page that says to ask an owner.
+ * they lack it; `chosen` is the one they are in. g1t's front door (`/`) is
+ * Today in that workspace, and so is the workspace's own address; its
+ * Code pages and every repository page is the page that says to ask an
+ * owner.
  */
 export function codeGate(pathname: string, search: string, noCode: readonly string[], chosen: string | null): string | null {
   if (noCode.length === 0) return null;
   const path = pagePath(pathname);
   if (path === "/") {
     const slug = chosen && noCode.includes(chosen.toLowerCase()) ? chosen.toLowerCase() : null;
-    return slug ? `/${slug}/-/home` : null;
+    return slug ? todayPath(slug) : null;
   }
   const parts = path.split("/").filter(Boolean);
   const slug = parts[0]?.toLowerCase();
   if (!slug || !noCode.includes(slug)) return null;
   const from = `${path}${search && search !== "?" ? search : ""}`;
-  // The workspace's own page is their Home.
-  if (parts.length === 1) return `/${slug}/-/home`;
+  // The workspace's own page is Today.
+  if (parts.length === 1) return todayPath(slug);
   if (parts[1] === "-") return CODE_PAGES.has(parts[2] ?? "") ? codeAccessPath(slug, from) : null;
   // A repository, and everything in it.
   return codeAccessPath(slug, from);

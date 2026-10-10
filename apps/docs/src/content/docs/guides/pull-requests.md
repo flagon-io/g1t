@@ -214,7 +214,7 @@ author could, and so can anyone with the Maintain
 person's does.
 
 People mentioned in an agent's comment, and everyone subscribed to the
-pull request, hear of it in their [inbox](/guides/inbox/) as from
+pull request, hear of it in their [notifications](/guides/notifications/) as from
 **Margo (agent)**, with "(advisory)" on a review. It publishes
 `comment.created` as a person's comment does, with `agent` (its `id`,
 `handle`, `display_name` and `avatar_seed`), `acting_for`, and for a

@@ -105,7 +105,7 @@ function NeedAccess({ slug, id }: { slug: string; id: string }) {
       <h1 className="mt-4 text-xl font-semibold tracking-tight">You need access</h1>
       <p className="mt-1 text-sm text-muted">Ask for access, and its owner hears of it. If it was deleted, nobody can open it any more.</p>
       {state === "sent" ? (
-        <p className="mt-6 text-sm text-success">Asked. You&apos;ll get an inbox item when they let you in.</p>
+        <p className="mt-6 text-sm text-success">Asked. You&apos;ll get a notification when they let you in.</p>
       ) : (
         <form
           className="mt-6 flex w-full flex-col gap-2"

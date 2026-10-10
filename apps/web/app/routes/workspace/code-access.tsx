@@ -42,7 +42,7 @@ export default function CodeAccess({ loaderData, params }: Route.ComponentProps)
         ) : (
           <>This is part of Code in {params.owner}.</>
         )}{" "}
-        Your membership includes Chat, Docs, Agents and the Inbox. An owner can turn on Code access for you.
+        Your membership includes Chat, Artifacts, Agents and Notifications. An owner can turn on Code access for you.
       </p>
       {owners.length > 0 && (
         <p className="mt-4 text-sm text-muted">
@@ -66,10 +66,10 @@ export default function CodeAccess({ loaderData, params }: Route.ComponentProps)
           Back to Chat
         </Link>
         <Link
-          to={`/${params.owner}/-/home`}
+          to={`/${params.owner}/-/today`}
           className="inline-flex h-9 items-center rounded-md border border-line px-3.5 text-sm font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-surface"
         >
-          Home
+          Today
         </Link>
       </div>
       <p className="mt-6 text-xs text-faint">Agents can still explain how things work and what changed; they never show source code.</p>

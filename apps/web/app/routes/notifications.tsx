@@ -1,12 +1,14 @@
 /**
- * The inbox, in full: the same tabs as the panel in the top bar, with what
- * was saved and what is done, a page at a time. Every inbox form posts
- * here, the panel's included.
+ * Notifications, in full: the same tabs as the panel in the top bar, with
+ * what was saved and what is done, a page at a time. Its sidebar
+ * (components/shell.tsx) chooses between those and narrows them by why you
+ * were told; below 1024px, where the sidebar is a drawer, the page has
+ * them too. Every notifications form posts here, the panel's included.
  */
-import { Bookmark, Check, Inbox as InboxIcon } from "lucide-react";
+import { Bell, Bookmark, Check } from "lucide-react";
 import { Link, data, useNavigate } from "react-router";
 
-import type { Route } from "./+types/inbox";
+import type { Route } from "./+types/notifications";
 import { InboxCard, InboxEmpty, InboxTabs, MarkAllRead } from "../components/inbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { cn } from "../lib/cn";
@@ -18,7 +20,7 @@ import { assertSameOrigin, requireUser } from "../lib/session.server";
 const PAGE_ITEMS = 50;
 
 export function meta(args: Route.MetaArgs) {
-  return page(args, { title: "Inbox · g1t" });
+  return page(args, { title: "Notifications · g1t" });
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -49,12 +51,12 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 const VIEWS = [
-  { view: "inbox", label: "Inbox", icon: <InboxIcon size={14} /> },
+  { view: "inbox", label: "Everything", icon: <Bell size={14} /> },
   { view: "saved", label: "Saved", icon: <Bookmark size={14} /> },
   { view: "done", label: "Done", icon: <Check size={14} /> },
 ] as const;
 
-export default function InboxPage({ loaderData }: Route.ComponentProps) {
+export default function NotificationsPage({ loaderData }: Route.ComponentProps) {
   const { tab, view, reason, before, items, next, counts } = loaderData;
   const navigate = useNavigate();
   const address = (changes: Record<string, string | null>) => {
@@ -62,20 +64,20 @@ export default function InboxPage({ loaderData }: Route.ComponentProps) {
     const merged = { tab: tab === "all" ? null : tab, view: view === "inbox" ? null : view, reason, ...changes };
     for (const [name, value] of Object.entries(merged)) if (value) params.set(name, value);
     const query = params.toString();
-    return query ? `/inbox?${query}` : "/inbox";
+    return query ? `/notifications?${query}` : "/notifications";
   };
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Notifications</h1>
           <p className="mt-1 text-sm text-muted">What needs you, and what you follow. What is waiting on you comes first.</p>
         </div>
         {view === "inbox" && <MarkAllRead tab={tab} disabled={tabCount(counts, tab) === 0} />}
       </div>
 
-      <nav aria-label="Inbox views" className="mt-6 flex gap-1 border-b border-line">
+      <nav aria-label="Notifications views" className="mt-6 flex gap-1 border-b border-line lg:hidden">
         {VIEWS.map((entry) => (
           <Link
             key={entry.view}
@@ -98,7 +100,7 @@ export default function InboxPage({ loaderData }: Route.ComponentProps) {
         </div>
         {/* Why you were told: a review asked of you, a mention, what you watch. */}
         <Select value={reason ?? "any"} onValueChange={(value) => navigate(address({ reason: value === "any" ? null : value, before: null }))}>
-          <SelectTrigger size="sm" aria-label="Reason" className="sm:w-44">
+          <SelectTrigger size="sm" aria-label="Reason" className="sm:w-44 lg:hidden">
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="end">
@@ -113,7 +115,7 @@ export default function InboxPage({ loaderData }: Route.ComponentProps) {
 
       <div className="mt-4">
         {items == null ? (
-          <p className="rounded-lg border border-line px-4 py-6 text-sm text-muted">The inbox could not be loaded. Try again in a moment.</p>
+          <p className="rounded-lg border border-line px-4 py-6 text-sm text-muted">Notifications could not be loaded. Try again in a moment.</p>
         ) : items.length === 0 ? (
           <InboxEmpty tab={tab} view={view} />
         ) : (

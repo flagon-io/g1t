@@ -63,8 +63,10 @@ export default [
   route("explore", "routes/explore.tsx", { id: "explore" }),
   route("pricing", "routes/pricing.tsx"),
   route("search", "routes/search.tsx"),
-  // Each person's inbox, and what its panel in the top bar fetches.
-  route("inbox", "routes/inbox.tsx"),
+  // Each person's notifications, what the panel in the top bar fetches,
+  // and the address the page once had.
+  route("notifications", "routes/notifications.tsx"),
+  route("inbox", "routes/inbox-moved.ts"),
   route("inbox.json", "routes/inbox-json.ts"),
   // What the command palette shows as someone types.
   route("search.json", "routes/search-json.ts"),
@@ -191,9 +193,12 @@ export default [
       route(":folio", "routes/workspace/folios/folio.tsx"),
       route(":folio/history", "routes/workspace/folios/history.tsx"),
     ]),
-    // Home for a member without Code, and what Code's pages say to them
-    // (docs/WORKSPACE.md, "Members without Code").
-    route("-/home", "routes/workspace/home.tsx"),
+    // Today, the workspace's front page (`-/home` leads there), and every
+    // app in it you can use, with pinning them to your dock.
+    route("-/today", "routes/workspace/home.tsx"),
+    route("-/home", "routes/workspace/moved.ts", { id: "routes/workspace/moved-home" }),
+    route("-/apps", "routes/workspace/apps.tsx"),
+    // What Code's pages say to a member without Code (docs/WORKSPACE.md, "Members without Code").
     route("-/code-access", "routes/workspace/code-access.tsx"),
     route("-/memory", "routes/workspace/memory.tsx"),
     route("-/context", "routes/workspace/context.tsx"),

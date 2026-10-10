@@ -1,0 +1,45 @@
+---
+// Where a feature stands in the alpha: Live (on g1t.sh for every
+// workspace), Preview (on g1t.sh, but limited to some workspaces or
+// unfinished) or Coming (planned, not built). Inline, in a table cell, a
+// heading or a line.
+interface Props {
+	is: 'live' | 'preview' | 'coming';
+}
+
+const { is } = Astro.props;
+const LABEL = { live: 'Live', preview: 'Preview', coming: 'Coming' } as const;
+---
+
+<span class:list={['status', 'not-content', is]}>{LABEL[is]}</span>
+
+<style>
+	.status {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.05rem 0.5rem;
+		border-radius: 999px;
+		border: 1px solid transparent;
+		font-family: var(--g1t-font-mono);
+		font-size: 0.6875rem;
+		font-weight: 500;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		white-space: nowrap;
+		vertical-align: middle;
+		line-height: 1.5;
+	}
+	.live {
+		color: var(--g1t-success);
+		background: var(--g1t-success-low);
+	}
+	.preview {
+		color: var(--g1t-accent);
+		background: var(--g1t-accent-low);
+	}
+	.coming {
+		color: var(--g1t-muted);
+		background: var(--g1t-raised);
+		border-color: var(--g1t-line-strong);
+	}
+</style>

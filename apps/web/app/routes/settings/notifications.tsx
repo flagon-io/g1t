@@ -2,7 +2,7 @@
  * Settings → Notifications: what you are also emailed for, how you watch
  * repositories you create, and the repositories you watch other than the
  * default way. The events service keeps all three (`inbox_settings`,
- * `inbox_watched`); the inbox itself is at /inbox.
+ * `inbox_watched`); the notifications themselves are at /notifications.
  */
 import { Eye, EyeOff } from "lucide-react";
 import { Form, Link, data, useNavigation } from "react-router";
@@ -85,7 +85,7 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
           Email
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Besides your <Link to="/inbox" className="text-fg underline underline-offset-4">inbox</Link>, email me at my primary address when:
+          Besides your <Link to="/notifications" className="text-fg underline underline-offset-4">notifications</Link>, email me at my primary address when:
         </p>
         <Form method="post" className="mt-4 space-y-3">
           <input type="hidden" name="intent" value="email" />

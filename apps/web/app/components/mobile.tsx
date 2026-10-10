@@ -1,29 +1,19 @@
 import {
   Activity,
-  BarChart3,
   BellOff,
   BellRing,
   BookOpen,
-  Building2,
-  Check,
-  ChevronRight,
   CircleUserRound,
-  Code2,
-  House,
-  Inbox,
+  Ellipsis,
+  Keyboard,
+  LayoutGrid,
   LifeBuoy,
   LogOut,
-  MessagesSquare,
   Moon,
-  Plug,
-  Plus,
   Settings,
-  Shapes,
   Smile,
-  Sparkles,
+  Store,
   Sun,
-  Users,
-  UsersRound,
 } from "lucide-react";
 import { Dialog as Primitive } from "radix-ui";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -31,20 +21,24 @@ import { Link, useLocation, useNavigate, useSubmit } from "react-router";
 
 import { type Abilities, type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
 
+import { appIcon } from "./apps";
+import { CountBadge, ShortcutsDialog } from "./dock";
+import { Mark } from "./logo";
 import { Avatar } from "./ui";
 import { TabStrip } from "./ui/tab-strip";
 import { StatusDialog } from "./presence";
+import { type AppKey, type PinnableApp, appOf } from "../lib/apps";
 import { setPresence, useOwnPresence } from "../lib/notify-client";
 import { dndOn, liveStatus, pauseUntil, untilLabel } from "../lib/presence";
 import { STATUS_URL } from "../lib/status";
-import { modeOf } from "../lib/workspace-nav";
+import { type ModeKey, modeHome, modeOf } from "../lib/workspace-nav";
 import { PROJECT_PAGE_LINKS, type ProjectPage, projectPageAt, projectPages } from "../lib/chrome";
 import { ROADMAP, type RoadmapItem } from "../lib/roadmap";
 
 /**
- * The phone's layout (below 768px): a tab bar along the bottom, the
- * workspace's avatar opening a sheet for everything else, and each tab a
- * list that pushes its detail full screen. Desktop keeps the rail.
+ * The phone's layout (below 768px): a bottom bar of apps with More for
+ * the rest, the mode's sidebar as a drawer from the left, and each tab a
+ * list that pushes its detail full screen. A computer has the dock.
  */
 
 /** Whether a path is one conversation, which takes the whole screen on a phone. */
@@ -121,91 +115,189 @@ export function useBack(fallback: string) {
   };
 }
 
-type Tab = { key: string; label: string; to: string; icon: ReactNode; badge?: { count: number; loud: boolean } };
+type Tab = { key: ModeKey; label: string; badge?: { count: number; loud: boolean } };
 
 /**
- * The tab bar along the bottom of a phone: Home, Code (Docs, for a member
- * without Code), Chat, Agents and the Inbox, each with what is unread. It
- * steps aside while the keyboard is up and inside a conversation. The tab
- * you are in, tapped again, opens its mode's menu.
+ * The bottom bar of a phone, floating 8px from the edges: Today, Chat,
+ * Notifications, Agents and Code (for a member with Code access), each
+ * with what is unread, and More. It steps aside while the keyboard is up
+ * and inside a conversation. The tab you are in, tapped again, opens its
+ * mode's menu (its sidebar).
  */
-export function MobileTabBar({
+export function BottomBar({
+  user,
   workspace,
+  pins,
   unread,
   onReselect,
 }: {
+  user: User;
   workspace: Membership;
-  unread: { inbox: number; chat: number; mentions: number };
+  /** The apps pinned to this person's dock here, for the More sheet. */
+  pins: PinnableApp[];
+  unread: { notifications: number; chat: number; mentions: number };
   /** Tapping the tab you are already in: the shell opens that mode's menu (its sidebar). */
   onReselect?: () => void;
 }) {
   const { pathname } = useLocation();
+  const [more, setMore] = useState(false);
+  useEffect(() => setMore(false), [pathname]);
   const slug = workspace.slug;
   const code = hasCodeAccess(workspace);
   const mode = modeOf(pathname, slug);
   const tabs: Tab[] = [
-    { key: "home", label: "Home", to: `/${slug}/-/home`, icon: <House size={21} /> },
-    code
-      ? { key: "code", label: "Code", to: `/${slug}/-/projects`, icon: <Code2 size={21} /> }
-      : { key: "artifacts", label: "Artifacts", to: `/${slug}/-/artifacts`, icon: <Shapes size={21} /> },
-    {
-      key: "chat",
-      label: "Chat",
-      to: `/${slug}/-/chat`,
-      icon: <MessagesSquare size={21} />,
-      badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 },
-    },
-    { key: "agents", label: "Agents", to: `/${slug}/-/agents`, icon: <Sparkles size={21} /> },
-    { key: "inbox", label: "Inbox", to: "/inbox", icon: <Inbox size={21} />, badge: { count: unread.inbox, loud: true } },
+    { key: "today", label: "Today" },
+    { key: "chat", label: "Chat", badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 } },
+    { key: "notifications", label: "Notifications", badge: { count: unread.notifications, loud: true } },
+    { key: "agents", label: "Agents" },
+    ...(code ? [{ key: "code" as const, label: "Code" }] : []),
   ];
+  const inTabs = tabs.some((tab) => tab.key === mode);
   if (isConversation(pathname)) return null;
   return (
-    <nav
-      aria-label="Tabs"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-[#0b0b0d]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden in-data-[keyboard=open]:hidden"
-    >
-      <ul className="grid h-14 grid-cols-5">
-        {tabs.map((tab) => {
-          const current = mode === tab.key;
-          const count = tab.badge?.count ?? 0;
-          return (
-            <li key={tab.key}>
-              <Link
-                to={tab.to}
-                prefetch="intent"
-                aria-current={current ? "page" : undefined}
-                aria-label={count > 0 ? `${tab.label}, ${count} unread` : tab.label}
-                onClick={(event) => {
-                  // The tab you are in, tapped again: its menu, as a phone's own apps do.
-                  // Chat's first page on a phone is its sidebar already.
-                  if (!current || !onReselect || (tab.key === "chat" && pathname.replace(/\/$/, "") === tab.to)) return;
-                  event.preventDefault();
-                  onReselect();
-                }}
-                className="flex h-full flex-col items-center justify-center gap-0.5 transition-colors active:bg-raised/60"
-              >
-                <span className={`relative flex h-7 w-12 items-center justify-center rounded-full transition-colors ${current ? "bg-[#2c2c33] text-fg" : "text-muted"}`}>
-                  {tab.icon}
-                  {count > 0 && (
-                    <span
-                      className={`absolute -top-1 right-0.5 min-w-[1.125rem] rounded-full px-1 text-center text-[0.625rem] leading-[1.125rem] font-bold tabular-nums ring-2 ring-[#0b0b0d] ${
-                        tab.badge?.loud ? "bg-accent text-bg" : "bg-[#3d3d45] text-fg"
-                      }`}
-                    >
-                      {count > 99 ? "99+" : count}
-                    </span>
-                  )}
-                </span>
-                <span className={`text-[0.6875rem] font-medium ${current ? "text-fg" : "text-faint"}`}>{tab.label}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <>
+      <nav
+        aria-label="Apps"
+        className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-2 z-40 h-16 rounded-2xl border border-line bg-dock px-1 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_8px_24px_rgba(0,0,0,0.35)] md:hidden in-data-[keyboard=open]:hidden"
+      >
+        <ul className="grid h-full" style={{ gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))` }}>
+          {tabs.map((tab) => {
+            const current = mode === tab.key && !more;
+            const count = tab.badge?.count ?? 0;
+            const to = modeHome(tab.key, slug);
+            return (
+              <li key={tab.key} className="min-w-0">
+                <Link
+                  to={to}
+                  prefetch="intent"
+                  aria-current={current ? "page" : undefined}
+                  aria-label={count > 0 ? `${tab.label}, ${count} unread` : tab.label}
+                  onClick={(event) => {
+                    // The tab you are in, tapped again: its menu, as a phone's own apps do.
+                    // Chat's first page on a phone is its sidebar already.
+                    if (!current || !onReselect || (tab.key === "chat" && pathname.replace(/\/$/, "") === to)) return;
+                    event.preventDefault();
+                    onReselect();
+                  }}
+                  className={BAR_ITEM}
+                >
+                  {current && <TopBar />}
+                  <BarIcon current={current}>
+                    {appIcon(tab.key as AppKey, 20)}
+                    {tab.badge && <CountBadge count={count} loud={tab.badge.loud} />}
+                  </BarIcon>
+                  <span className={`w-full truncate text-[0.625rem] leading-tight font-medium max-[380px]:text-[0.5625rem] max-[380px]:tracking-[-0.02em] ${current ? "text-fg" : "text-faint"}`}>{tab.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+          <li className="min-w-0">
+            <button type="button" aria-expanded={more} aria-haspopup="dialog" onClick={() => setMore(true)} className={BAR_ITEM}>
+              {(more || !inTabs) && <TopBar />}
+              <BarIcon current={more || !inTabs}>
+                <Ellipsis size={20} />
+              </BarIcon>
+              <span className={`w-full truncate text-[0.625rem] leading-tight font-medium ${more || !inTabs ? "text-fg" : "text-faint"}`}>More</span>
+            </button>
+          </li>
+        </ul>
+      </nav>
+      <MoreSheet open={more} onOpenChange={setMore} user={user} workspace={workspace} pins={pins} />
+    </>
   );
 }
 
+const BAR_ITEM = "relative flex h-full w-full flex-col items-center justify-center gap-0.5 rounded-xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent active:bg-raised/60";
+
+/** The bar on the bottom bar's top edge, over the current tab. */
+function TopBar() {
+  return <span aria-hidden="true" className="absolute -top-px left-1/2 h-[3px] w-[22px] -translate-x-1/2 rounded-b-[3px] bg-fg" />;
+}
+
+function BarIcon({ current, children }: { current: boolean; children: ReactNode }) {
+  return (
+    <span className={`relative flex size-8 items-center justify-center rounded-[10px] transition-colors ${current ? "bg-raised text-fg shadow-[inset_0_0_0_1px_var(--color-line-strong)]" : "text-muted"}`}>
+      {children}
+    </span>
+  );
+}
+
+/** A big tile in the More sheet. */
+function MoreTile({ to, icon, label, onClick, disabled, note }: { to?: string; icon: ReactNode; label: string; onClick?: () => void; disabled?: boolean; note?: string }) {
+  const inner = (
+    <>
+      <span className={`flex size-11 items-center justify-center rounded-xl ${disabled ? "bg-raised/60 text-faint" : "bg-raised text-fg"}`}>{icon}</span>
+      <span className={`line-clamp-2 w-full text-xs leading-tight max-[380px]:text-[0.6875rem] ${disabled ? "text-faint" : "text-fg-soft"}`}>{label}</span>
+      {note && <span className="-mt-0.5 rounded-full bg-line px-1.5 text-[0.625rem] font-medium text-muted">{note}</span>}
+    </>
+  );
+  const className = "flex min-w-0 flex-col items-center gap-1.5 rounded-xl px-1 py-2.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-accent active:bg-raised/60";
+  if (to) {
+    return (
+      <Link to={to} className={className}>
+        {inner}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} aria-disabled={disabled} className={className}>
+      {inner}
+    </button>
+  );
+}
+
+/**
+ * More, from the bottom bar: a rounded panel just above it, with g1t's
+ * mark at its top and a grid of big tiles: all apps, the Marketplace
+ * (coming), your pinned apps, Artifacts, People, Workspace, and "You and
+ * help", which opens your account's sheet.
+ */
+function MoreSheet({ open, onOpenChange, user, workspace, pins }: { open: boolean; onOpenChange: (open: boolean) => void; user: User; workspace: Membership; pins: PinnableApp[] }) {
+  const slug = workspace.slug;
+  const code = hasCodeAccess(workspace);
+  const [account, setAccount] = useState(false);
+  const shown = pins.filter((key) => code || !appOf(key).code);
+  return (
+    <>
+      <Primitive.Root open={open} onOpenChange={onOpenChange}>
+        <Primitive.Portal>
+          <Primitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out md:hidden" />
+          <Primitive.Content
+            aria-describedby={undefined}
+            onOpenAutoFocus={(event) => event.preventDefault()}
+            className="fixed right-2 bottom-[calc(4.875rem+env(safe-area-inset-bottom))] left-2 z-50 max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-[18px] border border-line-strong bg-dock px-3 pt-2 pb-3.5 text-fg shadow-2xl shadow-black/60 outline-none data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out md:hidden"
+          >
+            <div aria-hidden="true" className="mx-auto mt-0.5 mb-2 h-1 w-9 rounded-full bg-line-strong" />
+            <div className="mb-2 flex items-center gap-2 px-1">
+              <Mark tight className="h-4 w-auto" />
+              <Primitive.Title className="text-sm font-semibold">More</Primitive.Title>
+              <span className="ml-auto truncate font-mono text-xs text-faint">{slug}</span>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              <MoreTile to={`/${slug}/-/apps`} icon={<LayoutGrid size={20} />} label="All apps" />
+              <MoreTile icon={<Store size={20} />} label="Marketplace" disabled note="Coming" />
+              {shown.map((key) => (
+                <MoreTile key={key} to={appOf(key).path(slug)} icon={appIcon(key, 20)} label={appOf(key).name} />
+              ))}
+              <MoreTile to={appOf("artifacts").path(slug)} icon={appIcon("artifacts", 20)} label="Artifacts" />
+              <MoreTile to={appOf("people").path(slug)} icon={appIcon("people", 20)} label="People" />
+              <MoreTile to={appOf("workspace").path(slug)} icon={appIcon("workspace", 20)} label="Workspace" />
+              <MoreTile
+                icon={<Avatar name={user.username} image={user.avatar} size={24} />}
+                label="You and help"
+                onClick={() => {
+                  onOpenChange(false);
+                  setAccount(true);
+                }}
+              />
+            </div>
+          </Primitive.Content>
+        </Primitive.Portal>
+      </Primitive.Root>
+      <AccountSheet open={account} onOpenChange={setAccount} user={user} />
+    </>
+  );
+}
 /**
  * A sheet that rises from the bottom of a phone, with a handle to drag it
  * back down. Escape, a tap outside or a drag of more than 90px closes it.
@@ -302,10 +394,6 @@ function SheetGroup({ title, children }: { title: string; children: ReactNode })
   );
 }
 
-function displayName(membership: Membership): string {
-  return membership.name?.trim() || membership.slug;
-}
-
 /** Your status, away and pausing notifications, as the account menu has them on a computer. */
 function OwnPresenceRows({ onEdit }: { onEdit: () => void }) {
   const me = useOwnPresence();
@@ -345,93 +433,27 @@ function OwnPresenceRows({ onEdit }: { onEdit: () => void }) {
 }
 
 /**
- * The phone's everything-else: the workspace avatar at the top left opens
- * it. Docs and the workspace's own pages first, then your workspaces,
- * help, and your account. The mode you are in has its own menu (its
- * sidebar), behind the button beside the avatar.
+ * You and help, on a phone: your status, your profile and settings, the
+ * documentation, support, status and the keyboard's shortcuts, and signing
+ * out, as the account menu has them on a computer.
  */
-export function AvatarSheetButton({ user, workspace }: { user: User; workspace: Membership }) {
-  const [open, setOpen] = useState(false);
-  const { pathname } = useLocation();
+export function AccountSheet({ open, onOpenChange, user }: { open: boolean; onOpenChange: (open: boolean) => void; user: User }) {
   const submit = useSubmit();
-  useEffect(() => setOpen(false), [pathname]);
-  const slug = workspace.slug;
-  const owner = workspace.role === "owner";
   const [editing, setEditing] = useState(false);
+  const [keys, setKeys] = useState(false);
   return (
     <>
-      <button
-        type="button"
-        aria-label={`${displayName(workspace)}: workspaces, settings and account`}
-        onClick={() => setOpen(true)}
-        className="-ml-1 flex size-10 shrink-0 items-center justify-center rounded-xl transition-transform active:scale-95 md:hidden"
-      >
-        <Avatar name={slug} image={workspace.avatar} size={32} square />
-      </button>
-      <BottomSheet open={open} onOpenChange={setOpen} title="Workspaces, settings and account">
+      <BottomSheet open={open} onOpenChange={onOpenChange} title="You and help">
         <div className="flex items-center gap-3 px-3 pt-1 pb-3">
-          <Avatar name={slug} image={workspace.avatar} size={44} square />
+          <Avatar name={user.username} image={user.avatar} size={44} />
           <div className="min-w-0">
-            <p className="truncate text-base font-semibold">{displayName(workspace)}</p>
-            <p className="truncate font-mono text-xs text-muted">g1t.sh/{slug}</p>
+            <p className="truncate text-base font-semibold">@{shownUsername(user)}</p>
           </div>
         </div>
-        <SheetGroup title="Workspace">
-          {/* Artifacts has no tab of its own for someone with Code: it leads here. */}
-          {hasCodeAccess(workspace) && (
-            <SheetRow to={`/${slug}/-/artifacts`} icon={<Shapes />} end={<ChevronRight size={16} className="text-faint" />}>
-              Artifacts
-            </SheetRow>
-          )}
-          <SheetRow to={`/${slug}/-/workspace`} icon={<Building2 />}>
-            Overview
-          </SheetRow>
-          <SheetRow to={`/${slug}/-/people`} icon={<Users />}>
-            People
-          </SheetRow>
-          <SheetRow to={`/${slug}/-/teams`} icon={<UsersRound />}>
-            Teams
-          </SheetRow>
-          <SheetRow to={`/${slug}/-/usage`} icon={<BarChart3 />}>
-            Usage and billing
-          </SheetRow>
-          <SheetRow to={`/${slug}/-/integrations`} icon={<Plug />}>
-            Integrations
-          </SheetRow>
-          <SheetRow to={owner ? `/${slug}/-/settings` : `/${slug}/-/repositories`} icon={<Settings />}>
-            Settings
-          </SheetRow>
-        </SheetGroup>
-        <SheetGroup title="Switch workspace">
-          {(user.workspaces ?? []).map((membership) => (
-            <SheetRow
-              key={membership.slug}
-              to={`/${membership.slug}/-/home`}
-              icon={<Avatar name={membership.slug} image={membership.avatar} size={24} square />}
-              end={membership.slug === slug ? <Check size={18} className="text-accent" /> : null}
-            >
-              {displayName(membership)}
-            </SheetRow>
-          ))}
-          <SheetRow to="/workspaces/new" icon={<Plus />}>
-            New workspace
-          </SheetRow>
-        </SheetGroup>
-        <SheetGroup title="Help">
-          <SheetRow to="/support" icon={<LifeBuoy />}>
-            Support
-          </SheetRow>
-          <SheetRow href="https://docs.g1t.sh/" icon={<BookOpen />}>
-            Documentation
-          </SheetRow>
-          <SheetRow href={STATUS_URL} icon={<Activity />}>
-            Status
-          </SheetRow>
-        </SheetGroup>
-        <SheetGroup title={`@${shownUsername(user)}`}>
+        <SheetGroup title="You">
           <OwnPresenceRows
             onEdit={() => {
-              setOpen(false);
+              onOpenChange(false);
               setEditing(true);
             }}
           />
@@ -441,12 +463,35 @@ export function AvatarSheetButton({ user, workspace }: { user: User; workspace: 
           <SheetRow to="/settings" icon={<Settings />}>
             Your settings
           </SheetRow>
+        </SheetGroup>
+        <SheetGroup title="Help">
+          <SheetRow href="https://docs.g1t.sh/" icon={<BookOpen />}>
+            Documentation
+          </SheetRow>
+          <SheetRow to="/support" icon={<LifeBuoy />}>
+            Support
+          </SheetRow>
+          <SheetRow href={STATUS_URL} icon={<Activity />}>
+            Status
+          </SheetRow>
+          <SheetRow
+            icon={<Keyboard />}
+            onClick={() => {
+              onOpenChange(false);
+              setKeys(true);
+            }}
+          >
+            Keyboard shortcuts
+          </SheetRow>
+        </SheetGroup>
+        <SheetGroup title="Account">
           <SheetRow icon={<LogOut />} onClick={() => submit(null, { method: "post", action: "/logout" })}>
             Sign out
           </SheetRow>
         </SheetGroup>
       </BottomSheet>
       <StatusDialog open={editing} onOpenChange={setEditing} />
+      <ShortcutsDialog open={keys} onOpenChange={setKeys} />
     </>
   );
 }
@@ -477,6 +522,7 @@ export function ProjectStrip({
   can,
   settings,
   counts,
+  always = false,
 }: {
   /** `/<namespace>/<name>`. */
   base: string;
@@ -485,6 +531,8 @@ export function ProjectStrip({
   /** Whether they see its settings (lib/access.ts `seesSettings`), as the sidebar decides. */
   settings?: boolean;
   counts?: { issues: number; pulls: number };
+  /** On a computer too: for a visitor, who has no sidebar to list them. */
+  always?: boolean;
 }) {
   const { pathname } = useLocation();
   const rest = pathname.toLowerCase().startsWith(base.toLowerCase()) ? pathname.slice(base.length) : "";
@@ -497,7 +545,7 @@ export function ProjectStrip({
       current ? "bg-raised font-medium text-fg ring-1 ring-line-strong" : "text-muted active:bg-raised/60"
     }`;
   return (
-    <TabStrip label="Project" className="-mx-4 gap-1 px-4 md:hidden">
+    <TabStrip label="Project" className={`-mx-4 gap-1 px-4 ${always ? "" : "md:hidden"}`}>
       {pages.map((page) => {
         const current = at === page;
         const link = page === "overview" ? { label: "Overview", path: "" } : PROJECT_PAGE_LINKS[page];

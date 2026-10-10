@@ -23,7 +23,7 @@ import {
 } from "../../lib/notify-client";
 
 const LEVELS: { level: NotifyLevel; label: string; detail: string }[] = [
-  { level: "all", label: "Everything", detail: "Every message in conversations you're in, and everything in your inbox." },
+  { level: "all", label: "Everything", detail: "Every message in conversations you're in, and everything in your notifications." },
   {
     level: "dms_mentions",
     label: "Direct messages, mentions and replies",

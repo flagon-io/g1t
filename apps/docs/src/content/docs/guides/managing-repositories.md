@@ -21,7 +21,7 @@ the way most code hosts lay it out. On a phone it comes after the files.
 | **License** | The license its `LICENSE` file holds, such as **MIT license**, linked to the file. **View license** when the text is not one g1t recognizes. `LICENCE`, `COPYING` and `UNLICENSE` are read too, with or without an extension, and an `SPDX-License-Identifier` line says it outright. |
 | **Security policy** | A link to `SECURITY.md` at the root, or in `.g1t`, `.github` or `docs`. |
 | **Activity** | The repository's [activity](#activity): pushes, merges, new branches and tags. |
-| **Stars**, **watching** | How many people [starred](#stars) it, and how many watch all or some of its activity from the [Watch menu](/guides/inbox/). |
+| **Stars**, **watching** | How many people [starred](#stars) it, and how many watch all or some of its activity from the [Watch menu](/guides/notifications/). |
 | **Releases** | How many [releases](/guides/releases/) it has and the latest, or **Create a new release** for people who can push. |
 | **Packages** | [Packages](/guides/packages/) linked to it, or how to publish the first. |
 | **Contributors** | How many people and agents made it, and the most active. See [contributors](#contributors). |

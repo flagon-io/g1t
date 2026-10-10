@@ -19,6 +19,8 @@ const BEFORE_WORKSPACE = new Set([
   "/logout",
   "/auth/github",
   "/auth/github/callback",
+  "/notifications",
+  // The old address, which leads to Notifications.
   "/inbox",
   "/inbox.json",
   "/settings/menu.json",
