@@ -5,7 +5,21 @@ import type { StatusIncident, StatusMaintenance } from "@g1t/contracts";
 
 import { components } from "./components.ts";
 import { type DayRow, buildPage } from "./model.ts";
-import { byMonth, dayDetail, escape, prose, renderBadge, renderHistory, renderIncident, renderMaintenance, renderMessage, renderPage, renderSubscribe } from "./render.ts";
+import {
+  THEME_KEY,
+  THEME_SCRIPT,
+  byMonth,
+  dayDetail,
+  escape,
+  prose,
+  renderBadge,
+  renderHistory,
+  renderIncident,
+  renderMaintenance,
+  renderMessage,
+  renderPage,
+  renderSubscribe,
+} from "./render.ts";
 
 const NOW = new Date("2026-10-05T12:00:00Z");
 const OPTIONS = { siteUrl: "https://g1t.sh", supportUrl: "https://g1t.sh/support", ogImage: "", selfUrl: "https://status.g1t.sh/", now: NOW, email: true };
@@ -87,6 +101,40 @@ test("an outage and an open incident are said at the top, escaped", () => {
   assert.match(html, /<p>A bad deploy\.<\/p><p>Rolling back\.<\/p>/);
   assert.match(html, /Identified · Major outage/);
   assert.ok(html.includes('href="/incidents/abc"'), "the title links to its page");
+});
+
+test("every page follows the system's light or dark setting, with a switch kept in this browser", () => {
+  for (const html of [
+    renderPage(page({ site: "up" }), OPTIONS),
+    renderHistory([], [], OPTIONS),
+    renderMessage(OPTIONS, { title: "Not found", text: "Nothing here." }),
+  ]) {
+    const head = html.slice(0, html.indexOf("</head>"));
+    // The choice is applied by a script that blocks in the head, before anything is drawn.
+    assert.match(head, /<script src="\/theme\.js"><\/script>/);
+    assert.match(head, /<meta name="color-scheme" content="dark light">/);
+    assert.match(head, /theme-color" content="#fbfbfa" media="\(prefers-color-scheme: light\)"/);
+    // Dark is the base; light on the system's say-so unless Dark was chosen, or when Light was.
+    assert.match(head, /:root\{--bg:#0f0f11;/);
+    assert.match(head, /@media \(prefers-color-scheme:light\)\{:root:not\(\[data-theme=dark\]\)\{--bg:#fbfbfa;/);
+    assert.match(head, /:root\[data-theme=light\]\{--bg:#fbfbfa;/);
+    for (const choice of ["auto", "light", "dark"]) assert.ok(html.includes(`data-theme-choice="${choice}"`), choice);
+  }
+  assert.ok(THEME_SCRIPT.includes(JSON.stringify(THEME_KEY)));
+  assert.ok(!/<script>/.test(renderPage(page({ site: "up" }), OPTIONS)), "no inline script: the page's policy allows only its own files");
+});
+
+test("the theme script picks the stored choice, else auto", () => {
+  for (const [stored, expected] of [["light", "light"], ["dark", "dark"], [null, "auto"], ["purple", "auto"]] as const) {
+    const root = { dataset: {} as Record<string, string> };
+    const run = new Function("localStorage", "document", THEME_SCRIPT);
+    run({ getItem: (key: string) => (key === THEME_KEY ? stored : null) }, { documentElement: root });
+    assert.equal(root.dataset.theme, expected, String(stored));
+  }
+  // A browser that refuses storage still gets a page.
+  const root = { dataset: {} as Record<string, string> };
+  new Function("localStorage", "document", THEME_SCRIPT)({ getItem: () => { throw new Error("denied"); } }, { documentElement: root });
+  assert.equal(root.dataset.theme, "auto");
 });
 
 test("a stale page says the checks stopped", () => {

@@ -1,17 +1,17 @@
 /*
- * g1t's docs: Starlight in g1t's own design. A very dark gray base,
- * lavender as the accent for links and the current page, quiet
- * typography, and one theme.
+ * g1t's docs: Starlight in g1t's own design. A very dark gray base (or a
+ * near-white one, in light: styles/light.css), lavender as the accent for
+ * links and the current page, and quiet typography. Starlight's colours
+ * are mapped onto the g1t tokens once, here, for both themes.
  */
-:root,
-:root[data-theme='light'] {
+:root {
 	--sl-font: var(--g1t-font-sans);
 	--sl-font-mono: var(--g1t-font-mono);
 
 	/* Lavender is the docs' accent: links, the current page, highlights. */
 	--sl-color-accent-low: color-mix(in srgb, var(--g1t-accent) 14%, var(--g1t-bg));
 	--sl-color-accent: var(--g1t-accent);
-	--sl-color-accent-high: #d9d1ff;
+	--sl-color-accent-high: var(--g1t-docs-accent-high);
 
 	--sl-color-white: var(--g1t-fg);
 	--sl-color-gray-1: var(--g1t-fg-soft);
@@ -30,7 +30,7 @@
 	--sl-color-hairline-light: var(--g1t-line);
 	--sl-color-hairline-shade: var(--g1t-line);
 	--sl-color-text: var(--g1t-fg-soft);
-	--sl-color-text-accent: #cfc6ff;
+	--sl-color-text-accent: var(--g1t-docs-link);
 	--sl-color-text-invert: var(--g1t-bg);
 	--sl-color-bg-inline-code: var(--g1t-raised);
 
@@ -43,18 +43,31 @@
 	--sl-sidebar-width: 17rem;
 	/* Big enough to tap. */
 	--sl-menu-button-size: 2.5rem;
-
-	color-scheme: dark;
 }
 
-/* There is one theme, so the switcher has nothing to switch. */
-starlight-theme-select {
-	display: none;
+/* Starlight's theme select (Auto, Light, Dark): in the header's links, and
+   at the foot of the phone menu. Drawn like the links beside it. */
+starlight-theme-select label {
+	color: var(--g1t-muted);
+	font-size: 0.85rem;
 }
-/* Starlight's divider between the links and the theme and language
-   pickers; with neither shown, it is a line before nothing. */
-.social-icons::after {
-	display: none;
+starlight-theme-select label:hover {
+	color: var(--g1t-fg);
+}
+starlight-theme-select select {
+	border-radius: 0.4rem;
+}
+starlight-theme-select option {
+	background: var(--g1t-surface);
+	color: var(--g1t-fg);
+}
+/* A narrow desktop: in the header, only the select's icon and caret; the
+   choice is still its accessible name and in the list it opens. */
+@media (min-width: 50rem) and (max-width: 63.99rem) {
+	.g1t-header-theme starlight-theme-select select {
+		width: 3.625rem;
+		color: transparent;
+	}
 }
 
 /* --- Header --------------------------------------------------------------- */
@@ -132,6 +145,17 @@ site-search button[data-open-modal]:hover {
 .sl-menu-button:has(~ :popover-open) {
 	background: var(--g1t-raised);
 	color: var(--g1t-fg);
+}
+
+/* Search, in light: the dialog is a white panel, so its results sit on a
+   step darker rather than on a white just off the panel's. */
+:root[data-theme='light'] #starlight__search {
+	--pagefind-ui-background: var(--g1t-surface);
+}
+:root[data-theme='light']
+	#starlight__search
+	:is(.pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)), .pagefind-ui__result-nested):not(:hover) {
+	background-color: var(--g1t-raised);
 }
 
 /* --- Sidebar -------------------------------------------------------------- */
@@ -230,7 +254,7 @@ site-search button[data-open-modal]:hover {
 	color: var(--g1t-fg-soft);
 }
 .sl-markdown-content a:not(.card, .sl-link-button, .sl-link-card) {
-	color: #cfc6ff;
+	color: var(--g1t-docs-link);
 	text-decoration-color: color-mix(in srgb, var(--g1t-accent) 45%, transparent);
 	text-underline-offset: 0.2em;
 }
@@ -338,7 +362,7 @@ site-search button[data-open-modal]:hover {
 	color: var(--g1t-fg);
 }
 .right-sidebar-panel a[aria-current='true'] {
-	color: #cfc6ff;
+	color: var(--g1t-docs-link);
 }
 
 /* --- Cards and buttons ---------------------------------------------------- */
@@ -365,7 +389,7 @@ site-search button[data-open-modal]:hover {
 	color: var(--g1t-bg);
 }
 .sl-link-button.primary:hover {
-	background: #fff;
+	background: var(--g1t-docs-fg-hover);
 }
 .sl-link-button.minimal {
 	color: var(--g1t-fg-soft);
@@ -472,7 +496,7 @@ site-search button[data-open-modal]:hover {
 	border: 0 !important;
 	border-radius: 0.3rem;
 	padding: 0.05rem 0.4rem;
-	background: color-mix(in srgb, var(--method) 14%, transparent) !important;
+	background: color-mix(in srgb, var(--method) var(--g1t-docs-tag-tint), transparent) !important;
 	color: var(--method) !important;
 	font-family: var(--g1t-font-mono);
 	font-size: 0.7rem;

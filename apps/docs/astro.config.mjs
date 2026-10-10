@@ -29,7 +29,10 @@ export default defineConfig({
 			// Each tab under the header shows its own part of the sidebar.
 			routeMiddleware: './src/route-data.ts',
 			expressiveCode: {
-				themes: ['github-dark-default'],
+				// Dark first, as the base; the light one where the page is light.
+				// Starlight switches between them by <html data-theme>.
+				themes: ['github-dark-default', 'github-light-default'],
+				useDarkModeMediaQuery: false,
 				// Plain panels with a copy button, without window chrome.
 				defaultProps: { frame: 'none' },
 				styleOverrides: {
@@ -49,7 +52,12 @@ export default defineConfig({
 			},
 			logo: { src: '@g1t/theme/mark.svg', alt: '' },
 			favicon: '/favicon.svg',
-			customCss: ['@g1t/theme/fonts.css', '@g1t/theme/tokens.css', './src/styles/g1t.css'],
+			customCss: [
+				'@g1t/theme/fonts.css',
+				'@g1t/theme/tokens.css',
+				'./src/styles/light.css',
+				'./src/styles/g1t.css',
+			],
 			editLink: {
 				baseUrl: 'https://g1t.sh/flagon-io/g1t/blob/main/apps/docs/',
 			},
@@ -60,7 +68,9 @@ export default defineConfig({
 				{ tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '512x512', href: '/icon-512.png' } },
 				{ tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' } },
 				{ tag: 'link', attrs: { rel: 'manifest', href: '/site.webmanifest' } },
-				{ tag: 'meta', attrs: { name: 'theme-color', content: '#0f0f11' } },
+				// The browser's own bars, in the page's colour for the system's setting.
+				{ tag: 'meta', attrs: { name: 'theme-color', content: '#0f0f11', media: '(prefers-color-scheme: dark)' } },
+				{ tag: 'meta', attrs: { name: 'theme-color', content: '#fbfbfa', media: '(prefers-color-scheme: light)' } },
 			],
 			sidebar: [
 				{

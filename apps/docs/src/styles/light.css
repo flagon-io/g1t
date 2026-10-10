@@ -1,0 +1,64 @@
+/*
+ * The docs' two themes. Dark is g1t's own very dark gray; light swaps the
+ * shared --g1t-* tokens for their light values (--g1t-light-* in
+ * packages/theme/tokens.css, the same palette as the app's Light
+ * appearance), so every rule that reads a token follows without a light
+ * rule of its own.
+ *
+ * Starlight sets data-theme on <html> before the first paint: the reader's
+ * choice in its theme select (Auto, Light or Dark, kept in this browser),
+ * and on Auto their system's setting. The API explorer
+ * (src/pages/api/reference.astro) sets it the same way.
+ *
+ * The few colours the docs use that have no shared token are here as
+ * --g1t-docs-*, dark first.
+ */
+:root {
+	/* Link text: a paler lavender than the accent on dark. */
+	--g1t-docs-link: #cfc6ff;
+	/* Text on a faint accent tint. */
+	--g1t-docs-accent-high: #d9d1ff;
+	/* A primary button's hover: brighter than fg on dark, softer on light. */
+	--g1t-docs-fg-hover: #ffffff;
+	/* The shadow under a menu that floats over the page. */
+	--g1t-docs-menu-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+	/* How much of an API method's colour tints its tag. */
+	--g1t-docs-tag-tint: 14%;
+	color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+	--g1t-bg: var(--g1t-light-bg);
+	--g1t-surface: var(--g1t-light-surface);
+	--g1t-raised: var(--g1t-light-raised);
+	--g1t-line: var(--g1t-light-line);
+	--g1t-line-strong: var(--g1t-light-line-strong);
+
+	--g1t-fg: var(--g1t-light-fg);
+	--g1t-fg-soft: var(--g1t-light-fg-soft);
+	--g1t-muted: var(--g1t-light-muted);
+	--g1t-faint: var(--g1t-light-faint);
+
+	--g1t-accent: var(--g1t-light-accent);
+	--g1t-accent-hover: var(--g1t-light-accent-hover);
+	--g1t-accent-dim: var(--g1t-light-accent-dim);
+	--g1t-accent-low: var(--g1t-light-accent-low);
+
+	--g1t-success: var(--g1t-light-success);
+	--g1t-success-dim: var(--g1t-light-success-dim);
+	--g1t-success-low: var(--g1t-light-success-low);
+
+	--g1t-info: var(--g1t-light-info);
+	--g1t-merged: var(--g1t-light-merged);
+	--g1t-warn: var(--g1t-light-warn);
+	--g1t-danger: var(--g1t-light-danger);
+
+	/* The accent itself as link text: 5.5:1 on the page. */
+	--g1t-docs-link: var(--g1t-light-accent);
+	--g1t-docs-accent-high: #4b36a6;
+	--g1t-docs-fg-hover: #3a3a41;
+	--g1t-docs-menu-shadow: 0 12px 32px rgb(24 24 27 / 0.12);
+	/* Lighter, so each method's text keeps 4.5:1 on its tag. */
+	--g1t-docs-tag-tint: 9%;
+	color-scheme: light;
+}

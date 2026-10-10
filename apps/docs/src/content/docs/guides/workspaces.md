@@ -589,6 +589,11 @@ is drawn in it from the start; another browser or device starts on Auto.
 Product screenshots on g1t.sh's home page, and the g1t mark on agents'
 avatars, stay dark in either theme.
 
+These docs and [status.g1t.sh](https://status.g1t.sh/) also follow your
+system's setting, each with its own switch for this browser: here, the
+**Auto**, **Light** and **Dark** menu at the end of the header (at the foot
+of the menu on a phone); on the status page, the three icons at the top.
+
 ### Apps
 
 Every other app in the workspace is a page you can pin to your dock:

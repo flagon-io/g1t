@@ -15,6 +15,7 @@
  *   GET  /                    the page
  *   GET  /status.json         the same as JSON (snake_case, CORS open)
  *   GET  /badge.svg           a small badge
+ *   GET  /theme.js, /status.js  the page's scripts: its theme before paint; hover detail and the theme switch
  *   GET  /incidents/<id>      an incident's updates and postmortem
  *   GET  /maintenance/<id>    a maintenance window's updates
  *   GET  /history             the last 12 months, by month
@@ -105,6 +106,7 @@ import { readZone } from "./time.ts";
 import {
   FAVICON,
   SCRIPT,
+  THEME_SCRIPT,
   type PageOptions,
   renderBadge,
   renderHistory,
@@ -663,6 +665,8 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
     case "/subscribe/confirm":
     case "/unsubscribe":
       return (await subscriptions(request, env, ctx, url, options))!;
+    case "/theme.js":
+      return new Response(THEME_SCRIPT, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": fresh(3600), ...COMMON } });
     case "/status.js":
       return new Response(SCRIPT, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": fresh(3600), ...COMMON } });
     case "/favicon.svg":

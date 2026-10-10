@@ -4,6 +4,7 @@
 // layout. The reference itself is the Starlight pages under /reference/api/.
 import '@g1t/theme/fonts.css';
 import '@g1t/theme/tokens.css';
+import '../../styles/light.css';
 import sans from '@g1t/theme/fonts/hanken-grotesk-latin.woff2?url';
 
 // The wordmark: G1T in pixel capitals, the 1 in lavender, as in
@@ -15,6 +16,8 @@ const pixels = (rows: string[], dx: number, one: boolean) =>
 	rows.flatMap((row, y) => [...row].flatMap((c, x) => (c === '#' ? [{ x: dx + x, y, one }] : [])));
 const word = [...pixels(G, 0, false), ...pixels(ONE, 6, true), ...pixels(T, 10, false)];
 
+// Light or dark as the rest of the docs: the head's script below sets
+// forceDarkModeState from the reader's choice before the explorer loads.
 const configuration = {
 	theme: 'none',
 	darkMode: true,
@@ -41,6 +44,26 @@ const configuration = {
 		<link rel="manifest" href="/site.webmanifest" />
 		<link rel="canonical" href="https://docs.g1t.sh/api/reference/" />
 		<link rel="preload" href={sans} as="font" type="font/woff2" crossorigin />
+		<meta name="theme-color" content="#0f0f11" media="(prefers-color-scheme: dark)" />
+		<meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)" />
+		{/* The theme chosen in the docs' theme select (kept in this browser by
+		    Starlight), or the system's on Auto; set before the first paint. */}
+		<script is:inline>
+			(() => {
+				let stored = '';
+				try {
+					stored = localStorage.getItem('starlight-theme') || '';
+				} catch {}
+				const theme =
+					stored === 'light' || stored === 'dark'
+						? stored
+						: matchMedia('(prefers-color-scheme: light)').matches
+							? 'light'
+							: 'dark';
+				document.documentElement.dataset.theme = theme;
+				window.g1tTheme = theme;
+			})();
+		</script>
 	</head>
 	<body>
 		<header class="bar">
@@ -71,6 +94,15 @@ const configuration = {
 			id="api-reference"
 			data-url="https://api.g1t.sh/openapi.json"
 			data-configuration={JSON.stringify(configuration)}></script>
+		<script is:inline>
+			(() => {
+				const el = document.getElementById('api-reference');
+				const config = JSON.parse(el.dataset.configuration);
+				config.darkMode = window.g1tTheme !== 'light';
+				config.forceDarkModeState = window.g1tTheme === 'light' ? 'light' : 'dark';
+				el.dataset.configuration = JSON.stringify(config);
+			})();
+		</script>
 		<script is:inline src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
 	</body>
 </html>
@@ -88,7 +120,8 @@ const configuration = {
 		--scalar-font: var(--g1t-font-sans);
 		--scalar-font-code: var(--g1t-font-mono);
 	}
-	.dark-mode {
+	.dark-mode,
+	.light-mode {
 		--scalar-background-1: var(--g1t-bg);
 		--scalar-background-2: var(--g1t-surface);
 		--scalar-background-3: var(--g1t-raised);
@@ -96,11 +129,11 @@ const configuration = {
 		--scalar-color-1: var(--g1t-fg);
 		--scalar-color-2: var(--g1t-muted);
 		--scalar-color-3: var(--g1t-faint);
-		--scalar-color-accent: #cfc6ff;
+		--scalar-color-accent: var(--g1t-docs-link);
 		--scalar-background-accent: color-mix(in srgb, var(--g1t-accent) 12%, transparent);
 		--scalar-button-1: var(--g1t-fg);
 		--scalar-button-1-color: var(--g1t-bg);
-		--scalar-button-1-hover: #ffffff;
+		--scalar-button-1-hover: var(--g1t-docs-fg-hover);
 		--scalar-color-green: var(--g1t-success);
 		--scalar-color-blue: var(--g1t-info);
 		--scalar-color-red: var(--g1t-danger);

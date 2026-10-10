@@ -7,6 +7,9 @@
 // and when it does not. Here the row is three columns, the outer two always
 // the same width, so the search sits at the header's centre on every page.
 import Search from '@astrojs/starlight/components/Search.astro';
+// Auto, Light or Dark, kept in this browser; Auto follows the system.
+// On tablets and phones it is at the foot of the menu instead.
+import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro';
 
 import { TABS, tabFor } from '../tabs';
 import SiteTitle from './SiteTitle.astro';
@@ -19,7 +22,10 @@ const current = tabFor(Astro.locals.starlightRoute.id);
 	<div class="g1t-header-top">
 		<div class="g1t-header-title"><SiteTitle /></div>
 		<div class="g1t-header-search print:hidden"><Search /></div>
-		<div class="g1t-header-links print:hidden"><SocialIcons /></div>
+		<div class="g1t-header-links print:hidden">
+			<SocialIcons />
+			<div class="g1t-header-theme"><ThemeSelect /></div>
+		</div>
 	</div>
 	<nav class="g1t-tabs" aria-label="Sections">
 		{
@@ -70,8 +76,36 @@ const current = tabFor(Astro.locals.starlightRoute.id);
 	}
 	.g1t-header-links {
 		display: flex;
+		align-items: center;
 		justify-content: flex-end;
+		gap: 0.75rem;
 		min-width: 0;
+	}
+	.g1t-header-theme {
+		display: flex;
+		align-items: center;
+		padding-inline-start: 0.75rem;
+		border-inline-start: 1px solid var(--g1t-line);
+		height: 1.25rem;
+	}
+	/* Desktop: the links and the theme select together are wider. On a
+	   narrow desktop the select shows only its icon (styles/g1t.css), so the
+	   search keeps its room. */
+	@media (min-width: 50rem) {
+		.g1t-header-top {
+			--g1t-header-side: 17.5rem;
+		}
+	}
+	@media (min-width: 64rem) {
+		.g1t-header-top {
+			--g1t-header-side: 21rem;
+		}
+	}
+	/* Tablets and phones: the theme select is at the foot of the menu. */
+	@media (max-width: 49.99rem) {
+		.g1t-header-theme {
+			display: none;
+		}
 	}
 	/* Tablets: the sidebar is a menu, and its button (fixed in place by
 	   Starlight) takes the row's end. The right column makes room for it

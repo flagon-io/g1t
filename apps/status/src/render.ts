@@ -2,7 +2,10 @@
  * The pages at status.g1t.sh, drawn on the server as plain HTML: no
  * framework, a small stylesheet inline, and a few lines of script (served
  * at /status.js) that only add hover and keyboard detail to the bars and
- * say times in the browser's own zone. Without it, times are already in
+ * say times in the browser's own zone, and the Auto, Light and Dark switch
+ * (with /theme.js, which draws the reader's choice before the first
+ * paint; on Auto, and with no script, the page follows the system's light
+ * or dark setting). Without it, times are already in
  * the reader's zone as Cloudflare places them (PageOptions `zone`), with
  * the zone's abbreviation; `datetime` attributes and feeds stay in UTC. Every page works without it:
  * subscribing, confirming and leaving are plain forms. No Workers
@@ -118,6 +121,40 @@ export const LOGO = `<svg class="logo" viewBox="1 1 148 68" role="img" aria-labe
 export const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><style>rect{fill:#6b56e8}@media (prefers-color-scheme: dark){rect{fill:#b6a8ff}}</style>${ONE.flatMap(
   (row, y) => [...row].flatMap((c, x) => (c === "#" ? [`<rect x="${x * 2 + 3}" y="${y * 2 + 1}" width="2" height="2"/>`] : [])),
 ).join("")}</svg>`;
+
+/** Where this browser keeps the reader's theme: "light", "dark", or nothing for Auto. */
+export const THEME_KEY = "g1t-status-theme";
+
+/**
+ * The page's theme before its first paint (served at /theme.js, loaded
+ * without defer in the head): the reader's choice from this browser, or
+ * "auto", which the stylesheet resolves by the system's setting. Without
+ * scripts the page follows the system and the switch stays hidden.
+ */
+export const THEME_SCRIPT = `(() => {
+  let theme = "";
+  try { theme = localStorage.getItem(${JSON.stringify(THEME_KEY)}) || ""; } catch {}
+  document.documentElement.dataset.theme = theme === "light" || theme === "dark" ? theme : "auto";
+})();
+`;
+
+const ICON = (body: string) =>
+  `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+
+const THEMES = [
+  { value: "auto", label: "Auto: follow the system", icon: ICON('<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/>') },
+  {
+    value: "light",
+    label: "Light",
+    icon: ICON('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-17.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>'),
+  },
+  { value: "dark", label: "Dark", icon: ICON('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>') },
+];
+
+/** Auto, Light and Dark, in the header; status.js keeps the choice in this browser. */
+const THEME_SWITCH = `<div class="theme" role="group" aria-label="Theme">${THEMES.map(
+  (t) => `<button type="button" data-theme-choice="${t.value}" aria-label="${t.label}" aria-pressed="false">${t.icon}</button>`,
+).join("")}</div>`;
 
 function bar(component: StatusComponent, days: DayBar[]): string {
   if (component.check_state === "unmonitored" && component.uptime_90d == null) {
@@ -252,8 +289,10 @@ function layout(options: PageOptions, page: Layout): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(page.title)}</title>
 <meta name="description" content="${escape(page.description)}">
-<meta name="theme-color" content="#0f0f11">
-<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f11" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="dark light">
+<script src="/theme.js"></script>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="${escape(options.selfUrl)}">
 <link rel="alternate" type="application/json" href="/status.json">
@@ -274,7 +313,10 @@ ${options.ogImage ? `<meta property="og:image" content="${escape(options.ogImage
 <div class="page">
 <header class="top">
 <a class="brand" href="/" aria-label="g1t status">${LOGO}<span>Status</span></a>
+<div class="top-end">
+${THEME_SWITCH}
 <a class="out" href="${escape(site)}/">${escape(siteHost)} <span aria-hidden="true">→</span></a>
+</div>
 </header>
 <main>
 ${page.body}
@@ -530,6 +572,24 @@ export const SCRIPT = `(() => {
   }
   times();
   setInterval(times, 30000);
+  // The theme switch: Auto, Light or Dark, kept in this browser (theme.js applies it before paint).
+  const choices = [...document.querySelectorAll("[data-theme-choice]")];
+  function pressed() {
+    const now = document.documentElement.dataset.theme || "auto";
+    for (const b of choices) b.setAttribute("aria-pressed", String(b.dataset.themeChoice === now));
+  }
+  for (const b of choices) {
+    b.addEventListener("click", () => {
+      const theme = b.dataset.themeChoice;
+      document.documentElement.dataset.theme = theme;
+      try {
+        if (theme === "auto") localStorage.removeItem(${JSON.stringify(THEME_KEY)});
+        else localStorage.setItem(${JSON.stringify(THEME_KEY)}, theme);
+      } catch {}
+      pressed();
+    });
+  }
+  pressed();
   for (const bar of document.querySelectorAll(".bar")) {
     const detail = bar.parentElement.querySelector(".detail");
     const days = [...bar.children];
@@ -565,13 +625,26 @@ export const SCRIPT = `(() => {
 })();
 `;
 
+/**
+ * The light palette: g1t's light tokens (--g1t-light-* in
+ * packages/theme/tokens.css), every text colour at least 4.5:1 on the
+ * page and on a panel. The day bars take softer fills than the state
+ * words, which are text.
+ */
+const LIGHT = `--bg:#fbfbfa;--surface:#ffffff;--raised:#f1f1ef;--line:#e4e4e1;--line-strong:#d2d2ce;--fg:#18181b;--soft:#2e2e33;--muted:#5c5c66;--faint:#686871;
+--up:#0d7a52;--warn:#a84f00;--down:#c42a43;--lav:#6b52c8;--lav-hover:#5b42b8;--info:#2160cc;
+--bar-up:#3a9d77;--bar-warn:#e08a3c;--bar-down:#d9475d;color-scheme:light`;
+
 const STYLE = `
 @font-face{font-family:"Hanken Grotesk";font-weight:400 700;font-display:swap;src:url(/fonts/hanken-grotesk.woff2) format("woff2")}
 @font-face{font-family:"Bricolage Grotesque";font-weight:500 700;font-display:swap;src:url(/fonts/bricolage-grotesque.woff2) format("woff2")}
 @font-face{font-family:"IBM Plex Mono";font-weight:400;font-display:swap;src:url(/fonts/ibm-plex-mono.woff2) format("woff2")}
 :root{--bg:#0f0f11;--surface:#161618;--raised:#1e1e21;--line:#28282c;--line-strong:#38383e;--fg:#ededef;--soft:#dcdce0;--muted:#a0a0a8;--faint:#86868e;
---up:#86efc4;--warn:#ffbd8c;--down:#ff8394;--lav:#b6a8ff;--info:#8ec5ff;
+--up:#86efc4;--warn:#ffbd8c;--down:#ff8394;--lav:#b6a8ff;--lav-hover:#c8bdff;--info:#8ec5ff;
+--bar-up:var(--up);--bar-warn:var(--warn);--bar-down:var(--down);
 --sans:"Hanken Grotesk",ui-sans-serif,system-ui,sans-serif;--display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color-scheme:dark}
+@media (prefers-color-scheme:light){:root:not([data-theme=dark]){${LIGHT}}}
+:root[data-theme=light]{${LIGHT}}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
@@ -584,16 +657,16 @@ a:focus-visible,.bar:focus-visible,button:focus-visible,input:focus-visible{outl
 .logo{height:22px;width:auto;display:block}.logo rect{fill:var(--fg)}.logo rect.one{fill:var(--lav)}
 .out{font-size:13px;color:var(--muted);text-decoration:none}.out:hover{color:var(--fg)}
 .banner{display:flex;gap:14px;align-items:flex-start;margin-top:32px;padding:20px 22px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
-.banner.up{border-color:rgba(134,239,196,.28);background:linear-gradient(0deg,rgba(134,239,196,.04),rgba(134,239,196,.04)),var(--surface)}
-.banner.degraded{border-color:rgba(255,189,140,.4);background:linear-gradient(0deg,rgba(255,189,140,.06),rgba(255,189,140,.06)),var(--surface)}
-.banner.down{border-color:rgba(255,131,148,.45);background:linear-gradient(0deg,rgba(255,131,148,.07),rgba(255,131,148,.07)),var(--surface)}
-.banner.maintenance{border-color:rgba(142,197,255,.4);background:linear-gradient(0deg,rgba(142,197,255,.06),rgba(142,197,255,.06)),var(--surface)}
+.banner.up{border-color:color-mix(in srgb,var(--up) 28%,transparent);background:linear-gradient(0deg,color-mix(in srgb,var(--up) 4%,transparent),color-mix(in srgb,var(--up) 4%,transparent)),var(--surface)}
+.banner.degraded{border-color:color-mix(in srgb,var(--warn) 40%,transparent);background:linear-gradient(0deg,color-mix(in srgb,var(--warn) 6%,transparent),color-mix(in srgb,var(--warn) 6%,transparent)),var(--surface)}
+.banner.down{border-color:color-mix(in srgb,var(--down) 45%,transparent);background:linear-gradient(0deg,color-mix(in srgb,var(--down) 7%,transparent),color-mix(in srgb,var(--down) 7%,transparent)),var(--surface)}
+.banner.maintenance{border-color:color-mix(in srgb,var(--info) 40%,transparent);background:linear-gradient(0deg,color-mix(in srgb,var(--info) 6%,transparent),color-mix(in srgb,var(--info) 6%,transparent)),var(--surface)}
 .banner h1{margin:0;font:600 26px/1.2 var(--display);letter-spacing:-.02em}
 .banner p{margin:6px 0 0;color:var(--muted);font-size:14px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
-.dot.big{width:12px;height:12px;margin-top:9px;box-shadow:0 0 0 4px rgba(134,239,196,.12)}
+.dot.big{width:12px;height:12px;margin-top:9px;box-shadow:0 0 0 4px color-mix(in srgb,var(--up) 12%,transparent)}
 .dot.up{background:var(--up)}.dot.degraded,.dot.partial{background:var(--warn)}.dot.down{background:var(--down)}.dot.maintenance{background:var(--info)}.dot.unmonitored,.dot.unknown{background:var(--faint)}
-.dot.big.degraded{box-shadow:0 0 0 4px rgba(255,189,140,.14)}.dot.big.down{box-shadow:0 0 0 4px rgba(255,131,148,.16)}.dot.big.maintenance{box-shadow:0 0 0 4px rgba(142,197,255,.14)}.dot.big.unknown{box-shadow:none}
+.dot.big.degraded{box-shadow:0 0 0 4px color-mix(in srgb,var(--warn) 14%,transparent)}.dot.big.down{box-shadow:0 0 0 4px color-mix(in srgb,var(--down) 16%,transparent)}.dot.big.maintenance{box-shadow:0 0 0 4px color-mix(in srgb,var(--info) 14%,transparent)}.dot.big.unknown{box-shadow:none}
 .block{margin-top:40px}
 .block h2,.month h2{margin:0 0 12px;font:600 13px/1.4 var(--sans);color:var(--muted);letter-spacing:.02em}
 .block-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
@@ -612,14 +685,14 @@ a:focus-visible,.bar:focus-visible,button:focus-visible,input:focus-visible{outl
 .history{margin-top:12px}
 .bar{list-style:none;margin:0;padding:0;display:flex;gap:2px;height:30px}
 .bar li{flex:1 1 0;min-width:0;border-radius:2px;background:var(--line);transition:opacity .12s}
-.bar li.up{background:var(--up);opacity:.85}.bar li.degraded{background:var(--warn)}.bar li.down{background:var(--down)}
+.bar li.up{background:var(--bar-up);opacity:.85}.bar li.degraded{background:var(--bar-warn)}.bar li.down{background:var(--bar-down)}
 .bar:hover li,.bar:focus li{opacity:.55}.bar li.on,.bar:hover li:hover{opacity:1;transform:scaleY(1.08)}
 .legend{display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--faint)}
 .legend .uptime{color:var(--muted)}
 .legend .short{display:none}
 .detail{margin:4px 0 0;min-height:18px;font-size:12px;color:var(--soft)}
 .incident,.card{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:16px 18px;margin-bottom:12px}
-.incident.open.degraded{border-color:rgba(255,189,140,.4)}.incident.open.down{border-color:rgba(255,131,148,.45)}.incident.maint{border-color:rgba(142,197,255,.35)}
+.incident.open.degraded{border-color:color-mix(in srgb,var(--warn) 40%,transparent)}.incident.open.down{border-color:color-mix(in srgb,var(--down) 45%,transparent)}.incident.maint{border-color:color-mix(in srgb,var(--info) 35%,transparent)}
 .incident header,.page-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 12px}
 .incident h3{margin:0;font-size:15px;font-weight:600}
 .incident h3 a,.line-head a{text-decoration:none}.incident h3 a:hover,.line-head a:hover{text-decoration:underline;text-underline-offset:3px}
@@ -627,7 +700,7 @@ a:focus-visible,.bar:focus-visible,button:focus-visible,input:focus-visible{outl
 .page-head h1{margin:0;font:600 24px/1.25 var(--display);letter-spacing:-.02em;overflow-wrap:anywhere}
 .crumbs{margin:24px 0 0;font-size:13px;color:var(--faint)}.crumbs a{color:var(--muted);text-decoration:none}.crumbs a:hover{color:var(--fg)}
 .pill{font-size:12px;font-weight:500;padding:1px 8px;border-radius:999px;border:1px solid var(--line-strong);color:var(--muted);white-space:nowrap}
-.pill.degraded{color:var(--warn);border-color:rgba(255,189,140,.4)}.pill.down{color:var(--down);border-color:rgba(255,131,148,.45)}.pill.maint{color:var(--info);border-color:rgba(142,197,255,.4)}
+.pill.degraded{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}.pill.down{color:var(--down);border-color:color-mix(in srgb,var(--down) 45%,transparent)}.pill.maint{color:var(--info);border-color:color-mix(in srgb,var(--info) 40%,transparent)}
 .meta{margin:4px 0 0;font-size:12px;color:var(--faint)}
 .impacts{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px}
 .affects{font-size:12px;color:var(--muted)}
@@ -640,7 +713,7 @@ a:focus-visible,.bar:focus-visible,button:focus-visible,input:focus-visible{outl
 .text ul{margin:4px 0 0;padding-left:20px}
 .empty{margin:0;color:var(--muted);font-size:14px;padding:16px 18px;border:1px dashed var(--line-strong);border-radius:14px}
 .muted{color:var(--muted);font-size:14px}
-.note{margin:14px 0 0;font-size:14px;color:var(--soft);padding:10px 14px;border:1px solid rgba(182,168,255,.35);border-radius:10px;background:rgba(182,168,255,.06)}
+.note{margin:14px 0 0;font-size:14px;color:var(--soft);padding:10px 14px;border:1px solid color-mix(in srgb,var(--lav) 35%,transparent);border-radius:10px;background:color-mix(in srgb,var(--lav) 6%,transparent)}
 .lines{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
 .line{padding:12px 18px}.line+.line{border-top:1px solid var(--line)}
 .line-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-weight:600;font-size:15px}
@@ -653,7 +726,7 @@ form.subscribe{display:flex;gap:8px;flex-wrap:wrap}
 input[type=email]{flex:1 1 220px;min-width:0;font:inherit;font-size:14px;color:var(--fg);background:var(--bg);border:1px solid var(--line-strong);border-radius:8px;padding:9px 12px}
 input[type=email]::placeholder{color:var(--faint)}
 button{font:inherit;font-size:14px;font-weight:600;color:var(--bg);background:var(--lav);border:0;border-radius:8px;padding:9px 16px;cursor:pointer}
-button:hover{background:#c8bdff}
+button:hover{background:var(--lav-hover)}
 .trap{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .feeds{margin:10px 0 0;font-size:13px;color:var(--faint)}.feeds a,.muted a,.note a{color:var(--soft)}
@@ -672,6 +745,12 @@ fieldset .muted{margin:2px 0 8px;font-size:13px}
 .about dt{color:var(--soft)}.about dd{margin:0;color:var(--faint)}
 .foot{display:flex;flex-wrap:wrap;gap:8px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line);font-size:13px;color:var(--faint)}
 .foot a{text-decoration:none;color:var(--muted)}.foot a:hover{color:var(--fg)}
+.top-end{display:flex;align-items:center;gap:16px}
+.theme{display:flex;gap:2px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+:root:not([data-theme]) .theme{display:none}
+.theme button{display:grid;place-items:center;width:26px;height:24px;padding:0;border-radius:6px;background:transparent;color:var(--faint)}
+.theme button:hover{background:var(--raised);color:var(--fg)}
+:root[data-theme=auto] .theme [data-theme-choice=auto],:root[data-theme=light] .theme [data-theme-choice=light],:root[data-theme=dark] .theme [data-theme-choice=dark]{background:var(--raised);color:var(--fg)}
 @media (max-width:640px){
 .bar li:nth-child(-n+${HISTORY_DAYS - 30}){display:none}
 .bar{gap:3px}
