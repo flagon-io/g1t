@@ -57,7 +57,9 @@
 	// lost (src/routines.ts, src/sessions.ts).
 	"triggers": { "crons": ["*/5 * * * *"] },
 	// Events routines run on: pull requests ready for review or merged,
-	// checks and deploys failing, issues opened (src/triggers.ts). Create it
+	// checks and deploys failing, issues opened (src/triggers.ts); and pushes,
+	// which skill libraries following a repository read again
+	// (src/skill-library.ts). Create it
 	// once: npx wrangler queues create g1t-events-agents
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-agents", "max_batch_size": 20, "max_batch_timeout": 2, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]

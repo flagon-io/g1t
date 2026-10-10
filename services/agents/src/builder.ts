@@ -27,7 +27,7 @@ import { type Checked, type Definition, PRESETS, applyChanges } from "./definiti
 import { checkHandle } from "./handle.ts";
 import { systemPrompt } from "./prompt.ts";
 import { isTier } from "./routing.ts";
-import { skillsSection } from "./skills.ts";
+import { shelfFrom, skillsSection } from "./skills.ts";
 import type { Row } from "./store.ts";
 import { TEMPLATE_IDS } from "./templates.ts";
 
@@ -140,7 +140,7 @@ export function trySystem(input: { workspace: string; definition: Definition; as
       asker: { name: input.asker.username, display_name: input.asker.display_name ?? null, access: null },
       today: input.today ?? new Date(),
       tools: null,
-      skills: skillsSection(d.skills_off, []),
+      skills: skillsSection(shelfFrom(d.skills_off, []).skills, []),
     }),
     `## This is a preview\n\n@${input.asker.username} is trying you out before creating you: nothing here is saved, and you have no tools or memory yet. Answer as you will once you exist. When a request needs a tool, say what you would do with it once you're created.`,
   ].join("\n\n");

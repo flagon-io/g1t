@@ -57,7 +57,8 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | Memory, sessions with live steps and cost, routines on a schedule | Live |
 | Agent templates in Agents: starting points for a new agent, configured once started | Live |
 | Foundational skills in every agent: PDFs, Word documents and spreadsheets, reports with sources, charts, code review, thread summaries; owners turn them off per agent | Live |
-| More specialist templates; web research; skills you write, add from the Marketplace or learn from work | Coming |
+| A skill library in the open SKILL.md format: write, import, save from a session, attach to agents, teams or every agent at a pinned version, optionally kept in a repository | Live |
+| More specialist templates; web research; skills from the Marketplace; skill scripts on an agent's own computer | Coming |
 | Agents on runners anywhere (g1t's, yours, your desktop), with sessions that persist between tasks | Coming |
 | Agents answering in Slack and Teams | Coming |
 

@@ -1,19 +1,25 @@
 /**
- * Agent skills (docs.g1t.sh/guides/agent-skills/): playbooks that say how an
- * agent does a kind of work with the tools it already has. A skill never
- * adds a tool or a permission: it names the tools it uses, and an agent
- * without one of them (in a conversation whose people can't read code, say)
- * is told that part isn't available there.
+ * Agent skills (docs.g1t.sh/guides/agent-skills/): how an agent does a kind
+ * of work with the tools it already has. A skill never adds a tool or a
+ * permission: it names the tools it uses, and an agent without one of them
+ * (in a conversation whose people can't read code, say) is told that part
+ * isn't available there.
  *
- * Every agent starts with g1t's foundational skills, below. Each says,
- * ability by ability, what works today and what is coming, and the agent is
- * told the same, so it never claims to do what it can't. A workspace's
- * owners can turn any foundational skill off for one agent
- * (`WorkspaceAgent.skills_off`); turning one off takes its playbook out of
- * the agent's instructions and leaves its tools as they were.
+ * Every skill is a folder in the open SKILL.md format (skill-format.ts).
+ * Agents load them progressively: each skill's name and when to use it are
+ * in the agent's instructions, and it reads the rest with `use_skill` when
+ * a request matches.
  *
- * Skills a workspace writes, adds from the Marketplace or publishes from
- * what an agent learned are coming (`SKILL_SOURCES`).
+ * Every agent starts with g1t's foundational skills, below, which are
+ * written out as SKILL.md too (`foundationalSkillMd`). Each says, ability by
+ * ability, what works today and what is coming, and the agent is told the
+ * same, so it never claims to do what it can't. A workspace's owners can
+ * turn any skill off for one agent (`WorkspaceAgent.skills_off`, which
+ * holds foundational ids and library skill ids); turning one off takes it
+ * out of the agent's instructions and leaves its tools as they were.
+ *
+ * The workspace's own skills (written, imported, saved from a session, or
+ * followed from a repository) are its skill library (skill-library.ts).
  *
  * Wire shapes are snake_case.
  */
@@ -43,6 +49,8 @@ export type AgentSkill = {
   name: string;
   /** One line, as the Skills tab shows it. */
   description: string;
+  /** When to use it: the description in its SKILL.md, which agents read to choose it (skill-format.ts `foundationalSkillMd`). */
+  when: string;
   category: SkillCategory;
   source: SkillSource;
   /** Which release of it: foundational skills change with g1t's releases. */
@@ -73,6 +81,7 @@ const V = FOUNDATIONAL_SKILLS_VERSION;
 export const FOUNDATIONAL_SKILLS: AgentSkill[] = [
   {
     id: "documents",
+    when: "Use when someone asks for a document: a PDF, a Word document, a spreadsheet or CSV, or a doc to read and edit together in Artifacts.",
     name: "Documents",
     description: "PDFs, Word documents, spreadsheets and docs in Artifacts.",
     category: "documents",
@@ -96,6 +105,7 @@ export const FOUNDATIONAL_SKILLS: AgentSkill[] = [
   },
   {
     id: "research",
+    when: "Use when someone asks you to research, investigate or find out what is known about something, or wants a report with sources.",
     name: "Research",
     description: "Reports with sources, from what the workspace knows; the open web is coming.",
     category: "research",
@@ -115,6 +125,7 @@ export const FOUNDATIONAL_SKILLS: AgentSkill[] = [
   },
   {
     id: "data",
+    when: "Use when someone asks about data: analysing a CSV, JSON, log or table, totals and comparisons, charts, or results as a spreadsheet.",
     name: "Data",
     description: "Analyze files and tables, chart the results and hand back a spreadsheet.",
     category: "data",
@@ -137,6 +148,7 @@ export const FOUNDATIONAL_SKILLS: AgentSkill[] = [
   },
   {
     id: "code",
+    when: "Use when the work is code: reading or explaining it, reviewing a pull request, or getting a change made.",
     name: "Code",
     description: "Read and review code, and get changes made as pull requests through issues.",
     category: "code",
@@ -159,6 +171,7 @@ export const FOUNDATIONAL_SKILLS: AgentSkill[] = [
   },
   {
     id: "communication",
+    when: "Use when someone asks you to draft an email or message, summarize a thread, or write a status update.",
     name: "Communication",
     description: "Draft emails and messages, and summarize threads.",
     category: "communication",
@@ -178,6 +191,7 @@ export const FOUNDATIONAL_SKILLS: AgentSkill[] = [
   },
   {
     id: "files",
+    when: "Use when someone needs a file in another format, or a diagram such as a flowchart, sequence or timeline.",
     name: "Files and media",
     description: "Convert between formats, and draw diagrams.",
     category: "files",
@@ -209,9 +223,9 @@ export function skillTools(skill: AgentSkill): string[] {
 /** Where skills come from, and which are here yet. */
 export const SKILL_SOURCES: { source: SkillSource; label: string; status: "live" | "coming"; description: string }[] = [
   { source: "foundational", label: "Foundational, from g1t", status: "live", description: "Every agent starts with them, updated with every release." },
-  { source: "workspace", label: "Written in your workspace", status: "coming", description: "Your own playbooks, such as how you cut a release or your brand voice." },
-  { source: "marketplace", label: "From the Marketplace", status: "coming", description: "Skills published by g1t and others, added in one step." },
-  { source: "learned", label: "Learned from work", status: "coming", description: "Proposed by an agent from finished work, published after a person reviews it." },
+  { source: "workspace", label: "Written or imported in your workspace", status: "live", description: "Your own skills, such as how you cut a release or your brand voice: written in the editor, uploaded as SKILL.md or a zip, or read from a repository." },
+  { source: "learned", label: "Saved from a session", status: "live", description: "Drafted by the agent from a finished session, published after a person reviews it." },
+  { source: "marketplace", label: "From the Marketplace", status: "coming", description: "Skills that extensions bring, added in one step." },
 ];
 
 /** The foundational skills an agent has on: every one unless `off` names it. */

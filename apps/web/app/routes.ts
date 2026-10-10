@@ -157,6 +157,12 @@ export default [
       // Templates: starting points for a new agent, each configured once started.
       route("templates", "routes/workspace/agents/templates.tsx"),
       route("templates/:template", "routes/workspace/agents/template.tsx"),
+      // The skill library: every skill, one skill, the editor and import.
+      route("skills", "routes/workspace/agents/skill-library.tsx"),
+      route("skills/new", "routes/workspace/agents/skill-edit.tsx", { id: "routes/workspace/agents/skill-new" }),
+      route("skills/import", "routes/workspace/agents/skill-import.tsx"),
+      route("skills/:name", "routes/workspace/agents/skill.tsx"),
+      route("skills/:name/edit", "routes/workspace/agents/skill-edit.tsx"),
       route(":handle", "routes/workspace/agents/agent.tsx", [
         index("routes/workspace/agents/sessions.tsx"),
         route("sessions/:id", "routes/workspace/agents/session.tsx"),

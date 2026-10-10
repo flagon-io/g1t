@@ -27,6 +27,7 @@ import { agentsAction, answer } from "../../../components/agents/actions.server"
 import { type ActionResult, ApproveDialog, BUTTONS, Confirm } from "../../../components/agents/dialogs";
 import { isLive, kindLabel, sessionRows, whereLabel } from "../../../components/agents/format";
 import { KindBadge, Meter, PrivateTitle, SpendOfCap, StatusChip, sessionHref, stepsLine } from "../../../components/agents/parts";
+import { skillsPath } from "../../../components/agents/skills";
 import { Markdown } from "../../../components/markdown";
 import { TimeAgo } from "../../../components/ui";
 import { Hint } from "../../../components/ui/hint";
@@ -36,7 +37,7 @@ import { channelPath } from "../../../lib/chat";
 import { cn } from "../../../lib/cn";
 import { page } from "../../../lib/meta";
 import { useRefreshWhile } from "../../../lib/refresh";
-import { workspaceAgents } from "../../../lib/services.server";
+import { skillLibrary, workspaceAgents } from "../../../lib/services.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
@@ -73,6 +74,13 @@ export async function action({ params, context, request }: Route.ActionArgs): Pr
     const body = String(form.get("body") ?? "").trim();
     if (!body) return { ok: false, intent, error: "Write something to send." };
     return answer(intent, workspaceAgents.steerSession(slug, params.id, viewer, body));
+  }
+  // Save as skill: the agent drafts one from this session, for a person to review.
+  if (intent === "save_skill") {
+    const drafted = await skillLibrary.draftFromSession(slug, viewer, params.id).catch(() => null);
+    if (!drafted) return { ok: false, intent, error: "The agents service didn't answer. Try again in a moment." };
+    if (!drafted.ok) return { ok: false, intent, error: drafted.error.message };
+    throw redirect(skillsPath(slug, drafted.value.skill.name, drafted.value.skill.can_edit ? "/edit" : ""));
   }
   return { ok: false, intent, error: "Unknown request." };
 }
@@ -197,6 +205,7 @@ function Header({ slug, detail }: { slug: string; detail: AgentSessionDetail }) 
               Open in chat
             </Link>
           )}
+          {session.visible && session.status === "done" && <SaveAsSkill agentName={session.agent_name} />}
           {detail.can_stop && (
             <Confirm
               title="Stop this session?"
@@ -217,6 +226,29 @@ function Header({ slug, detail }: { slug: string; detail: AgentSessionDetail }) 
         </div>
       )}
     </header>
+  );
+}
+
+/** Save as skill: the agent drafts a skill from this session; a person reviews it before any agent uses it. */
+function SaveAsSkill({ agentName }: { agentName: string }) {
+  const fetcher = useFetcher<ActionResult>({ key: "save-skill" });
+  const busy = fetcher.state !== "idle";
+  const error = fetcher.state === "idle" && fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
+  return (
+    <fetcher.Form method="post" className="contents">
+      <input type="hidden" name="intent" value="save_skill" />
+      <Hint label={`${agentName} drafts a skill from this session, so the work can be done the same way again. It is billed like a short step, and no agent uses it until it is reviewed and published.`}>
+        <button type="submit" className={`${BUTTONS.QUIET} h-9 py-0`} disabled={busy}>
+          <BookmarkPlus size={15} />
+          {busy ? "Drafting…" : "Save as skill"}
+        </button>
+      </Hint>
+      {error && (
+        <p role="alert" className="w-full text-sm text-danger">
+          {error}
+        </p>
+      )}
+    </fetcher.Form>
   );
 }
 

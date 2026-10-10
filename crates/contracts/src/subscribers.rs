@@ -195,10 +195,12 @@ pub const ROUTES: &[(&str, &[&str])] = &[
     ("SUBSCRIBER_DOCS", &["git.push", "pull.merged"]),
     // Agents' routines that run on events: a pull request ready for
     // review or merged, checks or a deploy failing, an issue opened
-    // (agents/src/triggers.ts).
+    // (agents/src/triggers.ts); and pushes, which skill libraries that
+    // follow a repository read again (agents/src/skill-library.ts).
     (
         "SUBSCRIBER_AGENTS",
         &[
+            "git.push",
             "pull.opened",
             "pull.ready",
             "pull.merged",
@@ -314,6 +316,8 @@ mod tests {
         assert!(!routed("SUBSCRIBER_REPOS", "git.push"));
         assert!(routed("SUBSCRIBER_DOCS", "pull.merged"));
         assert!(!routed("SUBSCRIBER_DOCS", "pull.opened"));
+        assert!(routed("SUBSCRIBER_AGENTS", "git.push"));
+        assert!(!routed("SUBSCRIBER_AGENTS", "comment.created"));
         // Every subscriber follows what moves or removes a repository.
         for (binding, _) in ROUTES {
             for kind in LIFECYCLE {

@@ -24,6 +24,7 @@ import { FOLIO_KINDS, folioIdFrom, isFolioKind } from "../../../packages/contrac
 import type { MakeFileFormat } from "../../../packages/contracts/src/skills.ts";
 import { type Audience, type RepoRef, WITHHELD } from "./audience.ts";
 import { makeFile, previewTable, readSheets, sizeLabel } from "./files.ts";
+import { type ShelfSkill, type StoredVersion, skillBlock, skillText } from "./skills.ts";
 
 /** One tool, as the Messages API takes it. */
 export type ToolDef = { name: string; description: string; input_schema: Record<string, unknown> };
@@ -465,12 +466,33 @@ const MAKE_FILE: ToolDef = {
   },
 };
 
+/**
+ * Reading one of the agent's skills (skills.ts): the prompt lists them by
+ * name and when to use them, and this reads one when a request matches.
+ * Reading a skill never offers another tool.
+ */
+const USE_SKILL: ToolDef = {
+  name: "use_skill",
+  description:
+    "Read one of your skills (listed under Your skills) before you do work it covers, and follow it. With file, read one of the files a skill lists instead, such as a template or a reference.",
+  input_schema: {
+    type: "object",
+    properties: { name: { type: "string", description: "The skill's name, as listed." }, file: { type: "string", description: "A file of the skill, by its path, such as resources/template.md." } },
+    required: ["name"],
+  },
+};
+
 const FOLIO_NAMES = new Set([...FOLIO_TOOLS, ...FOLIO_WRITE_TOOLS, MAKE_FILE].map((tool) => tool.name));
 
-/** Every tool an agent may be offered, by name: what skills may name (@g1t/contracts skills.ts). */
+/** Every tool an agent may be offered, by name: what skills may name (@g1t/contracts skill-format.ts `AGENT_TOOL_NAMES`, which a test keeps equal). */
 export const TOOL_NAMES: ReadonlySet<string> = new Set(
-  [...CODE_TOOLS, ...CHAT_TOOLS, ...FOLIO_TOOLS, ...FOLIO_WRITE_TOOLS, MAKE_FILE, ASK_COLLEAGUE, HAND_OFF, REMEMBER, FORGET, DRAFT_ISSUE, COMMENT, REVIEW_PULL, START_SESSION, POST_UPDATE, USE_SUBAGENT, BRING_IN].map((tool) => tool.name),
+  [...CODE_TOOLS, ...CHAT_TOOLS, ...FOLIO_TOOLS, ...FOLIO_WRITE_TOOLS, MAKE_FILE, ASK_COLLEAGUE, HAND_OFF, REMEMBER, FORGET, DRAFT_ISSUE, COMMENT, REVIEW_PULL, START_SESSION, POST_UPDATE, USE_SUBAGENT, BRING_IN, USE_SKILL].map(
+    (tool) => tool.name,
+  ),
 );
+
+/** Reads a library skill's version (skill-library.ts), for `use_skill`. */
+export type SkillReader = (skillId: string, version: number) => Promise<StoredVersion | null>;
 
 const CODE_NAMES = new Set(CODE_TOOLS.map((tool) => tool.name));
 
@@ -507,6 +529,9 @@ export class ToolBox {
    * it remembers is kept for the person who asked alone.
    */
   private privateRead = false;
+  /** The agent's skills this turn (skills.ts), and how to read a library skill's text. */
+  private shelf: readonly ShelfSkill[] = [];
+  private readSkill: SkillReader | null = null;
 
   constructor(audience: Audience, ports: ToolPorts, context: ToolContext, calls: ToolCall[] = [], actions: ActionPorts | null = null) {
     this.audience = audience;
@@ -514,6 +539,12 @@ export class ToolBox {
     this.context = context;
     this.calls = calls;
     this.actions = actions;
+  }
+
+  /** Gives the agent its skills: `use_skill` is offered while it has any. */
+  useShelf(shelf: readonly ShelfSkill[], read: SkillReader): void {
+    this.shelf = shelf;
+    this.readSkill = read;
   }
 
   /** A colleague's tool box for a consult: the same audience, the same budget, one hop further, reading only. */
@@ -556,6 +587,7 @@ export class ToolBox {
       ...(actions?.postUpdate && this.context.session ? [POST_UPDATE] : []),
       ...(actions?.useSubagent && this.context.session && roomForHop ? [USE_SUBAGENT] : []),
       ...(actions?.bringIn && this.context.session && roomForHop ? [BRING_IN] : []),
+      ...(this.shelf.length ? [USE_SKILL] : []),
     ];
   }
 
@@ -591,6 +623,23 @@ export class ToolBox {
     return { text: WITHHELD, outcome: "withheld" };
   }
 
+  /** One of the agent's skills, as `use_skill` reads it; only skills it has, and never a tool it lacks. */
+  private async skill(name: string, file: string | null): Promise<ToolResult> {
+    const entry = this.shelf.find((skill) => skill.name === name.toLowerCase());
+    if (!entry) {
+      const names = this.shelf.map((skill) => skill.name).join(", ");
+      return { text: `You have no skill called ${name || "that"}. Your skills: ${names || "none"}.`, outcome: "refused" };
+    }
+    const offered = new Set(this.definitions().map((tool) => tool.name));
+    if (entry.kind === "foundational") {
+      if (file) return { text: `${entry.name} is one of g1t's skills and has no files; its instructions are all there is.`, outcome: "refused" };
+      return { text: skillBlock(entry.skill, offered), outcome: "allowed" };
+    }
+    const stored = this.readSkill ? await this.readSkill(entry.id, entry.version) : null;
+    if (!stored) return { text: `${entry.name} couldn't be read just now. Do the work as you would without it.`, outcome: "error" };
+    return { text: skillText(entry, stored, offered, file), outcome: "allowed" };
+  }
+
   private async dispatch(name: string, input: Record<string, unknown>): Promise<ToolResult> {
     const asker = this.audience.asker;
     if (FOLIO_NAMES.has(name)) {
@@ -603,6 +652,8 @@ export class ToolBox {
       return this.code(name, input, asker);
     }
     switch (name) {
+      case "use_skill":
+        return this.skill(String(input.name ?? "").trim(), typeof input.file === "string" && input.file.trim() ? input.file.trim() : null);
       case "search_messages": {
         const query = String(input.query ?? "").trim();
         if (query.length < 2) return { text: "Search for at least two characters.", outcome: "refused" };

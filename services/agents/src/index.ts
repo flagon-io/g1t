@@ -63,6 +63,7 @@ import { effortOf } from "./routing.ts";
 import * as views from "./views.ts";
 import { monthKey } from "./budget.ts";
 import * as extensions from "./extensions.ts";
+import { skillPushes, skillRpc } from "./skill-rpc.ts";
 import { type Answered, type Person, answerLine, findListing, listRequests, listingPath, openRequest, requestsPath, resolveListing, resolveRequest } from "./installs.ts";
 
 export { Desk } from "./desk.ts";
@@ -787,6 +788,11 @@ class Agents {
    * The events service's audit contract speaks camelCase (Rust's
    * `NewAuditEntry`).
    */
+  /** A change to the skill library, in the audit log as `agents/skills/<name>`. */
+  auditSkill(actor: User, workspace: string, action: string, name: string, message: string): void {
+    this.audit(actor, workspace, action, `skills/${name}`, message);
+  }
+
   private audit(
     actor: User,
     workspace: string,
@@ -835,6 +841,9 @@ class Agents {
 
 /** One RPC method's answer. */
 async function answer(service: Agents, method: string, args: any): Promise<Response> {
+  // The skill library (./skill-rpc.ts).
+  const skill = await skillRpc(method, args, (a, run) => service.view(a, run), (viewer, workspace, action, name, message) => service.auditSkill(viewer, workspace, action, name, message));
+  if (skill) return Response.json(skill);
   switch (method) {
     case "list":
       return Response.json(await service.list(args));
@@ -948,7 +957,10 @@ export default {
 
   /** Events routines run on, from the events service (SUBSCRIBER_AGENTS). */
   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
-    await onEvents(env as unknown as SessionEnv, batch.messages.map((message) => message.body as G1tEvent));
+    const events = batch.messages.map((message) => message.body as G1tEvent);
+    // A push to a default branch: skill libraries that follow that repository read it again (./skill-library.ts).
+    const pushes = events.flatMap((event) => (event?.type === "git.push" && event.data?.defaultBranch && event.data.repoId ? [{ repoId: event.data.repoId }] : []));
+    await Promise.all([onEvents(env as unknown as SessionEnv, events.filter((event) => event?.type !== "git.push")), pushes.length ? skillPushes(env as unknown as SessionEnv, pushes) : null]);
     batch.ackAll();
   },
 

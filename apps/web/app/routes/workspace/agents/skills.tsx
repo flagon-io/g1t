@@ -1,45 +1,64 @@
-import { BookOpen, ChartColumn, Check, Code, FileText, FolderOpen, Globe, GraduationCap, type LucideIcon, PenLine, Send, Store } from "lucide-react";
-import { data, useFetcher, useOutletContext } from "react-router";
+import { ArrowUpCircle, BookOpen, ChartColumn, Check, Code, FileText, FolderOpen, Globe, Library, type LucideIcon, Plus, Send, Store } from "lucide-react";
+import { Link, data, useFetcher, useOutletContext } from "react-router";
 
 import {
   type AgentSkill,
+  type AgentSkillLine,
+  type AgentSkills,
   FOUNDATIONAL_SKILLS,
   FOUNDATIONAL_SKILLS_VERSION,
   FOUNDATIONAL_SKILL_IDS,
-  SKILL_SOURCES,
+  type LibrarySkill,
   type SkillAbility,
   type SkillCategory,
-  type SkillSource,
   type WorkspaceAgent,
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/skills";
-import { agentsAction, answer } from "../../../components/agents/actions.server";
-import type { ActionResult } from "../../../components/agents/dialogs";
+import { agentsAction, answer, readOrNull } from "../../../components/agents/actions.server";
+import { type ActionResult, BUTTONS } from "../../../components/agents/dialogs";
+import { AttachToAgentDialog, AttachmentChip, NeedsComputer, skillsPath } from "../../../components/agents/skills";
 import { Badge } from "../../../components/ui/badge";
 import { Hint } from "../../../components/ui/hint";
 import { Switch } from "../../../components/ui/switch";
 import { cn } from "../../../lib/cn";
-import { workspaceAgents } from "../../../lib/services.server";
+import { skillLibrary, workspaceAgents } from "../../../lib/services.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
 
-/** Whether the viewer may turn skills on and off: the workspace's owners, as for every change to an agent. */
-export async function loader({ params, context, request }: Route.LoaderArgs) {
+/** A library skill's id, as an agent's `skills_off` holds it. */
+const LIBRARY_ID = /^skl_[0-9a-z]{26}$/;
+
+/**
+ * The agent's skills: whether the viewer owns the workspace (owners turn
+ * skills on and off), the library's skills that reach it, and for owners
+ * the library's others, to attach.
+ */
+export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ isOwner: boolean; skills: AgentSkills | null; attachable: Pick<LibrarySkill, "name" | "description" | "version">[] }> {
   const viewer = requireUser(context, request);
-  const role = roleIn(viewer, params.owner);
+  const slug = params.owner.toLowerCase();
+  const role = roleIn(viewer, slug);
   if (!role) throw data(null, { status: 404 });
-  return { isOwner: role === "owner" };
+  const isOwner = role === "owner";
+  const [skills, library] = await Promise.all([
+    readOrNull(skillLibrary.agentSkills(slug, viewer, params.handle.toLowerCase())),
+    isOwner ? readOrNull(skillLibrary.library(slug, viewer)) : Promise.resolve(null),
+  ]);
+  const has = new Set(skills?.skills.map((s) => s.id) ?? []);
+  const attachable = (library?.skills ?? []).filter((s) => s.status === "published" && !has.has(s.id)).map((s) => ({ name: s.name, description: s.description, version: s.version }));
+  return { isOwner, skills, attachable };
 }
 
-/** Turns one foundational skill on or off: a new version of the agent, like any change. */
+/** Turns a skill on or off (a new version of the agent), attaches one, or moves one to its newest version. */
 export async function action({ params, context, request }: Route.ActionArgs): Promise<ActionResult> {
   const { viewer, slug, isOwner, form } = await agentsAction(request, context, params.owner);
   const intent = String(form.get("intent") ?? "");
+  const handle = params.handle.toLowerCase();
+  if (intent === "attach") return answer(intent, skillLibrary.attachSkill(slug, viewer, String(form.get("name") ?? ""), "agent", handle));
+  if (intent === "pin") return answer(intent, skillLibrary.pinSkill(slug, viewer, String(form.get("name") ?? ""), String(form.get("attachment") ?? ""), null));
   if (intent !== "skill") return { ok: false, intent, error: "Unknown request." };
   if (!isOwner) return { ok: false, intent, error: "Only the workspace's owners turn an agent's skills on or off." };
   const skill = String(form.get("skill") ?? "");
-  if (!FOUNDATIONAL_SKILL_IDS.includes(skill)) return { ok: false, intent, error: "There is no such skill." };
-  const handle = params.handle.toLowerCase();
+  if (!FOUNDATIONAL_SKILL_IDS.includes(skill) && !LIBRARY_ID.test(skill)) return { ok: false, intent, error: "There is no such skill." };
   const current = await workspaceAgents.get(slug, handle, viewer).catch(() => null);
   if (!current) return { ok: false, intent, error: "The agents service didn't answer. Try again in a moment." };
   if (!current.ok) return { ok: false, intent, error: current.error.message };
@@ -50,28 +69,35 @@ export async function action({ params, context, request }: Route.ActionArgs): Pr
 }
 
 const ICONS: Record<SkillCategory, LucideIcon> = { documents: FileText, research: Globe, data: ChartColumn, code: Code, communication: Send, files: FolderOpen };
-const SOURCE_ICONS: Record<SkillSource, LucideIcon> = { foundational: BookOpen, workspace: PenLine, marketplace: Store, learned: GraduationCap };
 
 /**
  * An agent's skills: g1t's foundational ones, what each does today and
- * with which of the agent's tools, what's coming, and for owners a switch
- * on each; then where more skills will come from.
+ * with which of the agent's tools, what's coming; then the library's that
+ * reach it, through it, its teams or every agent. Owners switch each on or
+ * off, attach more, and move one to its newest version.
  */
-export default function SkillsTab({ loaderData }: Route.ComponentProps) {
+export default function SkillsTab({ loaderData, params }: Route.ComponentProps) {
   const agent = useOutletContext<WorkspaceAgent>();
-  const { isOwner } = loaderData;
+  const { isOwner, skills, attachable } = loaderData;
   const fetcher = useFetcher<ActionResult>({ key: `skills-${agent.id}` });
   // While a switch's change is on its way, it shows as changed.
-  const pending = fetcher.formData ? { skill: String(fetcher.formData.get("skill")), on: fetcher.formData.get("on") === "true" } : null;
+  const pending = fetcher.formData && fetcher.formData.get("intent") === "skill" ? { skill: String(fetcher.formData.get("skill")), on: fetcher.formData.get("on") === "true" } : null;
   const isOn = (id: string) => (pending?.skill === id ? pending.on : !(agent.skills_off ?? []).includes(id));
   const onCount = FOUNDATIONAL_SKILLS.filter((skill) => isOn(skill.id)).length;
   const error = fetcher.state === "idle" && fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
+  const library = skills?.skills.filter((s) => !s.foundational) ?? [];
+  const slug = params.owner;
   return (
     <div className="space-y-10">
       <p className="max-w-2xl text-sm text-muted">
-        Every agent starts with g1t&apos;s foundational skills, so asking {agent.display_name} for a PDF gets you a PDF. A skill is a playbook: how to do a kind of work with the
-        tools {agent.display_name} already has. Skills never add a tool or a permission, and each says plainly what isn&apos;t possible yet.
+        Skills tell {agent.display_name} how to do a kind of work with the tools it already has, so asking it for a PDF gets you a PDF. It sees each skill&apos;s name and when to
+        use it, and reads the rest when a request matches. Skills never add a tool or a permission, and say plainly what isn&apos;t possible yet.
       </p>
+      {error && (
+        <p role="alert" className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {error}
+        </p>
+      )}
 
       <section aria-labelledby="foundational">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -80,12 +106,7 @@ export default function SkillsTab({ loaderData }: Route.ComponentProps) {
           </h2>
           <p className="text-xs text-faint">Version {FOUNDATIONAL_SKILLS_VERSION}, updated with every release</p>
         </div>
-        {isOwner && <p className="mt-1 text-xs text-faint">Turning a skill off takes its playbook out of {agent.display_name}&apos;s instructions. Its tools stay as they are.</p>}
-        {error && (
-          <p role="alert" className="mt-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
-            {error}
-          </p>
-        )}
+        {isOwner && <p className="mt-1 text-xs text-faint">Turning a skill off takes it out of {agent.display_name}&apos;s instructions. Its tools stay as they are.</p>}
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {FOUNDATIONAL_SKILLS.map((skill) => (
             <SkillCard key={skill.id} skill={skill} on={isOn(skill.id)} agentName={agent.display_name} isOwner={isOwner} fetcher={fetcher} />
@@ -93,46 +114,141 @@ export default function SkillsTab({ loaderData }: Route.ComponentProps) {
         </div>
       </section>
 
-      <section aria-labelledby="web-access" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <Globe size={16} className="mt-0.5 shrink-0 text-muted" aria-hidden />
+      <section aria-labelledby="library">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 id="web-access" className="text-sm font-medium">
-              Web access
+            <h2 id="library" className="text-sm font-medium">
+              From your library <span className="text-faint">{library.length}</span>
             </h2>
-            <p className="mt-0.5 text-sm text-muted">Searching and reading the open web, set per team: open, approved sites only, or off.</p>
+            <p className="mt-1 text-xs text-faint">Attached to {agent.display_name}, to a team it is on, or to every agent. Each uses the version pinned where it is attached.</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Link to={skillsPath(slug)} className={`${BUTTONS.QUIET} h-8 px-3 py-0 text-xs`}>
+              <Library size={13} />
+              Open the library
+            </Link>
+            {isOwner && (
+              <AttachToAgentDialog
+                agentName={agent.display_name}
+                skills={attachable}
+                trigger={
+                  <button type="button" className={`${BUTTONS.QUIET} h-8 px-3 py-0 text-xs`}>
+                    <Plus size={13} />
+                    Attach a skill
+                  </button>
+                }
+              />
+            )}
           </div>
         </div>
-        <ComingBadge />
+        {skills == null ? (
+          <p className="mt-3 rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">The library didn&apos;t answer. Reload in a moment.</p>
+        ) : library.length === 0 ? (
+          <p className="mt-3 rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">
+            None yet. Skills your workspace writes, imports or saves from sessions reach {agent.display_name} once they are attached.
+          </p>
+        ) : (
+          <ul className="mt-3 divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
+            {library.map((line) => (
+              <LibraryLine key={line.id} slug={slug} line={line} on={isOn(line.id)} agentName={agent.display_name} isOwner={isOwner} fetcher={fetcher} />
+            ))}
+          </ul>
+        )}
+        {skills && skills.over_limit > 0 && (
+          <p className="mt-2 text-sm text-warn">
+            {agent.display_name} has {skills.over_limit} more than the 100 library skills an agent can have; it doesn&apos;t get the last {skills.over_limit}. Turn some off or
+            detach them.
+          </p>
+        )}
       </section>
 
-      <section aria-labelledby="more-skills">
-        <h2 id="more-skills" className="text-sm font-medium">
-          More skills
-        </h2>
-        <p className="mt-1 text-xs text-faint">Skills you add will work the same way: a playbook that uses the tools {agent.display_name} already has.</p>
-        <ul className="mt-3 divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
-          {SKILL_SOURCES.filter((source) => source.source !== "foundational").map((source) => {
-            const Icon = SOURCE_ICONS[source.source];
-            return (
-              <li key={source.source} className="flex items-start gap-3 px-4 py-3">
-                <Icon size={16} className="mt-0.5 shrink-0 text-muted" aria-hidden />
-                <div className="min-w-0 grow">
-                  <p className="text-sm font-medium text-fg">{source.label}</p>
-                  <p className="mt-0.5 text-sm text-muted">{source.description}</p>
-                </div>
-                {source.status === "coming" && <ComingBadge />}
-              </li>
-            );
-          })}
-        </ul>
+      <section aria-label="Coming" className="divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
+        <ComingRow icon={Globe} title="Web access" body="Searching and reading the open web, set per team: open, approved sites only, or off." />
+        <ComingRow icon={Store} title="Skills from the Marketplace" body="Skills that extensions bring, added in one step." />
       </section>
+    </div>
+  );
+}
+
+function ComingRow({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+      <div className="flex min-w-0 items-start gap-3">
+        <Icon size={16} className="mt-0.5 shrink-0 text-muted" aria-hidden />
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium">{title}</h3>
+          <p className="mt-0.5 text-sm text-muted">{body}</p>
+        </div>
+      </div>
+      <ComingBadge />
     </div>
   );
 }
 
 function ComingBadge() {
   return <Badge tone="neutral">Coming</Badge>;
+}
+
+function LibraryLine({
+  slug,
+  line,
+  on,
+  agentName,
+  isOwner,
+  fetcher,
+}: {
+  slug: string;
+  line: AgentSkillLine;
+  on: boolean;
+  agentName: string;
+  isOwner: boolean;
+  fetcher: ReturnType<typeof useFetcher<ActionResult>>;
+}) {
+  const toggle = (next: boolean) => fetcher.submit({ intent: "skill", skill: line.id, on: String(next) }, { method: "post" });
+  return (
+    <li className="flex items-start gap-3 px-4 py-3.5">
+      <div className={cn("min-w-0 grow", !on && "opacity-60")}>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <Link to={skillsPath(slug, line.name)} className="font-mono text-sm font-medium text-fg hover:underline">
+            {line.name}
+          </Link>
+          <span className="text-xs text-faint">v{line.version}</span>
+          {line.requires_computer && <NeedsComputer />}
+        </div>
+        <p className="mt-0.5 text-sm text-muted">{line.description}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {line.via && <AttachmentChip attachment={{ scope: line.via, label: line.via_label ?? "", version: Number(line.version) }} />}
+          {line.update != null &&
+            (line.can_change ? (
+              <fetcher.Form method="post">
+                <input type="hidden" name="intent" value="pin" />
+                <input type="hidden" name="name" value={line.name} />
+                <input type="hidden" name="attachment" value={line.attachment_id ?? ""} />
+                <Hint label={line.via === "agent" ? `Move ${agentName} to version ${line.update}` : `Moves it to version ${line.update} for every agent it reaches through ${line.via_label}`}>
+                  <button type="submit" className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-accent hover:bg-accent/10" disabled={fetcher.state !== "idle"}>
+                    <ArrowUpCircle size={13} />
+                    Update to v{line.update}
+                  </button>
+                </Hint>
+              </fetcher.Form>
+            ) : (
+              <span className="text-xs text-warn">Version {line.update} is out</span>
+            ))}
+        </div>
+      </div>
+      {isOwner ? (
+        <Hint label={on ? `Turn off ${line.name}` : `Turn on ${line.name}`}>
+          <span className="mt-0.5 inline-flex">
+            <Switch checked={on} onCheckedChange={toggle} aria-label={`${line.name} for ${agentName}`} disabled={fetcher.state !== "idle"} />
+          </span>
+        </Hint>
+      ) : (
+        <Badge tone={on ? "success" : "neutral"} className="mt-0.5 shrink-0">
+          {on ? "On" : "Off"}
+        </Badge>
+      )}
+    </li>
+  );
 }
 
 function SkillCard({
@@ -192,7 +308,9 @@ function SkillCard({
           <span className="hidden group-open:inline">Hide the playbook</span>
         </summary>
         <div className="px-4 pb-4">
-          <p className="text-xs text-faint">What {agentName} is told while {skill.name} is on:</p>
+          <p className="text-xs text-faint">
+            What {agentName} reads when it uses {skill.name}. {skill.when}
+          </p>
           <p className="mt-2 rounded-lg bg-raised/60 px-3 py-2.5 text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-fg-soft">{skill.instructions}</p>
         </div>
       </details>

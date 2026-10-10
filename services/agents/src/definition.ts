@@ -16,6 +16,9 @@ import { FOUNDATIONAL_SKILL_IDS } from "../../../packages/contracts/src/skills.t
 import { checkHandle } from "./handle.ts";
 import { isEffort, isTier, limitsAgree } from "./routing.ts";
 
+/** A library skill's id (skill-library.ts), as `skills_off` may name it. */
+const LIBRARY_SKILL_ID = /^skl_[0-9a-z]{26}$/;
+
 export const PRESETS: PersonalityPreset[] = ["crisp", "friendly", "socratic", "terse"];
 
 export const DEFAULT_ROUTING: AgentRouting = { floor: null, ceiling: null, providers: [], pinned: null, effort: "auto" };
@@ -324,10 +327,14 @@ export function applyChanges(
   if (changes.skills_off !== undefined) {
     if (!Array.isArray(changes.skills_off)) return bad("Skills turned off are a list of skills.");
     const ids = new Set(changes.skills_off.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean));
-    const unknown = [...ids].find((id) => !FOUNDATIONAL_SKILL_IDS.includes(id));
+    // Foundational skills by id, and the library's by theirs (skl_…), which
+    // may be off before or after they are attached.
+    const library = [...ids].filter((id) => LIBRARY_SKILL_ID.test(id));
+    const unknown = [...ids].find((id) => !FOUNDATIONAL_SKILL_IDS.includes(id) && !LIBRARY_SKILL_ID.test(id));
     if (unknown) return bad(`There is no skill called ${unknown.slice(0, 40)}.`);
+    if (library.length > 200) return bad("At most 200 library skills can be off for one agent.");
     // In the skills' own order, so the same choice always reads the same.
-    next.skills_off = FOUNDATIONAL_SKILL_IDS.filter((id) => ids.has(id));
+    next.skills_off = [...FOUNDATIONAL_SKILL_IDS.filter((id) => ids.has(id)), ...library.sort()];
   }
   if (changes.faces !== undefined) {
     if (changes.faces === "customers") return bad("Customer-facing agents aren't available yet.");

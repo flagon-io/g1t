@@ -12,10 +12,10 @@ import { isReservedName } from "../../../packages/contracts/src/names.ts";
 
 /**
  * Handles the site's agent pages would read as their own routes
- * (`/<workspace>/-/agents/new`, `…/templates`, `…/runs`, `…/fleet`),
+ * (`/<workspace>/-/agents/new`, `…/templates`, `…/skills`, `…/runs`, `…/fleet`),
  * besides the names nobody may register.
  */
-const ROUTES = new Set(["new", "templates", "runs", "fleet"]);
+const ROUTES = new Set(["new", "templates", "skills", "runs", "fleet"]);
 
 const HANDLE = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){1,31}$/;
 

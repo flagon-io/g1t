@@ -49,7 +49,8 @@ import { type RecallPlace, MAX_FACTS, cleanFact, memorySection, recall, scopeFor
 import { readPolicy } from "./policy.ts";
 import { type PortsEnv, audiencePorts, loadTeams, toolPorts } from "./ports.ts";
 import { systemPrompt } from "./prompt.ts";
-import { skillsSection } from "./skills.ts";
+import { loadShelf, skillsSection, teamSlugs } from "./skills.ts";
+import { readVersion } from "./skill-library.ts";
 import { conversationFrom } from "./surface.ts";
 import { type Row, definitionOf, periods } from "./store.ts";
 import { type ActionPorts, type ToolCall, ToolBox } from "./tools.ts";
@@ -806,10 +807,13 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
       }
       // What the workspace's artifacts say about the work: its goal, and whatever arrived for this step.
       const asked = [current.goal, ...inbox.map((item) => item.body)].reverse();
-      const [facts, passages] = await Promise.all([
+      const [facts, passages, shelf] = await Promise.all([
         recall(db, agent.id, place).catch(() => []),
         toolbox ? toolbox.recall(recallQuery(asked, 800), definition.reading ?? []) : Promise.resolve([]),
+        // Its skills: named in the prompt, read with use_skill (skills.ts).
+        toolbox ? loadShelf(db, agent.workspace_id, { id: agent.id, skills_off: definition.skills_off }, teamSlugs(teamsHere, agent.team ?? null)) : Promise.resolve([]),
       ]);
+      toolbox?.useShelf(shelf, (skillId, version) => readVersion(db, skillId, version));
       const [team, here] = await Promise.all([
         db
           .prepare("SELECT handle, display_name, role, title, team, department, responsibilities FROM agents WHERE workspace_id = ? AND archived_at IS NULL AND id <> ? AND scope = 'workspace' ORDER BY builtin DESC, handle LIMIT 50")
@@ -848,7 +852,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
           teams: teamsSection(agent.id, teamsHere, new Date()),
           session: true,
           conversation: here,
-          skills: skillsSection(definition.skills_off, toolbox?.definitions().map((tool) => tool.name) ?? []),
+          skills: skillsSection(shelf, toolbox?.definitions().map((tool) => tool.name) ?? []),
         }),
         sessionSection(current, current.asked_by_username ? `@${current.asked_by_username}` : "the person who asked", plan.steps),
         memorySection(facts),

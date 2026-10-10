@@ -23,7 +23,8 @@ import { CHAT_MAX_HOPS } from "../../../packages/contracts/src/chat.ts";
 import type { Tokens } from "./budget.ts";
 import { handOffPort } from "./handoff.ts";
 import { HISTORY_LIMIT, fixedHello, helloAsk, systemPrompt, turns } from "./prompt.ts";
-import { skillsSection } from "./skills.ts";
+import { loadShelf, skillsSection, teamSlugs } from "./skills.ts";
+import { readVersion } from "./skill-library.ts";
 import { type Specialist, orchestratorInstructions, orchestratorTier, rosterLines } from "./orchestrator.ts";
 import { type MeterEnv, metered } from "./meter.ts";
 import { type RecallPlace, memorySection, recall } from "./memory.ts";
@@ -468,13 +469,16 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
       }
       // What people said last, for recalling what the workspace's artifacts say about it.
       const said = [...history].reverse().filter((m) => m.author.kind === "user").slice(0, 3).map((m) => m.body);
-      const [facts, recent, passages] = delivery.hello
-        ? [[], null, []]
+      const [facts, recent, passages, shelf] = delivery.hello
+        ? [[], null, [], []]
         : await Promise.all([
             recall(db, row.id, place).catch(() => []),
             sessionsHere(db, row.id, delivery.channel_id).catch(() => null),
             toolbox ? toolbox.recall(recallQuery(said), definition.reading ?? []) : Promise.resolve([]),
+            // Its skills: named in the prompt, read with use_skill (skills.ts).
+            toolbox ? loadShelf(db, row.workspace_id, { id: row.id, skills_off: definition.skills_off }, teamSlugs(teamsHere, row.team ?? null)) : Promise.resolve([]),
           ]);
+      toolbox?.useShelf(shelf, (skillId, version) => readVersion(db, skillId, version));
       const system = [
         systemPrompt({
           agent: {
@@ -495,7 +499,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
           teams: teamsSection(row.id, teamsHere, now),
           canHandOff: !!toolbox?.definitions().some((tool) => tool.name === "hand_off"),
           handedOffBy: sender?.handle ?? null,
-          skills: skillsSection(definition.skills_off, toolbox?.definitions().map((tool) => tool.name) ?? []),
+          skills: skillsSection(shelf, toolbox?.definitions().map((tool) => tool.name) ?? []),
         }),
         memorySection(facts),
         recallSection(passages),

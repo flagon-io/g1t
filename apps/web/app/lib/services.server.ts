@@ -25,6 +25,7 @@ import {
   securitySuiteClient,
   webhooksClient,
   workClient,
+  skillLibraryClient,
   workspaceAgentsClient,
 } from "@g1t/contracts";
 
@@ -87,6 +88,8 @@ export const memoryReview = memoryReviewClient(WORK);
 export const chat = chatClient(CHAT);
 /** The workspace's own agents: who they are, their limits and their desks. */
 export const workspaceAgents = workspaceAgentsClient(AGENTS);
+/** The workspace's skill library: skills, their versions and where they are attached (the agents service). */
+export const skillLibrary = skillLibraryClient(AGENTS);
 /** The artifacts service's spaces (Artifacts' spaces) and projects' docs. Its old pages are no longer read. */
 export const docs = docsClient(ARTIFACTS);
 /** Artifacts (folios): docs, and later slides, designs and dashboards, kept by the artifacts service. */

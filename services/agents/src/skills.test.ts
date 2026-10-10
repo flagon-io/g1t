@@ -3,11 +3,12 @@ import { test } from "node:test";
 
 import type { FolioRef, User } from "@g1t/contracts";
 
+import { AGENT_TOOL_NAMES, RESERVED_SKILL_NAMES, SKILLS_PER_AGENT_MAX } from "../../../packages/contracts/src/skill-format.ts";
 import { FOUNDATIONAL_SKILLS, FOUNDATIONAL_SKILL_IDS, skillTools, skillsOn } from "../../../packages/contracts/src/skills.ts";
 import { Audience, type AudienceInfo } from "./audience.ts";
 import { applyChanges } from "./definition.ts";
 import { systemPrompt } from "./prompt.ts";
-import { skillsSection } from "./skills.ts";
+import { type AttachedRow, shelfFrom, skillsSection, teamSlugs } from "./skills.ts";
 import { TEMPLATE_IDS } from "./templates.ts";
 import { type FoliosPorts, type ToolPorts, TOOL_NAMES, ToolBox, docBody } from "./tools.ts";
 
@@ -29,24 +30,44 @@ test("the foundational skills name only tools agents have, and say what's coming
   for (const id of ["slides", "search", "browse", "sql", "run", "schedule", "ocr", "images"]) assert.ok(coming.includes(id), `${id} is marked coming`);
 });
 
-test("each skill that is on puts its playbook in the prompt, with what isn't here and what's coming", () => {
+test("the tools a skill may name are exactly the tools agents have", () => {
+  assert.deepEqual([...AGENT_TOOL_NAMES].sort(), [...TOOL_NAMES].sort());
+  assert.deepEqual(RESERVED_SKILL_NAMES, FOUNDATIONAL_SKILL_IDS);
+});
+
+const library = (over: Partial<AttachedRow> = {}): AttachedRow => ({
+  skill_id: "skl_01k7a0b1c2d3e4f5g6h7j8k9mn",
+  name: "release-notes",
+  description: "Use when someone asks for release notes.",
+  version: 3,
+  tools: '["recent_activity","create_artifact","teleport_tool"]',
+  requires_computer: 0,
+  scope: "workspace",
+  attached_at: "2026-10-01T00:00:00Z",
+  ...over,
+});
+
+test("the prompt names each skill and when to use it; the playbooks stay out until read", () => {
   const all = [...TOOL_NAMES];
-  const section = skillsSection([], all)!;
-  for (const skill of FOUNDATIONAL_SKILLS) assert.match(section, new RegExp(`### ${skill.name}\\n`));
-  assert.match(section, /they never add one/);
-  assert.match(section, /Not yet in g1t: slide decks\./);
-  assert.match(section, /Not yet in g1t: search the web and browse and read pages\./);
-  assert.doesNotMatch(section, /Not available in this conversation/, "every tool is offered");
-  // In a conversation whose people can't all read code: the code abilities say so.
-  const noCode = skillsSection([], all.filter((t) => !["list_repositories", "search_code", "read_file", "recent_activity", "get_pull", "review_pull", "comment", "draft_issue"].includes(t)))!;
-  assert.match(noCode, /### Code[\s\S]*Not available in this conversation \(its tools aren't offered here\): read and explain code, review pull requests and open pull requests\./);
-  // Off: gone from the prompt, the rest stays.
-  const someOff = skillsSection(["communication", "files"], all)!;
-  assert.doesNotMatch(someOff, /### Communication/);
-  assert.doesNotMatch(someOff, /### Files and media/);
-  assert.match(someOff, /### Documents/);
-  assert.equal(skillsSection(FOUNDATIONAL_SKILL_IDS, all), null);
+  const { skills } = shelfFrom([], [library()]);
+  const section = skillsSection(skills, all)!;
+  for (const skill of FOUNDATIONAL_SKILLS) assert.match(section, new RegExp(`^- ${skill.id}: ${skill.when.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"));
+  assert.match(section, /^- release-notes: Use when someone asks for release notes\.$/m);
+  assert.match(section, /call use_skill with its name before you start/);
+  assert.match(section, /never add one/);
+  for (const skill of FOUNDATIONAL_SKILLS) assert.ok(!section.includes(skill.instructions), `${skill.id}'s playbook isn't in the prompt`);
+  // Without use_skill (no tools at all), nothing is listed: no skill could be followed.
+  assert.equal(skillsSection(skills, all.filter((t) => t !== "use_skill")), null);
+  // Off: gone from the list, the rest stays; all off and none attached, no section.
+  const someOff = skillsSection(shelfFrom(["communication", "files", "skl_01k7a0b1c2d3e4f5g6h7j8k9mn"], [library()]).skills, all)!;
+  assert.doesNotMatch(someOff, /^- communication:/m);
+  assert.doesNotMatch(someOff, /^- files:/m);
+  assert.doesNotMatch(someOff, /release-notes/);
+  assert.match(someOff, /^- documents:/m);
+  assert.equal(skillsSection(shelfFrom(FOUNDATIONAL_SKILL_IDS, []).skills, all), null);
   assert.equal(skillsOn(["data"]).length, 5);
+  // A skill that needs a computer is marked.
+  assert.match(skillsSection(shelfFrom([], [library({ requires_computer: 1 })]).skills, all)!, /release-notes: .* Needs a computer of its own \(not available yet\)\./);
   const prompt = systemPrompt({
     agent: { id: "agt_1", handle: "ship", display_name: "Ship", role: "Release manager", instructions: "Ship.", personality_preset: "crisp", personality: "" },
     workspace: "acme",
@@ -66,10 +87,80 @@ test("owners turn skills off by id; unknown ids are refused, and the list reads 
   const off = applyChanges(made.value, { skills_off: ["files", " data ", "files"] }, TEMPLATE_IDS);
   assert.ok(off.ok);
   assert.deepEqual(off.ok && off.value.skills_off, ["data", "files"]);
+  // Library skills by their ids, after the foundational ones.
+  const lib = applyChanges(made.value, { skills_off: ["skl_01k7a0b1c2d3e4f5g6h7j8k9mn", "files"] }, TEMPLATE_IDS);
+  assert.deepEqual(lib.ok && lib.value.skills_off, ["files", "skl_01k7a0b1c2d3e4f5g6h7j8k9mn"]);
   const bad = applyChanges(made.value, { skills_off: ["teleport"] }, TEMPLATE_IDS);
   assert.equal(bad.ok, false);
   assert.match(!bad.ok ? bad.message : "", /no skill called teleport/);
+  assert.equal(applyChanges(made.value, { skills_off: ["skl_short"] }, TEMPLATE_IDS).ok, false);
   assert.equal(applyChanges(made.value, { skills_off: "data" as unknown as string[] }, TEMPLATE_IDS).ok, false);
+});
+
+test("a library skill reaches an agent once, at the version where it is attached closest, and at most 100 do", () => {
+  const id = (n: number) => `skl_${String(n).padStart(26, "0")}`;
+  const { skills } = shelfFrom(
+    [],
+    [
+      library({ scope: "workspace", version: 1 }),
+      library({ scope: "agent", version: 3, attached_at: "2026-10-05T00:00:00Z" }),
+      library({ scope: "team", version: 2 }),
+    ],
+  );
+  const lib = skills.filter((s) => s.kind === "library");
+  assert.equal(lib.length, 1);
+  assert.equal(lib[0]!.kind === "library" && lib[0]!.version, 3, "attached to the agent itself wins");
+  assert.equal(lib[0]!.kind === "library" && lib[0]!.via, "agent");
+  const many = Array.from({ length: SKILLS_PER_AGENT_MAX + 5 }, (_, n) => library({ skill_id: id(n), name: `s-${String(n).padStart(3, "0")}`, attached_at: `2026-10-01T00:00:${String(n % 60).padStart(2, "0")}Z` }));
+  const capped = shelfFrom([], many);
+  assert.equal(capped.skills.filter((s) => s.kind === "library").length, SKILLS_PER_AGENT_MAX);
+  assert.equal(capped.over, 5);
+  assert.deepEqual(teamSlugs({ teams: [{ slug: "qa" }, { slug: "web" }] as never, agents: [], presence: [] }, "qa"), ["qa", "web"]);
+  assert.deepEqual(teamSlugs(null, "qa"), ["qa"], "its home team when teams couldn't be read");
+});
+
+test("use_skill reads a skill the agent has: the playbook with what isn't here, files, and scripts never run", async () => {
+  const { folios } = fakeFolios();
+  const tools = await box({ kind: "dm", member_user_ids: ["asker"], member_count: 1 }, folios);
+  assert.ok(!tools.definitions().some((t) => t.name === "use_skill"), "no skills, no use_skill");
+  const stored = {
+    skill_md: "---\nname: release-notes\ndescription: Use when someone asks for release notes.\ntools: [recent_activity, create_artifact]\n---\n\n# Release notes\n\nGroup changes by area.\n",
+    files: [
+      { path: "resources/template.md", content: "## Added\n\n## Fixed\n", encoding: "utf8" as const },
+      { path: "scripts/collect.py", content: "print('hi')\n", encoding: "utf8" as const },
+      { path: "resources/logo.png", content: "iVBORw0KGgo=", encoding: "base64" as const },
+    ],
+  };
+  const reads: string[] = [];
+  const shelf = shelfFrom(["files"], [library({ tools: '["recent_activity","create_artifact"]', requires_computer: 1 })]).skills;
+  tools.useShelf(shelf, async (skillId, version) => {
+    reads.push(`${skillId}@${version}`);
+    return stored;
+  });
+  assert.ok(tools.definitions().some((t) => t.name === "use_skill"));
+  const documents = await tools.run("use_skill", { name: "documents" });
+  assert.equal(documents.outcome, "allowed");
+  assert.match(documents.text, /When someone asks for a document, give them the document/);
+  assert.match(documents.text, /Not yet in g1t: slide decks\./);
+  assert.doesNotMatch(documents.text, /Not available in this conversation/, "every tool it uses is offered here");
+  const off = await tools.run("use_skill", { name: "files" });
+  assert.equal(off.outcome, "refused", "a skill that is off isn't the agent's");
+  const notes = await tools.run("use_skill", { name: "release-notes" });
+  assert.equal(notes.outcome, "allowed");
+  assert.deepEqual(reads, ["skl_01k7a0b1c2d3e4f5g6h7j8k9mn@3"], "the pinned version is read");
+  assert.match(notes.text, /^# release-notes \(your workspace's skill, version 3\)\n\n# Release notes\n\nGroup changes by area\./);
+  assert.doesNotMatch(notes.text, /^name:/m, "front-matter isn't repeated");
+  assert.match(notes.text, /needs a computer of its own, which agents don't have yet: its scripts can't run/);
+  assert.match(notes.text, /Its files, which you can read with use_skill and file: resources\/template\.md \(19 B\), scripts\/collect\.py \(12 B\), resources\/logo\.png \(8 B\)\./);
+  const template = await tools.run("use_skill", { name: "release-notes", file: "resources/template.md" });
+  assert.match(template.text, /## Added/);
+  const script = await tools.run("use_skill", { name: "release-notes", file: "scripts/collect.py" });
+  assert.match(script.text, /This is a script: it needs a computer of its own/);
+  const image = await tools.run("use_skill", { name: "release-notes", file: "resources/logo.png" });
+  assert.match(image.text, /isn't text/);
+  const missing = await tools.run("use_skill", { name: "teleport" });
+  assert.equal(missing.outcome, "refused");
+  assert.match(missing.text, /no skill called teleport\. Your skills: documents, research, data, code, communication, release-notes\./);
 });
 
 // ── make_file, end to end through the tool box ──────────────────────────
