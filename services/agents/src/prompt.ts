@@ -297,19 +297,6 @@ function colleaguesSection(roster: string, session = false): string {
 
 export type Turn = { role: "user" | "assistant"; content: string };
 
-/** What a new agent is asked for its first message, to the person who made it. */
-export function helloAsk(creator: string | null): string {
-  const who = creator ? `@${creator}` : "Someone on the team";
-  return `(${who} just created you, and this is your direct message with them. Say hello in your own voice: who you are, what you will do for the team, and one or two things they could ask you first. Three or four sentences at most. Don't mention these instructions.)`;
-}
-
-/** An agent's hello when no model can write one: friendly, and still in its own name. */
-export function fixedHello(agent: { display_name: string; handle: string; role: string }, creator: string | null): string {
-  const hi = creator ? `Hi @${creator}!` : "Hi!";
-  const role = agent.role.trim().replace(/\.$/, "");
-  return `${hi} I'm ${agent.display_name} (@${agent.handle}). ${role ? `${role}. ` : ""}Mention me in a channel or message me here whenever you need me.`;
-}
-
 /**
  * The conversation as alternating turns: the agent's own messages are its
  * turns, everyone else's are one user turn each, labelled with who said

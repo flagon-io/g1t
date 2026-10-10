@@ -105,17 +105,6 @@ test("a conversation that ends on the agent's own message still ends on a user t
   assert.deepEqual(turns([], "agt_ship"), []);
 });
 
-test("a new agent's hello: asked in its own voice, or a fixed friendly one without a model", async () => {
-  const { fixedHello, helloAsk } = await import("./prompt.ts");
-  assert.match(helloAsk("dana"), /@dana just created you/);
-  assert.match(helloAsk("dana"), /in your own voice/);
-  assert.equal(
-    fixedHello({ display_name: "Margo", handle: "margo", role: "Reviews every pull request." }, "dana"),
-    "Hi @dana! I'm Margo (@margo). Reviews every pull request. Mention me in a channel or message me here whenever you need me.",
-  );
-  assert.match(fixedHello({ display_name: "Dot", handle: "dot", role: "" }, null), /^Hi! I'm Dot \(@dot\)\. Mention me/);
-});
-
 test("the prompt says the agent's title, its teams, duties, and that subagents work inside sessions", () => {
   const prompt = systemPrompt({
     ...base,

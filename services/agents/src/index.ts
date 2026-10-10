@@ -304,7 +304,7 @@ class Agents {
       throw error;
     }
     this.audit(viewer, a.workspace, "create_agent", definition.handle, `Created ${personal ? "the personal agent " : ""}@${definition.handle} (version 1)`, "agents", personal ? "member" : "owner");
-    // On its teams before it says hello, so it knows them.
+    // On its teams as it is made, so it knows them from its first message.
     if (teams.value.length) {
       const identity = identityClient(this.env.IDENTITY);
       await Promise.all(
@@ -316,7 +316,6 @@ class Agents {
         ),
       );
     }
-    this.defer(this.hello(a.workspace, workspaceId, id, viewer));
     const row = await this.row(workspaceId, definition.handle);
     return ok(toAgent(row!, new Date()));
   }
@@ -704,38 +703,6 @@ class Agents {
         },
       )
       .catch((error: unknown) => console.error("agents: a requester was not told", request.id, String(error)));
-  }
-
-  /**
-   * A new agent's first words: the DM with the person who made it is
-   * opened, and the agent says hello there in its own voice, as a reply
-   * billed like any other (a fixed hello when no model can be used).
-   * After the answer; a failure only logs.
-   */
-  private async hello(workspace: string, workspaceId: string, agentId: string, creator: User): Promise<void> {
-    if ((creator.kind ?? "user") !== "user") return;
-    try {
-      const dm = await chatClient(this.env.CHAT).openDm(workspace, creator, [{ kind: "agent", id: agentId }]);
-      if (!dm.ok) throw new Error(dm.error.message);
-      const desk = this.env.DESKS.get(this.env.DESKS.idFromName(agentId));
-      await desk.take({
-        workspace,
-        workspace_id: workspaceId,
-        channel_id: dm.value.id,
-        channel_kind: "dm",
-        channel_name: null,
-        agent_id: agentId,
-        // One hello per agent, however often this runs.
-        message_id: `hello:${agentId}`,
-        thread_root: null,
-        asked_by: creator.id,
-        hops: 0,
-        asker: askerAccess(creator, workspace),
-        hello: true,
-      });
-    } catch (error) {
-      console.error("agents: a new agent's hello was not sent", agentId, String(error));
-    }
   }
 
   async update(a: { workspace: string; handle: string; viewer: User | null; changes: Partial<NewWorkspaceAgent> }): Promise<Result<WorkspaceAgent>> {

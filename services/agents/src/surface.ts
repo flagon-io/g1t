@@ -155,8 +155,7 @@ export function g1tSurface(chat: ServiceBinding, delivery: AgentDelivery): Surfa
     async acknowledge() {
       acknowledged = (async () => {
         try {
-          // A first message's hello answers nothing; a DM's people decide the rest.
-          if (delivery.message_id.startsWith("hello:")) return false;
+          // A DM's people decide.
           if (delivery.channel_kind === "dm") {
             const audience = await client.audience(workspace, channel);
             if (!audience.ok || !reactsIn("dm", audience.value.member_count)) return false;

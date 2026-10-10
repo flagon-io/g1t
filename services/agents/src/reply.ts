@@ -24,7 +24,7 @@ import { type AbilityEnv, abilitiesFor, abilitiesSection, abilityPorts, saidText
 import { CHAT_MAX_HOPS } from "../../../packages/contracts/src/chat.ts";
 import type { Tokens } from "./budget.ts";
 import { handOffPort } from "./handoff.ts";
-import { HISTORY_LIMIT, fixedHello, helloAsk, systemPrompt, turns } from "./prompt.ts";
+import { HISTORY_LIMIT, systemPrompt, turns } from "./prompt.ts";
 import { loadShelf, skillsSection, teamSlugs } from "./skills.ts";
 import { readVersion } from "./skill-library.ts";
 import { type Specialist, orchestratorInstructions, orchestratorTier, rosterLines } from "./orchestrator.ts";
@@ -226,11 +226,8 @@ type Outcome = {
   effort?: string | null;
 };
 
-/**
- * What a desk is handed: a message to answer, or (`hello`) the agent's
- * first message to the person who made it, in the DM that just opened.
- */
-export type DeskWork = AgentDelivery & { hello?: boolean };
+/** What a desk is handed: a message to answer. */
+export type DeskWork = AgentDelivery;
 
 /** How a limit's refusal reads in chat, in the agent's voice. */
 function noticeFor(reason: string, message: string): string {
@@ -317,11 +314,6 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
 
   /** Says once, in this conversation, why the agent cannot answer; a repeat within hours is kept back. */
   const notice = async (message: string, reason: string) => {
-    // An agent's first words are never an excuse: without a model, a fixed hello.
-    if (delivery.hello) {
-      const posted = await surface.post(fixedHello(row, delivery.asker?.username ?? null)).catch(() => null);
-      return await finish({ status: "blocked", error: reason, reply_id: posted });
-    }
     const since = new Date(now.getTime() - NOTICE_QUIET_MS).toISOString();
     const recent = await db
       .prepare(
@@ -336,7 +328,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
 
   try {
     // A reply under one of its session cards steers that session; nothing is answered here.
-    const steered = delivery.hello ? null : await steeredSession(db, row.id, delivery.thread_root);
+    const steered = await steeredSession(db, row.id, delivery.thread_root);
     if (steered) {
       const history = await surface.history(HISTORY_LIMIT).catch(() => [] as SurfaceMessage[]);
       const message = history.find((m) => m.id === delivery.message_id);
@@ -347,13 +339,12 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
     }
 
     // Read the conversation while showing that the agent is on it.
-    // A hello has no conversation yet: it is asked to introduce itself.
     // And who is here: said every turn, so the agent knows who reads it and who doesn't.
     // And its teams, from their pages: who leads, who owns what, who is around.
     const [, history, conversationHere, teamsHere] = await Promise.all([
       surface.typing(),
-      delivery.hello ? Promise.resolve([]) : surface.history(HISTORY_LIMIT),
-      delivery.hello ? Promise.resolve(null) : surface.conversation(),
+      surface.history(HISTORY_LIMIT),
+      surface.conversation(),
       loadTeams(env, slug, row.workspace_id, { id: row.id }).catch(() => null),
     ]);
     // A personal agent answers only its member, in the DM of the two of them (access.ts).
@@ -363,7 +354,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
       members: conversationHere ? conversationHere.people + conversationHere.agents : null,
     });
     if (refused) return await notice(refused, "personal_agent");
-    const conversation = delivery.hello ? [{ role: "user" as const, content: helloAsk(delivery.asker?.username ?? null) }] : turns(history, row.id);
+    const conversation = turns(history, row.id);
     if (!conversation.length) return await finish({ status: "skipped", error: "nothing to answer" });
     const author = askerIn(history, delivery);
     const askerName = delivery.asker?.username ?? author?.name ?? null;
@@ -387,122 +378,118 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
       // The "Your abilities outside g1t" section, once the tool box has them.
       let abilitiesText: string | null = null;
       let place: RecallPlace = { channel_id: delivery.channel_id, kind: delivery.channel_kind === "dm" ? "dm" : "private", people: [delivery.asked_by] };
-      if (!delivery.hello) {
-        try {
-          const audience = await Audience.build(slug, delivery.asked_by, audiencePorts(env, slug, delivery.channel_id));
-          place = { channel_id: delivery.channel_id, kind: audience.kind, people: audience.shared ? [delivery.asked_by] : audience.members.map((m) => m.id) };
-          const ports = (consult: ToolPorts["consult"]) => toolPorts(env, slug, row.workspace_id, delivery.channel_id, consult, row.id);
-          audienceHash = audience.hash;
-          const consult = consulting({
-            db,
-            row,
-            delivery,
-            send: model.send,
-            policy: model.policy,
-            ownModel: model.ownModel,
-            sessionModel: model.sessionModel,
-            own: model.own,
-            ports,
-            hops,
-            now,
-            surface,
-            asker,
-            spent: consulted,
-          });
-          const where = delivery.channel_kind === "dm" ? "a direct message" : `#${delivery.channel_name ?? "a channel"}`;
-          const actions = actionPorts(env as unknown as SessionEnv, {
-            agent: row,
-            place,
-            source: { kind: "message", ref: delivery.message_id, label: askerName ? `@${askerName} in ${where}` : where, channel_id: delivery.channel_id },
-            asker: { id: delivery.asked_by, username: askerName },
-            workspace: slug,
-            postCard: (card) => surface.post("", card).catch(() => null),
-            // Real work becomes a session, with its card in this conversation.
-            spinOff: async (title, goal) => {
-              if (spinOffs >= MAX_SPIN_OFFS) return { ok: false, message: "You've started enough sessions from this message." };
-              spinOffs++;
-              const session = await startSession(env as unknown as SessionEnv, {
+      try {
+        const audience = await Audience.build(slug, delivery.asked_by, audiencePorts(env, slug, delivery.channel_id));
+        place = { channel_id: delivery.channel_id, kind: audience.kind, people: audience.shared ? [delivery.asked_by] : audience.members.map((m) => m.id) };
+        const ports = (consult: ToolPorts["consult"]) => toolPorts(env, slug, row.workspace_id, delivery.channel_id, consult, row.id);
+        audienceHash = audience.hash;
+        const consult = consulting({
+          db,
+          row,
+          delivery,
+          send: model.send,
+          policy: model.policy,
+          ownModel: model.ownModel,
+          sessionModel: model.sessionModel,
+          own: model.own,
+          ports,
+          hops,
+          now,
+          surface,
+          asker,
+          spent: consulted,
+        });
+        const where = delivery.channel_kind === "dm" ? "a direct message" : `#${delivery.channel_name ?? "a channel"}`;
+        const actions = actionPorts(env as unknown as SessionEnv, {
+          agent: row,
+          place,
+          source: { kind: "message", ref: delivery.message_id, label: askerName ? `@${askerName} in ${where}` : where, channel_id: delivery.channel_id },
+          asker: { id: delivery.asked_by, username: askerName },
+          workspace: slug,
+          postCard: (card) => surface.post("", card).catch(() => null),
+          // Real work becomes a session, with its card in this conversation.
+          spinOff: async (title, goal) => {
+            if (spinOffs >= MAX_SPIN_OFFS) return { ok: false, message: "You've started enough sessions from this message." };
+            spinOffs++;
+            const session = await startSession(env as unknown as SessionEnv, {
+              agent: row,
+              kind: "chat",
+              title,
+              goal: `${askerName ? `@${askerName}` : "Someone"} asked in ${where}:\n\n${goal}`,
+              workspace: slug,
+              channel_id: delivery.channel_id,
+              channel_kind: delivery.channel_kind,
+              channel_name: delivery.channel_name,
+              thread_root: delivery.thread_root,
+              message_id: delivery.message_id,
+              asked_by: delivery.asked_by,
+              asked_by_username: askerName,
+              asker: delivery.asker ?? null,
+              chain: [...chain],
+              hops,
+            });
+            const cap = session.cap_micros ? ` with a cap of ${dollars(session.cap_micros)}` : "";
+            return { ok: true, message: `Started the session "${session.title}"${cap}. Its card is in the conversation and it reports back there. Tell them in a sentence; don't do the work here.` };
+          },
+        });
+        // Work handed to a colleague: the only way an agent gets another working (handoff.ts).
+        const viewer = audience.asker;
+        actions.handOff = handOffPort({
+          self: { id: row.id, handle: row.handle },
+          chain,
+          asker: delivery.asker ?? null,
+          agent: async (handle) => {
+            const found = await db
+              .prepare(selectAgents("a.workspace_id = ?3 AND a.handle = ?4 AND a.archived_at IS NULL AND a.scope = 'workspace'"))
+              .bind(...periods(now), row.workspace_id, handle)
+              .first<Row>();
+            if (!found) return null;
+            const agent = toAgent(found, now);
+            return { id: agent.id, handle: agent.handle, display_name: agent.display_name, builtin: !!found.builtin, status: agent.status };
+          },
+          person: async (handle) => {
+            if (!viewer) return false;
+            const members = await identityClient(env.IDENTITY).listMembers(slug, viewer);
+            return members.ok && members.value.some((m) => m.username.toLowerCase() === handle);
+          },
+          handOff: (colleagueId, brief) => surface.handOff(colleagueId, brief),
+        });
+        toolbox = new ToolBox(
+          audience,
+          ports(consult.ask),
+          { agentId: row.id, notConsult: [row.handle, ...(sender ? [sender.handle] : [])], hops, maxHops: CHAT_MAX_HOPS },
+          [],
+          actions,
+        );
+        consult.attach(toolbox);
+        // Its abilities outside g1t (abilities.ts): offered and enforced by the tool box, for the person it acts for.
+        if (viewer) {
+          const sections = await abilitiesFor(env as unknown as AbilityEnv, { agent: row, definition, workspace: slug, asker: viewer }).catch(() => null);
+          if (sections) {
+            const saidByPeople = saidText([...history].reverse().filter((m) => m.author.kind === "user").slice(0, 3).map((m) => m.body));
+            toolbox.useAbilities(
+              sections,
+              abilityPorts(env as unknown as AbilityEnv, {
                 agent: row,
-                kind: "chat",
-                title,
-                goal: `${askerName ? `@${askerName}` : "Someone"} asked in ${where}:\n\n${goal}`,
                 workspace: slug,
                 channel_id: delivery.channel_id,
-                channel_kind: delivery.channel_kind,
-                channel_name: delivery.channel_name,
-                thread_root: delivery.thread_root,
-                message_id: delivery.message_id,
-                asked_by: delivery.asked_by,
-                asked_by_username: askerName,
-                asker: delivery.asker ?? null,
-                chain: [...chain],
-                hops,
-              });
-              const cap = session.cap_micros ? ` with a cap of ${dollars(session.cap_micros)}` : "";
-              return { ok: true, message: `Started the session "${session.title}"${cap}. Its card is in the conversation and it reports back there. Tell them in a sentence; don't do the work here.` };
-            },
-          });
-          // Work handed to a colleague: the only way an agent gets another working (handoff.ts).
-          const viewer = audience.asker;
-          actions.handOff = handOffPort({
-            self: { id: row.id, handle: row.handle },
-            chain,
-            asker: delivery.asker ?? null,
-            agent: async (handle) => {
-              const found = await db
-                .prepare(selectAgents("a.workspace_id = ?3 AND a.handle = ?4 AND a.archived_at IS NULL AND a.scope = 'workspace'"))
-                .bind(...periods(now), row.workspace_id, handle)
-                .first<Row>();
-              if (!found) return null;
-              const agent = toAgent(found, now);
-              return { id: agent.id, handle: agent.handle, display_name: agent.display_name, builtin: !!found.builtin, status: agent.status };
-            },
-            person: async (handle) => {
-              if (!viewer) return false;
-              const members = await identityClient(env.IDENTITY).listMembers(slug, viewer);
-              return members.ok && members.value.some((m) => m.username.toLowerCase() === handle);
-            },
-            handOff: (colleagueId, brief) => surface.handOff(colleagueId, brief),
-          });
-          toolbox = new ToolBox(
-            audience,
-            ports(consult.ask),
-            { agentId: row.id, notConsult: [row.handle, ...(sender ? [sender.handle] : [])], hops, maxHops: CHAT_MAX_HOPS },
-            [],
-            actions,
-          );
-          consult.attach(toolbox);
-          // Its abilities outside g1t (abilities.ts): offered and enforced by the tool box, for the person it acts for.
-          if (viewer && !delivery.hello) {
-            const sections = await abilitiesFor(env as unknown as AbilityEnv, { agent: row, definition, workspace: slug, asker: viewer }).catch(() => null);
-            if (sections) {
-              const saidByPeople = saidText([...history].reverse().filter((m) => m.author.kind === "user").slice(0, 3).map((m) => m.body));
-              toolbox.useAbilities(
-                sections,
-                abilityPorts(env as unknown as AbilityEnv, {
-                  agent: row,
-                  workspace: slug,
-                  channel_id: delivery.channel_id,
-                  session: null,
-                  asker: { id: delivery.asked_by, username: askerName },
-                  postCard: (card) => surface.post("", card).catch(() => null),
-                }),
-                saidByPeople,
-                definition.abilities.mcp_servers,
-              );
-              abilitiesText = abilitiesSection(sections);
-            }
+                session: null,
+                asker: { id: delivery.asked_by, username: askerName },
+                postCard: (card) => surface.post("", card).catch(() => null),
+              }),
+              saidByPeople,
+              definition.abilities.mcp_servers,
+            );
+            abilitiesText = abilitiesSection(sections);
           }
-        } catch (error) {
-          // Without an audience nothing may be read: the reply goes on with this conversation only.
-          console.error("agents: no audience for a reply, so no tools", row.id, String(error));
         }
+      } catch (error) {
+        // Without an audience nothing may be read: the reply goes on with this conversation only.
+        console.error("agents: no audience for a reply, so no tools", row.id, String(error));
       }
       // What people said last, for recalling what the workspace's artifacts say about it.
       const said = [...history].reverse().filter((m) => m.author.kind === "user").slice(0, 3).map((m) => m.body);
-      const [facts, recent, passages, shelf] = delivery.hello
-        ? [[], null, [], []]
-        : await Promise.all([
+      const [facts, recent, passages, shelf] = await Promise.all([
             recall(db, row.id, place).catch(() => []),
             sessionsHere(db, row.id, delivery.channel_id).catch(() => null),
             toolbox ? toolbox.recall(recallQuery(said), definition.reading ?? []) : Promise.resolve([]),
