@@ -11,6 +11,7 @@ import { MODES, installationSummary, notYetAdded } from "../lib/github";
 import { githubApp } from "../lib/github.server";
 import { page } from "../lib/meta";
 import { assertSameOrigin, requireUser, roleIn } from "../lib/session.server";
+import { currentWorkspace } from "../lib/current-workspace.server";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Import from GitHub · g1t" });
@@ -19,21 +20,17 @@ export function meta(args: Route.MetaArgs) {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
   const url = new URL(request.url);
-  const workspaces = (user.workspaces ?? []).map((membership) => ({
-    slug: membership.slug,
-    name: membership.name ?? membership.slug,
-    owner: membership.role === "owner",
-  }));
-  if (workspaces.length === 0) throw redirect("/workspaces/new");
-  const asked = url.searchParams.get("workspace")?.toLowerCase();
-  const workspace = workspaces.find((option) => option.slug === asked)?.slug ?? workspaces[0].slug;
+  const current = currentWorkspace(user, request);
+  if (!current) throw redirect("/workspaces/new");
+  const workspace = current.slug;
+  const workspaceName = current.name?.trim() || current.slug;
   // What the person can see on GitHub is asked for alongside the status:
   // an installation made there directly is offered here to be added.
   const [status, visible] = await Promise.all([
     githubApp.status(user, workspace),
     githubApp.visibleInstallations(user).catch(() => null),
   ]);
-  if (!status.ok || !status.value.configured) throw redirect(`/new?workspace=${workspace}`);
+  if (!status.ok || !status.value.configured) throw redirect("/new");
   const { installations, linked } = status.value;
   const recorded = new Set(installations.map((item) => item.id));
   const claimable =
@@ -53,8 +50,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     else error = listed.error.message;
   }
   return {
-    workspaces,
     workspace,
+    workspaceName,
     owner: roleIn(user, workspace) === "owner",
     linked,
     installations,
@@ -75,13 +72,13 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (form.get("intent") === "add-installation") {
     const added = await githubApp.addInstallation(user, workspace, installationId);
     if (!added.ok) return { error: null, addError: added.error.message, results: [] };
-    throw redirect(`/new/github?workspace=${encodeURIComponent(workspace)}&installation=${installationId}`);
+    throw redirect(`/new/github?installation=${installationId}`);
   }
   if (form.get("intent") === "remove-installation") {
     const removed = await githubApp.removeInstallation(user, workspace, installationId);
     // Shown by the list it was removed from, which is there with or without an account chosen.
     if (!removed.ok) return { error: null, removeError: removed.error.message, results: [] };
-    throw redirect(`/new/github?workspace=${encodeURIComponent(workspace)}`);
+    throw redirect("/new/github");
   }
   const mode = (["import", "mirror", "push"] as const).find((option) => option === form.get("mode")) ?? "import";
   const chosen = form.getAll("repo").map(Number).filter((id) => Number.isSafeInteger(id) && id > 0).slice(0, 20);
@@ -102,14 +99,13 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 export default function NewFromGithub({ loaderData, actionData }: Route.ComponentProps) {
-  const { workspace, workspaces, installations, claimable, installation, repositories, linked, owner } = loaderData;
-  const workspaceName = workspaces.find((option) => option.slug === workspace)?.name ?? workspace;
+  const { workspace, workspaceName, installations, claimable, installation, repositories, linked, owner } = loaderData;
   const these = claimable.length === 1 ? "this account" : "these accounts";
-  const here = `/new/github?workspace=${workspace}`;
+  const here = "/new/github";
   const names = new Map((repositories?.repositories ?? []).map((repo) => [repo.id, repo.fullName]));
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
-      <Link to={`/new?workspace=${workspace}`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
+      <Link to="/new" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
         <ArrowLeft size={14} /> New project
       </Link>
       <span className="mt-6 flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/30">
@@ -121,19 +117,6 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
         which repositories it can see on GitHub; nothing else is read.
       </p>
 
-      {workspaces.length > 1 && (
-        <nav className="mt-6 flex flex-wrap gap-2" aria-label="Workspace">
-          {workspaces.map((option) => (
-            <Link
-              key={option.slug}
-              to={`/new/github?workspace=${option.slug}`}
-              className={`rounded-full border px-3 py-1 text-sm ${option.slug === workspace ? "border-accent/60 text-fg" : "border-line text-muted hover:text-fg"}`}
-            >
-              {option.name}
-            </Link>
-          ))}
-        </nav>
-      )}
 
       {!linked ? (
         <section className="mt-8 rounded-lg border border-line p-6">
@@ -231,7 +214,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                 {installations.map((item) => (
                   <li key={item.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
                     <Link
-                      to={`${here}&installation=${item.id}`}
+                      to={`${here}?installation=${item.id}`}
                       className={`whitespace-nowrap ${item.id === installation?.id ? "font-medium text-fg" : "text-muted hover:text-fg"}`}
                     >
                       {item.account}
@@ -310,14 +293,14 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                 {repositories && repositories.total > repositories.perPage && (
                   <div className="flex justify-between text-sm">
                     {repositories.page > 1 ? (
-                      <Link to={`${here}&installation=${installation.id}&page=${repositories.page - 1}`} className="text-muted hover:text-fg">
+                      <Link to={`${here}?installation=${installation.id}&page=${repositories.page - 1}`} className="text-muted hover:text-fg">
                         Previous
                       </Link>
                     ) : (
                       <span />
                     )}
                     {repositories.page * repositories.perPage < repositories.total && (
-                      <Link to={`${here}&installation=${installation.id}&page=${repositories.page + 1}`} className="text-muted hover:text-fg">
+                      <Link to={`${here}?installation=${installation.id}&page=${repositories.page + 1}`} className="text-muted hover:text-fg">
                         Next
                       </Link>
                     )}
@@ -362,7 +345,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                 <SubmitButton variant="accent" pending="Bringing them across…" match={{ intent: "import" }}>
                   Bring to g1t
                 </SubmitButton>
-                <ButtonLink to={`/new?workspace=${workspace}`} variant="quiet">
+                <ButtonLink to="/new" variant="quiet">
                   Cancel
                 </ButtonLink>
               </div>

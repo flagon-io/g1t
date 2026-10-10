@@ -249,7 +249,9 @@ Someone without the role does not see the tab.
 
 ## Create a project
 
-1. Choose **New project** in the sidebar, or go to `g1t.sh/new`.
+1. In the workspace the project belongs to, choose **New project** in the
+   sidebar, or go to `g1t.sh/new`. It's made in the workspace you're in; to
+   make one somewhere else, switch workspaces first.
 2. Choose where its code comes from:
    - **Start empty**: a new repository on g1t.
    - **Import code**: copy a public repository from GitHub or any git host

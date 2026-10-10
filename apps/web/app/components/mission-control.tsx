@@ -767,7 +767,7 @@ export default function MissionControl({
       done: repos.length > 0,
       title: "Add a project",
       about: "Create a repository, or import one by its address. Push to it with git as usual.",
-      to: workspace ? `/new?workspace=${workspace}` : "/new",
+      to: "/new",
       action: "Add",
     },
     trial?.open
@@ -864,7 +864,7 @@ export default function MissionControl({
       </div>
     ) : (
       <Link
-        to={workspace ? `/new?workspace=${workspace}` : "/new"}
+        to={"/new"}
         className="inline-flex items-center gap-1.5 rounded-md border border-line-strong px-3 py-2 text-sm font-medium text-fg/90 hover:bg-raised hover:text-fg"
       >
         <Plus size={14} /> New project
@@ -1030,7 +1030,7 @@ export default function MissionControl({
                 <Empty
                   action={
                     <Link
-                      to={workspace ? `/new?workspace=${workspace}` : "/new"}
+                      to={"/new"}
                       className="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg-hover"
                     >
                       Create or import a project

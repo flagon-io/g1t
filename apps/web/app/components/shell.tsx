@@ -626,7 +626,7 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
     <SidebarGroup
       title="Projects"
       action={
-        <Link to={`/new?workspace=${slug}`} aria-label="New project" className="rounded p-0.5 text-faint hover:bg-raised hover:text-fg">
+        <Link to="/new" aria-label="New project" className="rounded p-0.5 text-faint hover:bg-raised hover:text-fg">
           <Plus size={13} />
         </Link>
       }

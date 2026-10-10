@@ -4,15 +4,15 @@ import { Form, redirect, useNavigate } from "react-router";
 
 import type { Route } from "./+types/new";
 import { page } from "../lib/meta";
-import { Avatar, ErrorText, SubmitButton } from "../components/ui";
+import { ErrorText, SubmitButton } from "../components/ui";
 import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "../components/ui/field";
 import { Input, InputAddon, InputGroup } from "../components/ui/input";
 import { RadioCard, RadioGroup } from "../components/ui/radio-group";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../components/ui/select";
 import { repos } from "../lib/services.server";
 import { GithubMark } from "../components/github";
 import { githubApp } from "../lib/github.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
+import { currentWorkspace } from "../lib/current-workspace.server";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "New project · g1t" });
@@ -20,19 +20,14 @@ export function meta(args: Route.MetaArgs) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
-  const workspaces = (user.workspaces ?? []).map((membership) => ({
-    slug: membership.slug,
-    role: membership.role,
-    name: membership.name ?? membership.slug,
-    avatar: membership.avatar ?? null,
-  }));
-  // Projects live in a workspace, so there has to be one first.
-  if (workspaces.length === 0) throw redirect("/workspaces/new");
-  const asked = new URL(request.url).searchParams.get("workspace");
-  const selected = asked && workspaces.some((workspace) => workspace.slug === asked) ? asked : workspaces[0].slug;
+  // Projects live in a workspace, so there has to be one first; a new one
+  // goes in the workspace you're in.
+  const current = currentWorkspace(user, request);
+  if (!current) throw redirect("/workspaces/new");
+  const selected = current.slug;
   // With g1t's GitHub App configured, repositories can come from GitHub.
   const github = await githubApp.status(user, selected).catch(() => null);
-  return { workspaces, selected, github: Boolean(github?.ok && github.value.configured) };
+  return { selected, name: current.name?.trim() || current.slug, github: Boolean(github?.ok && github.value.configured) };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -76,7 +71,6 @@ const SOURCES: { id: Source | "mirror"; title: string; text: string; icon: React
   },
 ];
 
-const ROLE_LABELS: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member" };
 
 /** Replaces the mirror card when g1t's GitHub App is configured. */
 const GITHUB_SOURCE = {
@@ -91,7 +85,7 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
   const [source, setSource] = useState<Source>("empty");
   const navigate = useNavigate();
   const sources = loaderData.github ? SOURCES.map((option) => (option.id === "mirror" ? GITHUB_SOURCE : option)) : SOURCES;
-  const [workspace, setWorkspace] = useState(loaderData.selected);
+  const workspace = loaderData.selected;
   const [name, setName] = useState("");
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
@@ -111,7 +105,7 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
             name="source"
             value={source}
             onValueChange={(value) =>
-              value === "github" ? navigate(`/new/github?workspace=${workspace}`) : setSource(value as Source)
+              value === "github" ? navigate("/new/github") : setSource(value as Source)
             }
             aria-label="Where its code comes from"
             className="gap-3 sm:grid-cols-3"
@@ -141,29 +135,10 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
         <Field>
           <FieldLabel htmlFor="name">Name</FieldLabel>
           <InputGroup className="h-10">
-            <Select name="workspace" value={workspace} onValueChange={setWorkspace}>
-              <SelectTrigger
-                aria-label="Workspace"
-                className="h-full w-auto max-w-[55%] shrink-0 rounded-none border-0 bg-surface px-2.5 font-medium hover:bg-raised focus-visible:ring-0 data-[state=open]:bg-raised data-[state=open]:ring-0 sm:max-w-[45%]"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="start" className="min-w-64">
-                <SelectGroup>
-                  <SelectLabel>Workspaces</SelectLabel>
-                  {loaderData.workspaces.map((option) => (
-                    <SelectItem
-                      key={option.slug}
-                      value={option.slug}
-                      icon={<Avatar name={option.name} image={option.avatar} size={18} square />}
-                      description={`g1t.sh/${option.slug} · ${ROLE_LABELS[option.role] ?? option.role}`}
-                    >
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+            <input type="hidden" name="workspace" value={workspace} />
+            <InputAddon className="max-w-[55%] shrink-0 gap-2 bg-surface px-2.5 font-medium text-fg sm:max-w-[45%]">
+              <span className="truncate">{loaderData.name}</span>
+            </InputAddon>
             <InputAddon className="border-l border-line px-2 font-mono text-base text-faint">/</InputAddon>
             <Input
               id="name"
