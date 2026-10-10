@@ -8,8 +8,12 @@
  * and the audit log. Each person pins the ones they want, and nobody sees
  * an app they cannot use: Code's apps are for members with Code access.
  *
- * Pins are each person's own, per workspace, and kept in a cookie
- * (`g1t_dock`) so the page is drawn with the right dock from the server.
+ * Pins are each person's own, per workspace, in the order they set, and
+ * kept with their account by the identity service (`dock_pins`), so the
+ * dock is the same on every device (lib/dock.server.ts). A cookie
+ * (`g1t_dock`) keeps a copy on each device: the dock still draws from it
+ * when identity cannot be reached, and pins from before they were kept
+ * with the account carry over from it until the first change.
  * No Workers or React imports, so it can be tested under Node.
  */
 
@@ -85,12 +89,33 @@ export function appOf(key: AppKey): AppInfo {
   return APPS.find((app) => app.key === key)!;
 }
 
-/** The cookie that keeps each person's pins, per workspace. */
+/** The cookie that keeps this device's copy of each person's pins, per workspace. */
 export const DOCK_COOKIE = "g1t_dock";
 
-/** Most workspaces the cookie remembers pins for, and most pins in each. */
+/**
+ * Most workspaces the cookie remembers pins for, and most pins in each.
+ * Identity keeps up to 24 (`MAX_DOCK_PINS`); this stays under it.
+ */
 const MAX_WORKSPACES = 20;
 export const MAX_APP_PINS = 12;
+
+/**
+ * Pins as identity keeps them, read against the apps there are: keys that
+ * are not an app people pin (one since retired, say) are dropped, repeats
+ * too, in the order they were set.
+ */
+export function pinsFrom(keys: readonly string[]): PinnableApp[] {
+  return [...new Set(keys.filter(isPinnable))].slice(0, MAX_APP_PINS);
+}
+
+/**
+ * The pins to draw in the workspace `slug`: the account's when identity
+ * has them (`stored`), else this device's cookie, for pins never saved to
+ * the account or when identity could not be asked.
+ */
+export function pinsToShow(stored: readonly string[] | null | undefined, cookie: string | null | undefined, slug: string): PinnableApp[] {
+  return stored ? pinsFrom(stored) : pinsIn(cookie, slug);
+}
 
 /** Every workspace's pins, from the cookie's value: `acme:projects.usage,beta:teams`. */
 export function readDock(value: string | null | undefined): Record<string, PinnableApp[]> {

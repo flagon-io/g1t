@@ -34,7 +34,8 @@ import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { PageMain } from "./components/landmark";
 import { NotFound } from "./components/not-found";
 import { frameOf } from "./lib/chrome";
-import { DOCK_COOKIE, SIDEBAR_COOKIE, pinsIn, sidebarClosed } from "./lib/apps";
+import { DOCK_COOKIE, SIDEBAR_COOKIE, pinsToShow, sidebarClosed } from "./lib/apps";
+import { savedPins } from "./lib/dock.server";
 import { StandaloneFrame } from "./components/standalone";
 import { billing, chat, inbox, projects, workspaceAgents } from "./lib/services.server";
 import { unreadTotals } from "./lib/chat";
@@ -90,8 +91,10 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
       : visitorShell(params, context),
     registrationMode(),
   ]);
-  // The apps this person pinned to their dock here, from their cookie (lib/apps.ts).
-  if (shell.workspace) shell.pins = pinsIn(dock, shell.workspace.slug);
+  // The apps this person pinned to their dock here: as their account keeps
+  // them (read with the rest of the shell), else as this device's cookie
+  // remembers them (lib/apps.ts).
+  if (shell.workspace) shell.pins = pinsToShow(shell.pins, dock, shell.workspace.slug);
   // Where this g1t lives, for clone lines, agent setup and link previews.
   return {
     user,
@@ -168,7 +171,7 @@ async function shellFor(
   // something (lib/cache.server.ts).
   const kept = <T,>(what: string, load: () => Promise<T>) =>
     workspace ? shortCache(`shell:${what}:${user.id}:${workspace.slug}`, SHELL_TTL_MS, load) : Promise.resolve(null);
-  const [listed, counts, status, usage, limit, entitlements, shared, unread, shortcuts, chatUnread, teamAgents] = await Promise.all([
+  const [listed, counts, status, usage, limit, entitlements, shared, unread, shortcuts, chatUnread, teamAgents, dockPins] = await Promise.all([
     // Every project, for the palette and the count; the sidebar lists only
     // the person's pinned and recent ones (lib/pins.ts).
     workspace ? workspaceProjects(workspace.slug, user) : Promise.resolve(null),
@@ -188,6 +191,10 @@ async function shellFor(
     workspace ? chatUnreadFor(workspace.slug, user) : Promise.resolve(null),
     // Home's Recent and the Agents sidebar, on every page: never waited on for long.
     workspace ? agentsFor(workspace.slug, user) : Promise.resolve(null),
+    // The dock's pins, kept with the account so every device shows the same
+    // dock; never kept here, so a pin shows the moment it is made. Null
+    // falls back to the cookie (lib/dock.server.ts).
+    workspace ? savedPins(user, workspace.slug) : Promise.resolve(null),
   ]);
   return {
     workspace,
@@ -225,6 +232,7 @@ async function shellFor(
     inbox: unread,
     chat: chatUnread,
     agents: teamAgents,
+    pins: dockPins ?? undefined,
     // While g1t is free every charge is zero, so usage is shown at cost.
     // Usage at price, the one figure every page shows.
     monthUsageMicros: usage?.ok ? (usage.value.free ? usage.value.usedMicros : (usage.value.priceMicros ?? usage.value.spentMicros)) : null,

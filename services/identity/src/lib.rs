@@ -13,6 +13,7 @@ mod deletion;
 mod deploy_keys;
 mod device;
 mod directory;
+mod dock;
 mod email;
 mod emails;
 mod github;
@@ -990,6 +991,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         }
         "directory" => reply(&identity.directory(args(body)?).await?),
         "profile_workspaces" => reply(&identity.profile_workspaces(args(body)?).await?),
+        // Each person's dock pins, per workspace; see dock.rs.
+        "dock_pins" => reply(&identity.dock_pins(args(body)?).await?),
+        "set_dock_pins" => reply(&identity.set_dock_pins(args(body)?).await?),
         "list_ssh_keys" => reply(&identity.list_ssh_keys(args(body)?).await?),
         // Services only: who registered each key, for verifying commit
         // signatures (repos' signatures.rs).

@@ -178,6 +178,8 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     updateProfile: (actor, fields) => call("update_profile", { actor, ...fields }),
     profileWorkspaces: (username, viewer, publicIn) =>
       call("profile_workspaces", { username, viewer, public: publicIn }),
+    dockPins: (user, workspace) => call("dock_pins", { user, workspace }),
+    setDockPins: (user, workspace, apps) => call("set_dock_pins", { user, workspace, apps }),
     listSshKeys: (user) => call("list_ssh_keys", { user }),
     addSshKey: (user, title, publicKey) =>
       call("add_ssh_key", { user, title, publicKey }),

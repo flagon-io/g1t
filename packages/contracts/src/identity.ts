@@ -1034,6 +1034,20 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
    */
   profileWorkspaces(username: string, viewer: Viewer, publicIn: string[]): Promise<ProfileWorkspace[]>;
 
+  /**
+   * The apps `user` pinned to their dock in the workspace `workspace` (a
+   * slug), in the order they set; null when they never saved any there or
+   * are not one of its members. Kept with the account, so every device
+   * shows the same dock.
+   */
+  dockPins(user: User, workspace: string): Promise<string[] | null>;
+  /**
+   * Replaces `user`'s dock pins in `workspace` with `apps`, in that order:
+   * keys of lowercase letters, digits and hyphens, repeats dropped, at
+   * most `MAX_DOCK_PINS`. Which keys are real apps is the caller's to check.
+   */
+  setDockPins(user: User, workspace: string, apps: string[]): Promise<Result<string[]>>;
+
   listSshKeys(user: User): Promise<SshKey[]>;
   /** Takes one line in OpenSSH public key format. */
   addSshKey(user: User, title: string, publicKey: string): Promise<Result<SshKey>>;
@@ -1077,6 +1091,9 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
 
 /** What an agent's token may do: these operations, in this repository. */
 export type AgentScope = { repo: RepoPath; operations: string[]; run?: RunBinding };
+
+/** The most apps a person pins in one workspace. Mirrors `MAX_DOCK_PINS` in `crates/contracts/src/identity.rs`. */
+export const MAX_DOCK_PINS = 24;
 
 /** The most characters each profile field takes. Mirrors `crates/contracts/src/identity.rs`. */
 export const PROFILE_LIMITS = { name: 80, bio: 160, location: 80, website: 200, pronouns: 40, timezone: 64 } as const;

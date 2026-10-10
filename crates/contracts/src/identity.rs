@@ -1065,6 +1065,41 @@ pub struct ProfileWorkspace {
     pub avatar: Option<String>,
 }
 
+// --- Dock pins -------------------------------------------------------------
+//
+// The apps a person pins to their dock in a workspace, kept with their
+// account so the dock follows them to every device. Each person's own:
+// nobody else reads or sets them.
+
+/// The most apps a person pins in one workspace.
+pub const MAX_DOCK_PINS: usize = 24;
+/// The most characters an app key takes.
+pub const MAX_DOCK_APP_KEY: usize = 32;
+
+/// `dock_pins`: the apps `user` pinned in the workspace `workspace` (a
+/// slug), in the order they set. Returns `Option<Vec<String>>`: null when
+/// they never saved any there, or are not one of its members.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DockPinsArgs {
+    pub user: User,
+    pub workspace: String,
+}
+
+/// `set_dock_pins`: replaces `user`'s pins in `workspace` with `apps`, in
+/// that order. Each key is lowercase letters, digits and hyphens, at most
+/// [`MAX_DOCK_APP_KEY`] characters; a repeat is dropped; at most
+/// [`MAX_DOCK_PINS`]. Which keys name real apps is the web app's to say.
+/// Returns `Outcome<Vec<String>>`: the pins as saved.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetDockPinsArgs {
+    pub user: User,
+    pub workspace: String,
+    #[serde(default)]
+    pub apps: Vec<String>,
+}
+
 /// `directory`: every account or every workspace, as their public pages
 /// show them, a page at a time in name order. For services that index
 /// them, such as search; nothing private is in it. Returns

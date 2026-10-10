@@ -718,6 +718,10 @@ impl Identity {
                 self.db
                     .prepare("DELETE FROM workspace_members WHERE workspace_id = ?")
                     .bind(&[id.into()])?,
+                // Each member's dock pins in it (dock.rs).
+                self.db
+                    .prepare("DELETE FROM dock_pins WHERE workspace_id = ?")
+                    .bind(&[id.into()])?,
                 // Its teams, their people and the roles they gave (teams.rs).
                 self.db
                     .prepare("DELETE FROM team_members WHERE team_id IN (SELECT id FROM teams WHERE workspace_id = ?)")

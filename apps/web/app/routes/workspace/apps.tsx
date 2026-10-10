@@ -2,8 +2,10 @@
  * Apps: every app in the workspace that you can use, the ones pinned to
  * your dock first. Built-in apps are always in the dock; the rest you pin
  * or unpin here, from the launcher, or on a phone from More. Pins are
- * yours alone, per workspace, kept in a cookie (lib/apps.ts) so the dock
- * is drawn right from the server. The pin buttons post here.
+ * yours alone, per workspace, kept with your account so every device
+ * shows the same dock (lib/dock.server.ts), with a copy in a cookie for
+ * when the account's cannot be read (lib/apps.ts). The pin buttons post
+ * here.
  */
 import { Store } from "lucide-react";
 import { data } from "react-router";
@@ -12,7 +14,8 @@ import { hasCodeAccess } from "@g1t/contracts";
 
 import type { Route } from "./+types/apps";
 import { AppTile, useAppPins } from "../../components/apps";
-import { DOCK_COOKIE, type PinnableApp, appPinFromForm, appsFor, dockCookie, pinsIn, withPin, writeDock } from "../../lib/apps";
+import { DOCK_COOKIE, type PinnableApp, appPinFromForm, appsFor, dockCookie, pinsToShow, withPin, writeDock } from "../../lib/apps";
+import { savePins, savedPins } from "../../lib/dock.server";
 import { page } from "../../lib/meta";
 import { readCookie } from "../../lib/mission";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
@@ -21,16 +24,16 @@ export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Apps · ${params.owner} · g1t` });
 }
 
-export function loader({ params, context, request }: Route.LoaderArgs) {
+export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const slug = params.owner.toLowerCase();
   const membership = viewer?.workspaces?.find((m) => m.slug === slug);
-  if (!membership) throw data(null, { status: 404 });
+  if (!viewer || !membership) throw data(null, { status: 404 });
   return {
     slug,
     name: membership.name?.trim() || slug,
     code: hasCodeAccess(membership),
-    pins: pinsIn(readCookie(request.headers.get("cookie"), DOCK_COOKIE), slug),
+    pins: pinsToShow(await savedPins(viewer, slug), readCookie(request.headers.get("cookie"), DOCK_COOKIE), slug),
   };
 }
 
@@ -41,10 +44,15 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   if (!user.workspaces?.some((m) => m.slug === slug)) throw data(null, { status: 404 });
   const change = appPinFromForm(await request.formData());
   if (!change) return data({ error: "Nothing to do." }, { status: 400 });
-  const saved = readCookie(request.headers.get("cookie"), DOCK_COOKIE);
-  const pins = withPin(pinsIn(saved, slug), change.app, change.pinned);
+  const cookie = readCookie(request.headers.get("cookie"), DOCK_COOKIE);
+  // The change is made to the pins as the account keeps them; pins only
+  // ever kept in this device's cookie are carried over by the first one.
+  const current = pinsToShow(await savedPins(user, slug), cookie, slug);
+  const pins = await savePins(user, slug, withPin(current, change.app, change.pinned));
+  if (!pins) return data({ error: "Your pins could not be saved. Try again.", pins: current }, { status: 503 });
+  // This device's copy, drawn from when the account's cannot be read.
   const secure = new URL(request.url).protocol === "https:";
-  return data({ error: null, pins }, { headers: { "Set-Cookie": dockCookie(writeDock(saved, slug, pins), secure) } });
+  return data({ error: null, pins }, { headers: { "Set-Cookie": dockCookie(writeDock(cookie, slug, pins), secure) } });
 }
 
 export default function Apps({ loaderData }: Route.ComponentProps) {

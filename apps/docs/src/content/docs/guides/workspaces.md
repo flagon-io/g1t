@@ -574,9 +574,10 @@ To pin an app:
 2. Find the app, by name if you like.
 3. Select the pin on its tile. Select it again to unpin it.
 
-Your pins are yours alone, kept per workspace in this browser, so another
-browser or device starts with none. There is no marketplace yet: it shows
-as coming.
+Your pins are yours alone and each workspace has its own. They are saved
+to your account, so your dock is the same on every browser and device you
+sign in on, in the order you pinned. There is no marketplace yet: it
+shows as coming.
 
 ### The sidebar
 

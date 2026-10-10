@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { APPS, MAX_APP_PINS, appPinFromForm, appsFor, dockCookie, isPinnable, pinsIn, readDock, sidebarClosed, sidebarCookie, withPin, writeDock } from "./apps.ts";
+import { APPS, MAX_APP_PINS, appPinFromForm, appsFor, dockCookie, isPinnable, pinsFrom, pinsIn, pinsToShow, readDock, sidebarClosed, sidebarCookie, withPin, writeDock } from "./apps.ts";
 
 test("built-in apps are never pinned; the rest are", () => {
   for (const app of APPS) assert.equal(isPinnable(app.key), !app.builtin, app.key);
@@ -30,6 +30,22 @@ test("a cookie someone wrote by hand reads as far as it makes sense", () => {
   assert.deepEqual(readDock(""), {});
   const many = Array.from({ length: 30 }, () => "usage").join(".");
   assert.ok(pinsIn(`acme:${many}`, "acme").length <= MAX_APP_PINS);
+});
+
+test("pins kept with the account keep their order and only real apps", () => {
+  assert.deepEqual(pinsFrom(["usage", "projects", "today", "retired-app", "usage", "teams"]), ["usage", "projects", "teams"]);
+  assert.deepEqual(pinsFrom([]), []);
+  assert.ok(pinsFrom(Array.from({ length: 30 }, (_, n) => APPS[8 + (n % 10)]!.key)).length <= MAX_APP_PINS);
+});
+
+test("the account's pins win over the cookie, which is the fallback", () => {
+  const cookie = writeDock(null, "acme", ["projects", "usage"]);
+  // Saved with the account, even with nothing pinned: the account's.
+  assert.deepEqual(pinsToShow(["teams", "audit"], cookie, "acme"), ["teams", "audit"]);
+  assert.deepEqual(pinsToShow([], cookie, "acme"), []);
+  // Never saved, or identity could not be asked: this device's cookie.
+  assert.deepEqual(pinsToShow(null, cookie, "acme"), ["projects", "usage"]);
+  assert.deepEqual(pinsToShow(undefined, null, "acme"), []);
 });
 
 test("a pin form pins or unpins one app", () => {
