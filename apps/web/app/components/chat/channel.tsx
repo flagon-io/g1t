@@ -72,6 +72,8 @@ import { EmojiProvider, useCustomEmoji } from "../emoji/context";
 import { AddReaction, QuickReactions, ReactionBar } from "../emoji/reaction-bar";
 import { useAddresses } from "../../lib/addresses";
 import { applyReactionEvent, keepMine, toggleReaction } from "../../lib/emoji";
+import { dndNow } from "../../lib/notify-client";
+import { chatMessageArrived, messageSent, viewingConversation } from "../../lib/sound-events";
 import type { ChannelData } from "../../routes/workspace/chat/channel";
 
 type Loaded = Extract<ChannelData, { unavailable: false }>;
@@ -179,6 +181,12 @@ export function ChannelView({ data }: { data: Loaded }) {
   const entry = sidebar?.entries.find((e) => e.channel.id === data.channel.id);
   const starred = entry?.starred ?? members.find((m) => m.member.kind === "user" && m.member.id === me?.id)?.starred ?? false;
   const muted = entry?.muted ?? false;
+
+  // Sounds know which conversation is on screen: it is silent while looked at (lib/sound-events.ts).
+  useEffect(() => {
+    viewingConversation(data.channel.id);
+    return () => viewingConversation(null);
+  }, [data.channel.id]);
   const others = members.filter((m) => !(m.member.kind === "user" && m.member.id === me?.id)).map((m) => m.member);
   const isDm = data.channel.kind === "dm";
 
@@ -295,6 +303,8 @@ export function ChannelView({ data }: { data: Loaded }) {
       if (event.type === "message.created" || event.type === "message.updated") {
         const message = event.message;
         if (message.channel_id !== data.channel.id) return;
+        // A sound, when the rules say so: not for your own, not while looking at it in front.
+        if (event.type === "message.created") chatMessageArrived(message, data.channel.kind, { dnd: dndNow(), muted });
         if (message.thread_root) {
           if (message.thread_root === threadId) setThread((now) => (now ? mergeMessages(now, [keepMine(now, message)]) : now));
           if (event.type === "message.created") countReply(message.thread_root, message.id, message.created_at);
@@ -333,7 +343,7 @@ export function ChannelView({ data }: { data: Loaded }) {
         refresh();
       }
     },
-    [data.channel.id, threadId, me?.id, countReply, refresh],
+    [data.channel.id, data.channel.kind, muted, threadId, me?.id, countReply, refresh],
   );
   // Back after a drop: what was missed.
   const onReconnect = useCallback(async () => {
@@ -415,6 +425,7 @@ export function ChannelView({ data }: { data: Loaded }) {
         stick.current = true;
         setMessages(put);
       }
+      messageSent({ dnd: dndNow() });
       const saved = await send<ChatMessage>({ intent: "post", channel_id: data.channel.id, body, thread_root: root });
       const settle = (list: ShownMessage[]) =>
         saved.ok

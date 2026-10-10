@@ -1,7 +1,11 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
 
+import type { SoundSettings } from "@g1t/contracts/sounds";
+
 import { applyAttention, refreshPush, reportInbox, setNavigator, setViewing, startFeed, useLiveBadges } from "../../lib/notify-client";
+import { setSoundViewer } from "../../lib/sound-events";
+import { applySoundSettings, startSounds } from "../../lib/sounds";
 import { Toaster } from "./toaster";
 
 /**
@@ -11,12 +15,30 @@ import { Toaster } from "./toaster";
  *
  * `workspace` is the one the page is in, whose counts the feed reads on
  * connect; `inbox` the inbox count the page's data last read, handed to
- * the feed so every tab shows it.
+ * the feed so every tab shows it. `sounds` are the person's sound settings
+ * as the root loader read them with the page, so the first event already
+ * respects them, and `me` who they are, so their own messages never sound
+ * (lib/sounds.ts, lib/sound-events.ts).
  */
-export function LiveNotifications({ workspace, inbox }: { workspace: string | null; inbox: number | null }) {
+export function LiveNotifications({
+  workspace,
+  inbox,
+  sounds,
+  me,
+}: {
+  workspace: string | null;
+  inbox: number | null;
+  sounds: SoundSettings | null;
+  me: { id: string; username: string } | null;
+}) {
   const navigate = useNavigate();
   const { pathname, search } = useLocation();
   const badges = useLiveBadges(workspace);
+
+  // Sounds: the settings with the page, and audio allowed from the first click or key.
+  useEffect(() => applySoundSettings(sounds), [sounds]);
+  useEffect(() => setSoundViewer(me), [me?.id, me?.username]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => startSounds(), []);
 
   useEffect(() => {
     setNavigator((href) => navigate(href));

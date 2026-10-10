@@ -7,6 +7,7 @@ import type { ChatSidebarEntry, WorkspaceAgent } from "@g1t/contracts";
 
 import { conversationCache } from "./conversation-cache";
 import { CreateChannelButton, NewMessageButton, useChatData, useChatSend, useChatSidebar } from "./actions";
+import { DndMenu } from "./dnd-menu";
 import { MemberAvatar, StatusDot, statusLabel } from "./marks";
 import { AgentAvatar } from "../agent-avatar";
 import { PersonStatusEmoji } from "../presence";
@@ -17,6 +18,7 @@ import { Skeleton } from "../ui/skeleton";
 import { type ChatFilter, agentDmOf, channelPath, filterEntries, sections } from "../../lib/chat";
 import { feedConnected } from "../../lib/notify-client";
 import { FALLBACK_REFRESH_MS } from "../../lib/notify-store";
+import { setMutedConversations } from "../../lib/sound-events";
 
 /** How often the sidebar asks again while the tab is shown and the feed socket is down. */
 const REFRESH_MS = FALLBACK_REFRESH_MS;
@@ -76,6 +78,10 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
   // Pins show at once and go back if the service refuses.
   const [pins, setPins] = useState<Map<string, boolean>>(new Map());
   useEffect(() => setPins(new Map()), [sidebar]);
+  // Sounds leave muted conversations alone (lib/sound-events.ts).
+  useEffect(() => {
+    if (sidebar) setMutedConversations(sidebar.entries.filter((e) => e.muted).map((e) => e.channel.id));
+  }, [sidebar]);
   const entries = (sidebar?.entries ?? []).map((e) => (pins.has(e.channel.id) ? { ...e, starred: pins.get(e.channel.id)! } : e));
   const shown = filterEntries(entries, filter, query);
   const { pinned, channels, dms } = sections(shown);
@@ -144,31 +150,38 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
       {heading && (
         <div className="flex h-9 shrink-0 items-center justify-between pr-1 pl-3">
           <h2 className="text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Chat</h2>
-          <NewMessageButton slug={slug} />
+          <div className="flex items-center gap-0.5">
+            <DndMenu />
+            <NewMessageButton slug={slug} />
+          </div>
         </div>
       )}
       <div className="space-y-2.5 px-2.5 pt-3">
-        <label className="flex h-8 items-center gap-2 rounded-md bg-surface px-2.5 text-[0.8125rem] ring-1 ring-line transition-shadow focus-within:ring-accent-dim/70">
-          <Search size={14} className="shrink-0 text-faint" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                const first = [...pinned, ...channels, ...dms][0];
-                if (first) {
-                  navigate(channelPath(slug, first.channel));
-                  setQuery("");
-                } else if (agents[0]) void openAgent(agents[0]);
-              } else if (event.key === "Escape") setQuery("");
-            }}
-            placeholder="Jump to channel or person"
-            aria-label="Jump to channel or person"
-            autoComplete="off"
-            data-1p-ignore
-            className="min-w-0 grow bg-transparent text-fg outline-none placeholder:text-faint"
-          />
-        </label>
+        <div className="flex items-center gap-2">
+          <label className="flex h-8 min-w-0 grow items-center gap-2 rounded-md bg-surface px-2.5 text-[0.8125rem] ring-1 ring-line transition-shadow focus-within:ring-accent-dim/70">
+            <Search size={14} className="shrink-0 text-faint" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  const first = [...pinned, ...channels, ...dms][0];
+                  if (first) {
+                    navigate(channelPath(slug, first.channel));
+                    setQuery("");
+                  } else if (agents[0]) void openAgent(agents[0]);
+                } else if (event.key === "Escape") setQuery("");
+              }}
+              placeholder="Jump to channel or person"
+              aria-label="Jump to channel or person"
+              autoComplete="off"
+              data-1p-ignore
+              className="min-w-0 grow bg-transparent text-fg outline-none placeholder:text-faint"
+            />
+          </label>
+          {/* A phone has no heading row: Do not disturb sits by the search box instead. */}
+          {!heading && <DndMenu className="size-8 max-md:size-11" />}
+        </div>
         <div role="radiogroup" aria-label="Show" className="grid grid-cols-3 rounded-md bg-surface p-0.5 ring-1 ring-line">
           {(["all", "unread", "mentions"] as const).map((key) => (
             <button

@@ -17,6 +17,8 @@ import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { cn } from "../lib/cn";
 import { isPending } from "../lib/pending";
 import { INBOX_TABS, type InboxTab, REASON_LABEL, SEVERITY_LABEL, SNOOZES, bellCount, emptyFor, isUnread, tabCount, updatesLabel, whenShort } from "../lib/inbox";
+import { useOwnPresence } from "../lib/notify-client";
+import { dndOn } from "../lib/presence";
 import type { InboxPanelData } from "../routes/inbox-json";
 
 /** Where every notifications form posts (routes/notifications.tsx). */
@@ -275,12 +277,20 @@ export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | nu
   const unread = counts?.unread ?? 0;
   const items = list.data?.tab === tab ? list.data.items : null;
   const shown = bellCount(unread);
+  // Do not disturb shows on the bell: an amber dot while it holds (the feed says; nothing on the server).
+  const dnd = dndOn(useOwnPresence(), Date.now());
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"} className="relative">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`${unread ? `Notifications, ${unread} unread` : "Notifications"}${dnd ? ", do not disturb is on" : ""}`}
+          className="relative"
+        >
         <Bell size={17} />
+        {dnd && <span aria-hidden="true" className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-warn ring-2 ring-bg" />}
         {shown && (
           // Amber while an agent waits on them, red for a failure, else the accent.
           <span

@@ -1,7 +1,9 @@
 /**
- * Settings → Notifications: what you are also emailed for, how you watch
+ * Settings → Notifications: what you hear when chat moves and Do not
+ * disturb (identity keeps the sounds, notify your presence), what pops up
+ * and is pushed (notify), what you are also emailed for, how you watch
  * repositories you create, and the repositories you watch other than the
- * default way. The events service keeps all three (`inbox_settings`,
+ * default way. The events service keeps those three (`inbox_settings`,
  * `inbox_watched`); the notifications themselves are at /notifications.
  */
 import { Eye, EyeOff } from "lucide-react";
@@ -16,10 +18,12 @@ import { CheckboxOption } from "../../components/ui/checkbox";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
 import { EMAIL_REASONS, WATCH_CHOICES, WATCH_EVENT_LABEL, emailReasonsFromForm } from "../../lib/inbox";
 import { page } from "../../lib/meta";
-import { inbox } from "../../lib/services.server";
+import { identity, inbox } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
-// Live notifications: pop-ups, browser notifications, sound (services/notify).
+// Live notifications: pop-ups and browser notifications (services/notify).
 import { LiveNotificationSettings } from "../../components/notifications/settings";
+// Sounds, Do not disturb and desktop notifications (identity, notify).
+import { SoundSettingsSection } from "../../components/notifications/sounds";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Notifications · Settings · g1t" });
@@ -27,11 +31,12 @@ export function meta(args: Route.MetaArgs) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
-  const [settings, watched] = await Promise.all([
+  const [settings, watched, sounds] = await Promise.all([
     inbox.settings(user.username).catch(() => null),
     inbox.watched(user.username).catch(() => null),
+    identity.soundSettings(user).catch(() => null),
   ]);
-  return { settings, watched, workspaces: user.workspaces ?? [] };
+  return { settings, watched, sounds, workspaces: user.workspaces ?? [] };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -72,7 +77,7 @@ const LEVEL_LABEL: Record<WatchLevel, string> = Object.fromEntries(WATCH_CHOICES
 >;
 
 export default function NotificationSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { settings, watched, workspaces } = loaderData;
+  const { settings, watched, sounds, workspaces } = loaderData;
   const navigation = useNavigation();
   const said = (intent: string) => (actionData?.intent === intent && navigation.state === "idle" ? actionData : null);
   if (!settings) {
@@ -80,6 +85,7 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
   }
   return (
     <div className="space-y-10">
+      <SoundSettingsSection initial={sounds} />
       <LiveNotificationSettings workspaces={workspaces} />
       <section aria-labelledby="email-heading">
         <h2 id="email-heading" className="text-sm font-semibold">

@@ -27,6 +27,7 @@ export * from "./folios-slides";
 export * from "./github";
 export * from "./guardrails";
 export * from "./identity";
+export * from "./sounds";
 export * from "./inbox";
 export * from "./instances";
 export * from "./marketplace";

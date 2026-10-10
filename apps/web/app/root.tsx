@@ -82,7 +82,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   const dock = readCookie(cookies, DOCK_COOKIE);
   // Whether sign-up takes an invite: the sign-up page says so, and
   // Settings → Invites offers invites to g1t only then. Cached per isolate.
-  const [shell, mode] = await Promise.all([
+  const [shell, mode, sounds] = await Promise.all([
     // An account still confirming its address sees only the pages that
     // allows (lib/confirm-gate.ts), in the visitor's frame.
     user && !awaitsConfirmation(user)
@@ -94,6 +94,9 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
         })
       : visitorShell(params, context),
     registrationMode(),
+    // Their chat sounds, with the page, so the first live event already
+    // respects them (lib/sounds.ts); the defaults when identity is slow.
+    user && !awaitsConfirmation(user) ? identity.soundSettings(user).catch(() => null) : Promise.resolve(null),
   ]);
   // The apps this person pinned to their rail here: as their account keeps
   // them (read with the rest of the shell), else as this device's cookie
@@ -110,6 +113,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     sidebarClosed: sidebarClosed(readCookie(cookies, SIDEBAR_COOKIE)),
     // Their Appearance, so the page is drawn in it from the first byte (lib/theme.ts).
     theme: readTheme(readCookie(cookies, THEME_COOKIE)),
+    // What they hear when chat moves (components/notifications/sounds.tsx).
+    sounds,
     inviteOnly: mode !== "open",
     addresses: addresses(),
     // Visitors from where the law asks first are asked before analytics runs.
@@ -447,7 +452,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
         {/* Live notifications for the signed-in: the feed socket, toasts, the tab's count (components/notifications). */}
         {user && !awaitsConfirmation(user) && (
-          <LiveNotifications workspace={root?.shell?.workspace?.slug ?? null} inbox={root?.shell?.inbox?.unread ?? null} />
+          <LiveNotifications
+            workspace={root?.shell?.workspace?.slug ?? null}
+            inbox={root?.shell?.inbox?.unread ?? null}
+            sounds={root?.sounds ?? null}
+            me={{ id: user.id, username: user.username }}
+          />
         )}
         <AnalyticsConsent />
         <ScrollRestoration nonce={nonce} />

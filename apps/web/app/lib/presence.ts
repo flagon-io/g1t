@@ -36,11 +36,12 @@ export const STATUS_PRESETS: StatusPreset[] = [
   { emoji: "🌴", text: "On vacation", clear: "never" },
 ];
 
-export type PauseFor = "30m" | "1h" | "tomorrow";
+export type PauseFor = "30m" | "1h" | "2h" | "tomorrow";
 
 export const PAUSE_FOR: { key: PauseFor; label: string }[] = [
   { key: "30m", label: "For 30 minutes" },
   { key: "1h", label: "For 1 hour" },
+  { key: "2h", label: "For 2 hours" },
   { key: "tomorrow", label: "Until tomorrow" },
 ];
 
@@ -82,10 +83,11 @@ export function clearAtFor(choice: ClearAfter, now: Date, custom?: string | null
   }
 }
 
-/** When notifications resume: in half an hour, an hour, or at nine tomorrow morning. */
+/** When notifications resume: in half an hour, an hour, two hours, or at nine tomorrow morning. */
 export function pauseUntil(choice: PauseFor, now: Date): string {
   if (choice === "30m") return new Date(now.getTime() + 30 * MINUTE).toISOString();
   if (choice === "1h") return new Date(now.getTime() + 60 * MINUTE).toISOString();
+  if (choice === "2h") return new Date(now.getTime() + 120 * MINUTE).toISOString();
   const at = nextMidnight(now);
   at.setHours(9, 0, 0, 0);
   return at.toISOString();

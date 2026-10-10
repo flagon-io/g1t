@@ -332,6 +332,7 @@ pub fn purge_statements() -> Vec<(String, usize)> {
         "workspace_members",
         "team_members",
         "dock_pins",
+        "sound_settings",
     ] {
         sql.push((format!("DELETE FROM {table} WHERE user_id = ?1 AND {STILL}"), 1));
     }
@@ -1179,7 +1180,7 @@ mod tests {
         let sql: Vec<String> = purge_statements().into_iter().map(|(sql, _)| sql).collect();
         assert!(sql[0].starts_with("INSERT OR REPLACE INTO deleted_users"));
         assert!(sql.iter().any(|s| s.starts_with("UPDATE workspaces SET created_by = 'usr_ghost' WHERE created_by = ?1")));
-        for table in ["user_emails", "github_accounts", "two_factor", "two_factor_recovery", "security_events", "ssh_keys", "dock_pins"] {
+        for table in ["user_emails", "github_accounts", "two_factor", "two_factor_recovery", "security_events", "ssh_keys", "dock_pins", "sound_settings"] {
             assert!(sql.iter().any(|s| s.starts_with(&format!("DELETE FROM {table} WHERE user_id = ?1"))), "{table}");
         }
         // The row goes last, and everything before it only while the

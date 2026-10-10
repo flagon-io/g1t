@@ -1100,6 +1100,91 @@ pub struct SetDockPinsArgs {
     pub apps: Vec<String>,
 }
 
+// --- Sounds and desktop notifications --------------------------------------
+//
+// What a person hears when chat moves, kept with their account so a phone,
+// a laptop and the desktop app all sound the same. Which sound plays when
+// is the web app's rule (apps/web/app/lib/chat-sounds.ts); identity keeps
+// the choices. Do not disturb is not here: it is the person's presence
+// (`dnd_until`, services/notify), which also silences pop-ups and pushes.
+// Mirrors `SoundSettings` in packages/contracts/src/identity.ts.
+
+/// The sets of sounds a person can choose from.
+pub const SOUND_SETS: [&str; 2] = ["soft", "bright"];
+/// The cues a person can turn on and off. `call` is reserved and has no setting.
+pub const SOUND_CUES: [&str; 5] = ["message", "direct", "mention", "agent_done", "sent"];
+/// Before anyone changes them: every cue but the tick as you send.
+pub const SOUND_CUES_OFF_BY_DEFAULT: [&str; 1] = ["sent"];
+pub const DEFAULT_SOUND_SET: &str = "soft";
+pub const DEFAULT_SOUND_VOLUME: u8 = 60;
+
+/// A person's sound settings, as kept and as answered. Wire fields are
+/// snake_case, as the site's JSON is.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundSettings {
+    /// Whether anything plays at all.
+    pub sounds_enabled: bool,
+    /// One of [`SOUND_SETS`].
+    pub sound_set: String,
+    /// 0 to 100.
+    pub sound_volume: u8,
+    /// Each cue on or off, by name; a cue left out is on, except `sent`.
+    #[serde(default)]
+    pub sound_cues: std::collections::BTreeMap<String, bool>,
+    /// Whether an open tab shows a system notification for a message to
+    /// you while its window is not in front.
+    pub desktop_toasts: bool,
+}
+
+impl Default for SoundSettings {
+    fn default() -> Self {
+        SoundSettings {
+            sounds_enabled: true,
+            sound_set: DEFAULT_SOUND_SET.to_owned(),
+            sound_volume: DEFAULT_SOUND_VOLUME,
+            sound_cues: SOUND_CUES
+                .iter()
+                .map(|cue| ((*cue).to_owned(), !SOUND_CUES_OFF_BY_DEFAULT.contains(cue)))
+                .collect(),
+            desktop_toasts: false,
+        }
+    }
+}
+
+/// A change to them: only what is sent changes; `sound_cues` merges by cue.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundSettingsChange {
+    #[serde(default)]
+    pub sounds_enabled: Option<bool>,
+    #[serde(default)]
+    pub sound_set: Option<String>,
+    #[serde(default)]
+    pub sound_volume: Option<i64>,
+    #[serde(default)]
+    pub sound_cues: Option<std::collections::BTreeMap<String, bool>>,
+    #[serde(default)]
+    pub desktop_toasts: Option<bool>,
+}
+
+/// `sound_settings`: `user`'s own, or the defaults when they never changed
+/// them. Returns `SoundSettings`. People only.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SoundSettingsArgs {
+    pub user: User,
+}
+
+/// `set_sound_settings`: changes `user`'s own. Returns
+/// `Outcome<SoundSettings>`: the settings as kept, or `invalid` for a set
+/// or cue g1t does not have, or a volume outside 0 to 100.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSoundSettingsArgs {
+    pub user: User,
+    #[serde(default)]
+    pub change: SoundSettingsChange,
+}
+
 /// `directory`: every account or every workspace, as their public pages
 /// show them, a page at a time in name order. For services that index
 /// them, such as search; nothing private is in it. Returns

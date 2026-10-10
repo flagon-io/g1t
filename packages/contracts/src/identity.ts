@@ -1,3 +1,4 @@
+import type { SoundSettings, SoundSettingsChange } from "./sounds";
 import type { AccessClient, BasePermission, RepoGrant } from "./access";
 import type { Permissions, ScopeLevel, ScopeResource } from "./scopes";
 import type { MemberPrivileges, OrgRole, PolicyHold } from "./members";
@@ -1048,6 +1049,18 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
    * most `MAX_DOCK_PINS`. Which keys are real apps is the caller's to check.
    */
   setDockPins(user: User, workspace: string, apps: string[]): Promise<Result<string[]>>;
+
+  /**
+   * How chat sounds and desktop notifications reach `user`, kept with the
+   * account so every device and the desktop app behave the same
+   * (`SoundSettings`). The defaults when they never changed them.
+   */
+  soundSettings(user: User): Promise<SoundSettings>;
+  /**
+   * Changes some of them: only the fields sent change, and `sound_cues`
+   * merges one cue at a time. Returns the settings as kept.
+   */
+  setSoundSettings(user: User, change: SoundSettingsChange): Promise<Result<SoundSettings>>;
 
   listSshKeys(user: User): Promise<SshKey[]>;
   /** Takes one line in OpenSSH public key format. */

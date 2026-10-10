@@ -3,8 +3,10 @@
  * feed (`/-/live`, services/notify), a small store the page reads (counts
  * for the rail, the Chat sidebar and the tab title; toasts; whether the
  * socket is up), and delivery through a `NotificationSink`: the web's own
- * (toasts, a soft sound, the app badge) or, inside the desktop app, its
- * native bridge.
+ * (toasts and the app badge) or, inside the desktop app, its native
+ * bridge. Sounds are apart: every notification goes to
+ * lib/sound-events.ts, which decides and plays (lib/chat-sounds.ts,
+ * lib/sounds.ts).
  *
  * Nothing here polls. The feed sends counts on connect and after every
  * change; while the socket is down, `connected` is false and the pages
@@ -20,7 +22,8 @@ import { useSyncExternalStore } from "react";
 import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences, OwnPresence, PresenceChange, PresenceEntry } from "@g1t/contracts";
 
 import { openLive } from "./live-socket";
-import { isIdle, mergePeople } from "./presence";
+import { dndOn, isIdle, mergePeople } from "./presence";
+import { notificationArrived } from "./sound-events";
 
 import {
   HEARTBEAT_MS,
@@ -108,13 +111,12 @@ function openHref(href: string): void {
   else if (typeof location !== "undefined") location.assign(href);
 }
 
-/** The web's: a toast in the tab, a soft sound if wanted, the installed app's badge. */
+/** The web's: a toast in the tab, the installed app's badge. */
 export const webSink: NotificationSink = {
   kind: "web",
   deliver(notification, { toast }) {
     if (!toast) return;
     showToast(notification);
-    if (soundOn()) chime();
   },
   setBadge(count) {
     const nav = typeof navigator !== "undefined" ? (navigator as Navigator & { setAppBadge?(n: number): Promise<void>; clearAppBadge?(): Promise<void> }) : null;
@@ -136,7 +138,6 @@ export function desktopSink(bridge: DesktopBridge): NotificationSink {
       if (!toast) return;
       if (focused) {
         showToast(notification);
-        if (soundOn()) chime();
         return;
       }
       bridge.notify({
@@ -267,6 +268,16 @@ export function useOwnPresence(): OwnPresence | null {
   return useNotifyState().me;
 }
 
+/** Whether you are not to be disturbed right now, for code outside React (the sound rules). */
+export function dndNow(): boolean {
+  return dndOn(state.me, Date.now());
+}
+
+/** Every notification, however it is shown, goes to the sound rules and the desktop toast (lib/sound-events.ts). */
+function heard(notification: FeedNotification, toast: boolean): void {
+  notificationArrived(notification, { toast, dnd: dndNow(), permission: permission(), pushOn: pushChoice() === "on", open: openHref });
+}
+
 /** Whether the feed is up: pages fall back to a slow refresh only while it is not. */
 export function feedConnected(): boolean {
   return state.connected;
@@ -311,6 +322,7 @@ export function closeOffer(): void {
 /** For the settings page's test, and the harness: a notification shown as if it arrived. */
 export function showLocally(notification: FeedNotification): void {
   currentSink().deliver(notification, { toast: true, focused: true });
+  heard(notification, true);
 }
 
 // ── The socket ───────────────────────────────────────────────────────────
@@ -380,6 +392,7 @@ function onEvent(event: FeedEvent): void {
     case "notification":
       set({ recent: addRecent(state.recent, [event.notification]) });
       sink.deliver(event.notification, { toast: event.toast, focused: focused() });
+      heard(event.notification, event.toast);
       break;
     case "preferences":
       set({ preferences: event.preferences });
@@ -539,52 +552,6 @@ export function applyAttention(badges: Partial<LiveBadges> | null): number {
   }
   sink.setBadge(count);
   return count;
-}
-
-// ── Sound ────────────────────────────────────────────────────────────────
-
-const SOUND_KEY = "g1t:notify:sound";
-
-export function soundOn(): boolean {
-  try {
-    return localStorage.getItem(SOUND_KEY) === "on";
-  } catch {
-    return false;
-  }
-}
-
-export function setSound(on: boolean): void {
-  try {
-    if (on) localStorage.setItem(SOUND_KEY, "on");
-    else localStorage.removeItem(SOUND_KEY);
-  } catch {
-    // Kept for this page only.
-  }
-}
-
-let audio: AudioContext | null = null;
-
-/** A soft two-note chime, made here: no file to load. */
-export function chime(): void {
-  try {
-    audio ??= new AudioContext();
-    const at = audio.currentTime;
-    for (const [i, freq] of [880, 1318.5].entries()) {
-      const osc = audio.createOscillator();
-      const gain = audio.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      const start = at + i * 0.09;
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(0.06, start + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
-      osc.connect(gain).connect(audio.destination);
-      osc.start(start);
-      osc.stop(start + 0.4);
-    }
-  } catch {
-    // No audio: nothing lost.
-  }
 }
 
 // ── Browser push ─────────────────────────────────────────────────────────

@@ -187,6 +187,10 @@ holds your choices:
 
 | Setting | What it does | Default |
 | --- | --- | --- |
+| **Sounds**, **Sound set**, **Volume**, one switch per sound | What chat sounds like; see [Sounds and do not disturb](/guides/chat/#sounds-and-do-not-disturb). | On, Soft, 60, all but Sent |
+| **Do not disturb** | Silences sounds, pop-ups and browser notifications until a time you choose. | Off |
+| **Desktop notifications** | A system notification from an open tab for a message to you while the window is behind another. | Off |
+| **Notify me about**, **Browser notifications** | What pops up and is pushed; see [chat notifications](/guides/chat/#notifications). | DMs and mentions; off |
 | **Email** | One checkbox per reason: you are also emailed when you are told of something for it. | agent waiting, review requested, mentioned |
 | **Repositories you create** | How you watch a new repository you create: **Participating and @mentions** or **All activity**. | All activity |
 | **Watched repositories** | Every repository you watch other than the default way, with how. | |

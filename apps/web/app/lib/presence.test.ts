@@ -45,6 +45,7 @@ test("a custom time is the viewer's own, and only one still ahead counts", () =>
 test("pausing notifications: half an hour, an hour, or until nine tomorrow morning", () => {
   assert.equal(pauseUntil("30m", NOW), new Date(NOW.getTime() + 30 * MIN).toISOString());
   assert.equal(pauseUntil("1h", NOW), new Date(NOW.getTime() + 60 * MIN).toISOString());
+  assert.equal(pauseUntil("2h", NOW), new Date(NOW.getTime() + 120 * MIN).toISOString());
   assert.equal(pauseUntil("tomorrow", NOW), new Date(2026, 9, 8, 9, 0).toISOString());
   // Just after midnight, tomorrow is still the next day's morning.
   assert.equal(pauseUntil("tomorrow", new Date(2026, 9, 8, 0, 30)), new Date(2026, 9, 9, 9, 0).toISOString());

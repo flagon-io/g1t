@@ -603,7 +603,7 @@ g1t tells you when something is for you, wherever you are in the app.
 | | |
 | --- | --- |
 | **Pop-ups** | While g1t is open in any tab, a message for you pops up in the corner, whichever page you are on: a DM, a mention, a reply in your thread, an agent waiting on you, a review requested. Reply from the pop-up without leaving the page, or open the conversation. A pop-up about a card has its buttons: **Approve more**, **Stop**, **File issue**. |
-| **Sound** | A soft chime with each pop-up, in this browser, if you turn it on. |
+| **Sounds** | A short sound when something is for you: a message in a conversation you have open but are not looking at, a direct message, a mention, an agent finishing. Which, and how loud, is yours to set; see [Sounds and do not disturb](#sounds-and-do-not-disturb). |
 | **Counts** | The rail's Chat badge and each conversation's unread and mention counts update live, in every open tab. |
 | **Browser notifications** | Turn them on, and this browser shows a notification when you're away from g1t, even with every tab closed. g1t never pushes to a browser where you're already looking at g1t. A notification about a card has the buttons that need nothing typed or confirmed, such as **Open** and **File issue**; **Stop** asks first, so it waits for the app. |
 
@@ -621,13 +621,52 @@ Under **For a workspace**, you can give one workspace a different level,
 such as **Everything** for a small team and **DMs and mentions** for a big
 one. **Send a test notification** shows you what one looks like.
 
-### Pause notifications
+### Sounds and do not disturb
 
-From the menu on your avatar, **Pause notifications** for 30 minutes, an
-hour, or until tomorrow morning (9:00 your time). Until then nothing pops
-up and no browser notification is sent, whatever your settings; counts and
-your notifications still update, and everyone sees your amber dot. **Resume
-notifications** ends it early.
+Chat makes a sound when something is for you, and only then. Each sound is
+short (under a quarter of a second), warm and two-toned, made by g1t
+itself: nothing is downloaded. What plays when:
+
+| Sound | When |
+| --- | --- |
+| **New message** | A message in a conversation you have open, while the window is behind another or you are in another conversation. |
+| **Direct message** | A direct message from someone, or from an agent, that is not from you. |
+| **Mention** | A message that @mentions you. It wins over the other two. |
+| **Agent finished** | An agent posts a card saying it finished something for you, or is waiting on you. |
+| **Sent** | A soft tick as your message goes. Off until you turn it on. |
+
+The rules behind them:
+
+- Nothing sounds for the conversation you are looking at in a window that
+  is in front: what is on screen is silent.
+- Nothing sounds for your own messages, in a conversation you
+  [muted](#star-and-mute), or while Do not disturb is on.
+- Agents' messages count like people's.
+- At most one sound every 1.5 seconds: a burst of messages is one sound,
+  and the same message never sounds twice.
+- Browsers allow sound only after you have clicked or typed on the page,
+  so the first message after a page opens may be silent.
+
+Open **Settings → Notifications** (`g1t.sh/settings/notifications`),
+under **Sounds & notifications**, to change them. The settings are kept
+with your account, so every device you sign in on sounds the same:
+
+| Setting | What it does | Default |
+| --- | --- | --- |
+| **Sounds** | Whether anything plays at all. Counts and pop-ups still show. | On |
+| **Sound set** | **Soft** (warm and low) or **Bright** (higher and shorter). Press play by any sound to hear it. | Soft |
+| **Volume** | From 0 to 100. | 60 |
+| **New message**, **Direct message**, **Mention**, **Agent finished**, **Sent** | Each sound on or off. | All on but Sent |
+| **Do not disturb** | Off, or for 30 minutes, an hour, two hours, or until tomorrow at 9:00 your time. | Off |
+| **Desktop notifications** | While this window is behind another, a message to you shows as a system notification from the open tab. Turning it on asks the browser's permission once, from this switch and never when a page loads. Not offered where browser notifications above are on: those already show it. | Off |
+
+**Do not disturb** is one thing everywhere: the bell-off button at the top
+of the chat sidebar, **Pause notifications** on the menu on your avatar,
+and the setting above all set it. While it holds, nothing sounds, nothing
+pops up and no browser notification is sent, whatever your settings;
+counts and your notifications still update, the bell in the top bar shows
+a small amber dot, and everyone sees your amber dot. It ends on its own at
+the time you chose; **Resume notifications**, or **Off**, ends it early.
 
 At most three pop-ups show at once. Each stays six seconds (one with a
 card's buttons, twelve), and stays while your pointer or keyboard is on

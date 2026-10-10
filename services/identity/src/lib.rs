@@ -28,6 +28,7 @@ mod job_tokens;
 mod run_credentials;
 mod security;
 mod shared_invites;
+mod sounds;
 mod teams;
 mod throttle;
 mod token_reach;
@@ -995,6 +996,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         // Each person's dock pins, per workspace; see dock.rs.
         "dock_pins" => reply(&identity.dock_pins(args(body)?).await?),
         "set_dock_pins" => reply(&identity.set_dock_pins(args(body)?).await?),
+        // Each person's chat sounds and desktop notifications; see sounds.rs.
+        "sound_settings" => reply(&identity.sound_settings(args(body)?).await?),
+        "set_sound_settings" => reply(&identity.set_sound_settings(args(body)?).await?),
         "list_ssh_keys" => reply(&identity.list_ssh_keys(args(body)?).await?),
         // Services only: who registered each key, for verifying commit
         // signatures (repos' signatures.rs).

@@ -8,20 +8,7 @@ import { Card } from "../ui/card";
 import { RadioGroup, RadioOption } from "../ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
-import {
-  desktopBridge,
-  disablePush,
-  enablePush,
-  notifyStatus,
-  permission,
-  pushChoice,
-  pushSupported,
-  savePreferences,
-  sendTest,
-  setSound,
-  soundOn,
-  chime,
-} from "../../lib/notify-client";
+import { desktopBridge, disablePush, enablePush, notifyStatus, permission, pushChoice, pushSupported, savePreferences, sendTest } from "../../lib/notify-client";
 
 const LEVELS: { level: NotifyLevel; label: string; detail: string }[] = [
   { level: "all", label: "Everything", detail: "Every message in conversations you're in, and everything in your notifications." },
@@ -54,20 +41,18 @@ const DEVICE_LINE: Record<Device, string> = {
 
 /**
  * Settings → Notifications, the live part: what pops up and is pushed,
- * this browser's notifications, the sound, and a test. Kept by the notify
- * service (services/notify); the sound is this browser's own.
+ * this browser's notifications, and a test. Kept by the notify service
+ * (services/notify). Sounds are the section above (sounds.tsx).
  */
 export function LiveNotificationSettings({ workspaces, initial = null }: { workspaces: Membership[]; initial?: NotifyStatus | null }) {
   const [status, setStatus] = useState<NotifyStatus | null>(initial);
   const [prefs, setPrefs] = useState<NotifyPreferences | null>(initial?.preferences ?? null);
   const [device, setDevice] = useState<Device>("off");
-  const [sound, setSoundState] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setSoundState(soundOn());
     if (initial) {
       setDevice(deviceState(initial));
       return;
@@ -191,7 +176,7 @@ export function LiveNotificationSettings({ workspaces, initial = null }: { works
         </div>
       )}
 
-      <Card divided>
+      <Card>
         <div className="flex items-start gap-4 p-4">
           <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent">
             <BellRing size={16} />
@@ -207,21 +192,6 @@ export function LiveNotificationSettings({ workspaces, initial = null }: { works
             disabled={deviceLocked || busy === "device" || !status}
             onCheckedChange={(on) => void toggleDevice(on)}
             aria-label="Browser notifications"
-          />
-        </div>
-        <div className="flex items-start gap-4 p-4">
-          <div className="min-w-0 grow pl-12">
-            <p className="text-sm font-medium text-fg">Sound</p>
-            <p className="mt-0.5 text-xs text-muted">A soft chime with each pop-up, in this browser.</p>
-          </div>
-          <Switch
-            checked={sound}
-            onCheckedChange={(on) => {
-              setSound(on);
-              setSoundState(on);
-              if (on) chime();
-            }}
-            aria-label="Sound"
           />
         </div>
       </Card>

@@ -2,8 +2,10 @@ import { env } from "cloudflare:workers";
 import { data } from "react-router";
 
 import { notifyClient, type NotifyPreferencesChange, type PresenceChange, type PushSubscriptionJson } from "@g1t/contracts";
+import type { SoundSettingsChange } from "@g1t/contracts/sounds";
 
 import type { Route } from "./+types/api";
+import { identity } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 
 function client() {
@@ -14,8 +16,9 @@ function client() {
 /**
  * The signed-in person's notification settings, as JSON: `GET` their
  * status (with `?endpoint=` for whether this browser gets pushes), `POST`
- * a change: `subscribe`, `unsubscribe`, `preferences`, `test`, or
- * `presence` (your status, being away, Do Not Disturb).
+ * a change: `subscribe`, `unsubscribe`, `preferences`, `test`,
+ * `presence` (your status, being away, Do Not Disturb), or `sounds` (what
+ * you hear when chat moves, kept with the account by identity).
  */
 export async function loader({ context, request }: Route.LoaderArgs) {
   const user = requireUser(context, request);
@@ -29,7 +32,7 @@ type Sent = {
   subscription?: PushSubscriptionJson & { expirationTime?: number | null };
   endpoint?: string;
   preferences?: NotifyPreferencesChange;
-  change?: PresenceChange;
+  change?: PresenceChange | SoundSettingsChange;
 };
 
 export async function action({ context, request }: Route.ActionArgs) {
@@ -50,9 +53,14 @@ export async function action({ context, request }: Route.ActionArgs) {
       return Response.json(await notify.setPreferences(user, sent.preferences ?? {}));
     case "test":
       return Response.json(await notify.test(user));
+    case "sounds": {
+      const saved = await identity.setSoundSettings(user, (sent.change ?? {}) as SoundSettingsChange);
+      if (!saved.ok) return Response.json({ ok: false, error: saved.error.message }, { status: 400 });
+      return Response.json(saved.value);
+    }
     case "presence": {
       // Set by hand here: a calendar's or an integration's comes through their own door.
-      const change = sent.change ?? {};
+      const change = (sent.change ?? {}) as PresenceChange;
       const status = change.status ? { ...change.status, source: "manual" as const } : change.status;
       return Response.json(await notify.setPresence(user, { ...change, ...("status" in change ? { status } : {}) }));
     }

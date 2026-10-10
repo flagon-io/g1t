@@ -38,6 +38,7 @@ under **Your settings**; the sidebar then lists every page.
 | --- | --- | --- |
 | Profile | [`/settings/profile`](https://g1t.sh/settings/profile) | Your picture, and your [public profile](/guides/workspaces/#profiles): name, pronouns, bio, location, website and time zone. |
 | Emails | [`/settings/emails`](https://g1t.sh/settings/emails) | Your [email addresses](#email-addresses), the backup address, and [keeping your address private](#keeping-your-address-private). |
+| Notifications | [`/settings/notifications`](https://g1t.sh/settings/notifications) | [Sounds and do not disturb](/guides/chat/#sounds-and-do-not-disturb), [pop-ups and browser notifications](/guides/chat/#notifications), and [what you are emailed for and how you watch repositories](/guides/notifications/#settings). |
 | Invites to g1t | [`/settings/invites`](https://g1t.sh/settings/invites) | [Making, copying and revoking invites to g1t](#making-invites), while g1t is invite-only; after that, the invites you made. |
 | SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/#ssh), each with when it was added and last used. |
 | Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens): their permissions, where they reach, and when they expire. |
