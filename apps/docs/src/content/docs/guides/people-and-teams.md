@@ -1,15 +1,17 @@
 ---
 title: People and teams
-description: Find anyone in a workspace, person or agent, see what they own and who they report to, and know what agents are told about their teams.
+description: Find anyone in a workspace, see what they own and who they report to, put agents on teams beside them, and know what agents are told about their teams.
 ---
 
-**People** is where a workspace's people and agents are listed together:
-who they are, the teams they are on, what they own and who they report
-to. Open it from **People** at the foot of the rail. Its sidebar has:
+**People** is where a workspace's people are listed: who they are, the
+teams they are on, what they own and who they report to. Agents are not
+in it: each has its page under [Agents](/guides/agents/), and agents join
+[teams](/guides/teams/) beside people. Open it from **People** at the foot
+of the rail. Its sidebar has:
 
 | Page | Address | What it is |
 | --- | --- | --- |
-| **Everyone** | `g1t.sh/<workspace>/-/people` | The [directory](#the-directory) of people and agents. |
+| **Everyone** | `g1t.sh/<workspace>/-/people` | The [directory](#the-directory) of the workspace's people. |
 | **Teams** | `g1t.sh/<workspace>/-/teams` | The workspace's [teams](/guides/teams/). |
 | **Org chart** | `g1t.sh/<workspace>/-/org-chart` | Who reports to whom. See [the org chart](#the-org-chart). |
 | **Members and invites** | `g1t.sh/<workspace>/-/members` | Under **Membership**: roles, invitations and leaving. See [members and invites](#members-and-invites). |
@@ -18,34 +20,29 @@ Only members of the workspace can open these pages.
 
 ## The directory
 
-The directory, `g1t.sh/<workspace>/-/people`, lists people and agents in
-one place, with one search box.
+The directory, `g1t.sh/<workspace>/-/people`, lists the workspace's
+people, with one search box and how many there are.
 
 1. Open **People**, then **Everyone**.
-2. Type in **Search by name, title, team or what they own**.
-3. Choose **Everyone**, **People** or **Agents** to narrow the list. Each
-   shows how many it has.
+2. Type in **Name, title, team or what they own**.
 
-The search matches:
-
-| | Matches on |
-| --- | --- |
-| **A person** | Name, username, title, teams, what they own, location and bio. |
-| **An agent** | Name, handle, title, role, responsibilities and teams. |
-
-The address keeps what you chose, so you can share it:
-`?q=billing` for the search, and `?kind=people` or `?kind=agents` for the
-switch.
+The search matches a person's name, username, title, teams, what they
+own, location and bio. The address keeps the search, so you can share it:
+`?q=billing`.
 
 Each card shows:
 
-- the person's picture with a dot for whether they are around, or the
-  agent's picture with a dot for its status;
+- the person's picture with a dot for whether they are around;
 - their name and title;
 - their teams;
 - their local time, from the time zone on their
   [profile](https://g1t.sh/settings/profile);
 - what they own.
+
+The directory is people only. The workspace's agents are not in it and a
+search for one finds no one: they are listed under
+[Agents](/guides/agents/), and a team's page lists the agents on it under
+its people (see [agents on a team](/guides/teams/#agents-on-a-team)).
 
 **Org chart** opens [the org chart](#the-org-chart). Owners also see
 **Invite people**, which opens [Members and invites](#members-and-invites).
@@ -91,23 +88,21 @@ change is recorded in the workspace's [audit log](/guides/audit-log/) as
 When someone leaves the workspace, anyone who reported to them reports to
 no one, and any team they led has no lead.
 
-## An agent's profile
+## Agents
 
-Each agent has a People profile too,
-`g1t.sh/<workspace>/-/people/agents/<handle>`, with its title, handle and
-status.
+Agents are not in the directory and have no People profile. Each agent's
+page is under [Agents](/guides/agents/#the-agents-page),
+`g1t.sh/<workspace>/-/agents/<handle>`: its sessions, skills, abilities,
+memory, routines, spend and activity, and its **Profile** tab, which has
+its definition and, under **Teams**, the teams it is on and
+[what it is told about them](#what-agents-are-told). Wherever People
+names an agent, on a team's page, on a person's profile under **Agents
+on their teams** or in the org chart, the name opens that page.
 
-| Card | What it shows |
-| --- | --- |
-| **Responsible for** | Its responsibilities, from its [profile](/guides/agents/#title-and-responsibilities). |
-| **Teams** | The teams it is on, with **Lead** where it leads one. Owners and a team's maintainers choose **Remove** beside a team they manage, or a team and **Add to team**, as on the team's page. A personal agent is on no team. |
-| **Who it works with** | The people on its teams, leads first. |
-| **Agents on its teams** | The other agents on those teams. |
-| **Access** | **Code**: what the person who asks it can read, and only what everyone in the conversation can see. **Storage**: coming. What it spent this month of its monthly budget. |
-| **What** *agent* **knows about its teams** | The exact text it is told every turn. See [what agents are told](#what-agents-are-told). |
-
-**Message** opens your direct message with it. **Sessions and settings**
-opens its page in [Agents](/guides/agents/).
+Agents still join teams like anyone: see [teams of any mix](#teams-of-any-mix)
+below. The old address of an agent's People profile,
+`g1t.sh/<workspace>/-/people/agents/<handle>`, sends you to its page in
+Agents.
 
 ## Teams of any mix
 
@@ -119,7 +114,7 @@ shows a small mark for each, and counts such as
 
 | | Where |
 | --- | --- |
-| Add or remove an agent | The team's **People and agents** tab, or **Teams** on the agent's profile. See [agents on a team](/guides/teams/#agents-on-a-team). |
+| Add or remove an agent | The team's **People and agents** tab, or **Teams** on the agent's **Profile** tab in Agents. See [agents on a team](/guides/teams/#agents-on-a-team). |
 | Set the lead, channel and budget | The team's **Settings**. See [lead, channel and budget](/guides/teams/#lead-channel-and-budget). |
 | Storage for a team | Coming. |
 
@@ -127,7 +122,11 @@ shows a small mark for each, and counts such as
 
 The org chart, `g1t.sh/<workspace>/-/org-chart`, draws the reporting
 lines as a tree: each person, with the people who report to them below.
-Beside each person are the agents of the teams they lead.
+Beside each person are the agents on the teams they lead, as members of
+those teams: hover one for its name, title and that it is an agent, and
+choose it to open its page in Agents. Agents have no place of their own
+in the tree, since no one reports to an agent and an agent reports to no
+one.
 
 Under **Teams no person leads** are the teams led by an agent or by no
 one, each with its agents.
@@ -180,7 +179,8 @@ reads an agent's answer: only the members of the conversation do. See
 
 You can read what an agent is told:
 
-- on its People profile, under **What** *agent* **knows about its teams**;
+- on its **Profile** tab in [Agents](/guides/agents/#the-agents-page),
+  under **Teams**, by opening **What** *agent* **knows about its teams**;
 - on a team's **People and agents** tab, under **What the agents on**
   *team* **know about it**, for that team's part.
 

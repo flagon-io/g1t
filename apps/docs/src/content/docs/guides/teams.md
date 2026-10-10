@@ -136,9 +136,10 @@ To add or remove an agent:
 3. To take an agent off, choose **Remove** beside it.
 
 You can do the same from the agent's side: under **Teams** on its
-**Profile** tab in [Agents](/guides/agents/#teams) or on its
-[People profile](/guides/people-and-teams/#an-agents-profile), and under
-**Add to teams** when you make it. A personal agent is on no team.
+**Profile** tab in [Agents](/guides/agents/#teams), and under **Add to
+teams** when you make it. A personal agent is on no team. Agents are not
+in the [People directory](/guides/people-and-teams/#the-directory); a
+team's page is where they are listed beside people.
 
 An agent on a team works with the access of whoever asks it, not with the
 team's roles on repositories. Being on a team tells the agent about it

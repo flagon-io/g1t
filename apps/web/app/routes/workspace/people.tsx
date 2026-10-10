@@ -1,34 +1,31 @@
-import { Network, Search, UserPlus } from "lucide-react";
+import { Bot, Network, Search, UserPlus } from "lucide-react";
 import { Link, data, useSearchParams, type ShouldRevalidateFunctionArgs } from "react-router";
 
 import type { Route } from "./+types/people";
-import { AgentPersonFace, AgentTag, LocalTime, PersonFace } from "../../components/people";
+import { LocalTime, PersonFace } from "../../components/people";
 import { ButtonLink, notACredential } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { page } from "../../lib/meta";
-import { type DirectoryEntry, type DirectoryKind, agentPath, directoryEntries, directoryKind, peopleAgent, personName, personPath } from "../../lib/people";
-import { identity, workspaceAgents } from "../../lib/services.server";
+import { type DirectoryEntry, directoryEntries, personName, personPath } from "../../lib/people";
+import { identity } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `People · ${params.owner} · g1t` });
 }
 
+/**
+ * The workspace's people. Its agents are not here: they are listed under
+ * Agents, and a team's page lists the agents on it with its people.
+ */
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   // Who is in a workspace is its members' business.
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const [directory, agents] = await Promise.all([
-    identity.peopleDirectory(viewer, params.owner).then(unwrap),
-    workspaceAgents.list(params.owner, viewer!).catch(() => null),
-  ]);
-  return {
-    slug: params.owner.toLowerCase(),
-    directory,
-    agents: agents?.ok ? agents.value.map(peopleAgent) : [],
-  };
+  const directory = await identity.peopleDirectory(viewer, params.owner).then(unwrap);
+  return { slug: params.owner.toLowerCase(), directory };
 }
 
 /** Searching changes only the address: everyone is already here. */
@@ -37,18 +34,12 @@ export function shouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShoul
   return defaultShouldRevalidate;
 }
 
-const KINDS: { value: DirectoryKind; label: string }[] = [
-  { value: "everyone", label: "Everyone" },
-  { value: "people", label: "People" },
-  { value: "agents", label: "Agents" },
-];
-
 export default function PeopleDirectoryPage({ loaderData }: Route.ComponentProps) {
-  const { slug, directory, agents } = loaderData;
+  const { slug, directory } = loaderData;
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
-  const kind = directoryKind(params.get("kind"));
-  const entries = directoryEntries(directory, agents, query, kind);
+  const entries = directoryEntries(directory, query);
+  const total = directory.people.length;
   const change = (key: string, value: string) =>
     setParams(
       (current) => {
@@ -59,13 +50,12 @@ export default function PeopleDirectoryPage({ loaderData }: Route.ComponentProps
       },
       { replace: true, preventScrollReset: true },
     );
-  const counts = { everyone: directory.people.length + agents.length, people: directory.people.length, agents: agents.length };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center">
         <label className="relative block grow">
-          <span className="sr-only">Search people and agents</span>
+          <span className="sr-only">Search people</span>
           <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
           <input
             type="search"
@@ -77,21 +67,9 @@ export default function PeopleDirectoryPage({ loaderData }: Route.ComponentProps
           />
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <Card role="group" aria-label="Show" tone="bg" radius="lg" className="inline-flex p-0.5">
-            {KINDS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={kind === option.value}
-                onClick={() => change("kind", option.value === "everyone" ? "" : option.value)}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  kind === option.value ? "bg-raised text-fg" : "text-muted hover:text-fg"
-                }`}
-              >
-                {option.label} <span className="text-faint tabular-nums">{counts[option.value]}</span>
-              </button>
-            ))}
-          </Card>
+          <span role="status" className="mr-1 text-sm text-muted tabular-nums">
+            {query ? `${entries.length} of ${total}` : total} {total === 1 && !query ? "person" : "people"}
+          </span>
           <ButtonLink to={`/${slug}/-/org-chart`} variant="outline">
             <Network size={15} />
             Org chart
@@ -123,59 +101,49 @@ export default function PeopleDirectoryPage({ loaderData }: Route.ComponentProps
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {entries.map((entry) => (
-            <li key={entry.kind === "person" ? `p:${entry.person.username}` : `a:${entry.agent.id}`}>
-              <EntryCard slug={slug} entry={entry} />
+            <li key={entry.person.username}>
+              <PersonCard slug={slug} entry={entry} />
             </li>
           ))}
         </ul>
       )}
+
+      <p className="flex items-start gap-2 text-xs text-faint">
+        <Bot size={14} className="mt-px shrink-0" />
+        <span>
+          Agents aren&apos;t listed here. The workspace&apos;s agents are under{" "}
+          <Link to={`/${slug}/-/agents`} className="text-muted hover:text-fg">
+            Agents
+          </Link>
+          , and a <Link to={`/${slug}/-/teams`} className="text-muted hover:text-fg">team</Link> lists the agents on it with its people.
+        </span>
+      </p>
     </div>
   );
 }
 
-/** One person or agent: who they are, their title, their teams and, for a person, their local time. */
-function EntryCard({ slug, entry }: { slug: string; entry: DirectoryEntry }) {
+/** One person: who they are, their title, their teams and their local time. */
+function PersonCard({ slug, entry }: { slug: string; entry: DirectoryEntry }) {
+  const { person } = entry;
   const teams = entry.teams.map((team) => team.name);
-  if (entry.kind === "person") {
-    const { person } = entry;
-    return (
-      <Link
-        to={personPath(slug, person.username)}
-        prefetch="intent"
-        className="flex h-full items-start gap-3 rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong"
-      >
-        <PersonFace person={person} size={44} ring="var(--color-surface)" />
-        <span className="min-w-0 grow">
-          <span className="flex items-center gap-1.5">
-            <span className="truncate font-medium">{personName(person)}</span>
-            {person.role === "owner" && <Badge>Owner</Badge>}
-          </span>
-          <span className="block truncate text-sm text-muted">{person.title ?? `@${person.display_username ?? person.username}`}</span>
-          <span className="mt-1.5 block truncate text-xs text-faint">
-            {teams.length ? teams.join(", ") : "No team"}
-            <LocalTime zone={person.timezone} className="before:mx-1.5 before:content-['·']" />
-          </span>
-          {person.owns.length > 0 && <span className="mt-1 block truncate text-xs text-fg-soft">Owns {person.owns.join(", ")}</span>}
-        </span>
-      </Link>
-    );
-  }
-  const { agent } = entry;
   return (
     <Link
-      to={agentPath(slug, agent.handle)}
+      to={personPath(slug, person.username)}
       prefetch="intent"
       className="flex h-full items-start gap-3 rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong"
     >
-      <AgentPersonFace agent={agent} size={44} ring="var(--color-surface)" />
+      <PersonFace person={person} size={44} ring="var(--color-surface)" />
       <span className="min-w-0 grow">
         <span className="flex items-center gap-1.5">
-          <span className="truncate font-medium">{agent.display_name}</span>
-          <AgentTag />
+          <span className="truncate font-medium">{personName(person)}</span>
+          {person.role === "owner" && <Badge>Owner</Badge>}
         </span>
-        <span className="block truncate text-sm text-muted">{agent.title || agent.role}</span>
-        <span className="mt-1.5 block truncate text-xs text-faint">{teams.length ? teams.join(", ") : "No team"}</span>
-        {agent.responsibilities.length > 0 && <span className="mt-1 block truncate text-xs text-fg-soft">{agent.responsibilities.slice(0, 2).join(" · ")}</span>}
+        <span className="block truncate text-sm text-muted">{person.title ?? `@${person.display_username ?? person.username}`}</span>
+        <span className="mt-1.5 block truncate text-xs text-faint">
+          {teams.length ? teams.join(", ") : "No team"}
+          <LocalTime zone={person.timezone} className="before:mx-1.5 before:content-['·']" />
+        </span>
+        {person.owns.length > 0 && <span className="mt-1 block truncate text-xs text-fg-soft">Owns {person.owns.join(", ")}</span>}
       </span>
     </Link>
   );

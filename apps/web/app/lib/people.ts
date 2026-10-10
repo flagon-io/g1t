@@ -1,7 +1,7 @@
 /**
- * People on the site: the directory (people and agents in one search),
- * profiles, teams of any mix, and the org chart. Types only from the
- * contracts, so this file runs under `node --test`.
+ * People on the site: the directory (people only; agents are on their
+ * teams and under Agents), profiles, teams of any mix, and the org chart.
+ * Types only from the contracts, so this file runs under `node --test`.
  */
 import type { DirectoryPerson, DirectoryTeam, PeopleDirectory, TeamLead, WorkspaceAgent } from "@g1t/contracts";
 
@@ -22,9 +22,9 @@ export function personPath(workspace: string, username: string): string {
   return `/${workspace}/-/people/${username}`;
 }
 
-/** Where an agent's People profile is. */
+/** Where an agent's profile is: its page in Agents. People has none; its old address there redirects. */
 export function agentPath(workspace: string, handle: string): string {
-  return `/${workspace}/-/people/agents/${handle}`;
+  return `/${workspace}/-/agents/${handle}`;
 }
 
 /** The agents on a team, in the order they were added, as found among `agents`. */
@@ -101,38 +101,22 @@ export function matches(query: string, fields: readonly (string | null | undefin
   return words.every((word) => text.includes(word));
 }
 
-export type DirectoryKind = "everyone" | "people" | "agents";
-
-export function directoryKind(value: string | null): DirectoryKind {
-  return value === "people" || value === "agents" ? value : "everyone";
-}
-
-/** One card in the directory: a person or an agent. */
-export type DirectoryEntry =
-  | { kind: "person"; person: DirectoryPerson; teams: DirectoryTeam[] }
-  | { kind: "agent"; agent: PeopleAgent; teams: DirectoryTeam[] };
+/** One card in the directory: a person and their teams. */
+export type DirectoryEntry = { person: DirectoryPerson; teams: DirectoryTeam[] };
 
 /**
- * Everyone matching `query`, people first by name, then agents (the
- * orchestrator first, then by name). People match on their name, title,
- * teams, what they own, where they are and their bio; agents on their
- * name, handle, title, role, teams and responsibilities.
+ * The people matching `query`, in the directory's order (by name). A
+ * person matches on their name, username, title, teams, what they own,
+ * where they are and their bio. The directory is people only: the
+ * workspace's agents are listed under Agents and on the teams they are
+ * on, never here, so a query that would only match an agent finds no one.
  */
-export function directoryEntries(directory: PeopleDirectory, agents: readonly PeopleAgent[], query: string, kind: DirectoryKind): DirectoryEntry[] {
+export function directoryEntries(directory: PeopleDirectory, query: string): DirectoryEntry[] {
   const out: DirectoryEntry[] = [];
-  if (kind !== "agents") {
-    for (const person of directory.people) {
-      const teams = teamsOfPerson(directory.teams, person.username);
-      const fields = [person.username, person.name, person.title, person.location, person.bio, ...person.owns, ...teams.map((team) => team.name), person.role === "owner" ? "owner" : null];
-      if (matches(query, fields)) out.push({ kind: "person", person, teams });
-    }
-  }
-  if (kind !== "people") {
-    for (const agent of agents) {
-      const teams = teamsOfAgent(directory.teams, agent);
-      const fields = [agent.handle, agent.display_name, agent.title, agent.role, ...agent.responsibilities, ...teams.map((team) => team.name), "agent"];
-      if (matches(query, fields)) out.push({ kind: "agent", agent, teams });
-    }
+  for (const person of directory.people) {
+    const teams = teamsOfPerson(directory.teams, person.username);
+    const fields = [person.username, person.name, person.title, person.location, person.bio, ...person.owns, ...teams.map((team) => team.name), person.role === "owner" ? "owner" : null];
+    if (matches(query, fields)) out.push({ person, teams });
   }
   return out;
 }

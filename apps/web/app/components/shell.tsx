@@ -1342,8 +1342,9 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
 }
 
 /**
- * People's sidebar: everyone in the workspace, people and agents; its
- * teams; the org chart; and, to manage who belongs, members and invites.
+ * People's sidebar: everyone in the workspace (its people; agents are
+ * under Agents); its teams, which agents can be on; the org chart; and, to
+ * manage who belongs, members and invites.
  */
 function PeopleSidebar({ slug }: { slug: string }) {
   const { pathname } = useLocation();

@@ -6,6 +6,7 @@ import type { DirectoryPerson, DirectoryTeam, PeopleDirectory } from "@g1t/contr
 import {
   type PeopleAgent,
   NO_TEAM,
+  agentPath,
   agentsOn,
   groupByTeam,
   teamsByAgent,
@@ -115,15 +116,26 @@ test("the Agents sidebar groups agents by their teams: under each team, and the 
   assert.deepEqual(groupByTeam(agents.slice(3), {}).map((g) => g.label), [NO_TEAM]);
 });
 
-test("the directory finds people and agents in one search", () => {
-  const names = (query: string, kind: "everyone" | "people" | "agents" = "everyone") =>
-    directoryEntries(directory, agents, query, kind).map((e) => (e.kind === "person" ? e.person.username : `@${e.agent.handle}`));
-  assert.deepEqual(names("sales"), ["sofia", "jordan", "@david"]);
+test("the directory lists people only, in one search; agents are never in it", () => {
+  const names = (query: string) => directoryEntries(directory, query).map((e) => e.person.username);
+  assert.deepEqual(names(""), ["chase", "sofia", "jordan", "kai"]);
+  assert.deepEqual(names("sales"), ["sofia", "jordan"]);
   assert.deepEqual(names("halcyon"), ["jordan"]);
-  assert.deepEqual(names("errors"), ["@sentinel"]);
-  assert.deepEqual(names("", "agents"), ["@david", "@atlas", "@sentinel", "@pax"]);
-  assert.deepEqual(names("night"), ["@david", "@atlas", "@sentinel"]);
+  assert.deepEqual(names("owner"), ["chase"]);
+  // What only an agent would match (its handle, title or responsibilities) finds no one here.
+  assert.deepEqual(names("david"), []);
+  assert.deepEqual(names("errors"), []);
+  // A team of agents only is no one's team in the directory.
+  assert.deepEqual(names("night shift"), []);
   assert.equal(names("nobody here").length, 0);
+  // Every entry is a person with their teams; nothing in the shape says "agent".
+  const sofia = directoryEntries(directory, "sofia")[0]!;
+  assert.deepEqual(Object.keys(sofia), ["person", "teams"]);
+  assert.deepEqual(sofia.teams.map((t) => t.slug), ["sales"]);
+});
+
+test("an agent's profile is its page in Agents, where People links to it", () => {
+  assert.equal(agentPath("acme", "margo"), "/acme/-/agents/margo");
 });
 
 test("the org chart follows reporting lines, with each team's agents beside its lead", () => {

@@ -103,7 +103,7 @@ export function PersonLink({ workspace, person, className }: { workspace: string
   );
 }
 
-/** An agent's name, linked to its People profile. */
+/** An agent's name, linked to its page in Agents. */
 export function AgentLink({ workspace, agent, className }: { workspace: string; agent: Pick<PeopleAgent, "handle" | "display_name">; className?: string }) {
   return (
     <Link to={agentPath(workspace, agent.handle)} prefetch="intent" className={cn("hover:text-accent", className)}>

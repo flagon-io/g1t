@@ -448,9 +448,10 @@ on the agent names a team. Every reply and session step, an agent is
 told each visible team it is on: who leads it, each person's title, what
 they own, who they report to, whether they are around and their local
 time, and who to ask when a person is needed. Ask the person who owns
-something before guessing. The directory of people and agents is
-`g1t.sh/<owner>/-/people`, profiles `-/people/<username>` and
-`-/people/agents/<handle>`, the org chart `-/org-chart`. Guide:
+something before guessing. The directory of people is
+`g1t.sh/<owner>/-/people` (people only; a team's page lists the agents on
+it), profiles `-/people/<username>`, the org chart `-/org-chart`; an
+agent's page is `-/agents/<handle>`. Guide:
 https://docs.g1t.sh/guides/people-and-teams/
 
 Anyone creates an agent by describing it at `g1t.sh/<owner>/-/agents/new`:

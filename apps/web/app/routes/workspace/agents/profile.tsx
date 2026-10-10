@@ -1,4 +1,4 @@
-import { ChevronRight, History, UsersRound } from "lucide-react";
+import { ChevronRight, History, Sparkles, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { Form, data, redirect, useNavigation, useOutletContext } from "react-router";
 
@@ -13,6 +13,8 @@ import { TimeAgo } from "../../../components/ui";
 import { Alert } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
+import { ToldText } from "../../../components/people";
 import { isOrchestrator } from "../../../components/orchestrator";
 import { readAgentForm } from "../../../lib/agent-form";
 import { docs, workspaceAgents } from "../../../lib/services.server";
@@ -21,15 +23,17 @@ import { agentTeamsFor, changeAgentTeam } from "../../../lib/agent-teams.server"
 import { AgentTeamsEditor } from "../../../components/teams";
 import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.server";
 
-/** The teams it is on (and may join), and its saved versions. */
+/** The teams it is on (and may join) and what it is told about them, and its saved versions. */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   const role = roleIn(viewer, params.owner);
-  const [teams, versions, spaces, effortCosts] = await Promise.all([
+  const [teams, told, versions, spaces, effortCosts] = await Promise.all([
     workspaceAgents
       .get(params.owner.toLowerCase(), params.handle.toLowerCase(), viewer)
       .then((found) => (found.ok && found.value.scope !== "personal" ? agentTeamsFor(viewer, params.owner.toLowerCase(), found.value.id) : null))
       .catch(() => null),
+    // What it is told about its teams every turn, word for word.
+    readOrNull(workspaceAgents.teamContext(params.owner.toLowerCase(), params.handle.toLowerCase(), viewer)).then((context) => context?.text || null),
     readOrNull(workspaceAgents.versions(params.owner.toLowerCase(), params.handle.toLowerCase(), viewer)),
     readingSpaces(params.owner.toLowerCase(), viewer),
     // What each effort level has cost it, beside the control.
@@ -37,6 +41,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   ]);
   return {
     teams,
+    told,
     slug: params.owner.toLowerCase(),
     versions,
     spaces,
@@ -140,6 +145,19 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
               personal={personal}
               change={actionData && "teamChange" in actionData ? actionData.teamChange : null}
             />
+            {loaderData.told && (
+              <Collapsible className="mt-4 border-t border-line pt-3">
+                <CollapsibleTrigger>
+                  <ChevronRight size={14} className="shrink-0 text-faint" />
+                  <Sparkles size={14} className="text-accent" />
+                  What {agent.display_name} knows about its teams
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-3">
+                  <p className="mb-3 text-xs text-faint">Told every turn, from the team pages and who&apos;s around now.</p>
+                  <ToldText text={loaderData.told} />
+                </CollapsibleContent>
+              </Collapsible>
+            )}
           </section>
         </Card>
       )}

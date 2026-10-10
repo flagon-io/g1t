@@ -49,7 +49,7 @@ export default function OrgChartPage({ loaderData }: Route.ComponentProps) {
               <Branch key={root.person.username} slug={slug} node={root} />
             ))}
           </ul>
-          <p className="mt-4 text-xs text-faint">Agents appear beside the person who leads their team.</p>
+          <p className="mt-4 text-xs text-faint">The agents on a team appear beside the person who leads it, as its members; each opens the agent's page in Agents.</p>
         </section>
       </Card>
 
@@ -110,7 +110,7 @@ function Branch({ slug, node }: { slug: string; node: OrgNode }) {
           <span className="inline-flex items-center gap-2">
             <span className="flex">
               {node.agents.slice(0, 6).map((agent, index) => (
-                <Hint key={agent.id} label={`${agent.display_name} · ${agent.title || agent.role}`}>
+                <Hint key={agent.id} label={`${agent.display_name} · ${agent.title || agent.role} · agent`}>
                   <Link to={agentPath(slug, agent.handle)} className={index ? "-ml-1.5" : undefined} aria-label={agent.display_name}>
                     <AgentPersonFace agent={agent} size={22} ring="var(--color-surface)" />
                   </Link>

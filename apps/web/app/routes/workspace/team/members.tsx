@@ -4,7 +4,7 @@ import { Form, Link, data, useSearchParams } from "react-router";
 import type { TeamRole } from "@g1t/contracts";
 
 import type { Route } from "./+types/members";
-import { AgentLink, AgentPersonFace, ToldText } from "../../../components/people";
+import { AgentLink, AgentPersonFace, AgentTag, ToldText } from "../../../components/people";
 import { useTeam, useTeamAgents } from "../../../components/teams";
 import { ErrorText, Field, Input, SubmitButton } from "../../../components/ui";
 import { Avatar } from "../../../components/ui/avatar";
@@ -211,6 +211,7 @@ export default function TeamMembers({ loaderData, actionData }: Route.ComponentP
                         <AgentLink workspace={team.workspace} agent={agent} className="font-medium" />
                         <span className="ml-2 text-muted">{agent.title || agent.role}</span>
                       </div>
+                      <AgentTag />
                       {leads(team.lead, { id: agent.id }) && <Badge tone="accent">Lead</Badge>}
                       {manage && (
                         <Form method="post">

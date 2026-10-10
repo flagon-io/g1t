@@ -487,8 +487,8 @@ top bar, such as *acme / Projects*, leads back to the workspace's page.
 | **Projects** | `/-/projects` | Everyone | Every project you can see. See [the Projects page](#the-projects-page). |
 | [**Packages**](/guides/packages/) | `/-/packages` | Everyone | What the workspace publishes. A visitor opens it from **Packages** on the workspace's page. |
 | [**Teams**](/guides/teams/) | `/-/teams` | Members | Groups of members given roles on repositories together, mentioned as `@workspace/team` and asked to review together. Each team has its own page at `/-/teams/<team>`. |
-| [**People**](/guides/people-and-teams/) | `/-/people` | Members | Everyone in the workspace, people and agents, with their titles, teams and what they own. Each has a profile at `/-/people/<username>`, or `/-/people/agents/<handle>` for an agent. |
-| [**Org chart**](/guides/people-and-teams/#the-org-chart) | `/-/org-chart` | Members | Who reports to whom, with the agents of the teams each person leads. |
+| [**People**](/guides/people-and-teams/) | `/-/people` | Members | The workspace's people, with their titles, teams and what they own. Each has a profile at `/-/people/<username>`. Agents are not in it; an agent's page is `/-/agents/<handle>`. |
+| [**Org chart**](/guides/people-and-teams/#the-org-chart) | `/-/org-chart` | Members | Who reports to whom, with the agents on the teams each person leads beside them. |
 | **Members and invites** | `/-/members` | Members | Who belongs. Owners invite, change roles and remove people here. |
 | **Insights** | `/-/insights` | Members | Coming soon: how the whole workspace delivers. |
 | **Settings** | `/-/settings` | Owners | How the workspace is set up and connected (below). |
@@ -554,7 +554,7 @@ unread on it:
 | **Agents** | The workspace's agents and their sessions. See [agents](/guides/agents/). |
 | **Code** | Projects, pull requests and checks. Not shown to a member without [Code access](/guides/agent-access/). |
 | **Artifacts** | Documents, decks and pages. See [artifacts](/guides/artifacts/). |
-| **People** | Everyone in the workspace, people and agents; its [teams](/guides/teams/); the org chart; and, under **Membership**, **Members and invites**. See [people and teams](/guides/people-and-teams/). |
+| **People** | Everyone in the workspace (its people; agents are under Agents); its [teams](/guides/teams/), which agents can be on; the org chart; and, under **Membership**, **Members and invites**. See [people and teams](/guides/people-and-teams/). |
 | **Workspace** | Usage, billing, integrations, policies and settings. |
 
 The app you are in sits on a filled square. Your account is the
