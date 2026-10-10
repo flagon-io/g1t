@@ -14,9 +14,11 @@ of the rail. Its sidebar has:
 | **Everyone** | `g1t.sh/<workspace>/-/people` | The [directory](#the-directory) of the workspace's people. |
 | **Teams** | `g1t.sh/<workspace>/-/teams` | The workspace's [teams](/guides/teams/). |
 | **Org chart** | `g1t.sh/<workspace>/-/org-chart` | Who reports to whom. See [the org chart](#the-org-chart). |
-| **Members and invites** | `g1t.sh/<workspace>/-/members` | Under **Membership**: roles, invitations and leaving. See [members and invites](#members-and-invites). |
 
-Only members of the workspace can open these pages.
+Only members of the workspace can open these pages. Who belongs, and
+inviting people, is the workspace's own business: **Members**,
+**Invitations** and **Permissions** are under **Workspace → Access**; see
+[members, invitations and permissions](#members-invitations-and-permissions).
 
 ## The directory
 
@@ -45,7 +47,8 @@ search for one finds no one: they are listed under
 its people (see [agents on a team](/guides/teams/#agents-on-a-team)).
 
 **Org chart** opens [the org chart](#the-org-chart). Owners also see
-**Invite people**, which opens [Members and invites](#members-and-invites).
+**Invite people**, which opens the workspace's
+[Members](#members-invitations-and-permissions) page, where **Invite** is.
 
 ## A person's profile
 
@@ -207,14 +210,16 @@ Payments, invoices and the billing pages. Led by Priya Shah (@priya). Its channe
 When a person is needed: Priya Shah (@priya), who is online now.
 ```
 
-## Members and invites
+## Members, invitations and permissions
 
-Inviting people, their roles, pending invitations, outside collaborators,
-the base permission, transferring ownership and leaving a workspace are
-on **Members and invites**, `g1t.sh/<workspace>/-/members` (People →
-Members and invites). See [add people](/guides/workspaces/#add-people),
-[change someone's role](/guides/workspaces/#change-someones-role) and
-[the base permission](/guides/access-and-roles/#the-base-permission).
+Who is in the workspace is a setting of the workspace, so it lives in
+[Workspace mode](/guides/workspaces/#workspace-mode), under **Access**:
+
+| Page | Address | What it is |
+| --- | --- | --- |
+| **Members** | `g1t.sh/<workspace>/-/members` | Everyone in the workspace and their roles, with search and filters; **Invite** (a dialog), changing roles, transferring ownership, outside collaborators and leaving. See [add people](/guides/workspaces/#add-people) and [change someone's role](/guides/workspaces/#change-someones-role). |
+| **Invitations** | `g1t.sh/<workspace>/-/members/invitations` | Every invitation to join, by where it stands: pending, accepted, declined, expired, revoked. Owners only. |
+| **Permissions** | `g1t.sh/<workspace>/-/permissions` | Who may do what, part by part, [the base permission](/guides/access-and-roles/#the-base-permission) included. Owners only. See [permissions](/guides/permissions/). |
 
 ## Next
 

@@ -551,15 +551,14 @@ move through it, Enter or Tab puts the emoji in, and Escape closes it. A whole
 ## Workspace chat settings
 
 A workspace's owners decide what members can do in its chat, under
-**Workspace → Settings → Chat** (`g1t.sh/<workspace>/-/settings/chat`).
+**Workspace → Chat → Chat settings** (`g1t.sh/<workspace>/-/settings/chat`).
 Every member can open the page to see what is allowed; only owners can
 change it. g1t enforces each setting, whichever app or API the request
 comes from.
 
 | Setting | Choices |
 | --- | --- |
-| **Public channels** | Who can create them: **Any member** (the default) or **Owners only**. |
-| **Private channels** | Who can create them: **Any member** (the default) or **Owners only**. |
+| **Creating channels** | Who can create public and private channels (**Any member**, the default, or **Owners only**) is set with the workspace's other permissions, under [Permissions → Chat](/guides/permissions/#chat); this page says what is allowed today and leads there. |
 | **Renaming and archiving** | **Channel owners and workspace owners** (the default) or **Workspace owners only**. Any member of a channel can still change its topic. |
 | **Custom emoji** | Who can add them: **Any member** (the default) or **Owners only**. |
 | **Default channels** | The public channels someone new is put in the first time they open Chat. `#general` unless owners choose others. People already in the workspace are not moved, and anyone can leave a default channel. |

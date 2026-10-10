@@ -1,23 +1,12 @@
-import { ArrowUpRight, Check, Ellipsis, ShieldAlert, ShieldCheck, Users } from "lucide-react";
-import { useState } from "react";
+import { ArrowUpRight, Check, Ellipsis, Mail, Search, ShieldAlert, ShieldCheck, Users } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Form, Link, data, redirect, useSearchParams, useSubmit } from "react-router";
 
-import {
-  BASE_PERMISSIONS,
-  BASE_PERMISSION_LABELS,
-  type BasePermission,
-  DEFAULT_BASE_PERMISSION,
-  type Member,
-  ORG_ROLES,
-  ORG_ROLE_LABELS,
-  ORG_ROLE_SUMMARIES,
-  type OrgRole,
-  REPO_ROLE_LABELS,
-} from "@g1t/contracts";
+import { type Member, ORG_ROLES, ORG_ROLE_LABELS, ORG_ROLE_SUMMARIES, type OrgRole, REPO_ROLE_LABELS } from "@g1t/contracts";
 
 import type { Route } from "./+types/members";
 import { page } from "../../lib/meta";
-import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
+import { EmptyState, ErrorText, SubmitButton } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { PersonStatusEmoji, WithPresence } from "../../components/presence";
 import {
@@ -41,38 +30,38 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { Hint } from "../../components/ui/hint";
-import { forgetWorkspace } from "../../lib/workspace-choice";
-import { Select, SelectContent, SelectField, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Input } from "../../components/ui/input";
+import { SelectField } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { inviteLink, inviteState, moreInvitesMailto, workspaceInviteCopy } from "../../lib/invites";
+import { InviteDialog } from "../../components/invite-dialog";
+import { StartPlanToInvite } from "../../components/start-plan";
+import { UserCard } from "../../components/user-card";
+import { inviteFromForm } from "../../lib/member-invitations.server";
+import { filterMembers, invitationFilterOf, memberFilters } from "../../lib/invites";
 import { registrationMode } from "../../lib/registration.server";
 import { billing, identity } from "../../lib/services.server";
-import { StartPlanToInvite } from "../../components/start-plan";
-import {
-  assertSameOrigin,
-  getViewer,
-  requireUser,
-  roleIn,
-  unwrap,
-} from "../../lib/session.server";
-import { UserCard } from "../../components/user-card";
-import { PeoplePicker } from "../../components/people-picker";
-import { inviteTarget } from "../../lib/people-search";
+import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { forgetWorkspace } from "../../lib/workspace-choice";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
-  return page(args, { title: `Members and invites · ${params.owner} · g1t` });
+  return page(args, { title: `Members · ${params.owner} · g1t` });
 }
 
-export async function loader({ params, context, request }: Route.LoaderArgs) {
+/**
+ * Members: who is in the workspace, their roles, and for owners the way to
+ * invite someone (a dialog) and the outside collaborators. Invitations
+ * have a page of their own, next door; the base permission and the
+ * member privileges are under Permissions.
+ */
+export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const role = roleIn(viewer, params.owner);
   // Who is in a workspace is its members' business; anyone else, including
   // someone a repository is shared with, gets nothing here.
   if (!role) throw data(null, { status: 404 });
   const owner = role === "owner";
-  const [members, invites, workspace, outside, teams, free, mode] = await Promise.all([
+  const [members, workspace, outside, teams, free, mode, invites] = await Promise.all([
     identity.listMembers(params.owner, viewer),
-    owner ? identity.workspaceInvites(params.owner, viewer).catch(() => null) : null,
     identity.getWorkspace(params.owner),
     owner ? identity.outsideCollaborators(viewer, params.owner).catch(() => null) : null,
     // Each member's teams, as the viewer may see them.
@@ -80,8 +69,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // A free workspace adds no one until it starts the plan; identity
     // refuses it either way, so a failure here only hides the note.
     billing.freeWorkspaces([params.owner]).catch(() => [] as string[]),
-    // Whether sign-up takes an invite: the invite form says what that means.
+    // Whether sign-up takes an invite: the invite dialog says what that means.
     registrationMode(),
+    // How many invitations wait, for the line that leads to them.
+    owner ? identity.workspaceInvites(params.owner, viewer).catch(() => null) : null,
   ]);
   return {
     role,
@@ -89,11 +80,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     inviteOnly: mode !== "open",
     free: free.includes(params.owner.toLowerCase()),
     members: unwrap(members),
-    invites: invites?.ok ? invites.value : [],
-    base: workspace?.basePermission ?? DEFAULT_BASE_PERMISSION,
     outside: outside?.ok ? outside.value : [],
     teams: Object.fromEntries((teams?.ok ? teams.value : []).map((person) => [person.username, person.teams])),
-    origin: new URL(request.url).origin,
+    pendingInvitations: invites?.ok ? invites.value.filter((invite) => invitationFilterOf(invite.status) === "pending").length : 0,
     me: viewer?.username ?? null,
   };
 }
@@ -102,10 +91,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const form = await request.formData();
-  if (form.get("action") === "revoke-invite") {
-    const result = await identity.revokeWorkspaceInvite(user, params.owner, String(form.get("id") ?? ""));
-    return result.ok ? null : { error: result.error.message };
-  }
   const target = String(form.get("member") ?? "").trim();
   // Owner or member, and the roles that add to a member.
   if (form.get("action") === "role") {
@@ -130,37 +115,17 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const secure = new URL(request.url).protocol === "https:";
     throw redirect("/", { headers: { "Set-Cookie": forgetWorkspace(secure) } });
   }
-  if (form.get("action") === "base-permission") {
-    const base = String(form.get("base") ?? "");
-    if (!(BASE_PERMISSIONS as readonly string[]).includes(base)) return { error: "Choose a base permission." };
-    const result = await identity.setBasePermission(user, params.owner, base as BasePermission);
-    return result.ok ? { based: result.value } : { error: result.error.message, base: true };
-  }
-  const member = String(form.get("member") ?? "").trim();
   if (form.get("action") === "remove") {
-    const result = await identity.removeMember(user, params.owner, member);
+    const result = await identity.removeMember(user, params.owner, target);
     return result.ok ? null : { error: result.error.message, converting: false };
   }
-  // Nobody joins without saying yes: a username or an address gets an
-  // invitation to accept or decline, with the role chosen here.
-  const who = inviteTarget(member);
-  if (!who) return { error: "Enter a g1t username or an email address.", outOfInvites: false };
-  const role = form.get("role") === "owner" ? "owner" : "member";
-  const result = await identity.inviteMember(user, params.owner, { ...who, role });
-  if (!result.ok) {
-    return { error: result.error.message, outOfInvites: result.error.code === "limit", converting: form.get("action") === "convert" };
-  }
-  if (form.get("action") === "convert") return { converted: member };
-  return { invited: "email" in who ? who.email : `@${"username" in who ? who.username : member}`, outOfInvites: false };
+  // Inviting: from the dialog (`add`), or an outside collaborator as a
+  // member (`convert`). Nobody joins without saying yes.
+  const invited = await inviteFromForm(user, params.owner, form);
+  if ("error" in invited) return { ...invited, converting: form.get("action") === "convert" };
+  if (form.get("action") === "convert") return { converted: target };
+  return invited;
 }
-
-/** What the base permission means for members, in a sentence. */
-const BASE_MEANS: Record<BasePermission, string> = {
-  none: "Members see only public repositories and the ones they are given a role on.",
-  read: "Members can see and clone every repository, open issues and pull requests, and comment.",
-  write: "Members can see every repository, manage its issues and pull requests, push, merge, and put agents to work.",
-  admin: "Members can do everything on every repository, including its settings, webhooks, secrets and who has access. Only owners transfer or delete one.",
-};
 
 /** What a member's roles say about them, as badges: owner or member, then the roles on top. */
 function RoleBadges({ member }: { member: Member }) {
@@ -318,205 +283,207 @@ function LeaveSection({ slug, soleOwner, error }: { slug: string; soleOwner: boo
   );
 }
 
-export default function WorkspacePeople({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { role, members, invites, origin, base, outside, teams, free, me, name, inviteOnly } = loaderData;
+/**
+ * The row above the list: words to search by, the role, two-factor (for
+ * owners) and a team, each kept in the address so a filtered list can be
+ * shared; and, for owners, Invite.
+ */
+function MembersToolbar({
+  owner,
+  teams,
+  invite,
+}: {
+  owner: boolean;
+  /** The teams any listed member is on, to filter by. */
+  teams: { slug: string; name: string }[];
+  invite: ReactNode;
+}) {
+  const [search, setSearch] = useSearchParams();
+  const filters = memberFilters(search);
+  const [words, setWords] = useState(filters.query);
+  // The box is typed into freely; the address follows a moment later.
+  useEffect(() => {
+    if (words === filters.query) return;
+    const timer = setTimeout(() => {
+      const next = new URLSearchParams(search);
+      if (words.trim()) next.set("q", words.trim());
+      else next.delete("q");
+      setSearch(next, { replace: true, preventScrollReset: true });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [words, filters.query, search, setSearch]);
+  const set = (key: string, value: string) => {
+    const next = new URLSearchParams(search);
+    if (value && value !== "all") next.set(key, value);
+    else next.delete(key);
+    setSearch(next, { replace: true, preventScrollReset: true });
+  };
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="relative min-w-0 grow basis-56">
+        <Search size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
+        <Input
+          type="search"
+          aria-label="Search members"
+          placeholder="Search by username or name"
+          value={words}
+          onChange={(event) => setWords(event.currentTarget.value)}
+          className="pl-9"
+        />
+      </div>
+      <SelectField
+        aria-label="Role"
+        value={filters.role}
+        onValueChange={(value) => set("role", value)}
+        className="w-auto min-w-28"
+        options={[
+          { value: "all", label: "Any role" },
+          { value: "owner", label: "Owners" },
+          { value: "member", label: "Members" },
+        ]}
+      />
+      {owner && (
+        <SelectField
+          aria-label="Two-factor authentication"
+          value={filters.twoFactor}
+          onValueChange={(value) => set("2fa", value)}
+          className="w-auto min-w-28"
+          options={[
+            { value: "all", label: "Two-factor: any" },
+            { value: "on", label: "Two-factor on" },
+            { value: "off", label: "Two-factor off" },
+          ]}
+        />
+      )}
+      {teams.length > 0 && (
+        <SelectField
+          aria-label="Team"
+          value={filters.team ?? "all"}
+          onValueChange={(value) => set("team", value)}
+          className="w-auto min-w-28"
+          options={[{ value: "all", label: "Any team" }, ...teams.map((team) => ({ value: team.slug.toLowerCase(), label: team.name }))]}
+        />
+      )}
+      {invite && <div className="ml-auto">{invite}</div>}
+    </div>
+  );
+}
+
+export default function WorkspaceMembers({ loaderData, actionData, params }: Route.ComponentProps) {
+  const { role, members, outside, teams, free, me, name, inviteOnly, pendingInvitations } = loaderData;
   const owner = role === "owner";
-  // The invitation to join this workspace, not an invite to g1t (Settings → Invites).
-  const inviteCopy = workspaceInviteCopy(name, inviteOnly);
   const owners = members.filter((member) => member.role === "owner").length;
   const rowError = (username: string) =>
     actionData && "row" in actionData && actionData.row === username ? (actionData.error ?? null) : null;
-  // Waiting to be used, or used by someone still confirming their email:
-  // either can be revoked.
-  // Waiting for an answer to a workspace invitation, too.
-  const pending = invites.filter(
-    (invite) => invite.status === "pending" || invite.status === "awaiting_confirmation" || invite.status === "awaiting_answer",
-  );
   const [search, setSearch] = useSearchParams();
   const tab = search.get("tab") === "outside" && owner ? "outside" : "members";
+  const filters = memberFilters(search);
+  const shown = filterMembers(members, filters, teams);
+  const filtered = filters.role !== "all" || filters.twoFactor !== "all" || filters.team !== null || filters.query !== "";
+  // Every team a listed member is on, once each, to filter by.
+  const teamChoices = [...new Map(Object.values(teams).flat().map((team) => [team.slug.toLowerCase(), team])).values()].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  // Who was just invited from the dialog, said under the list.
+  const [invited, setInvited] = useState<string | null>(null);
+  const invite = owner && !free ? <InviteDialog slug={params.owner} name={name} inviteOnly={inviteOnly} action={`/${params.owner}/-/members`} onInvited={setInvited} /> : null;
   const membersTab = (
     <>
-      <Card asChild tone="plain" divided>
-        <ul>
-          {members.map((member) => (
-            <li key={member.username} className="flex flex-wrap items-center gap-3 px-4 py-3">
-              <WithPresence person={{ username: member.username }} size={28}>
-                <Avatar name={member.username} image={member.avatar} size={28} />
-              </WithPresence>
-              <div className="min-w-0 grow truncate">
-                <UserCard username={member.username}>
-                  <Link to={`/u/${member.username}`} className="font-mono text-sm hover:text-accent">
-                    {member.username}
-                  </Link>
-                </UserCard>
-                <PersonStatusEmoji person={{ username: member.username }} size={13} className="ml-1.5 align-[-2px]" />
-                {member.name && <span className="ml-2 hidden text-sm text-muted sm:inline">{member.name}</span>}
-                {(teams[member.username] ?? []).length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {(teams[member.username] ?? []).slice(0, 3).map((team) => (
-                      <Link
-                        key={team.slug}
-                        to={`/${params.owner}/-/teams/${team.slug}`}
-                        className="rounded-full border border-line px-2 py-px text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
-                      >
-                        {team.name}
-                      </Link>
-                    ))}
-                    {(teams[member.username] ?? []).length > 3 && (
-                      <span className="px-1 text-xs text-faint">+{(teams[member.username] ?? []).length - 3} more</span>
-                    )}
-                  </div>
-                )}
-              </div>
-              {/* Together, so on a narrow screen they move under the name as one. */}
-              <div className="ml-auto flex items-center gap-2">
-                {owner && <TwoFactorMark on={member.two_factor} />}
-                <RoleBadges member={member} />
-                {owner && <MemberMenu member={member} self={member.username === me} owners={owners} slug={params.owner} />}
-              </div>
-              {rowError(member.username) && (
-                <p className="basis-full text-sm text-danger" role="alert">
-                  {rowError(member.username)}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
-      </Card>
+      <MembersToolbar owner={owner} teams={teamChoices} invite={invite} />
       {owner && free && (
-        <div className="mt-6">
+        <div className="mb-4">
           <StartPlanToInvite workspace={params.owner} owner={owner} />
         </div>
       )}
-      {owner && !free && (
-        // Empty again once the person is on the list; kept as typed when it failed.
-        <section aria-labelledby="invite-to-workspace" className="mt-6">
-        <h2 id="invite-to-workspace" className="text-sm font-medium">
-          {inviteCopy.heading}
-        </h2>
-        <p className="mt-1 text-xs text-faint">{inviteCopy.hint}</p>
-        <Form
-          method="post"
-          key={`${members.length}:${pending.length}`}
-          className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start"
-        >
-          <input type="hidden" name="action" value="add" />
-          <div className="grow">
-            <Field label="Who">
-              <PeoplePicker name="member" placeholder="username, name or name@example.com" />
-            </Field>
-          </div>
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-muted">Role</span>
-            <SelectField
-              name="role"
-              defaultValue="member"
-              className="h-auto w-full py-2 sm:w-auto sm:min-w-32"
-              options={[
-                { value: "member", label: "Member" },
-                { value: "owner", label: "Owner" },
-              ]}
-            />
-          </label>
-          <div className="sm:pt-[1.625rem]">
-            <SubmitButton match={{ action: "add" }} pending="Inviting…">
-              Invite
-            </SubmitButton>
-          </div>
-        </Form>
-        {inviteCopy.elsewhere && (
-          <p className="mt-2 text-xs text-faint">
-            {inviteCopy.elsewhere.replace(/Settings → Invites\.$/, "")}
-            <Link to="/settings/invites" className="text-muted underline underline-offset-4 hover:text-fg">
-              Settings → Invites
-            </Link>
-            .
-          </p>
-        )}
-        </section>
+      {shown.length === 0 ? (
+        <EmptyState title={filtered ? "No members match" : "No members yet"}>
+          {filtered ? "Clear a filter, or search for something else." : "Invite someone and they are listed here once they accept."}
+        </EmptyState>
+      ) : (
+        <Card asChild tone="plain" divided>
+          <ul>
+            {shown.map((member) => (
+              <li key={member.username} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <WithPresence person={{ username: member.username }} size={28}>
+                  <Avatar name={member.username} image={member.avatar} size={28} />
+                </WithPresence>
+                <div className="min-w-0 grow truncate">
+                  <UserCard username={member.username}>
+                    <Link to={`/u/${member.username}`} className="font-mono text-sm hover:text-accent">
+                      {member.username}
+                    </Link>
+                  </UserCard>
+                  <PersonStatusEmoji person={{ username: member.username }} size={13} className="ml-1.5 align-[-2px]" />
+                  {member.name && <span className="ml-2 hidden text-sm text-muted sm:inline">{member.name}</span>}
+                  {(teams[member.username] ?? []).length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {(teams[member.username] ?? []).slice(0, 3).map((team) => (
+                        <Link
+                          key={team.slug}
+                          to={`/${params.owner}/-/teams/${team.slug}`}
+                          className="rounded-full border border-line px-2 py-px text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
+                        >
+                          {team.name}
+                        </Link>
+                      ))}
+                      {(teams[member.username] ?? []).length > 3 && (
+                        <span className="px-1 text-xs text-faint">+{(teams[member.username] ?? []).length - 3} more</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* Together, so on a narrow screen they move under the name as one. */}
+                <div className="ml-auto flex items-center gap-2">
+                  {owner && <TwoFactorMark on={member.two_factor} />}
+                  <RoleBadges member={member} />
+                  {owner && <MemberMenu member={member} self={member.username === me} owners={owners} slug={params.owner} />}
+                </div>
+                {rowError(member.username) && (
+                  <p className="basis-full text-sm text-danger" role="alert">
+                    {rowError(member.username)}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
-      {actionData && "invited" in actionData && actionData.invited && (
-        <p className="text-sm text-muted" role="status">
-          Invitation to join {name} sent to <span className="text-fg">{actionData.invited}</span>. They join once they accept.
+      <p className="mt-2 text-xs text-faint">
+        {filtered ? `${shown.length} of ${members.length}` : members.length} {members.length === 1 ? "member" : "members"}
+        {owner && pendingInvitations > 0 && (
+          <>
+            {" · "}
+            <Link to={`/${params.owner}/-/members/invitations?state=pending`} className="inline-flex items-center gap-1 text-muted underline-offset-4 hover:text-fg hover:underline">
+              <Mail size={12} aria-hidden="true" />
+              {pendingInvitations} {pendingInvitations === 1 ? "invitation" : "invitations"} waiting
+            </Link>
+          </>
+        )}
+      </p>
+      {invited && (
+        <p className="mt-3 text-sm text-muted" role="status">
+          Invitation to join {name} sent to <span className="text-fg">{invited}</span>. They join once they accept; until then it is listed under{" "}
+          <Link to={`/${params.owner}/-/members/invitations`} className="text-accent underline-offset-4 hover:underline">
+            Invitations
+          </Link>
+          .
         </p>
       )}
       {actionData && "transferred" in actionData && (
-        <p className="text-sm text-muted" role="status">
+        <p className="mt-3 text-sm text-muted" role="status">
           <span className="font-mono text-fg">{actionData.transferred}</span> owns {params.owner} now, and you are a member.
         </p>
       )}
       {actionData && "converted" in actionData && (
-        <p className="text-sm text-muted" role="status">
+        <p className="mt-3 text-sm text-muted" role="status">
           <span className="font-mono text-fg">{actionData.converted}</span> is invited to join {params.owner} as a member, and joins once they accept.
         </p>
       )}
       {actionData &&
-        !("base" in actionData) &&
+        "error" in actionData &&
         !("row" in actionData) &&
         !("leaving" in actionData) &&
-        !("converting" in actionData && actionData.converting) && (
-        <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
-      )}
-      {actionData && "outOfInvites" in actionData && actionData.outOfInvites && (
-        <p className="mt-1 text-sm text-muted">
-          <a href={moreInvitesMailto(params.owner)} className="text-accent underline underline-offset-4">
-            Ask for more invites
-          </a>{" "}
-          for {params.owner}.
-        </p>
-      )}
-
-      {owner && pending.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-sm font-medium">Pending invitations</h2>
-          <Card asChild tone="plain" divided className="mt-3">
-            <ul>
-              {pending.map((invite) => (
-                <li key={invite.id} className="space-y-2 px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="min-w-0 grow truncate text-sm">
-                      {invite.email ??
-                        (invite.invitee ? (
-                          <UserCard username={invite.invitee}>
-                            <Link to={`/u/${invite.invitee}`} className="font-mono hover:text-accent">
-                              @{invite.invitee}
-                            </Link>
-                          </UserCard>
-                        ) : (
-                          "Anyone with the link"
-                        ))}
-                    </span>
-                    {invite.role === "owner" && <Badge size="md">Owner</Badge>}
-                    <Badge size="md">{inviteState(invite).label}</Badge>
-                    <Form method="post">
-                      <input type="hidden" name="action" value="revoke-invite" />
-                      <input type="hidden" name="id" value={invite.id} />
-                      <SubmitButton variant="outline" match={{ action: "revoke-invite", id: invite.id }} pending="Revoking…">
-                        Revoke
-                      </SubmitButton>
-                    </Form>
-                  </div>
-                  <p className="text-xs text-faint">
-                    By {invite.invitedBy ?? "g1t"} · <TimeAgo at={invite.createdAt} /> · works until{" "}
-                    {new Date(invite.expiresAt).toISOString().slice(0, 10)}
-                  </p>
-                  {invite.code && <CopyLine text={inviteLink(invite.code, origin)} />}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </section>
-      )}
-
-      <BasePermissionSection
-        // Starts from the saved choice whenever it changes.
-        key={base}
-        base={base}
-        owner={owner}
-        slug={params.owner}
-        error={actionData && "base" in actionData && "error" in actionData ? (actionData.error ?? null) : null}
-        saved={Boolean(actionData && "based" in actionData)}
-      />
+        !("converting" in actionData && actionData.converting) && <ErrorText>{actionData.error}</ErrorText>}
 
       <LeaveSection
         slug={params.owner}
@@ -526,7 +493,7 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
     </>
   );
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-3xl">
       {owner ? (
         <Tabs
           value={tab}
@@ -537,7 +504,7 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
             setSearch(next, { replace: true, preventScrollReset: true });
           }}
         >
-          <TabsList className="mb-3">
+          <TabsList className="mb-4">
             <TabsTrigger value="members">Members · {members.length}</TabsTrigger>
             <TabsTrigger value="outside">Outside collaborators · {outside.length}</TabsTrigger>
           </TabsList>
@@ -555,67 +522,6 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
         membersTab
       )}
     </div>
-  );
-}
-
-/** What members get on every repository, which owners choose. */
-function BasePermissionSection({
-  base,
-  owner,
-  slug,
-  error,
-  saved,
-}: {
-  base: BasePermission;
-  owner: boolean;
-  slug: string;
-  error: string | null;
-  saved: boolean;
-}) {
-  const [chosen, setChosen] = useState<BasePermission>(base);
-  return (
-    <section id="base-permission" className="mt-10 scroll-mt-20 border-t border-line pt-8">
-      <h2 className="font-medium">Base permission</h2>
-      <p className="mt-1 text-sm text-muted">
-        The role every member has on each of {slug}'s repositories. Owners are Admins on all of them, and a role given to
-        someone on one repository adds to this; it never takes away.
-      </p>
-      {owner ? (
-        <Card asChild className="mt-4 p-4">
-          <Form method="post">
-            <input type="hidden" name="action" value="base-permission" />
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Select name="base" value={chosen} onValueChange={(value) => setChosen(value as BasePermission)}>
-                <SelectTrigger aria-label="Base permission" className="sm:max-w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {BASE_PERMISSIONS.map((value) => (
-                    <SelectItem key={value} value={value} description={BASE_MEANS[value]}>
-                      {BASE_PERMISSION_LABELS[value]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <SubmitButton variant="outline" match={{ action: "base-permission" }} pending="Saving…" disabled={chosen === base}>
-                Save
-              </SubmitButton>
-              {saved && chosen === base && <span className="text-sm text-muted">Saved.</span>}
-            </div>
-            <p className="mt-3 text-sm text-muted">{BASE_MEANS[chosen]}</p>
-            <ErrorText>{error}</ErrorText>
-          </Form>
-        </Card>
-      ) : (
-        <Card className="mt-4 p-4 text-sm">
-          <p>
-            <span className="font-medium">{BASE_PERMISSION_LABELS[base]}.</span>{" "}
-            <span className="text-muted">{BASE_MEANS[base]}</span>
-          </p>
-          <p className="mt-2 text-xs text-faint">Owners of the workspace choose it.</p>
-        </Card>
-      )}
-    </section>
   );
 }
 

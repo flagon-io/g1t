@@ -1,0 +1,98 @@
+---
+title: Permissions
+description: Who may do what in a workspace, in one place, part by part — repositories, teams, chat, artifacts, agents, deployments and packages — what each setting does, and which are still to come.
+---
+
+import Soon from '../../../components/Soon.astro';
+
+**Permissions** is where a workspace's owners decide who may do what, part
+by part: `g1t.sh/<workspace>/-/permissions`, under **Workspace → Access**
+in the sidebar. Only owners can open it. Each part of g1t has a card, each
+setting says what it decides, and each card saves on its own with its
+**Save** button; the change holds on everyone's next request and is
+recorded in the [audit log](/guides/audit-log/).
+
+A setting marked **Soon** is not configurable yet. It is shown the way it
+will be, locked, with the rule that holds today under it, so nobody has to
+look elsewhere to learn what members can do.
+
+## Code
+
+| Setting | What it decides | Today |
+| --- | --- | --- |
+| **Base permission** | The role every member has on each of the workspace's repositories: **No permission**, **Read**, **Write** or **Admin**. Owners are Admins on all of them, and a role given to someone on one repository adds to this; it never takes away. See [the base permission](/guides/access-and-roles/#the-base-permission). | A new workspace starts at **Read**. |
+| **Members can create public repositories** | Whether any member can create a public repository. | On |
+| **Members can create private repositories** | Whether any member can create a private repository. Whoever creates one is its Admin. | On |
+| **Repository admins can change visibility** | Whether a member with Admin on a repository can make it public or private. | On |
+| **Repository admins can delete and transfer repositories** | Whether a member with Admin on a repository can delete it, or transfer it to a workspace where they can create one. | Off |
+| **Repository admins can add outside collaborators** | Whether a member with Admin on a repository can give a role on it to someone outside the workspace. | On |
+| **Members can fork private repositories** <Soon /> | Whether a member may fork a private repository under their own name. | g1t has no personal forks: work happens on branches of the repository itself. |
+
+The five switches are the workspace's
+[member privileges](/guides/workspaces/#member-privileges), the same ones
+`GET /workspaces/{workspace}` returns by name (`members_can_…`). When one
+is off, only owners can do it; the refusal says so.
+
+## People and teams
+
+| Setting | What it decides | Today |
+| --- | --- | --- |
+| **Who can create teams** | **Any member** with a confirmed email address, or **Owners only**. Whoever creates a team becomes its first maintainer; teams that already exist stay as they are. See [who can create teams](/guides/teams/#who-can-create-teams). | Any member |
+
+## Chat
+
+| Setting | What it decides | Today |
+| --- | --- | --- |
+| **Public channels** | Who can create them: **Any member** or **Owners only**. | Any member |
+| **Private channels** | Who can create them: **Any member** or **Owners only**. | Any member |
+| **Who can add agents to a conversation** <Soon /> | Who may invite a workspace agent into a channel or a group message. | Any member of a channel can invite an agent to it, the way they invite a person; a personal agent is never invited anywhere. |
+| **Who can message agents directly** <Soon /> | Who may open a direct message with a workspace agent. | Every member. |
+
+Renaming and archiving channels, custom emoji and default channels are on
+[Chat settings](/guides/chat/#workspace-chat-settings), under **Workspace →
+Chat**: they are about what a channel's own members may do, not who may do
+what in the workspace.
+
+## Artifacts
+
+| Setting | What it decides | Today |
+| --- | --- | --- |
+| **Who can create spaces** <Soon /> | Who may add a space beside the ones the workspace has. | Any member, from **+** beside **Spaces** in the Artifacts sidebar. |
+| **Default sharing** <Soon /> | Who a new artifact is shared with before its author chooses. | A new artifact is its author's, shared with the people, agents and teams they add, or opened to the workspace from its **Share** menu. See [sharing](/guides/artifacts/#sharing). |
+
+## Agents
+
+| Setting | What it decides | Today |
+| --- | --- | --- |
+| **Members can create personal agents** | Whether members who are not owners may create [personal agents](/guides/agents/#personal-agents). Off, only owners create agents; personal agents members already have keep working. | On |
+| **Who can create workspace agents** <Soon /> | Who may create an agent everyone in the workspace talks to and pays for. | Owners. An owner can also promote a member's personal agent to a workspace agent. |
+| **Who can raise budgets** <Soon /> | Who may raise the workspace's agent budget, a person's or a team's. | Owners raise the agent budget and each person's; a team's maintainers raise their team's. See [agent budgets](/guides/agent-budgets/). |
+
+Budgets themselves, and the models agents may use, are on the
+[Agents overview](/guides/agents/) and under [Spend](/guides/spend/).
+
+## Deployments and packages
+
+| Setting | What it decides | Today |
+| --- | --- | --- |
+| **Who can deploy to production** <Soon /> | Who may deploy a project's production environment, and redeploy or take it down. | Anyone with Write on the project's repository redeploys or takes an app down; turning deployments on for a project takes Admin. See [deployments](/guides/deployments/). |
+| **Who can publish packages** <Soon /> | Who may publish a new version of one of the workspace's packages. | Anyone with Write on the package's repository, or a token given write on packages. See [packages](/guides/packages/). |
+
+## Through the API
+
+Every setting that exists is set the way it was before it had this page:
+
+| Setting | Route | MCP |
+| --- | --- | --- |
+| Base permission | [`PUT /workspaces/{workspace}/base_permission`](/reference/api/access/set-base-permission/) | `access` `set_base_permission` |
+| Member privileges, who can create teams | [`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/) with `members_can_…` or `team_creation` | `workspace` `update` |
+| Public and private channels | The chat service's workspace settings, as [Chat settings](/guides/chat/#workspace-chat-settings) saves them | |
+| Members can create personal agents | The agents service's workspace policy, as the [Agents overview](/guides/agents/#personal-agents) saves it | |
+
+A setting marked Soon has no route yet.
+
+## Next
+
+- [Access and roles](/guides/access-and-roles/): what each role can do on a repository.
+- [Workspaces](/guides/workspaces/#workspace-mode): every page of Workspace mode.
+- [Audit log](/guides/audit-log/): where each change is recorded.

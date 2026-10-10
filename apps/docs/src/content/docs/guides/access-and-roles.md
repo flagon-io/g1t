@@ -147,8 +147,11 @@ of its repositories:
 
 Owners always have Admin, whatever it says. Only owners can change it:
 
-1. Open **People → Members and invites**, `g1t.sh/<workspace>/-/members#base-permission`. Every member can see it; owners manage it.
-2. Under **Base permission**, choose one.
+1. Open **Workspace → Access → Permissions**, `g1t.sh/<workspace>/-/permissions`. Owners only.
+2. In the **Code** card, under **Base permission**, choose one and select **Save**.
+
+Every other who-may-do-what setting is on the same page: see
+[permissions](/guides/permissions/).
 
 It takes effect on everyone's next request. To give one member more on
 one repository, give them a role there; to give them less, lower the base
@@ -253,7 +256,7 @@ without being a member of it. They:
 
 Owners see every outside collaborator, and the repositories and roles each
 has, on the **Outside collaborators** tab of the workspace's
-**Members and invites** page, `g1t.sh/<workspace>/-/members`. **Invite as a member** sends one an invitation to join the
+**Members** page, `g1t.sh/<workspace>/-/members`. **Invite as a member** sends one an invitation to join the
 workspace as a member (see [add people](/guides/workspaces/#add-people));
 once they accept, the roles they have stay, and the base permission adds
 to them.

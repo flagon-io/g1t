@@ -1045,6 +1045,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "find_people" => reply(&identity.find_people(args(body)?).await?),
         "workspace_invites" => reply(&identity.workspace_invites(args(body)?).await?),
         "revoke_workspace_invite" => reply(&identity.revoke_workspace_invite(args(body)?).await?),
+        "resend_workspace_invite" => reply(&identity.resend_workspace_invite(args(body)?).await?),
         "request_access" => reply(&identity.request_access(args(body)?).await?),
         // Who has access to a repository; see access.rs.
         "repo_access" => reply(&identity.repo_access(args(body)?).await?),

@@ -128,7 +128,7 @@ There are two kinds of invite, and they do different things:
 
 | | Invite to g1t | Invite to a workspace |
 | --- | --- | --- |
-| Made from | [Settings → Invites](https://g1t.sh/settings/invites), your own | The workspace's **Members and invites** page, by its owners |
+| Made from | [Settings → Invites](https://g1t.sh/settings/invites), your own | **Invite** on the workspace's **Members** or **Invitations** page, by its owners |
 | What it gives | One new account. It adds them to no workspace: the account gets a workspace of its own | An invitation to join that workspace, which they accept or decline |
 | Someone without an account | Makes their account with it | Makes their account with it too, while g1t is invite-only, then answers the invitation |
 | Someone already on g1t | Nothing: they have an account | The invitation, in their notifications and by email |
@@ -229,7 +229,7 @@ part of Launch week judges**.
 - **It makes your own account.** Each person who uses it gets a new
   account, and then makes their own workspace. It does not add you to
   anyone else's workspace; once you are in, a workspace's owners can add
-  you from its **Members and invites** page.
+  you from its **Members** page.
 - **It may be for some email domains only.** When it is, the email field
   says which, such as `example.com`, and sign-up takes only an address
   there. Use your address at that organization; you confirm it like any
@@ -270,16 +270,15 @@ people, so it is not offered, and the form says so when it is the one you
 are in.
 
 To bring someone into a workspace, you do not need an invite to g1t:
-invite them from the workspace's **Members and invites** page,
+invite them from the workspace's **Members** page,
 `g1t.sh/<workspace>/-/members`, instead (see
 [inviting someone into a workspace](#inviting-someone-into-a-workspace)).
-Settings → Invites links to the Members and invites pages of the
-workspaces you own.
+Settings → Invites links to the Members pages of the workspaces you own.
 
 Once anyone can sign up for g1t, there are no invites to g1t to make:
 Settings → Invites keeps only the list of invites you already made, and
 says that anyone can sign up now and that workspace invitations live on
-each workspace's Members and invites page. With no invites made, the page is not listed
+each workspace's Invitations page. With no invites made, the page is not listed
 in your settings or account menu.
 
 Each person can have **5** invites out at a time. Pending and used invites
@@ -317,8 +316,9 @@ and answer it at [g1t.sh/invitations](https://g1t.sh/invitations):
 - **Decline** joins nothing; whoever invited you is told in their notifications.
 
 An invitation works for 30 days, the same as an invite. Until it is
-answered, the workspace's owners see it under **Pending invitations** on
-its Members and invites page and can revoke it. A workspace on the free plan cannot add
+answered, the workspace's owners see it as **Pending** on its
+[Invitations](/guides/workspaces/#add-people) page, and can send it again
+or revoke it. A workspace on the free plan cannot add
 people, so an invitation to one cannot be accepted until it starts the
 plan. Only you can answer your invitations: an agent's token and a
 workspace's token cannot.
@@ -759,7 +759,7 @@ these pages answer **This needs you to sign in** (`403`):
 | SSH keys | Settings → SSH keys |
 | Applications you signed in to, and signing in with GitHub | Settings → Connected applications, Settings → GitHub |
 | Letting a device or an application sign in | `g1t.sh/device`, `g1t.sh/oauth/authorize` |
-| Deleting a workspace, and giving it to another owner | A workspace's Settings, and Members and invites |
+| Deleting a workspace, and giving it to another owner | A workspace's General settings, and its Members page |
 | Payment methods: the billing portal, adding a card, subscribing and buying AI credit | A workspace's Billing |
 
 ### Permissions

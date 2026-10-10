@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -10,6 +10,7 @@ import { NotificationsBell } from "./inbox";
 import { SpendPill } from "./spend";
 import { PinButton } from "./pin-button";
 import { Hint } from "./ui/hint";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -46,7 +47,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { type RoadmapItem, roadmapIn, roadmapItem } from "../lib/roadmap";
-import { type ModeKey, SETTINGS_PAGES, homePagePath, modeOf } from "../lib/workspace-nav";
+import { type ModeKey, WORKSPACE_SETTINGS_GROUPS, type WorkspaceSettingsPage, homePagePath, modeOf, workspaceSettingsPage } from "../lib/workspace-nav";
 import { AgentsSidebar } from "./agents-mode";
 import { ChatSidebar } from "./chat/sidebar";
 import { FoliosSidebar } from "./folios/sidebar";
@@ -518,15 +519,6 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
   );
 }
 
-/**
- * A workspace's settings pages, which the sidebar drills into: how it is
- * set up and connected (guardrails, secrets, integrations,
- * webhooks), what it pays, its repositories, tokens and record. The main
- * list keeps the places work happens and who belongs; every member can
- * still open these.
- */
-const SETTINGS_PAGE =
-  new RegExp(`^/([^/]+)/-/(${SETTINGS_PAGES.join("|")})(/|$)`);
 /** A project's settings pages, which the project's menu drills into. */
 const REPO_SETTINGS_PAGE = /^\/([^/]+)\/([^/-][^/]*)\/settings(\/|$)/;
 
@@ -1213,138 +1205,123 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
   );
 }
 
-/** Workspace pages that sit in its Settings list, drilled into from the Workspace sidebar. */
-const WORKSPACE_SETTINGS = ["settings", "repositories", "tokens", "personal-access-tokens", "secrets", "actions", "webhooks", "emoji"];
+/** The icon of each of Workspace mode's pages, by its key (lib/workspace-nav.ts). */
+const WORKSPACE_PAGE_ICONS: Record<string, ReactNode> = {
+  settings: <Settings size={15} />,
+  members: <Users size={15} />,
+  invitations: <Mail size={15} />,
+  permissions: <ShieldCheck size={15} />,
+  tokens: <KeyRound size={15} />,
+  "personal-access-tokens": <UserRoundKey size={15} />,
+  spend: <Coins size={15} />,
+  usage: <BarChart3 size={15} />,
+  gateway: <Network size={15} />,
+  billing: <CreditCard size={15} />,
+  runners: <ServerCog size={15} />,
+  repositories: <BookMarked size={15} />,
+  actions: <PlayCircle size={15} />,
+  secrets: <Lock size={15} />,
+  webhooks: <Webhook size={15} />,
+  deployments: <Rocket size={15} />,
+  projects: <Layers size={15} />,
+  "agent-settings": <Bot size={15} />,
+  "chat-settings": <MessagesSquare size={15} />,
+  emoji: <Smile size={15} />,
+  "artifact-settings": <Shapes size={15} />,
+  "security-settings": <Shield size={15} />,
+  guardrails: <Gauge size={15} />,
+  rules: <Scale size={15} />,
+  audit: <History size={15} />,
+  integrations: <Plug size={15} />,
+  applications: <Blocks size={15} />,
+};
 
 /**
- * The Workspace mode's sidebar: the workspace itself, for every member.
- * Its overview, money, machines, connections, policies and record, then its
- * settings as a list of their own. Owner-only pages stay owner-only.
+ * A group of Workspace mode's rows that folds: its name is the button, with
+ * a chevron that turns when it is open. The group holding the current page
+ * is always open, and its button does nothing. Every group starts open, so
+ * the server and the browser draw the same list.
+ */
+function FoldingGroup({ title, current, children }: { title: string; current: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <Collapsible open={open || current} onOpenChange={setOpen}>
+      <SidebarGroup>
+        <CollapsibleTrigger
+          disabled={current}
+          aria-label={`${title}: ${open || current ? "fold" : "unfold"}`}
+          className="flex h-7 w-full shrink-0 items-center justify-between rounded-md px-2 text-[0.6875rem] font-medium tracking-wide text-faint uppercase hover:text-muted focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default disabled:text-faint data-[state=open]:[&_svg]:rotate-90"
+        >
+          <span>{title}</span>
+          {!current && <ChevronRight size={12} aria-hidden="true" className="text-faint/70" />}
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarGroupContent>
+            <SidebarMenu>{children}</SidebarMenu>
+          </SidebarGroupContent>
+        </CollapsibleContent>
+      </SidebarGroup>
+    </Collapsible>
+  );
+}
+
+/**
+ * The Workspace mode's sidebar: the workspace's settings area, every page
+ * one click away. Its overview, then the groups in lib/workspace-nav.ts
+ * (General, Access, Money, Compute, Code, Agents, Chat, Artifacts,
+ * Security, Integrations), each folding, the one you are in held open.
+ * Pages only owners open are left out for members, and a group with none
+ * left goes with them; a page that is coming is a Soon row, not a link.
  */
 export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean }) {
   const { pathname } = useLocation();
   const going = useNavigation().location?.pathname;
   const path = going ?? pathname;
-  const page = path.startsWith(`/${slug}/-/`) ? path.slice(`/${slug}/-/`.length) : "";
-  const top = page.split("/")[0] ?? "";
-  const at = (...pages: string[]) => pages.some((p) => page === p || page.startsWith(`${p}/`));
-  const inSettings = WORKSPACE_SETTINGS.includes(top);
-  const main = (
-    <nav aria-label="Workspace" className={PANEL}>
-      <NavRows>
-        <SidebarLink to={`/${slug}/-/workspace`} icon={<LayoutGrid size={15} />} current={at("workspace")}>
-          Overview
-        </SidebarLink>
-      </NavRows>
-      <Rule />
-      <NavGroup title="Money">
-        <SidebarLink to={`/${slug}/-/spend`} icon={<Coins size={15} />} current={at("spend")}>
-          Spend
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/usage`} icon={<BarChart3 size={15} />} current={at("usage")}>
-          Usage
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/gateway`} icon={<Network size={15} />} current={at("gateway")}>
-          AI Gateway
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/billing`} icon={<CreditCard size={15} />} current={at("billing")}>
-          Billing and plans
-        </SidebarLink>
-      </NavGroup>
-      {owner && (
-        <>
-          <Rule />
-          <NavGroup title="Compute">
-            <SidebarLink to={`/${slug}/-/runners`} icon={<ServerCog size={15} />} current={at("runners")}>
-              Runners
-            </SidebarLink>
-          </NavGroup>
-        </>
-      )}
-      <Rule />
-      <NavGroup title="Connections">
-        <SidebarLink to={`/${slug}/-/integrations`} icon={<Plug size={15} />} current={at("integrations")}>
-          Integrations
-        </SidebarLink>
-      </NavGroup>
-      <Rule />
-      <NavGroup title="Security policies">
-        <SidebarLink to={`/${slug}/-/security/settings`} icon={<ShieldCheck size={15} />} current={at("security/settings")}>
-          Security settings
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/guardrails`} icon={<Gauge size={15} />} current={at("guardrails")}>
-          Guardrails
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/rules`} icon={<Scale size={15} />} current={at("rules")}>
-          Rules
-        </SidebarLink>
-      </NavGroup>
-      <Rule />
-      <NavRows>
-        <SidebarLink to={`/${slug}/-/audit`} icon={<History size={15} />} current={at("audit")}>
-          Audit log
-        </SidebarLink>
-        <SidebarLink to={owner ? `/${slug}/-/settings` : `/${slug}/-/repositories`} icon={<Settings size={15} />} drill current={inSettings}>
-          Settings
-        </SidebarLink>
-      </NavRows>
-    </nav>
-  );
-  const settings = (
-    <nav aria-label="Workspace settings" className={PANEL}>
-      <BackRow to={`/${slug}/-/workspace`} label="Settings" context={slug} />
-      <NavRows className="mt-2">
-        {owner && (
-          <SidebarLink to={`/${slug}/-/settings`} icon={<Settings size={15} />} end>
-            General
-          </SidebarLink>
-        )}
-        <SidebarLink to={`/${slug}/-/settings/chat`} icon={<MessagesSquare size={15} />}>
-          Chat
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/repositories`} icon={<BookMarked size={15} />}>
-          Repositories
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/tokens`} icon={<KeyRound size={15} />}>
-          Access tokens
-        </SidebarLink>
-        {owner && (
-          <SidebarLink to={`/${slug}/-/personal-access-tokens`} icon={<UserRoundKey size={15} />}>
-            Personal access tokens
-          </SidebarLink>
-        )}
-        <SidebarLink to={`/${slug}/-/webhooks`} icon={<Webhook size={15} />}>
-          Webhooks
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/emoji`} icon={<Smile size={15} />}>
-          Emoji
-        </SidebarLink>
-      </NavRows>
-      <Rule />
-      <NavGroup title="Runs">
-        <SidebarLink to={`/${slug}/-/secrets`} icon={<Lock size={15} />}>
-          Secrets and variables
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/actions`} icon={<PlayCircle size={15} />}>
-          Actions
-        </SidebarLink>
-      </NavGroup>
-    </nav>
-  );
-  const trail: Level[] = [{ key: "workspace", node: main }];
-  if (inSettings) trail.push({ key: "workspace:settings", node: settings });
+  const here = workspaceSettingsPage(path, slug);
+  const overview = path === `/${slug}/-/workspace` || path.startsWith(`/${slug}/-/workspace/`);
+  const shown = (page: WorkspaceSettingsPage) => owner || !page.owner;
   return (
     <div className="flex h-full flex-col">
       <ModeHeader title="Workspace" />
-      <Drill trail={trail} />
+      <nav aria-label="Workspace" className={PANEL}>
+        <NavRows>
+          <SidebarLink to={`/${slug}/-/workspace`} icon={<LayoutGrid size={15} />} current={overview}>
+            Overview
+          </SidebarLink>
+        </NavRows>
+        {WORKSPACE_SETTINGS_GROUPS.filter((group) => group.pages.some(shown)).map((group) => (
+          <Fragment key={group.key}>
+            <Rule />
+            <FoldingGroup title={group.title} current={here?.group === group.key}>
+              {group.pages.filter(shown).map((page) =>
+                page.soon ? (
+                  <SidebarSoon key={page.key} icon={WORKSPACE_PAGE_ICONS[page.key] ?? <Sparkles size={15} />} about={page.soon}>
+                    {page.label}
+                  </SidebarSoon>
+                ) : (
+                  <SidebarLink
+                    key={page.key}
+                    to={`/${slug}/-/${page.path}`}
+                    icon={WORKSPACE_PAGE_ICONS[page.key] ?? <Settings size={15} />}
+                    current={here?.page === page.key}
+                  >
+                    {page.label}
+                  </SidebarLink>
+                ),
+              )}
+            </FoldingGroup>
+          </Fragment>
+        ))}
+      </nav>
     </div>
   );
 }
 
 /**
  * People's sidebar: everyone in the workspace (its people; agents are
- * under Agents); its teams, which agents can be on; the org chart; and, to
- * manage who belongs, members and invites.
+ * under Agents); its teams, which agents can be on; and the org chart. Who
+ * belongs, and inviting people, is the workspace's: Workspace mode's
+ * Access group.
  */
 function PeopleSidebar({ slug }: { slug: string }) {
   const { pathname } = useLocation();
@@ -1366,12 +1343,6 @@ function PeopleSidebar({ slug }: { slug: string }) {
             Org chart
           </SidebarLink>
         </NavRows>
-        <Rule />
-      <NavGroup title="Membership">
-          <SidebarLink to={`/${slug}/-/members`} icon={<UserPlus size={15} />} current={at("members")}>
-            Members and invites
-          </SidebarLink>
-        </NavGroup>
       </nav>
     </div>
   );
@@ -1470,7 +1441,8 @@ const SECTIONS: Record<string, string> = {
   settings: "Settings",
   people: "People",
   "org-chart": "Org chart",
-  members: "Members and invites",
+  members: "Members",
+  permissions: "Permissions",
   projects: "Projects",
   teams: "Teams",
   tokens: "Access tokens",
@@ -1563,14 +1535,21 @@ function Breadcrumbs({
   const trail: Crumb[] = ours ? [] : [{ label: owner!, to: `/${owner}`, mono: true }];
   if (second === "-") {
     const page = `/${owner}/-/${third}`;
-    if (third && SETTINGS_PAGE.test(page)) {
-      trail.push({ label: "Settings", to: `/${owner}/-/settings` });
-      trail.push({ label: third === "settings" ? "General" : (SECTIONS[third] ?? third), to: page });
+    if (third === "settings" && fourth === "chat") {
+      // Chat settings is a page of its own, not one of General's.
+      trail.push({ label: "Chat settings", to: `${page}/chat` });
     } else if (third) {
-      trail.push({ label: SECTIONS[third] ?? third, to: page });
-      // The Marketplace names its tab (Marketplace / Extensions), and Agents its templates.
+      // The workspace's settings pages each stand alone: General, Members, Permissions.
+      trail.push({ label: third === "settings" ? "General" : (SECTIONS[third] ?? third), to: page });
+      // The Marketplace names its tab (Marketplace / Extensions), Agents its templates, and Members its invitations.
       const tabs: Record<string, string> =
-        third === "marketplace" ? { integrations: "Integrations", extensions: "Extensions", requests: "Requests" } : third === "agents" ? { templates: "Templates" } : {};
+        third === "marketplace"
+          ? { integrations: "Integrations", extensions: "Extensions", requests: "Requests" }
+          : third === "agents"
+            ? { templates: "Templates" }
+            : third === "members"
+              ? { invitations: "Invitations" }
+              : {};
       const tab = fourth ? tabs[fourth] : undefined;
       if (tab) trail.push({ label: tab, to: `${page}/${fourth}` });
     }
@@ -1753,6 +1732,13 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
       { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
       { label: "Integrations", hint: membership.slug, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },
+      { label: "Members", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/members`, icon: <Users size={15} /> },
+      ...(membership.role === "owner"
+        ? [
+            { label: "Invitations", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/members/invitations`, icon: <Mail size={15} /> },
+            { label: "Permissions", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/permissions`, icon: <ShieldCheck size={15} /> },
+          ]
+        : []),
     );
   }
   for (const listed of shell.repos) {

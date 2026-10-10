@@ -8,8 +8,15 @@ import {
   G1T_INVITES,
   HAVE_AN_INVITE,
   bringIntoChoices,
+  filterInvitations,
+  filterMembers,
+  invitationCounts,
+  invitationFilter,
+  invitationFilterOf,
+  invitationTone,
   inviteDraft,
   inviteKind,
+  memberFilters,
   invitePageCopy,
   invitesPage,
   peoplePages,
@@ -37,6 +44,51 @@ import {
 } from "./invites.ts";
 
 const CODE = "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk";
+
+test("the Invitations page sorts every state under one filter, and counts them", () => {
+  const statuses = ["pending", "awaiting_confirmation", "awaiting_answer", "redeemed", "declined", "expired", "revoked"] as const;
+  const invites = statuses.map((status) => ({ status }));
+  assert.equal(invitationFilterOf("pending"), "pending");
+  assert.equal(invitationFilterOf("awaiting_confirmation"), "pending");
+  assert.equal(invitationFilterOf("awaiting_answer"), "pending");
+  assert.equal(invitationFilterOf("redeemed"), "accepted");
+  assert.equal(invitationFilterOf("declined"), "declined");
+  assert.equal(invitationFilterOf("expired"), "expired");
+  assert.equal(invitationFilterOf("revoked"), "revoked");
+  assert.deepEqual(invitationCounts(invites), { all: 7, pending: 3, accepted: 1, declined: 1, expired: 1, revoked: 1 });
+  assert.equal(filterInvitations(invites, "all").length, 7);
+  assert.deepEqual(filterInvitations(invites, "pending").map((invite) => invite.status), ["pending", "awaiting_confirmation", "awaiting_answer"]);
+  assert.deepEqual(filterInvitations(invites, "accepted").map((invite) => invite.status), ["redeemed"]);
+  // The query names a filter, or means All.
+  assert.equal(invitationFilter("pending"), "pending");
+  assert.equal(invitationFilter("failed"), "all");
+  assert.equal(invitationFilter(null), "all");
+  // Waiting is amber, joined green, a no red, and over is quiet.
+  assert.equal(invitationTone("awaiting_answer"), "warn");
+  assert.equal(invitationTone("redeemed"), "success");
+  assert.equal(invitationTone("revoked"), "danger");
+  assert.equal(invitationTone("expired"), "neutral");
+});
+
+test("the Members page filters by role, two-factor, team and words", () => {
+  const members = [
+    { username: "ada", name: "Ada Lovelace", role: "owner" as const, two_factor: true },
+    { username: "grace", name: "Grace Hopper", role: "member" as const, two_factor: false },
+    { username: "linus", name: null, role: "member" as const, two_factor: true },
+  ];
+  const teams = { ada: [{ slug: "core" }], grace: [{ slug: "web" }, { slug: "core" }] };
+  assert.deepEqual(memberFilters(""), { role: "all", twoFactor: "all", team: null, query: "" });
+  assert.deepEqual(memberFilters("?role=owner&2fa=off&team=Core&q=%20ada%20"), { role: "owner", twoFactor: "off", team: "core", query: "ada" });
+  assert.deepEqual(memberFilters("?role=admin&2fa=maybe"), { role: "all", twoFactor: "all", team: null, query: "" });
+  const names = (filters: string) => filterMembers(members, memberFilters(filters), teams).map((member) => member.username);
+  assert.deepEqual(names(""), ["ada", "grace", "linus"]);
+  assert.deepEqual(names("?role=member"), ["grace", "linus"]);
+  assert.deepEqual(names("?2fa=off"), ["grace"]);
+  assert.deepEqual(names("?team=core"), ["ada", "grace"]);
+  assert.deepEqual(names("?q=hopper"), ["grace"]);
+  assert.deepEqual(names("?q=@LIN"), ["linus"]);
+  assert.deepEqual(names("?role=owner&team=web"), []);
+});
 
 test("while invite-only, nobody is offered a plain sign-up", () => {
   // Sign up everywhere; only the sign-up page says registration takes an invite.

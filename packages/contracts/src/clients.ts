@@ -160,13 +160,14 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       }),
     acceptInvite: (user, code) => call("accept_invite", { user, code }),
     inviteMember: (actor, slug, who) =>
-      call("invite_member", { actor, slug, email: who.email ?? "", username: who.username ?? null, role: who.role ?? null }),
+      call("invite_member", { actor, slug, email: who.email ?? "", username: who.username ?? null, role: who.role ?? null, message: who.message ?? null }),
     listInvitations: (user) => call("list_invitations", { user }),
     acceptInvitation: (user, id) => call("accept_invitation", { user, id, surface: "web" }),
     declineInvitation: (user, id) => call("decline_invitation", { user, id, surface: "web" }),
     findPeople: (query, limit) => call("find_people", { query, limit: limit ?? null }),
     workspaceInvites: (slug, viewer) => call("workspace_invites", { slug, viewer }),
     revokeWorkspaceInvite: (actor, slug, id) => call("revoke_workspace_invite", { actor, slug, id }),
+    resendWorkspaceInvite: (actor, slug, id) => call("resend_workspace_invite", { actor, slug, id }),
     requestAccess: (email, about, client) => call("request_access", { email, about, client: client ?? null }),
     userForGitCredentials: (username, secret) =>
       call("user_for_git_credentials", { username, secret }),

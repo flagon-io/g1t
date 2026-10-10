@@ -2,7 +2,7 @@ import { Hash } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Form, Link, data, useNavigation } from "react-router";
 
-import type { ChannelManagers, ChatAllowed, ChatSettings, EmojiUpload } from "@g1t/contracts";
+import type { ChannelManagers, ChatSettings, EmojiUpload } from "@g1t/contracts";
 
 import type { Route } from "./+types/chat-settings";
 import { ErrorText } from "../../components/ui";
@@ -37,10 +37,8 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const viewer = requireUser(context, request);
   const slug = params.owner.toLowerCase();
   const form = await request.formData();
-  const who = (key: string): ChatAllowed => (form.get(key) === "owners" ? "owners" : "members");
+  // Who creates channels is set under Permissions; this page leaves it as it is.
   const change: Partial<ChatSettings> = {
-    public_channels: who("public_channels"),
-    private_channels: who("private_channels"),
     manage_channels: (form.get("manage_channels") === "owners" ? "owners" : "channel_owners") as ChannelManagers,
     emoji_upload: (form.get("emoji_upload") === "admins" ? "admins" : "members") as EmojiUpload,
     default_channels: form.getAll("default_channels").map(String),
@@ -92,31 +90,21 @@ export default function ChatSettingsPage({ loaderData, actionData }: Route.Compo
         <fieldset disabled={!owner} className="space-y-8">
           <section className={SECTION}>
             <h2 className="font-medium">Creating channels</h2>
-            <p className="mt-1.5 text-xs text-faint">Who can create channels. Whoever creates one becomes its first owner.</p>
-            <div className="mt-5 grid gap-6 sm:grid-cols-2">
-              <Choice
-                name="public_channels"
-                title="Public channels"
-                value={settings.public_channels}
-                onChange={(value) => set("public_channels", value as ChatAllowed)}
-                options={[
-                  { value: "members", label: "Any member", description: "The default." },
-                  { value: "owners", label: "Owners only", description: "Members join and read public channels, but ask an owner for a new one." },
-                ]}
-                disabled={!owner}
-              />
-              <Choice
-                name="private_channels"
-                title="Private channels"
-                value={settings.private_channels}
-                onChange={(value) => set("private_channels", value as ChatAllowed)}
-                options={[
-                  { value: "members", label: "Any member", description: "The default." },
-                  { value: "owners", label: "Owners only", description: "Only owners can make a channel that is kept to the people invited." },
-                ]}
-                disabled={!owner}
-              />
-            </div>
+            <p className="mt-1.5 text-xs text-faint">
+              Today {settings.public_channels === "owners" ? "only owners" : "any member"} can create a public channel and{" "}
+              {settings.private_channels === "owners" ? "only owners" : "any member"} a private one.{" "}
+              {owner ? (
+                <>
+                  Change it under{" "}
+                  <Link to={`/${slug}/-/permissions`} className="text-muted underline decoration-line-strong underline-offset-2 hover:text-fg">
+                    Permissions
+                  </Link>
+                  , with everything else about who may do what.
+                </>
+              ) : (
+                "Owners change it under Permissions."
+              )}
+            </p>
           </section>
 
           <section className={SECTION}>

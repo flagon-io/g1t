@@ -100,8 +100,10 @@ export default [
     route("-/people/agents/:handle", "routes/workspace/people/agent.tsx"),
     route("-/people/:username", "routes/workspace/people/person.tsx"),
     route("-/org-chart", "routes/workspace/org-chart.tsx"),
-    // Who is a member, their roles, invitations and outside collaborators.
+    // Workspace mode's Access: who is a member and their roles, the invitations sent, and who may do what.
     route("-/members", "routes/workspace/members.tsx"),
+    route("-/members/invitations", "routes/workspace/member-invitations.tsx"),
+    route("-/permissions", "routes/workspace/permissions.tsx"),
     route("-/insights", "routes/workspace/tab-soon.tsx", { id: "routes/workspace/insights" }),
     // Pinning its projects, for the person signed in.
     route("-/pins", "routes/workspace/pins.ts"),

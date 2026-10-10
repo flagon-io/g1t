@@ -50,14 +50,22 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Workspace",
     about: "Who is in it, what it is on, and what it has spent this month. Everything about the workspace itself is in this sidebar.",
   },
-  settings: { title: "General", about: "The workspace's name, icon, address and description, who can create teams, and deleting it." },
+  settings: { title: "General", about: "The workspace's name, icon, address and description, two-factor authentication, where its data lives, and deleting it." },
   people: {
     title: "People",
     about: "Everyone in the workspace, people and agents, in one directory: who they are, what they own, the teams they're on and who's around.",
   },
   members: {
-    title: "Members and invites",
-    about: "Members create repositories and have the base permission on each one. Owners are Admins on every repository, and also manage members, tokens, billing and integrations.",
+    title: "Members",
+    about: "Who is in the workspace and their roles. Owners invite people, manage members and owners, and see the outside collaborators; what members may do is under Permissions.",
+  },
+  "members/invitations": {
+    title: "Invitations",
+    about: "Every invitation to join the workspace: who it is for, who sent it, the role, and where it stands. Send one again, revoke it, or copy its link.",
+  },
+  permissions: {
+    title: "Permissions",
+    about: "Who may do what in the workspace, part by part: repositories, teams, chat, artifacts, agents, deployments and packages. Owners only.",
   },
   "org-chart": {
     title: "Org chart",
@@ -180,11 +188,13 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
     );
   }
   if (shown !== "overview") {
-    const key = shown ?? parts[0] ?? "";
+    // A page of its own under another's address (Invitations under Members) has its own heading.
+    const whole = parts.join("/");
+    const key = shown ?? (PAGES[whole] ? whole : (parts[0] ?? ""));
     const heading = PAGES[key];
     // A page within one (a single package or team) and a page that is
     // coming (Insights) have headings of their own.
-    const titled = heading && (shown != null || parts.length === 1);
+    const titled = heading && (shown != null || parts.length === 1 || key === whole);
     return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
         {titled && (

@@ -2,12 +2,9 @@ import { useEffect, useState } from "react";
 import { Form, Link, data, redirect, useFetcher, useNavigation } from "react-router";
 
 import {
-  DEFAULT_MEMBER_PRIVILEGES,
   type DataResidency,
-  type MemberPrivileges,
   RENAME_COOLDOWN_HOURS,
   SLUG_HOLD_DAYS,
-  type TeamCreation,
   WORKSPACE_RESTORE_DAYS,
   type Workspace,
   type WorkspaceDeletion,
@@ -95,7 +92,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     apps,
     euAvailable: storage.euAvailable,
     residency: residency ?? "anywhere",
-    privileges: { ...DEFAULT_MEMBER_PRIVILEGES, ...pickPrivileges(workspace) },
     withoutTwoFactor: without,
     ownTwoFactor: twoFactor?.ok ? twoFactor.value.enabled : false,
   };
@@ -136,25 +132,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!result.ok) return { residencyError: result.error.message };
     return { saved: "residency" as const };
   }
-  // Member privileges: identity checks the owner. A switch posts only when on.
-  if (intent === "member-privileges") {
-    const change = Object.fromEntries(PRIVILEGES.map(([key]) => [key, form.get(key) === "on"])) as MemberPrivileges;
-    const result = await identity.setMemberPrivileges(user, params.owner, change);
-    if (!result.ok) return { privilegesError: result.error.message };
-    return { saved: "member-privileges" as const };
-  }
   // Requiring two-factor authentication: identity checks the owner has it.
   if (intent === "two-factor-requirement") {
     const result = await identity.setTwoFactorRequirement(user, params.owner, form.get("required") === "on");
     if (!result.ok) return { twoFactorError: result.error.message };
     return { saved: "two-factor-requirement" as const };
-  }
-  // Who may create teams: identity checks the owner.
-  if (intent === "team-creation") {
-    const wanted: TeamCreation = form.get("teamCreation") === "owners" ? "owners" : "members";
-    const result = await identity.setTeamCreation(user, params.owner, wanted);
-    if (!result.ok) return { teamCreationError: result.error.message };
-    return { saved: "team-creation" as const };
   }
   if (intent === "rename") {
     const newSlug = String(form.get("newSlug") ?? "").trim().toLowerCase();
@@ -214,13 +196,6 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
         error={actionData && "renameError" in actionData ? actionData.renameError : undefined}
       />
 
-      <MemberPrivilegesSection
-        key={JSON.stringify(loaderData.privileges)}
-        privileges={loaderData.privileges}
-        saved={Boolean(actionData && "saved" in actionData && actionData.saved === "member-privileges")}
-        error={actionData && "privilegesError" in actionData ? actionData.privilegesError : undefined}
-      />
-
       <TwoFactorRequirementSection
         key={String(workspace.twoFactorRequirementEnabled ?? false)}
         slug={workspace.slug}
@@ -231,13 +206,17 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
         error={actionData && "twoFactorError" in actionData ? actionData.twoFactorError : undefined}
       />
 
-      <TeamCreationSection
-        // Starts from the saved choice whenever it changes.
-        key={workspace.teamCreation ?? "members"}
-        setting={workspace.teamCreation ?? "members"}
-        saved={Boolean(actionData && "saved" in actionData && actionData.saved === "team-creation")}
-        error={actionData && "teamCreationError" in actionData ? actionData.teamCreationError : undefined}
-      />
+      <section>
+        <h2 className="font-medium">Permissions</h2>
+        <p className="mt-1.5 text-xs text-faint">
+          Who may do what in {workspace.slug}: the base permission on its repositories, creating repositories and teams, channels, agents and more are
+          under{" "}
+          <Link to={`/${workspace.slug}/-/permissions`} className="text-muted underline underline-offset-4 hover:text-fg">
+            Permissions
+          </Link>
+          .
+        </p>
+      </section>
 
       {(loaderData.euAvailable || loaderData.residency === "eu") && (
         <ResidencySection
@@ -259,84 +238,6 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
         />
       </DangerZone>
     </div>
-  );
-}
-
-/** The member privileges, in the order Settings shows them, with what each lets members do. */
-const PRIVILEGES: [keyof MemberPrivileges, string, string][] = [
-  [
-    "members_can_create_public_repositories",
-    "Members can create public repositories",
-    "Owners always can. Off: members ask an owner.",
-  ],
-  [
-    "members_can_create_private_repositories",
-    "Members can create private repositories",
-    "Owners always can. Whoever creates a repository is its Admin.",
-  ],
-  [
-    "members_can_change_repo_visibility",
-    "Repository admins can change visibility",
-    "Members with the Admin role on a repository can make it public or private. Off: owners only.",
-  ],
-  [
-    "members_can_delete_repositories",
-    "Repository admins can delete and transfer repositories",
-    "Members with the Admin role on a repository can delete it, or transfer it to a workspace where they can create one. Off: owners only.",
-  ],
-  [
-    "members_can_invite_outside_collaborators",
-    "Repository admins can add outside collaborators",
-    "Members with the Admin role on a repository can give a role on it to someone outside the workspace. Off: owners only.",
-  ],
-];
-
-/** The member privileges a workspace carries, by name. */
-function pickPrivileges(workspace: Workspace): Partial<MemberPrivileges> {
-  const picked: Partial<MemberPrivileges> = {};
-  for (const [key] of PRIVILEGES) {
-    const value = workspace[key];
-    if (typeof value === "boolean") picked[key] = value;
-  }
-  return picked;
-}
-
-/** What members may do: create repositories, and what repository admins may do. */
-function MemberPrivilegesSection({ privileges, saved, error }: { privileges: MemberPrivileges; saved: boolean; error?: string }) {
-  const [chosen, setChosen] = useState<MemberPrivileges>(privileges);
-  const navigation = useNavigation();
-  const saving = navigation.state !== "idle" && navigation.formData?.get("intent") === "member-privileges";
-  const changed = PRIVILEGES.some(([key]) => chosen[key] !== privileges[key]);
-  return (
-    <section id="member-privileges" className="scroll-mt-20">
-      <h2 className="font-medium">Member privileges</h2>
-      <p className="mt-1.5 text-xs text-faint">
-        What members can do beyond their role on each repository. Owners can always do all of it.
-      </p>
-      <Form method="post" className="mt-5 space-y-3">
-        <input type="hidden" name="intent" value="member-privileges" />
-        {PRIVILEGES.map(([key, title, about]) => (
-          <SwitchCard
-            key={key}
-            name={key}
-            title={title}
-            checked={chosen[key]}
-            onCheckedChange={(on) => setChosen((current) => ({ ...current, [key]: on }))}
-          >
-            {about}
-          </SwitchCard>
-        ))}
-        <ErrorText>{error}</ErrorText>
-        {saved && !error && !changed && (
-          <p role="status" className="text-xs text-muted">
-            Saved.
-          </p>
-        )}
-        <Button type="submit" disabled={saving || !changed}>
-          Save
-        </Button>
-      </Form>
-    </section>
   );
 }
 
@@ -396,46 +297,6 @@ function TwoFactorRequirementSection({
           </p>
         )}
         <Button type="submit" disabled={saving || chosen === required}>
-          Save
-        </Button>
-      </Form>
-    </section>
-  );
-}
-
-/**
- * Who may create the workspace's teams. Teams already made stay as they
- * are, whoever made them.
- */
-function TeamCreationSection({ setting, saved, error }: { setting: TeamCreation; saved: boolean; error?: string }) {
-  const [choice, setChoice] = useState<TeamCreation>(setting);
-  const navigation = useNavigation();
-  const saving = navigation.state !== "idle" && navigation.formData?.get("intent") === "team-creation";
-  return (
-    <section>
-      <h2 className="font-medium">Teams</h2>
-      <p className="mt-1.5 text-xs text-faint">
-        Who can create teams in the workspace. Whoever creates one becomes its first maintainer. Teams that already
-        exist stay as they are.
-      </p>
-      <Form method="post" className="mt-5 space-y-4">
-        <input type="hidden" name="intent" value="team-creation" />
-        <RadioGroup
-          name="teamCreation"
-          value={choice}
-          onValueChange={(value) => setChoice(value as TeamCreation)}
-          aria-label="Who can create teams"
-        >
-          <RadioOption value="members" label="Any member" description="Every member with a confirmed email address. The default." />
-          <RadioOption value="owners" label="Owners only" description="Members ask an owner to create a team; maintainers still manage their own." />
-        </RadioGroup>
-        <ErrorText>{error}</ErrorText>
-        {saved && !error && (
-          <p role="status" className="text-xs text-muted">
-            Saved.
-          </p>
-        )}
-        <Button type="submit" disabled={saving || choice === setting}>
           Save
         </Button>
       </Form>

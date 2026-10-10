@@ -54,8 +54,9 @@ and on their profile.
 
 ### Who can create teams
 
-An owner chooses who can create the workspace's teams, under **Settings**,
-**General**, **Teams**:
+An owner chooses who can create the workspace's teams, under **Workspace →
+Access → [Permissions](/guides/permissions/#people-and-teams)**, in the
+**People and teams** card:
 
 | Who can create teams | |
 | --- | --- |

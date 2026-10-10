@@ -215,6 +215,82 @@ export function invitePageCopy(
   };
 }
 
+/** What inviting someone came to (lib/member-invitations.server.ts): who was invited, or why not. */
+export type InviteResult = { invited: string; outOfInvites: false } | { error: string; outOfInvites: boolean };
+
+/** What revoking or resending an invitation came to. */
+export type InvitationResult = { done: "revoked" | "resent"; id: string } | { error: string; id: string };
+
+/**
+ * The Invitations page's filters: every invitation, or the ones in one
+ * state. Pending gathers the three states an invitation waits in (to be
+ * used, for the new account to confirm its address, for the person's
+ * answer); Accepted is the ones that joined. g1t does not record an email
+ * that could not be delivered, so an invitation nobody used shows as
+ * Expired once its 30 days are up; there is no Failed filter until it does.
+ */
+export type InvitationFilter = "all" | "pending" | "accepted" | "declined" | "expired" | "revoked";
+
+export const INVITATION_FILTERS: readonly { key: InvitationFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "pending", label: "Pending" },
+  { key: "accepted", label: "Accepted" },
+  { key: "declined", label: "Declined" },
+  { key: "expired", label: "Expired" },
+  { key: "revoked", label: "Revoked" },
+];
+
+/** The filter an invitation's state falls under. */
+export function invitationFilterOf(status: Listed["status"]): Exclude<InvitationFilter, "all"> {
+  switch (status) {
+    case "pending":
+    case "awaiting_confirmation":
+    case "awaiting_answer":
+      return "pending";
+    case "redeemed":
+      return "accepted";
+    case "declined":
+      return "declined";
+    case "expired":
+      return "expired";
+    case "revoked":
+      return "revoked";
+  }
+}
+
+/** The filter `?state=` names; All for anything else. */
+export function invitationFilter(raw: string | null | undefined): InvitationFilter {
+  return INVITATION_FILTERS.some((filter) => filter.key === raw) ? (raw as InvitationFilter) : "all";
+}
+
+/** The invitations under `filter`. */
+export function filterInvitations<T extends Pick<Listed, "status">>(invites: readonly T[], filter: InvitationFilter): T[] {
+  if (filter === "all") return [...invites];
+  return invites.filter((invite) => invitationFilterOf(invite.status) === filter);
+}
+
+/** How many invitations each filter holds, for the counts on the chips. */
+export function invitationCounts(invites: readonly Pick<Listed, "status">[]): Record<InvitationFilter, number> {
+  const counts: Record<InvitationFilter, number> = { all: invites.length, pending: 0, accepted: 0, declined: 0, expired: 0, revoked: 0 };
+  for (const invite of invites) counts[invitationFilterOf(invite.status)] += 1;
+  return counts;
+}
+
+/** The tone of an invitation's status badge, from how its state reads. */
+export function invitationTone(status: Listed["status"]): "neutral" | "success" | "warn" | "danger" {
+  switch (invitationFilterOf(status)) {
+    case "pending":
+      return "warn";
+    case "accepted":
+      return "success";
+    case "declined":
+    case "revoked":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
 /** Who an invite is for, in a list. */
 export function inviteFor(invite: Listed): string {
   return invite.email ?? (invite.invitee ? `@${invite.invitee}` : "Anyone with the link");
@@ -335,6 +411,46 @@ export function workspaceInviteCopy(name: string, inviteOnly: boolean): { headin
       : `${base} If they do not have a g1t account yet, they sign up from the invitation first.`,
     elsewhere: inviteOnly ? `To invite someone to g1t without adding them to ${name}, use Settings → Invites.` : null,
   };
+}
+
+/**
+ * The Members page's filters, from its query: the role to show (`role=`:
+ * owners or members), whether two-factor authentication is on (`2fa=`: on
+ * or off; owners only see it), a team by slug (`team=`) and words to
+ * search by (`q=`, matched against the username and the name). Anything
+ * else is every member.
+ */
+export type MemberFilters = { role: "all" | "owner" | "member"; twoFactor: "all" | "on" | "off"; team: string | null; query: string };
+
+export function memberFilters(search: URLSearchParams | string): MemberFilters {
+  const params = typeof search === "string" ? new URLSearchParams(search) : search;
+  const role = params.get("role");
+  const twoFactor = params.get("2fa");
+  return {
+    role: role === "owner" || role === "member" ? role : "all",
+    twoFactor: twoFactor === "on" || twoFactor === "off" ? twoFactor : "all",
+    team: params.get("team")?.trim().toLowerCase() || null,
+    query: params.get("q")?.trim() ?? "",
+  };
+}
+
+type Listable = {
+  username: string;
+  name?: string | null;
+  role: "owner" | "member";
+  two_factor?: boolean | null;
+};
+
+/** The members `filters` keep, in the order given. `teams` is each member's teams, by slug. */
+export function filterMembers<T extends Listable>(members: readonly T[], filters: MemberFilters, teams: Record<string, { slug: string }[]> = {}): T[] {
+  const words = filters.query.toLowerCase().replace(/^@+/, "");
+  return members.filter((member) => {
+    if (filters.role !== "all" && member.role !== filters.role) return false;
+    if (filters.twoFactor !== "all" && member.two_factor !== (filters.twoFactor === "on")) return false;
+    if (filters.team && !(teams[member.username] ?? []).some((team) => team.slug.toLowerCase() === filters.team)) return false;
+    if (words && !member.username.toLowerCase().includes(words) && !(member.name ?? "").toLowerCase().includes(words)) return false;
+    return true;
+  });
 }
 
 /**

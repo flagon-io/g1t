@@ -1,6 +1,6 @@
 ---
 title: Workspaces
-description: Workspaces, their names and icons, renaming and deleting one, members, owners and the roles that add to a member, member privileges, requiring two-factor authentication, and access tokens that belong to a workspace.
+description: Workspaces, their names and icons, renaming and deleting one, members, owners and the roles that add to a member, inviting people, Workspace mode's settings pages, requiring two-factor authentication, and access tokens that belong to a workspace.
 ---
 
 A workspace owns repositories and is the first part of their address:
@@ -303,8 +303,8 @@ Neither passes to an agent working for the person.
 
 ### Change someone's role
 
-On **Members and invites**, `g1t.sh/<workspace>/-/members` (People →
-Members and invites), an owner opens the **⋯** menu beside a member:
+On **Members**, `g1t.sh/<workspace>/-/members` (**Workspace → Access →
+Members**), an owner opens the **⋯** menu beside a member:
 
 1. **Make owner** or **Make member** changes their role.
 2. **Billing manager** and **Security manager** turn each role on or off.
@@ -315,15 +315,19 @@ Members and invites), an owner opens the **⋯** menu beside a member:
    repositories and their place in its teams go too.
 
 Owners see a shield beside each member: green when two-factor
-authentication is on, amber when it is off.
+authentication is on, amber when it is off. Above the list, a search box
+finds a member by username or name, and the filters narrow the list by
+role, by two-factor authentication (owners only) and by team; each is kept
+in the address (`?q=`, `?role=`, `?2fa=`, `?team=`), so a filtered list can
+be shared.
 
 The last owner cannot be made a member, removed, or leave: make someone
 else an owner first, or [delete the workspace](#delete-a-workspace).
 
 ### Leave a workspace
 
-Anyone can leave a workspace they belong to: at the bottom of **Members and
-invites**, choose **Leave {workspace}** and confirm. Your roles on its repositories
+Anyone can leave a workspace they belong to: at the bottom of **Members**,
+choose **Leave {workspace}** and confirm. Your roles on its repositories
 and your place in its teams go with you at once. The only owner cannot
 leave.
 
@@ -338,24 +342,28 @@ invite to g1t, which only lets someone make an account:
 
 | | Invite to a workspace | Invite to g1t |
 | --- | --- | --- |
-| Where | The workspace's **Members and invites** page, **Invite to** *workspace* | [Settings → Invites](https://g1t.sh/settings/invites) |
+| Where | **Invite** on the workspace's **Members** or **Invitations** page | [Settings → Invites](https://g1t.sh/settings/invites) |
 | What they get | An invitation to join the workspace, to accept or decline | One new account, in no workspace but its own |
 | Without an account | The invitation lets them sign up first, while g1t is invite-only | It lets them sign up |
 | When | Always | Only while g1t is invite-only |
 
 To invite someone to g1t without adding them to your workspace, use
-[Settings → Invites](/guides/authentication/#making-invites); the Members
-and invites page links there while g1t is invite-only.
+[Settings → Invites](/guides/authentication/#making-invites).
 
-On the workspace's **Members and invites**, `g1t.sh/<workspace>/-/members`
-(People → Members and invites in the sidebar):
+On the workspace's **Members** page, `g1t.sh/<workspace>/-/members`
+(**Workspace → Access → Members** in the sidebar), or on **Invitations**
+beside it:
 
-1. Under **Invite to** *workspace name*, type a username, a name or an email address.
-   As you type, people on g1t are offered by username and name, with their
+1. Select **Invite**. A dialog opens.
+2. Under **Who**, type a username, a name or an email address. As you
+   type, people on g1t are offered by username and name, with their
    pictures; hover over one for their card. Only usernames, names and
-   pictures are shown, never anyone's email address.
-2. Choose the **Role** they join with: **Member** or **Owner**.
-3. Select **Invite**.
+   pictures are shown, never anyone's email address. An email address is
+   taken as written.
+3. Choose the **Role** they join with: **Member** or **Owner**.
+4. Write a **Message** if you like: a line quoted in the invitation email,
+   under your name. Up to 500 characters.
+5. Select **Invite**. The dialog closes and the page says who was invited.
 
 - **By username**: they get a
   [workspace invitation](/guides/authentication/#workspace-invitations) in
@@ -380,11 +388,28 @@ with an account signs in and accepts on the page. Accepting lands them in
 the workspace, with a one-time welcome. See
 [using an invite](/guides/authentication/#using-an-invite).
 
-Pending invitations are listed under the members, with the person or
-address, the role, until when it works (30 days), a link to copy and
-**Revoke**: one waiting to be used, one whose new account is **confirming
-their email**, and one **waiting for them to accept**. Converting an
-outside collaborator to a member sends them an invitation the same way.
+Every invitation sent is on **Invitations**,
+`g1t.sh/<workspace>/-/members/invitations` (**Workspace → Access →
+Invitations**, owners only): a table of who it is for, who sent it, the
+role, when it was sent and where it stands, newest first. The chips above
+it narrow the table, each with its count:
+
+| Chip | Shows |
+| --- | --- |
+| **All** | Every invitation, however it ended. |
+| **Pending** | The ones still waiting: to be used, for the new account to confirm its email, or for the person to accept. Each says the day it stops working (30 days after it was sent). |
+| **Accepted** | The people who joined. |
+| **Declined** | The people who said no. |
+| **Expired** | The ones nobody used in time. g1t does not yet know whether an invitation's email was delivered, so one that bounced ends up here too. |
+| **Revoked** | The ones an owner took back. |
+
+The **⋯** menu on a pending invitation has **Copy link** (the invitation's
+page, while it waits to be used), **Send again** (the same email, and the
+inbox notice again for someone on g1t; the invitation itself does not
+change) and **Revoke**. Through the API, the invitation is sent again with
+nothing yet; revoke it and invite again instead. Converting an outside
+collaborator to a member sends them an invitation the same way. The
+Members page says how many invitations are waiting, and leads here.
 Through the API, use
 [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/)
 with a `username` or an `email` and a `role` (the `workspace` tool's
@@ -398,8 +423,8 @@ add them as an [outside collaborator](/guides/access-and-roles/#outside-collabor
 **A free workspace cannot add people.** Until it starts the g1t plan, it
 cannot add members, send invites, or invite outside collaborators, and an
 invite sent before waits until the plan is on. Its members stay. Members and
-invites shows **Start the plan to invite people** with the button in place of the
-form, and the API and MCP answer `402` (`payment_required`). See
+Invitations show **Start the plan to invite people** with the button in place of
+**Invite**, and the API and MCP answer `402` (`payment_required`). See
 [who a free workspace can add](/guides/usage-and-billing/#who-a-free-workspace-can-add).
 
 ### Members through the API
@@ -424,9 +449,9 @@ curl -X PATCH https://api.g1t.sh/workspaces/acme/members/grace \
 ## Member privileges
 
 What members can do beyond their role on each repository. Owners set them
-in the workspace's **Settings → Member privileges**,
-`g1t.sh/<workspace>/-/settings#member-privileges`, and can always do all of
-it themselves.
+under **Workspace → Access → [Permissions](/guides/permissions/#code)**,
+`g1t.sh/<workspace>/-/permissions`, in the **Code** card, and can always do
+all of it themselves.
 
 | Setting | Default | When on |
 | --- | --- | --- |
@@ -454,9 +479,9 @@ and its outside collaborators, to have
 on.
 
 1. Turn it on for your own account first.
-2. Open **Settings**, `g1t.sh/<workspace>/-/settings#two-factor`. Under
-   **Authentication security**, it says how many members do not have it on,
-   and who.
+2. Open **Workspace → General**, `g1t.sh/<workspace>/-/settings#two-factor`.
+   Under **Authentication security**, it says how many members do not have
+   it on, and who.
 3. Turn on **Require two-factor authentication** and choose **Save**.
 
 From then on, someone without it keeps their place but cannot use the
@@ -554,8 +579,8 @@ unread on it:
 | **Agents** | The workspace's agents and their sessions. See [agents](/guides/agents/). |
 | **Code** | Projects, pull requests and checks. Not shown to a member without [Code access](/guides/agent-access/). |
 | **Artifacts** | Documents, decks and pages. See [artifacts](/guides/artifacts/). |
-| **People** | Everyone in the workspace (its people; agents are under Agents); its [teams](/guides/teams/), which agents can be on; the org chart; and, under **Membership**, **Members and invites**. See [people and teams](/guides/people-and-teams/). |
-| **Workspace** | Usage, billing, integrations, policies and settings. |
+| **People** | Everyone in the workspace (its people; agents are under Agents); its [teams](/guides/teams/), which agents can be on; and the org chart. See [people and teams](/guides/people-and-teams/). |
+| **Workspace** | The workspace's settings: who has access, money, compute, and how each part of g1t is set up. See [Workspace mode](#workspace-mode). |
 
 The app you are in sits on a filled square. Your account is the
 avatar at the foot: your status, your profile and settings,
@@ -604,9 +629,9 @@ GitHub, each opening its own page; installed extensions join them once
 extensions are published. An app you can't use shows **Request access**.
 The built-in apps' own pages are in their sidebars, not in Apps: Code's has
 **Projects**, **Security** and **Packages**; Agents' has **Templates**,
-**Context** and **Memory**; People's has **Everyone**, **Teams**, **Org chart** and
-**Members and invites**; Workspace's has **Usage**,
-**AI Gateway**, **Integrations** and the **Audit log**.
+**Context** and **Memory**; People's has **Everyone**, **Teams** and **Org
+chart**; Workspace's has every settings page, from **Members** to the
+**Audit log** (see [Workspace mode](#workspace-mode)).
 
 A pinned app shows as its mark under the built-in ones, in the order you
 pinned them. To pin one:
@@ -647,35 +672,58 @@ list when you open one, with **‹ All projects** at the top to go back. Its
 for the roles that can use it. A link straight to any of these pages opens
 the sidebar already there.
 
-Workspace's sidebar lists the workspace's **Overview**; under **Money**,
-[**Spend**](/guides/spend/), **Usage**, **AI Gateway**,
-**Billing and plans**; for owners, **Runners** under **Compute**;
-**Integrations**, its security policies, the
-**Audit log** and **Settings**, which slides over to how the workspace is
-set up:
-
-| Settings | Who | |
-| --- | --- | --- |
-| **General** | Owners | The icon, the display name, a one-line description, the address (the slug), [who can create teams](/guides/teams/#who-can-create-teams), and [data residency](#data-residency). |
-| **Chat** | Members | What members may do in chat. Owners change it. |
-| **Repositories** | Members | The workspace's repositories. Owners also see **Recently deleted**, where a [deleted repository](/guides/managing-repositories/#restore-a-repository) can be restored, or purged, for 30 days. |
-| **Access tokens** | Members | The workspace's own tokens. Owners create and delete them. |
-| **Personal access tokens** | Owners | The workspace's rules for members' tokens, and approving them. |
-| [**Webhooks**](/guides/webhooks/) | Members | Where the workspace's events are sent. Owners add and change them. |
-| **Emoji** | Members | The workspace's own emoji. |
-| [**Secrets and variables**](/guides/secrets-and-variables/) | Members | What runs and deployments are given. Owners change them. |
-| **Actions** | Members | How workflows run in the workspace. |
-| **Runners** | Owners | The workspace's self-hosted machines, their groups and registration tokens. |
-
-**Members and invites** is for every member to see; owners invite, add and
-remove people there, set the
-[base permission](/guides/access-and-roles/#the-base-permission), and see
-the **Outside collaborators** tab. Each member's row also shows the
-[teams](/guides/teams/) they are in that you can see. To find someone, and
-what they work on, use the [People directory](/guides/people-and-teams/#the-directory).
+Workspace's sidebar is the [workspace's settings area](#workspace-mode):
+its **Overview**, then every settings page in named groups, each one click
+away.
 
 Below 1024px wide, the sidebar opens over the page from the left, from the
 header's button, and closes when you open a page.
+
+### Workspace mode
+
+**Workspace**, at the foot of the rail, is everything about the workspace
+itself: who has access, what it spends, and how each part of g1t is set up
+for it. There is no second Settings inside it: every page is in the
+sidebar, under the group it belongs to, and the group you are in stays
+open while the others fold when you select their name. A page only owners
+open is left out for members; a page that is coming is a greyed **Soon**
+row, with a hint saying what it will hold.
+
+| Group | Page | Who | |
+| --- | --- | --- | --- |
+| | **Overview** | Members | The workspace at a glance: members, plan and spend. `g1t.sh/<workspace>/-/workspace` |
+| **General** | **General** | Owners | The icon, the display name, a one-line description, the address (the slug), [requiring two-factor authentication](#require-two-factor-authentication), [data residency](#data-residency), and deleting the workspace. `-/settings` |
+| **Access** | **Members** | Members | Who is in the workspace and their roles, with search and filters; owners [invite people](#add-people), change roles, and see **Outside collaborators**. `-/members` |
+| | **Invitations** | Owners | Every invitation to join, filtered by where it stands; send one again, revoke it, copy its link. `-/members/invitations` |
+| | [**Permissions**](/guides/permissions/) | Owners | Who may do what, part by part: the base permission, repositories, teams, chat, artifacts, agents, deployments and packages. `-/permissions` |
+| | [**Access tokens**](#workspace-access-tokens) | Members | The workspace's own tokens. Owners create and delete them. `-/tokens` |
+| | **Personal access tokens** | Owners | The workspace's rules for members' tokens, and approving them. `-/personal-access-tokens` |
+| **Money** | [**Spend**](/guides/spend/) | Members | Where the money went, budgets and receipts. `-/spend` |
+| | [**Usage**](/guides/usage-and-billing/) | Members | What the agents cost, run by run. `-/usage` |
+| | [**AI Gateway**](/guides/ai-gateway/) | Members | Your own code's model requests. `-/gateway` |
+| | **Billing and plans** | Members | The plan, the spend limit, prepaying and every charge. `-/billing` |
+| **Compute** | [**Runners**](/guides/self-hosted-runners/) | Owners | The workspace's self-hosted machines, their groups and registration tokens. `-/runners` |
+| **Code** | **Repositories** | Members | Every repository, and for owners **Recently deleted**, where a [deleted repository](/guides/managing-repositories/#restore-a-repository) can be restored, or purged, for 30 days. `-/repositories` |
+| | **Actions** | Members | How workflows run in the workspace. `-/actions` |
+| | [**Secrets and variables**](/guides/secrets-and-variables/) | Members | What runs and deployments are given. Owners change them. `-/secrets` |
+| | [**Webhooks**](/guides/webhooks/) | Members | Where the workspace's events are sent. Owners add and change them. `-/webhooks` |
+| | **Deployments**, **Project defaults** | | Soon: defaults for every project's deployments, and what a new project starts with. |
+| **Agents** | **Agent settings** | | Soon. Budgets and models are on the [Agents overview](/guides/agents/) today; who may create agents is under Permissions. |
+| **Chat** | [**Chat settings**](/guides/chat/#workspace-chat-settings) | Members | Renaming and archiving channels, emoji, default channels. Owners change it. `-/settings/chat` |
+| | **Emoji** | Members | The workspace's own emoji. `-/emoji` |
+| **Artifacts** | **Spaces and sharing** | | Soon: which spaces a workspace starts with, and how a new artifact is shared by default. |
+| **Security** | **Security settings** | Members | The workspace's security policies. `-/security/settings` |
+| | [**Guardrails**](/guides/guardrails/) | Members | What agents may reach, run, spend and take. `-/guardrails` |
+| | [**Rules**](/guides/rules/) | Members | Rulesets across projects. `-/rules` |
+| | [**Audit log**](/guides/audit-log/) | Members | Every change, by whom, to what. `-/audit` |
+| **Integrations** | [**Integrations**](/guides/integrations/) | Members | The tools connected for everyone. `-/integrations` |
+| | **Applications** | | Soon: OAuth applications the workspace registers. |
+
+Each page's address is under `g1t.sh/<workspace>/`. The page's header
+shows where you are: **General**, **Members / Invitations**, **Permissions**.
+Every address that was there before this layout still works. To find
+someone, and what they work on, use the
+[People directory](/guides/people-and-teams/#the-directory).
 
 ### Pinned and recent projects
 

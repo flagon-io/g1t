@@ -1539,10 +1539,17 @@ pub struct InviteMemberArgs {
     /// The role they join with; member when absent.
     #[serde(default)]
     pub role: Option<crate::Role>,
+    /// A note from whoever invites, quoted in the invitation email. Up to
+    /// [`MAX_INVITE_MESSAGE`] characters; longer is cut, blank is none.
+    #[serde(default)]
+    pub message: Option<String>,
     /// Where the request came in, for the audit log; g1t.sh when absent.
     #[serde(default)]
     pub surface: Option<crate::audit::Surface>,
 }
+
+/// The most characters an invitation's note keeps.
+pub const MAX_INVITE_MESSAGE: usize = 500;
 
 /// A workspace invitation waiting for its person's answer, as they see it.
 /// `list_invitations` (takes `UserArgs`) returns `Vec<WorkspaceInvitation>`,
@@ -1591,6 +1598,12 @@ pub struct FindPeopleArgs {
 /// newest first. Owners only. Returns `Outcome<Vec<Invite>>`.
 ///
 /// `revoke_workspace_invite`: owners only. Returns `Outcome<Invite>`.
+///
+/// `resend_workspace_invite`: owners only. Sends a pending invitation
+/// again, by email to the address it is bound to or the invited account's
+/// confirmed address, and again in that account's inbox. The invitation
+/// itself is unchanged: same code, same day it stops working. Returns
+/// `Outcome<Invite>`; one that is not pending answers `409`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkspaceInviteArgs {
     pub actor: User,

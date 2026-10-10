@@ -227,6 +227,8 @@ export type RegistrationMode = "invite" | "open";
 export const INVITES_PER_USER = 5;
 /** How long an invite works, unless identity's `INVITE_TTL_DAYS` says otherwise. */
 export const INVITE_TTL_DAYS = 30;
+/** The most characters an invitation's note keeps (`invite_member`'s `message`). */
+export const MAX_INVITE_MESSAGE = 500;
 
 /** Only a pending invite can be used or revoked. Revoked and expired ones never used give the invite back. */
 /**
@@ -992,7 +994,7 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
   inviteMember(
     actor: User,
     slug: string,
-    who: { email?: string | null; username?: string | null; role?: Role | null },
+    who: { email?: string | null; username?: string | null; role?: Role | null; message?: string | null },
   ): Promise<Result<Invite>>;
   /** The workspace invitations waiting for the person's answer, newest first. */
   listInvitations(user: User): Promise<WorkspaceInvitation[]>;
@@ -1006,6 +1008,8 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
   workspaceInvites(slug: string, viewer: Viewer): Promise<Result<Invite[]>>;
   /** Owners only. */
   revokeWorkspaceInvite(actor: User, slug: string, id: string): Promise<Result<Invite>>;
+  /** Owners only: sends a pending invitation again, by email and in the invited account's inbox. Unchanged otherwise. */
+  resendWorkspaceInvite(actor: User, slug: string, id: string): Promise<Result<Invite>>;
   /** Someone without an invite asks for one. Always the same answer for a valid address. */
   requestAccess(email: string, about: string, client?: string | null): Promise<Result<boolean>>;
 

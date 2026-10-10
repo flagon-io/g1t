@@ -105,7 +105,10 @@ test("the rail's mode follows the address", async () => {
   // An agent's old People address (it redirects to Agents) is still read as People's until it does.
   assert.equal(modeOf("/acme/-/people/agents/margo", "acme"), "people");
   assert.equal(modeOf("/acme/-/org-chart", "acme"), "people");
-  assert.equal(modeOf("/acme/-/members", "acme"), "people");
+  // Members, invitations and permissions are the workspace's settings.
+  assert.equal(modeOf("/acme/-/members", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/members/invitations", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/permissions", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/apps", "acme"), "apps");
   assert.equal(modeOf("/acme/-/billing", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/tokens", "acme"), "workspace");
@@ -123,6 +126,31 @@ test("the rail's mode follows the address", async () => {
   assert.equal(homePath("acme"), "/acme/-/home");
   assert.equal(homePath("acme", "?agent=new"), "/acme/-/overview?agent=new");
   assert.equal(homePath("acme", "?tab=landed&_routes=x"), "/acme/-/overview?tab=landed");
+});
+
+test("Workspace mode's sidebar knows which group and page an address is", async () => {
+  const { WORKSPACE_SETTINGS_GROUPS, modeOf, workspaceSettingsPage } = await import("./workspace-nav.ts");
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings", "acme"), { group: "general", page: "settings" });
+  assert.deepEqual(workspaceSettingsPage("/acme/-/settings/chat", "acme"), { group: "chat", page: "chat-settings" });
+  assert.deepEqual(workspaceSettingsPage("/acme/-/members", "acme"), { group: "access", page: "members" });
+  assert.deepEqual(workspaceSettingsPage("/acme/-/members/invitations.data", "acme"), { group: "access", page: "invitations" });
+  assert.deepEqual(workspaceSettingsPage("/acme/-/permissions", "acme"), { group: "access", page: "permissions" });
+  assert.deepEqual(workspaceSettingsPage("/acme/-/rules/rs_1", "acme"), { group: "security", page: "rules" });
+  assert.deepEqual(workspaceSettingsPage("/acme/-/security/settings", "acme"), { group: "security", page: "security-settings" });
+  assert.deepEqual(workspaceSettingsPage("/acme/-/spend/receipts/r1", "acme"), { group: "money", page: "spend" });
+  // The overview, Code's security page and another workspace are no settings page.
+  assert.equal(workspaceSettingsPage("/acme/-/workspace", "acme"), null);
+  assert.equal(workspaceSettingsPage("/acme/-/security", "acme"), null);
+  assert.equal(workspaceSettingsPage("/other/-/settings", "acme"), null);
+  // Every real page is in Workspace mode, and every key is unique.
+  const keys = new Set<string>();
+  for (const group of WORKSPACE_SETTINGS_GROUPS) {
+    for (const page of group.pages) {
+      assert.ok(!keys.has(page.key), `${page.key} twice`);
+      keys.add(page.key);
+      if (!page.soon) assert.equal(modeOf(`/acme/-/${page.path}`, "acme"), "workspace", page.path);
+    }
+  }
 });
 
 test("a member without Code access is sent around Code's pages", async () => {

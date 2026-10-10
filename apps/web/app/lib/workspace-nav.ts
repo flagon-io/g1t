@@ -26,23 +26,150 @@ export function workspacePage(pathname: string, slug: string): WorkspacePageKey 
 }
 
 /**
- * The workspace's pages that its Settings row drills into. Runners is not
- * one: it is a page of Workspace mode's own, at `-/runners`.
+ * Workspace mode's pages, in the groups its sidebar lists them under: the
+ * workspace's settings area, every page one click away. `owner` marks the
+ * pages only owners open; the sidebar shows members the rest. A page that
+ * is not here yet is a `soon` row: what the group will hold, not a link.
+ * `path` is under `-/`.
  */
-export const SETTINGS_PAGES = [
-  "settings",
-  "repositories",
-  "tokens",
-  "rules",
-  "guardrails",
-  "secrets",
-  "actions",
-  "integrations",
-  "webhooks",
-  "emoji",
-  "billing",
-  "audit",
-] as const;
+export type WorkspaceSettingsPage = { key: string; label: string; path: string; owner?: boolean; soon?: string };
+
+export type WorkspaceSettingsGroup = { key: string; title: string; pages: WorkspaceSettingsPage[] };
+
+export const WORKSPACE_SETTINGS_GROUPS: readonly WorkspaceSettingsGroup[] = [
+  {
+    key: "general",
+    title: "General",
+    pages: [{ key: "settings", label: "General", path: "settings", owner: true }],
+  },
+  {
+    key: "access",
+    title: "Access",
+    pages: [
+      { key: "members", label: "Members", path: "members" },
+      { key: "invitations", label: "Invitations", path: "members/invitations", owner: true },
+      { key: "permissions", label: "Permissions", path: "permissions", owner: true },
+      { key: "tokens", label: "Access tokens", path: "tokens" },
+      { key: "personal-access-tokens", label: "Personal access tokens", path: "personal-access-tokens", owner: true },
+    ],
+  },
+  {
+    key: "money",
+    title: "Money",
+    pages: [
+      { key: "spend", label: "Spend", path: "spend" },
+      { key: "usage", label: "Usage", path: "usage" },
+      { key: "gateway", label: "AI Gateway", path: "gateway" },
+      { key: "billing", label: "Billing and plans", path: "billing" },
+    ],
+  },
+  {
+    key: "compute",
+    title: "Compute",
+    pages: [{ key: "runners", label: "Runners", path: "runners", owner: true }],
+  },
+  {
+    key: "code",
+    title: "Code",
+    pages: [
+      { key: "repositories", label: "Repositories", path: "repositories" },
+      { key: "actions", label: "Actions", path: "actions" },
+      { key: "secrets", label: "Secrets and variables", path: "secrets" },
+      { key: "webhooks", label: "Webhooks", path: "webhooks" },
+      {
+        key: "deployments",
+        label: "Deployments",
+        path: "soon/deployments",
+        soon: "Defaults for every project's deployments: environments, who approves production, and the domains the workspace owns.",
+      },
+      {
+        key: "projects",
+        label: "Project defaults",
+        path: "soon/projects",
+        soon: "What a new project starts with: its visibility, branch rules, merge method and the agents on it.",
+      },
+    ],
+  },
+  {
+    key: "agents",
+    title: "Agents",
+    pages: [
+      {
+        key: "agent-settings",
+        label: "Agent settings",
+        path: "soon/agent-settings",
+        soon: "Budgets and the models agents may use are on the Agents overview today; who may create agents is under Permissions.",
+      },
+    ],
+  },
+  {
+    key: "chat",
+    title: "Chat",
+    pages: [
+      { key: "chat-settings", label: "Chat settings", path: "settings/chat" },
+      { key: "emoji", label: "Emoji", path: "emoji" },
+    ],
+  },
+  {
+    key: "artifacts",
+    title: "Artifacts",
+    pages: [
+      {
+        key: "artifact-settings",
+        label: "Spaces and sharing",
+        path: "soon/artifact-settings",
+        soon: "Which spaces a workspace starts with, and how a new artifact is shared by default.",
+      },
+    ],
+  },
+  {
+    key: "security",
+    title: "Security",
+    pages: [
+      { key: "security-settings", label: "Security settings", path: "security/settings" },
+      { key: "guardrails", label: "Guardrails", path: "guardrails" },
+      { key: "rules", label: "Rules", path: "rules" },
+      { key: "audit", label: "Audit log", path: "audit" },
+    ],
+  },
+  {
+    key: "integrations",
+    title: "Integrations",
+    pages: [
+      { key: "integrations", label: "Integrations", path: "integrations" },
+      {
+        key: "applications",
+        label: "Applications",
+        path: "soon/applications",
+        soon: "OAuth applications the workspace registers, and the ones it lets its members authorize.",
+      },
+    ],
+  },
+];
+
+/**
+ * Which of Workspace mode's pages `pathname` is, under the workspace
+ * `slug`, as a group key and a page key; null for the overview and for
+ * anything else. A page's own subpages (one ruleset, a receipt) count as
+ * the page; the deepest match wins, so Invitations is its own page and
+ * not a subpage of Members.
+ */
+export function workspaceSettingsPage(pathname: string, slug: string): { group: string; page: string } | null {
+  const parts = pagePath(pathname).split("/").filter(Boolean);
+  if (parts[0]?.toLowerCase() !== slug.toLowerCase() || parts[1] !== "-") return null;
+  const rest = parts.slice(2).join("/");
+  let found: { group: string; page: string; depth: number } | null = null;
+  for (const group of WORKSPACE_SETTINGS_GROUPS) {
+    for (const page of group.pages) {
+      if (page.soon) continue;
+      if (rest === page.path || rest.startsWith(`${page.path}/`)) {
+        const depth = page.path.split("/").length;
+        if (!found || depth > found.depth) found = { group: group.key, page: page.key, depth };
+      }
+    }
+  }
+  return found ? { group: found.group, page: found.page } : null;
+}
 
 /** `?tab=` as people write it, from the tabs the workspace page once had: the page it means. */
 const TAB_WORDS: Record<string, string> = {
@@ -125,8 +252,9 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 /**
  * The rail's modes. Home is the front page;
  * Chat, Agents, Code and Artifacts are where work happens; Notifications
- * spans them; People is who belongs; Workspace is the workspace itself:
- * its money, policies and settings; Apps is everything installed that you
+ * spans them; People is who belongs; Workspace is the workspace itself,
+ * its settings area: who has access, money, policies and how each part is
+ * set up; Apps is everything installed that you
  * can use. `account` is your own settings, under the avatar. `site` is
  * g1t's own public pages (a profile, Explore, Search): no workspace's, so
  * no mode is lit and no mode's sidebar sits beside them. Each mode has a
@@ -156,7 +284,8 @@ const PAGE_MODES: Record<string, ModeKey> = {
   apps: "apps",
   marketplace: "apps",
   people: "people",
-  members: "people",
+  members: "workspace",
+  permissions: "workspace",
   teams: "people",
   "org-chart": "people",
   workspace: "workspace",

@@ -179,6 +179,20 @@ pub fn status_of(
     }
 }
 
+/// Whether an invitation can be sent again: only while it waits to be
+/// used. One whose account is confirming its address or answering already
+/// has what it needs; the rest are over.
+pub fn resendable(status: InviteStatus) -> bool {
+    status == InviteStatus::Pending
+}
+
+/// The note an inviter wrote, as the email quotes it: trimmed and cut to
+/// [`MAX_INVITE_MESSAGE`] characters; none when blank.
+pub fn invite_note(message: Option<&str>) -> Option<String> {
+    let note: String = message?.trim().chars().take(MAX_INVITE_MESSAGE).collect();
+    (!note.is_empty()).then_some(note)
+}
+
 /// Where an invite stands once the workspace invitation in it is counted:
 /// `base` from [`status_of`]. A declined one is declined; an account
 /// invite whose account is confirmed but has not answered the workspace it
@@ -1705,11 +1719,13 @@ impl Identity {
             return Ok(refused);
         }
         let surface = a.surface.unwrap_or(Surface::Web);
+        // A note from the inviter goes in the email, cut to its limit.
+        let note = invite_note(a.message.as_deref());
         // Someone on g1t, by username: an invitation to accept or decline
         // (invites/invitations.rs).
         let Some(email) = email else {
             let username = username.unwrap_or_default();
-            return self.invite_account(&a.actor, &slug, &workspace_id, &username, role, surface).await;
+            return self.invite_account(&a.actor, &slug, &workspace_id, &username, role, note.as_deref(), surface).await;
         };
         if !self.hit(&format!("invite.create:{}", a.actor.id), CREATES_PER_HOUR).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, TOO_MANY));
@@ -1787,7 +1803,7 @@ impl Identity {
         if let Some(code) = &invite.code {
             let from = self.display_name(&a.actor).await;
             let workspace = self.workspace_name(&workspace_id, &slug).await;
-            self.send_invite_email(&email, Some(&from), Some(&workspace), has_account, code, &invite.id, None).await;
+            self.send_invite_email(&email, Some(&from), Some(&workspace), has_account, code, &invite.id, note.as_deref()).await;
         }
         // Someone on g1t hears of it in their inbox too.
         if invitee.is_some()
@@ -1873,6 +1889,69 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can revoke a workspace's invites."));
         }
         self.revoke_invite(RemoveArgs { user: a.actor, id: a.id }).await
+    }
+
+    /// Sends one of the workspace's pending invitations again: the same
+    /// email to the address it is bound to, or to the invited account's
+    /// confirmed address, and the inbox notice again for an account. The
+    /// invitation itself does not change. Counted against the owner's
+    /// hourly allowance of invites made, so a list cannot be used to flood
+    /// an inbox.
+    pub async fn resend_workspace_invite(&self, a: WorkspaceInviteArgs) -> Result<Outcome<Invite>> {
+        let slug = a.slug.trim().to_lowercase();
+        if a.actor.kind != PrincipalKind::User || a.actor.role_in(&slug) != Some(Role::Owner) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can send a workspace's invitations again."));
+        }
+        let row = self.invite_by_id(a.id.trim()).await?.filter(|row| row.workspace.as_deref() == Some(slug.as_str()));
+        let Some(row) = row else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "There is no invitation to this workspace with that id."));
+        };
+        let now = rfc3339(now_ms());
+        if !resendable(row.status(&now)) {
+            return Ok(Outcome::fail(FailureCode::Conflict, "Only a pending invitation can be sent again."));
+        }
+        if !self.hit(&format!("invite.create:{}", a.actor.id), CREATES_PER_HOUR).await? {
+            return Ok(Outcome::fail(FailureCode::Conflict, TOO_MANY));
+        }
+        let Some(workspace_id) = row.workspace_id.as_deref() else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
+        };
+        let code = row.sealed_code.as_deref().and_then(|sealed| self.invite_sealer()?.open(sealed, &row.id));
+        // Where it goes: the address it is bound to, else the invited
+        // account's confirmed address. An account invite (one that also
+        // makes the account) carries the proof the link came from its email.
+        let to = match &row.email {
+            Some(email) => Some(email.clone()),
+            None => match &row.invitee_id {
+                Some(invitee) => self.verified_email_of(invitee).await?,
+                None => None,
+            },
+        };
+        if let (Some(to), Some(code)) = (&to, &code) {
+            let from = self.display_name(&a.actor).await;
+            let workspace = self.workspace_name(workspace_id, &slug).await;
+            self.send_invite_email(to, Some(&from), Some(&workspace), row.kind == "workspace", code, &row.id, None).await;
+        }
+        if let Some(username) = row.invitee.as_deref().filter(|_| row.email.is_none()) {
+            self.invitation_sent(&row, username).await;
+        }
+        self.audit_invites(&a.actor, "invite.resent", vec![slug.clone()], Surface::Web, format!("Sent invite {} again", row.hint)).await;
+        Ok(Outcome::Ok(self.shown(row, true, false)))
+    }
+
+    /// The confirmed primary address of the account `user_id`, if it has one.
+    async fn verified_email_of(&self, user_id: &str) -> Result<Option<String>> {
+        #[derive(Deserialize)]
+        struct Address {
+            email: Option<String>,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT email FROM users WHERE id = ? AND email_verified_at IS NOT NULL AND deleted_at IS NULL")
+            .bind(&[user_id.into()])?
+            .first::<Address>(None)
+            .await?
+            .and_then(|row| row.email))
     }
 
     // --- The waitlist ---
@@ -2446,6 +2525,30 @@ mod tests {
         let mut bytes = [0u8; 20];
         bytes[19] = 1;
         assert_eq!(encode(&bytes), format!("{}1", "0".repeat(31)));
+    }
+
+    #[test]
+    fn only_a_pending_invitation_is_sent_again() {
+        assert!(resendable(InviteStatus::Pending));
+        for over in [
+            InviteStatus::AwaitingConfirmation,
+            InviteStatus::AwaitingAnswer,
+            InviteStatus::Redeemed,
+            InviteStatus::Declined,
+            InviteStatus::Expired,
+            InviteStatus::Revoked,
+        ] {
+            assert!(!resendable(over), "{over:?}");
+        }
+    }
+
+    #[test]
+    fn an_inviters_note_is_trimmed_cut_and_dropped_when_blank() {
+        assert_eq!(invite_note(None), None);
+        assert_eq!(invite_note(Some("   ")), None);
+        assert_eq!(invite_note(Some("  Welcome aboard  ")).as_deref(), Some("Welcome aboard"));
+        let long = "x".repeat(MAX_INVITE_MESSAGE + 40);
+        assert_eq!(invite_note(Some(&long)).map(|note| note.chars().count()), Some(MAX_INVITE_MESSAGE));
     }
 
     #[test]

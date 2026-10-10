@@ -421,6 +421,7 @@ impl Identity {
                     email: String::new(),
                     username: Some(user.username),
                     role: None,
+                    message: None,
                     surface: a.surface,
                 })
                 .await?;
