@@ -834,6 +834,7 @@ export function runnersClient(service: ServiceBinding): RunnersApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
     stuck: (viewer) => call("stuck_jobs", { viewer }),
+    activity: (actor, workspace) => call("runner_activity", { actor, workspace }),
     list: (actor, owner) => call("runners", { actor, ...owner }),
     createToken: (actor, owner, group) => call("create_registration_token", { actor, ...owner, group }),
     remove: (actor, owner, id) => call("remove_runner", { actor, ...owner, id }),

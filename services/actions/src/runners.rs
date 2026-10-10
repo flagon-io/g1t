@@ -15,7 +15,7 @@ use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry,
 use g1t_contracts::billing::{ComputeKind, RecordSandboxArgs};
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::runners::{
-    self as model, StuckJob, StuckJobsArgs, Assignment, CancelTaskArgs, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs, EnqueueTaskArgs, FinishedArgs,
+    self as model, ACTIVITY_LIMIT, CloudJob, HandedOverTask, RunnerActivity, RunnerActivityArgs, StuckJob, StuckJobsArgs, Assignment, CancelTaskArgs, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs, EnqueueTaskArgs, FinishedArgs,
     ListRunnersArgs, Poll, PollArgs, RegisterArgs, Registered, RegistrationToken, RemoveRunnerArgs, RemoveSelfArgs, RouteArgs, Runner,
     RunnerAuth, RunnerGroup, RunnerGroupsArgs, RunnerSettings, RunnerSettingsArgs, RunnerWork, RunnersOwner, SetRunnerGroupArgs,
     SetRunnerSettingsArgs, Wanted,
@@ -136,6 +136,9 @@ pub struct TaskRow {
     pub started_at: Option<String>,
     #[serde(default)]
     pub seen_at: Option<String>,
+    /// The agent run it belongs to (migration 0012); none for older tasks.
+    #[serde(default)]
+    pub run_id: Option<String>,
 }
 
 /// Who may do what with a set of runners: the workspace, and the
@@ -313,7 +316,7 @@ impl Actions {
                 id: t.id,
                 name: t.title,
                 repo: Some(t.repo),
-                run_id: None,
+                run_id: t.run_id,
                 started_at: t.started_at,
             }));
         }
@@ -1327,8 +1330,8 @@ impl Actions {
         let inserted = self
             .db
             .prepare(
-                "INSERT OR IGNORE INTO runner_tasks (id, sandbox, workspace, repo_id, repo, kind, title, labels, env, timeout_minutes, status, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?) RETURNING id",
+                "INSERT OR IGNORE INTO runner_tasks (id, sandbox, workspace, repo_id, repo, kind, title, labels, env, timeout_minutes, status, created_at, run_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?) RETURNING id",
             )
             .bind(&[
                 id.as_str().into(),
@@ -1342,6 +1345,7 @@ impl Actions {
                 sealed.into(),
                 a.timeout_minutes.max(1).into(),
                 at.into(),
+                optional(a.run_id.as_deref().filter(|id| !id.is_empty())),
             ])?
             .first::<Value>(None)
             .await?;
@@ -1402,6 +1406,51 @@ impl Actions {
             worker::console_error!("actions: the sandbox waiting on task {} was not told: {error}", task.id);
         }
         Ok(())
+    }
+
+    /// `runner_activity`: what runs for the workspace now, in g1t's
+    /// sandboxes and handed to its own runners. Its owners only, as its
+    /// runners are.
+    pub async fn runner_activity(&self, a: RunnerActivityArgs) -> Result<Outcome<RunnerActivity>> {
+        let owner = RunnersOwner { repo: None, workspace: Some(a.workspace.clone()) };
+        let place = check!(self.runner_place(&a.actor, &owner, false).await?);
+        let workspace = place.workspace;
+        let cloud_jobs = self
+            .db
+            .prepare(
+                "SELECT jobs.id, jobs.name, jobs.run_id, runs.repo, jobs.started_at FROM jobs JOIN runs ON runs.id = jobs.run_id
+                 WHERE lower(jobs.namespace) = ? AND jobs.status = 'in_progress' AND jobs.labels IS NULL
+                 ORDER BY jobs.started_at DESC LIMIT ?",
+            )
+            .bind(&[workspace.as_str().into(), ACTIVITY_LIMIT.into()])?
+            .all()
+            .await?
+            .results::<CloudJob>()?;
+        let cloud_jobs_queued = self.queued_jobs(&workspace, false).await?;
+        let self_hosted_jobs_queued = self.queued_jobs(&workspace, true).await?;
+        let handed_over = self
+            .db
+            .prepare(
+                "SELECT id, run_id, kind, title, repo, status, runner_name, created_at, started_at FROM runner_tasks
+                 WHERE status IN ('queued', 'in_progress') AND workspace = ?
+                 ORDER BY created_at DESC LIMIT ?",
+            )
+            .bind(&[workspace.as_str().into(), ACTIVITY_LIMIT.into()])?
+            .all()
+            .await?
+            .results::<HandedOverTask>()?;
+        Ok(Outcome::Ok(RunnerActivity { cloud_jobs, cloud_jobs_queued, handed_over, self_hosted_jobs_queued }))
+    }
+
+    /// The workspace's workflow jobs queued for its own runners
+    /// (`labelled`), or for g1t's sandboxes.
+    async fn queued_jobs(&self, workspace: &str, labelled: bool) -> Result<u32> {
+        let sql = if labelled {
+            "SELECT COUNT(*) AS n FROM jobs WHERE lower(namespace) = ? AND status = 'queued' AND labels IS NOT NULL"
+        } else {
+            "SELECT COUNT(*) AS n FROM jobs WHERE lower(namespace) = ? AND status = 'queued' AND labels IS NULL"
+        };
+        Ok(self.db.prepare(sql).bind(&[workspace.into()])?.first::<Count>(None).await?.map_or(0, |c| c.n))
     }
 
     /// `stuck_jobs`: jobs of the viewer's workspaces that have waited ten

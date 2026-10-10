@@ -25,7 +25,10 @@ export function workspacePage(pathname: string, slug: string): WorkspacePageKey 
   return (WORKSPACE_PAGES as readonly string[]).includes(parts[2]!) ? (parts[2] as WorkspacePageKey) : null;
 }
 
-/** The workspace's pages that its Settings row drills into. */
+/**
+ * The workspace's pages that its Settings row drills into. Runners is not
+ * one: it is a page of Workspace mode's own, at `-/runners`.
+ */
 export const SETTINGS_PAGES = [
   "settings",
   "repositories",
@@ -34,7 +37,6 @@ export const SETTINGS_PAGES = [
   "guardrails",
   "secrets",
   "actions",
-  "runners",
   "integrations",
   "webhooks",
   "emoji",

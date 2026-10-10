@@ -111,10 +111,6 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Secrets and variables",
     about: "Shared with every repository, or the ones you link: read by workflows, deployments, or both. A repository's own row of the same key wins.",
   },
-  runners: {
-    title: "Self-hosted runners",
-    about: "Your own machines, which run workflow jobs, and if you choose agents' work, for free. They connect out to g1t; nothing reaches in.",
-  },
   security: {
     title: "Security",
     about: "Open alerts in every project: secrets found in pushes and history, and vulnerable dependencies. Each project's Security page has the details and the security update g1t opened for each.",

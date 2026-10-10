@@ -18,15 +18,37 @@ on it, register it once, and it picks up jobs that ask for it with
 
 | Where | Page | Who manages it |
 | --- | --- | --- |
-| A workspace | **Settings → Runners**, `g1t.sh/<workspace>/-/runners` | Owners only. |
+| A workspace | **Workspace → Runners** in the dock, `g1t.sh/<workspace>/-/runners` | Owners only. |
 | A project | **Settings → Runners**, `g1t.sh/<workspace>/<project>/settings/runners` | People with the Admin [role](/guides/access-and-roles/) on its repository |
 
 A workspace's runners serve the repositories their [group](#groups) allows.
 A project's own runners serve only that project.
 
+## The Runners page
+
+A workspace's **Runners** page shows g1t cloud and your own runners side
+by side, with what each is running now and this month's time on each.
+
+| Part | What it shows |
+| --- | --- |
+| **g1t cloud** | How many agent runs and workflow jobs are running in g1t's sandboxes now, this month's sandbox time and what it came to at price, the price per minute from g1t's [price book](/guides/usage-and-billing/), and how many agent runs your plan allows at once. |
+| **Your runners** | How many are online, busy, idle and offline, this month's self-hosted time (always $0), how many jobs and agent runs are waiting for one of them, and whether they take agent work. |
+| **On g1t cloud now** | Each running agent run and workflow job, linked to its run, with its kind, project and when it started. Work handed to one of your runners is listed under that runner instead. |
+| **Machine time** | This month's time on g1t cloud against your runners', from your [usage](/guides/usage-and-billing/). |
+| **Your runners** list | Each runner's status, labels, OS, architecture, `g1t-runner` version and when it was last heard from, and what it is running, linked to the workflow run or the agent run. |
+| **Where work runs** | What decides where each kind of work runs, and the [agent setting](#agents-on-your-runners). |
+
+A runner is **Idle** when it is online with nothing to do, **Busy** while it
+runs a job or an agent run, and **Offline** when it has not polled for 90
+seconds. When a service does not answer, only its part of the page says so.
+
+A runner in the desktop app, sessions that persist on a runner between
+tasks, and an official agent image are coming, and the page labels them
+so.
+
 ## Add a runner
 
-1. Open **Settings → Runners** and click **New runner**. g1t makes a
+1. Open **Runners** (a project's: **Settings → Runners**) and click **New runner**. g1t makes a
    registration token and shows the commands for Linux, macOS, Windows and
    Docker with it filled in. The token lasts an hour, can register any
    number of runners until then, and is shown once.
@@ -159,14 +181,14 @@ A workspace's runners are in groups, which say which repositories may use
 them. Every workspace has a **Default** group, for every repository, which
 runners join unless their token or `--group` names another.
 
-To keep a set of machines for some repositories, open **Settings →
-Runners**, click **New group**, name it, and choose **Only these**
+To keep a set of machines for some repositories, open the workspace's
+**Runners** page, click **New group**, name it, and choose **Only these**
 repositories. Then click **New runner** with that group chosen, or register
 with `--group`. Deleting a group moves its runners to the default group.
 
 ## Agents on your runners
 
-**Settings → Runners → Where work runs** can send g1t's own work to your
+**Runners → Where work runs** can send g1t's own work to your
 runners too: agent runs, checks, reviews, merge checks and the merge queue.
 Switch on **Run g1t's work on self-hosted runners** and give the labels
 a runner needs to take it (`self-hosted` is always one).
@@ -203,7 +225,7 @@ so you can see how much ran there.
 ## Security
 
 - **Pull requests from forks never run on your runners** unless you allow
-  it under **Settings → Runners → Where work runs**. Leave it off on a
+  it under **Runners → Where work runs**. Leave it off on a
   public repository: anyone who can open a pull request could run any code
   on the machine, read what it can reach, and leave something behind for
   the next job. Such jobs get no secrets either way.
@@ -299,7 +321,7 @@ download matches the release's SHA-256. `g1t-runner update` does it now;
 
 On the machine, `g1t-runner remove` unregisters it and forgets its
 credential (run `service uninstall` first if it is a service). Or remove it
-from **Settings → Runners**; the runner stops on its next poll. A job it was
+from the **Runners** page; the runner stops on its next poll. A job it was
 running fails. Runners offline for 14 days are removed by themselves.
 
 ## API and MCP
@@ -319,7 +341,7 @@ The [Agent preset](/guides/authentication/#scopes) does not include
 
 | What you see | What to do |
 | --- | --- |
-| The job says *Waiting for a self-hosted runner with labels …* | No online runner has every one of those labels in a group that allows the repository. Compare the labels on **Settings → Runners**, check the runner's group, or start the runner. |
+| The job says *Waiting for a self-hosted runner with labels …* | No online runner has every one of those labels in a group that allows the repository. Compare the labels on the **Runners** page, check the runner's group, or start the runner. |
 | *Pull requests from forks do not run on self-hosted runners here.* | The run is from a fork. Allow it under **Where work runs**, if you trust everyone who can open a pull request. |
 | `register` says the token is not valid | It expired after an hour, or was mistyped. Make a new one. |
 | `register` says a runner with that name is registered | Choose another `--name`, or add `--replace`. |

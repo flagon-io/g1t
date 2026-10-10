@@ -4,19 +4,27 @@ import { Form, Link } from "react-router";
 
 import { type RegistrationToken, RUNNER_DOWNLOADS, RUNNER_FILES, RUNNER_IMAGE, type Runner, type RunnerGroup } from "@g1t/contracts";
 
+import { agentRunHref, workflowRunHref } from "../lib/runners";
 import type { RunnersAction, RunnersData } from "../lib/runners.server";
 import { Button, CopyLine, EmptyState, ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "./ui";
 import { SelectField } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
-const STATUS: Record<Runner["status"], { dot: string; label: string }> = {
-  online: { dot: "bg-success", label: "Idle" },
-  busy: { dot: "bg-info", label: "Busy" },
-  offline: { dot: "bg-faint", label: "Offline" },
+/** Online and waiting for work reads as Idle; online and working, Busy. */
+export const STATUS: Record<Runner["status"], { dot: string; text: string; label: string }> = {
+  online: { dot: "bg-success", text: "text-success", label: "Idle" },
+  busy: { dot: "bg-info", text: "text-info", label: "Busy" },
+  offline: { dot: "bg-faint", text: "text-muted", label: "Offline" },
 };
 
-const OS_NAMES: Record<Runner["os"], string> = { linux: "Linux", macos: "macOS", windows: "Windows" };
+/** Where a runner's current work is: its workflow run, or the agent run it is. */
+function workHref(work: NonNullable<Runner["work"]>): string | null {
+  if (!work.runId || !work.repo) return null;
+  return work.kind === "workflow" ? workflowRunHref(work.repo, work.runId) : agentRunHref(work.repo, work.runId);
+}
+
+export const OS_NAMES: Record<Runner["os"], string> = { linux: "Linux", macos: "macOS", windows: "Windows" };
 
 function Section({ icon, title, about, children }: { icon: React.ReactNode; title: string; about: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -33,15 +41,16 @@ function Section({ icon, title, about, children }: { icon: React.ReactNode; titl
   );
 }
 
-function RunnerRow({ runner, manage, base }: { runner: Runner; manage: boolean; base: (repo: string) => string }) {
+export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean }) {
   const status = STATUS[runner.status];
+  const href = runner.work ? workHref(runner.work) : null;
   return (
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3">
       <span className={`mt-1.5 size-2 shrink-0 rounded-full ${status.dot}`} aria-hidden />
       <div className="min-w-0 grow basis-60">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-medium">{runner.name}</span>
-          <span className="text-xs text-muted">{status.label}</span>
+          <span className={`text-xs font-medium ${status.text}`}>{status.label}</span>
           {runner.ephemeral && <Pill>ephemeral</Pill>}
           {runner.group && <span className="text-xs text-faint">in {runner.group}</span>}
         </div>
@@ -55,8 +64,8 @@ function RunnerRow({ runner, manage, base }: { runner: Runner; manage: boolean; 
         {runner.work && (
           <p className="mt-1.5 truncate text-xs text-muted">
             {runner.work.kind === "workflow" ? "Running " : "Agent work: "}
-            {runner.work.runId && runner.work.repo ? (
-              <Link to={`${base(runner.work.repo)}/actions/runs/${runner.work.runId}`} className="text-fg hover:underline">
+            {href ? (
+              <Link to={href} className="text-fg hover:underline">
                 {runner.work.name}
               </Link>
             ) : (
@@ -66,7 +75,7 @@ function RunnerRow({ runner, manage, base }: { runner: Runner; manage: boolean; 
           </p>
         )}
       </div>
-      <div className="shrink-0 text-right text-xs text-faint">
+      <div className="ml-6 grow text-xs text-faint sm:ml-0 sm:shrink-0 sm:grow-0 sm:text-right">
         <div>
           {OS_NAMES[runner.os]} {runner.arch}
           {runner.version && <> · {runner.version}</>}
@@ -143,7 +152,7 @@ export function installSteps(platform: Platform, token: RegistrationToken | null
   }
 }
 
-function NewRunner({ token, groups, repoScoped }: { token: RegistrationToken | null; groups: RunnerGroup[]; repoScoped: boolean }) {
+export function NewRunner({ token, groups, repoScoped }: { token: RegistrationToken | null; groups: RunnerGroup[]; repoScoped: boolean }) {
   const [platform, setPlatform] = useState<Platform>("linux");
   const [arch, setArch] = useState<"x64" | "arm64">("x64");
   return (
@@ -237,7 +246,7 @@ function TimeAgoFuture({ at }: { at: string }) {
   );
 }
 
-function Groups({
+export function Groups({
   groups,
   repositories,
   manage,
@@ -333,7 +342,7 @@ function GroupForm({ group, repositories }: { group: RunnerGroup | null; reposit
   );
 }
 
-function Settings({ data, manage, scope }: { data: RunnersData; manage: boolean; scope: "workspace" | "project" }) {
+export function RunnerSettingsForm({ data, manage, scope }: { data: RunnersData; manage: boolean; scope: "workspace" | "project" }) {
   const settings = data.settings;
   const [agents, setAgents] = useState(settings?.agentsOnSelfHosted ?? false);
   const [forks, setForks] = useState(settings?.forkPullRequests ?? false);
@@ -407,7 +416,6 @@ export function RunnersPanel({
   manage: boolean;
 }) {
   const online = data.runners.filter((runner) => runner.status !== "offline").length;
-  const base = (repo: string) => `/${repo}`;
   return (
     <div className="max-w-5xl space-y-8">
       <div className="min-h-6">
@@ -435,7 +443,7 @@ export function RunnersPanel({
         ) : (
           <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
             {data.runners.map((runner) => (
-              <RunnerRow key={runner.id} runner={runner} manage={manage && (scope === "workspace" || runner.repo !== null)} base={base} />
+              <RunnerRow key={runner.id} runner={runner} manage={manage && (scope === "workspace" || runner.repo !== null)} />
             ))}
           </ul>
         )}
@@ -464,7 +472,7 @@ export function RunnersPanel({
         about={scope === "workspace" ? "For every project in the workspace, unless a project says otherwise." : "For this project."}
       >
         {/* Keyed to what is saved, so following the workspace again shows its settings, not the switches as they were. */}
-        <Settings
+        <RunnerSettingsForm
           key={data.settings ? `${data.settings.inherited}:${data.settings.agentsOnSelfHosted}:${data.settings.forkPullRequests}:${data.settings.agentLabels.join(",")}` : "none"}
           data={data}
           manage={manage}

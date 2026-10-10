@@ -471,6 +471,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
           labels: selfHosted,
           env: taskEnv({ ...vars, ...harness }),
           timeoutMinutes: minutes,
+          runId: tracked?.runId ?? null,
         });
         await this.ctx.storage.put("remote", true);
         if (tracked) await reportRun(this.env.WORK, tracked, { steps: [handedOverStep(selfHosted)] });

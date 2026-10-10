@@ -7,10 +7,13 @@ import {
   type RunnerSettings,
   type RunnersOwner,
   type User,
+  RUNNER_ACTIVITY_LIMIT,
   runnersClient,
 } from "@g1t/contracts";
 
 import { instrumented } from "./perf.server";
+import { type CloudNow, type CloudPrice, type OwnWaiting, type RunnerCost, cloudNow, cloudPrices, ownWaiting, runnerCost } from "./runners";
+import { agents, billing } from "./services.server";
 
 /** Self-hosted runners, kept by the actions service. */
 export const runners = runnersClient(instrumented("actions", env.ACTIONS));
@@ -37,6 +40,64 @@ export async function loadRunners(owner: RunnersOwner, actor: User, repositories
     settings: settings.ok ? settings.value : null,
     repositories,
     error: list.ok ? null : list.error.message,
+  };
+}
+
+/** The workspace's Runners page: its runners, and g1t's cloud beside them. */
+export type RunnersPageData = RunnersData & {
+  /** What runs on g1t's cloud now; null when neither the work nor the actions service answered. */
+  cloud: CloudNow | null;
+  /** What waits for the workspace's own runners; null when the actions service did not answer. */
+  waiting: OwnWaiting | null;
+  /** This month's machine time; null when billing did not answer. */
+  cost: RunnerCost | null;
+  /** A minute on g1t's cloud, from the price book; null when it has none. */
+  prices: CloudPrice[] | null;
+  /** Agent runs at once on g1t's cloud the plan allows; null for no cap, or unknown. */
+  agentCap: number | null;
+};
+
+/** Active agent runs read: the work service's most in one list. */
+const RUN_PAGE = 200;
+
+const warn = (what: string) => (error: unknown) => {
+  console.warn(`runners: ${what} failed`, error);
+  return null;
+};
+
+/**
+ * Every read the workspace's Runners page makes, at once. The runners,
+ * groups and settings come as on a project's page; what runs on g1t's
+ * cloud, what waits, and this month's time each come from their own
+ * service, and one that does not answer leaves only its part saying so.
+ */
+export async function loadRunnersPage(workspace: string, actor: User, repositories: string[] = [], now = new Date()): Promise<RunnersPageData> {
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  const until = now.toISOString().slice(0, 10);
+  const [base, activity, runs, report, book, entitlements] = await Promise.all([
+    loadRunners({ workspace }, actor, repositories),
+    runners
+      .activity(actor, workspace)
+      .then((result) => (result.ok ? result.value : null))
+      .catch(warn("runner activity")),
+    agents
+      .listRuns(actor, { workspace, active: true, limit: RUN_PAGE })
+      .then((result) => (result.ok ? result.value : null))
+      .catch(warn("agent runs")),
+    billing
+      .usageReport(workspace, actor, { from, until })
+      .then((result) => (result.ok ? result.value : null))
+      .catch(warn("usage report")),
+    billing.prices().catch(warn("prices")),
+    billing.entitlements(workspace).catch(warn("entitlements")),
+  ]);
+  return {
+    ...base,
+    cloud: cloudNow(runs, activity, RUN_PAGE, RUNNER_ACTIVITY_LIMIT),
+    waiting: ownWaiting(activity),
+    cost: runnerCost(report),
+    prices: cloudPrices(book?.prices ?? null),
+    agentCap: entitlements && entitlements.maxConcurrentAgents > 0 ? entitlements.maxConcurrentAgents : null,
   };
 }
 

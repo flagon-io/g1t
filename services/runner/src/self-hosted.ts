@@ -53,9 +53,12 @@ export async function enqueueTask(
     labels: string[];
     env: Record<string, string>;
     timeoutMinutes: number;
+    /** The agent run the work is, when the sandbox opened one: the Runners page links to it. */
+    runId?: string | null;
   },
 ): Promise<string> {
-  const queued = await call<Outcome<string>>(actions, "enqueue_task", { ...task, workspace: task.repo.namespace.toLowerCase() });
+  const { runId, ...rest } = task;
+  const queued = await call<Outcome<string>>(actions, "enqueue_task", { ...rest, run_id: runId ?? null, workspace: task.repo.namespace.toLowerCase() });
   if (!queued.ok) throw new Error(queued.error.message);
   return queued.value;
 }

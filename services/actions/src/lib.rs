@@ -295,6 +295,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         // Agent work, from the runner service.
         "runner_route" => reply(&service.runner_route(args(body)?).await?),
         "stuck_jobs" => reply(&service.stuck_jobs(args(body)?).await?),
+        "runner_activity" => reply(&service.runner_activity(args(body)?).await?),
         "enqueue_task" => reply(&service.enqueue_task(args(body)?).await?),
         "cancel_task" => reply(&service.cancel_task(args(body)?).await?),
         _ => Response::error("Unknown method", 404),

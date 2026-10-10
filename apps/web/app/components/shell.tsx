@@ -459,7 +459,7 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
 
 /**
  * A workspace's settings pages, which the sidebar drills into: how it is
- * set up and connected (guardrails, secrets, runners, integrations,
+ * set up and connected (guardrails, secrets, integrations,
  * webhooks), what it pays, its repositories, tokens and record. The main
  * list keeps the places work happens and who belongs; every member can
  * still open these.
@@ -1136,11 +1136,11 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
 }
 
 /** Workspace pages that sit in its Settings list, drilled into from the Workspace sidebar. */
-const WORKSPACE_SETTINGS = ["settings", "repositories", "tokens", "personal-access-tokens", "secrets", "actions", "runners", "webhooks", "emoji"];
+const WORKSPACE_SETTINGS = ["settings", "repositories", "tokens", "personal-access-tokens", "secrets", "actions", "webhooks", "emoji"];
 
 /**
  * The Workspace mode's sidebar: the workspace itself, for every member.
- * Its overview, money, connections, policies and record, then its
+ * Its overview, money, machines, connections, policies and record, then its
  * settings as a list of their own. Owner-only pages stay owner-only.
  */
 export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean }) {
@@ -1166,6 +1166,13 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
           Billing and plans
         </SidebarLink>
       </SidebarGroup>
+      {owner && (
+        <SidebarGroup title="Compute" className="mt-3">
+          <SidebarLink to={`/${slug}/-/runners`} icon={<ServerCog size={15} />} current={at("runners")}>
+            Runners
+          </SidebarLink>
+        </SidebarGroup>
+      )}
       <SidebarGroup title="Connections" className="mt-3">
         <SidebarLink to={`/${slug}/-/integrations`} icon={<Plug size={15} />} current={at("integrations")}>
           Integrations
@@ -1230,11 +1237,6 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
         <SidebarLink to={`/${slug}/-/actions`} icon={<PlayCircle size={15} />}>
           Actions
         </SidebarLink>
-        {owner && (
-          <SidebarLink to={`/${slug}/-/runners`} icon={<ServerCog size={15} />}>
-            Runners
-          </SidebarLink>
-        )}
       </SidebarGroup>
     </nav>
   );

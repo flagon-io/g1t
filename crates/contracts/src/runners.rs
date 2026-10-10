@@ -74,7 +74,9 @@ pub struct RunnerWork {
     pub name: String,
     /// `owner/name`.
     pub repo: Option<String>,
-    /// The workflow run the job is in, for a link.
+    /// For a link: the workflow run the job is in, or for `agent` work
+    /// the agent run it is (`/<owner>/<name>/agents/runs/<id>`), when
+    /// the sandbox that handed it over said which.
     pub run_id: Option<String>,
     pub started_at: Option<String>,
 }
@@ -261,6 +263,63 @@ pub struct StuckJobsArgs {
     pub viewer: crate::Viewer,
 }
 
+/// `runner_activity`: what runs for a workspace now, on g1t's cloud and
+/// handed to its own runners, for the Runners page. Owners, as the
+/// workspace's runners are. Snake case both ways. Returns
+/// `Outcome<RunnerActivity>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RunnerActivityArgs {
+    pub actor: User,
+    pub workspace: String,
+}
+
+/// A workflow job running in one of g1t's sandboxes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CloudJob {
+    pub id: String,
+    pub name: String,
+    /// The workflow run it is in.
+    pub run_id: String,
+    /// `owner/name`.
+    pub repo: String,
+    pub started_at: Option<String>,
+}
+
+/// Agent work handed to one of the workspace's own runners, waiting for
+/// one or taken.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HandedOverTask {
+    pub id: String,
+    /// The agent run it is, when the sandbox said; older tasks have none.
+    pub run_id: Option<String>,
+    /// `agent`, `checks`, `review`, `queue`…
+    pub kind: String,
+    pub title: String,
+    /// `owner/name`.
+    pub repo: String,
+    /// `queued` or `in_progress`.
+    pub status: String,
+    pub runner_name: Option<String>,
+    pub created_at: String,
+    pub started_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RunnerActivity {
+    /// Workflow jobs in g1t's sandboxes now, newest first, at most
+    /// `ACTIVITY_LIMIT`.
+    pub cloud_jobs: Vec<CloudJob>,
+    /// Workflow jobs queued for g1t's sandboxes.
+    pub cloud_jobs_queued: u32,
+    /// Agent work on, or waiting for, the workspace's own runners.
+    pub handed_over: Vec<HandedOverTask>,
+    /// Workflow jobs waiting for one of the workspace's own runners.
+    pub self_hosted_jobs_queued: u32,
+}
+
+/// The most jobs and tasks `runner_activity` lists of each.
+pub const ACTIVITY_LIMIT: u32 = 100;
+
 /// A job that has waited ten minutes or more for a self-hosted runner,
 /// with none that matches online.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -411,6 +470,10 @@ pub struct EnqueueTaskArgs {
     pub labels: Vec<String>,
     pub env: Map<String, Value>,
     pub timeout_minutes: u32,
+    /// The agent run the work belongs to, when the sandbox opened one: what
+    /// people's pages link a runner's agent work to.
+    #[serde(default, alias = "run_id")]
+    pub run_id: Option<String>,
 }
 
 /// `cancel_task`: the sandbox's work stopped from g1t's side (a person, a

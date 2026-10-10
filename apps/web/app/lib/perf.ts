@@ -114,7 +114,7 @@ const READS = new Set(
     "limit_requests links log logs managed_pulls memories_by_id memory_context my_repo_invitations " +
     "outside_collaborators overview path_by_id prices profile profile_workspaces public_namespaces read_session " +
     "readable ready_issues references registration repo_access resolve resolve_branch resolve_path resolve_slug " +
-    "routes run run_context run_cost runner_groups runner_settings runners runs scorecards search search_memories " +
+    "routes run run_context run_cost runner_activity runner_groups runner_settings runners runs scorecards search search_memories usage_report " +
     "settings statement statement_entries status status_by_id suggest tree usage usage_meters user_by_username " +
     "user_for_session user_for_access_token usernames waiting_workspaces workflows workspace workspace_invites github_enabled " +
     "stars about public_links branch_drift tags last_commits languages contributors license releases release " +

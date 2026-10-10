@@ -55,9 +55,12 @@ test("handing over and withdrawing a task", async () => {
     labels: ["self-hosted"],
     env: { MODE: "checks" },
     timeoutMinutes: 45,
+    runId: "run_9",
   });
   assert.equal(id, "rtk_1");
   assert.equal((calls[0]!.body as { workspace: string }).workspace, "acme");
+  // The agent run it is goes as run_id, for the Runners page's links.
+  assert.equal((calls[0]!.body as { run_id: string }).run_id, "run_9");
   await cancelTask(service, "do_1", "Stopped.");
   assert.deepEqual(calls[1], { method: "cancel_task", body: { sandbox: "do_1", reason: "Stopped." } });
   await assert.rejects(

@@ -16,6 +16,7 @@ export type RunnerWork = {
   id: string;
   name: string;
   repo: string | null;
+  /** The workflow run the job is in; for `agent` work, the agent run it is, when known. */
   runId: string | null;
   startedAt: string | null;
 };
@@ -76,12 +77,43 @@ export type RunnerSettingsChange = {
   inherit?: boolean;
 };
 
+/** A workflow job running in one of g1t's sandboxes. Snake case, as `runner_activity` answers. */
+export type CloudJob = { id: string; name: string; run_id: string; repo: string; started_at: string | null };
+
+/** Agent work handed to one of the workspace's own runners, waiting for one or taken. */
+export type HandedOverTask = {
+  id: string;
+  /** The agent run it is; null for work handed over before runs were noted. */
+  run_id: string | null;
+  kind: string;
+  title: string;
+  repo: string;
+  status: "queued" | "in_progress";
+  runner_name: string | null;
+  created_at: string;
+  started_at: string | null;
+};
+
+/** What runs for a workspace now, in g1t's sandboxes and on its own runners (`runner_activity`). */
+export type RunnerActivity = {
+  /** At most `RUNNER_ACTIVITY_LIMIT`, newest first. */
+  cloud_jobs: CloudJob[];
+  cloud_jobs_queued: number;
+  handed_over: HandedOverTask[];
+  self_hosted_jobs_queued: number;
+};
+
+/** The most jobs and tasks `runner_activity` lists of each: `ACTIVITY_LIMIT` in the actions service. */
+export const RUNNER_ACTIVITY_LIMIT = 100;
+
 /** A job that has waited ten minutes or more with no matching runner online. */
 export type StuckJob = { id: string; name: string; runId: string; repo: string; labels: string; queuedAt: string };
 
 export interface RunnersApi {
   /** The viewer's workspaces' jobs stuck waiting for a self-hosted runner, for Mission control. */
   stuck(viewer: User): Promise<StuckJob[]>;
+  /** What runs for the workspace now, in g1t's sandboxes and handed to its own runners. Owners. */
+  activity(actor: User, workspace: string): Promise<Result<RunnerActivity>>;
   list(actor: User, owner: RunnersOwner): Promise<Result<Runner[]>>;
   createToken(actor: User, owner: RunnersOwner, group?: string): Promise<Result<RegistrationToken>>;
   remove(actor: User, owner: RunnersOwner, id: string): Promise<Result<boolean>>;
