@@ -70,6 +70,9 @@ g1t uses the cookies it needs to work, and one analytics cookie. There are **no 
 | `g1t_ws` | Remembers which workspace you last chose, so the sidebar opens on it. | 1 year |
 | `g1t_seen` | Remembers when you last looked at mission control, so it can show what's new since. | 1 year |
 | `g1t_tz` | Your browser's time zone, so mission control's greeting and days fit your day. | 1 year |
+| `g1t_theme` | Whether this browser shows g1t light, dark or as your system is set, if you chose. | 1 year |
+| `g1t_dock` | This browser's copy of the apps you pinned to your dock, used when your account's copy can't be read. | 1 year |
+| `g1t_sidebar` | Whether you folded the sidebar away. | 1 year |
 | `ph_…_posthog` | Set by HeyCatch's analytics on g1t.sh: a random id for your browser, so its visits count as one visitor ([above](#how-the-site-is-used)). In the EU, the EEA, the UK and Switzerland, only after you allow it. | 1 year |
 
 Cloudflare may set its own security cookies (such as `__cf_bm`) to tell people from bots when g1t is under attack.

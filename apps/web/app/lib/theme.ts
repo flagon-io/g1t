@@ -16,8 +16,8 @@ export const THEME_CHOICES: ThemeChoice[] = ["auto", "light", "dark"];
 /** The cookie that keeps the choice. */
 export const THEME_COOKIE = "g1t_theme";
 
-/** What a page is drawn in before anyone chooses: g1t's own dark. */
-export const DEFAULT_THEME: ThemeChoice = "dark";
+/** What a page is drawn in before anyone chooses: whatever their system is set to. */
+export const DEFAULT_THEME: ThemeChoice = "auto";
 
 /** The browser bar's colour in each theme: the page's background. */
 export const THEME_COLOR = { light: "#fbfbfa", dark: "#0f0f11" } as const;

@@ -562,7 +562,8 @@ keyboard's shortcuts, and signing out.
 
 ### Appearance
 
-g1t comes in a dark theme and a light one. Until you choose, it is dark.
+g1t comes in a dark theme and a light one. Until you choose, it follows
+your system's setting.
 
 | Choice | What you see |
 | --- | --- |
@@ -584,7 +585,7 @@ The page changes at once. You can also choose under
 the same commands are in ⌘K, and the phone's menu has the switch.
 
 Your choice is kept in this browser, in a `g1t_theme` cookie, so every page
-is drawn in it from the start; another browser or device starts dark.
+is drawn in it from the start; another browser or device starts on Auto.
 Product screenshots on g1t.sh's home page, and the g1t mark on agents'
 avatars, stay dark in either theme.
 
