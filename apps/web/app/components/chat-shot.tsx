@@ -13,7 +13,7 @@ import {
   GitMerge,
   GitPullRequest,
   Hash,
-  Sun,
+  House,
   Bell,
   MessagesSquare,
   Paperclip,
@@ -114,7 +114,7 @@ function PullCard() {
 }
 
 const RAIL: { icon: ReactNode; label: string; on?: boolean }[] = [
-  { icon: <Sun size={16} />, label: "Today" },
+  { icon: <House size={16} />, label: "Home" },
   { icon: <Code2 size={16} />, label: "Code" },
   { icon: <MessagesSquare size={16} />, label: "Chat", on: true },
   { icon: <BookOpen size={16} />, label: "Docs" },

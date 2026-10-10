@@ -2,7 +2,7 @@
  * The dock's built-in apps, the apps a workspace installed from the
  * Marketplace, and the ones each person pins to their dock.
  *
- * Built-in apps (Today, Chat, Notifications, Agents, Code, Artifacts,
+ * Built-in apps (Home, Chat, Notifications, Agents, Code, Artifacts,
  * People and Workspace) are always in the dock; their own pages (Projects,
  * Usage, Teams and the rest) are in their sidebars. Apps are what the
  * workspace added from the Marketplace: today, the integrations it
@@ -26,7 +26,7 @@ import { CONNECTORS, type Connector, connectorPath } from "@g1t/contracts/connec
 import { CONNECTOR_PUBLISHER, extensionById } from "@g1t/contracts/marketplace";
 
 /** The apps that are always in the dock. */
-export type BuiltinApp = "today" | "chat" | "notifications" | "agents" | "code" | "artifacts" | "people" | "workspace";
+export type BuiltinApp = "home" | "chat" | "notifications" | "agents" | "code" | "artifacts" | "people" | "workspace";
 
 export type BuiltinInfo = {
   key: BuiltinApp;
@@ -41,7 +41,7 @@ const under = (page: string) => (slug: string) => `/${slug}/-/${page}`;
 
 /** The dock's built-in apps, in its order. */
 export const BUILTINS: BuiltinInfo[] = [
-  { key: "today", name: "Today", path: under("today") },
+  { key: "home", name: "Home", path: under("home") },
   { key: "chat", name: "Chat", path: under("chat") },
   { key: "notifications", name: "Notifications", path: () => "/notifications" },
   { key: "agents", name: "Agents", path: under("agents") },

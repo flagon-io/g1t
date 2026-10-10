@@ -60,7 +60,8 @@ const TAB_WORDS: Record<string, string> = {
 
 /** Workspace pages that moved, by their old name under `-/`. */
 const MOVED: Record<string, string> = {
-  home: "-/today",
+  // Home was called Today for a while.
+  today: "-/home",
   "soon/teams": "-/teams",
   "soon/insights": "-/insights",
 };
@@ -122,7 +123,7 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 }
 
 /**
- * The dock's modes. Today is the front page;
+ * The dock's modes. Home is the front page;
  * Chat, Agents, Code and Artifacts are where work happens; Notifications
  * spans them; People is who belongs; Workspace is the workspace itself:
  * its money, policies and settings; Apps is everything installed that you
@@ -132,7 +133,7 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
  * sidebar of its own, or none, and which one is lit follows the address.
  */
 export type ModeKey =
-  | "today"
+  | "home"
   | "chat"
   | "notifications"
   | "agents"
@@ -146,7 +147,7 @@ export type ModeKey =
 
 /** Workspace pages under `-/`, by the mode they belong to. Anything else of the workspace's is Code's. */
 const PAGE_MODES: Record<string, ModeKey> = {
-  today: "today",
+  home: "home",
   chat: "chat",
   artifacts: "artifacts",
   agents: "agents",
@@ -188,13 +189,13 @@ const SITE_PAGES = new Set(["explore", "search", "support", "policies", "securit
  */
 export function modeOf(pathname: string, slug: string | null): ModeKey {
   const path = pagePath(pathname);
-  if (path === "/") return "today";
+  if (path === "/") return "home";
   if (path === "/notifications" || path.startsWith("/notifications/")) return "notifications";
   if (path === "/settings" || path.startsWith("/settings/")) return "account";
   const parts = path.split("/").filter(Boolean);
   if (SITE_PAGES.has(parts[0] ?? "")) return "site";
   if (slug && parts[0]?.toLowerCase() === slug.toLowerCase()) {
-    if (parts.length === 1) return "today";
+    if (parts.length === 1) return "home";
     if (parts[1] === "-") {
       // The workspace's security settings are a policy; its alerts are Code's.
       if (parts[2] === "security" && parts[3] === "settings") return "workspace";
@@ -207,8 +208,8 @@ export function modeOf(pathname: string, slug: string | null): ModeKey {
 /** Where each mode's button in the dock goes, in the workspace `slug`. */
 export function modeHome(mode: ModeKey, slug: string): string {
   switch (mode) {
-    case "today":
-      return todayPath(slug);
+    case "home":
+      return homePagePath(slug);
     case "notifications":
       return "/notifications";
     case "chat":
@@ -232,14 +233,14 @@ export function modeHome(mode: ModeKey, slug: string): string {
   }
 }
 
-/** A workspace's front page: Today. */
-export function todayPath(slug: string): string {
-  return `/${slug}/-/today`;
+/** A workspace's front page: Home. */
+export function homePagePath(slug: string): string {
+  return `/${slug}/-/home`;
 }
 
 /**
  * Where g1t's front door (`/`) and a workspace's own address lead someone
- * in the workspace `slug`: Today, or Code's Overview when the query asks
+ * in the workspace `slug`: Home, or Code's Overview when the query asks
  * for its panels (a tab, or `?agent=new` to put an agent on something).
  */
 export function homePath(slug: string, search = ""): string {
@@ -248,7 +249,7 @@ export function homePath(slug: string, search = ""): string {
   params.delete("index");
   const query = params.toString();
   if (params.has("agent") || params.has("tab") || params.has("sort")) return `/${slug}/-/overview?${query}`;
-  return todayPath(slug);
+  return homePagePath(slug);
 }
 
 /** The page a member without Code access sees in place of anything of Code's. */
@@ -263,7 +264,7 @@ const CODE_PAGES = new Set(["overview", "projects", "repositories", "packages", 
  * Where a member without Code access goes instead of `pathname`, or null
  * when the page is open to them. `noCode` is the workspaces (by slug) where
  * they lack it; `chosen` is the one they are in. g1t's front door (`/`) is
- * Today in that workspace, and so is the workspace's own address; its
+ * Home in that workspace, and so is the workspace's own address; its
  * Code pages and every repository page is the page that says to ask an
  * owner.
  */
@@ -272,14 +273,14 @@ export function codeGate(pathname: string, search: string, noCode: readonly stri
   const path = pagePath(pathname);
   if (path === "/") {
     const slug = chosen && noCode.includes(chosen.toLowerCase()) ? chosen.toLowerCase() : null;
-    return slug ? todayPath(slug) : null;
+    return slug ? homePagePath(slug) : null;
   }
   const parts = path.split("/").filter(Boolean);
   const slug = parts[0]?.toLowerCase();
   if (!slug || !noCode.includes(slug)) return null;
   const from = `${path}${search && search !== "?" ? search : ""}`;
-  // The workspace's own page is Today.
-  if (parts.length === 1) return todayPath(slug);
+  // The workspace's own page is Home.
+  if (parts.length === 1) return homePagePath(slug);
   if (parts[1] === "-") return CODE_PAGES.has(parts[2] ?? "") ? codeAccessPath(slug, from) : null;
   // A repository, and everything in it.
   return codeAccessPath(slug, from);

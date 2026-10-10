@@ -537,8 +537,8 @@ Each page has three parts:
 
 | Part | Where | What it holds |
 | --- | --- | --- |
-| **The dock** | A rounded bar down the left | g1t's mark, which goes to [Today](/guides/today/); the built-in apps; the apps you pinned; **Apps**; and at its foot **People**, **Workspace** and your account. |
-| **The sidebar** | Beside the dock | The workspace and its switcher at the top, then the lists of the app you are in. Today and Apps have none. |
+| **The dock** | A rounded bar down the left | g1t's mark, which goes to [Home](/guides/home/); the built-in apps; the apps you pinned; **Apps**; and at its foot **People**, **Workspace** and your account. |
+| **The sidebar** | Beside the dock | The workspace and its switcher at the top, then the lists of the app you are in. Home and Apps have none. |
 | **The page** | A rounded panel, the rest of the window | Its header: the button that shows or hides the sidebar, where you are, **Search or jump to** (<kbd>Ctrl</kbd> <kbd>K</kbd>, or <kbd>⌘</kbd> <kbd>K</kbd> on a Mac), [your spend this month](/guides/spend/#in-the-top-bar), **Ask g1t**, the [notifications](/guides/notifications/) bell and **Create new**. Then the page itself. |
 
 ### The dock
@@ -548,7 +548,7 @@ unread:
 
 | App | Opens |
 | --- | --- |
-| **Today** | What needs you across the workspace. See [Today](/guides/today/). |
+| **Home** | Where you're needed across the workspace, and what happened while you were away. See [Home](/guides/home/). |
 | **Chat** | Channels and messages. See [Chat](/guides/chat/). |
 | **Notifications** | Reviews, mentions, failures and what agents wait on. See [notifications](/guides/notifications/). |
 | **Agents** | The workspace's agents and their sessions. See [agents](/guides/agents/). |
@@ -701,7 +701,7 @@ them within reach of your thumb:
 
 | | What it does |
 | --- | --- |
-| **The bar along the bottom** | **Today**, **Chat**, **Notifications**, **Agents** and **Code** (for members with Code access), each with what is unread, and **More**. It steps aside while the keyboard is up and inside a conversation. |
+| **The bar along the bottom** | **Home**, **Chat**, **Notifications**, **Agents** and **Code** (for members with Code access), each with what is unread, and **More**. It steps aside while the keyboard is up and inside a conversation. |
 | **More** | A panel above the bar with **All apps**, the [Marketplace](/guides/marketplace/), your pinned apps, **Artifacts**, **People**, **Workspace**, and **You and help**: your status, profile and settings, [appearance](#appearance), the documentation, support, status, the keyboard's shortcuts and signing out. |
 | **The sidebar button**, at the left of the page's header | Opens the sidebar of the app you are in from the left: the same lists and links as on a computer. Tap outside it, or open a page, and it closes. |
 | **The tab you are already on** | Tap it again to open that app's sidebar too. |
@@ -734,7 +734,7 @@ the row under its name.
 Mission control is Code's **Overview**, at `g1t.sh/<workspace>/-/overview`.
 It shows where you are needed in the workspace's code, what its agents are
 doing, and what landed without you. Signed in, `g1t.sh` itself opens
-[Today](/guides/today/) in the workspace you are in.
+[Home](/guides/home/) in the workspace you are in.
 
 Under the greeting, one line sums up the week, such as *Agents landed 37
 of their 39 changes this week without you, and people landed 8 changes of

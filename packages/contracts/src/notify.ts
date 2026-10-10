@@ -259,6 +259,18 @@ export type NotifyApi = {
    * Someone the room has never heard from is not listed: they are offline.
    */
   workspacePresence(workspace: string, userIds?: string[] | null): Promise<PresenceEntry[]>;
+  /**
+   * When the person was last on the workspace's Home page (RFC 3339), or
+   * null when they never were. Kept with them, so it is the same on every
+   * device.
+   */
+  lastVisit(user: Pick<User, "id">, workspace: string): Promise<{ seen_at: string | null }>;
+  /**
+   * Marks that visit at `at` (RFC 3339): Home sends the time the page
+   * loaded, once the person has looked at it. It only moves forward, never
+   * past now nor more than a day behind it.
+   */
+  markVisit(user: Pick<User, "id">, workspace: string, at: string): Promise<{ seen_at: string | null }>;
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -284,5 +296,7 @@ export function notifyClient(service: ServiceBinding): NotifyApi {
     presence: (user) => call("presence", { user_id: user.id, username: user.username }),
     setPresence: (user, change) => call("set_presence", { user_id: user.id, username: user.username, change }),
     workspacePresence: (workspace, userIds) => call("workspace_presence", { workspace, user_ids: userIds ?? null }),
+    lastVisit: (user, workspace) => call("last_visit", { user_id: user.id, workspace }),
+    markVisit: (user, workspace, at) => call("mark_visit", { user_id: user.id, workspace, at }),
   };
 }

@@ -241,8 +241,8 @@ menu above the list.
 **Mark all read** marks everything under the tab you are on as read.
 **Open Notifications**, at the foot of the panel, goes to the page.
 
-[Today](/guides/today/) shows the newest unread threads waiting on you, with
-what else needs you across the workspace.
+[Home](/guides/home/) shows the unread warnings and failures waiting on you,
+with what else needs you across the workspace.
 
 ## From the API and agents
 

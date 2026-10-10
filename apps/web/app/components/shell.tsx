@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PanelLeft, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Store, Sun, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PanelLeft, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -25,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { type RoadmapItem, roadmapIn, roadmapItem } from "../lib/roadmap";
-import { type ModeKey, SETTINGS_PAGES, modeOf, todayPath } from "../lib/workspace-nav";
+import { type ModeKey, SETTINGS_PAGES, homePagePath, modeOf } from "../lib/workspace-nav";
 import { AgentsSidebar } from "./agents-mode";
 import { ChatSidebar } from "./chat/sidebar";
 import { FoliosSidebar } from "./folios/sidebar";
@@ -1423,7 +1423,7 @@ const SECTIONS: Record<string, string> = {
   sessions: "Sessions",
   chat: "Chat",
   artifacts: "Artifacts",
-  today: "Today",
+  home: "Home",
   apps: "Apps",
   marketplace: "Marketplace",
   "code-access": "Code access",
@@ -1455,7 +1455,7 @@ function Breadcrumbs({
   }
   const parts = pathname.split("/").filter(Boolean);
   const reserved = ["settings", "explore", "new", "search", "workspaces", "policies", "security", "support", "status", "invite", "notifications"];
-  if (parts.length === 0) return <span className="text-sm font-medium">Today</span>;
+  if (parts.length === 0) return <span className="text-sm font-medium">Home</span>;
   // Your settings: Settings / Emails.
   if (parts[0] === "settings") {
     const page = accountSettingsPage(pathname);
@@ -1584,7 +1584,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
   const commands: Command[] = [
     ...(ws
       ? [
-          { label: "Today", to: todayPath(ws.slug), icon: <Sun size={15} /> },
+          { label: "Home", to: homePagePath(ws.slug), icon: <House size={15} /> },
           { label: "Chat", to: `/${ws.slug}/-/chat`, icon: <MessagesSquare size={15} /> },
           { label: "Agents", to: `/${ws.slug}/-/agents`, icon: <Sparkles size={15} /> },
           ...(hasCodeAccess(ws) ? [{ label: "Code overview", to: `/${ws.slug}/-/overview`, icon: <Code2 size={15} /> }] : []),
@@ -1742,14 +1742,14 @@ function AskG1tButton({ slug }: { slug: string }) {
 }
 
 /**
- * Which sidebar sits beside the page: each mode's own, or none. Today and
+ * Which sidebar sits beside the page: each mode's own, or none. Home and
  * Apps are pages at full width, and so are g1t's public pages, such as a
  * profile, which are no workspace's. Without a workspace, only your own
  * settings and Notifications have one.
  */
 function sidebarFor(mode: ModeKey, workspace: boolean): Panel | null {
   if (!workspace) return mode === "account" || mode === "notifications" ? mode : null;
-  if (mode === "today" || mode === "apps" || mode === "site") return null;
+  if (mode === "home" || mode === "apps" || mode === "site") return null;
   return mode;
 }
 

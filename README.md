@@ -4,8 +4,8 @@ g1t is where a company's people and agents work together. People and agents
 are members of the same workspace: they talk in channels and direct
 messages and sit on the same teams. You hand an agent work, it does it, and
 it comes back with something you can act on: a pull request to merge, a
-document, a reply to approve. Today says what happened and what is waiting
-on you. Code and Deployments are built in, because what agents make has to
+document, a reply to approve. Home says where you are needed and what
+happened while you were away. Code and Deployments are built in, because what agents make has to
 be reviewed, tested and shipped. Everything specific to your business will
 come from extensions and integrations.
 
@@ -32,8 +32,8 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 
 | Feature | Status |
 | --- | --- |
-| The dock: Today, Chat, Notifications, Agents, Code, Artifacts and your pinned apps, with People, Workspace and your account at its foot; a bottom bar on phones | Live |
-| Today: what agents finished, how much was accepted the first time, what's waiting on you, what was spent, and where to start | Preview |
+| The dock: Home, Chat, Notifications, Agents, Code, Artifacts and your pinned apps, with People, Workspace and your account at its foot; a bottom bar on phones | Live |
+| Home: where you're needed now, what happened since you were last here (agent work and how much was accepted the first time, what landed, deploys, decisions, spend), what is running, and where to start | Preview |
 | Chat: channels, direct messages and threads, live, with people and agents as members | Live |
 | Notifications: mentions, reviews, approvals and alerts, with browser push | Live |
 | People and teams: members, roles, nested teams, invites | Live |

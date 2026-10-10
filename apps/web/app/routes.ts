@@ -211,10 +211,12 @@ export default [
       route(":folio", "routes/workspace/folios/folio.tsx"),
       route(":folio/history", "routes/workspace/folios/history.tsx"),
     ]),
-    // Today, the workspace's front page (`-/home` leads there), and every
-    // app in it you can use, with pinning them to your dock.
-    route("-/today", "routes/workspace/home.tsx"),
-    route("-/home", "routes/workspace/moved.ts", { id: "routes/workspace/moved-home" }),
+    // Home, the workspace's front page (`-/today` leads there), where it
+    // marks your visit, and every app in it you can use, with pinning them
+    // to your dock.
+    route("-/home", "routes/workspace/home.tsx"),
+    route("-/home/seen", "routes/workspace/home-seen.ts"),
+    route("-/today", "routes/workspace/moved.ts", { id: "routes/workspace/moved-today" }),
     route("-/apps", "routes/workspace/apps.tsx"),
     // The Marketplace: anyone browses it; owners add extensions and
     // integrations, and everyone else asks (`requests` takes every form it

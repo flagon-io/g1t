@@ -1,4 +1,4 @@
-import { Bell, Building2, Code2, LayoutGrid, Lock, MessagesSquare, Pin, Search, Shapes, Sparkles, Store, Sun, Users } from "lucide-react";
+import { Bell, Building2, Code2, LayoutGrid, Lock, MessagesSquare, Pin, Search, Shapes, Sparkles, Store, House, Users } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useFetchers } from "react-router";
 
@@ -12,7 +12,7 @@ import { Hint } from "./ui/hint";
 /** Each built-in app's icon, at the size asked for. */
 export function appIcon(key: BuiltinApp, size = 18): ReactNode {
   const icons: Record<BuiltinApp, ReactNode> = {
-    today: <Sun size={size} />,
+    home: <House size={size} />,
     chat: <MessagesSquare size={size} />,
     notifications: <Bell size={size} />,
     agents: <Sparkles size={size} />,

@@ -6,7 +6,7 @@ import type { AgentPolicy, AgentSpendBreakdown, SpendSlice, UsageReport } from "
 
 import type { Route } from "./+types/spend";
 import { answer, agentsAction } from "../../components/agents/actions.server";
-import { RowsSkeleton } from "../../components/today";
+import { RowsSkeleton } from "../../components/home";
 import {
   BudgetLadder,
   ComingNote,

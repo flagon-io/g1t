@@ -65,10 +65,10 @@ export default function CodeAccess({ loaderData, params }: Route.ComponentProps)
           Back to Chat
         </Link>
         <Link
-          to={`/${params.owner}/-/today`}
+          to={`/${params.owner}/-/home`}
           className="inline-flex h-9 items-center rounded-md border border-line px-3.5 text-sm font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-surface"
         >
-          Today
+          Home
         </Link>
       </div>
       <p className="mt-6 text-xs text-faint">Agents can still explain how things work and what changed; they never show source code.</p>

@@ -21,7 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { type BuiltinApp, type PinnableApp } from "../lib/apps";
 import { cn } from "../lib/cn";
 import { paletteKeyLabel } from "../lib/shortcut";
-import { type ModeKey, modeHome, modeOf, todayPath } from "../lib/workspace-nav";
+import { type ModeKey, homePagePath, modeHome, modeOf } from "../lib/workspace-nav";
 
 /** The dock's column: 8px from the window's edge, 80px wide. */
 export const DOCK_COLUMN = "5.5rem";
@@ -143,7 +143,7 @@ export function WorkspaceSwitcher({ user, workspace, compact = false }: { user: 
         <DropdownMenuLabel>Switch workspace</DropdownMenuLabel>
         {(user.workspaces ?? []).map((membership) => (
           <DropdownMenuItem key={membership.slug} asChild>
-            <Link to={todayPath(membership.slug)}>
+            <Link to={homePagePath(membership.slug)}>
               <Avatar name={membership.slug} image={membership.avatar} size={24} square />
               <span className="flex min-w-0 grow flex-col leading-tight">
                 <span className="truncate">{displayName(membership)}</span>
@@ -244,7 +244,7 @@ function AppsButton({ slug, pins, onToggle, current }: { slug: string; pins: Pin
 
 /**
  * The dock down the left: g1t's mark, which
- * leads to Today; the built-in apps (Today, Chat, Notifications, Agents,
+ * leads to Home; the built-in apps (Home, Chat, Notifications, Agents,
  * Code and Artifacts) with their names; the apps you pinned, as icons;
  * the Apps launcher; and at its foot People, Workspace and your account.
  * What is lit follows the address. A member without Code access has no
@@ -270,7 +270,7 @@ export function Dock({
   const code = hasCodeAccess(workspace);
   const { pins, toggle } = useAppPins(slug, saved);
   const builtins: Item[] = [
-    { key: "today", label: "Today" },
+    { key: "home", label: "Home" },
     {
       key: "chat",
       label: "Chat",
@@ -290,8 +290,8 @@ export function Dock({
       className="flex h-full flex-col overflow-hidden rounded-2xl border border-line bg-dock shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_8px_24px_rgba(0,0,0,0.18)]"
     >
       <div className="flex h-14 shrink-0 items-center justify-center">
-        <Hint label="Today" side="right">
-          <Link to={todayPath(slug)} aria-label="g1t: Today" className="flex size-9 items-center justify-center rounded-[11px] transition-colors hover:bg-raised">
+        <Hint label="Home" side="right">
+          <Link to={homePagePath(slug)} aria-label="g1t: Home" className="flex size-9 items-center justify-center rounded-[11px] transition-colors hover:bg-raised">
             <Mark tight className="h-[1.125rem] w-auto" />
           </Link>
         </Hint>

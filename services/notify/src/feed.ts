@@ -10,7 +10,8 @@
  *
  * Kept in the object's own SQLite storage: the latest notifications, the
  * unread counts per conversation, push subscriptions and preferences, and
- * the person's status, Do Not Disturb and whether they set themselves away.
+ * the person's status, Do Not Disturb and whether they set themselves away,
+ * and when they were last on each workspace's Home page (src/visits.ts).
  *
  * Presence is worked out here from the tabs (src/presence.ts) and told to
  * the room of every workspace the person belongs to (src/room.ts), which
@@ -54,6 +55,7 @@ import {
   type Kept,
 } from "./presence.ts";
 import type { Room } from "./room.ts";
+import { type Visit, lastVisit, markVisit } from "./visits.ts";
 import { sendPush, type Vapid } from "./webpush.ts";
 
 export type FeedEnv = {
@@ -97,6 +99,8 @@ export class Feed extends DurableObject<FeedEnv> {
       `CREATE TABLE IF NOT EXISTS subscriptions (endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL, user_agent TEXT, created_at INTEGER NOT NULL)`,
     );
     this.sql.exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
+    // When the person was last on each workspace's Home page (src/visits.ts).
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS visits (workspace TEXT PRIMARY KEY, seen_at INTEGER NOT NULL, previous_at INTEGER)`);
   }
 
   // ── Kept state ──────────────────────────────────────────────────────────
@@ -550,6 +554,31 @@ export class Feed extends DurableObject<FeedEnv> {
   private remember(person: { user_id: string; username: string }): void {
     if (person.user_id) this.setMeta("user_id", person.user_id.slice(0, 100));
     if (person.username) this.setMeta("username", person.username.slice(0, 100));
+  }
+
+  private visit(workspace: string): Visit | null {
+    return this.sql.exec<Visit>("SELECT seen_at, previous_at FROM visits WHERE workspace = ?", workspace).toArray()[0] ?? null;
+  }
+
+  /** When the person was last on `workspace`'s Home page, as it counts from (src/visits.ts); null when never. */
+  async lastVisit(workspace: string): Promise<{ seen_at: string | null }> {
+    const since = lastVisit(this.visit(workspace), Date.now());
+    return { seen_at: since != null ? new Date(since).toISOString() : null };
+  }
+
+  /** Marks the person's visit to `workspace`'s Home page at `at`; it only moves forward. */
+  async markVisit(workspace: string, at: unknown): Promise<{ seen_at: string | null }> {
+    const now = Date.now();
+    const next = markVisit(this.visit(workspace), at, now);
+    if (next) {
+      this.sql.exec(
+        "INSERT INTO visits (workspace, seen_at, previous_at) VALUES (?, ?, ?) ON CONFLICT (workspace) DO UPDATE SET seen_at = excluded.seen_at, previous_at = excluded.previous_at",
+        workspace,
+        next.seen_at,
+        next.previous_at,
+      );
+    }
+    return this.lastVisit(workspace);
   }
 
   async test(username: string): Promise<{ ok: boolean; pushed: number }> {

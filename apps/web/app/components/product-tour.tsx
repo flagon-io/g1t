@@ -13,7 +13,7 @@
  * per step, chosen with the pills.
  *
  * It is an honest miniature of the app: the same rail (the workspace on
- * the top bar's line, then Today, Code, Chat, Docs, Agents and Notifications,
+ * the top bar's line, then Home, Code, Chat, Docs, Agents and Notifications,
  * with names), each mode's sidebar with its real sections and words, the
  * same top bar (where you are, Explore, Docs, Ask g1t, the inbox and +),
  * which Chat gives up to the conversation's own header as the app does,
@@ -44,7 +44,7 @@ import {
   GitMerge,
   GitPullRequest,
   Hash,
-  Sun,
+  House,
   MessagesSquare,
   Network,
   Paperclip,
@@ -348,7 +348,7 @@ function TaskCard({ frame }: { frame: Frame }) {
 
 /** The rail's modes, in the app's order (components/rail.tsx), with its icons. */
 const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scene?: Scene; badge?: number }[] = [
-  { key: "home", icon: <Sun size={15} />, label: "Today" },
+  { key: "home", icon: <House size={15} />, label: "Home" },
   { key: "code", icon: <Code2 size={15} />, label: "Code", target: "rail-code", scene: "code" },
   { key: "chat", icon: <MessagesSquare size={15} />, label: "Chat", target: "rail-chat", scene: "chat", badge: 3 },
   { key: "artifacts", icon: <Shapes size={15} />, label: "Artifacts", target: "rail-docs", scene: "docs" },
@@ -1286,7 +1286,7 @@ const MODE: Record<Scene, { icon: ReactNode; label: string }> = {
 
 /** The phone's tab bar, as the app has it (components/mobile.tsx). */
 const TABS: { scene: Scene | null; icon: ReactNode; label: string }[] = [
-  { scene: null, icon: <Sun size={16} />, label: "Today" },
+  { scene: null, icon: <House size={16} />, label: "Home" },
   { scene: "code", icon: <Code2 size={16} />, label: "Code" },
   { scene: "chat", icon: <MessagesSquare size={16} />, label: "Chat" },
   { scene: "agents", icon: <Sparkles size={16} />, label: "Agents" },

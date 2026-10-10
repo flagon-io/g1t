@@ -119,7 +119,7 @@ export function useBack(fallback: string) {
 type Tab = { key: ModeKey; label: string; badge?: { count: number; loud: boolean } };
 
 /**
- * The bottom bar of a phone, floating 8px from the edges: Today, Chat,
+ * The bottom bar of a phone, floating 8px from the edges: Home, Chat,
  * Notifications, Agents and Code (for a member with Code access), each
  * with what is unread, and More. It steps aside while the keyboard is up
  * and inside a conversation. The tab you are in, tapped again, opens its
@@ -147,7 +147,7 @@ export function BottomBar({
   const code = hasCodeAccess(workspace);
   const mode = modeOf(pathname, slug);
   const tabs: Tab[] = [
-    { key: "today", label: "Today" },
+    { key: "home", label: "Home" },
     { key: "chat", label: "Chat", badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 } },
     { key: "notifications", label: "Notifications", badge: { count: unread.notifications, loud: true } },
     { key: "agents", label: "Agents" },

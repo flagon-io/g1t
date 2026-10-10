@@ -13,7 +13,9 @@
  * - events: `notify`, for every inbox item, and `set_inbox`, the count after
  *   items arrive or are marked, naming the person by username;
  * - the site: `subscribe`, `unsubscribe`, `status`, `set_preferences`,
- *   `test`, `presence` and `set_presence`, for the person signed in;
+ *   `test`, `presence` and `set_presence`, for the person signed in; and
+ *   `last_visit` and `mark_visit`, when they were last on a workspace's
+ *   Home page (src/visits.ts);
  * - agents and the site: `workspace_presence`, how a workspace's people
  *   show now (away, in Do Not Disturb, offline, and their statuses);
  * - integrations, later: `set_presence` with a status of `source`
@@ -33,6 +35,7 @@ import {
 
 import { FEED_USERNAME_HEADER, FEED_USER_ID_HEADER, Feed, type FeedEnv } from "./feed.ts";
 import { onlyPeople } from "./presence.ts";
+import { visitWorkspace } from "./visits.ts";
 
 export { Feed } from "./feed.ts";
 export { Room } from "./room.ts";
@@ -97,6 +100,12 @@ async function answer(env: Env, method: string, args: any): Promise<Response> {
       return Response.json(await stub.status(typeof args.endpoint === "string" ? args.endpoint : null));
     case "set_preferences":
       return Response.json(await stub.setPreferences(args.preferences));
+    case "last_visit":
+    case "mark_visit": {
+      const workspace = visitWorkspace(args.workspace);
+      if (!workspace) return Response.json({ seen_at: null });
+      return Response.json(method === "last_visit" ? await stub.lastVisit(workspace) : await stub.markVisit(workspace, args.at));
+    }
     case "test":
       return Response.json(await stub.test(typeof args.username === "string" ? args.username : ""));
     case "presence":

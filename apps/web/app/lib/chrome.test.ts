@@ -35,7 +35,7 @@ test("answering an invitation stands alone until you belong to a workspace", () 
 });
 
 test("someone signed in gets the app everywhere else, public pages included", () => {
-  for (const path of ["/", "/explore", "/u/ada", "/other/web", "/acme/-/today", "/notifications", "/pricing", "/does/not/exist"]) {
+  for (const path of ["/", "/explore", "/u/ada", "/other/web", "/acme/-/home", "/notifications", "/pricing", "/does/not/exist"]) {
     assert.equal(frameOf(path, member), "app", path);
     assert.equal(frameOf(path, newcomer), "app", path);
   }
