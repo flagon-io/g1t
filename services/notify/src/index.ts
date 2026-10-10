@@ -44,7 +44,10 @@ function feed(env: Env, userId: string) {
 }
 
 /** A user id from the arguments, or one looked up by username. */
-async function userIdOf(env: Env, args: { user_id?: unknown; username?: unknown }): Promise<string | null> {
+async function userIdOf(env: Env, given: { user_id?: unknown; username?: unknown; target?: unknown }): Promise<string | null> {
+  // Who it's for, at the top level or under `target` as the agents service sends it.
+  const target = given.target && typeof given.target === "object" ? (given.target as { user_id?: unknown; username?: unknown }) : null;
+  const args = { user_id: given.user_id ?? target?.user_id, username: given.username ?? target?.username };
   if (typeof args.user_id === "string" && args.user_id) return args.user_id;
   if (typeof args.username !== "string" || !args.username) return null;
   const user = await identityClient(env.IDENTITY)
