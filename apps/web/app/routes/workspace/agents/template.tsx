@@ -28,7 +28,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!role) throw data(null, { status: 404 });
   const loaded = await loadTemplates(slug, viewer);
   if (loaded.templates && !loaded.templates.some((t) => t.id === params.template)) throw data(null, { status: 404 });
-  return { slug, owner: role === "owner", ...loaded };
+  // Owners start agents; members start personal ones, unless owners turned that off.
+  return { slug, owner: role === "owner" || loaded.members_create_agents, ...loaded };
 }
 
 export default function AgentTemplate({ loaderData, params }: Route.ComponentProps) {

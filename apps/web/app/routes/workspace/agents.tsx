@@ -1,10 +1,11 @@
-import { AlertTriangle, CalendarClock, Coins, Hourglass, Wallet } from "lucide-react";
-import { Link, data } from "react-router";
+import { AlertTriangle, CalendarClock, Coins, Hourglass, Lock, Wallet } from "lucide-react";
+import { Link, data, useFetcher } from "react-router";
 
 import type { AgentPolicy, AgentsOverview, WorkspaceAgent } from "@g1t/contracts";
 
 import type { Route } from "./+types/agents";
-import { AgentFace } from "../../components/agents-mode";
+import { AgentFace, useAgentsData } from "../../components/agents-mode";
+import { SwitchCard } from "../../components/ui/switch";
 import { agentsAction, answer, readOrNull } from "../../components/agents/actions.server";
 import { ApproveDialog, BUTTONS, BudgetDialog } from "../../components/agents/dialogs";
 import { meterTone, monthName, scheduleInWords, shareOf, untilLabel } from "../../components/agents/format";
@@ -34,6 +35,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
 /** Owners set the workspace's agent budget. */
 export async function action({ params, context, request }: Route.ActionArgs) {
   const { viewer, slug, form } = await agentsAction(request, context, params.owner);
+  // Whether members create personal agents: on unless an owner turns it off.
+  if (form.get("intent") === "personal_agents") {
+    return answer("personal_agents", workspaceAgents.setPolicy(slug, viewer, { members_create_agents: form.get("members_create_agents") === "on" }));
+  }
   if (form.get("intent") !== "policy") return { ok: false as const, error: "Unknown request." };
   const monthly = microsFromDollars(form.get("monthly"));
   const agent = microsFromDollars(form.get("default_agent"));
@@ -117,7 +122,13 @@ export default function AgentsOverviewPage({ loaderData, params }: Route.Compone
         )}
       </section>
 
-      <Roster slug={slug} agents={overview.agents} live={overview.live_by_agent} />
+      {/* The workspace's agents; the viewer's own personal ones apart, under Yours. */}
+      <Roster slug={slug} agents={overview.agents.filter((agent) => agent.scope !== "personal")} live={overview.live_by_agent} />
+      {overview.agents.some((agent) => agent.scope === "personal") && (
+        <Roster slug={slug} title="Yours" agents={overview.agents.filter((agent) => agent.scope === "personal")} live={overview.live_by_agent} />
+      )}
+
+      {overview.can_manage && <PersonalAgents slug={slug} on={overview.policy.members_create_agents} />}
 
       <SpendSection overview={overview} slug={slug} handles={handles} />
 
@@ -241,17 +252,22 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 /** Every agent, g1t first: its status, what it is working on and its month against its own budget. */
-function Roster({ slug, agents, live }: { slug: string; agents: WorkspaceAgent[]; live: Record<string, number> }) {
+function Roster({ slug, agents, live, title = "Agents" }: { slug: string; agents: WorkspaceAgent[]; live: Record<string, number>; title?: string }) {
   const sorted = [...agents].sort((a, b) => Number(isOrchestrator(b)) - Number(isOrchestrator(a)));
+  const id = `roster-${title.toLowerCase()}`;
   return (
-    <section aria-labelledby="roster">
+    <section aria-labelledby={id}>
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id="roster" className="text-sm font-medium">
-          Agents <span className="text-faint">{agents.length}</span>
+        <h2 id={id} className="text-sm font-medium">
+          {title} <span className="text-faint">{agents.length}</span>
         </h2>
-        <Link to={`/${slug}/-/agents/templates`} className="text-xs text-muted hover:text-fg">
-          Start from a template
-        </Link>
+        {title === "Agents" ? (
+          <Link to={`/${slug}/-/agents/templates`} className="text-xs text-muted hover:text-fg">
+            Start from a template
+          </Link>
+        ) : (
+          <span className="text-xs text-faint">Personal: only you talk to them</span>
+        )}
       </div>
       <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
         {sorted.map((agent) => {
@@ -342,6 +358,65 @@ function SpendSection({ overview, slug, handles }: { overview: AgentsOverview; s
             ))}
           </ul>
         </Panel>
+      )}
+    </section>
+  );
+}
+
+/**
+ * For owners: whether members create personal agents (on unless turned
+ * off), and the personal agents members have, to promote or archive.
+ */
+function PersonalAgents({ slug, on }: { slug: string; on: boolean }) {
+  const fetcher = useFetcher<{ ok: boolean; error?: string }>({ key: "personal-agents" });
+  const layout = useAgentsData();
+  const pending = fetcher.formData ? fetcher.formData.get("members_create_agents") === "on" : null;
+  const checked = pending ?? on;
+  const theirs = (layout?.agents ?? []).filter((agent) => agent.scope === "personal" && agent.personal_owner_id !== layout?.viewer_id);
+  const error = fetcher.state === "idle" && fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
+  return (
+    <section aria-labelledby="personal-agents">
+      <h2 id="personal-agents" className="flex items-center gap-2 text-sm font-medium">
+        <Lock size={14} className="text-faint" />
+        Personal agents
+      </h2>
+      <p className="mt-1 max-w-2xl text-sm text-muted">
+        A member&apos;s own agent: only they talk to it, in their direct message with it, and it spends from their budget. You keep the workspace&apos;s agents, and can promote a personal one to a workspace agent from its profile.
+      </p>
+      <fetcher.Form method="post" action={`/${slug}/-/agents?index`} className="mt-3 max-w-2xl">
+        <input type="hidden" name="intent" value="personal_agents" />
+        <SwitchCard
+          title="Members can create personal agents"
+          name="members_create_agents"
+          checked={checked}
+          onCheckedChange={(value) => fetcher.submit({ intent: "personal_agents", ...(value ? { members_create_agents: "on" } : {}) }, { method: "post", action: `/${slug}/-/agents?index` })}
+        >
+          {checked
+            ? "On: anyone in the workspace can describe an agent and make it theirs. Owners always can."
+            : "Off: only owners create agents. Personal agents members already have keep working."}
+        </SwitchCard>
+        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+      </fetcher.Form>
+      {theirs.length > 0 && (
+        <ul className="mt-4 grid max-w-2xl gap-2 sm:grid-cols-2">
+          {theirs.map((agent) => (
+            <li key={agent.id}>
+              <Link
+                to={`/${slug}/-/agents/${agent.handle}/profile`}
+                className="flex items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 transition-colors hover:border-line-strong"
+              >
+                <AgentFace agent={agent} size={28} />
+                <span className="min-w-0 grow leading-tight">
+                  <span className="block truncate text-sm font-medium">{agent.display_name}</span>
+                  <span className="block truncate text-xs text-faint">
+                    @{agent.personal_owner}&apos;s · {agent.title || agent.role}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs text-muted">Promote…</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );

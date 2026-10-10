@@ -44,7 +44,7 @@ export async function loadTeams(env: TeamsEnv, slug: string, workspaceId: string
     env.NOTIFY && userIds.length ? notifyClient(env.NOTIFY).workspacePresence(slug, userIds).catch(() => null) : Promise.resolve(null),
     env.DB.prepare(
       `SELECT id, handle, display_name, title, team FROM agents
-       WHERE workspace_id = ?1 AND archived_at IS NULL
+       WHERE workspace_id = ?1 AND archived_at IS NULL AND scope = 'workspace'
          AND (id IN (SELECT value FROM json_each(?2)) OR team IN (SELECT value FROM json_each(?3)))
        ORDER BY builtin DESC, handle LIMIT 200`,
     )
@@ -192,7 +192,7 @@ export function toolPorts(
       const [members, teams, agents] = await Promise.all([
         viewer ? identity.listMembers(workspace, viewer).catch(() => null) : Promise.resolve(null),
         viewer ? identity.listTeams(viewer, workspace).catch(() => null) : Promise.resolve(null),
-        env.DB.prepare("SELECT handle, display_name, title, role FROM agents WHERE workspace_id = ? AND archived_at IS NULL ORDER BY builtin DESC, handle")
+        env.DB.prepare("SELECT handle, display_name, title, role FROM agents WHERE workspace_id = ? AND archived_at IS NULL AND scope = 'workspace' ORDER BY builtin DESC, handle")
           .bind(workspaceId)
           .all<{ handle: string; display_name: string; title: string; role: string }>(),
       ]);

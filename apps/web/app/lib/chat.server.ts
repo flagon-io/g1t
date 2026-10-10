@@ -12,7 +12,8 @@ import { chat, identity, workspaceAgents } from "./services.server";
 export async function workspacePeople(slug: string, viewer: User): Promise<{ people: Mentionable[]; agents: WorkspaceAgent[] }> {
   const [members, agents] = await Promise.all([
     identity.listMembers(slug, viewer).catch(() => null),
-    workspaceAgents.list(slug, viewer).catch(() => null),
+    // Their own personal agents too: a DM with one starts here like any other.
+    workspaceAgents.list(slug, viewer, { personal: "mine" }).catch(() => null),
   ]);
   const people: Mentionable[] = members?.ok
     ? members.value.map((member) => ({

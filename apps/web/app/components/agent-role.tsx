@@ -27,7 +27,10 @@ export function RoleFields({
   teams,
   errors,
   locked,
+  personal = false,
 }: {
+  /** A personal agent: on no team, so no team to choose. */
+  personal?: boolean;
   title: string;
   team: string | null;
   department: string;
@@ -65,6 +68,12 @@ export function RoleFields({
             data-1p-ignore
           />
         </div>
+        {personal ? (
+          <div>
+            <p className="mb-1.5 text-sm font-medium text-fg-soft">Team</p>
+            <p className="flex min-h-9 items-center text-[0.8125rem] text-muted">Personal agents join teams once an owner promotes them.</p>
+          </div>
+        ) : (
         <div>
           <label htmlFor="team" className="mb-1.5 block text-sm font-medium text-fg-soft">
             Team
@@ -85,6 +94,7 @@ export function RoleFields({
             </SelectContent>
           </Select>
         </div>
+        )}
       </div>
       {onTeam === "none" && (
         <div>

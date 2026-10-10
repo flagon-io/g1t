@@ -28,7 +28,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // (the top bar's Ask g1t, and links to an agent from anywhere).
   const asked = new URL(request.url).searchParams.get("agent");
   if (asked) {
-    const listed = await workspaceAgents.list(slug, viewer).catch(() => null);
+    const listed = await workspaceAgents.list(slug, viewer, { personal: "mine" }).catch(() => null);
     const agent = listed?.ok ? listed.value.find((a) => a.handle === asked.toLowerCase()) : null;
     const dm = agent ? await chat.openDm(slug, viewer, [{ kind: "agent", id: agent.id }]).catch(() => null) : null;
     if (dm?.ok) throw redirect(channelPath(slug, dm.value));

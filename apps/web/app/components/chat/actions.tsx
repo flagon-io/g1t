@@ -303,7 +303,8 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
   const everyone = useMemo<Pickable[]>(() => {
     const me = data?.me.username.toLowerCase();
     return [
-      ...(data?.agents ?? []).map((agent) => ({
+      // A personal agent is only in its own DM, opened from the sidebar, never with others.
+      ...(data?.agents ?? []).filter((agent) => agent.scope !== "personal").map((agent) => ({
         key: `agent:${agent.id}`,
         kind: "agent" as const,
         name: agent.handle,

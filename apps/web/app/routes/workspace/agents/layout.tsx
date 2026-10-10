@@ -12,22 +12,35 @@ import { requireUser, roleIn } from "../../../lib/session.server";
  * Agents mode: the workspace's agents, for its sidebar, and how many live
  * sessions each has (by agent id); null when the agents service does not answer.
  */
-export type AgentsLayoutData = { slug: string; agents: WorkspaceAgent[] | null; live: Record<string, number> };
+export type AgentsLayoutData = {
+  slug: string;
+  agents: WorkspaceAgent[] | null;
+  live: Record<string, number>;
+  /** The viewer's id, to tell their own personal agents from members' (which owners see). */
+  viewer_id: string;
+  /** Whether the viewer may create an agent: owners always, members unless owners turned personal agents off. */
+  may_create: boolean;
+};
 
 export async function loader({ params, context, request }: Route.LoaderArgs): Promise<AgentsLayoutData> {
   // Signed out, sign in first (as Chat and Docs do), rather than a 404.
   const viewer = requireUser(context, request);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
-  const [listed, live] = await Promise.all([
-    workspaceAgents.list(slug, viewer!).catch(() => null),
+  const owner = roleIn(viewer, slug) === "owner";
+  const [listed, live, policy] = await Promise.all([
+    // Personal agents too: the viewer's own, and every member's for an owner.
+    workspaceAgents.list(slug, viewer!, { personal: "all" }).catch(() => null),
     // Every live session counts, private ones too: a count says nothing about what it is.
     workspaceAgents.sessions(slug, viewer!, { status: "live", limit: 200 }).catch(() => null),
+    owner ? Promise.resolve(null) : workspaceAgents.policy(slug, viewer!).catch(() => null),
   ]);
   const counts: Record<string, number> = {};
   for (const session of live?.ok ? live.value : []) counts[session.agent_id] = (counts[session.agent_id] ?? 0) + 1;
   return {
     slug,
+    viewer_id: viewer.id,
+    may_create: owner || (policy?.ok ? policy.value.members_create_agents : true),
     live: counts,
     agents: listed?.ok ? listed.value.filter((agent) => !agent.archived_at).sort((a, b) => a.display_name.localeCompare(b.display_name)) : null,
   };

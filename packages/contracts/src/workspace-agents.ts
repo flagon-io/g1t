@@ -130,6 +130,16 @@ export type WorkspaceAgent = {
    * added to that job. Listed first.
    */
   builtin: boolean;
+  /**
+   * Who it belongs to (docs.g1t.sh/guides/agents/, "Personal agents"):
+   * `workspace`, the workspace's own, which owners keep; or `personal`, a
+   * member's own, which only that member talks to, in their direct message
+   * with it, and whose spend counts against that member's budget.
+   */
+  scope: WorkspaceAgentScope;
+  /** For a personal agent, the member it belongs to: their user id and username. Null for a workspace agent. */
+  personal_owner_id: string | null;
+  personal_owner: string | null;
   version: number;
   status: AgentStatus;
   /** Spend this calendar month, in micro-dollars. */
@@ -145,6 +155,15 @@ export type WorkspaceAgent = {
  * and front office"). Customer-facing agents are not available yet.
  */
 export type AgentFaces = "internal" | "customers";
+
+/** A workspace agent, which owners keep, or a member's personal agent. */
+export type WorkspaceAgentScope = "workspace" | "personal";
+
+/** What a personal agent starts with, unless its creator gives it other caps: $20 a month and $2 a session. */
+export const PERSONAL_AGENT_BUDGET = { monthly_micros: 20_000_000, daily_micros: null, task_micros: 2_000_000 } as const;
+
+/** Most personal agents one member keeps in a workspace. */
+export const MAX_PERSONAL_AGENTS = 10;
 
 /**
  * A subagent: help an agent keeps for its own work, such as Margo's
@@ -188,6 +207,50 @@ export type NewWorkspaceAgent = {
   template?: string | null;
   /** Its avatar's seed; left out, the handle. */
   avatar_seed?: string;
+  /**
+   * When creating: `workspace` (owners only, and their default) or
+   * `personal` (any member, when the workspace lets members make them; a
+   * member's default). Ignored on a change: an owner promotes instead.
+   */
+  scope?: WorkspaceAgentScope;
+};
+
+/**
+ * What g1t drafted from a description (docs.g1t.sh/guides/agents/,
+ * "Describe it"): a whole definition to edit before anything is saved,
+ * and what the agent will want around it. Nothing here is saved until the
+ * agent is created.
+ */
+export type AgentProposal = {
+  /** A complete definition, ready to create as it is. */
+  definition: NewWorkspaceAgent & { scope: WorkspaceAgentScope };
+  /** Other names that suit it, for the shuffle. */
+  name_ideas: string[];
+  /** Foundational skills it should keep on, by id (./skills.ts); the rest are off in `definition.skills_off`. */
+  skills: string[];
+  /** Integrations the job needs, from the catalog (./connectors.ts), with why. */
+  integrations: { id: string; why: string }[];
+  /** Routines that would suit it, to set up on its Routines tab once it exists. */
+  routines: { name: string; when: string; instructions: string }[];
+  /** What drafting it cost, charged to the person who asked (micro-dollars). */
+  charged_micros: number;
+};
+
+/** One line of a Try it conversation, held by the page, never saved. */
+export type DraftTurn = { role: "user" | "assistant"; content: string };
+
+/** A Try it answer, and what it cost the person trying it. */
+export type DraftReply = { text: string; charged_micros: number };
+
+/** Changes drafted from "Tell <name> what to change", to review before they are saved as a new version. */
+export type AgentRedraft = {
+  /** The changes to save, as `update` takes them: only fields that differ. */
+  changes: Partial<NewWorkspaceAgent>;
+  /** One line on what changed. */
+  summary: string;
+  /** The version it was drafted from. */
+  from_version: number;
+  charged_micros: number;
 };
 
 /**
@@ -535,6 +598,12 @@ export type AgentPolicy = {
    * person has a budget of their own. Null: no budget per person.
    */
   person_monthly_micros: number | null;
+  /**
+   * Whether members who aren't owners may create personal agents
+   * (docs.g1t.sh/guides/agents/, "Personal agents"). On unless an owner
+   * turns it off; off, existing personal agents keep working.
+   */
+  members_create_agents: boolean;
 };
 
 /** One person's budget: what agents working for them may spend in a month, and what they have. */
@@ -646,7 +715,12 @@ export type AgentCardAction = {
 };
 
 export type WorkspaceAgentsApi = {
-  list(workspace: string, viewer: User): Promise<Result<WorkspaceAgent[]>>;
+  /**
+   * The workspace's agents. Personal agents are left out unless asked
+   * for: `mine`, the viewer's own; `all`, every member's for an owner (the
+   * viewer's own for anyone else).
+   */
+  list(workspace: string, viewer: User, options?: { personal?: "mine" | "all" | null }): Promise<Result<WorkspaceAgent[]>>;
   get(workspace: string, handle: string, viewer: User): Promise<Result<WorkspaceAgent>>;
   /** Internal: by id, for the chat service resolving members. */
   byIds(ids: string[]): Promise<WorkspaceAgent[]>;
@@ -658,6 +732,25 @@ export type WorkspaceAgentsApi = {
     changes: Partial<NewWorkspaceAgent>,
   ): Promise<Result<WorkspaceAgent>>;
   archive(workspace: string, handle: string, viewer: User): Promise<Result<null>>;
+  /**
+   * Drafts a whole agent from a description, with a fast model call charged
+   * to the viewer. Nothing is saved. Whoever may create the agent may draft it.
+   */
+  draft(workspace: string, viewer: User, input: { description: string; scope?: WorkspaceAgentScope | null }): Promise<Result<AgentProposal>>;
+  /**
+   * Try it: the unsaved definition answers the conversation so far, as it
+   * would in a direct message, without tools or memory. Charged to the
+   * viewer; nothing is saved.
+   */
+  tryDraft(workspace: string, viewer: User, input: { definition: NewWorkspaceAgent; messages: DraftTurn[] }): Promise<Result<DraftReply>>;
+  /** Drafts changes to an agent from a request in words; saved only through `update`. Whoever may change the agent may ask. */
+  redraft(workspace: string, handle: string, viewer: User, request: string): Promise<Result<AgentRedraft>>;
+  /**
+   * Owners make a member's personal agent a workspace agent: its definition
+   * and every version move to a workspace agent with the same handle, and
+   * the personal one is archived, with its memory and direct messages.
+   */
+  promote(workspace: string, handle: string, viewer: User): Promise<Result<WorkspaceAgent>>;
   templates(): Promise<AgentTemplate[]>;
   /**
    * Internal: the workspace's built-in `@g1t` agent, made if it does not
@@ -772,12 +865,16 @@ export type AgentTeamContext = { handle: string; teams: string[]; text: string |
 export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
-    list: (workspace, viewer) => call("list", { workspace, viewer }),
+    list: (workspace, viewer, options) => call("list", { workspace, viewer, personal: options?.personal ?? null }),
     get: (workspace, handle, viewer) => call("get", { workspace, handle, viewer }),
     byIds: (ids) => call("by_ids", { ids }),
     create: (workspace, viewer, input) => call("create", { workspace, viewer, input }),
     update: (workspace, handle, viewer, changes) => call("update", { workspace, handle, viewer, changes }),
     archive: (workspace, handle, viewer) => call("archive", { workspace, handle, viewer }),
+    draft: (workspace, viewer, input) => call("draft", { workspace, viewer, description: input.description, scope: input.scope ?? null }),
+    tryDraft: (workspace, viewer, input) => call("try_draft", { workspace, viewer, definition: input.definition, messages: input.messages }),
+    redraft: (workspace, handle, viewer, request) => call("redraft", { workspace, handle, viewer, request }),
+    promote: (workspace, handle, viewer) => call("promote", { workspace, handle, viewer }),
     templates: () => call("templates", {}),
     builtin: (workspace, workspaceId) => call("builtin", { workspace, workspace_id: workspaceId }),
     deliver: (delivery) => call("deliver", delivery),

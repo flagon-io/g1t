@@ -129,6 +129,10 @@ export function readAgentForm(form: FormData, options: { orchestrator?: boolean 
       },
       capacity,
       template: String(form.get("template") ?? "") || null,
+      // A drafted agent carries its scope, the skills it keeps off and its face.
+      ...(form.get("scope") === "personal" || form.get("scope") === "workspace" ? { scope: form.get("scope") as "personal" | "workspace" } : {}),
+      ...(form.has("skills_off") ? { skills_off: String(form.get("skills_off") ?? "").split(",").map((id) => id.trim()).filter(Boolean) } : {}),
+      ...(String(form.get("avatar_seed") ?? "").trim() ? { avatar_seed: String(form.get("avatar_seed")).trim().slice(0, 64) } : {}),
     },
   };
 }

@@ -42,7 +42,9 @@ leave it empty for every repository the routine's sponsor can read.
 ## Set up a routine
 
 Only owners set up routines, because a routine spends the agent's budget
-without anyone asking.
+without anyone asking. [Personal agents](/guides/agents/#personal-agents)
+can't run routines yet; an owner can promote one to a workspace agent,
+which can.
 
 1. Open the agent, then **Routines**, then **New routine**.
 2. Give it a **name** and **instructions**: what to do each run, and what

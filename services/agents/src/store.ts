@@ -34,6 +34,11 @@ export type Row = {
   version: number;
   /** 1 for the workspace's built-in @g1t. */
   builtin: number;
+  /** `workspace`, or `personal` (a member's own); missing before personal agents. */
+  scope?: string | null;
+  /** A personal agent's member: user id and username. */
+  owner_id?: string | null;
+  owner_username?: string | null;
   busy_until: string | null;
   created_by: string;
   created_at: string;
@@ -95,6 +100,9 @@ export function toAgent(row: Row, now: Date): WorkspaceAgent {
     avatar: row.avatar,
     ...definition,
     builtin: !!row.builtin,
+    scope: isPersonal(row) ? "personal" : "workspace",
+    personal_owner_id: isPersonal(row) ? (row.owner_id ?? null) : null,
+    personal_owner: isPersonal(row) ? (row.owner_username ?? null) : null,
     version: row.version,
     status: row.archived_at ? "paused" : agentStatus({ busyUntil: row.busy_until, now, blocked: budgetBlock(definition.budget, spent, now) !== null }),
     spent_month_micros: spent.month,
@@ -103,6 +111,11 @@ export function toAgent(row: Row, now: Date): WorkspaceAgent {
     updated_at: row.updated_at,
     archived_at: row.archived_at,
   };
+}
+
+/** Whether a row is a member's personal agent. */
+export function isPersonal(row: Pick<Row, "scope">): boolean {
+  return row.scope === "personal";
 }
 
 /**

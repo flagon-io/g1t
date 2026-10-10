@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { MAX_HOPS, chainFor, deliveries, delivery, handOffPlace, handOffRefusal } from "./delivery.ts";
+import { MAX_HOPS, chainFor, deliveries, delivery, handOffPlace, handOffRefusal, personalAgentRefusal } from "./delivery.ts";
 
 const ship = { id: "a1", handle: "ship" };
 const docs = { id: "a2", handle: "docs" };
@@ -79,4 +79,15 @@ test("a hand-off is refused to itself, to @g1t, back along the chain, and past t
   assert.match(handOffRefusal({ ...ok, agent: "a2", chain: ["a1", "a2"] })!, /already handled/);
   assert.equal(handOffRefusal({ ...ok, hops: MAX_HOPS - 1 }), null);
   assert.match(handOffRefusal({ ...ok, hops: MAX_HOPS })!, /too many times/);
+});
+
+test("a personal agent is only in the direct message of it and the person it belongs to", () => {
+  const mine = { id: "a9", handle: "pip", scope: "personal", personal_owner_id: "u1" };
+  assert.equal(personalAgentRefusal(mine, { kind: "dm", members: ["user:u1", "agent:a9"] }), null);
+  assert.match(personalAgentRefusal(mine, { kind: "dm", members: ["user:u2", "agent:a9"] }) ?? "", /personal agent/);
+  assert.match(personalAgentRefusal(mine, { kind: "dm", members: ["user:u1", "user:u2", "agent:a9"] }) ?? "", /personal agent/, "not a group DM");
+  assert.match(personalAgentRefusal(mine, { kind: "channel", members: null }) ?? "", /personal agent/, "never invited to a channel");
+  assert.match(personalAgentRefusal(mine, { kind: "hand_off", members: null }) ?? "", /personal agent/, "never handed work");
+  assert.equal(personalAgentRefusal({ id: "a1", handle: "ship", scope: "workspace" }, { kind: "channel", members: null }), null);
+  assert.equal(personalAgentRefusal({ id: "a1", handle: "ship" }, { kind: "hand_off", members: null }), null, "agents from before personal ones are the workspace's");
 });

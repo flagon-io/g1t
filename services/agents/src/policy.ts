@@ -28,15 +28,16 @@ export const DEFAULT_POLICY: AgentPolicy = {
   default_agent_monthly_micros: null,
   default_session_micros: DEFAULT_SESSION_MICROS,
   person_monthly_micros: null,
+  members_create_agents: true,
 };
 
 /** The workspace's policy and this month's spend across its agents. */
 export async function readPolicy(db: D1Database, workspaceId: string, month: string): Promise<PolicyRow> {
   const [policy, spend] = await Promise.all([
     db
-      .prepare("SELECT monthly_micros, default_agent_monthly_micros, default_session_micros, person_monthly_micros FROM agent_policies WHERE workspace_id = ?")
+      .prepare("SELECT monthly_micros, default_agent_monthly_micros, default_session_micros, person_monthly_micros, members_create_agents FROM agent_policies WHERE workspace_id = ?")
       .bind(workspaceId)
-      .first<AgentPolicy>(),
+      .first<Omit<AgentPolicy, "members_create_agents"> & { members_create_agents: number | null }>(),
     db
       .prepare("SELECT micros, alerted FROM workspace_agent_spend WHERE workspace_id = ? AND period = ?")
       .bind(workspaceId, month)
@@ -47,6 +48,8 @@ export async function readPolicy(db: D1Database, workspaceId: string, month: str
     default_agent_monthly_micros: positive(policy?.default_agent_monthly_micros),
     default_session_micros: positive(policy?.default_session_micros) ?? DEFAULT_SESSION_MICROS,
     person_monthly_micros: positive(policy?.person_monthly_micros),
+    // On unless an owner turned it off: no row, or a row from before the setting, is on.
+    members_create_agents: policy?.members_create_agents !== 0,
     spent: spend?.micros ?? 0,
     alerted: spend?.alerted ?? 0,
   };
@@ -112,6 +115,10 @@ export function checkPolicy(current: AgentPolicy, changes: Partial<AgentPolicy>)
       return { ok: false, message: "A session's cap is between $0.10 and $500." };
     }
     next.default_session_micros = Math.floor(value);
+  }
+  if ("members_create_agents" in changes) {
+    if (typeof changes.members_create_agents !== "boolean") return { ok: false, message: "Whether members create personal agents is true or false." };
+    next.members_create_agents = changes.members_create_agents;
   }
   return { ok: true, value: next };
 }

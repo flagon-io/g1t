@@ -47,6 +47,9 @@ function SideLink({ to, end, icon, children, trailing }: { to: string; end?: boo
 type Listed = Pick<WorkspaceAgent, "id" | "handle" | "display_name" | "avatar" | "role" | "status" | "title" | "team" | "department"> & {
   builtin?: boolean;
   avatar_seed?: string | null;
+  scope?: WorkspaceAgent["scope"];
+  personal_owner_id?: string | null;
+  personal_owner?: string | null;
 };
 
 /** Where an agent sits in the org chart: its team, else its department. */
@@ -85,7 +88,14 @@ export function AgentsSidebar({
   const agents: Listed[] | null = data?.agents ?? shellAgents;
   const live = data?.live ?? {};
   const orchestrator = agents?.find((agent) => isOrchestrator(agent)) ?? null;
-  const specialists = (agents ?? []).filter((agent) => !isOrchestrator(agent));
+  const specialists = (agents ?? []).filter((agent) => !isOrchestrator(agent) && agent.scope !== "personal");
+  // Personal agents: the viewer's own under Yours; members' (an owner sees them) apart.
+  // The shell's list holds only the viewer's own.
+  const personal = (agents ?? []).filter((agent) => agent.scope === "personal").sort((a, b) => a.display_name.localeCompare(b.display_name));
+  const yours = personal.filter((agent) => !data || agent.personal_owner_id === data.viewer_id);
+  const members = personal.filter((agent) => !yours.includes(agent));
+  // Owners always create agents; members personal ones, unless owners turned that off.
+  const canCreate = data?.may_create ?? owner;
   const row = (agent: Listed) => (
     <li key={agent.id}>
       <NavLink
@@ -104,7 +114,13 @@ export function AgentsSidebar({
         <span className="min-w-0 grow leading-tight">
           <span className="block truncate text-[0.8125rem] font-medium text-fg">{agent.display_name}</span>
           <span className="block truncate text-[0.6875rem] text-faint">
-            {isOrchestrator(agent) ? "Orchestrator" : agent.status === "idle" ? agent.title || agent.role : `${statusLabel(agent.status)} · ${agent.title || agent.role}`}
+              {isOrchestrator(agent)
+              ? "Orchestrator"
+              : agent.scope === "personal" && agent.personal_owner && agent.personal_owner_id !== data?.viewer_id
+                ? `@${agent.personal_owner}'s · ${agent.title || agent.role}`
+                : agent.status === "idle"
+                  ? agent.title || agent.role
+                  : `${statusLabel(agent.status)} · ${agent.title || agent.role}`}
           </span>
         </span>
         {(live[agent.id] ?? 0) > 0 && (
@@ -123,13 +139,15 @@ export function AgentsSidebar({
     <div className="flex h-full flex-col">
       <div className={`flex h-9 shrink-0 items-center justify-between pr-1 pl-3 ${phone ? "hidden" : ""}`}>
         <h2 className="text-xs font-medium text-faint">Agents</h2>
-        <NavLink
-          to={`/${slug}/-/agents/new`}
-          aria-label="New agent"
-          className="flex size-8 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
-        >
-          <Plus size={16} />
-        </NavLink>
+        {canCreate && (
+          <NavLink
+            to={`/${slug}/-/agents/new`}
+            aria-label="New agent"
+            className="flex size-8 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
+          >
+            <Plus size={16} />
+          </NavLink>
+        )}
       </div>
       <nav aria-label="Agents" className={`min-h-0 grow overflow-y-auto px-2.5 pt-3 pb-4 [scrollbar-width:thin] ${phone ? "[&_a]:min-h-11" : ""}`}>
         <div className="space-y-px">
@@ -168,6 +186,7 @@ export function AgentsSidebar({
         ) : (
           <>
             {orchestrator && <Group title="Orchestrator">{row(orchestrator)}</Group>}
+            {yours.length > 0 && <Group title="Yours">{yours.map(row)}</Group>}
             <p className="mt-4 px-2 text-[0.6875rem] leading-snug text-faint">Specialists are colleagues hired into a role. g1t hands them work.</p>
             {[...orgChart(specialists)].map(([place, members]) => (
               <Group key={place} title={`${place} · ${members.length}`} collapsible>
@@ -175,9 +194,14 @@ export function AgentsSidebar({
               </Group>
             ))}
             {specialists.length === 0 && <p className="px-2 py-1 text-xs text-faint">No specialists yet. Hire one into a role.</p>}
+            {members.length > 0 && (
+              <Group title={`Members' personal · ${members.length}`} collapsible initiallyOpen={false}>
+                {members.map(row)}
+              </Group>
+            )}
           </>
         )}
-        {owner && (
+        {canCreate && (
           <NavLink
             to={`/${slug}/-/agents/new`}
             className={({ isActive }) =>
@@ -212,8 +236,8 @@ function orgChart(agents: Listed[]): Map<string, Listed[]> {
   );
 }
 
-function Group({ title, children, collapsible }: { title: string; children: ReactNode; collapsible?: boolean }) {
-  const [open, setOpen] = useState(true);
+function Group({ title, children, collapsible, initiallyOpen = true }: { title: string; children: ReactNode; collapsible?: boolean; initiallyOpen?: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen);
   if (collapsible) {
     return (
       <section className="mt-3">
@@ -428,7 +452,13 @@ export function AgentForm({
   seed,
   teams = [],
   spaces = [],
+  hidden = {},
+  personal = false,
 }: {
+  /** A personal agent: on no team. */
+  personal?: boolean;
+  /** Fields the form carries without showing: a drafted agent's scope, skills and face. */
+  hidden?: Record<string, string>;
   /** The workspace's teams, to put it on one. */
   teams?: { slug: string; name: string }[];
   /** The Docs spaces the person editing can read, for its required reading. */
@@ -471,6 +501,9 @@ export function AgentForm({
     <Form method="post" key={formKey} className="pb-24">
       <input type="hidden" name="intent" value={intent} />
       <input type="hidden" name="template" value={draft.template ?? ""} />
+      {Object.entries(hidden).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
       <FormSection
         title="Identity"
         about={
@@ -555,6 +588,7 @@ export function AgentForm({
           teams={teams}
           errors={e}
           locked={locked}
+          personal={personal}
         />
       </FormSection>
       )}

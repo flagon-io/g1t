@@ -103,7 +103,7 @@ export type ShellData = {
 export type ShellAgent = Pick<
   WorkspaceAgent,
   "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "role" | "status" | "title" | "team" | "department" | "builtin"
->;
+> & { scope?: WorkspaceAgent["scope"] };
 
 function SidebarLink({
   to,

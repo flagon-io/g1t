@@ -451,6 +451,15 @@ something before guessing. The directory of people and agents is
 `-/people/agents/<handle>`, the org chart `-/org-chart`. Guide:
 https://docs.g1t.sh/guides/people-and-teams/
 
+Anyone creates an agent by describing it at `g1t.sh/<owner>/-/agents/new`:
+g1t drafts the whole definition, a test chat tries it, and nothing is saved
+until it is created. Owners create the workspace's agents; any member can
+create a personal agent (unless owners turn that off), which answers only
+its member, only in their direct message with it, spends from that
+member's budget, is never mentioned, consulted or handed work by other
+agents, and which an owner can promote to a workspace agent. Guide:
+https://docs.g1t.sh/guides/agents/#personal-agents
+
 A CODEOWNERS file (`.g1t/CODEOWNERS`, `.github/CODEOWNERS`, `CODEOWNERS`,
 `docs/CODEOWNERS` or `.gitlab/CODEOWNERS`, the first found on the default
 branch) asks owners to review pull requests that change their files. With

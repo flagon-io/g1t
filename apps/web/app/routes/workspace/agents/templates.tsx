@@ -1,8 +1,8 @@
 /**
  * Agent templates: the starting points g1t provides for a new agent, by
  * department, with the agents in the workspace that started from each. A
- * template isn't installed: an owner starts an agent from one and
- * configures it, and the agent is the workspace's own from then on.
+ * template isn't installed: an owner starts an agent from one (a member,
+ * a personal agent) and configures it, and the agent is its own from then on.
  */
 import { ArrowLeft, Plus } from "lucide-react";
 import { Link, data } from "react-router";
@@ -24,7 +24,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const slug = params.owner.toLowerCase();
   const role = roleIn(viewer, slug);
   if (!role) throw data(null, { status: 404 });
-  return { slug, owner: role === "owner", ...(await loadTemplates(slug, viewer)) };
+  const loaded = await loadTemplates(slug, viewer);
+  // Owners start agents; members start personal ones, unless owners turned that off.
+  return { slug, owner: role === "owner" || loaded.members_create_agents, ...loaded };
 }
 
 export default function AgentTemplates({ loaderData }: Route.ComponentProps) {
@@ -67,15 +69,15 @@ export default function AgentTemplates({ loaderData }: Route.ComponentProps) {
             <section aria-label="Your own">
               <h2 className="mb-3 text-xs font-semibold tracking-wide text-faint uppercase">Your own</h2>
               <Link
-                to={startPath(slug, "blank")}
+                to={`/${slug}/-/agents/new`}
                 className="flex max-w-md items-center gap-3 rounded-xl border border-dashed border-line-strong p-4 text-sm transition-colors hover:border-fg/40 hover:bg-raised/40"
               >
                 <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-raised text-muted">
                   <Plus size={18} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block font-medium">Start from nothing</span>
-                  <span className="block text-xs text-muted">Give it a name, a title, a team and what it is responsible for.</span>
+                  <span className="block font-medium">Describe it</span>
+                  <span className="block text-xs text-muted">Say what it should do, and g1t drafts the rest for you to change and try.</span>
                 </span>
               </Link>
             </section>

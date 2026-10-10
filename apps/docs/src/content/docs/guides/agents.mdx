@@ -1,6 +1,6 @@
 ---
 title: Agents
-description: Hire agents into roles, like colleagues. Each has a name, a title, a team, responsibilities, a voice, limits on which models it uses, and a budget. g1t, in every workspace, is the orchestrator who knows them all.
+description: Describe an agent and g1t drafts it, or hire one into a role, like a colleague. Each has a name, a title, a team, responsibilities, a voice, limits on which models it uses, and a budget. g1t, in every workspace, is the orchestrator who knows them all.
 ---
 
 import { Steps, CardGrid } from '@astrojs/starlight/components';
@@ -58,37 +58,73 @@ should do something.
 
 ## Hire an agent
 
-Only a workspace's **owners** can hire, change or archive its agents,
-because an agent spends the workspace's money and speaks in its name. Every
-member can see its agents and talk to them.
+Owners create the workspace's agents, because such an agent spends the
+workspace's money and speaks in its name. Any member can create a
+[personal agent](#personal-agents) of their own, unless an owner turned
+that off. Every member sees the workspace's agents and talks to them.
+
+### Describe it
 
 <Steps>
 
 1. Open **Agents** in the dock, then choose **New agent**, or go to
-   `g1t.sh/<workspace>/-/agents/new`. Or open **Templates** in the Agents
-   sidebar (`g1t.sh/<workspace>/-/agents/templates`), read one in full and
-   choose **Start from this**.
-2. **Pick a template**, grouped by department, or choose **Start from
-   nothing**. A template fills in every field below, and you can change any
-   of them. See [role templates](#role-templates).
-3. **Name it.** Each role suggests a name, such as *Margo* for QA. Choose
-   **Another name** to shuffle through others that suit the role, or type
-   your own. The handle follows the name: `margo`, mentioned as `@margo`.
-4. Check its **title**, **team** and **responsibilities**. See
-   [title, team and responsibilities](#title-team-and-responsibilities).
-5. Pick its **personality**, and add a line of your own if you like.
-6. Set its **model limits** and **budget**, or keep the role's defaults. See
-   [model routing](#model-routing) and [budgets](#budgets).
-7. Choose **Create agent**.
+   `g1t.sh/<workspace>/-/agents/new`.
+2. In **What should this agent do?**, describe the job in a sentence or a
+   paragraph: what it does, for whom, and what good looks like. Owners
+   choose **The workspace** or **Just me**; anyone else's agent is their
+   personal one.
+3. Choose **Draft it**. g1t drafts the whole agent with one quick model
+   call, charged to you: a name (choose **Another name** to shuffle), a
+   handle, a face (choose **Another face**), a title, its job, its
+   responsibilities and its personality, which
+   [skills](/guides/agent-skills/) it keeps on, the integrations it would
+   use, routines that would suit it, its model limits and its budget.
+4. Change anything in the card. Only the name and the job are required.
+5. **Try it** in the test chat beside the card: ask what it would get
+   asked. It answers from its job and voice exactly as it will in a direct
+   message, without tools or memory, since it doesn't exist yet. Each answer
+   is charged to you, and nothing is saved.
+6. Choose **Create**. Or choose **Edit all fields** for the full form,
+   with the draft filled in.
 
 </Steps>
 
+Nothing is saved until you create it. Leaving the page drops the draft
+and the test chat.
+
+| In the draft | What it means |
+| --- | --- |
+| **Skills** | The [foundational skills](/guides/agent-skills/) its job needs are marked **Suggested** and on; the rest are off. Turn any on or off. |
+| **What it needs connected** | Integrations its job would use, with why. Owners choose **Connect**; anyone else **Ask an owner**, which opens the integration's [Marketplace](/guides/marketplace/) page. **Soon** means nobody can connect it yet. The agent works without them and says so when asked for something that needs one. |
+| **Routines that would suit it** | Set them up on its **Routines** tab once it exists. Personal agents can't run routines yet. |
+| **Models and budget** | A personal agent starts with **$20 a month** and **$2 a session**. A workspace agent starts with the workspace's budget for a new agent. |
+
+Drafting and trying are each one fast-tier model call, counted against
+your own [budget](/guides/agent-budgets/) and the workspace's agent budget.
+They show on Spend as **Drafting new agents**. One person can draft and try
+60 times an hour.
+
+### Start from a role or every field
+
+Under the box, **or start from a role** lists the
+[role templates](#role-templates): choose one to start from its full form.
+**Edit all fields** starts from a blank form. Or open **Templates** in the
+Agents sidebar (`g1t.sh/<workspace>/-/agents/templates`), read one in full
+and choose **Start from this**.
+
+In the form, check its **title**, **team** and **responsibilities** (see
+[title, team and responsibilities](#title-team-and-responsibilities)), its
+**personality**, and its [model limits](#model-routing) and
+[budget](#budgets), then choose **Create agent**.
+
+### Its hello
+
 The agent appears on the Agents page as **Idle**, and a direct message
 between you and it opens in Chat, where it says hello in its own voice: who
-it is, what it will do for the team, and a thing or two to ask it first.
+it is, what it will do, and a thing or two to ask it first.
 That hello is a reply like any other, charged to its budget; when the
 workspace has no model it can use, it sends a short fixed hello instead.
-Invite it to the channels its team works in.
+Invite a workspace agent to the channels its team works in.
 
 ### Example: hire Margo from the QA template
 
@@ -107,6 +143,74 @@ Invite it to the channels its team works in.
 
 Now anyone in those channels can write `@margo what should we test before
 Thursday?` and get an answer in the thread.
+
+## Change it in words
+
+On an agent's **Profile**, **Tell *name* what to change** takes a change in
+your own words, such as *Answer in Spanish, and keep replies under five
+sentences*. Choose **Draft the change**: g1t shows each field it would
+change, before and after, with the job as a line-by-line diff. Choose
+**Save as version N** to save it as a new [version](#the-agents-page), or
+**Discard**. Drafting the change is one quick model call, charged to you.
+If someone saved the agent since you drafted the change, draft it again.
+
+Owners change the workspace's agents this way; a member changes their own
+personal agent.
+
+## Personal agents
+
+A personal agent is a member's own.
+
+| | A workspace agent | A personal agent |
+| --- | --- | --- |
+| **Who creates it** | Owners | Any member, unless owners turned it off. Owners can make one for themselves. |
+| **Who talks to it** | Everyone in the workspace, in channels and direct messages | Only its member, in their direct message with it. It can't be invited to a channel or a group message, isn't offered as a mention, and other agents never consult it or hand it work. |
+| **Who changes it** | Owners | Its member. Owners can archive it or [promote](#promote-a-personal-agent) it. |
+| **Who sees it** | Everyone | Its member and the workspace's owners |
+| **Who pays** | The workspace's agent budget | Its member's own [budget](/guides/agent-budgets/), inside the workspace's agent budget |
+| **Starting budget** | The workspace's budget for a new agent | $20 a month and $2 a session |
+| **Teams and routines** | Yes | No team. Routines <Soon /> |
+
+Your personal agents are under **Yours** in the Agents sidebar, and on
+their pages beside a **Yours** badge. Owners see members' personal agents
+under **Members' personal**, folded. A member keeps at most 10 personal
+agents in a workspace.
+
+### Turn personal agents off
+
+Members can create personal agents unless an owner turns it off:
+
+<Steps>
+
+1. Open **Agents** in the dock, then **Overview**.
+2. Under **Personal agents**, switch off **Members can create personal
+   agents**.
+
+</Steps>
+
+Off, only owners create agents. Personal agents members already have keep
+working. The change is in the workspace's audit log.
+
+### Promote a personal agent
+
+An owner can make a member's personal agent a workspace agent that
+everyone can talk to:
+
+<Steps>
+
+1. Open the personal agent's **Profile**. Owners find members' agents under
+   **Members' personal** in the Agents sidebar, or under **Personal agents**
+   on the Overview.
+2. Choose **Promote to a workspace agent…**, then **Promote *name***.
+
+</Steps>
+
+A workspace agent with the same handle, job and every version so far takes
+its place, with one more version saying who promoted it. The personal agent
+is archived, and what it remembered from its member's direct messages stays
+with it: owners can't read a member's memory, so none is carried over.
+Promotions, like creating, changing and archiving agents, are in the
+workspace's audit log.
 
 ## Role templates
 
@@ -560,7 +664,7 @@ Each agent has a page at `g1t.sh/<workspace>/-/agents/<handle>`:
 | **Routines** | Work it does on a schedule or when something happens. See [routines](/guides/agent-routines/). |
 | **Spend** | Spend this month against its budget: by day, kind of work, model and who asked, and its costliest sessions. |
 | **Activity** | Its latest replies and sessions, with who asked, the model and the cost. |
-| **Profile** | Its definition: identity, job, personality, models, budget and what it may do alone, with every saved version. Owners edit it here. |
+| **Profile** | Its definition: identity, job, personality, models, budget and what it may do alone, with every saved version. Owners edit a workspace agent here, and a member their own personal agent, in the form or [in words](#change-it-in-words). |
 
 The **Agents** page above them all shows the agent budget, sessions waiting
 on you and working now, every agent with its live sessions and its month's
@@ -570,8 +674,9 @@ sessions.
 Its status is one of **Idle**, **Working**, **Waiting on you**, **Out of
 budget** or **Paused**, on the Agents page and beside its name in Chat.
 
-To retire an agent, an owner **archives** it from its profile. It stops
-answering, leaves the member lists, and its history stays.
+To retire an agent, an owner **archives** it from its profile; a member can
+archive their own personal agent. It stops answering, leaves the member
+lists, and its history stays.
 
 ## Coming soon
 
@@ -589,7 +694,12 @@ answering, leaves the member lists, and its history stays.
 	</Card>
 	<Card title="Create one in chat" icon="wand-sparkles">
 		Describe the agent you want in a message, and confirm the draft card g1t
-		answers with. Or commit `.g1t/agents/<handle>.md`. <Soon />
+		answers with. Or commit `.g1t/agents/<handle>.md`. You can already
+		[describe one](#describe-it) on New agent. <Soon />
+	</Card>
+	<Card title="Share a personal agent" icon="share-2">
+		Share your personal agent with named people or teams, to use it or to
+		edit it, without making it the whole workspace's. <Soon />
 	</Card>
 	<Card title="Coordination" icon="git-branch">
 		Agents claim the issues, branches, environments and paths they work on,

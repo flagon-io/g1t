@@ -271,8 +271,9 @@ async function chatUnreadFor(slug: string, user: User): Promise<ShellData["chat"
 /** The workspace's agents, as the shell lists them; null when the agents service is slow or down. */
 async function agentsFor(slug: string, user: User): Promise<ShellData["agents"]> {
   const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), CHAT_BADGE_WAIT_MS));
+  // The workspace's agents and the person's own personal ones, for "Yours".
   const read = workspaceAgents
-    .list(slug, user)
+    .list(slug, user, { personal: "mine" })
     .then((result) =>
       result.ok
         ? result.value
@@ -289,6 +290,7 @@ async function agentsFor(slug: string, user: User): Promise<ShellData["agents"]>
               department: agent.department,
               status: agent.status,
               builtin: agent.builtin === true,
+              scope: agent.scope,
             }))
         : null,
     )

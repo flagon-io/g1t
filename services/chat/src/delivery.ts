@@ -133,3 +133,23 @@ export function addsOrchestrator(input: { channelKind: "channel" | "dm"; mention
   if (input.channelKind !== "channel" || input.orchestratorIsMember) return false;
   return input.mentioned.some((handle) => handle.toLowerCase() === ORCHESTRATOR);
 }
+
+/**
+ * Where a member's personal agent may be (docs.g1t.sh/guides/agents/,
+ * "Personal agents"): only in the direct message of the two of them. Not
+ * in a channel, not in a group direct message, never handed work by
+ * another agent. `members` are the conversation's principal keys
+ * (`user:<id>`, `agent:<id>`); null when it is a channel. Null: allowed;
+ * otherwise why not, as people are told.
+ */
+export function personalAgentRefusal(
+  agent: { id: string; handle: string; scope?: string | null; personal_owner_id?: string | null },
+  place: { kind: "channel" | "dm" | "hand_off"; members: string[] | null },
+): string | null {
+  if (agent.scope !== "personal") return null;
+  const mine = `user:${agent.personal_owner_id ?? ""}`;
+  const refusal = `@${agent.handle} is someone's personal agent: only the person it belongs to talks to it, in a direct message of the two of them.`;
+  if (place.kind !== "dm" || !place.members) return refusal;
+  const others = place.members.filter((key) => key !== `agent:${agent.id}`);
+  return others.length === 1 && others[0] === mine ? null : refusal;
+}

@@ -64,7 +64,7 @@ import {
 } from "@g1t/contracts";
 
 import { audienceKind, isShared, likePattern, readableBy } from "./audience.ts";
-import { MAX_HOPS, addsOrchestrator, chainFor, deliveries, delivery, handOffPlace, handOffRefusal, type Chain, type Wake } from "./delivery.ts";
+import { MAX_HOPS, addsOrchestrator, chainFor, deliveries, delivery, handOffPlace, handOffRefusal, personalAgentRefusal, type Chain, type Wake } from "./delivery.ts";
 import {
   MAX_REACTIONS_PER_MESSAGE,
   emojiImage,
@@ -749,6 +749,12 @@ class Chat {
       if (!(await this.belongs(slug, workspace, p))) {
         return fail("not_found", p.kind === "agent" ? "No such agent in this workspace." : "That person is not in this workspace.");
       }
+      // A member's personal agent: only in the DM of the two of them.
+      if (p.kind === "agent") {
+        const agent = await this.liveAgent(workspace, p.id);
+        const refused = agent ? personalAgentRefusal(agent, { kind: "dm", members }) : null;
+        if (refused) return fail("forbidden", refused);
+      }
     }
     const at = now();
     await this.db
@@ -802,6 +808,11 @@ class Chat {
     if (!p) return fail("invalid", "Invite a person or an agent, by id.");
     if (!(await this.belongs(slug, workspace, p))) {
       return fail("not_found", p.kind === "agent" ? "No such agent in this workspace." : "That person is not in this workspace.");
+    }
+    if (p.kind === "agent") {
+      const agent = await this.liveAgent(workspace, p.id);
+      const refused = agent ? personalAgentRefusal(agent, { kind: "channel", members: null }) : null;
+      if (refused) return fail("forbidden", refused);
     }
     await this.joinStatement(channel.id, principalKey(p), "member", now()).run();
     return ok(null);
@@ -1395,6 +1406,8 @@ class Chat {
     if (!brief.ok) return fail("invalid", brief.message);
     const colleague = await this.liveAgent(place.workspace, String(input.colleague_id ?? ""));
     if (!colleague) return fail("not_found", "No such agent in this workspace.");
+    const personal = personalAgentRefusal(colleague, { kind: "hand_off", members: null });
+    if (personal) return fail("invalid", personal);
     const given = typeof input.hops === "number" && input.hops >= 0 ? Math.floor(input.hops) : 0;
     const before = chainFor(input.chain, agent.id).slice(0, -1);
     const refused = handOffRefusal({ agent: agent.id, colleague, chain: before, hops: given });

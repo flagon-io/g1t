@@ -2,10 +2,11 @@ import { ChevronRight, History } from "lucide-react";
 import { useState } from "react";
 import { Form, data, redirect, useNavigation, useOutletContext } from "react-router";
 
-import type { AgentVersion, WorkspaceAgent } from "@g1t/contracts";
+import type { AgentVersion, NewWorkspaceAgent, WorkspaceAgent } from "@g1t/contracts";
 
 import type { Route } from "./+types/profile";
 import { AgentForm } from "../../../components/agents-mode";
+import { type BuilderAnswer, PersonalNotice, RedraftBox } from "../../../components/agents/builder";
 import { readOrNull } from "../../../components/agents/actions.server";
 import { versionChanges } from "../../../components/agents/format";
 import { TimeAgo } from "../../../components/ui";
@@ -17,12 +18,19 @@ import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.serv
 /** The workspace's teams, to put the agent on one, and its saved versions. */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
+  const role = roleIn(viewer, params.owner);
   const [teams, versions, spaces] = await Promise.all([
     identity.listTeams(viewer, params.owner).catch(() => null),
     readOrNull(workspaceAgents.versions(params.owner.toLowerCase(), params.handle.toLowerCase(), viewer)),
     readingSpaces(params.owner.toLowerCase(), viewer),
   ]);
-  return { teams: teams?.ok ? teams.value.map((team) => ({ slug: team.slug, name: team.name })) : [], versions, spaces };
+  return {
+    teams: teams?.ok ? teams.value.map((team) => ({ slug: team.slug, name: team.name })) : [],
+    versions,
+    spaces,
+    owner: role === "owner",
+    viewerId: viewer.id,
+  };
 }
 
 /** The Docs spaces the viewer can read, for an agent's required reading; none when Docs can't say. */
@@ -39,6 +47,39 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const slug = params.owner.toLowerCase();
   if (!roleIn(viewer, slug)) throw data(null, { status: 404 });
   const form = await request.formData();
+  const handle = params.handle.toLowerCase();
+  const intent = String(form.get("intent") ?? "");
+  // "Tell <name> what to change": drafted, shown, and saved only when they say so.
+  if (intent === "redraft") {
+    const drafted = await workspaceAgents.redraft(slug, handle, viewer, String(form.get("request") ?? "")).catch(() => null);
+    if (!drafted) return { intent, ok: false, error: "The agents service didn't answer. Try again in a moment." } satisfies BuilderAnswer;
+    return (drafted.ok ? { intent, ok: true, redraft: drafted.value } : { intent, ok: false, error: drafted.error.message }) satisfies BuilderAnswer;
+  }
+  if (intent === "apply") {
+    let changes: Partial<NewWorkspaceAgent> = {};
+    try {
+      changes = JSON.parse(String(form.get("changes") ?? "{}")) as Partial<NewWorkspaceAgent>;
+    } catch {
+      return { errors: { form: "The change couldn't be read. Draft it again." }, saved: false };
+    }
+    // Drafted from one version: if someone saved another since, it is drafted again rather than laid over theirs.
+    const current = await workspaceAgents.get(slug, handle, viewer).catch(() => null);
+    if (current?.ok && String(current.value.version) !== String(form.get("from_version"))) {
+      return { errors: { form: `@${handle} was changed since this was drafted. Draft the change again.` }, saved: false };
+    }
+    const saved = await workspaceAgents.update(slug, handle, viewer, changes).catch(() => null);
+    if (!saved) return { errors: { form: "The agents service didn't answer. Try again in a moment." }, saved: false };
+    if (!saved.ok) return { errors: { [saved.error.code === "conflict" ? "handle" : "form"]: saved.error.message }, saved: false };
+    if (saved.value.handle !== handle) throw redirect(`/${slug}/-/agents/${saved.value.handle}/profile`);
+    return { errors: undefined, saved: true };
+  }
+  // Owners make a personal agent the workspace's: the same handle, a new agent.
+  if (intent === "promote") {
+    const promoted = await workspaceAgents.promote(slug, handle, viewer).catch(() => null);
+    if (!promoted) return { errors: { form: "The agents service didn't answer. Try again in a moment." }, saved: false };
+    if (!promoted.ok) return { errors: { form: promoted.error.message }, saved: false };
+    throw redirect(`/${slug}/-/agents/${promoted.value.handle}/profile`);
+  }
   // Archiving keeps the agent's history (runs, replies, spend) but takes it
   // out of chat and frees its handle. g1t itself can't be archived.
   if (form.get("intent") === "archive") {
@@ -59,25 +100,36 @@ export async function action({ params, context, request }: Route.ActionArgs) {
 
 export default function Profile({ loaderData, actionData }: Route.ComponentProps) {
   const agent = useOutletContext<WorkspaceAgent>();
-  const errors = actionData?.errors as Record<string, string> | undefined;
+  const errors = actionData && "errors" in actionData ? (actionData.errors as Record<string, string> | undefined) : undefined;
+  const personal = agent.scope === "personal";
+  const mine = personal && agent.personal_owner_id === loaderData.viewerId;
+  // Who may change it: owners a workspace agent, its member a personal one.
+  const mayChange = personal ? mine : loaderData.owner;
   return (
     <>
-      {actionData?.saved && (
+      {personal && <PersonalNotice agent={agent} owner={loaderData.owner} mine={mine} />}
+      {mayChange && <RedraftBox agent={agent} />}
+      {actionData && "saved" in actionData && actionData.saved && (
         <p role="status" className="mb-6 rounded-lg border border-success/30 bg-success/10 px-4 py-2.5 text-sm text-success">
           Saved as version {agent.version}.
         </p>
       )}
       {errors?.form && <p className="mb-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">{errors.form}</p>}
-      <AgentForm
-        draft={agent}
-        errors={errors}
-        submit="Save changes"
-        intent="update"
-        formKey={`${agent.id}:${agent.version}`}
-        locked={isOrchestrator(agent)}
-        teams={loaderData.teams} spaces={loaderData.spaces}
-        seed={agent.avatar_seed || agent.id}
-      />
+      {/* A member's personal agent is theirs to change; owners promote or archive it. */}
+      {(!personal || mine) && (
+        <AgentForm
+          draft={agent}
+          errors={errors}
+          submit="Save changes"
+          intent="update"
+          formKey={`${agent.id}:${agent.version}`}
+          locked={isOrchestrator(agent)}
+          teams={personal ? [] : loaderData.teams}
+          personal={personal}
+          spaces={loaderData.spaces}
+          seed={agent.avatar_seed || agent.id}
+        />
+      )}
       {loaderData.versions && loaderData.versions.length > 0 && <Versions versions={loaderData.versions} current={agent.version} />}
       {!isOrchestrator(agent) && <Archive name={agent.display_name} />}
     </>
@@ -92,7 +144,7 @@ function Archive({ name }: { name: string }) {
     <section className="mt-12 border-t border-line pt-8 md:grid md:grid-cols-[14rem_1fr] md:gap-10">
       <div className="mb-4 md:mb-0">
         <h2 className="text-sm font-semibold text-fg">Archive</h2>
-        <p className="mt-1 text-sm text-muted">Retire this agent. Only owners can.</p>
+        <p className="mt-1 text-sm text-muted">Retire this agent. Owners can, and a member their own personal agent.</p>
       </div>
       <div>
         <p className="text-sm text-muted">

@@ -41,10 +41,12 @@ import { type MemoryRow, type MemoryViewer, changeableBy, cleanFact, toMemory, v
 import { DEFAULT_POLICY, checkPolicy, readPolicy } from "./policy.ts";
 import { type RoutineRow, MAX_ROUTINES, checkRoutine, newRoutineId, nextRun, runRoutine, toRoutine } from "./routines.ts";
 import { type SessionEnv, type SessionRow, LIVE, approve, sessionRow, steer, stop, toSession } from "./sessions.ts";
-import { type Row, definitionOf, periods, selectAgents, toAgent } from "./store.ts";
+import { type Row, definitionOf, isPersonal, periods, selectAgents, toAgent } from "./store.ts";
 import { suggestRoutines } from "./suggest.ts";
 import { teamsSection } from "./teammates.ts";
 import { loadTeams } from "./ports.ts";
+import { canSeeAgent, isOwnerOf } from "./access.ts";
+import { BUILDER_ID, BUILDER_LABEL } from "./builder.ts";
 
 export type ViewContext = {
   env: SessionEnv;
@@ -54,6 +56,8 @@ export type ViewContext = {
   viewer: User;
   /** Whether the viewer owns the workspace (or is its token). */
   owner: boolean;
+  /** Records a change in the workspace's audit log, as the viewer (index.ts). */
+  audit?: (action: string, handle: string, message: string) => void;
 };
 
 type AgentFace = { handle: string; display_name: string; avatar_seed: string; team: string | null; department: string };
@@ -91,11 +95,13 @@ async function sessionsOut(ctx: ViewContext, rows: SessionRow[], agents?: Map<st
   return rows.map((row) => toSession(row, names.get(row.agent_id) ?? null, can.has(row.channel_id)));
 }
 
+/** The agent by handle, if the viewer may see it: a personal agent only its member and the owners. */
 async function agentByHandle(ctx: ViewContext, handle: string): Promise<Row | null> {
-  return ctx.db
+  const row = await ctx.db
     .prepare("SELECT * FROM agents WHERE workspace_id = ? AND handle = ? AND archived_at IS NULL")
     .bind(ctx.workspaceId, String(handle ?? "").trim().replace(/^@/, "").toLowerCase())
     .first<Row>();
+  return row && canSeeAgent(ctx.viewer, ctx.slug, row) ? row : null;
 }
 
 // ── Teams ─────────────────────────────────────────────────────────────────
@@ -289,6 +295,9 @@ export async function forget(ctx: ViewContext, handle: string, id: string): Prom
 
 // ── Routines ──────────────────────────────────────────────────────────────
 
+/** Routines post where a person and the agent both are; a personal agent is only in its member's DM. */
+const PERSONAL_ROUTINES = "Personal agents can't run routines yet. An owner can promote it to a workspace agent, which can.";
+
 /** An agent's routines, and routines its responsibilities suggest that it doesn't have yet. */
 export async function routines(ctx: ViewContext, handle: string): Promise<Result<{ routines: AgentRoutine[]; suggestions: RoutineSuggestion[] }>> {
   const agent = await agentByHandle(ctx, handle);
@@ -308,6 +317,7 @@ export async function saveRoutine(ctx: ViewContext, handle: string, input: NewRo
   if (ctx.viewer.kind === "workspace") return fail("invalid", "A routine runs with a person's access: set it up signed in as yourself.");
   const agent = await agentByHandle(ctx, handle);
   if (!agent) return fail("not_found", `There is no agent called @${handle}.`);
+  if (isPersonal(agent)) return fail("invalid", PERSONAL_ROUTINES);
   const checked = checkRoutine(input);
   if (!checked.ok) return fail("invalid", checked.message);
   const r = checked.value;
@@ -372,6 +382,7 @@ export async function runRoutineNow(ctx: ViewContext, handle: string, id: string
   if (!ctx.owner) return fail("forbidden", "Only the workspace's owners run routines by hand.");
   const agent = await agentByHandle(ctx, handle);
   if (!agent) return fail("not_found", `There is no agent called @${handle}.`);
+  if (isPersonal(agent)) return fail("invalid", PERSONAL_ROUTINES);
   const routine = await ctx.db.prepare("SELECT * FROM agent_routines WHERE id = ? AND agent_id = ?").bind(String(id ?? ""), agent.id).first<RoutineRow>();
   if (!routine) return fail("not_found", "There is no such routine.");
   const ran = await runRoutine(ctx.env, routine, agent, ctx.slug);
@@ -382,7 +393,7 @@ export async function runRoutineNow(ctx: ViewContext, handle: string, id: string
 
 // ── Spend ─────────────────────────────────────────────────────────────────
 
-const KIND_LABELS: Record<string, string> = { reply: "Chat replies", chat: "Sessions", routine: "Routines", helper: "Helping colleagues", subagent: "Subagents" };
+const KIND_LABELS: Record<string, string> = { [BUILDER_ID]: BUILDER_LABEL, reply: "Chat replies", chat: "Sessions", routine: "Routines", helper: "Helping colleagues", subagent: "Subagents" };
 
 function slices(rows: { key: string | null; micros: number; n: number }[], label: (key: string) => string): SpendSlice[] {
   return rows
@@ -401,13 +412,14 @@ const CHANNEL_SLICES = 12;
  */
 async function channelSlices(ctx: ViewContext, rows: { key: string | null; label: string | null; micros: number; n: number }[]): Promise<SpendSlice[]> {
   const ranked = rows.filter((r) => r.micros > 0 || r.n > 0).sort((a, b) => b.micros - a.micros);
-  const named = ranked.filter((r) => r.key && r.key !== "dm").slice(0, CHANNEL_SLICES);
+  const named = ranked.filter((r) => r.key && r.key !== "dm" && r.key !== BUILDER_ID).slice(0, CHANNEL_SLICES);
   const can = await readable(ctx, named.map((r) => r.key!));
   const out: SpendSlice[] = [];
   const hidden: SpendSlice = { key: "private", label: "Channels you're not in", micros: 0, count: 0 };
   const rest: SpendSlice = { key: "other", label: "Other channels", micros: 0, count: 0 };
   for (const row of ranked) {
     if (row.key === "dm") out.push({ key: "dm", label: "Direct messages", micros: row.micros, count: row.n });
+    else if (row.key === BUILDER_ID) out.push({ key: BUILDER_ID, label: BUILDER_LABEL, micros: row.micros, count: row.n });
     else if (!named.includes(row)) (rest.micros += row.micros), (rest.count += row.n);
     else if (can.has(row.key!)) out.push({ key: row.key!, label: row.label ? `#${row.label}` : "A channel", micros: row.micros, count: row.n });
     else (hidden.micros += row.micros), (hidden.count += row.n);
@@ -475,8 +487,9 @@ export async function spend(ctx: ViewContext, handle: string | null, options: { 
   const sFilter = `${agentId ? "payer_agent_id = ?2" : "workspace_id = ?2"} AND created_at >= ?1 AND created_at < ?3${who}`;
   const binds: string[] = [from, agentId ?? ctx.workspaceId, to, ...(person ? [person] : [])];
   // Where it was asked: a channel by id; direct messages (a reply's channel has no name) together.
-  const union = `SELECT 'reply' AS kind, agent_id AS agent, asked_by_username AS person, model, charged_micros AS micros, substr(created_at, 1, 10) AS day,
-       CASE WHEN channel_name IS NULL THEN 'dm' ELSE channel_id END AS channel, channel_name AS channel_label FROM agent_replies WHERE ${rFilter}
+  // Drafting and trying new agents (builder.ts) is its own kind, agent and place.
+  const union = `SELECT CASE WHEN agent_id = '${BUILDER_ID}' THEN '${BUILDER_ID}' ELSE 'reply' END AS kind, agent_id AS agent, asked_by_username AS person, model, charged_micros AS micros, substr(created_at, 1, 10) AS day,
+       CASE WHEN agent_id = '${BUILDER_ID}' THEN '${BUILDER_ID}' WHEN channel_name IS NULL THEN 'dm' ELSE channel_id END AS channel, channel_name AS channel_label FROM agent_replies WHERE ${rFilter}
      UNION ALL SELECT kind, payer_agent_id AS agent, asked_by_username AS person, model, charged_micros AS micros, substr(created_at, 1, 10) AS day,
        CASE WHEN channel_kind = 'dm' THEN 'dm' ELSE channel_id END AS channel, channel_name AS channel_label FROM agent_sessions WHERE ${sFilter} AND parent_id IS NULL
      UNION ALL SELECT kind, payer_agent_id AS agent, asked_by_username AS person, model, 0 AS micros, substr(created_at, 1, 10) AS day,
@@ -501,7 +514,7 @@ export async function spend(ctx: ViewContext, handle: string | null, options: { 
   const byTeamMap = new Map<string, SpendSlice>();
   for (const row of byAgent.results) {
     const face = agents.get(row.key ?? "");
-    const team = face?.team || face?.department || "No team";
+    const team = row.key === BUILDER_ID ? BUILDER_LABEL : face?.team || face?.department || "No team";
     const slice = byTeamMap.get(team) ?? { key: team, label: team, micros: 0, count: 0 };
     slice.micros += row.micros;
     slice.count += row.n;
@@ -519,6 +532,7 @@ export async function spend(ctx: ViewContext, handle: string | null, options: { 
     by_model: slices(byModel.results, (k) => k || "No model"),
     by_person: slices(byPerson.results, (k) => (k ? `@${k}` : "Routines and agents")),
     by_agent: slices(byAgent.results, (k) => {
+      if (k === BUILDER_ID) return BUILDER_LABEL;
       const face = agents.get(k);
       return face ? `${face.display_name} (@${face.handle})` : "An archived agent";
     }),
@@ -618,6 +632,7 @@ function policyOf(row: AgentPolicy): AgentPolicy {
     default_agent_monthly_micros: row.default_agent_monthly_micros,
     default_session_micros: row.default_session_micros,
     person_monthly_micros: row.person_monthly_micros,
+    members_create_agents: row.members_create_agents !== false,
   };
 }
 
@@ -629,12 +644,17 @@ export async function setPolicy(ctx: ViewContext, changes: Partial<AgentPolicy>)
   const p = checked.value;
   await ctx.db
     .prepare(
-      `INSERT INTO agent_policies (workspace_id, monthly_micros, default_agent_monthly_micros, default_session_micros, person_monthly_micros, updated_by, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-       ON CONFLICT (workspace_id) DO UPDATE SET monthly_micros = ?2, default_agent_monthly_micros = ?3, default_session_micros = ?4, person_monthly_micros = ?5, updated_by = ?6, updated_at = ?7`,
+      `INSERT INTO agent_policies (workspace_id, monthly_micros, default_agent_monthly_micros, default_session_micros, person_monthly_micros, members_create_agents, updated_by, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+       ON CONFLICT (workspace_id) DO UPDATE SET monthly_micros = ?2, default_agent_monthly_micros = ?3, default_session_micros = ?4, person_monthly_micros = ?5,
+         members_create_agents = ?6, updated_by = ?7, updated_at = ?8`,
     )
-    .bind(ctx.workspaceId, p.monthly_micros, p.default_agent_monthly_micros, p.default_session_micros, p.person_monthly_micros, ctx.viewer.username, new Date().toISOString())
+    .bind(ctx.workspaceId, p.monthly_micros, p.default_agent_monthly_micros, p.default_session_micros, p.person_monthly_micros, p.members_create_agents ? 1 : 0, ctx.viewer.username, new Date().toISOString())
     .run();
+  const current_ = current.ok ? current.value : DEFAULT_POLICY;
+  if (current_.members_create_agents !== p.members_create_agents) {
+    ctx.audit?.("set_agent_policy", "policy", p.members_create_agents ? "Let members create personal agents" : "Turned off personal agents for members");
+  }
   return ok(p);
 }
 
@@ -656,7 +676,8 @@ export async function overview(ctx: ViewContext): Promise<Result<AgentsOverview>
     spend(ctx, null),
     faces(ctx),
   ]);
-  const agents: WorkspaceAgent[] = rows.results.map((row) => toAgent(row, now));
+  // The workspace's agents and the viewer's own personal ones; other members' are theirs.
+  const agents: WorkspaceAgent[] = rows.results.filter((row) => !isPersonal(row) || isOwnerOf(ctx.viewer, row)).map((row) => toAgent(row, now));
   const liveSessions = await sessionsOut(ctx, live.results, agentFaces);
   const liveByAgent: Record<string, number> = {};
   for (const s of live.results) liveByAgent[s.agent_id] = (liveByAgent[s.agent_id] ?? 0) + 1;

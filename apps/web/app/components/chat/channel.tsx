@@ -200,7 +200,10 @@ export function ChannelView({ data }: { data: Loaded }) {
 
   const people = useMemo<Mentionable[]>(
     () => [
-      ...(chatData?.agents ?? []).map((agent) => ({ kind: "agent" as const, name: agent.handle, display_name: agent.display_name, avatar: agent.avatar, role: agent.role })),
+      // A personal agent is never mentioned: it answers only in its own DM.
+      ...(chatData?.agents ?? [])
+        .filter((agent) => agent.scope !== "personal")
+        .map((agent) => ({ kind: "agent" as const, name: agent.handle, display_name: agent.display_name, avatar: agent.avatar, role: agent.role })),
       ...(chatData?.people ?? []).filter((p) => p.name !== me?.username),
     ],
     [chatData, me?.username],

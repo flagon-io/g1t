@@ -624,7 +624,7 @@ export function actionPorts(
     };
     ports.bringIn = async (handle, brief) => {
       const colleague = await db
-        .prepare("SELECT * FROM agents WHERE workspace_id = ? AND handle = ? AND archived_at IS NULL")
+        .prepare("SELECT * FROM agents WHERE workspace_id = ? AND handle = ? AND archived_at IS NULL AND scope = 'workspace'")
         .bind(agent.workspace_id, handle)
         .first<Row>();
       if (!colleague || colleague.id === agent.id) return { ok: false, message: `There is no other agent called @${handle} here.` };
@@ -797,7 +797,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
       ]);
       const [team, here] = await Promise.all([
         db
-          .prepare("SELECT handle, display_name, role, title, team, department, responsibilities FROM agents WHERE workspace_id = ? AND archived_at IS NULL AND id <> ? ORDER BY builtin DESC, handle LIMIT 50")
+          .prepare("SELECT handle, display_name, role, title, team, department, responsibilities FROM agents WHERE workspace_id = ? AND archived_at IS NULL AND id <> ? AND scope = 'workspace' ORDER BY builtin DESC, handle LIMIT 50")
           .bind(agent.workspace_id, agent.id)
           .all<{ handle: string; display_name: string; role: string; title: string; team: string | null; department: string; responsibilities: string }>(),
         // Who reads what this session posts: said every step, as in a reply. A helper may not be a member: then not said.

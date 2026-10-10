@@ -53,6 +53,12 @@ turned it on.
   in, are paid by the agent at the root of the tree, within the root's cap.
   Helping a colleague never spends the helper's own budget.
 - **A routine's runs** are paid by the routine's agent.
+- **A [personal agent](/guides/agents/#personal-agents)** works only for
+  its member, so everything it spends counts against that member's budget.
+  It starts with $20 a month and $2 a session of its own.
+- **Drafting and trying a new agent**, and drafting a change to one in
+  words, count against the budget of the person who asked. Spend shows
+  them as **Drafting new agents**.
 
 So a request that passes through three agents shows as one session tree,
 one cap, and one agent's spend. See [sessions](/guides/agent-sessions/).

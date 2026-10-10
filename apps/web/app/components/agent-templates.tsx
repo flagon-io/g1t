@@ -19,7 +19,7 @@ const QUIET = `${SMALL} border border-line text-fg/85 hover:border-line-strong h
 export function StartAction({ listing, slug, owner, className }: { listing: TemplateListing; slug: string; owner: boolean; className?: string }) {
   if (!owner) {
     return (
-      <Hint label="Owners start new agents. Ask one in chat if you want an agent like this.">
+      <Hint label="This workspace's owners have turned off personal agents. Ask an owner in chat if you want an agent like this.">
         <span tabIndex={0} className={cn(SMALL, "border border-line text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent", className)}>
           Owners start agents
         </span>

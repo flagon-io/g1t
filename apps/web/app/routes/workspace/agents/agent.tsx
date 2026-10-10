@@ -1,4 +1,4 @@
-import { MessageSquare } from "lucide-react";
+import { Lock, MessageSquare } from "lucide-react";
 import { Form, Outlet, data, redirect, useNavigation } from "react-router";
 
 import type { WorkspaceAgent } from "@g1t/contracts";
@@ -8,6 +8,7 @@ import { AgentFace } from "../../../components/agents-mode";
 import { isOrchestrator } from "../../../components/orchestrator";
 import { AgentPill, StatusDot, statusLabel } from "../../../components/chat/marks";
 import { TabLink } from "../../../components/ui";
+import { Badge } from "../../../components/ui/badge";
 import { channelPath } from "../../../lib/chat";
 import { page } from "../../../lib/meta";
 import { chat, workspaceAgents } from "../../../lib/services.server";
@@ -19,12 +20,12 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
 }
 
 /** One agent: who it is, for its tabs. Null when the agents service does not answer. */
-export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ agent: WorkspaceAgent | null }> {
+export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ agent: WorkspaceAgent | null; viewerId: string }> {
   const viewer = requireUser(context, request);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const found = await workspaceAgents.get(params.owner.toLowerCase(), params.handle.toLowerCase(), viewer).catch(() => null);
   if (found && !found.ok && found.error.code === "not_found") throw data(null, { status: 404 });
-  return { agent: found?.ok ? found.value : null };
+  return { agent: found?.ok ? found.value : null, viewerId: viewer.id };
 }
 
 /** Message: the direct message with this agent, opened or made. */
@@ -85,6 +86,12 @@ export default function AgentPage({ loaderData, params }: Route.ComponentProps) 
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-2xl font-semibold tracking-tight">{agent.display_name}</h1>
             <AgentPill />
+            {agent.scope === "personal" && (
+              <Badge>
+                <Lock size={11} />
+                {agent.personal_owner_id === loaderData.viewerId ? "Yours" : `@${agent.personal_owner ?? "a member"}'s`}
+              </Badge>
+            )}
           </div>
           <p className="mt-0.5 text-sm text-muted">
             <span className="font-mono">@{agent.handle}</span>
@@ -98,7 +105,8 @@ export default function AgentPage({ loaderData, params }: Route.ComponentProps) 
             Version {agent.version}
           </p>
         </div>
-        <MessageAgent slug={params.owner} agent={agent} variant="accent" />
+        {/* Only its member talks to a personal agent. */}
+        {(agent.scope !== "personal" || agent.personal_owner_id === loaderData.viewerId) && <MessageAgent slug={params.owner} agent={agent} variant="accent" />}
       </header>
       <nav aria-label={`${agent.display_name}'s pages`} className="mt-8 flex gap-1 overflow-x-auto border-b border-line [scrollbar-width:none]">
         <TabLink to={base} end also={`${base}/sessions`} icon={null}>

@@ -41,6 +41,7 @@ import { type ModelMessage, type Send, NO_TOKENS, addTokens, runTurn } from "./t
 import type { AgentRouting as Policy } from "../../runner/src/model-env.ts";
 import { dollars } from "./money.ts";
 import { teamsSection } from "./teammates.ts";
+import { personalRefusal } from "./access.ts";
 
 export { billingRepo } from "./meter.ts";
 
@@ -81,7 +82,8 @@ function askerIn(history: SurfaceMessage[], delivery: AgentDelivery): SurfaceMes
  */
 async function team(db: D1Database, workspaceId: string, selfId: string, now: Date): Promise<Specialist[]> {
   const rows = await db
-    .prepare(`${selectAgents("a.workspace_id = ?3 AND a.archived_at IS NULL AND a.id <> ?4")} ORDER BY a.builtin DESC, a.handle LIMIT 50`)
+    // Personal agents are their members' own: no colleague of anyone.
+    .prepare(`${selectAgents("a.workspace_id = ?3 AND a.archived_at IS NULL AND a.id <> ?4 AND a.scope = 'workspace'")} ORDER BY a.builtin DESC, a.handle LIMIT 50`)
     .bind(...periods(now), workspaceId, selfId)
     .all<Row>();
   return rows.results.map((row) => {
@@ -144,7 +146,7 @@ function consulting(input: {
   const ask: ToolPorts["consult"] = async (handle, question) => {
     const { row, delivery } = input;
     const colleague = await input.db
-      .prepare("SELECT * FROM agents WHERE workspace_id = ? AND handle = ? AND archived_at IS NULL")
+      .prepare("SELECT * FROM agents WHERE workspace_id = ? AND handle = ? AND archived_at IS NULL AND scope = 'workspace'")
       .bind(row.workspace_id, handle)
       .first<Row>();
     if (!colleague || colleague.id === row.id) return { ok: false, message: `There is no other agent called @${handle} here.` };
@@ -342,6 +344,13 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
       delivery.hello ? Promise.resolve(null) : surface.conversation(),
       loadTeams(env, slug, row.workspace_id, { id: row.id, team: row.team ?? null }).catch(() => null),
     ]);
+    // A personal agent answers only its member, in the DM of the two of them (access.ts).
+    const refused = personalRefusal(row, {
+      asked_by: delivery.asked_by,
+      channel_kind: delivery.channel_kind,
+      members: conversationHere ? conversationHere.people + conversationHere.agents : null,
+    });
+    if (refused) return await notice(refused, "personal_agent");
     const conversation = delivery.hello ? [{ role: "user" as const, content: helloAsk(delivery.asker?.username ?? null) }] : turns(history, row.id);
     if (!conversation.length) return await finish({ status: "skipped", error: "nothing to answer" });
     const author = askerIn(history, delivery);
@@ -426,7 +435,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
             asker: delivery.asker ?? null,
             agent: async (handle) => {
               const found = await db
-                .prepare(selectAgents("a.workspace_id = ?3 AND a.handle = ?4 AND a.archived_at IS NULL"))
+                .prepare(selectAgents("a.workspace_id = ?3 AND a.handle = ?4 AND a.archived_at IS NULL AND a.scope = 'workspace'"))
                 .bind(...periods(now), row.workspace_id, handle)
                 .first<Row>();
               if (!found) return null;
