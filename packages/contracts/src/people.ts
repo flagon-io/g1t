@@ -51,7 +51,7 @@ export type DirectoryTeam = {
   budget_micros: number | null;
   /** Its own people. */
   people: TeamPersonRef[];
-  /** Agents added to it, by id. Agents whose home team it is are on it too (`agentsOnTeam`). */
+  /** The agents on it, by id. */
   agent_ids: string[];
   repos_count: number;
 };
@@ -77,16 +77,6 @@ export interface PeopleClient {
   peopleDirectory(viewer: User | null, workspace: string): Promise<Result<PeopleDirectory>>;
   /** A member's title and what they own (themselves or an owner), and their manager (owners). */
   setMemberProfile(actor: User, workspace: string, username: string, changes: MemberProfileChanges): Promise<Result<DirectoryPerson>>;
-}
-
-/**
- * The agents on a team, by id: those added to it, then those whose home
- * team it is (their profile names it).
- */
-export function agentsOnTeam(team: { slug: string; agent_ids: readonly string[] }, agents: readonly { id: string; team: string | null }[]): string[] {
-  const ids = [...team.agent_ids];
-  for (const agent of agents) if (agent.team === team.slug && !ids.includes(agent.id)) ids.push(agent.id);
-  return ids;
 }
 
 /** What a team is made of. */

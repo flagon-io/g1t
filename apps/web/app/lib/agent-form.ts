@@ -68,9 +68,6 @@ export function readAgentForm(form: FormData, options: { orchestrator?: boolean 
   const display_name = String(form.get("display_name") ?? "").trim();
   const handle = cleanHandle(String(form.get("handle") ?? "") || display_name);
   const title = String(form.get("title") ?? "").trim();
-  // A team from the workspace's, or else a department label.
-  const team = String(form.get("team") ?? "").trim();
-  const department = String(form.get("department") ?? "").trim();
   const responsibilities = form
     .getAll("responsibility")
     .map((value) => String(value).trim())
@@ -111,11 +108,9 @@ export function readAgentForm(form: FormData, options: { orchestrator?: boolean 
     input: {
       handle,
       display_name,
-      // Made from the title and team by the agents service.
+      // Its title, made by the agents service.
       role: "",
       title,
-      team: team && team !== "none" ? team : null,
-      department,
       responsibilities,
       subagents: subagents ?? [],
       reading,
@@ -188,6 +183,14 @@ export function clampRouting(
   return { floor, ceiling };
 }
 
+/**
+ * The teams a new agent joins as it is made (the form's "Add to teams"),
+ * by slug: membership is the team's, never part of the agent.
+ */
+export function readTeams(form: FormData): string[] {
+  return [...new Set(form.getAll("teams").map((value) => String(value).trim().toLowerCase()).filter((slug) => /^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)))].slice(0, 20);
+}
+
 /** What the form starts from: an agent being edited, a template, or nothing. */
 export type AgentDraft = Pick<
   WorkspaceAgent,
@@ -195,8 +198,6 @@ export type AgentDraft = Pick<
   | "display_name"
   | "role"
   | "title"
-  | "team"
-  | "department"
   | "responsibilities"
   | "subagents"
   | "reading"
@@ -215,8 +216,6 @@ export const BLANK_DRAFT: AgentDraft = {
   display_name: "",
   role: "",
   title: "",
-  team: null,
-  department: "",
   responsibilities: [],
   subagents: [],
   reading: [],

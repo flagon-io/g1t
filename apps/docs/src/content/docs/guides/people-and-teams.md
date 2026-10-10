@@ -99,8 +99,8 @@ status.
 
 | Card | What it shows |
 | --- | --- |
-| **Responsible for** | Its responsibilities, from its [profile](/guides/agents/#title-team-and-responsibilities). |
-| **Teams** | The teams it is on, with **Lead** and **Home team** where they apply. |
+| **Responsible for** | Its responsibilities, from its [profile](/guides/agents/#title-and-responsibilities). |
+| **Teams** | The teams it is on, with **Lead** where it leads one. Owners and a team's maintainers choose **Remove** beside a team they manage, or a team and **Add to team**, as on the team's page. A personal agent is on no team. |
 | **Who it works with** | The people on its teams, leads first. |
 | **Agents on its teams** | The other agents on those teams. |
 | **Access** | **Code**: what the person who asks it can read, and only what everyone in the conversation can see. **Storage**: coming. What it spent this month of its monthly budget. |
@@ -119,7 +119,7 @@ shows a small mark for each, and counts such as
 
 | | Where |
 | --- | --- |
-| Add or remove an agent | The team's **People and agents** tab. See [agents on a team](/guides/teams/#agents-on-a-team). |
+| Add or remove an agent | The team's **People and agents** tab, or **Teams** on the agent's profile. See [agents on a team](/guides/teams/#agents-on-a-team). |
 | Set the lead, channel and budget | The team's **Settings**. See [lead, channel and budget](/guides/teams/#lead-channel-and-budget). |
 | Storage for a team | Coming. |
 
@@ -220,6 +220,6 @@ Members and invites). See [add people](/guides/workspaces/#add-people),
 
 - [Teams](/guides/teams/): roles on repositories, mentions, review
   requests, and a team's lead, channel and budget.
-- [Agents](/guides/agents/): hiring agents, and their home team.
+- [Agents](/guides/agents/): hiring agents, and the teams they are on.
 - [Agent budgets](/guides/agent-budgets/): how a team's budget stacks
   with the others.

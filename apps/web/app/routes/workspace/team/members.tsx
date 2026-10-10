@@ -30,7 +30,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   ]);
   const all = listed?.ok ? listed.value.map(peopleAgent) : [];
   const ids = added?.ok ? added.value.map((agent) => agent.agent_id) : [];
-  const onTeam = agentsOn({ slug: team.slug, agent_ids: ids }, all);
+  const onTeam = agentsOn({ agent_ids: ids }, all);
   // What the team's first agent is told about it, word for word: every agent on it is told the same about this team.
   const first = onTeam.find((agent) => !agent.builtin);
   const told = first ? await workspaceAgents.teamContext(params.owner, first.handle, viewer!).catch(() => null) : null;
@@ -74,7 +74,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function TeamMembers({ loaderData, actionData }: Route.ComponentProps) {
   const team = useTeam();
-  const { agents, added } = useTeamAgents();
+  const { agents } = useTeamAgents();
   const { members, children, me, addable, told } = loaderData;
   const [, setParams] = useSearchParams();
   const manage = team.can_manage;
@@ -194,7 +194,6 @@ export default function TeamMembers({ loaderData, actionData }: Route.ComponentP
         ) : (
           <ul className="divide-y divide-line rounded-xl border border-line">
             {agents.map((agent) => {
-              const home = !added.includes(agent.id);
               return (
                 <li key={agent.id} className="px-4 py-3">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -204,18 +203,14 @@ export default function TeamMembers({ loaderData, actionData }: Route.ComponentP
                       <span className="ml-2 text-muted">{agent.title || agent.role}</span>
                     </div>
                     {leads(team.lead, { id: agent.id }) && <Badge tone="accent">Lead</Badge>}
-                    {home ? (
-                      <Badge>Home team</Badge>
-                    ) : (
-                      manage && (
-                        <Form method="post">
-                          <input type="hidden" name="intent" value="remove-agent" />
-                          <input type="hidden" name="agent_id" value={agent.id} />
-                          <SubmitButton variant="quiet" match={{ intent: "remove-agent", agent_id: agent.id }} pending="Removing…">
-                            Remove
-                          </SubmitButton>
-                        </Form>
-                      )
+                    {manage && (
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="remove-agent" />
+                        <input type="hidden" name="agent_id" value={agent.id} />
+                        <SubmitButton variant="quiet" match={{ intent: "remove-agent", agent_id: agent.id }} pending="Removing…">
+                          Remove
+                        </SubmitButton>
+                      </Form>
                     )}
                   </div>
                   <ErrorText>{rowError(agent.id)}</ErrorText>

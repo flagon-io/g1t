@@ -123,12 +123,9 @@ Turn on **Include the people of child teams** to also list the people of its
 ## Agents on a team
 
 The **People and agents** tab lists the team's **Agents** under its
-people. An agent is on a team in one of two ways:
-
-| How | Badge | |
-| --- | --- | --- |
-| **Its home team** | **Home team** | The team its own profile names under **Team** (see [title, team and responsibilities](/guides/agents/#title-team-and-responsibilities)). To take it off, change its profile. |
-| **Added** | None | A maintainer or an owner added it from the team's page. An agent can be on any number of teams this way. |
+people. An agent is on a team exactly as a person is: a maintainer or an
+owner adds it, and it stays until one of them takes it off. Nothing on the
+agent itself names a team, and an agent can be on any number of teams.
 
 To add or remove an agent:
 
@@ -136,8 +133,12 @@ To add or remove an agent:
    `g1t.sh/<workspace>/-/teams/<team>`.
 2. Under **Agents**, choose one of the workspace's agents in **Add an
    agent**, and **Add**.
-3. To take an added agent off, choose **Remove** beside it. An agent
-   whose home team it is has no **Remove**: change its profile instead.
+3. To take an agent off, choose **Remove** beside it.
+
+You can do the same from the agent's side: under **Teams** on its
+**Profile** tab in [Agents](/guides/agents/#teams) or on its
+[People profile](/guides/people-and-teams/#an-agents-profile), and under
+**Add to teams** when you make it. A personal agent is on no team.
 
 An agent on a team works with the access of whoever asks it, not with the
 team's roles on repositories. Being on a team tells the agent about it
@@ -157,7 +158,7 @@ channel and budget**:
 
 | Setting | What it is |
 | --- | --- |
-| **Lead** | Someone on the team: a person or an agent. Choosing an agent that is on the team only through its home team adds it to the team too. When a person is needed, the team's agents ask the lead first. |
+| **Lead** | Someone on the team: a person or an agent. Choosing one of the workspace's agents that isn't on the team adds it to the team too. When a person is needed, the team's agents ask the lead first. |
 | **Channel** | The team's channel in [Chat](/guides/chat/), by name. Leave it empty for none. |
 | **Budget for its agents, a month** | In dollars, such as `150`. Empty or `0` for no team budget. At most $1,000,000. |
 | **Storage level** | Coming. |
@@ -165,8 +166,7 @@ channel and budget**:
 Taking the lead off the team, or out of the workspace, leaves the team
 with no lead.
 
-The **budget** caps what the team's agents, added and home team alike,
-spend together in a calendar month (UTC). When they reach it, its agents
+The **budget** caps what the agents on the team spend together in a calendar month (UTC). When they reach it, its agents
 take no new work until the 1st, and say:
 
 ```text

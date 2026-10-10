@@ -12,6 +12,7 @@ import type { AgentStatus, ModelTier, NewWorkspaceAgent } from "@g1t/contracts";
 
 import { BUILTIN_AGENT_HANDLE, ORCHESTRATOR_TEMPLATE } from "../../../packages/contracts/src/workspace-agents.ts";
 import { type Checked, type Definition, DEFAULT_AUTONOMY, DEFAULT_BUDGET, DEFAULT_CAPACITY, DEFAULT_ROUTING } from "./definition.ts";
+import { listOf } from "./teammates.ts";
 import { MAX_HAND_OFFS } from "./tools.ts";
 
 export const BUILTIN_ROLE = "Your orchestrator: delegates to the team's agents, or does the work itself";
@@ -32,8 +33,6 @@ export function builtinDefinition(): Definition {
     template: ORCHESTRATOR_TEMPLATE,
     avatar_seed: BUILTIN_AGENT_HANDLE,
     title: "Orchestrator",
-    team: null,
-    department: "",
     responsibilities: [],
     subagents: [],
     faces: "internal",
@@ -48,8 +47,6 @@ export const PROTECTED: (keyof NewWorkspaceAgent)[] = [
   "display_name",
   "role",
   "title",
-  "team",
-  "department",
   "responsibilities",
   "subagents",
   "template",
@@ -74,8 +71,8 @@ export type Specialist = {
   display_name: string;
   role: string;
   title?: string;
-  team?: string | null;
-  department?: string;
+  /** The teams it is on, by name (identity's team memberships). */
+  teams?: string[];
   responsibilities?: string[];
   status: AgentStatus;
   spent_month_micros: number;
@@ -93,17 +90,15 @@ const STATUS_WORDS: Record<AgentStatus, string> = {
 
 const dollars = (micros: number) => `$${(Math.max(0, micros) / 1_000_000).toFixed(2)}`;
 
-/** Where a specialist sits: "QA Engineer on the qa team", "QA Engineer, QA", or its role. */
+/** Where a specialist sits: "QA Engineer on QA and Web", or its title or role alone. */
 function placeLine(agent: Specialist): string {
-  const title = agent.title?.trim();
-  if (!title) return agent.role.replace(/\.$/, "");
-  if (agent.team) return `${title} on the ${agent.team} team`;
-  return agent.department?.trim() ? `${title}, ${agent.department.trim()}` : title;
+  const title = agent.title?.trim() || agent.role.replace(/\.$/, "");
+  return agent.teams?.length ? `${title} on ${listOf(agent.teams)}` : title;
 }
 
 /**
  * The roster, one line per specialist, so g1t can route "QA should look"
- * to the right one: `- @margo (Margo): QA Engineer, QA. Does: review pull
+ * to the right one: `- @margo (Margo): QA Engineer on QA. Does: review pull
  * requests; write test plans. idle; $1.20 of $20.00 this month.`
  */
 export function rosterLines(specialists: Specialist[]): string {

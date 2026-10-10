@@ -15,7 +15,8 @@ import { Hint } from "./ui/hint";
 import { Input } from "./ui/input";
 import { EffortPicker } from "./effort";
 import { effortSetting } from "../lib/effort";
-import { DEPARTMENTS, RoleFields, SubagentsField } from "./agent-role";
+import { RoleFields, SubagentsField } from "./agent-role";
+import { type AgentTeamRef, groupByTeam } from "../lib/people";
 import type { AgentsLayoutData } from "../routes/workspace/agents/layout";
 
 /** The workspace's agents while an Agents page is open; undefined elsewhere. */
@@ -48,19 +49,15 @@ function SideLink({ to, end, icon, children, trailing }: { to: string; end?: boo
 }
 
 /** An agent as the sidebar lists it: from the Agents pages' own data, or the shell's on any other page. */
-type Listed = Pick<WorkspaceAgent, "id" | "handle" | "display_name" | "avatar" | "role" | "status" | "title" | "team" | "department"> & {
+type Listed = Pick<WorkspaceAgent, "id" | "handle" | "display_name" | "avatar" | "role" | "status" | "title"> & {
   builtin?: boolean;
   avatar_seed?: string | null;
   scope?: WorkspaceAgent["scope"];
   personal_owner_id?: string | null;
   personal_owner?: string | null;
+  /** The shell's list carries each agent's teams; the Agents pages' data has them apart. */
+  teams?: AgentTeamRef[];
 };
-
-/** Where an agent sits in the org chart: its team, else its department. */
-export function placeOf(agent: Pick<WorkspaceAgent, "team" | "department">): string {
-  if (agent.team) return agent.team.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  return agent.department?.trim() || "Unplaced";
-}
 
 /** "Margo · QA Engineer": how an agent reads wherever it shows. */
 export function nameAndTitle(agent: Pick<WorkspaceAgent, "display_name" | "title">): string {
@@ -90,6 +87,12 @@ export function AgentsSidebar({
 }) {
   const data = useAgentsData();
   const agents: Listed[] | null = data?.agents ?? shellAgents;
+  // The teams each agent is on, from team memberships; null when they couldn't be read.
+  const teamsOf: Record<string, AgentTeamRef[]> | null = data
+    ? data.teams
+    : shellAgents?.every((agent) => agent.teams)
+      ? Object.fromEntries(shellAgents.map((agent) => [agent.id, agent.teams ?? []]))
+      : null;
   const live = data?.live ?? {};
   const orchestrator = agents?.find((agent) => isOrchestrator(agent)) ?? null;
   const specialists = (agents ?? []).filter((agent) => !isOrchestrator(agent) && agent.scope !== "personal");
@@ -194,12 +197,16 @@ export function AgentsSidebar({
           <>
             {orchestrator && <Group title="Orchestrator">{row(orchestrator)}</Group>}
             {yours.length > 0 && <Group title="Yours">{yours.map(row)}</Group>}
-            <p className="mt-4 px-2 text-[0.6875rem] leading-snug text-faint">Specialists are colleagues hired into a role. g1t hands them work.</p>
-            {[...orgChart(specialists)].map(([place, members]) => (
-              <Group key={place} title={`${place} · ${members.length}`} collapsible>
-                {members.map(row)}
-              </Group>
-            ))}
+            <p className="mt-4 px-2 text-[0.6875rem] leading-snug text-faint">Specialists are colleagues hired into a role, on teams like anyone. g1t hands them work.</p>
+            {teamsOf ? (
+              groupByTeam(specialists, teamsOf).map((group) => (
+                <Group key={group.key || "none"} title={`${group.label} · ${group.agents.length}`} collapsible>
+                  {group.agents.map(row)}
+                </Group>
+              ))
+            ) : specialists.length > 0 ? (
+              <Group title={`Specialists · ${specialists.length}`}>{[...specialists].sort((a, b) => a.display_name.localeCompare(b.display_name)).map(row)}</Group>
+            ) : null}
             {specialists.length === 0 && <p className="px-2 py-1 text-xs text-faint">No specialists yet. Hire one into a role.</p>}
             {members.length > 0 && (
               <Group title={`Members' personal · ${members.length}`} collapsible initiallyOpen={false}>
@@ -225,21 +232,6 @@ export function AgentsSidebar({
         )}
       </nav>
     </div>
-  );
-}
-
-/** Specialists by team or department, each group by name, the groups in the gallery's order. */
-function orgChart(agents: Listed[]): Map<string, Listed[]> {
-  const groups = new Map<string, Listed[]>();
-  for (const agent of agents) groups.set(placeOf(agent), [...(groups.get(placeOf(agent)) ?? []), agent]);
-  const rank = (place: string) => {
-    const at = DEPARTMENTS.indexOf(place);
-    return at < 0 ? DEPARTMENTS.length : at;
-  };
-  return new Map(
-    [...groups]
-      .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
-      .map(([place, list]) => [place, list.sort((x, y) => x.display_name.localeCompare(y.display_name))]),
   );
 }
 
@@ -271,36 +263,25 @@ function Group({ title, children, collapsible, initiallyOpen = true }: { title: 
 
 /** The templates g1t ships, and a blank one, to start a new agent from. */
 export function TemplateGallery({ templates, chosen, onChoose }: { templates: AgentTemplate[]; chosen: string | null; onChoose: (id: string | null) => void }) {
-  // By department, in the order the departments are listed; any other after them.
-  const order = (department: string) => {
-    const at = DEPARTMENTS.indexOf(department);
-    return at < 0 ? DEPARTMENTS.length : at;
-  };
-  const groups = new Map<string, AgentTemplate[]>();
-  for (const template of [...templates].sort((a, b) => order(a.department) - order(b.department))) {
-    const key = template.department || "Other";
-    groups.set(key, [...(groups.get(key) ?? []), template]);
-  }
+  // One grid in the order g1t lists them: a template is a role, never a team.
   return (
     <div className="space-y-8">
-      {[...groups].map(([department, list]) => (
-        <section key={department}>
-          <h2 className="mb-3 text-xs font-semibold tracking-wide text-faint uppercase">{department}</h2>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {list.map((template) => (
-              <TemplateCard
-                key={template.id}
-                selected={chosen === template.id}
-                onClick={() => onChoose(template.id)}
-                name={template.display_name}
-                title={template.title}
-                seed={template.handle}
-                duties={template.responsibilities.slice(0, 3)}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+      <section>
+        <h2 className="mb-3 text-xs font-semibold tracking-wide text-faint uppercase">Roles</h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {templates.map((template) => (
+            <TemplateCard
+              key={template.id}
+              selected={chosen === template.id}
+              onClick={() => onChoose(template.id)}
+              name={template.display_name}
+              title={template.title}
+              seed={template.handle}
+              duties={template.responsibilities.slice(0, 3)}
+            />
+          ))}
+        </div>
+      </section>
       <section>
         <h2 className="mb-3 text-xs font-semibold tracking-wide text-faint uppercase">Your own</h2>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -310,7 +291,7 @@ export function TemplateGallery({ templates, chosen, onChoose }: { templates: Ag
             name="A new role"
             title="Start from nothing"
             blank
-            duties={["Give it a name, a title and a team", "Say what it is responsible for"]}
+            duties={["Give it a name and a title", "Say what it is responsible for"]}
           />
         </div>
       </section>
@@ -457,7 +438,7 @@ export function AgentForm({
   nameIdeas = [],
   locked = false,
   seed,
-  teams = [],
+  joinable = null,
   spaces = [],
   hidden = {},
   personal = false,
@@ -465,12 +446,12 @@ export function AgentForm({
 }: {
   /** A personal agent: on no team. */
   personal?: boolean;
+  /** Making an agent: the teams the person may add it to ("Add to teams"). Left out on a profile. */
+  joinable?: { slug: string; name: string }[] | null;
   /** Fields the form carries without showing: a drafted agent's scope, skills and face. */
   hidden?: Record<string, string>;
   /** What each effort level has cost this agent, when it has a history; a new agent has none. */
   effortCosts?: AgentEffortCosts | null;
-  /** The workspace's teams, to put it on one. */
-  teams?: { slug: string; name: string }[];
   /** The Docs spaces the person editing can read, for its required reading. */
   spaces?: { id: string; name: string; kind: string }[];
   draft: AgentDraft;
@@ -588,14 +569,16 @@ export function AgentForm({
       {!locked && (
       <FormSection
         title="Role"
-        about="Hired into a role, not a task: a title, a team, and what it is responsible for. Shown as its name and title everywhere."
+        about={
+          joinable
+            ? "Hired into a role, not a task: a title and what it is responsible for, and the teams it joins, like anyone. Shown as its name and title everywhere."
+            : "Hired into a role, not a task: a title and what it is responsible for. Shown as its name and title everywhere."
+        }
       >
         <RoleFields
           title={draft.title}
-          team={draft.team}
-          department={draft.department}
           responsibilities={draft.responsibilities}
-          teams={teams}
+          joinable={joinable}
           errors={e}
           locked={locked}
           personal={personal}

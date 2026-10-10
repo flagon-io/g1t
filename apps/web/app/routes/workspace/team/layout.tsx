@@ -34,11 +34,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const team = found.value;
   const ids = added?.ok ? added.value.map((agent) => agent.agent_id) : [];
   const all = listed?.ok ? listed.value.map(peopleAgent) : [];
-  return { team, agents: agentsOn({ slug: team.slug, agent_ids: ids }, all), added: ids };
+  return { team, agents: agentsOn({ agent_ids: ids }, all) };
 }
 
 export default function TeamLayout({ loaderData }: Route.ComponentProps) {
-  const { team, agents, added } = loaderData;
+  const { team, agents } = loaderData;
   const base = teamPath(team.workspace, team.slug);
   const lead =
     team.lead?.kind === "user"
@@ -141,7 +141,7 @@ export default function TeamLayout({ loaderData }: Route.ComponentProps) {
         </TabStrip>
       </header>
       <div className="pt-6">
-        <Outlet context={{ team, agents, added } satisfies TeamContext} />
+        <Outlet context={{ team, agents } satisfies TeamContext} />
       </div>
     </div>
   );

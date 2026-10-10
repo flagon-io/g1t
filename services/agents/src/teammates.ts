@@ -15,22 +15,26 @@ import type { AgentTeam, PresenceEntry } from "@g1t/contracts";
 import { dollars } from "./money.ts";
 
 /** An agent as its teammates are told of it. */
-export type TeamAgentInfo = { id: string; handle: string; display_name: string; title: string; team: string | null };
+export type TeamAgentInfo = { id: string; handle: string; display_name: string; title: string };
 
 /** Everything about an agent's teams that one turn needs. */
 export type TeamsHere = {
   teams: AgentTeam[];
-  /** Every agent on those teams (added, or their home team), by id. */
+  /** Every agent on those teams, by id. */
   agents: TeamAgentInfo[];
   /** How the people on those teams show now; someone missing is offline. */
   presence: PresenceEntry[];
 };
 
-/** The agents on `team`, by id: added to it, then those whose home team it is. */
-export function agentIdsOn(team: AgentTeam, agents: readonly TeamAgentInfo[]): string[] {
-  const ids = [...team.agent_ids];
-  for (const agent of agents) if (agent.team === team.slug && !ids.includes(agent.id)) ids.push(agent.id);
-  return ids;
+/** The agents on `team`, by id: its members, as the team page adds them. */
+export function agentIdsOn(team: AgentTeam): string[] {
+  return [...new Set(team.agent_ids)];
+}
+
+/** "QA", "QA and Web", "QA, Web and Support". */
+export function listOf(names: readonly string[]): string {
+  if (names.length < 2) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 /** "18:12", their local time, or null when the zone isn't one. */
@@ -88,7 +92,7 @@ export function teamsSection(selfId: string, here: TeamsHere | null, now: Date):
   const presence = new Map(here.presence.map((entry) => [entry.user_id, entry]));
   const byId = new Map(here.agents.map((agent) => [agent.id, agent]));
   const blocks = here.teams.map((team) => {
-    const agentIds = agentIdsOn(team, here.agents);
+    const agentIds = agentIdsOn(team);
     const agents = agentIds.map((id) => byId.get(id)).filter((a): a is TeamAgentInfo => !!a);
     const facts: string[] = [];
     if (team.description) facts.push(team.description.replace(/\s+/g, " ").trim().replace(/\.?$/, "."));
@@ -154,7 +158,7 @@ export async function teamSpends(db: D1Database, here: TeamsHere, month: string)
   const budgeted = here.teams.filter((team) => team.budget_micros && team.budget_micros > 0);
   return Promise.all(
     budgeted.map(async (team) => {
-      const ids = agentIdsOn(team, here.agents);
+      const ids = agentIdsOn(team);
       const row = await db
         .prepare("SELECT COALESCE(SUM(micros), 0) AS micros FROM agent_spend WHERE period = ?1 AND agent_id IN (SELECT value FROM json_each(?2))")
         .bind(month, JSON.stringify(ids))

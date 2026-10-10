@@ -91,19 +91,15 @@ export type WorkspaceAgent = {
    */
   avatar_seed: string;
   /**
-   * One line, as lists show it: "QA Engineer on the QA team". Made from
-   * the title and team (or department) when not written.
+   * One line, as lists show it: "QA Engineer". Its title when not written.
    */
   role: string;
   /**
-   * Agents are hired into roles, not tasks: a title, a team, and broad
-   * responsibilities.
+   * Agents are hired into roles, not tasks: a title and broad
+   * responsibilities. The teams it is on are team memberships, as a
+   * person's are (identity `team_agents`), never part of the agent.
    */
   title: string;
-  /** The team it is on, by slug, from the workspace's teams; null for none. */
-  team: string | null;
-  /** A label for where it works when it is on no team: "QA", "Sales". */
-  department: string;
   /** What it is responsible for: 2 to 8 short duties, or none yet. */
   responsibilities: string[];
   /**
@@ -201,11 +197,9 @@ export type SubagentDef = {
 export type NewWorkspaceAgent = {
   handle: string;
   display_name: string;
-  /** Left out or empty: made from the title and team. */
+  /** Left out or empty: its title. */
   role?: string;
   title?: string;
-  team?: string | null;
-  department?: string;
   responsibilities?: string[];
   subagents?: SubagentDef[];
   /** Docs spaces (by id) it reads first; at most 10. */
@@ -271,8 +265,9 @@ export type AgentRedraft = {
 };
 
 /**
- * A role to hire an agent into, by department. Agents get names, not job
- * titles ("Margo", the QA Engineer).
+ * A role to hire an agent into, by title. Agents get names, not job
+ * titles ("Margo", the QA Engineer). A template never puts an agent on a
+ * team.
  */
 export type AgentTemplate = {
   id: string;
@@ -283,7 +278,6 @@ export type AgentTemplate = {
   name_ideas: string[];
   role: string;
   title: string;
-  department: string;
   responsibilities: string[];
   subagents: SubagentDef[];
   instructions: string;
@@ -822,7 +816,12 @@ export type WorkspaceAgentsApi = {
   get(workspace: string, handle: string, viewer: User): Promise<Result<WorkspaceAgent>>;
   /** Internal: by id, for the chat service resolving members. */
   byIds(ids: string[]): Promise<WorkspaceAgent[]>;
-  create(workspace: string, viewer: User, input: NewWorkspaceAgent): Promise<Result<WorkspaceAgent>>;
+  /**
+   * `teams`: the workspace's teams to add it to as it is made, by slug,
+   * each one the viewer manages (owners and the team's maintainers). The
+   * membership is the team's, as anyone's is; a personal agent joins none.
+   */
+  create(workspace: string, viewer: User, input: NewWorkspaceAgent, options?: { teams?: string[] }): Promise<Result<WorkspaceAgent>>;
   update(
     workspace: string,
     handle: string,
@@ -975,7 +974,7 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     list: (workspace, viewer, options) => call("list", { workspace, viewer, personal: options?.personal ?? null }),
     get: (workspace, handle, viewer) => call("get", { workspace, handle, viewer }),
     byIds: (ids) => call("by_ids", { ids }),
-    create: (workspace, viewer, input) => call("create", { workspace, viewer, input }),
+    create: (workspace, viewer, input, options) => call("create", { workspace, viewer, input, teams: options?.teams ?? [] }),
     update: (workspace, handle, viewer, changes) => call("update", { workspace, handle, viewer, changes }),
     archive: (workspace, handle, viewer) => call("archive", { workspace, handle, viewer }),
     draft: (workspace, viewer, input) => call("draft", { workspace, viewer, description: input.description, scope: input.scope ?? null }),

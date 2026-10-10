@@ -34,7 +34,7 @@ import { type SessionEnv, type SessionRow, actionPorts, sessionRow, startSession
 import { type Row, definitionOf, periods, selectAgents, toAgent } from "./store.ts";
 import { type SurfaceMessage, surfaceFor } from "./surface.ts";
 import { Audience } from "./audience.ts";
-import { audiencePorts, loadTeams, toolPorts } from "./ports.ts";
+import { audiencePorts, loadTeams, teamsOfAgents, toolPorts } from "./ports.ts";
 import { type ToolCall, type ToolPorts, ToolBox } from "./tools.ts";
 import type { Surface } from "./surface.ts";
 import type { Desk } from "./desk.ts";
@@ -81,12 +81,15 @@ function askerIn(history: SurfaceMessage[], delivery: AgentDelivery): SurfaceMes
  * An agent's colleagues: every agent of the workspace but itself that is
  * not archived (docs.g1t.sh/guides/agents/, "Agents know each other").
  */
-async function team(db: D1Database, workspaceId: string, selfId: string, now: Date): Promise<Specialist[]> {
-  const rows = await db
-    // Personal agents are their members' own: no colleague of anyone.
-    .prepare(`${selectAgents("a.workspace_id = ?3 AND a.archived_at IS NULL AND a.id <> ?4 AND a.scope = 'workspace'")} ORDER BY a.builtin DESC, a.handle LIMIT 50`)
-    .bind(...periods(now), workspaceId, selfId)
-    .all<Row>();
+async function team(db: D1Database, workspaceId: string, selfId: string, now: Date, teamsOf: Promise<Map<string, string[]>>): Promise<Specialist[]> {
+  const [rows, onTeams] = await Promise.all([
+    db
+      // Personal agents are their members' own: no colleague of anyone.
+      .prepare(`${selectAgents("a.workspace_id = ?3 AND a.archived_at IS NULL AND a.id <> ?4 AND a.scope = 'workspace'")} ORDER BY a.builtin DESC, a.handle LIMIT 50`)
+      .bind(...periods(now), workspaceId, selfId)
+      .all<Row>(),
+    teamsOf,
+  ]);
   return rows.results.map((row) => {
     const agent = toAgent(row, now);
     return {
@@ -94,8 +97,7 @@ async function team(db: D1Database, workspaceId: string, selfId: string, now: Da
       display_name: agent.display_name,
       role: agent.role,
       title: agent.title,
-      team: agent.team,
-      department: agent.department,
+      teams: onTeams.get(agent.id) ?? [],
       responsibilities: agent.responsibilities,
       status: agent.status,
       spent_month_micros: agent.spent_month_micros,
@@ -346,7 +348,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
       surface.typing(),
       delivery.hello ? Promise.resolve([]) : surface.history(HISTORY_LIMIT),
       delivery.hello ? Promise.resolve(null) : surface.conversation(),
-      loadTeams(env, slug, row.workspace_id, { id: row.id, team: row.team ?? null }).catch(() => null),
+      loadTeams(env, slug, row.workspace_id, { id: row.id }).catch(() => null),
     ]);
     // A personal agent answers only its member, in the DM of the two of them (access.ts).
     const refused = personalRefusal(row, {
@@ -361,7 +363,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
     const askerName = delivery.asker?.username ?? author?.name ?? null;
     // Every agent knows its colleagues; @g1t also steps up a tier to decide
     // who gets the work in a long thread.
-    const specialists = await team(db, row.workspace_id, row.id, now);
+    const specialists = await team(db, row.workspace_id, row.id, now, teamsOfAgents(env, slug));
     const definition = definitionOf(row);
     // Its effort setting decides where the reply starts and how hard the model reasons.
     const plan = effortPlan(effortOf(definition.routing), row.builtin ? orchestratorTier(history.length, specialists.filter((a) => a.handle !== "g1t").length) : REPLY_TIER);
@@ -476,7 +478,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
             sessionsHere(db, row.id, delivery.channel_id).catch(() => null),
             toolbox ? toolbox.recall(recallQuery(said), definition.reading ?? []) : Promise.resolve([]),
             // Its skills: named in the prompt, read with use_skill (skills.ts).
-            toolbox ? loadShelf(db, row.workspace_id, { id: row.id, skills_off: definition.skills_off }, teamSlugs(teamsHere, row.team ?? null)) : Promise.resolve([]),
+            toolbox ? loadShelf(db, row.workspace_id, { id: row.id, skills_off: definition.skills_off }, teamSlugs(teamsHere)) : Promise.resolve([]),
           ]);
       toolbox?.useShelf(shelf, (skillId, version) => readVersion(db, skillId, version));
       const system = [
@@ -484,6 +486,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
           agent: {
             ...definition,
             id: row.id,
+            teams: teamsHere?.teams.map((t) => t.name) ?? [],
             // @g1t's job is fixed; what the workspace wrote is added to it.
             instructions: row.builtin ? orchestratorInstructions(specialists.filter((a) => a.handle !== "g1t"), definition.instructions) : definition.instructions,
           },

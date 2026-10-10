@@ -48,7 +48,7 @@ export function TemplateCard({ listing, slug, owner }: { listing: TemplateListin
             </Link>
           </h3>
           <p className="truncate text-xs text-muted">
-            {template.department ? `${template.department} · ` : ""}Suggests {template.display_name}
+            Suggests {template.display_name}
           </p>
         </div>
       </div>

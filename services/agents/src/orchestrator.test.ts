@@ -69,8 +69,6 @@ test("@g1t's handle, name, role and job are fixed; the rest is the workspace's",
     display_name: "Boss",
     role: "Does whatever",
     title: "",
-    team: "qa",
-    department: "x",
     responsibilities: [],
     subagents: [],
     template: "qa",
@@ -150,14 +148,14 @@ test("@g1t's notice without a model points to AI credit and Integrations", () =>
   assert.match(BUILTIN_NO_MODEL, /Integrations/);
 });
 
-test("the roster shows title, team and duties, so 'QA should look' reaches Margo", () => {
-  const margo: Specialist = { handle: "margo", display_name: "Margo", role: "QA", title: "QA Engineer", team: "qa", responsibilities: ["Review pull requests.", "Chase flaky checks"], status: "idle", spent_month_micros: 0, monthly_micros: 10_000_000 };
-  const david: Specialist = { handle: "david", display_name: "David", role: "Sales Operations, Sales", title: "Sales Operations", department: "Sales", status: "working", spent_month_micros: 0, monthly_micros: null };
+test("the roster shows title, the teams it is on and duties, so 'QA should look' reaches Margo", () => {
+  const margo: Specialist = { handle: "margo", display_name: "Margo", role: "QA", title: "QA Engineer", teams: ["QA", "Web"], responsibilities: ["Review pull requests.", "Chase flaky checks"], status: "idle", spent_month_micros: 0, monthly_micros: 10_000_000 };
+  const david: Specialist = { handle: "david", display_name: "David", role: "Sales Operations", title: "Sales Operations", teams: [], status: "working", spent_month_micros: 0, monthly_micros: null };
   assert.equal(
     rosterLines([margo, david]),
     [
-      "- @margo: QA Engineer on the qa team. Does: Review pull requests; Chase flaky checks. idle; $0.00 of $10.00 this month.",
-      "- @david: Sales Operations, Sales. working; $0.00, no cap this month.",
+      "- @margo: QA Engineer on QA and Web. Does: Review pull requests; Chase flaky checks. idle; $0.00 of $10.00 this month.",
+      "- @david: Sales Operations. working; $0.00, no cap this month.",
     ].join("\n"),
   );
 });

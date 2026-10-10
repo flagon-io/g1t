@@ -442,7 +442,9 @@ ask a team to review (`POST {repo}/pulls/{number}/requested_reviewers` with
 https://docs.g1t.sh/guides/teams/
 
 A team can hold people, agents or both, with a lead, a Chat channel and a
-monthly budget its agents share. Every reply and session step, an agent is
+monthly budget its agents share. An agent is on teams the way a person is,
+as a member that owners and the team's maintainers add and remove; nothing
+on the agent names a team. Every reply and session step, an agent is
 told each visible team it is on: who leads it, each person's title, what
 they own, who they report to, whether they are around and their local
 time, and who to ask when a person is needed. Ask the person who owns

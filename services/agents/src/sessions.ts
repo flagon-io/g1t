@@ -47,7 +47,7 @@ import { Audience } from "./audience.ts";
 import { type MeterEnv, metered } from "./meter.ts";
 import { type RecallPlace, MAX_FACTS, cleanFact, memorySection, recall, scopeFor } from "./memory.ts";
 import { readPolicy } from "./policy.ts";
-import { type PortsEnv, audiencePorts, loadTeams, toolPorts } from "./ports.ts";
+import { type PortsEnv, audiencePorts, loadTeams, teamsOfAgents, toolPorts } from "./ports.ts";
 import { systemPrompt } from "./prompt.ts";
 import { loadShelf, skillsSection, teamSlugs } from "./skills.ts";
 import { readVersion } from "./skill-library.ts";
@@ -749,7 +749,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
   const asker = { id: row.asked_by, username: row.asked_by_username };
   const current = row;
   // Its teams, from their pages: told every step, and their budgets apply.
-  const teamsHere = await loadTeams(env, slug, agent.workspace_id, { id: agent.id, team: agent.team ?? null }).catch(() => null);
+  const teamsHere = await loadTeams(env, slug, agent.workspace_id, { id: agent.id }).catch(() => null);
 
   const outcome = await metered(
     env,
@@ -811,14 +811,15 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
         recall(db, agent.id, place).catch(() => []),
         toolbox ? toolbox.recall(recallQuery(asked, 800), definition.reading ?? []) : Promise.resolve([]),
         // Its skills: named in the prompt, read with use_skill (skills.ts).
-        toolbox ? loadShelf(db, agent.workspace_id, { id: agent.id, skills_off: definition.skills_off }, teamSlugs(teamsHere, agent.team ?? null)) : Promise.resolve([]),
+        toolbox ? loadShelf(db, agent.workspace_id, { id: agent.id, skills_off: definition.skills_off }, teamSlugs(teamsHere)) : Promise.resolve([]),
       ]);
       toolbox?.useShelf(shelf, (skillId, version) => readVersion(db, skillId, version));
-      const [team, here] = await Promise.all([
+      const [team, onTeams, here] = await Promise.all([
         db
-          .prepare("SELECT handle, display_name, role, title, team, department, responsibilities FROM agents WHERE workspace_id = ? AND archived_at IS NULL AND id <> ? AND scope = 'workspace' ORDER BY builtin DESC, handle LIMIT 50")
+          .prepare("SELECT id, handle, display_name, role, title, responsibilities FROM agents WHERE workspace_id = ? AND archived_at IS NULL AND id <> ? AND scope = 'workspace' ORDER BY builtin DESC, handle LIMIT 50")
           .bind(agent.workspace_id, agent.id)
-          .all<{ handle: string; display_name: string; role: string; title: string; team: string | null; department: string; responsibilities: string }>(),
+          .all<{ id: string; handle: string; display_name: string; role: string; title: string; responsibilities: string }>(),
+        teamsOfAgents(env, slug),
         // Who reads what this session posts: said every step, as in a reply. A helper may not be a member: then not said.
         chatClient(env.CHAT)
           .conversationForAgent(slug, current.channel_id, agent.id, current.asked_by)
@@ -831,8 +832,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
           display_name: a.display_name,
           role: a.role,
           title: a.title,
-          team: a.team,
-          department: a.department,
+          teams: onTeams.get(a.id) ?? [],
           responsibilities: json<string[]>(a.responsibilities, []),
           status: "idle",
           spent_month_micros: 0,
@@ -842,7 +842,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
       const access = json<AskerAccess | null>(current.asker, null);
       const system = [
         systemPrompt({
-          agent: { ...definition, id: agent.id },
+          agent: { ...definition, id: agent.id, teams: teamsHere?.teams.map((t) => t.name) ?? [] },
           workspace: slug,
           channel: { kind: current.channel_kind === "dm" ? "dm" : "channel", name: current.channel_name },
           asker: { name: current.asked_by_username ?? "someone", display_name: null, access },

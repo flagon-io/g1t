@@ -122,27 +122,38 @@ test("an agent's avatar seed starts as its handle, can be changed, and stays thr
   assert.ok(chosen.ok && chosen.value.avatar_seed === "blob");
 });
 
-test("an agent is hired into a role: title, team or department, responsibilities", async () => {
+test("an agent is hired into a role: a title and responsibilities, never a team", async () => {
   const { roleOf } = await import("./definition.ts");
-  const made = applyChanges(null, { handle: "margo", display_name: "Margo", title: "QA Engineer", department: "QA", instructions: "Test things.", responsibilities: ["Review pull requests", "Chase flaky checks"] }, TEMPLATE_IDS);
+  const made = applyChanges(null, { handle: "margo", display_name: "Margo", title: "QA Engineer", instructions: "Test things.", responsibilities: ["Review pull requests", "Chase flaky checks"] }, TEMPLATE_IDS);
   assert.ok(made.ok);
   if (!made.ok) return;
-  assert.equal(made.value.role, "QA Engineer, QA", "the one-line role is made from the title and department");
-  const onTeam = applyChanges(made.value, { team: "QA-Core" }, TEMPLATE_IDS);
-  assert.ok(onTeam.ok && onTeam.value.role === "QA Engineer on the qa-core team", "a made role follows the title and team");
+  assert.equal(made.value.role, "QA Engineer", "the one-line role is its title");
+  assert.ok(!("team" in made.value) && !("department" in made.value), "teams are memberships, not part of the agent");
+  const retitled = applyChanges(made.value, { title: "QA Lead" }, TEMPLATE_IDS);
+  assert.ok(retitled.ok && retitled.value.role === "QA Lead", "a made role follows the title");
+  const ignored = applyChanges(made.value, { team: "qa" } as never, TEMPLATE_IDS);
+  assert.ok(ignored.ok && !("team" in ignored.value), "a team sent with a change is ignored");
   const written = applyChanges(made.value, { role: "Keeps us honest" }, TEMPLATE_IDS);
   assert.ok(written.ok);
   if (!written.ok) return;
   const kept = applyChanges(written.value, { title: "QA Lead" }, TEMPLATE_IDS);
   assert.ok(kept.ok && kept.value.role === "Keeps us honest", "a written role is kept");
-  assert.equal(roleOf({ title: "", team: null, department: "QA" }), "");
+  assert.equal(roleOf({ title: "" }), "");
   assert.equal(applyChanges(null, { handle: "x1", display_name: "X", instructions: "y" }, TEMPLATE_IDS).ok, false, "a title or a role is needed");
   const bad = (changes: object) => applyChanges(made.value, changes, TEMPLATE_IDS).ok;
   assert.equal(bad({ responsibilities: ["Only one"] }), false, "2 to 8 duties");
   assert.equal(bad({ responsibilities: Array.from({ length: 9 }, (_, i) => `Duty ${i}`) }), false);
   assert.equal(bad({ responsibilities: [] }), true, "or none yet");
-  assert.equal(bad({ team: "not a slug!" }), false);
-  assert.equal(bad({ team: null }), true);
+});
+
+test("a role made from an agent's old team or department reads as its title", async () => {
+  const { definitionOf } = await import("./store.ts");
+  const row = (role: string, team: string | null, department: string) =>
+    definitionOf({ handle: "margo", display_name: "Margo", title: "QA Engineer", role, team, department, routing: "{}", budget: "{}", autonomy: "{}" } as never);
+  assert.equal(row("QA Engineer on the qa team", "qa", "").role, "QA Engineer");
+  assert.equal(row("QA Engineer, QA", null, "QA").role, "QA Engineer");
+  assert.equal(row("Keeps us honest", "qa", "QA").role, "Keeps us honest", "a written role stays");
+  assert.ok(!("team" in row("x", "qa", "")), "the old columns are not part of the definition");
 });
 
 test("subagents: named, described, at most 8, never wider than their agent", () => {
@@ -172,16 +183,16 @@ test("agents face the workspace's own people; customer-facing ones aren't availa
   assert.ok(!customers.ok && customers.message === "Customer-facing agents aren't available yet.");
 });
 
-test("role templates by department, each with a title, duties and a subagent or two; David is back office", () => {
+test("role templates by title, each with duties and a subagent or two, on no team; David is back office", () => {
   const byId = Object.fromEntries(TEMPLATES.map((t) => [t.id, t]));
   for (const template of TEMPLATES) {
-    assert.ok(template.title && template.department, template.id);
+    assert.ok(template.title && template.role === template.title, template.id);
+    assert.ok(!("department" in template) && !("team" in template), `${template.id} names a role, not a team`);
     assert.ok(template.responsibilities.length >= 2 && template.responsibilities.length <= 8, template.id);
     assert.ok(template.subagents.length >= 1 && template.subagents.length <= 2, template.id);
   }
   assert.equal(byId.sales.display_name, "David");
   assert.equal(byId.sales.title, "Sales Operations");
-  assert.equal(byId.sales.department, "Sales");
   assert.match(byId.sales.instructions, /never contact a customer/i);
   assert.match(byId.sales.instructions, /never promise roadmap/i);
   assert.match(byId.sales.instructions, /audience/);

@@ -1,6 +1,7 @@
 /**
- * The roles g1t offers to hire an agent into, by department
- * (docs.g1t.sh/guides/agents/, "Role templates"). Each is an ordinary
+ * The roles g1t offers to hire an agent into, by title
+ * (docs.g1t.sh/guides/agents/, "Role templates"). A template names a role,
+ * never a team: teams are memberships, added on the team or the agent. Each is an ordinary
  * definition a workspace adopts, renames and changes: a fun name (with more
  * to shuffle through), a title, broad responsibilities, a voice, routing
  * limits, and a subagent or two it will use inside its work.
@@ -29,8 +30,7 @@ export const TEMPLATES: AgentTemplate[] = [
     handle: "otto",
     name_ideas: ["Otto", "Builder", "Pixel", "Bolt", "Tinker", "Gus", "Rivet", "Sprocket"],
     title: "Software Engineer",
-    department: "Engineering",
-    role: "Software Engineer, Engineering",
+    role: "Software Engineer",
     responsibilities: [
       "Implement issues and open pull requests that are ready to review",
       "Fix bugs with a test that proves the fix",
@@ -58,8 +58,7 @@ export const TEMPLATES: AgentTemplate[] = [
     handle: "margo",
     name_ideas: ["Margo", "Wren", "Hawk", "Edna", "Monocle", "Prue", "Basil", "Ivy"],
     title: "QA Engineer",
-    department: "QA",
-    role: "QA Engineer, QA",
+    role: "QA Engineer",
     responsibilities: [
       "Review pull requests for risk and test coverage",
       "Write test plans for new features",
@@ -88,8 +87,7 @@ export const TEMPLATES: AgentTemplate[] = [
     handle: "bruno",
     name_ideas: ["Bruno", "Skipper", "Patch", "Ranger", "Scout", "Bea", "Flint", "Anchor"],
     title: "Operations Engineer",
-    department: "Operations",
-    role: "Operations Engineer, Operations",
+    role: "Operations Engineer",
     responsibilities: [
       "Cut releases and draft their notes",
       "Watch deploys and propose rollbacks",
@@ -116,8 +114,7 @@ export const TEMPLATES: AgentTemplate[] = [
     handle: "inky",
     name_ideas: ["Inky", "Quill", "Scribbles", "Hattie", "Folio", "Marlow", "Rosie", "Juniper"],
     title: "Technical Writer",
-    department: "Docs",
-    role: "Technical Writer, Docs",
+    role: "Technical Writer",
     responsibilities: [
       "Update the docs after every change that makes them wrong",
       "Turn decisions made in chat into docs",
@@ -141,8 +138,7 @@ export const TEMPLATES: AgentTemplate[] = [
     handle: "dot",
     name_ideas: ["Dot", "Clover", "Mabel", "Compass", "Hazel", "Penny", "Tally", "Fern"],
     title: "Product Manager",
-    department: "Product",
-    role: "Product Manager, Product",
+    role: "Product Manager",
     responsibilities: [
       "Turn requests from anyone into well-written intake",
       "Triage new issues: label, find duplicates, route to the owning team",
@@ -166,8 +162,7 @@ export const TEMPLATES: AgentTemplate[] = [
     handle: "sam",
     name_ideas: ["Sam", "Robin", "Jamie", "Biscuit", "Sunny", "Waffles", "Poppy", "Moss", "Daisy", "Nugget"],
     title: "Support Specialist",
-    department: "Customer Support",
-    role: "Support Specialist, Customer Support",
+    role: "Support Specialist",
     responsibilities: [
       "Answer the support team's product questions from the docs and the product",
       "Turn bugs customers hit into intake for the owning team",
@@ -189,8 +184,7 @@ export const TEMPLATES: AgentTemplate[] = [
     handle: "david",
     name_ideas: ["David", "Marlowe", "Gwen", "Rupert", "Tess", "Monty", "Lou", "Harper"],
     title: "Sales Operations",
-    department: "Sales",
-    role: "Sales Operations, Sales",
+    role: "Sales Operations",
     responsibilities: [
       "Summarize the customer conversations the workspace has, per account and across accounts",
       "Flag at-risk accounts and repeated asks",

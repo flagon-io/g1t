@@ -34,7 +34,7 @@ export const DEFAULT_AUTONOMY: AgentAutonomy = {
 export const DEFAULT_CAPACITY = 3;
 export const MAX_CAPACITY = 10;
 
-const LIMITS = { displayName: 64, role: 120, title: 60, department: 40, duty: 160, instructions: 8000, personality: 1000, providers: 10, pinned: 200 };
+const LIMITS = { displayName: 64, role: 120, title: 60, duty: 160, instructions: 8000, personality: 1000, providers: 10, pinned: 200 };
 /** $100,000 in millionths: a cap above this is a typo. */
 const MAX_MICROS = 100_000_000_000;
 
@@ -54,8 +54,6 @@ export type Definition = {
   /** What its generated avatar is drawn from. */
   avatar_seed: string;
   title: string;
-  team: string | null;
-  department: string;
   responsibilities: string[];
   subagents: SubagentDef[];
   faces: AgentFaces;
@@ -65,12 +63,24 @@ export type Definition = {
   skills_off: string[];
 };
 
-/** The one-line role a title and team (or department) make: "QA Engineer on the qa team". */
-export function roleOf(d: Pick<Definition, "title" | "team" | "department">): string {
-  const title = d.title.trim();
-  if (!title) return "";
-  if (d.team) return `${title} on the ${d.team} team`;
-  return d.department.trim() ? `${title}, ${d.department.trim()}` : title;
+/**
+ * The one-line role its title makes: "QA Engineer". Which teams it is on
+ * are team memberships (identity), never part of the agent.
+ */
+export function roleOf(d: Pick<Definition, "title">): string {
+  return d.title.trim();
+}
+
+/**
+ * The role an agent was given when it carried its own team or department,
+ * made from them: "QA Engineer on the qa team", "QA Engineer, QA". A
+ * stored role that is exactly this follows the title (store.ts).
+ */
+export function legacyRoleOf(title: string, team: string | null, department: string | null): string {
+  const t = title.trim();
+  if (!t) return "";
+  if (team) return `${t} on the ${team} team`;
+  return department?.trim() ? `${t}, ${department.trim()}` : t;
 }
 
 export const MAX_SUBAGENTS = 8;
@@ -236,8 +246,6 @@ export function applyChanges(
     template: null,
     avatar_seed: "",
     title: "",
-    team: null,
-    department: "",
     responsibilities: [],
     subagents: [],
     faces: "internal",
@@ -245,7 +253,7 @@ export function applyChanges(
     skills_off: [],
   };
   const next: Definition = { ...from, skills_off: from.skills_off ?? [] };
-  // Whether the role was made from the title and team, so it follows them.
+  // Whether the role was made from the title, so it follows it.
   const roleDerived = !from.role || from.role === roleOf(from);
   if (creating || changes.handle !== undefined) {
     const handle = checkHandle(changes.handle);
@@ -256,7 +264,6 @@ export function applyChanges(
     ["display_name", "A display name", LIMITS.displayName, true],
     ["role", "The role", LIMITS.role, false],
     ["title", "The title", LIMITS.title, false],
-    ["department", "The department", LIMITS.department, false],
     // The built-in agent's instructions are added to its fixed job, and may be empty.
     ["instructions", "The instructions", LIMITS.instructions, !options.builtin],
     ["personality", "The personality", LIMITS.personality, false],
@@ -267,18 +274,12 @@ export function applyChanges(
     if (!value.ok) return value;
     next[key] = value.value;
   }
-  if (changes.team !== undefined) {
-    if (changes.team === null || changes.team === "") next.team = null;
-    else if (typeof changes.team !== "string" || !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(changes.team.trim().toLowerCase())) {
-      return bad("A team is named by its slug.");
-    } else next.team = changes.team.trim().toLowerCase();
-  }
   if (changes.responsibilities !== undefined) {
     const duties = responsibilitiesOf(changes.responsibilities);
     if (!duties.ok) return duties;
     next.responsibilities = duties.value;
   }
-  // A role left empty, or made from the title and team before, follows them.
+  // A role left empty, or made from the title before, follows it.
   if (!next.role || (changes.role === undefined && roleDerived)) next.role = roleOf(next);
   if (!next.role) return bad("Give the agent a title or a one-line role.");
   if (changes.avatar_seed !== undefined) {

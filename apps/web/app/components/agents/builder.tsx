@@ -10,6 +10,7 @@ import { Form, Link, useFetcher, useNavigation } from "react-router";
 
 import { type AgentProposal, type AgentRedraft, type AgentTemplate, type DraftTurn, FOUNDATIONAL_SKILLS, type WorkspaceAgent } from "@g1t/contracts";
 
+import { TeamPicker } from "../agent-role";
 import { AgentAvatar, PixelCreature } from "../agent-avatar";
 import { Markdown } from "../markdown";
 import { Badge } from "../ui/badge";
@@ -233,12 +234,20 @@ export function ProposalCard({
   proposal,
   value,
   onChange,
+  joinable = [],
+  teams = [],
+  onTeams,
 }: {
   slug: string;
   owner: boolean;
   proposal: AgentProposal;
   value: BuilderDefinition;
   onChange: (next: BuilderDefinition) => void;
+  /** The teams the person may add it to; a workspace agent only. */
+  joinable?: { slug: string; name: string }[];
+  /** The teams chosen to add it to: memberships, posted with Create, never part of the draft. */
+  teams?: string[];
+  onTeams?: (next: string[]) => void;
 }) {
   const ideas = [proposal.definition.display_name, ...proposal.name_ideas];
   const [idea, setIdea] = useState(0);
@@ -309,14 +318,14 @@ export function ProposalCard({
             <Label htmlFor="b-title">Title</Label>
             <input id="b-title" value={value.title ?? ""} onChange={(e) => set({ title: e.target.value })} placeholder="Release Manager" className={FIELD} autoComplete="off" />
           </div>
-          <div>
-            <Label htmlFor="b-department" hint="Optional">
-              Department
-            </Label>
-            <input id="b-department" value={value.department ?? ""} onChange={(e) => set({ department: e.target.value })} placeholder="Engineering" className={FIELD} autoComplete="off" />
-          </div>
         </div>
       </div>
+
+      {onTeams && (
+        <Section title="Add to teams" about={value.scope === "personal" ? "A personal agent is on no team." : "Optional. It joins them like anyone, and you can change them on its profile or the team's page."}>
+          {value.scope === "personal" ? null : <TeamPicker teams={joinable} value={teams} onChange={onTeams} />}
+        </Section>
+      )}
 
       <Section title="Job" about="What it is responsible for and how it works. It reads this before every reply.">
         <textarea
@@ -621,7 +630,7 @@ export function TryChat({ definition, onReset }: { definition: BuilderDefinition
 // ── Create ────────────────────────────────────────────────────────────────
 
 /** Saves the drafted agent: its hello is waiting in a direct message. */
-export function CreateDraft({ definition, onEditAll }: { definition: BuilderDefinition; onEditAll: () => void }) {
+export function CreateDraft({ definition, teams = [], onEditAll }: { definition: BuilderDefinition; teams?: string[]; onEditAll: () => void }) {
   const navigation = useNavigation();
   const busy = navigation.state !== "idle" && navigation.formData?.get("intent") === "create_draft";
   const ready = definition.display_name.trim() && definition.instructions.trim() && definition.handle.trim();
@@ -629,6 +638,9 @@ export function CreateDraft({ definition, onEditAll }: { definition: BuilderDefi
     <Form method="post" className="flex flex-wrap items-center justify-end gap-2">
       <input type="hidden" name="intent" value="create_draft" />
       <input type="hidden" name="definition" value={JSON.stringify(definition)} />
+      {teams.map((slug) => (
+        <input key={slug} type="hidden" name="teams" value={slug} />
+      ))}
       <button type="button" onClick={onEditAll} className={QUIET}>
         Edit all fields
       </button>

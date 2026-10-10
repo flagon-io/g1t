@@ -5,7 +5,8 @@ import { type WorkspaceAgent, hasCodeAccess } from "@g1t/contracts";
 import { AgentsSidebar } from "../../../components/agents-mode";
 
 import type { Route } from "./+types/layout";
-import { workspaceAgents } from "../../../lib/services.server";
+import { type AgentTeamRef, teamsByAgent } from "../../../lib/people";
+import { identity, workspaceAgents } from "../../../lib/services.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
 
 /**
@@ -20,6 +21,8 @@ export type AgentsLayoutData = {
   viewer_id: string;
   /** Whether the viewer may create an agent: owners always, members unless owners turned personal agents off. */
   may_create: boolean;
+  /** The visible teams each agent is on, by agent id (team memberships); null when they couldn't be read. */
+  teams: Record<string, AgentTeamRef[]> | null;
 };
 
 export async function loader({ params, context, request }: Route.LoaderArgs): Promise<AgentsLayoutData> {
@@ -28,12 +31,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
   const owner = roleIn(viewer, slug) === "owner";
-  const [listed, live, policy] = await Promise.all([
+  const [listed, live, policy, index] = await Promise.all([
     // Personal agents too: the viewer's own, and every member's for an owner.
     workspaceAgents.list(slug, viewer!, { personal: "all" }).catch(() => null),
     // Every live session counts, private ones too: a count says nothing about what it is.
     workspaceAgents.sessions(slug, viewer!, { status: "live", limit: 200 }).catch(() => null),
     owner ? Promise.resolve(null) : workspaceAgents.policy(slug, viewer!).catch(() => null),
+    identity.teamAgentIndex(slug).catch(() => null),
   ]);
   const counts: Record<string, number> = {};
   for (const session of live?.ok ? live.value : []) counts[session.agent_id] = (counts[session.agent_id] ?? 0) + 1;
@@ -42,6 +46,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
     viewer_id: viewer.id,
     may_create: owner || (policy?.ok ? policy.value.members_create_agents : true),
     live: counts,
+    teams: index ? teamsByAgent(index) : null,
     agents: listed?.ok ? listed.value.filter((agent) => !agent.archived_at).sort((a, b) => a.display_name.localeCompare(b.display_name)) : null,
   };
 }

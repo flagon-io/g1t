@@ -159,7 +159,7 @@ A skill does nothing until it is attached. Open it and choose **Attach**:
 | Attach to | Who gets it | Who can attach it there |
 | --- | --- | --- |
 | Every agent in the workspace | Every agent, `@g1t` included | Owners |
-| A team | Every agent on the team: added to it, or whose home team it is | Owners, and the team's maintainers |
+| A team | Every agent on the team | Owners, and the team's maintainers |
 | One agent | That agent | Owners |
 
 An agent gets each skill once. When a skill reaches it in more than one

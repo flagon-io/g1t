@@ -114,10 +114,9 @@ export async function attachedRows(db: D1Database, workspaceId: string, agentId:
   return rows.results;
 }
 
-/** The teams whose skills reach an agent: those it is on, or its home team when they couldn't be read. */
-export function teamSlugs(teams: TeamsHere | null, home: string | null): string[] {
-  if (teams) return [...new Set([...teams.teams.map((team) => team.slug), ...(home ? [home] : [])])];
-  return home ? [home] : [];
+/** The teams whose skills reach an agent: those it is on; none when they couldn't be read. */
+export function teamSlugs(teams: TeamsHere | null): string[] {
+  return teams ? [...new Set(teams.teams.map((team) => team.slug))] : [];
 }
 
 /** Everything an agent has this turn, read once. */

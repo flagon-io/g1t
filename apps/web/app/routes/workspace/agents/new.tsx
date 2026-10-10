@@ -8,7 +8,7 @@ import type { Route } from "./+types/new";
 import { AgentForm, TemplateGallery } from "../../../components/agents-mode";
 import { type BuilderAnswer, CreateDraft, DescribeBox, ProposalCard, TryChat } from "../../../components/agents/builder";
 import { type BuilderDefinition, readDefinition } from "../../../lib/agent-builder";
-import { type AgentDraft, BLANK_DRAFT, cleanHandle, readAgentForm } from "../../../lib/agent-form";
+import { type AgentDraft, BLANK_DRAFT, cleanHandle, readAgentForm, readTeams } from "../../../lib/agent-form";
 import { channelPath } from "../../../lib/chat";
 import { page } from "../../../lib/meta";
 import { chat, docs, identity, workspaceAgents } from "../../../lib/services.server";
@@ -36,7 +36,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     templates,
     owner,
     mayCreate: owner || membersMay,
-    teams: teams?.ok ? teams.value.map((team) => ({ slug: team.slug, name: team.name })) : [],
+    // The teams the viewer may add a new agent to: owners any, a maintainer theirs.
+    joinable: teams?.ok ? teams.value.filter((team) => team.can_manage).map((team) => ({ slug: team.slug, name: team.name })) : [],
     spaces,
   };
 }
@@ -90,7 +91,8 @@ export async function action({ params, context, request }: Route.ActionArgs) {
     if (!read.ok) return { errors: read.errors };
     input = read.input;
   }
-  const made = await workspaceAgents.create(slug, viewer, input).catch(() => null);
+  // Its teams: memberships, added as it is made; a personal agent joins none.
+  const made = await workspaceAgents.create(slug, viewer, input, { teams: input.scope === "personal" ? [] : readTeams(form) }).catch(() => null);
   if (!made) return { errors: { form: NO_ANSWER } };
   if (!made.ok) {
     const field = made.error.code === "conflict" ? "handle" : "form";
@@ -114,7 +116,6 @@ function draftFrom(template: AgentTemplate): AgentDraft {
     handle: cleanHandle(name),
     display_name: name,
     title: template.title,
-    department: template.department,
     responsibilities: template.responsibilities,
     subagents: template.subagents,
     role: template.role,
@@ -132,7 +133,6 @@ function formDraft(d: BuilderDefinition): AgentDraft {
     handle: d.handle,
     display_name: d.display_name,
     title: d.title ?? "",
-    department: d.department ?? "",
     responsibilities: d.responsibilities ?? [],
     instructions: d.instructions,
     personality_preset: d.personality_preset ?? "crisp",
@@ -153,6 +153,8 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
   const [proposal, setProposal] = useState<AgentProposal | null>(null);
   const [definition, setDefinition] = useState<BuilderDefinition | null>(null);
   const [full, setFull] = useState(false);
+  // "Add to teams" on the drafted card: memberships, posted with Create.
+  const [joining, setJoining] = useState<string[]>([]);
   const handled = useRef<unknown>(null);
   useEffect(() => {
     if (drafter.state !== "idle" || !drafter.data || handled.current === drafter.data) return;
@@ -205,7 +207,7 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
             intent="create"
             formKey={full ? `draft:${definition?.handle}` : (chosen ?? "blank")}
             nameIdeas={full && proposal ? [proposal.definition.display_name, ...proposal.name_ideas] : ideasOf(template)}
-            teams={personal ? [] : loaderData.teams}
+            joinable={loaderData.joinable}
             personal={personal}
             spaces={loaderData.spaces}
             seed={full ? definition?.avatar_seed : undefined}
@@ -251,8 +253,17 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
         {errors?.handle && <p className="mb-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">{errors.handle}</p>}
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
           <div className="min-w-0 space-y-4">
-            <ProposalCard slug={params.owner.toLowerCase()} owner={owner} proposal={proposal} value={definition} onChange={setDefinition} />
-            <CreateDraft definition={definition} onEditAll={() => setFull(true)} />
+            <ProposalCard
+              slug={params.owner.toLowerCase()}
+              owner={owner}
+              proposal={proposal}
+              value={definition}
+              onChange={setDefinition}
+              joinable={loaderData.joinable}
+              teams={joining}
+              onTeams={setJoining}
+            />
+            <CreateDraft definition={definition} teams={definition.scope === "personal" ? [] : joining} onEditAll={() => setFull(true)} />
           </div>
           <div className="lg:sticky lg:top-4 lg:h-[calc(100dvh-13rem)] lg:self-start">
             <TryChat definition={definition} />

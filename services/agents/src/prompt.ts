@@ -10,6 +10,7 @@
 import type { AskerAccess, PersonalityPreset } from "@g1t/contracts";
 
 import type { Conversation, ConversationMember, SurfaceMessage } from "./surface.ts";
+import { listOf } from "./teammates.ts";
 
 /** How many messages a reply reads: the thread, or the latest of the DM or channel. */
 export const HISTORY_LIMIT = 30;
@@ -47,8 +48,8 @@ export type PromptInput = {
     personality_preset: PersonalityPreset;
     personality: string;
     title?: string;
-    team?: string | null;
-    department?: string;
+    /** The teams it is on, by name (identity's team memberships). */
+    teams?: string[];
     responsibilities?: string[];
     subagents?: { name: string; description: string }[];
   };
@@ -87,11 +88,11 @@ function askerLine(asker: PromptInput["asker"]): string {
   return `${who} is ${role}; ${code}.`;
 }
 
-/** "the QA Engineer on the qa team, " or "", for the first line. */
+/** "the QA Engineer on QA and Web, " or "", for the first line. */
 function placeOf(agent: PromptInput["agent"]): string {
   const title = agent.title?.trim();
   if (!title) return "";
-  const where = agent.team ? ` on the ${agent.team} team` : agent.department?.trim() ? ` in ${agent.department.trim()}` : "";
+  const where = agent.teams?.length ? ` on ${listOf(agent.teams)}` : "";
   return `the ${title}${where}, `;
 }
 

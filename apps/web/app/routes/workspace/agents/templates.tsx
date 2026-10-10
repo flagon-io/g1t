@@ -1,6 +1,6 @@
 /**
- * Agent templates: the starting points g1t provides for a new agent, by
- * department, with the agents in the workspace that started from each. A
+ * Agent templates: the roles g1t provides to start a new agent from, by
+ * title, with the agents in the workspace that started from each. A
  * template isn't installed: an owner starts an agent from one (a member,
  * a personal agent) and configures it, and the agent is its own from then on.
  */
@@ -10,7 +10,7 @@ import { Link, data } from "react-router";
 import type { Route } from "./+types/templates";
 import { TemplateCard } from "../../../components/agent-templates";
 import { EmptyState } from "../../../components/ui";
-import { byDepartment, startPath, templateListings } from "../../../lib/agent-templates";
+import { startPath, templateListings } from "../../../lib/agent-templates";
 import { loadTemplates } from "../../../lib/agent-templates.server";
 import { page } from "../../../lib/meta";
 import { requireUser, roleIn } from "../../../lib/session.server";
@@ -57,13 +57,11 @@ export default function AgentTemplates({ loaderData }: Route.ComponentProps) {
         <EmptyState title="Templates can't be shown right now">The agents service didn't answer. Reload in a minute.</EmptyState>
       ) : (
         <div className="space-y-10">
-          {/* One grid in department order: most departments have a single template. */}
+          {/* One grid, in the order g1t lists the roles: a template names a role, never a team. */}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {byDepartment(listings)
-              .flatMap(([, list]) => list)
-              .map((listing) => (
-                <TemplateCard key={listing.template.id} listing={listing} slug={slug} owner={owner} />
-              ))}
+            {listings.map((listing) => (
+              <TemplateCard key={listing.template.id} listing={listing} slug={slug} owner={owner} />
+            ))}
           </div>
           {owner && (
             <section aria-label="Your own">

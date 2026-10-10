@@ -37,7 +37,8 @@ import { frameOf } from "./lib/chrome";
 import { DOCK_COOKIE, SIDEBAR_COOKIE, pinsToShow, sidebarClosed } from "./lib/apps";
 import { savedPins } from "./lib/dock.server";
 import { StandaloneFrame } from "./components/standalone";
-import { billing, chat, inbox, projects, workspaceAgents } from "./lib/services.server";
+import { billing, chat, identity, inbox, projects, workspaceAgents } from "./lib/services.server";
+import { teamsByAgent } from "./lib/people";
 import { unreadTotals } from "./lib/chat";
 import { countsFor, readableRepos } from "./lib/access.server";
 import { shortCache } from "./lib/cache.server";
@@ -271,29 +272,28 @@ async function chatUnreadFor(slug: string, user: User): Promise<ShellData["chat"
 /** The workspace's agents, as the shell lists them; null when the agents service is slow or down. */
 async function agentsFor(slug: string, user: User): Promise<ShellData["agents"]> {
   const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), CHAT_BADGE_WAIT_MS));
-  // The workspace's agents and the person's own personal ones, for "Yours".
-  const read = workspaceAgents
-    .list(slug, user, { personal: "mine" })
-    .then((result) =>
-      result.ok
-        ? result.value
-            .filter((agent) => !agent.archived_at)
-            .map((agent) => ({
-              id: agent.id,
-              handle: agent.handle,
-              display_name: agent.display_name,
-              avatar: agent.avatar,
-              avatar_seed: agent.avatar_seed,
-              role: agent.role,
-              title: agent.title,
-              team: agent.team,
-              department: agent.department,
-              status: agent.status,
-              builtin: agent.builtin === true,
-              scope: agent.scope,
-            }))
-        : null,
-    )
+  // The workspace's agents and the person's own personal ones, for "Yours",
+  // with the teams each is on, for the Agents sidebar's groups.
+  const read = Promise.all([workspaceAgents.list(slug, user, { personal: "mine" }), identity.teamAgentIndex(slug).catch(() => null)])
+    .then(([result, index]) => {
+      if (!result.ok) return null;
+      const teams = index ? teamsByAgent(index) : null;
+      return result.value
+        .filter((agent) => !agent.archived_at)
+        .map((agent) => ({
+          id: agent.id,
+          handle: agent.handle,
+          display_name: agent.display_name,
+          avatar: agent.avatar,
+          avatar_seed: agent.avatar_seed,
+          role: agent.role,
+          title: agent.title,
+          status: agent.status,
+          builtin: agent.builtin === true,
+          scope: agent.scope,
+          ...(teams ? { teams: teams[agent.id] ?? [] } : {}),
+        }));
+    })
     .catch(() => null);
   return Promise.race([read, timeout]);
 }

@@ -1,4 +1,4 @@
-import { GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import type { AgentRouting, ModelTier, SubagentDef } from "@g1t/contracts";
@@ -12,36 +12,78 @@ import { MAX_RESPONSIBILITIES, TIER_LABELS, clampRouting, cleanSubagentName } fr
 const FIELD =
   "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim";
 
-/** The departments an agent can sit in when it is on no team, as the role gallery groups them. */
-export const DEPARTMENTS = ["Engineering", "QA", "Operations", "Docs", "Product", "Customer Support", "Sales"];
+/**
+ * The teams to add a new agent to as it is made: the workspace's teams the
+ * person manages, as chips to press. Membership is the team's, as anyone's
+ * is; with `name`, the chosen teams post as that field, one each.
+ */
+export function TeamPicker({
+  teams,
+  value,
+  onChange,
+  name,
+}: {
+  teams: { slug: string; name: string }[];
+  /** Controlled: the chosen slugs; otherwise the picker keeps its own. */
+  value?: string[];
+  onChange?: (next: string[]) => void;
+  name?: string;
+}) {
+  const [own, setOwn] = useState<string[]>([]);
+  const chosen = value ?? own;
+  const set = onChange ?? setOwn;
+  if (!teams.length) {
+    return <p className="text-[0.8125rem] text-muted">No teams you can add agents to yet. Owners and a team&apos;s maintainers add agents to it.</p>;
+  }
+  return (
+    <div>
+      <div role="group" aria-label="Add to teams" className="flex flex-wrap gap-1.5">
+        {teams.map((team) => {
+          const on = chosen.includes(team.slug);
+          return (
+            <button
+              key={team.slug}
+              type="button"
+              aria-pressed={on}
+              onClick={() => set(on ? chosen.filter((slug) => slug !== team.slug) : [...chosen, team.slug])}
+              className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[0.8125rem] transition-colors sm:h-8 ${
+                on ? "border-accent/50 bg-accent/10 text-fg" : "border-line text-muted hover:border-line-strong hover:text-fg"
+              }`}
+            >
+              {on ? <Check size={13} className="text-accent" /> : <Plus size={13} />}
+              {team.name}
+            </button>
+          );
+        })}
+      </div>
+      {name && chosen.map((slug) => <input key={slug} type="hidden" name={name} value={slug} />)}
+    </div>
+  );
+}
 
 /**
- * An agent's role: its title, the team it is on (or a department, when it
- * is on none), and what it is responsible for, as a list to add to, edit
- * and reorder.
+ * An agent's role: its title and what it is responsible for, as a list to
+ * add to, edit and reorder. Making one, the teams to add it to as well:
+ * teams are memberships, changed on the team or the agent's profile after.
  */
 export function RoleFields({
   title,
-  team,
-  department,
   responsibilities,
-  teams,
+  joinable,
   errors,
   locked,
   personal = false,
 }: {
-  /** A personal agent: on no team, so no team to choose. */
+  /** A personal agent: on no team. */
   personal?: boolean;
   title: string;
-  team: string | null;
-  department: string;
   responsibilities: string[];
-  teams: { slug: string; name: string }[];
+  /** Making an agent: the teams the person may add it to. Null on a profile, where its Teams section does that. */
+  joinable?: { slug: string; name: string }[] | null;
   errors: Record<string, string>;
   locked?: boolean;
 }) {
   const [items, setItems] = useState<string[]>(responsibilities.length > 0 ? responsibilities : [""]);
-  const [onTeam, setOnTeam] = useState(team ?? "none");
   const [dragging, setDragging] = useState<number | null>(null);
   const move = (from: number, to: number) =>
     setItems((now) => {
@@ -52,73 +94,33 @@ export function RoleFields({
     });
   return (
     <>
-      <div className="grid gap-5 sm:grid-cols-2">
-        <div>
-          <label htmlFor="title" className="mb-1.5 flex items-baseline justify-between text-sm font-medium text-fg-soft">
-            Title
-            {errors.title && <span className="text-xs font-normal text-danger">{errors.title}</span>}
-          </label>
-          <input
-            id="title"
-            name="title"
-            defaultValue={title}
-            readOnly={locked}
-            placeholder="QA Engineer"
-            className={`${FIELD} ${locked ? "cursor-not-allowed text-muted" : ""}`}
-            autoComplete="off"
-            data-1p-ignore
-          />
-        </div>
-        {personal ? (
-          <div>
-            <p className="mb-1.5 text-sm font-medium text-fg-soft">Team</p>
-            <p className="flex min-h-9 items-center text-[0.8125rem] text-muted">Personal agents join teams once an owner promotes them.</p>
-          </div>
-        ) : (
-        <div>
-          <label htmlFor="team" className="mb-1.5 block text-sm font-medium text-fg-soft">
-            Team
-          </label>
-          <Select name="team" value={onTeam} onValueChange={setOnTeam} disabled={locked}>
-            <SelectTrigger id="team">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none" description="Placed by a department label instead">
-                No team
-              </SelectItem>
-              {teams.map((t) => (
-                <SelectItem key={t.slug} value={t.slug}>
-                  {t.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        )}
+      <div className="max-w-sm">
+        <label htmlFor="title" className="mb-1.5 flex items-baseline justify-between text-sm font-medium text-fg-soft">
+          Title
+          {errors.title && <span className="text-xs font-normal text-danger">{errors.title}</span>}
+        </label>
+        <input
+          id="title"
+          name="title"
+          defaultValue={title}
+          readOnly={locked}
+          placeholder="QA Engineer"
+          className={`${FIELD} ${locked ? "cursor-not-allowed text-muted" : ""}`}
+          autoComplete="off"
+          data-1p-ignore
+        />
       </div>
-      {onTeam === "none" && (
+      {joinable && (
         <div>
-          <label htmlFor="department" className="mb-1.5 flex items-baseline justify-between text-sm font-medium text-fg-soft">
-            Department
-            <span className="text-xs font-normal text-faint">Where it shows in the Agents sidebar</span>
-          </label>
-          <input
-            id="department"
-            name="department"
-            list="departments"
-            defaultValue={department}
-            readOnly={locked}
-            placeholder="QA"
-            className={`${FIELD} ${locked ? "cursor-not-allowed text-muted" : ""}`}
-            autoComplete="off"
-            data-1p-ignore
-          />
-          <datalist id="departments">
-            {DEPARTMENTS.map((d) => (
-              <option key={d} value={d} />
-            ))}
-          </datalist>
+          <p className="mb-1.5 flex items-baseline justify-between gap-3 text-sm font-medium text-fg-soft">
+            Add to teams
+            <span className="text-xs font-normal text-faint">{personal ? "" : "Optional. Like adding a person."}</span>
+          </p>
+          {personal ? (
+            <p className="text-[0.8125rem] text-muted">A personal agent is on no team. Once an owner promotes it, add it to teams like anyone.</p>
+          ) : (
+            <TeamPicker teams={joinable} name="teams" />
+          )}
         </div>
       )}
       <div>

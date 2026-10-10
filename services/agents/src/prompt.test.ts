@@ -116,12 +116,12 @@ test("a new agent's hello: asked in its own voice, or a fixed friendly one witho
   assert.match(fixedHello({ display_name: "Dot", handle: "dot", role: "" }, null), /^Hi! I'm Dot \(@dot\)\. Mention me/);
 });
 
-test("the prompt says the agent's title, team, duties, and that subagents work inside sessions", () => {
+test("the prompt says the agent's title, its teams, duties, and that subagents work inside sessions", () => {
   const prompt = systemPrompt({
     ...base,
-    agent: { ...agent, title: "QA Engineer", team: "qa", responsibilities: ["Review pull requests", "Chase flaky checks"], subagents: [{ name: "flake-hunter", description: "Bisects flaky tests" }] },
+    agent: { ...agent, title: "QA Engineer", teams: ["QA", "Release"], responsibilities: ["Review pull requests", "Chase flaky checks"], subagents: [{ name: "flake-hunter", description: "Bisects flaky tests" }] },
   });
-  assert.match(prompt, /You are Ship \(@ship\), the QA Engineer on the qa team, an agent/);
+  assert.match(prompt, /You are Ship \(@ship\), the QA Engineer on QA and Release, an agent/);
   assert.match(prompt, /## Your responsibilities\n\n- Review pull requests\n- Chase flaky checks/);
   assert.match(prompt, /- flake-hunter: Bisects flaky tests/);
   assert.match(prompt, /use_subagent/);
@@ -146,7 +146,7 @@ test("with read tools, the prompt says honestly what it can read, and that tool 
 });
 
 test("every agent knows its colleagues: consult, offer hand-offs, steer, no ping-pong", () => {
-  const prompt = systemPrompt({ ...base, colleagues: "- @margo: QA Engineer on the qa team. idle; $0.00, no cap this month." });
+  const prompt = systemPrompt({ ...base, colleagues: "- @margo: QA Engineer on QA. idle; $0.00, no cap this month." });
   assert.match(prompt, /## Your colleagues\n\n- @margo: QA Engineer/);
   assert.match(prompt, /ask_colleague/);
   assert.match(prompt, /offer it; don't do it silently/);

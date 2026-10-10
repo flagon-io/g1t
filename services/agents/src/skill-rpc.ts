@@ -38,7 +38,8 @@ export function libraryFor(ctx: ViewContext, audit: (action: string, name: strin
       return found?.ok ? { id: found.value.id, full: `${found.value.namespace}/${found.value.name}`, default_branch: found.value.defaultBranch } : null;
     },
     ...repoFiles(env),
-    agentTeams: async (agent) => (await identity.agentTeams(ctx.slug, agent.id, agent.team)).map((t) => ({ slug: t.slug, name: t.name })),
+    agentTeams: async (agentId) => (await identity.agentTeams(ctx.slug, agentId)).map((t) => ({ slug: t.slug, name: t.name })),
+    teamAgentIndex: async () => (await identity.teamAgentIndex(ctx.slug)).map((t) => ({ slug: t.slug, agent_ids: t.agent_ids })),
     audit,
   };
   return new Library({ db: ctx.db, workspaceId: ctx.workspaceId, slug: ctx.slug, viewer: { id: ctx.viewer.id, username: ctx.viewer.username, kind: ctx.viewer.kind }, owner: ctx.owner, ports });

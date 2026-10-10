@@ -99,7 +99,9 @@ export type LibraryPorts = {
   /** Blobs as base64; null data for one missing or over 1 MB. */
   blobs(repoId: string, hashes: string[]): Promise<{ hash: string; data: string | null }[]>;
   /** The visible teams an agent is on. */
-  agentTeams(agent: { id: string; team: string | null }): Promise<{ slug: string; name: string }[]>;
+  agentTeams(agentId: string): Promise<{ slug: string; name: string }[]>;
+  /** The workspace's visible teams, each with the agents on it, by id. */
+  teamAgentIndex(): Promise<{ slug: string; agent_ids: string[] }[]>;
   /** The workspace's audit log. */
   audit(action: string, name: string, message: string): void;
 };
@@ -733,34 +735,32 @@ export class Library {
     if (!mayChange(actor, scope, key)) {
       return fail("forbidden", scope === "team" ? "Only owners and the team's maintainers attach skills to it." : "Only the workspace's owners attach skills to agents and to every agent.");
     }
-    // At most SKILLS_PER_AGENT_MAX reach any one agent: counted for what this attachment adds to.
+    // At most SKILLS_PER_AGENT_MAX reach any one agent, through the teams it is on (team
+    // memberships, from identity): counted for each agent this attachment reaches.
+    const index = await this.ctx.ports.teamAgentIndex().catch(() => []);
+    const memberships = JSON.stringify(index.flatMap((team) => team.agent_ids.map((id) => [id, team.slug])));
+    const which = scope === "workspace" ? "?3 = ?3" : scope === "team" ? "EXISTS (SELECT 1 FROM m WHERE m.agent_id = ag.id AND m.slug = ?3)" : "ag.id = ?3";
+    const most = await this.db
+      .prepare(
+        `WITH m(agent_id, slug) AS (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?4))
+         SELECT COALESCE(MAX(n), 0) AS n FROM (
+           SELECT ag.id, COUNT(DISTINCT a.skill_id) AS n
+           FROM agents ag
+           JOIN skill_attachments a ON a.workspace_id = ag.workspace_id
+             AND (a.scope = 'workspace' OR (a.scope = 'agent' AND a.target = ag.id) OR (a.scope = 'team' AND EXISTS (SELECT 1 FROM m WHERE m.agent_id = ag.id AND m.slug = a.target)))
+           JOIN skills s ON s.id = a.skill_id AND s.archived_at IS NULL
+           WHERE ag.workspace_id = ?1 AND ag.archived_at IS NULL AND a.skill_id <> ?2 AND ${which}
+           GROUP BY ag.id)`,
+      )
+      .bind(this.ctx.workspaceId, row.id, key, memberships)
+      .first<{ n: number }>();
+    // And what is attached where it lands already, for a team or workspace with no agents yet.
     const reach =
-      scope === "workspace"
-        ? "(a.scope = 'workspace' AND ?3 = ?3)"
-        : scope === "team"
-          ? "(a.scope = 'workspace' OR (a.scope = 'team' AND a.target = ?3))"
-          : "(a.scope = 'workspace' OR (a.scope = 'agent' AND a.target = ?3) OR (a.scope = 'team' AND a.target = (SELECT COALESCE(team, '') FROM agents WHERE id = ?3)))";
-    // And for each agent it reaches (by their home team): the most any one of them has already.
-    const which = scope === "workspace" ? "?3 = ?3" : scope === "team" ? "COALESCE(ag.team, '') = ?3" : "ag.id = ?3";
-    const [count, most] = await Promise.all([
-      this.db
-        .prepare(`SELECT COUNT(DISTINCT a.skill_id) AS n FROM skill_attachments a JOIN skills s ON s.id = a.skill_id AND s.archived_at IS NULL WHERE a.workspace_id = ?1 AND a.skill_id <> ?2 AND ${reach}`)
-        .bind(this.ctx.workspaceId, row.id, key)
-        .first<{ n: number }>(),
-      this.db
-        .prepare(
-          `SELECT COALESCE(MAX(n), 0) AS n FROM (
-             SELECT ag.id, COUNT(DISTINCT a.skill_id) AS n
-             FROM agents ag
-             JOIN skill_attachments a ON a.workspace_id = ag.workspace_id
-               AND (a.scope = 'workspace' OR (a.scope = 'agent' AND a.target = ag.id) OR (a.scope = 'team' AND a.target = COALESCE(ag.team, '')))
-             JOIN skills s ON s.id = a.skill_id AND s.archived_at IS NULL
-             WHERE ag.workspace_id = ?1 AND ag.archived_at IS NULL AND a.skill_id <> ?2 AND ${which}
-             GROUP BY ag.id)`,
-        )
-        .bind(this.ctx.workspaceId, row.id, key)
-        .first<{ n: number }>(),
-    ]);
+      scope === "workspace" ? "(a.scope = 'workspace' AND ?3 = ?3)" : scope === "team" ? "(a.scope = 'workspace' OR (a.scope = 'team' AND a.target = ?3))" : "(a.scope = 'workspace' OR (a.scope = 'agent' AND a.target = ?3))";
+    const count = await this.db
+      .prepare(`SELECT COUNT(DISTINCT a.skill_id) AS n FROM skill_attachments a JOIN skills s ON s.id = a.skill_id AND s.archived_at IS NULL WHERE a.workspace_id = ?1 AND a.skill_id <> ?2 AND ${reach}`)
+      .bind(this.ctx.workspaceId, row.id, key)
+      .first<{ n: number }>();
     if (Math.max(count?.n ?? 0, most?.n ?? 0) >= SKILLS_PER_AGENT_MAX) {
       return fail("invalid", `An agent has at most ${SKILLS_PER_AGENT_MAX} skills from the library, and ${scope === "workspace" ? "an agent" : label} would have more. Detach one first.`);
     }
@@ -834,12 +834,12 @@ export class Library {
   async agentSkills(handle: unknown): Promise<Result<AgentSkills>> {
     const key = String(handle ?? "").trim().replace(/^@/, "").toLowerCase();
     const agent = await this.db
-      .prepare("SELECT id, handle, team, skills_off FROM agents WHERE workspace_id = ? AND handle = ? AND archived_at IS NULL")
+      .prepare("SELECT id, handle, skills_off FROM agents WHERE workspace_id = ? AND handle = ? AND archived_at IS NULL")
       .bind(this.ctx.workspaceId, key)
-      .first<{ id: string; handle: string; team: string | null; skills_off: string | null }>();
+      .first<{ id: string; handle: string; skills_off: string | null }>();
     if (!agent) return fail("not_found", `There is no agent called @${key}.`);
     const off = new Set(json<string[]>(agent.skills_off, []));
-    const [teams, actor] = await Promise.all([this.ctx.ports.agentTeams({ id: agent.id, team: agent.team }).catch(() => (agent.team ? [{ slug: agent.team, name: agent.team }] : [])), this.actor()]);
+    const [teams, actor] = await Promise.all([this.ctx.ports.agentTeams(agent.id).catch(() => []), this.actor()]);
     const teamNames = new Map(teams.map((t) => [t.slug, t.name]));
     const rows = await this.db
       .prepare(

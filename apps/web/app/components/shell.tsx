@@ -104,8 +104,12 @@ export type ShellData = {
 /** An agent as the shell lists it. */
 export type ShellAgent = Pick<
   WorkspaceAgent,
-  "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "role" | "status" | "title" | "team" | "department" | "builtin"
-> & { scope?: WorkspaceAgent["scope"] };
+  "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "role" | "status" | "title" | "builtin"
+> & {
+  scope?: WorkspaceAgent["scope"];
+  /** The visible teams it is on (team memberships); absent when they couldn't be read. */
+  teams?: { slug: string; name: string }[];
+};
 
 function SidebarLink({
   to,

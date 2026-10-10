@@ -18,7 +18,7 @@ widest to the narrowest. The first one that is used up stops the work.
 | **The workspace's spend limit and AI credit** | Owners and billing managers, under [Billing](/guides/usage-and-billing/#your-spend-limit). | A hard stop for everything, agents included. |
 | **The agent budget** | Owners, under **Agents → Budget**. | Every agent's work together, each month. At 100% no agent takes new work until the 1st, or until an owner raises it. |
 | **A person's budget** | Owners, under [Workspace → Spend](/guides/spend/#budgets): a default for everyone, and a budget of their own for anyone. | What agents spend on the work one person asks for, each month. At 100% agents take no new work for that person until the 1st, and say so where they were asked. |
-| **A team's budget** | Owners and the team's maintainers, under the team's **Settings**, [**Lead, channel and budget**](/guides/teams/#lead-channel-and-budget). | What the team's agents, added and home team, spend together each month. At 100% the agents on that team take no new work until the 1st, and say: *Backend's agents have used the team's budget of $150.00 for this month. Someone who manages the team can raise it on its settings.* |
+| **A team's budget** | Owners and the team's maintainers, under the team's **Settings**, [**Lead, channel and budget**](/guides/teams/#lead-channel-and-budget). | What the agents on the team spend together each month. At 100% the agents on that team take no new work until the 1st, and say: *Backend's agents have used the team's budget of $150.00 for this month. Someone who manages the team can raise it on its settings.* |
 | **An agent's own budget** | Owners, on the agent's **Profile**. | Monthly, and optionally daily. At 100% that agent takes no new work. |
 | **A session's cap** | The workspace's session cap, or the agent's lower per-session cap. | The session stops at **Needs approval** until an owner approves more. |
 
@@ -74,7 +74,7 @@ The **Agents** page breaks down every agent's spend this month:
 | --- | --- |
 | **By day** | Spend each day, UTC. |
 | **By agent** | Each agent's share, largest first. |
-| **By team** | Agents grouped by their team or department. |
+| **By team** | Each team's agents together, by the teams they are on. An agent on two teams counts towards both; agents on none are under **Not on a team**. |
 | **By kind of work** | Chat replies, sessions, routines, helping colleagues and subagents. |
 | **By who asked** | The work done for each person. Routines and agent-to-agent work have no asker. |
 | **Costliest sessions** | This month's most expensive session trees. |

@@ -8,7 +8,7 @@ import { page } from "../../lib/meta";
 import { TeamRow } from "../../components/teams";
 import { ButtonLink, EmptyState, notACredential } from "../../components/ui";
 import { filterTeams, splitTeams } from "../../lib/teams";
-import { agentIdsOn } from "../../lib/people";
+import { agentsOn } from "../../lib/people";
 import { identity, workspaceAgents } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
@@ -24,13 +24,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const [teams, workspace, directory, agents] = await Promise.all([
     identity.listTeams(viewer, params.owner).then(unwrap),
     identity.getWorkspace(params.owner).catch(() => null),
-    // Which agents are on each team: added to it, or their home team.
+    // Which agents are on each team: its agent members that are still here.
     identity.peopleDirectory(viewer, params.owner).catch(() => null),
     workspaceAgents.list(params.owner, viewer!).catch(() => null),
   ]);
   const listed = agents?.ok ? agents.value : [];
   const agentCounts = Object.fromEntries(
-    (directory?.ok ? directory.value.teams : []).map((team) => [team.slug, agentIdsOn(team, listed).length]),
+    (directory?.ok ? directory.value.teams : []).map((team) => [team.slug, agentsOn(team, listed).length]),
   );
   // Who may create one is the workspace's to say (its settings).
   return { teams, agentCounts, slug: params.owner.toLowerCase(), canCreate: mayCreateTeams(workspace?.teamCreation, role) };

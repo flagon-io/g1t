@@ -257,8 +257,6 @@ const FIELD_LABELS: Record<string, string> = {
   display_name: "name",
   handle: "handle",
   title: "title",
-  team: "team",
-  department: "department",
   role: "role",
   responsibilities: "responsibilities",
   subagents: "subagents",

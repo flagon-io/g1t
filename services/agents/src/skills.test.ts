@@ -115,8 +115,8 @@ test("a library skill reaches an agent once, at the version where it is attached
   const capped = shelfFrom([], many);
   assert.equal(capped.skills.filter((s) => s.kind === "library").length, SKILLS_PER_AGENT_MAX);
   assert.equal(capped.over, 5);
-  assert.deepEqual(teamSlugs({ teams: [{ slug: "qa" }, { slug: "web" }] as never, agents: [], presence: [] }, "qa"), ["qa", "web"]);
-  assert.deepEqual(teamSlugs(null, "qa"), ["qa"], "its home team when teams couldn't be read");
+  assert.deepEqual(teamSlugs({ teams: [{ slug: "qa" }, { slug: "web" }, { slug: "qa" }] as never, agents: [], presence: [] }), ["qa", "web"]);
+  assert.deepEqual(teamSlugs(null), [], "none when its teams couldn't be read");
 });
 
 test("use_skill reads a skill the agent has: the playbook with what isn't here, files, and scripts never run", async () => {

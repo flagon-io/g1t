@@ -31,6 +31,7 @@ import {
   type WorkspaceAgent,
   chatClient,
   fail,
+  identityClient,
   newId,
   ok,
 } from "@g1t/contracts";
@@ -60,15 +61,28 @@ export type ViewContext = {
   audit?: (action: string, handle: string, message: string) => void;
 };
 
-type AgentFace = { handle: string; display_name: string; avatar_seed: string; team: string | null; department: string };
+type AgentFace = { handle: string; display_name: string; avatar_seed: string };
 
 /** The workspace's agents by id, archived ones too, for names on sessions and spend. */
 async function faces(ctx: ViewContext): Promise<Map<string, AgentFace>> {
   const rows = await ctx.db
-    .prepare("SELECT id, handle, display_name, avatar_seed, team, department FROM agents WHERE workspace_id = ?")
+    .prepare("SELECT id, handle, display_name, avatar_seed FROM agents WHERE workspace_id = ?")
     .bind(ctx.workspaceId)
     .all<{ id: string } & AgentFace>();
   return new Map(rows.results.map((r) => [r.id, { ...r, avatar_seed: r.avatar_seed || r.handle }]));
+}
+
+/** The teams each agent is on, by agent id, from the workspace's teams the viewer can see. Empty when they can't be read. */
+async function teamsOfAgents(ctx: ViewContext): Promise<Map<string, { slug: string; name: string }[]>> {
+  const out = new Map<string, { slug: string; name: string }[]>();
+  const directory = await identityClient(ctx.env.IDENTITY)
+    .peopleDirectory(ctx.viewer, ctx.slug)
+    .catch(() => null);
+  if (!directory?.ok) return out;
+  for (const team of directory.value.teams) {
+    for (const id of team.agent_ids) out.set(id, [...(out.get(id) ?? []), { slug: team.slug, name: team.name }]);
+  }
+  return out;
 }
 
 /**
@@ -114,7 +128,7 @@ async function agentByHandle(ctx: ViewContext, handle: string): Promise<Row | nu
 export async function teamContext(ctx: ViewContext, handle: string): Promise<Result<AgentTeamContext>> {
   const agent = await agentByHandle(ctx, handle);
   if (!agent) return fail("not_found", `There is no agent called @${handle}.`);
-  const here = await loadTeams(ctx.env, ctx.slug, ctx.workspaceId, { id: agent.id, team: agent.team ?? null });
+  const here = await loadTeams(ctx.env, ctx.slug, ctx.workspaceId, { id: agent.id });
   if (!here) return fail("not_found", "Its teams could not be read just now.");
   return ok({ handle: agent.handle, teams: here.teams.map((team) => team.slug), text: teamsSection(agent.id, here, new Date()) });
 }
@@ -510,15 +524,23 @@ export async function spend(ctx: ViewContext, handle: string | null, options: { 
     db.prepare(`SELECT * FROM agent_sessions WHERE ${sFilter} AND parent_id IS NULL ORDER BY charged_micros DESC LIMIT 8`).bind(...binds).all<SessionRow>(),
     faces(ctx),
   ]);
-  const channels = await channelSlices(ctx, byChannel.results);
+  const [channels, onTeams] = await Promise.all([channelSlices(ctx, byChannel.results), teamsOfAgents(ctx)]);
+  // By the teams each agent is on (identity): an agent on two teams counts toward both.
   const byTeamMap = new Map<string, SpendSlice>();
-  for (const row of byAgent.results) {
-    const face = agents.get(row.key ?? "");
-    const team = row.key === BUILDER_ID ? BUILDER_LABEL : face?.team || face?.department || "No team";
-    const slice = byTeamMap.get(team) ?? { key: team, label: team, micros: 0, count: 0 };
+  const add = (key: string, label: string, row: { micros: number; n: number }) => {
+    const slice = byTeamMap.get(key) ?? { key, label, micros: 0, count: 0 };
     slice.micros += row.micros;
     slice.count += row.n;
-    byTeamMap.set(team, slice);
+    byTeamMap.set(key, slice);
+  };
+  for (const row of byAgent.results) {
+    if (row.key === BUILDER_ID) {
+      add(BUILDER_ID, BUILDER_LABEL, row);
+      continue;
+    }
+    const teams = onTeams.get(row.key ?? "") ?? [];
+    if (!teams.length) add("", "Not on a team", row);
+    for (const team of teams) add(team.slug, team.name, row);
   }
   const total = byKind.results.reduce((n, r) => n + r.micros, 0);
   return ok({
@@ -608,9 +630,11 @@ export async function versions(ctx: ViewContext, handle: string): Promise<Result
     .all<{ version: number; definition: string; changed_by: string; created_at: string }>();
   return ok(
     rows.results.map((r) => {
-      let definition = {};
+      let definition: Record<string, unknown> = {};
       try {
-        definition = JSON.parse(r.definition);
+        // Teams are memberships, not part of a version: older versions' team and department are left out.
+        const { team: _team, department: _department, ...rest } = JSON.parse(r.definition) as Record<string, unknown>;
+        definition = rest;
       } catch {
         // An unreadable old version shows as empty.
       }

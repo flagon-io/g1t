@@ -25,7 +25,7 @@ test("a draft comes back from the page checked for shape", () => {
   assert.equal(read.personality_preset, "crisp");
   assert.deepEqual(read.routing, { floor: null, ceiling: "small", providers: [], pinned: null }, "nothing but limits");
   assert.deepEqual(read.budget, { monthly_micros: 20_000_000, daily_micros: null, task_micros: null });
-  assert.equal(read.team, null, "a draft is on no team");
+  assert.ok(!("team" in read) && !("department" in read), "a draft names no team: teams are added as memberships");
   assert.equal(read.scope, "personal");
   assert.equal(readDefinition("not json"), null);
   assert.equal(readDefinition("[1]"), null);
@@ -57,7 +57,6 @@ test("a drafted change lists each field it touches, before and after", () => {
     handle: "juniper",
     display_name: "Juniper",
     title: "Release Manager",
-    department: "",
     instructions: "Cut releases.",
     responsibilities: ["One", "Two"],
     personality_preset: "crisp" as const,

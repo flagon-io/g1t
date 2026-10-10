@@ -3,16 +3,15 @@ import { test } from "node:test";
 
 import type { AgentTemplate } from "@g1t/contracts";
 
-import { byDepartment, roleLine, routingWords, startPath, templateListings, templatePath, templatesPath } from "./agent-templates.ts";
+import { roleLine, routingWords, startPath, templateListings, templatePath, templatesPath } from "./agent-templates.ts";
 
-const template = (id: string, title: string, department = "Engineering"): AgentTemplate => ({
+const template = (id: string, title: string): AgentTemplate => ({
   id,
   display_name: title.split(" ")[0]!,
   handle: id,
   name_ideas: [],
   role: title,
   title,
-  department,
   responsibilities: ["Do the work"],
   subagents: [],
   instructions: "",
@@ -44,21 +43,14 @@ test("without the agents service, no agent is counted", () => {
   assert.deepEqual(eng!.agents, []);
 });
 
-test("templates group by department, in the order they come", () => {
-  const groups = byDepartment(templateListings([template("a", "A One"), template("b", "B Two", "Sales"), template("c", "C Three"), template("d", "D Four", "")], null));
-  assert.deepEqual(
-    groups.map(([department, list]) => [department, list.map((l) => l.template.id)]),
-    [
-      ["Engineering", ["a", "c"]],
-      ["Sales", ["b"]],
-      ["Other", ["d"]],
-    ],
-  );
+test("templates list in the order they come, each a role and never a team", () => {
+  const listed = templateListings([template("a", "A One"), template("b", "B Two")], null);
+  assert.deepEqual(listed.map((l) => l.template.id), ["a", "b"]);
+  for (const { template: t } of listed) assert.ok(!("department" in t) && !("team" in t));
 });
 
 test("a role and its model limits read as words", () => {
-  assert.equal(roleLine({ title: "QA Engineer", department: "Engineering" }), "QA Engineer · Engineering");
-  assert.equal(roleLine({ title: "QA Engineer", department: "" }), "QA Engineer");
+  assert.equal(roleLine({ title: "QA Engineer", display_name: "Margo" }), "QA Engineer · Suggests Margo");
   assert.equal(routingWords({ floor: null, ceiling: null }), "Any model the work needs");
   assert.equal(routingWords({ floor: "large", ceiling: null }), "Large models or better");
   assert.equal(routingWords({ floor: null, ceiling: "large" }), "Up to large models");

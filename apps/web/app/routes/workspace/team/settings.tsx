@@ -33,9 +33,9 @@ const NO_PARENT = "-";
 const NO_LEAD = "none";
 
 /**
- * Its lead, channel and budget. An agent made lead that is on the team
- * only through its home team is added to it first, as identity needs; a
- * channel is found by its name in Chat, as the viewer sees it.
+ * Its lead, channel and budget. An agent made lead is added to the team
+ * first if it isn't on it, as identity needs; a channel is found by its
+ * name in Chat, as the viewer sees it.
  */
 async function saveLeadChannelBudget(form: FormData, workspace: string, slug: string, user: Parameters<typeof identity.updateTeam>[0]) {
   const intent = "people";

@@ -1084,6 +1084,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "set_team_agent" => reply(&identity.set_team_agent(args(body)?).await?),
         "remove_team_agent" => reply(&identity.remove_team_agent(args(body)?).await?),
         "agent_teams" => reply(&identity.agent_teams(args(body)?).await?),
+        "team_agent_index" => reply(&identity.team_agent_index(args(body)?).await?),
+        "adopt_agent_teams" => reply(&identity.adopt_agent_teams(args(body)?).await?),
         "people_directory" => reply(&identity.people_directory(args(body)?).await?),
         "set_member_profile" => reply(&identity.set_member_profile(args(body)?).await?),
         "resolve_owners" => reply(&identity.resolve_owners(args(body)?).await?),

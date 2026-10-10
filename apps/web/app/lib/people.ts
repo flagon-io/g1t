@@ -8,13 +8,13 @@ import type { DirectoryPerson, DirectoryTeam, PeopleDirectory, TeamLead, Workspa
 /** An agent as People's pages need it. */
 export type PeopleAgent = Pick<
   WorkspaceAgent,
-  "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "title" | "role" | "team" | "department" | "status" | "responsibilities" | "builtin" | "spent_month_micros"
+  "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "title" | "role" | "status" | "responsibilities" | "builtin" | "spent_month_micros"
 >;
 
 /** Just what People's pages read of an agent, so loaders send no more. */
 export function peopleAgent(agent: PeopleAgent): PeopleAgent {
-  const { id, handle, display_name, avatar, avatar_seed, title, role, team, department, status, responsibilities, builtin, spent_month_micros } = agent;
-  return { id, handle, display_name, avatar, avatar_seed, title, role, team, department, status, responsibilities, builtin, spent_month_micros };
+  const { id, handle, display_name, avatar, avatar_seed, title, role, status, responsibilities, builtin, spent_month_micros } = agent;
+  return { id, handle, display_name, avatar, avatar_seed, title, role, status, responsibilities, builtin, spent_month_micros };
 }
 
 /** Where a person's profile is. */
@@ -27,19 +27,10 @@ export function agentPath(workspace: string, handle: string): string {
   return `/${workspace}/-/people/agents/${handle}`;
 }
 
-/** The agents on a team, by id: those added to it, then those whose home team it is. */
-export function agentIdsOn(team: Pick<DirectoryTeam, "slug" | "agent_ids">, agents: readonly Pick<PeopleAgent, "id" | "team">[]): string[] {
-  const ids = [...team.agent_ids];
-  for (const agent of agents) if (agent.team === team.slug && !ids.includes(agent.id)) ids.push(agent.id);
-  return ids;
-}
-
-/** The agents on a team, in order, as found among `agents`. */
-export function agentsOn<A extends Pick<PeopleAgent, "id" | "team">>(team: Pick<DirectoryTeam, "slug" | "agent_ids">, agents: readonly A[]): A[] {
+/** The agents on a team, in the order they were added, as found among `agents`. */
+export function agentsOn<A extends Pick<PeopleAgent, "id">>(team: Pick<DirectoryTeam, "agent_ids">, agents: readonly A[]): A[] {
   const byId = new Map(agents.map((agent) => [agent.id, agent]));
-  return agentIdsOn(team, agents)
-    .map((id) => byId.get(id))
-    .filter((agent): agent is A => !!agent);
+  return [...new Set(team.agent_ids)].map((id) => byId.get(id)).filter((agent): agent is A => !!agent);
 }
 
 /** The teams a person is on. */
@@ -47,9 +38,47 @@ export function teamsOfPerson<T extends Pick<DirectoryTeam, "people">>(teams: re
   return teams.filter((team) => team.people.some((person) => person.username === username));
 }
 
-/** The teams an agent is on: added to, or its home team. */
-export function teamsOfAgent<T extends Pick<DirectoryTeam, "slug" | "agent_ids">>(teams: readonly T[], agent: Pick<PeopleAgent, "id" | "team">): T[] {
-  return teams.filter((team) => team.agent_ids.includes(agent.id) || team.slug === agent.team);
+/** The teams an agent is on: its memberships, as a person's are. */
+export function teamsOfAgent<T extends Pick<DirectoryTeam, "agent_ids">>(teams: readonly T[], agent: Pick<PeopleAgent, "id">): T[] {
+  return teams.filter((team) => team.agent_ids.includes(agent.id));
+}
+
+/** A team an agent is on, as the Agents sidebar groups by it. */
+export type AgentTeamRef = { slug: string; name: string };
+
+/** Each agent's teams, by agent id, from teams with the agents on them; the teams by name. */
+export function teamsByAgent(teams: readonly { slug: string; name: string; agent_ids: readonly string[] }[]): Record<string, AgentTeamRef[]> {
+  const out: Record<string, AgentTeamRef[]> = {};
+  for (const team of [...teams].sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const id of new Set(team.agent_ids)) (out[id] ??= []).push({ slug: team.slug, name: team.name });
+  }
+  return out;
+}
+
+/** The label for agents on no team, wherever agents are grouped by team. */
+export const NO_TEAM = "Not on a team";
+
+/**
+ * Agents grouped by the teams they are on, as the Agents sidebar shows
+ * them: each team by name, an agent on two teams under both, and agents on
+ * none last, under "Not on a team". Each group's agents by name.
+ */
+export function groupByTeam<A extends { id: string; display_name: string }>(agents: readonly A[], teamsOf: Record<string, readonly AgentTeamRef[]>): { key: string; label: string; agents: A[] }[] {
+  const groups = new Map<string, { key: string; label: string; agents: A[] }>();
+  const none: A[] = [];
+  for (const agent of agents) {
+    const teams = teamsOf[agent.id] ?? [];
+    if (!teams.length) none.push(agent);
+    for (const team of teams) {
+      const group = groups.get(team.slug) ?? { key: team.slug, label: team.name, agents: [] };
+      if (!group.agents.includes(agent)) group.agents.push(agent);
+      groups.set(team.slug, group);
+    }
+  }
+  const byName = (a: A, b: A) => a.display_name.localeCompare(b.display_name);
+  const out = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label)).map((group) => ({ ...group, agents: group.agents.sort(byName) }));
+  if (none.length) out.push({ key: "", label: NO_TEAM, agents: none.sort(byName) });
+  return out;
 }
 
 /** Whether `lead` is this person or this agent. */
@@ -101,7 +130,7 @@ export function directoryEntries(directory: PeopleDirectory, agents: readonly Pe
   if (kind !== "people") {
     for (const agent of agents) {
       const teams = teamsOfAgent(directory.teams, agent);
-      const fields = [agent.handle, agent.display_name, agent.title, agent.role, agent.department, ...agent.responsibilities, ...teams.map((team) => team.name), "agent"];
+      const fields = [agent.handle, agent.display_name, agent.title, agent.role, ...agent.responsibilities, ...teams.map((team) => team.name), "agent"];
       if (matches(query, fields)) out.push({ kind: "agent", agent, teams });
     }
   }
@@ -212,3 +241,23 @@ export function teamBlock(text: string | null, teamName: string): string | null 
   const found = blocks.find((block) => block.startsWith(`### ${teamName}\n`) || block.trim() === `### ${teamName}`);
   return found ? found.trim() : null;
 }
+
+/** A team an agent is on, as its profile lists it. */
+export type AgentTeamRow = {
+  slug: string;
+  name: string;
+  people: number;
+  agents: number;
+  lead: boolean;
+  /** Whether the viewer may take it off (owners and the team's maintainers). */
+  can_manage: boolean;
+};
+
+export type AgentTeams = {
+  on: AgentTeamRow[];
+  /** Teams it isn't on that the viewer manages, to add it to. */
+  addable: { slug: string; name: string }[];
+};
+
+/** What adding an agent to a team, or taking it off, answers. */
+export type TeamChange = { intent: "join-team" | "leave-team"; team: string; error: string | null };

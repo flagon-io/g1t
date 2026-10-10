@@ -244,7 +244,9 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     teamAgents: (viewer, workspace, team) => call("team_agents", { viewer, workspace, team }),
     setTeamAgent: (actor, workspace, team, agentId) => call("set_team_agent", { actor, workspace, team, agent_id: agentId }),
     removeTeamAgent: (actor, workspace, team, agentId) => call("remove_team_agent", { actor, workspace, team, agent_id: agentId }),
-    agentTeams: (workspace, agentId, homeTeam) => call("agent_teams", { workspace, agent_id: agentId, home_team: homeTeam }),
+    agentTeams: (workspace, agentId) => call("agent_teams", { workspace, agent_id: agentId }),
+    teamAgentIndex: (workspace) => call("team_agent_index", { workspace }),
+    adoptAgentTeams: (workspaceId, agents) => call("adopt_agent_teams", { workspace_id: workspaceId, agents }),
     // People; see people.ts.
     peopleDirectory: (viewer, workspace) => call("people_directory", { viewer, workspace }),
     setMemberProfile: (actor, workspace, username, changes) => call("set_member_profile", { actor, workspace, username, ...changes }),

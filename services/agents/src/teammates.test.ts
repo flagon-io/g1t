@@ -40,22 +40,22 @@ const sales: AgentTeam = {
     person("sofia", { name: "Sofia Reyes", title: "Head of Sales", owns: ["the forecast"], manager: "chase", maintainer: true, timezone: "America/Chicago" }),
     person("jordan", { name: "Jordan Lee", title: "Account Executive", owns: ["Halcyon", "Bluebird"], manager: "sofia" }),
   ],
-  agent_ids: [],
+  agent_ids: ["agt_david"],
 };
 
 const here = (presence: PresenceEntry[]): TeamsHere => ({
   teams: [sales],
   agents: [
-    { id: "agt_david", handle: "david", display_name: "David", title: "CRM keeper", team: "sales" },
-    { id: "agt_pax", handle: "pax", display_name: "Pax", title: "Billing", team: null },
+    { id: "agt_david", handle: "david", display_name: "David", title: "CRM keeper" },
+    { id: "agt_pax", handle: "pax", display_name: "Pax", title: "Billing" },
   ],
   presence,
 });
 
-test("an agent is on the teams it was added to and its home team", () => {
-  const agents = here([]).agents;
-  assert.deepEqual(agentIdsOn(sales, agents), ["agt_david"]);
-  assert.deepEqual(agentIdsOn({ ...sales, agent_ids: ["agt_pax"] }, agents), ["agt_pax", "agt_david"]);
+test("an agent is on the teams it was added to, and only those", () => {
+  assert.deepEqual(agentIdsOn(sales), ["agt_david"]);
+  assert.deepEqual(agentIdsOn({ ...sales, agent_ids: ["agt_pax", "agt_pax"] }), ["agt_pax"]);
+  assert.deepEqual(agentIdsOn({ ...sales, agent_ids: [] }), []);
 });
 
 test("an agent is told who leads, who owns what and who is around", () => {

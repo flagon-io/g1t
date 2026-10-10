@@ -1,4 +1,4 @@
-import { ChevronRight, History } from "lucide-react";
+import { ChevronRight, History, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { Form, data, redirect, useNavigation, useOutletContext } from "react-router";
 
@@ -12,22 +12,28 @@ import { versionChanges } from "../../../components/agents/format";
 import { TimeAgo } from "../../../components/ui";
 import { isOrchestrator } from "../../../components/orchestrator";
 import { readAgentForm } from "../../../lib/agent-form";
-import { docs, identity, workspaceAgents } from "../../../lib/services.server";
+import { docs, workspaceAgents } from "../../../lib/services.server";
+import { agentTeamsFor, changeAgentTeam } from "../../../lib/agent-teams.server";
+import { AgentTeamsEditor } from "../../../components/teams";
 import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.server";
 
-/** The workspace's teams, to put the agent on one, and its saved versions. */
+/** The teams it is on (and may join), and its saved versions. */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   const role = roleIn(viewer, params.owner);
   const [teams, versions, spaces, effortCosts] = await Promise.all([
-    identity.listTeams(viewer, params.owner).catch(() => null),
+    workspaceAgents
+      .get(params.owner.toLowerCase(), params.handle.toLowerCase(), viewer)
+      .then((found) => (found.ok && found.value.scope !== "personal" ? agentTeamsFor(viewer, params.owner.toLowerCase(), found.value.id) : null))
+      .catch(() => null),
     readOrNull(workspaceAgents.versions(params.owner.toLowerCase(), params.handle.toLowerCase(), viewer)),
     readingSpaces(params.owner.toLowerCase(), viewer),
     // What each effort level has cost it, beside the control.
     readOrNull(workspaceAgents.effortCosts(params.owner.toLowerCase(), params.handle.toLowerCase(), viewer)),
   ]);
   return {
-    teams: teams?.ok ? teams.value.map((team) => ({ slug: team.slug, name: team.name })) : [],
+    teams,
+    slug: params.owner.toLowerCase(),
     versions,
     spaces,
     effortCosts,
@@ -52,6 +58,9 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const form = await request.formData();
   const handle = params.handle.toLowerCase();
   const intent = String(form.get("intent") ?? "");
+  // Its teams: the team's own add and remove, from here.
+  const changed = await changeAgentTeam(form, viewer, slug, handle);
+  if (changed) return { teamChange: changed };
   // "Tell <name> what to change": drafted, shown, and saved only when they say so.
   if (intent === "redraft") {
     const drafted = await workspaceAgents.redraft(slug, handle, viewer, String(form.get("request") ?? "")).catch(() => null);
@@ -112,6 +121,22 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
     <>
       {personal && <PersonalNotice agent={agent} owner={loaderData.owner} mine={mine} />}
       {mayChange && <RedraftBox agent={agent} />}
+      {!isOrchestrator(agent) && (
+        <section aria-labelledby="agent-teams" className="mb-8 rounded-xl border border-line bg-surface p-4">
+          <h2 id="agent-teams" className="flex items-center gap-2 text-sm font-medium">
+            <UsersRound size={14} className="text-faint" />
+            Teams
+          </h2>
+          <p className="mt-0.5 mb-3 text-xs text-faint">On teams like anyone: owners and a team&apos;s maintainers add it and take it off.</p>
+          <AgentTeamsEditor
+            slug={loaderData.slug}
+            name={agent.display_name}
+            teams={loaderData.teams}
+            personal={personal}
+            change={actionData && "teamChange" in actionData ? actionData.teamChange : null}
+          />
+        </section>
+      )}
       {actionData && "saved" in actionData && actionData.saved && (
         <p role="status" className="mb-6 rounded-lg border border-success/30 bg-success/10 px-4 py-2.5 text-sm text-success">
           Saved as version {agent.version}.
@@ -127,7 +152,6 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
           intent="update"
           formKey={`${agent.id}:${agent.version}`}
           locked={isOrchestrator(agent)}
-          teams={personal ? [] : loaderData.teams}
           personal={personal}
           spaces={loaderData.spaces}
           effortCosts={loaderData.effortCosts}

@@ -59,6 +59,7 @@ import { onEvents } from "./triggers.ts";
 import { cardAction } from "./cards.ts";
 import { type SessionEnv, sweep } from "./sessions.ts";
 import { EFFORT_NAMES, checkDue, effortCostsOf, markResolved, outcomesSince, readRecommendations, recommendationRow, sinceWindow, toRecommendation } from "./recommend.ts";
+import { moveAgentTeams } from "./team-move.ts";
 import { effortOf } from "./routing.ts";
 import * as views from "./views.ts";
 import { monthKey } from "./budget.ts";
@@ -154,13 +155,23 @@ class Agents {
       .first<Row>();
   }
 
-  /** Whether `team` (a slug, or none) is one of the workspace's teams, as the person changing the agent sees them. */
-  private async teamExists(workspace: string, viewer: User, team: string | null): Promise<Result<null>> {
-    if (!team) return ok(null);
-    const found = await identityClient(this.env.IDENTITY)
-      .getTeam(viewer, workspace.toLowerCase(), team)
-      .catch(() => null);
-    return found?.ok ? ok(null) : fail("invalid", `${workspace} has no team called ${team}.`);
+  /**
+   * The teams a new agent joins as it is made, by slug: each must be one the
+   * viewer manages (an owner, or the team's maintainer), as adding anyone
+   * to a team asks. Membership lives on the team, in identity.
+   */
+  private async joinable(workspace: string, viewer: User, asked: unknown): Promise<Result<string[]>> {
+    if (asked === undefined || asked === null) return ok([]);
+    if (!Array.isArray(asked) || asked.some((slug) => typeof slug !== "string")) return fail("invalid", "Teams are a list of team slugs.");
+    const slugs = [...new Set((asked as string[]).map((slug) => slug.trim().replace(/^@/, "").toLowerCase()).filter(Boolean))];
+    if (slugs.length > 20) return fail("invalid", "Add a new agent to at most 20 teams.");
+    const identity = identityClient(this.env.IDENTITY);
+    const found = await Promise.all(slugs.map((slug) => identity.getTeam(viewer, workspace.toLowerCase(), slug).catch(() => null)));
+    for (const [i, team] of found.entries()) {
+      if (!team?.ok) return fail("invalid", `${workspace} has no team called ${slugs[i]}.`);
+      if (!team.value.can_manage) return fail("forbidden", `Only owners and ${team.value.name}'s maintainers add agents to it.`);
+    }
+    return ok(slugs);
   }
 
   private async handleTaken(workspaceId: string, handle: string, except: string | null): Promise<boolean> {
@@ -238,7 +249,7 @@ class Agents {
     return ok({ workspaceId: seen.value, scope: scope.scope, policy });
   }
 
-  async create(a: { workspace: string; viewer: User | null; input: NewWorkspaceAgent }): Promise<Result<WorkspaceAgent>> {
+  async create(a: { workspace: string; viewer: User | null; input: NewWorkspaceAgent; teams?: unknown }): Promise<Result<WorkspaceAgent>> {
     const allowed = await this.creatable(a.workspace, a.viewer, a.input?.scope);
     if (!allowed.ok) return allowed;
     const { workspaceId, scope, policy } = allowed.value;
@@ -263,13 +274,13 @@ class Agents {
       task_micros: given.task_micros !== undefined ? given.task_micros : start.task_micros,
     };
     const { scope: _scope, ...rest } = a.input ?? ({} as NewWorkspaceAgent);
-    // A personal agent is on no team: teams are shared, and it answers only its member.
-    const input = { ...rest, budget, ...(personal ? { team: null } : {}) };
+    const input = { ...rest, budget };
     const checked = applyChanges(null, input, TEMPLATE_IDS);
     if (!checked.ok) return fail("invalid", checked.message);
     const definition = checked.value;
-    const team = await this.teamExists(a.workspace, viewer, definition.team);
-    if (!team.ok) return team;
+    // A personal agent is on no team: teams are shared, and it answers only its member.
+    const teams = personal ? ok([] as string[]) : await this.joinable(a.workspace, viewer, a.teams);
+    if (!teams.ok) return teams;
     if (await this.handleTaken(workspaceId, definition.handle, null)) {
       return fail("conflict", `${a.workspace} already has an agent called @${definition.handle}.`);
     }
@@ -287,6 +298,18 @@ class Agents {
       throw error;
     }
     this.audit(viewer, a.workspace, "create_agent", definition.handle, `Created ${personal ? "the personal agent " : ""}@${definition.handle} (version 1)`, "agents", personal ? "member" : "owner");
+    // On its teams before it says hello, so it knows them.
+    if (teams.value.length) {
+      const identity = identityClient(this.env.IDENTITY);
+      await Promise.all(
+        teams.value.map((slug) =>
+          identity
+            .setTeamAgent(viewer, a.workspace.toLowerCase(), slug, id)
+            .then((added) => (added.ok ? null : console.error("agents: a new agent was not added to its team", id, slug, added.error.message)))
+            .catch((error: unknown) => console.error("agents: a new agent was not added to its team", id, slug, String(error))),
+        ),
+      );
+    }
     this.defer(this.hello(a.workspace, workspaceId, id, viewer));
     const row = await this.row(workspaceId, definition.handle);
     return ok(toAgent(row!, new Date()));
@@ -619,19 +642,12 @@ class Agents {
     const before = definitionOf(row);
     const { scope: _scope, ...asked } = (a.changes ?? {}) as Partial<NewWorkspaceAgent>;
     // The built-in @g1t keeps who it is and its job; the rest is the workspace's.
-    // A personal agent stays on no team.
-    const allowed = row.builtin
-      ? builtinChanges(before, asked)
-      : { ok: true as const, value: isPersonal(row) && asked.team !== undefined ? { ...asked, team: null } : asked };
+    const allowed = row.builtin ? builtinChanges(before, asked) : { ok: true as const, value: asked };
     if (!allowed.ok) return fail("invalid", allowed.message);
     const checked = applyChanges(before, allowed.value, TEMPLATE_IDS, { builtin: !!row.builtin });
     if (!checked.ok) return fail("invalid", checked.message);
     const definition = checked.value;
     if (JSON.stringify(definition) === JSON.stringify(before)) return ok(toAgent(row, new Date()));
-    if (definition.team !== before.team) {
-      const team = await this.teamExists(a.workspace, a.viewer!, definition.team);
-      if (!team.ok) return team;
-    }
     if (definition.handle !== before.handle && (await this.handleTaken(workspaceId, definition.handle, row.id))) {
       return fail("conflict", `${a.workspace} already has an agent called @${definition.handle}.`);
     }
@@ -964,7 +980,7 @@ export default {
     batch.ackAll();
   },
 
-  /** Every few minutes: routines that are due, session steps a desk lost, and once an hour the spend check. */
+  /** Every few minutes: routines that are due, session steps a desk lost, the spend check, and the one-time team move. */
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const sessions = env as unknown as SessionEnv;
     ctx.waitUntil(
@@ -973,6 +989,8 @@ export default {
         sweep(sessions).catch((error: unknown) => console.error("agents: the session sweep failed", String(error))),
         // Spend less, keep quality: each workspace checked weekly (src/recommend.ts).
         checkDue(env.DB).catch((error: unknown) => console.error("agents: the spend check failed", String(error))),
+        // Once: agents' own old teams become team memberships (src/team-move.ts); after that, one cheap read.
+        moveAgentTeams(env.DB, (id, agents) => identityClient(env.IDENTITY).adoptAgentTeams(id, agents)).catch((error: unknown) => console.error("agents: moving agents' teams failed", String(error))),
       ]),
     );
   },

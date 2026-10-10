@@ -25,6 +25,7 @@ const drafted = {
   name_ideas: ["Wren", "Juniper", "Basil", "!!"],
   title: "Release Manager",
   department: "Engineering",
+  team: "release",
   instructions: "You cut releases.\n- Read merged pull requests since the last tag.\n- Write the notes.",
   responsibilities: ["Cut a release every Tuesday", "Write the release notes", "Ask in #releases before tagging"],
   personality_preset: "friendly",
@@ -43,7 +44,7 @@ test("a description becomes a complete definition that create takes as it is", (
   assert.equal(definition.handle, "juniper");
   assert.equal(definition.display_name, "Juniper");
   assert.equal(definition.scope, "personal");
-  assert.equal(definition.team, null, "a draft is on no team");
+  assert.ok(!("team" in definition) && !("department" in definition), "a draft names no team or department, whatever the model says");
   assert.deepEqual(definition.budget, { monthly_micros: 20_000_000, daily_micros: null, task_micros: 2_000_000 }, "$20 a month, $2 a session");
   assert.deepEqual(definition.routing, { floor: null, ceiling: "small", providers: [], pinned: null }, "a floor above the ceiling is dropped");
   assert.deepEqual(made.value.skills, ["documents", "code"], "unknown skills are left out");

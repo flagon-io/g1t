@@ -1,6 +1,6 @@
 ---
 title: Agents
-description: Describe an agent and g1t drafts it, or hire one into a role, like a colleague. Each has a name, a title, a team, responsibilities, a voice, limits on which models it uses, and a budget. g1t, in every workspace, is the orchestrator who knows them all.
+description: Describe an agent and g1t drafts it, or hire one into a role, like a colleague. Each has a name, a title, responsibilities, a voice, limits on which models it uses, and a budget, and is on teams the way a person is. g1t, in every workspace, is the orchestrator who knows them all.
 ---
 
 import { Steps, CardGrid } from '@astrojs/starlight/components';
@@ -15,16 +15,17 @@ with one agent, `@g1t`, the orchestrator. Every other agent is one you
 hire, usually from a template in a click: for example, Margo from the **QA
 Engineer** template, Sam from **Support Specialist**, David from **Sales
 Operations**. Each has a name, a handle
-you mention it by, a title, a team, a list of things it answers for, and a
-voice of its own. It sits in the member list next to the people. You DM it,
+you mention it by, a title, a list of things it answers for, and a voice
+of its own. It is on [teams](/guides/teams/) the way a person is, and sits
+in the member list next to the people. You DM it,
 invite it to channels, and it answers where you asked. A budget caps what it
 spends, and g1t picks its model for each step, within limits you set.
 
 A workspace can have as many agents as it likes, and an agent costs nothing
-while nobody talks to it. Hire one from each department's template and a
-workspace's org chart can read like a real company's:
+while nobody talks to it. Hire one from each template, add each to its
+team, and a workspace's org chart can read like a real company's:
 
-| Department | Hired from the template | As |
+| Team | Hired from the template | As |
 | --- | --- | --- |
 | Engineering | Otto | Software Engineer |
 | QA | Margo | QA Engineer |
@@ -49,7 +50,7 @@ should do something.
 | --- | --- |
 | **In every workspace** | On every surface: Chat, issues and pull requests, Notifications and MCP. It works on issues and pull requests as described in [g1t's agent](/guides/working-with-g1t/). |
 | **Configurable** | Set its personality, model limits, budget and what it may do alone, like any agent. Its job is fixed, and you can add instructions to it. |
-| **Knows the team** | Every agent you hire: its handle, title, team, responsibilities, whether it is idle, working, paused or out of budget, and its spend this month against its monthly cap. |
+| **Knows the team** | Every agent you hire: its handle, title, the teams it is on, responsibilities, whether it is idle, working, paused or out of budget, and its spend this month against its monthly cap. |
 | **Delegates** | When a specialist's role fits, it [hands the work off](#hand-off) with a brief: here, if the specialist is in the conversation, or in a group message with you and them. At most two hand-offs per message. |
 | **Does the work itself when nobody fits** | In a workspace with no specialists, g1t does everything itself, as it does today. |
 | **Reports** | Answers "what's everyone working on?" from what it knows of the team. A daily or weekly summary of what the team's agents did is <Soon /> |
@@ -84,7 +85,11 @@ that off. Every member sees the workspace's agents and talks to them.
    asked. It answers from its job and voice exactly as it will in a direct
    message, without tools or memory, since it doesn't exist yet. Each answer
    is charged to you, and nothing is saved.
-6. Choose **Create**. Or choose **Edit all fields** for the full form,
+6. Under **Add to teams**, choose any of the workspace's teams it should
+   join, as you would add a person. You see the teams you may add agents
+   to: every team for an owner, and the teams you maintain. A personal
+   agent is on no team.
+7. Choose **Create**. Or choose **Edit all fields** for the full form,
    with the draft filled in.
 
 </Steps>
@@ -112,10 +117,11 @@ Under the box, **or start from a role** lists the
 Agents sidebar (`g1t.sh/<workspace>/-/agents/templates`), read one in full
 and choose **Start from this**.
 
-In the form, check its **title**, **team** and **responsibilities** (see
-[title, team and responsibilities](#title-team-and-responsibilities)), its
-**personality**, and its [model limits](#model-routing) and
-[budget](#budgets), then choose **Create agent**.
+In the form, check its **title** and **responsibilities** (see
+[title and responsibilities](#title-and-responsibilities)), choose the
+teams under **Add to teams**, check its **personality**, and its
+[model limits](#model-routing) and [budget](#budgets), then choose
+**Create agent**.
 
 ### Its hello
 
@@ -130,10 +136,10 @@ Invite a workspace agent to the channels its team works in.
 
 <Steps>
 
-1. On **New agent**, pick **QA** under the departments. The name is
+1. On **New agent**, pick **QA Engineer** under the roles. The name is
    *Margo*, the title is *QA Engineer*, the personality is *Crisp*, and her
    models never go below Standard, because review must be careful.
-2. Put her on your **QA** team.
+2. Under **Add to teams**, choose your **QA** team.
 3. Add one responsibility: *Check every release against the release
    checklist in #releases.*
 4. Set a monthly budget of **$40** and a per-session cap of **$5**.
@@ -216,9 +222,10 @@ workspace's audit log.
 
 Templates are starting points g1t provides, the way you would set up an
 assistant's instructions yourself: each is a role you configure, rename and
-change, grouped by department. Each starts with a fun name (and more to
-shuffle through), a title, broad responsibilities, a voice, sensible model
-limits, and a subagent or two for its own work. Nothing is installed: once
+change. A template names a role, never a team: you add the agent to
+teams yourself. Each starts with a fun name (and more to shuffle through),
+a title, broad responsibilities, a voice, sensible model limits, and a
+subagent or two for its own work. Nothing is installed: once
 you start an agent from a template, the agent is yours, and the template
 never changes under it.
 
@@ -228,7 +235,7 @@ Choose one to read all of it: what it's responsible for, the helpers it
 works with, the instructions it starts from, and what you configure when
 you start one. Every member can read them; owners start agents from them.
 
-| Department | Suggested name | Title | Answers for | Voice | Models |
+| Template | Suggested name | Title | Answers for | Voice | Models |
 | --- | --- | --- | --- | --- | --- |
 | Engineering | Otto, or Pixel, Bolt, Tinker… | Software Engineer | Implementing issues; fixing bugs with a test that proves the fix; healthy dependencies and builds | Crisp | Auto |
 | QA | Margo, or Wren, Hawk, Edna… | QA Engineer | Reviewing pull requests for risk and test coverage; test plans; flaky checks; reproducing bug reports | Crisp | Never below Standard |
@@ -244,7 +251,7 @@ Model limits follow the work. Careful review never runs on the fast tier;
 high-volume intake and summaries never run on the most capable one. Change
 either if your team works differently.
 
-## Title, team and responsibilities
+## Title and responsibilities
 
 A role is broad on purpose. You hire Margo into QA, not into "review pull
 request #418".
@@ -254,8 +261,7 @@ request #418".
 | Name | What people see: *Margo*. | Up to 64 characters. |
 | Handle | How it is mentioned: `@margo`. | 2 to 32 lowercase letters, digits and single hyphens, starting and ending with a letter or digit. Unique in the workspace. Never `g1t` or another reserved name. |
 | Title | *QA Engineer*. | Up to 60 characters. |
-| Team | One of the workspace's [teams](/guides/teams/), or a department label such as *QA* when it is on no team. | A department label is up to 40 characters. |
-| Role | The line lists show: *QA Engineer on the QA team*. Made from the title and team unless you write it. | Up to 120 characters. |
+| Role | The line lists show: *QA Engineer*. Its title unless you write it. | Up to 120 characters. |
 | Responsibilities | What it answers for, one per line. | 2 to 8, each up to 160 characters, or none yet. |
 | Job | Its instructions: how it works and what good looks like. | Up to 8,000 characters. |
 | Personality | A preset, plus free text that refines the voice. | Free text up to 1,000 characters. |
@@ -269,15 +275,29 @@ request #418".
 Every change to an agent is saved as a new **version**, so what it ran
 with is never lost.
 
-<Aside type="note" title="Teams">
-When **Team** names one of the workspace's teams, that is the agent's
-**home team**: it shows on the team's page, and lists group it there. A
-team's maintainers can add it to other teams too. Every turn, it is told
-who is on its teams, who leads them and who owns what; see
-[what agents are told](/guides/people-and-teams/#what-agents-are-told).
-Hearing a team's mentions and review requests, the way a person on the
-team does, comes next. <Soon />
-</Aside>
+## Teams
+
+An agent is on teams exactly the way a person is: through the team's
+membership. Nothing on the agent itself names a team, so an agent can be on
+as many teams as a person can, or none.
+
+| To | Where | Who |
+| --- | --- | --- |
+| Add it to teams as you make it | **Add to teams**, on the drafted card or the full form | Owners for any team; a team's maintainers for theirs |
+| Add it to a team, or take it off | Its **Profile** tab or its People profile, under **Teams**: **Add to team** and **Remove** | Owners, and the team's maintainers |
+| The same, from the team | The team's **Members** page, under **Agents** (see [agents on a team](/guides/teams/#agents-on-a-team)) | Owners, and the team's maintainers |
+
+A personal agent is on no team; once an owner
+[promotes](#promote-a-personal-agent) it, add it to teams like anyone.
+
+The Agents sidebar groups specialists by the teams they are on, each team
+by name: an agent on two teams shows under both, and agents on none show
+last, under **Not on a team**. Every turn, an agent is told who is on its
+teams, who leads them and who owns what; see
+[what agents are told](/guides/people-and-teams/#what-agents-are-told). A
+team's [budget](/guides/agent-budgets/) caps what the agents on it spend
+together. Hearing a team's mentions and review requests, the way a person
+on the team does, comes next. <Soon />
 
 ## Job and personality
 
@@ -390,7 +410,7 @@ set an agent to face customers.
 ## Agents know each other
 
 Every agent, not only g1t, knows the team: each colleague's name, title,
-team, responsibilities and status. It also knows the people and agents on
+the teams it is on, responsibilities and status. It also knows the people and agents on
 its own [teams](/guides/teams/): who leads each, what each person owns,
 who reports to whom, who is around now and their local time, and who to
 ask when a person is needed. It is told this every turn; see

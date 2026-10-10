@@ -581,17 +581,62 @@ pub struct RemoveTeamAgentArgs {
 }
 
 /// `agent_teams`: for the agents service. The visible teams an agent is
-/// on in a workspace (added to, or its home team), each with everyone on
-/// it, for what the agent is told every turn and its team budgets.
+/// on in a workspace (its `team_agents` memberships), each with everyone
+/// on it, for what the agent is told every turn and its team budgets.
 /// Returns `Vec<AgentTeam>`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AgentTeamsArgs {
     /// The workspace's slug.
     pub workspace: String,
     pub agent_id: String,
-    /// The team its profile names, by slug.
+    /// Sent only by an agents service from before agents' teams were
+    /// memberships, while a deploy rolls out: a team it named itself, by
+    /// slug, counted as one it is on. Newer callers leave it out.
     #[serde(default)]
     pub home_team: Option<String>,
+}
+
+/// `team_agent_index`: for the agents service. A workspace's visible
+/// teams, each with the agents on it, for the roster agents are told and
+/// spend by team. Returns `Vec<TeamAgentsEntry>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct TeamAgentIndexArgs {
+    /// The workspace's slug.
+    pub workspace: String,
+}
+
+/// A visible team and the agents on it, by id.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamAgentsEntry {
+    pub slug: String,
+    pub name: String,
+    pub agent_ids: Vec<String>,
+}
+
+/// `adopt_agent_teams`: for the agents service, once. Puts each agent on
+/// the team it named itself when an agent carried its own team, matched
+/// by slug in any case, in the workspace by id. Safe to repeat: an agent
+/// already on the team stays as it is. Returns `Vec<AdoptedAgentTeam>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdoptAgentTeamsArgs {
+    pub workspace_id: String,
+    pub agents: Vec<AgentTeamClaim>,
+}
+
+/// An agent and the team it named, by slug.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentTeamClaim {
+    pub agent_id: String,
+    pub team: String,
+}
+
+/// What `adopt_agent_teams` did for one agent.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdoptedAgentTeam {
+    pub agent_id: String,
+    pub team: String,
+    /// `added`, `already` (on it before), or `no_team` (no team of that name).
+    pub outcome: String,
 }
 
 /// A person on a team, as an agent on it is told of them.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { clampRouting, cleanHandle, dollarsField, microsFromDollars, readAgentForm } from "./agent-form.ts";
+import { clampRouting, cleanHandle, dollarsField, microsFromDollars, readAgentForm, readTeams } from "./agent-form.ts";
 
 function form(fields: Record<string, string>): FormData {
   const data = new FormData();
@@ -21,6 +21,7 @@ test("the agent form becomes what the service takes, in micro-dollars", () => {
       handle: "",
       title: "Release Manager",
       department: "Engineering",
+      team: "ops",
       responsibility: "Cut releases",
       instructions: "Cut a release on Tuesdays.",
       personality_preset: "terse",
@@ -44,7 +45,14 @@ test("the agent form becomes what the service takes, in micro-dollars", () => {
   assert.equal(read.input.capacity, 2);
   assert.equal(read.input.title, "Release Manager");
   assert.deepEqual(read.input.responsibilities, ["Cut releases"]);
-  assert.equal(read.input.team, null);
+  assert.ok(!("team" in read.input) && !("department" in read.input), "teams are memberships, never part of the agent");
+});
+
+test("Add to teams reads the teams chosen, by slug, once each", () => {
+  const data = new FormData();
+  for (const slug of ["qa", " Web ", "qa", "not a slug!"]) data.append("teams", slug);
+  assert.deepEqual(readTeams(data), ["qa", "web"]);
+  assert.deepEqual(readTeams(new FormData()), []);
 });
 
 test("the agent form says what to fix", () => {

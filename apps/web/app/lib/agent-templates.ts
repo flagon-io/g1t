@@ -48,19 +48,9 @@ export function templateListings(templates: AgentTemplate[], agents: StartedAgen
   }));
 }
 
-/** Listings by department, in the order the templates come, "Other" for none. */
-export function byDepartment(listings: TemplateListing[]): [string, TemplateListing[]][] {
-  const departments = new Map<string, TemplateListing[]>();
-  for (const listing of listings) {
-    const key = listing.template.department || "Other";
-    departments.set(key, [...(departments.get(key) ?? []), listing]);
-  }
-  return [...departments];
-}
-
-/** "Software Engineer · Engineering": a role as one line. */
-export function roleLine(template: Pick<AgentTemplate, "title" | "department">): string {
-  return template.department ? `${template.title} · ${template.department}` : template.title;
+/** "Software Engineer · Suggests Otto": a role as one line. A template names a role, never a team. */
+export function roleLine(template: Pick<AgentTemplate, "title" | "display_name">): string {
+  return `${template.title} · Suggests ${template.display_name}`;
 }
 
 /** How a routing limit reads: "Any model the work needs", "Large models or better", "Up to large models", "Large to frontier models". */

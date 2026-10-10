@@ -1839,6 +1839,105 @@ impl Identity {
             .collect())
     }
 
+    /// For the agents service: a workspace's visible teams, each with the
+    /// agents on it, for the roster agents are told and spend by team.
+    pub async fn team_agent_index(&self, a: TeamAgentIndexArgs) -> Result<Vec<TeamAgentsEntry>> {
+        #[derive(Deserialize)]
+        struct Row {
+            slug: String,
+            name: String,
+            agent_id: String,
+        }
+        let rows = self
+            .db
+            .prepare(
+                "SELECT t.slug, t.name, ta.agent_id FROM team_agents ta
+                 JOIN teams t ON t.id = ta.team_id
+                 JOIN workspaces w ON w.id = t.workspace_id AND w.deleted_at IS NULL
+                 WHERE w.slug = ?1 AND t.visibility = 'visible'
+                 ORDER BY lower(t.name), ta.created_at LIMIT 5000",
+            )
+            .bind(&[a.workspace.trim().to_lowercase().into()])?
+            .all()
+            .await?
+            .results::<Row>()?;
+        let mut out: Vec<TeamAgentsEntry> = Vec::new();
+        for row in rows {
+            match out.last_mut() {
+                Some(team) if team.slug == row.slug => team.agent_ids.push(row.agent_id),
+                _ => out.push(TeamAgentsEntry {
+                    slug: row.slug,
+                    name: row.name,
+                    agent_ids: vec![row.agent_id],
+                }),
+            }
+        }
+        Ok(out)
+    }
+
+    /// For the agents service, once: puts agents on the teams they named
+    /// themselves when an agent carried its own team. Safe to repeat.
+    pub async fn adopt_agent_teams(&self, a: AdoptAgentTeamsArgs) -> Result<Vec<AdoptedAgentTeam>> {
+        let claims: Vec<AgentTeamClaim> = a.agents.into_iter().take(500).collect();
+        if claims.is_empty() {
+            return Ok(Vec::new());
+        }
+        #[derive(Deserialize)]
+        struct TeamIds {
+            id: String,
+            slug: String,
+        }
+        #[derive(Deserialize)]
+        struct OnRow {
+            team_id: String,
+            agent_id: String,
+        }
+        let ids = serde_json::to_string(&claims.iter().map(|claim| claim.agent_id.trim()).collect::<Vec<_>>())?;
+        let workspace_id = a.workspace_id.trim();
+        let mut found = self
+            .db
+            .batch(vec![
+                self.db
+                    .prepare("SELECT id, slug FROM teams WHERE workspace_id = ?1 LIMIT 2000")
+                    .bind(&[workspace_id.into()])?,
+                self.db
+                    .prepare(
+                        "SELECT ta.team_id, ta.agent_id FROM team_agents ta JOIN teams t ON t.id = ta.team_id
+                         WHERE t.workspace_id = ?1 AND ta.agent_id IN (SELECT value FROM json_each(?2)) LIMIT 5000",
+                    )
+                    .bind(&[workspace_id.into(), ids.as_str().into()])?,
+            ])
+            .await?
+            .into_iter();
+        let teams = match found.next() {
+            Some(result) => result.results::<TeamIds>()?,
+            None => Vec::new(),
+        };
+        let on = match found.next() {
+            Some(result) => result.results::<OnRow>()?,
+            None => Vec::new(),
+        };
+        let teams: HashMap<String, String> = teams.into_iter().map(|team| (team.slug.to_lowercase(), team.id)).collect();
+        let on: HashSet<(String, String)> = on.into_iter().map(|row| (row.team_id, row.agent_id)).collect();
+        let (outcomes, inserts) = plan_adoption(&claims, &teams, &on);
+        if !inserts.is_empty() {
+            let now = rfc3339(now_ms());
+            let mut statements = Vec::with_capacity(inserts.len());
+            for (team_id, agent_id) in &inserts {
+                statements.push(
+                    self.db
+                        .prepare(
+                            "INSERT INTO team_agents (team_id, agent_id, added_by, created_at) VALUES (?1, ?2, NULL, ?3)
+                             ON CONFLICT (team_id, agent_id) DO NOTHING",
+                        )
+                        .bind(&[team_id.as_str().into(), agent_id.as_str().into(), now.as_str().into()])?,
+                );
+            }
+            self.db.batch(statements).await?;
+        }
+        Ok(outcomes)
+    }
+
     // --- Telling others ---
 
     /// Publishes a change to a team and records it in the workspace's
@@ -1902,6 +2001,41 @@ pub fn fold_team_repos(rows: impl IntoIterator<Item = (String, String, RepoRole,
     let mut repos: Vec<TeamRepo> = repos.into_iter().map(|(repo, _)| repo).collect();
     repos.sort_by(|a, b| a.repo.cmp(&b.repo));
     repos
+}
+
+/// What adopting agents' own teams does: each claim's outcome, and the
+/// memberships to add as (team id, agent id). `teams` maps a lowercase
+/// slug to its id; `on` holds the memberships there are already.
+pub(crate) fn plan_adoption(
+    claims: &[AgentTeamClaim],
+    teams: &HashMap<String, String>,
+    on: &HashSet<(String, String)>,
+) -> (Vec<AdoptedAgentTeam>, Vec<(String, String)>) {
+    let mut outcomes = Vec::with_capacity(claims.len());
+    let mut inserts: Vec<(String, String)> = Vec::new();
+    for claim in claims {
+        let agent_id = claim.agent_id.trim();
+        let slug = claim.team.trim().trim_start_matches('@').to_lowercase();
+        let valid = matches!(parse_lead(&format!("agent:{agent_id}")), Some(LeadInput::Agent(_)));
+        let outcome = match teams.get(&slug) {
+            Some(team_id) if valid => {
+                let pair = (team_id.clone(), agent_id.to_owned());
+                if on.contains(&pair) || inserts.contains(&pair) {
+                    "already"
+                } else {
+                    inserts.push(pair);
+                    "added"
+                }
+            }
+            _ => "no_team",
+        };
+        outcomes.push(AdoptedAgentTeam {
+            agent_id: agent_id.to_owned(),
+            team: claim.team.clone(),
+            outcome: outcome.to_owned(),
+        });
+    }
+    (outcomes, inserts)
 }
 
 #[cfg(test)]
@@ -2003,5 +2137,25 @@ mod tests {
         assert_eq!(role_of(&writer, "acme"), Some(Role::Member), "a workspace token is a member unless given Admin");
         writer.token.as_mut().unwrap().admin = true;
         assert_eq!(role_of(&writer, "acme"), Some(Role::Owner));
+    }
+
+    #[test]
+    fn agents_own_teams_become_memberships_once() {
+        let claim = |agent: &str, team: &str| AgentTeamClaim {
+            agent_id: agent.to_owned(),
+            team: team.to_owned(),
+        };
+        let teams: HashMap<String, String> = [("qa".to_owned(), "tm_qa".to_owned()), ("sales".to_owned(), "tm_sales".to_owned())].into();
+        let on: HashSet<(String, String)> = [("tm_sales".to_owned(), "agt_david".to_owned())].into();
+        let claims = [claim("agt_margo", "QA"), claim("agt_david", "sales"), claim("agt_pax", "billing"), claim("agt_otto", "qa"), claim("not an id!", "qa")];
+        let (outcomes, inserts) = plan_adoption(&claims, &teams, &on);
+        let said: Vec<&str> = outcomes.iter().map(|o| o.outcome.as_str()).collect();
+        assert_eq!(said, ["added", "already", "no_team", "added", "no_team"], "matched by slug in any case; unmatched and bad ids dropped");
+        assert_eq!(inserts, [("tm_qa".to_owned(), "agt_margo".to_owned()), ("tm_qa".to_owned(), "agt_otto".to_owned())]);
+        // Run again with those added: nothing more to do.
+        let on: HashSet<(String, String)> = on.into_iter().chain(inserts).collect();
+        let (again, more) = plan_adoption(&claims, &teams, &on);
+        assert!(more.is_empty(), "safe to run twice");
+        assert_eq!(again[0].outcome, "already");
     }
 }

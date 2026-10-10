@@ -51,7 +51,7 @@ const TRY_TOTAL = 40_000;
 /** Long enough for a full job, short enough to stay a quick call. */
 export const DRAFT_OUTPUT_TOKENS = 3000;
 
-const FIELD_LIMITS = { displayName: 64, title: 60, department: 40, duty: 160, instructions: 8000, personality: 1000 };
+const FIELD_LIMITS = { displayName: 64, title: 60, duty: 160, instructions: 8000, personality: 1000 };
 
 // ── Prompts ───────────────────────────────────────────────────────────────
 
@@ -68,7 +68,6 @@ const SHAPE = `{
   "display_name": "a short, friendly first name for it, like Margo or Otto (not a job title)",
   "name_ideas": ["four or five other names that suit it"],
   "title": "its job title, like QA Engineer or Release Manager",
-  "department": "one or two words, like Engineering, Support, Sales, Operations",
   "instructions": "its job, in the second person: what it is responsible for, how it works step by step, what good looks like, and what it must never do. Markdown bullets are fine. 600 to 2500 characters.",
   "responsibilities": ["2 to 6 short duties, each under 120 characters"],
   "personality_preset": "crisp | friendly | socratic | terse",
@@ -99,7 +98,6 @@ function editableView(d: Definition): Record<string, unknown> {
   return {
     display_name: d.display_name,
     title: d.title,
-    department: d.department,
     instructions: d.instructions,
     responsibilities: d.responsibilities,
     personality_preset: d.personality_preset,
@@ -118,7 +116,7 @@ export function redraftSystem(workspace: string, d: Definition, builtin: boolean
     `You edit an agent's definition in the ${workspace} workspace on g1t. Below is the agent as it is now, as JSON. A person with the right to change it asks for a change in words.`,
     "Make exactly the change they ask for, and nothing else: keep every other field as it is. Rewrite the instructions only where the request touches them, keeping the rest word for word.",
     builtin
-      ? "This is @g1t, the workspace's built-in orchestrator: its name, title and department are fixed, and its instructions are added to its fixed job. Change only instructions, personality, skills, model limits and budget."
+      ? "This is @g1t, the workspace's built-in orchestrator: its name and title are fixed, and its instructions are added to its fixed job. Change only instructions, personality, skills, model limits and budget."
       : "",
     catalogLines(),
     `The agent now:\n${JSON.stringify(editableView(d), null, 2)}`,
@@ -239,8 +237,6 @@ export function proposalFrom(
     handle: freeHandle(display, context.taken),
     display_name: display,
     title: str(raw.title, FIELD_LIMITS.title) || "Assistant",
-    department: str(raw.department, FIELD_LIMITS.department),
-    team: null,
     role: "",
     responsibilities: duties.length === 1 ? [] : duties,
     instructions: str(raw.instructions, FIELD_LIMITS.instructions),
@@ -271,15 +267,14 @@ function microsOf(value: unknown): number | null | undefined {
 export function redraftFrom(raw: Record<string, unknown> | null, before: Definition, builtin: boolean): Checked<{ changes: Partial<NewWorkspaceAgent>; summary: string }> {
   if (!raw) return { ok: false, message: "That change didn't come out right. Try saying it another way." };
   const changes: Partial<NewWorkspaceAgent> = {};
-  const text = (key: "display_name" | "title" | "department" | "instructions" | "personality", max: number) => {
+  const text = (key: "display_name" | "title" | "instructions" | "personality", max: number) => {
     if (typeof raw[key] !== "string") return;
     const value = str(raw[key], max);
-    if (value !== before[key] && (value || key === "personality" || key === "department")) changes[key] = value;
+    if (value !== before[key] && (value || key === "personality")) changes[key] = value;
   };
   if (!builtin) {
     text("display_name", FIELD_LIMITS.displayName);
     text("title", FIELD_LIMITS.title);
-    text("department", FIELD_LIMITS.department);
     if (Array.isArray(raw.responsibilities)) {
       const duties = strings(raw.responsibilities, FIELD_LIMITS.duty, 8);
       if (duties.length !== 1 && JSON.stringify(duties) !== JSON.stringify(before.responsibilities)) changes.responsibilities = duties;
@@ -381,8 +376,6 @@ export function builderRow(workspaceId: string, routing: Partial<Definition["rou
     template: null,
     avatar_seed: null,
     title: null,
-    team: null,
-    department: null,
     responsibilities: null,
     subagents: null,
     faces: null,

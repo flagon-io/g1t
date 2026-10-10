@@ -59,7 +59,7 @@ export default function AgentTemplate({ loaderData, params }: Route.ComponentPro
         <PixelCreature seed={template.handle} size={64} />
         <div className="min-w-0 grow basis-60">
           <h1 className="text-2xl font-semibold tracking-tight">{template.title}</h1>
-          <p className="mt-0.5 text-sm text-muted">{template.department ? `${template.department} · ` : ""}A template from g1t</p>
+          <p className="mt-0.5 text-sm text-muted">A role template from g1t · Suggests {template.display_name}</p>
         </div>
         <StartAction listing={listing} slug={slug} owner={owner} className="h-9 px-4 text-sm" />
       </header>

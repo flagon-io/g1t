@@ -2,31 +2,32 @@
  * Pieces of the teams pages: a team in a list, and its badges.
  */
 import { EyeOff, UsersRound } from "lucide-react";
-import { Link, useOutletContext } from "react-router";
+import { Form, Link, useOutletContext } from "react-router";
 
 import { type Team, teamHandle } from "@g1t/contracts";
 
-import type { PeopleAgent } from "../lib/people";
+import type { AgentTeams, PeopleAgent, TeamChange } from "../lib/people";
 import { teamCounts, teamPath } from "../lib/teams";
+import { ErrorText, SubmitButton } from "./ui";
 import { Badge } from "./ui/badge";
+import { SelectField } from "./ui/select";
 import { TeamKindMark } from "./people";
 
 /**
- * What each page of a team gets from the team's layout: the team, the
- * agents on it (added, then those whose home team it is), and which of
- * them were added (the others are on it through their own profile).
+ * What each page of a team gets from the team's layout: the team and the
+ * agents on it, members as its people are.
  */
-export type TeamContext = { team: Team; agents: PeopleAgent[]; added: string[] };
+export type TeamContext = { team: Team; agents: PeopleAgent[] };
 
 /** The team whose page this is. */
 export function useTeam(): Team {
   return useOutletContext<TeamContext>().team;
 }
 
-/** The agents on the team whose page this is, and which were added to it. */
-export function useTeamAgents(): { agents: PeopleAgent[]; added: string[] } {
-  const { agents, added } = useOutletContext<TeamContext>();
-  return { agents, added };
+/** The agents on the team whose page this is. */
+export function useTeamAgents(): { agents: PeopleAgent[] } {
+  const { agents } = useOutletContext<TeamContext>();
+  return { agents };
 }
 
 /** Secret, and the viewer's place in the team. */
@@ -77,5 +78,79 @@ export function TeamRow({ team, agents, children }: { team: Team; agents?: numbe
       </div>
       {children}
     </li>
+  );
+}
+
+/**
+ * An agent's teams on its profile, as a person's are: each team it is on,
+ * with Remove where the viewer manages the team, and Add to a team. Posts
+ * `join-team` and `leave-team` to the page's action (lib/agent-teams.server.ts).
+ */
+export function AgentTeamsEditor({
+  slug,
+  name,
+  teams,
+  personal = false,
+  change,
+}: {
+  slug: string;
+  /** The agent's name, for the empty line. */
+  name: string;
+  /** Null when its teams couldn't be read. */
+  teams: AgentTeams | null;
+  /** A personal agent is on no team. */
+  personal?: boolean;
+  /** The last change's answer, for its error. */
+  change?: TeamChange | null;
+}) {
+  if (personal) return <p className="text-sm text-faint">A personal agent is on no team. Once an owner promotes it, add it to teams like anyone.</p>;
+  if (!teams) return <p className="text-sm text-faint">Its teams couldn&apos;t be read just now.</p>;
+  const error = (team: string) => (change?.team === team && change.intent === "leave-team" ? change.error : null);
+  return (
+    <div className="space-y-3">
+      {teams.on.length ? (
+        <ul className="space-y-1 text-sm">
+          {teams.on.map((team) => (
+            <li key={team.slug}>
+              <div className="flex min-h-9 flex-wrap items-center gap-2">
+                <TeamKindMark people={team.people} agents={team.agents} />
+                <Link to={teamPath(slug, team.slug)} className="min-w-0 truncate font-medium hover:text-accent">
+                  {team.name}
+                </Link>
+                {team.lead && <Badge tone="accent">Lead</Badge>}
+                {team.can_manage && (
+                  <Form method="post" className="ml-auto">
+                    <input type="hidden" name="intent" value="leave-team" />
+                    <input type="hidden" name="team" value={team.slug} />
+                    <SubmitButton variant="quiet" match={{ intent: "leave-team", team: team.slug }} pending="Removing…">
+                      Remove
+                    </SubmitButton>
+                  </Form>
+                )}
+              </div>
+              <ErrorText>{error(team.slug)}</ErrorText>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-faint">{name} isn&apos;t on a team yet.</p>
+      )}
+      {teams.addable.length > 0 && (
+        <Form method="post" key={`teams:${teams.on.length}`} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input type="hidden" name="intent" value="join-team" />
+          <SelectField
+            name="team"
+            aria-label="Add to a team"
+            defaultValue={teams.addable[0]!.slug}
+            className="w-full sm:w-56"
+            options={teams.addable.map((team) => ({ value: team.slug, label: team.name }))}
+          />
+          <SubmitButton variant="quiet" match={{ intent: "join-team" }} pending="Adding…">
+            Add to team
+          </SubmitButton>
+        </Form>
+      )}
+      {change?.intent === "join-team" && <ErrorText>{change.error}</ErrorText>}
+    </div>
   );
 }

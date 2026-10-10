@@ -38,8 +38,6 @@ export function readDefinition(raw: FormDataEntryValue | null): BuilderDefinitio
     handle: text("handle", 40),
     display_name: text("display_name", 64),
     title: text("title", 60),
-    department: text("department", 40),
-    team: null,
     role: "",
     instructions: text("instructions", 8000),
     responsibilities: list("responsibilities", 160, 8),
@@ -123,7 +121,6 @@ export function changeRows(agent: Pick<WorkspaceAgent, keyof NewWorkspaceAgent &
   plain("display_name", "Name");
   if (changes.handle !== undefined) rows.push({ field: "handle", label: "Handle", before: `@${agent.handle}`, after: `@${changes.handle}` });
   plain("title", "Title");
-  plain("department", "Department");
   if (changes.instructions !== undefined) {
     rows.push({ field: "instructions", label: "Job", before: agent.instructions, after: changes.instructions, lines: lineDiff(agent.instructions, changes.instructions) });
   }

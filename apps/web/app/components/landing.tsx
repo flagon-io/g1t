@@ -300,7 +300,7 @@ const PRICES: { name: string; price: string; unit?: string; about: string }[] = 
   },
 ];
 
-/** An example org chart, read like a company's: g1t comes with the workspace; each department's colleague was hired from a template. */
+/** An example org chart, read like a company's: g1t comes with the workspace; each team's agent was hired from a template and added to the team. */
 const ORG: { team: string; who: string }[] = [
   { team: "Engineering", who: "Otto" },
   { team: "QA", who: "Margo" },
@@ -313,7 +313,7 @@ const ORG: { team: string; who: string }[] = [
 
 function OrgChart() {
   return (
-    <figure aria-label="An example org chart: g1t at the top, and one agent hired from a template in each department" className="rounded-2xl bg-surface p-5 ring-1 ring-line">
+    <figure aria-label="An example org chart: g1t at the top, and one agent hired from a template on each team" className="rounded-2xl bg-surface p-5 ring-1 ring-line">
       <div className="flex items-center gap-3">
         <AgentAvatar agent={{ handle: "g1t", name: "g1t" }} size={28} />
         <p className="text-sm">
@@ -605,9 +605,10 @@ export function Landing() {
             Hire agents into roles, like colleagues
           </h2>
           <p className="mt-4 max-w-xl leading-7 text-muted">
-            Pick a role template, grouped by department, and hire in a click. For example, hire Margo from the QA
-            Engineer template. She gets a title, a team and broad responsibilities: review pull requests for risk,
-            write test plans, chase flaky checks. Every template comes with a name you can shuffle, a voice and
+            Pick a role template and hire in a click. For example, hire Margo from the QA Engineer template. She
+            gets a title and broad responsibilities: review pull requests for risk, write test plans, chase flaky
+            checks. Add her to the QA team the way you add anyone, and she knows its people and works within its
+            budget. Every template comes with a name you can shuffle, a voice and
             sensible limits. Her job decides what she does; her personality only changes how she sounds.
           </p>
           <p className="mt-4 max-w-xl leading-7 text-muted">
@@ -618,8 +619,8 @@ export function Landing() {
           </p>
           <Points
             points={[
-              "Role templates by department, with names to shuffle",
-              "Title, team and responsibilities",
+              "Role templates, with names to shuffle",
+              "A title, responsibilities, and teams like anyone",
               "Personality that changes the voice, never the rules",
               "Model routing with a floor, a ceiling and your own providers",
               "Monthly, daily and per-task budgets",

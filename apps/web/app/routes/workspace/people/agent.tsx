@@ -12,7 +12,9 @@ import { agentsOn, leads, peopleAgent, teamsOfAgent } from "../../../lib/people"
 import { teamPath } from "../../../lib/teams";
 import { money } from "../../../lib/usage";
 import { identity, workspaceAgents } from "../../../lib/services.server";
-import { getViewer, roleIn, unwrap } from "../../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../../lib/session.server";
+import { agentTeamsFor, changeAgentTeam } from "../../../lib/agent-teams.server";
+import { AgentTeamsEditor } from "../../../components/teams";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   return page(args, { title: `${loaderData?.agent.display_name ?? params.handle} · People · ${params.owner} · g1t` });
@@ -31,6 +33,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const agent = found.value;
   const agents = listed?.ok ? listed.value.map(peopleAgent) : [peopleAgent(agent)];
   const teams = teamsOfAgent(directory.teams, agent);
+  // Its teams to change here, as a person's are changed on the team: Remove where the viewer manages one, and Add.
+  const editable = agent.scope === "personal" ? null : await agentTeamsFor(viewer!, params.owner.toLowerCase(), agent.id, directory);
   // Everyone on its teams, each once, leads first.
   const names = new Set(teams.flatMap((team) => team.people.map((p) => p.username)));
   const leadNames = new Set(teams.flatMap((team) => (team.lead?.kind === "user" ? [team.lead.username] : [])));
@@ -41,6 +45,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return {
     slug: params.owner.toLowerCase(),
     agent: { ...peopleAgent(agent), monthly_micros: agent.budget.monthly_micros },
+    personal: agent.scope === "personal",
+    editable,
     teams,
     teammates,
     agents,
@@ -48,8 +54,17 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   };
 }
 
-export default function AgentProfile({ loaderData }: Route.ComponentProps) {
-  const { slug, agent, teams, teammates, agents, told } = loaderData;
+/** Adding the agent to a team, or taking it off one. */
+export async function action({ request, params, context }: Route.ActionArgs) {
+  assertSameOrigin(request);
+  const viewer = requireUser(context, request);
+  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  const changed = await changeAgentTeam(await request.formData(), viewer, params.owner.toLowerCase(), params.handle.toLowerCase());
+  return changed ?? { intent: "join-team" as const, team: "", error: "Unknown request." };
+}
+
+export default function AgentProfile({ loaderData, actionData }: Route.ComponentProps) {
+  const { slug, agent, teams, teammates, agents, told, editable, personal } = loaderData;
   const otherAgents = teams
     .flatMap((team) => agentsOn(team, agents))
     .filter((other, index, all) => other.id !== agent.id && all.findIndex((a) => a.id === other.id) === index);
@@ -101,7 +116,9 @@ export default function AgentProfile({ loaderData }: Route.ComponentProps) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card icon={<UsersRound size={14} />} title="Teams">
-          {teams.length ? (
+          {editable || personal ? (
+            <AgentTeamsEditor slug={slug} name={agent.display_name} teams={editable} personal={personal} change={actionData} />
+          ) : teams.length ? (
             <ul className="space-y-2">
               {teams.map((team) => (
                 <li key={team.slug} className="flex flex-wrap items-center gap-2">
@@ -110,12 +127,11 @@ export default function AgentProfile({ loaderData }: Route.ComponentProps) {
                     {team.name}
                   </Link>
                   {leads(team.lead, { id: agent.id }) && <Badge tone="accent">Lead</Badge>}
-                  {agent.team === team.slug && <Badge>Home team</Badge>}
                 </li>
               ))}
             </ul>
           ) : (
-            <Quiet>Not on a team yet. Add it to one from the team's page.</Quiet>
+            <Quiet>Not on a team yet.</Quiet>
           )}
         </Card>
 

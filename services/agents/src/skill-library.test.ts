@@ -43,14 +43,18 @@ function fakeD1(): D1Database {
 const WS = "wsp_acme";
 const at = new Date("2026-10-10T12:00:00Z");
 
+/** The teams each agent is on, by id: memberships, as identity holds them. */
+const onTeams = new Map<string, string[]>();
+
 async function addAgent(db: D1Database, id: string, handle: string, team: string | null = null): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO agents (id, workspace_id, handle, display_name, role, instructions, routing, budget, autonomy, created_by, created_at, updated_at, team)
-       VALUES (?, ?, ?, ?, 'r', 'i', '{}', '{}', '{}', 'ana', ?, ?, ?)`,
+      `INSERT INTO agents (id, workspace_id, handle, display_name, role, instructions, routing, budget, autonomy, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'r', 'i', '{}', '{}', '{}', 'ana', ?, ?)`,
     )
-    .bind(id, WS, handle, handle[0]!.toUpperCase() + handle.slice(1), at.toISOString(), at.toISOString(), team)
+    .bind(id, WS, handle, handle[0]!.toUpperCase() + handle.slice(1), at.toISOString(), at.toISOString())
     .run();
+  onTeams.set(id, team ? [team] : []);
 }
 
 type Repo = { id: string; full: string; default_branch: string; commits: Record<string, Record<string, string>> };
@@ -77,7 +81,12 @@ function ports(over: Partial<LibraryPorts> & { repos?: Repo[]; teamList?: { slug
       };
     },
     blobs: async (_repoId, hashes) => hashes.map((hash) => ({ hash, data: blobs.get(hash) ?? null })),
-    agentTeams: async (agent) => (agent.team ? [{ slug: agent.team, name: agent.team.toUpperCase() }] : []),
+    agentTeams: async (agentId) => (onTeams.get(agentId) ?? []).map((slug) => ({ slug, name: slug.toUpperCase() })),
+    teamAgentIndex: async () => {
+      const bySlug = new Map<string, string[]>();
+      for (const [id, slugs] of onTeams) for (const slug of slugs) bySlug.set(slug, [...(bySlug.get(slug) ?? []), id]);
+      return [...bySlug].map(([slug, agent_ids]) => ({ slug, agent_ids }));
+    },
     audit: (action, name) => over.log?.push(`${action} ${name}`),
     ...over,
   };

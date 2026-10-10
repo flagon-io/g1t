@@ -7,7 +7,6 @@ import { type WorkspaceAgent, shownUsername } from "@g1t/contracts";
 import { useChatSend } from "./actions";
 import { AgentPill, StatusDot, statusLabel } from "./marks";
 import { AgentAvatar } from "../agent-avatar";
-import { placeOf } from "../agents-mode";
 import { BottomSheet } from "../mobile";
 import { PresenceSummary, WithPresence } from "../presence";
 import { isOrchestrator } from "../orchestrator";
@@ -168,7 +167,7 @@ function AgentBody({ agent, ctx }: { agent: WorkspaceAgent; ctx: CardContextValu
             <span className="truncate">{agent.display_name}</span>
             <AgentPill />
           </p>
-          <p className="truncate text-xs text-muted">{g1t ? "Orchestrator" : `${agent.title || agent.role} · ${placeOf(agent)}`}</p>
+          <p className="truncate text-xs text-muted">{g1t ? "Orchestrator" : agent.title || agent.role}</p>
         </div>
       </div>
       <div className="mt-3 space-y-2 text-[0.8125rem] text-muted">

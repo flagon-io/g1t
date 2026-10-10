@@ -5,7 +5,7 @@
 import type { SubagentDef, WorkspaceAgent } from "@g1t/contracts";
 
 import { agentStatus, budgetBlock, dayKey, monthKey } from "./budget.ts";
-import { type Definition, DEFAULT_AUTONOMY, DEFAULT_BUDGET, DEFAULT_ROUTING, PRESETS, readJson } from "./definition.ts";
+import { type Definition, DEFAULT_AUTONOMY, DEFAULT_BUDGET, DEFAULT_ROUTING, legacyRoleOf, PRESETS, readJson } from "./definition.ts";
 
 export type Row = {
   id: string;
@@ -24,8 +24,13 @@ export type Row = {
   template: string | null;
   avatar_seed: string | null;
   title: string | null;
-  team: string | null;
-  department: string | null;
+  /**
+   * Unused columns from when an agent carried its own team and department.
+   * Teams are memberships in identity now; `team` is read once, by the move
+   * to them (team-move.ts), and `role` made from them follows the title.
+   */
+  team?: string | null;
+  department?: string | null;
   responsibilities: string | null;
   subagents: string | null;
   faces: string | null;
@@ -65,10 +70,13 @@ export function periods(now: Date): [string, string] {
 }
 
 export function definitionOf(row: Row): Definition {
+  const title = row.title ?? "";
+  // A role made from the title and its old team or department is the title alone.
+  const made = (row.team || row.department?.trim()) && row.role === legacyRoleOf(title, row.team ?? null, row.department ?? null);
   return {
     handle: row.handle,
     display_name: row.display_name,
-    role: row.role,
+    role: made && title.trim() ? title.trim() : row.role,
     instructions: row.instructions,
     personality_preset: PRESETS.includes(row.personality_preset as Definition["personality_preset"])
       ? (row.personality_preset as Definition["personality_preset"])
@@ -80,9 +88,7 @@ export function definitionOf(row: Row): Definition {
     capacity: row.capacity,
     template: row.template,
     avatar_seed: row.avatar_seed || row.handle,
-    title: row.title ?? "",
-    team: row.team ?? null,
-    department: row.department ?? "",
+    title,
     responsibilities: readList<string>(row.responsibilities),
     subagents: readList<SubagentDef>(row.subagents),
     faces: "internal",
@@ -164,8 +170,6 @@ export const DEFINITION_COLUMNS = [
   "template",
   "avatar_seed",
   "title",
-  "team",
-  "department",
   "responsibilities",
   "subagents",
   "faces",
@@ -189,8 +193,6 @@ export function definitionColumns(d: Definition): (string | number | null)[] {
     d.template,
     d.avatar_seed,
     d.title,
-    d.team,
-    d.department,
     JSON.stringify(d.responsibilities),
     JSON.stringify(d.subagents),
     d.faces,

@@ -5,7 +5,10 @@ import type { DirectoryPerson, DirectoryTeam, PeopleDirectory } from "@g1t/contr
 
 import {
   type PeopleAgent,
-  agentIdsOn,
+  NO_TEAM,
+  agentsOn,
+  groupByTeam,
+  teamsByAgent,
   budgetFromText,
   codeAccessWords,
   directoryEntries,
@@ -56,8 +59,6 @@ const agent = (id: string, handle: string, extra: Partial<PeopleAgent> = {}): Pe
   avatar_seed: handle,
   title: "",
   role: "",
-  team: null,
-  department: "",
   status: "idle",
   responsibilities: [],
   builtin: false,
@@ -83,24 +84,35 @@ const directory: PeopleDirectory = {
       repos_count: 0,
     }),
     team("design", "Design", { people: [{ username: "kai", role: "maintainer" }], repos_count: 2 }),
-    team("night-shift", "Night shift", { lead: { kind: "agent", agent_id: "agt_atlas" }, agent_ids: ["agt_atlas"] }),
+    team("night-shift", "Night shift", { lead: { kind: "agent", agent_id: "agt_atlas" }, agent_ids: ["agt_atlas", "agt_sentinel", "agt_david"] }),
   ],
   base_permission: "read",
   can_manage: true,
 };
 
 const agents = [
-  agent("agt_david", "david", { title: "CRM keeper", team: "sales" }),
+  agent("agt_david", "david", { title: "CRM keeper" }),
   agent("agt_atlas", "atlas", { title: "Night watch" }),
-  agent("agt_sentinel", "sentinel", { title: "Error watch", team: "night-shift", responsibilities: ["Watches errors"] }),
+  agent("agt_sentinel", "sentinel", { title: "Error watch", responsibilities: ["Watches errors"] }),
+  agent("agt_pax", "pax", { title: "Billing" }),
 ];
 
-test("an agent is on the teams it was added to and its home team", () => {
-  assert.deepEqual(agentIdsOn(directory.teams[2]!, agents), ["agt_atlas", "agt_sentinel"]);
-  assert.deepEqual(
-    teamsOfAgent(directory.teams, agents[2]!).map((t) => t.slug),
-    ["night-shift"],
-  );
+test("an agent is on the teams it is a member of, like anyone", () => {
+  assert.deepEqual(agentsOn(directory.teams[2]!, agents).map((a) => a.id), ["agt_atlas", "agt_sentinel", "agt_david"]);
+  assert.deepEqual(teamsOfAgent(directory.teams, agents[0]!).map((t) => t.slug), ["sales", "night-shift"]);
+  assert.deepEqual(teamsOfAgent(directory.teams, agents[3]!), []);
+});
+
+test("the Agents sidebar groups agents by their teams: under each team, and the rest last", () => {
+  const teams = teamsByAgent(directory.teams);
+  assert.deepEqual(teams.agt_david, [{ slug: "night-shift", name: "Night shift" }, { slug: "sales", name: "Sales" }]);
+  const groups = groupByTeam(agents, teams).map((g) => [g.label, g.agents.map((a) => a.handle)]);
+  assert.deepEqual(groups, [
+    ["Night shift", ["atlas", "david", "sentinel"]],
+    ["Sales", ["david"]],
+    [NO_TEAM, ["pax"]],
+  ]);
+  assert.deepEqual(groupByTeam(agents.slice(3), {}).map((g) => g.label), [NO_TEAM]);
 });
 
 test("the directory finds people and agents in one search", () => {
@@ -109,8 +121,8 @@ test("the directory finds people and agents in one search", () => {
   assert.deepEqual(names("sales"), ["sofia", "jordan", "@david"]);
   assert.deepEqual(names("halcyon"), ["jordan"]);
   assert.deepEqual(names("errors"), ["@sentinel"]);
-  assert.deepEqual(names("", "agents"), ["@david", "@atlas", "@sentinel"]);
-  assert.deepEqual(names("night"), ["@atlas", "@sentinel"]);
+  assert.deepEqual(names("", "agents"), ["@david", "@atlas", "@sentinel", "@pax"]);
+  assert.deepEqual(names("night"), ["@david", "@atlas", "@sentinel"]);
   assert.equal(names("nobody here").length, 0);
 });
 
@@ -123,7 +135,7 @@ test("the org chart follows reporting lines, with each team's agents beside its 
   assert.deepEqual(sofia.agents.map((a) => a.handle), ["david"]);
   assert.deepEqual(sofia.reports.map((n) => n.person.username), ["jordan"]);
   // A team an agent leads sits apart, with its agents.
-  assert.deepEqual(chart.unled.map((u) => [u.team.slug, u.agents.map((a) => a.handle)]), [["night-shift", ["atlas", "sentinel"]]]);
+  assert.deepEqual(chart.unled.map((u) => [u.team.slug, u.agents.map((a) => a.handle)]), [["night-shift", ["atlas", "sentinel", "david"]]]);
 });
 
 test("no one goes missing from the org chart, even in a loop", () => {
