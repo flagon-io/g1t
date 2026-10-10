@@ -77,7 +77,16 @@ test("g1t's own are always on and the four autonomy ones keep their choices as l
   assert.equal(autonomyOfLevel("merge", "never"), "never");
   assert.equal(G1T_ABILITIES.filter((d) => d.autonomy).length, 4);
   const computer = sections.find((s) => s.group === "computer")!;
-  assert.ok(computer.sources[0]!.abilities.every((a) => a.status === "coming" && a.choices.length === 0 && !a.can_change));
+  const shell = computer.sources[0]!.abilities.find((a) => a.id === "computer:shell")!;
+  assert.equal(shell.status, "ready");
+  assert.equal(shell.level, "asked", "commands run when asked for, until the person says otherwise");
+  assert.deepEqual(shell.choices, ["alone", "asked", "ask", "never"]);
+  const files = computer.sources[0]!.abilities.find((a) => a.id === "computer:files")!;
+  assert.equal(files.level, "alone");
+  assert.ok(files.can_change);
+  const coming = computer.sources[0]!.abilities.filter((a) => a.id === "computer:browser" || a.id === "computer:web");
+  assert.equal(coming.length, 2);
+  assert.ok(coming.every((a) => a.status === "coming" && a.choices.length === 0 && !a.can_change), "the browser and web search are still coming");
   assert.equal(COMPUTER_ABILITIES.length, 4);
 });
 
@@ -181,8 +190,8 @@ test("the summary says what it does alone, when asked, after asking, and never",
   const summary = abilitiesSummary(sections);
   assert.equal(
     summary,
-    "Can open pull requests, read issues in Linear, read issues in Sentry and resolve issues in Sentry on its own; imports issues in Linear and imports issues in Sentry when asked for it; asks before merging, deploying to production, editing docs and commenting in Sentry; never comments in Linear.",
+    "Can open pull requests, change files on its computer, read issues in Linear, read issues in Sentry and resolve issues in Sentry on its own; runs commands on its computer, imports issues in Linear and imports issues in Sentry when asked for it; asks before merging, deploying to production, editing docs and commenting in Sentry; never comments in Linear.",
   );
   assert.equal(allAbilities(sections).filter((a) => a.group === "integration" && a.can_change).length, 7);
-  assert.match(abilitiesSummary(resolve()), /open pull requests on its own/);
+  assert.match(abilitiesSummary(resolve()), /open pull requests and change files on its computer on its own/);
 });

@@ -459,6 +459,13 @@ export const OPERATION_SCOPES = [
   ["plan_work", "agents:run"],
   ["message_agent", "agents:run"],
   ["answer_message", "agents:run"],
+  // A workspace agent's own computer: waking it spends the workspace's
+  // money, so the same scope covers reading and managing it.
+  ["get_agent_computer", "agents:run"],
+  ["wake_agent_computer", "agents:run"],
+  ["sleep_agent_computer", "agents:run"],
+  ["reset_agent_computer", "agents:run"],
+  ["list_agent_computer_commands", "agents:run"],
   ["take_messages", "agents:run"],
   ["list_workflows", "workflows:read"],
   ["list_workflow_runs", "workflows:read"],
