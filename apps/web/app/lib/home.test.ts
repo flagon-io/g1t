@@ -74,6 +74,7 @@ function session(over: Partial<AgentSession> = {}): AgentSession {
     agent_handle: "margo",
     agent_name: "Margo",
     agent_avatar_seed: "margo",
+    agent_look: null,
     subagent: null,
     kind: "chat",
     parent_id: null,

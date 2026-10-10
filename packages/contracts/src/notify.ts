@@ -7,6 +7,7 @@
  * events service about every inbox item, and the site forwards each tab's
  * `/-/live` socket to it. Wire shapes are snake_case end to end.
  */
+import type { AgentLook } from "./agent-look";
 import type { CardAction } from "./chat";
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
@@ -24,8 +25,10 @@ export type NotificationActor = {
   name: string;
   /** A person's uploaded avatar hash, or null for the letter avatar. */
   avatar?: string | null;
-  /** What an agent's pixel creature is drawn from. */
+  /** What an agent's face is drawn from when it chose none. */
   avatar_seed?: string | null;
+  /** An agent's chosen face (./agent-look.ts). */
+  look?: AgentLook | null;
 };
 
 export type FeedNotification = {

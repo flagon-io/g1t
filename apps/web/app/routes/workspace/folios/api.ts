@@ -292,7 +292,7 @@ async function who(slug: string, viewer: User, keys: string[]): Promise<Result<u
   const out = keys.map((key) => {
     if (key.startsWith("agent:")) {
       const agent = agentIds.has(key.slice(6)) ? agents.find((a) => a.id === key.slice(6)) : undefined;
-      return { key, kind: "agent", id: key.slice(6), name: agent?.handle ?? "agent", display_name: agent?.display_name ?? "Former agent", avatar: agent?.avatar ?? null, avatar_seed: agent?.avatar_seed ?? null };
+      return { key, kind: "agent", id: key.slice(6), name: agent?.handle ?? "agent", display_name: agent?.display_name ?? "Former agent", avatar: agent?.avatar ?? null, avatar_seed: agent?.avatar_seed ?? null, look: agent?.look ?? null };
     }
     const username = names[key.slice(5)]?.toLowerCase();
     const person = username ? people.find((p) => p.name === username) : undefined;

@@ -103,13 +103,13 @@ export default function DocBody({ slug, page, folio, live, role, showComments, o
   };
 
   const people = useCallback(
-    (key: string): Pick<MemberProfile, "kind" | "id" | "name" | "display_name" | "avatar" | "avatar_seed"> => {
+    (key: string): Pick<MemberProfile, "kind" | "id" | "name" | "display_name" | "avatar" | "avatar_seed" | "look"> => {
       const at = key.indexOf(":");
       const kind = key.slice(0, at) === "agent" ? "agent" : "user";
       const id = key.slice(at + 1);
       if (layout?.me.key === key) return { kind: "user", id, name: layout.me.name, display_name: layout.me.display_name, avatar: layout.me.avatar, avatar_seed: null };
       const found = names.get(key);
-      return { kind, id, name: found?.name ?? "someone", display_name: found?.display_name ?? (kind === "agent" ? "An agent" : "Someone"), avatar: found?.avatar ?? null, avatar_seed: found?.avatar_seed ?? null };
+      return { kind, id, name: found?.name ?? "someone", display_name: found?.display_name ?? (kind === "agent" ? "An agent" : "Someone"), avatar: found?.avatar ?? null, avatar_seed: found?.avatar_seed ?? null, look: found?.look ?? null };
     },
     [layout, names],
   );

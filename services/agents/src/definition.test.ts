@@ -198,3 +198,21 @@ test("role templates by title, each with duties and a subagent or two, on no tea
   assert.match(byId.sales.instructions, /audience/);
   assert.ok(!TEMPLATE_IDS.includes("planner"), "planning is g1t's own job");
 });
+
+test("an agent's look is kept whole, checked part by part, and null goes back to the seed's face", () => {
+  const made = applyChanges(null, input, TEMPLATE_IDS);
+  assert.ok(made.ok);
+  if (!made.ok) return;
+  assert.equal(made.value.look, null, "a new agent wears its seed's face");
+  const look = { shape: "blob", color: "mint", eyes: "visor", mouth: "flat", antenna: "bulb", accessory: "headphones", pattern: "dots" } as const;
+  const chosen = applyChanges(made.value, { look }, TEMPLATE_IDS);
+  assert.ok(chosen.ok);
+  if (!chosen.ok) return;
+  assert.deepEqual(chosen.value.look, look);
+  const renamed = applyChanges(chosen.value, { display_name: "Shipper" }, TEMPLATE_IDS);
+  assert.ok(renamed.ok && renamed.value.look?.eyes === "visor", "a rename keeps the chosen face");
+  assert.equal(applyChanges(chosen.value, { look: { ...look, eyes: "laser" } as unknown as typeof look }, TEMPLATE_IDS).ok, false, "an unknown choice is refused");
+  assert.equal(applyChanges(chosen.value, { look: { shape: "round" } as unknown as typeof look }, TEMPLATE_IDS).ok, false, "a part missing is refused");
+  const back = applyChanges(chosen.value, { look: null }, TEMPLATE_IDS);
+  assert.ok(back.ok && back.value.look === null);
+});

@@ -124,6 +124,7 @@ export type ShellAgent = Pick<
   WorkspaceAgent,
   "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "role" | "status" | "title" | "builtin"
 > & {
+  look?: WorkspaceAgent["look"];
   scope?: WorkspaceAgent["scope"];
   /** The visible teams it is on (team memberships); absent when they couldn't be read. */
   teams?: { slug: string; name: string }[];

@@ -15,8 +15,8 @@ import { Card } from "../ui/card";
 import { Hint } from "../ui/hint";
 import { KindIcon } from "./kinds";
 
-export function Face({ who, size = 20 }: { who: Pick<MemberProfile, "kind" | "id" | "name" | "avatar" | "avatar_seed">; size?: number }) {
-  if (who.kind === "agent") return <AgentAvatar agent={{ id: who.id, handle: who.name, avatar: who.avatar, avatar_seed: who.avatar_seed ?? null }} size={size} />;
+export function Face({ who, size = 20 }: { who: Pick<MemberProfile, "kind" | "id" | "name" | "avatar" | "avatar_seed" | "look">; size?: number }) {
+  if (who.kind === "agent") return <AgentAvatar agent={{ id: who.id, handle: who.name, avatar: who.avatar, avatar_seed: who.avatar_seed ?? null, look: who.look ?? null }} size={size} />;
   return <Avatar name={who.name} image={who.avatar} size={size} />;
 }
 

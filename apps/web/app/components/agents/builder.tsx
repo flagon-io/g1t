@@ -4,14 +4,15 @@
  * chat beside it, and, on an agent's profile, a box to change it in words
  * with the change shown before it is saved.
  */
-import { ArrowUp, Check, Dices, Lock, MessageSquare, Plug, RotateCcw, Shuffle, Sparkles, Users, Wand2 } from "lucide-react";
+import { ArrowUp, Check, Lock, MessageSquare, Plug, RotateCcw, Shuffle, Sparkles, Users, Wand2 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Form, Link, useFetcher, useNavigation } from "react-router";
 
 import { type AgentProposal, type AgentRedraft, type AgentTemplate, type DraftTurn, FOUNDATIONAL_SKILLS, type WorkspaceAgent } from "@g1t/contracts";
 
 import { TeamPicker } from "../agent-role";
-import { AgentAvatar, PixelCreature } from "../agent-avatar";
+import { AgentAvatar } from "../agent-avatar";
+import { FaceEditor } from "./face-editor";
 import { Markdown } from "../markdown";
 import { Alert } from "../ui/alert";
 import { Badge } from "../ui/badge";
@@ -176,7 +177,7 @@ export function DescribeBox({
                   preventScrollReset
                   className="inline-flex h-8 items-center gap-2 rounded-full border border-line bg-surface pr-3 pl-1 text-[0.8125rem] text-fg/85 transition-colors hover:border-line-strong hover:text-fg"
                 >
-                  <PixelCreature seed={template.handle} size={24} className="rounded-full" />
+                  <AgentAvatar agent={{ handle: template.handle }} size={24} />
                   {template.title}
                 </Link>
               </li>
@@ -265,18 +266,7 @@ export function ProposalCard({
     <div className="overflow-hidden rounded-2xl border border-line bg-surface">
       <div className="flex items-start gap-3 px-4 pt-4 pb-4 sm:px-5">
         <div className="relative shrink-0">
-          <AgentAvatar agent={{ handle: value.handle, avatar_seed: seed }} size={56} />
-          <Hint label="Another face">
-            <Button
-              type="button"
-              aria-label="Another face"
-              onClick={() => set({ avatar_seed: `${value.handle || "agent"}-${Math.random().toString(36).slice(2, 7)}` })}
-              variant="outline" size="icon"
-              className="absolute -right-1.5 -bottom-1.5 size-6 rounded-full bg-bg text-muted shadow-sm"
-            >
-              <Dices size={13} />
-            </Button>
-          </Hint>
+          <AgentAvatar agent={{ handle: value.handle, avatar_seed: seed, look: value.look ?? null }} size={56} />
         </div>
         <div className="grid min-w-0 grow gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
           <div>
@@ -331,6 +321,10 @@ export function ProposalCard({
           {value.scope === "personal" ? null : <TeamPicker teams={joinable} value={teams} onChange={onTeams} />}
         </Section>
       )}
+
+      <Section title="Face" about="Its bot face, wherever it appears. It has one of its own already; change any part, shuffle, or give it back.">
+        <FaceEditor value={value.look ?? null} seed={seed} name={value.display_name || "Your new agent"} preset={value.personality_preset} onChange={(look) => set({ look })} />
+      </Section>
 
       <Section title="Job" about="What it is responsible for and how it works. It reads this before every reply.">
         <textarea

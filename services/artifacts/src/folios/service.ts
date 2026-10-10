@@ -1794,7 +1794,7 @@ export class Folios {
           title: `${suggestion.author.display_name} suggested a change to ${row.title || "Untitled"}`,
           body: suggestion.note ?? excerpt(suggestion.after_markdown, 140),
           href: this.ref(ctx.workspace.slug, row).path,
-          actor: { kind: suggestion.author.kind, id: suggestion.author.id, name: suggestion.author.display_name, avatar: suggestion.author.avatar, avatar_seed: suggestion.author.avatar_seed ?? null },
+          actor: { kind: suggestion.author.kind, id: suggestion.author.id, name: suggestion.author.display_name, avatar: suggestion.author.avatar, avatar_seed: suggestion.author.avatar_seed ?? null, look: suggestion.author.look ?? null },
           created_at: suggestion.created_at,
         },
       )
@@ -1943,7 +1943,7 @@ export class Folios {
             title: who ? `${who.display_name} mentioned you in ${row.title || "Untitled"}` : `You were mentioned in ${row.title || "Untitled"}`,
             body: excerpt(text, 140),
             href,
-            actor: who ? { kind: who.kind, id: who.id, name: who.display_name, avatar: who.avatar, avatar_seed: who.avatar_seed ?? null } : { kind: "system", id: "g1t", name: "g1t", avatar: null, avatar_seed: null },
+            actor: who ? { kind: who.kind, id: who.id, name: who.display_name, avatar: who.avatar, avatar_seed: who.avatar_seed ?? null, look: who.look ?? null } : { kind: "system", id: "g1t", name: "g1t", avatar: null, avatar_seed: null },
             created_at: now(),
           },
         )

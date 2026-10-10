@@ -154,7 +154,7 @@ export function Discussion({
   onResolve,
 }: {
   threads: PageThread[];
-  people: (key: string) => Pick<MemberProfile, "kind" | "id" | "name" | "display_name" | "avatar" | "avatar_seed">;
+  people: (key: string) => Pick<MemberProfile, "kind" | "id" | "name" | "display_name" | "avatar" | "avatar_seed" | "look">;
   canComment: boolean;
   onPost: (text: string) => Promise<boolean>;
   onReply: (thread: string, text: string) => Promise<boolean>;

@@ -1,6 +1,4 @@
-import { Sparkles } from "lucide-react";
-
-import type { AgentStatus } from "@g1t/contracts";
+import type { AgentStatus, MemberProfile } from "@g1t/contracts";
 
 import { AgentAvatar } from "../agent-avatar";
 import { WithPresence } from "../presence";
@@ -9,26 +7,11 @@ import { cn } from "../../lib/cn";
 import { Avatar } from "../ui/avatar";
 
 /**
- * A workspace agent's face when it has no picture: a sparkle on a lavender
- * square, so agents read apart from people (round letters) at a glance.
- */
-export function AgentMark({ size = 20, className }: { size?: number; className?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn("inline-flex shrink-0 items-center justify-center bg-accent/18 text-accent ring-1 ring-accent/30 ring-inset", className)}
-      style={{ width: size, height: size, borderRadius: Math.round(size * 0.28) }}
-    >
-      <Sparkles size={Math.max(10, Math.round(size * 0.56))} strokeWidth={2.1} />
-    </span>
-  );
-}
-
-/**
- * A member's face: a person's avatar, or an agent's picture or mark. With
- * `presence`, a person's carries their dot (active, away, notifications
- * paused; components/presence.tsx), cut out of `ring`, the colour behind
- * it. Agents keep their own status, shown apart.
+ * A member's face: a person's avatar, or an agent's picture or bot face
+ * with the agent marker (components/ui/avatar.tsx). With `presence`, a
+ * person's carries their dot (active, away, notifications paused;
+ * components/presence.tsx), cut out of `ring`, the colour behind it, which
+ * also rings the agent marker. Agents keep their own status, shown apart.
  */
 export function MemberAvatar({
   member,
@@ -36,12 +19,12 @@ export function MemberAvatar({
   presence = false,
   ring,
 }: {
-  member: { kind: "user" | "agent"; id?: string; name: string; avatar: string | null; avatar_seed?: string | null };
+  member: { kind: "user" | "agent"; id?: string; name: string; avatar: string | null; avatar_seed?: string | null; look?: MemberProfile["look"] };
   size?: number;
   presence?: boolean;
   ring?: string;
 }) {
-  if (member.kind === "agent") return <AgentAvatar agent={member} size={size} />;
+  if (member.kind === "agent") return <AgentAvatar agent={member} size={size} ring={ring} />;
   const avatar = <Avatar name={member.name} image={member.avatar} size={size} />;
   if (!presence) return avatar;
   return (
@@ -51,8 +34,43 @@ export function MemberAvatar({
   );
 }
 
+/**
+ * A person and an agent together, for a mixed direct message's row: the
+ * person's face behind, the agent's in front with its marker, so the pair
+ * says at a glance that an agent is in the conversation.
+ */
+export function PairAvatar({
+  person,
+  agent,
+  size = 20,
+  ring = "var(--color-bg)",
+}: {
+  person: { kind: "user" | "agent"; id?: string; name: string; avatar: string | null };
+  agent: { kind: "user" | "agent"; id?: string; name: string; avatar: string | null; avatar_seed?: string | null; look?: MemberProfile["look"] };
+  size?: number;
+  ring?: string;
+}) {
+  const each = Math.max(16, Math.round(size * 0.85));
+  const width = Math.round(each * 1.55);
+  return (
+    <span className="relative inline-flex shrink-0" style={{ width, height: size + 2 }} aria-hidden="true">
+      <span className="absolute top-0 left-0 inline-flex rounded-full" style={{ boxShadow: `0 0 0 1.5px ${ring}` }}>
+        <Avatar name={person.name} image={person.avatar} size={each} />
+      </span>
+      <span className="absolute inline-flex rounded-md" style={{ left: width - each, top: size + 2 - each, boxShadow: `0 0 0 1.5px ${ring}` }}>
+        <AgentAvatar agent={agent} size={each} ring={ring} />
+      </span>
+    </span>
+  );
+}
+
 /** AGENT, beside an agent's name wherever it speaks. */
 export function AgentPill({ className }: { className?: string }) {
+  // The avatar beside it carries the agent marker; this is the word, for where the name stands alone.
+  return <AgentWord className={className} />;
+}
+
+function AgentWord({ className }: { className?: string }) {
   return (
     <span
       className={cn(

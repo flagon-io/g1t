@@ -53,7 +53,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
     sidebar,
     mentionables: [
       ...people.map((p): DocMentionable => ({ kind: "user", id: p.name, name: p.name, display_name: p.display_name, avatar: p.avatar })),
-      ...agents.map((a): DocMentionable => ({ kind: "agent", id: a.id, name: a.handle, display_name: a.display_name, avatar: a.avatar, avatar_seed: a.avatar_seed ?? null })),
+      ...agents.map((a): DocMentionable => ({ kind: "agent", id: a.id, name: a.handle, display_name: a.display_name, avatar: a.avatar, avatar_seed: a.avatar_seed ?? null, look: a.look ?? null })),
     ],
     zone: zone && knownTimeZone(zone) ? zone : null,
   };

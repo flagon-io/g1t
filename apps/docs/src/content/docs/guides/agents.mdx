@@ -76,7 +76,7 @@ that off. Every member sees the workspace's agents and talks to them.
    personal one.
 3. Choose **Draft it**. g1t drafts the whole agent with one quick model
    call, charged to you: a name (choose **Another name** to shuffle), a
-   handle, a face (choose **Another face**), a title, its job, its
+   handle, a [face](#its-face) of its own, a title, its job, its
    responsibilities and its personality, which
    [skills](/guides/agent-skills/) it keeps on, the integrations it would
    use, routines that would suit it, its model limits and its budget.
@@ -352,6 +352,74 @@ Possible. Not advised: thin weekend cover. Prefer Thursday.
 
 Add free text to refine the preset: *Answers in Spanish when asked in
 Spanish.* or *Uses British spelling.*
+
+## Its face
+
+Every agent has a face: a small bot, drawn from seven parts, that shows
+wherever the agent does: in Chat, on its profile, in the People directory,
+as an assignee or a reviewer, on the commits it authors, in notifications.
+Nothing is uploaded; the face is drawn on the page, so it is sharp at any
+size and the same everywhere.
+
+| Part | Choices |
+| --- | --- |
+| **Shape** | Round, square, squircle, blob, hex |
+| **Colour** | Lavender, mint, peach, sky, pink, lemon, teal, coral, moss, slate. Each reads on the light theme and the dark one. |
+| **Eyes** | Dots, round, wide, happy, visor, sleepy |
+| **Mouth** | Smile, grin, flat, open, none |
+| **Antenna** | None, one, two, bulb |
+| **Accessory** | Nothing, headphones, bow, glasses, hat, spark |
+| **Pattern** | Plain, stripes, dots, sheen |
+
+An agent you haven't given a face wears the one drawn from its `avatar_seed`
+(its handle, unless you set another): the same seed always draws the same
+face, so every agent has a face of its own from the moment it's made, and a
+rename never changes it. Faces are alive but calm: each blinks every few
+seconds at a pace of its own, so a list of them never blinks in unison, and
+breathes a little. What the agent is doing shows on it:
+
+| The face | Means |
+| --- | --- |
+| Blinking, breathing | Idle. |
+| Eyes narrowed, a soft pulse | Working on a session or a reply. |
+| Eyes shut, a small *z* | Paused or out of budget. |
+| A grin and a bounce, briefly | A session finished well. |
+
+If your system asks for reduced motion, faces hold still, in the pose
+their state would give them. At 20 px and under, the accessory and
+pattern are left off so the face still reads. g1t itself keeps its own
+mark, the pixel 1 of the logo, in place of a face. An agent with an
+uploaded picture shows that instead.
+
+**The agent marker is always shown.** Whatever the face, every agent's
+avatar carries a small bot on a lavender disc in its corner, from 16 px up,
+and reads to a screen reader as *Margo, agent*. Below 16 px the squircle
+tile the face sits on tells it from a person's round avatar. Nothing you
+choose turns the marker off.
+
+### Choose a face
+
+Open the agent's **Profile** (or the card while you
+[describe a new one](#describe-it)) and find **Face**:
+
+1. The preview shows the face large, and how it looks idle, working,
+   asleep and happy.
+2. Choose any part from its row: each choice is drawn as the face would
+   look with it.
+3. **Shuffle** draws a face at random. **Reset to its own** gives the agent
+   back the face its seed draws.
+4. **Match its voice** borrows the expression its personality preset
+   suggests (a terse operator gets a visor and a flat mouth, a friendly one
+   happy eyes and a smile). Only when you choose it: a preset never changes
+   a face behind your back.
+5. **Save changes** (or **Create**). The face is part of the agent's
+   definition, so it is a saved version like any other change.
+
+Owners change a workspace agent's face; a member changes their own
+personal agent's. In the API, the face is `look` on the agent, an object
+with the seven parts, or `null` for the seed's face. Set it through the
+same update call as any other field, and read it back wherever the agent
+is returned.
 
 ## Subagents
 
@@ -725,7 +793,7 @@ Each agent has a page at `g1t.sh/<workspace>/-/agents/<handle>`:
 | **Routines** | Work it does on a schedule or when something happens. See [routines](/guides/agent-routines/). |
 | **Spend** | Its [effort](#effort) and what each level has cost it, suggestions to spend less, and spend this month against its budget: by day, kind of work, model and who asked, and its costliest sessions. |
 | **Activity** | Its latest replies and sessions, with who asked, the model and the cost. |
-| **Profile** | Its definition: identity, job, personality, models and effort, budget and what it may do alone, with every saved version. Owners edit a workspace agent here, and a member their own personal agent, in the form or [in words](#change-it-in-words). |
+| **Profile** | Its definition: identity, [face](#its-face), job, personality, models and effort, budget and what it may do alone, with every saved version. Owners edit a workspace agent here, and a member their own personal agent, in the form or [in words](#change-it-in-words). |
 
 The **Agents** page above them all shows the agent budget, sessions waiting
 on you and working now, every agent with its live sessions and its month's

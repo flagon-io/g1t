@@ -6,7 +6,7 @@
 import { Plus } from "lucide-react";
 import { Link } from "react-router";
 
-import { PixelCreature } from "./agent-avatar";
+import { AgentAvatar } from "./agent-avatar";
 import { ButtonLink } from "./ui";
 import { buttonVariants } from "./ui/button";
 import { Card } from "./ui/card";
@@ -41,7 +41,7 @@ export function TemplateCard({ listing, slug, owner }: { listing: TemplateListin
     <Card asChild className="relative flex flex-col p-4 transition-colors hover:border-line-strong">
       <article>
         <div className="flex items-start gap-3">
-          <PixelCreature seed={template.handle} size={44} />
+          <AgentAvatar agent={{ handle: template.handle }} size={44} />
           <div className="min-w-0 grow">
             <h3 className="truncate text-sm font-semibold">
               <Link to={templatePath(slug, template.id)} prefetch="intent" className="outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-accent">

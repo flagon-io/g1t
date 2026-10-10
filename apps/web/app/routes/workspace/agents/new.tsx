@@ -142,6 +142,7 @@ function formDraft(d: BuilderDefinition): AgentDraft {
     personality: d.personality ?? "",
     routing: { floor: d.routing?.floor ?? null, ceiling: d.routing?.ceiling ?? null, providers: [], pinned: null },
     budget: { monthly_micros: d.budget?.monthly_micros ?? null, daily_micros: d.budget?.daily_micros ?? null, task_micros: d.budget?.task_micros ?? null },
+    look: d.look ?? null,
   };
 }
 

@@ -2,9 +2,9 @@ import { Activity, BookMarked, Brain, ChevronRight, Dices, LayoutTemplate, Netwo
 import { type ReactNode, useState } from "react";
 import { Form, NavLink, useLocation, useNavigation, useRouteLoaderData } from "react-router";
 
-import type { AgentEffortCosts, AgentTemplate, ModelTier, WorkspaceAgent } from "@g1t/contracts";
+import type { AgentEffortCosts, AgentLook, AgentTemplate, ModelTier, WorkspaceAgent } from "@g1t/contracts";
 
-import { type AgentLike, AgentAvatar, PixelCreature } from "./agent-avatar";
+import { type AgentLike, AgentAvatar } from "./agent-avatar";
 import { StatusDot, statusLabel } from "./chat/marks";
 import { isOrchestrator } from "./orchestrator";
 import { Button } from "./ui/button";
@@ -18,6 +18,7 @@ import { Input } from "./ui/input";
 import { EffortPicker } from "./effort";
 import { effortSetting } from "../lib/effort";
 import { RoleFields, SubagentsField } from "./agent-role";
+import { FaceEditor } from "./agents/face-editor";
 import { type AgentTeamRef, groupByTeam } from "../lib/people";
 import type { AgentsLayoutData } from "../routes/workspace/agents/layout";
 
@@ -26,9 +27,9 @@ export function useAgentsData(): AgentsLayoutData | undefined {
   return useRouteLoaderData("routes/workspace/agents/layout") as AgentsLayoutData | undefined;
 }
 
-/** An agent's face: its picture, or the sparkle mark. */
-export function AgentFace({ agent, size = 20 }: { agent: AgentLike; size?: number }) {
-  return <AgentAvatar agent={agent} size={size} />;
+/** An agent's face: its picture, g1t's mark, or its bot face, with the agent marker (components/agent-avatar.tsx). */
+export function AgentFace({ agent, size = 20, ring }: { agent: AgentLike; size?: number; ring?: string }) {
+  return <AgentAvatar agent={agent} size={size} ring={ring} />;
 }
 
 function SideLink({ to, end, icon, children, trailing }: { to: string; end?: boolean; icon: ReactNode; children: ReactNode; trailing?: ReactNode }) {
@@ -115,9 +116,9 @@ export function AgentsSidebar({
         }
       >
         <span className="relative shrink-0">
-          <AgentFace agent={{ ...agent, builtin: isOrchestrator(agent) }} size={26} />
-          {!isOrchestrator(agent) && (
-            <StatusDot status={agent.status} className="absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar" />
+          <AgentFace agent={{ ...agent, builtin: isOrchestrator(agent) }} size={26} ring="var(--color-sidebar)" />
+          {!isOrchestrator(agent) && agent.status !== "idle" && (
+            <StatusDot status={agent.status} className="absolute -top-0.5 -right-0.5 ring-2 ring-sidebar" />
           )}
         </span>
         <span className="min-w-0 grow leading-tight">
@@ -336,7 +337,7 @@ function TemplateCard({
             <Plus size={16} />
           </span>
         ) : (
-          <PixelCreature seed={seed ?? name} size={40} />
+          <AgentAvatar agent={{ handle: seed ?? name }} size={40} />
         )}
         <span className="min-w-0 grow">
           <span className="block truncate text-sm font-semibold">{name}</span>
@@ -487,6 +488,9 @@ export function AgentForm({
   const { pathname } = useLocation();
   const busy = navigation.state === "submitting" && navigation.formAction === pathname;
   const [preset, setPreset] = useState(draft.personality_preset);
+  // Its face: the look chosen here, or null for the one its seed draws (components/agents/face-editor.tsx).
+  const [look, setLook] = useState<AgentLook | null>(draft.look ?? null);
+  const faceSeed = seed ?? handle ?? "agent";
   const [advanced, setAdvanced] = useState(Boolean(draft.routing.pinned));
   const e = errors ?? {};
   const presetAbout = PRESETS.find((p) => p.value === preset)?.about;
@@ -506,7 +510,7 @@ export function AgentForm({
         }
       >
         <div className="flex items-center gap-3">
-          <AgentAvatar agent={{ handle: handle || "agent", avatar_seed: seed ?? handle, builtin: locked }} size={44} />
+          <AgentAvatar agent={{ handle: handle || "agent", avatar_seed: faceSeed, look, builtin: locked }} size={44} />
           <div className="min-w-0 text-sm">
             <p className="truncate font-semibold">{name || "Your new agent"}</p>
             <p className="truncate text-xs text-muted">{handle ? `@${handle}` : "@handle"}</p>
@@ -568,6 +572,13 @@ export function AgentForm({
           </div>
         </div>
       </FormSection>
+
+      {!locked && (
+        <FormSection title="Face" about="Its bot face, wherever it appears: shape, colour, eyes, mouth and a few extras. It blinks on its own, narrows its eyes while it works and sleeps when it's paused. Every agent has a face of its own from the start; change any part of it here.">
+          <input type="hidden" name="look" value={look ? JSON.stringify(look) : "null"} />
+          <FaceEditor value={look} seed={faceSeed} name={name || "Your new agent"} preset={preset} onChange={setLook} />
+        </FormSection>
+      )}
 
       {!locked && (
       <FormSection

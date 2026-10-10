@@ -11,6 +11,7 @@
  */
 import {
   type AgentActivity,
+  type AgentLook,
   type AgentMemory,
   type AgentPolicy,
   type AgentRoutine,
@@ -36,6 +37,7 @@ import {
   ok,
 } from "@g1t/contracts";
 
+import { readLook } from "../../../packages/contracts/src/agent-look.ts";
 import { monthKey, spendSpan } from "./budget.ts";
 import { cleanUsername, personBudgets } from "./person-budget.ts";
 import { type MemoryRow, type MemoryViewer, changeableBy, cleanFact, toMemory, visibleTo } from "./memory.ts";
@@ -61,15 +63,15 @@ export type ViewContext = {
   audit?: (action: string, handle: string, message: string) => void;
 };
 
-type AgentFace = { handle: string; display_name: string; avatar_seed: string };
+type AgentFace = { handle: string; display_name: string; avatar_seed: string; look: AgentLook | null };
 
-/** The workspace's agents by id, archived ones too, for names on sessions and spend. */
+/** The workspace's agents by id, archived ones too, for names and faces on sessions and spend. */
 async function faces(ctx: ViewContext): Promise<Map<string, AgentFace>> {
   const rows = await ctx.db
-    .prepare("SELECT id, handle, display_name, avatar_seed FROM agents WHERE workspace_id = ?")
+    .prepare("SELECT id, handle, display_name, avatar_seed, look FROM agents WHERE workspace_id = ?")
     .bind(ctx.workspaceId)
-    .all<{ id: string } & AgentFace>();
-  return new Map(rows.results.map((r) => [r.id, { ...r, avatar_seed: r.avatar_seed || r.handle }]));
+    .all<{ id: string; handle: string; display_name: string; avatar_seed: string | null; look: string | null }>();
+  return new Map(rows.results.map((r) => [r.id, { handle: r.handle, display_name: r.display_name, avatar_seed: r.avatar_seed || r.handle, look: readLook(r.look) }]));
 }
 
 /** The teams each agent is on, by agent id, from the workspace's teams the viewer can see. Empty when they can't be read. */

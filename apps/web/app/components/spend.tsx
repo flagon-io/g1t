@@ -315,7 +315,7 @@ function AgentBudgets({ slug, agents }: { slug: string; agents: AgentBudgetRow[]
     <ul className="mt-3 ml-10 space-y-2.5">
       {shown.map((agent) => (
         <li key={agent.id} className="flex items-center gap-2.5 text-sm">
-          <AgentAvatar agent={{ handle: agent.handle, avatar_seed: agent.avatar_seed }} size={20} />
+          <AgentAvatar agent={{ handle: agent.handle, avatar_seed: agent.avatar_seed, look: agent.look }} size={20} />
           <Link to={`/${slug}/-/agents/${agent.handle}/spend`} className="min-w-0 grow truncate hover:underline">
             {agent.display_name}
           </Link>
@@ -477,7 +477,7 @@ export function TaskList({ slug, sessions }: { slug: string; sessions: AgentSess
     <ul className="divide-y divide-line/60">
       {sessions.map((session) => (
         <li key={session.id} className="group relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised/40">
-          <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed }} size={24} />
+          <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed, look: session.agent_look }} size={24} />
           <div className="min-w-0 grow">
             <Link to={receiptHref(slug, session)} className="block min-w-0 truncate text-sm font-medium after:absolute after:inset-0 hover:underline">
               {session.visible ? session.title || "Untitled session" : <PrivateTitle />}

@@ -101,7 +101,7 @@ export function SessionRow({ slug, session, depth = 0, showAgent = false }: { sl
         {depth > 0 && <CornerDownRight size={14} className="mt-1 shrink-0 text-faint" aria-hidden="true" />}
         {showAgent && (
           <span className="mt-0.5 shrink-0">
-            <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed }} size={22} />
+            <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed, look: session.agent_look }} size={22} />
           </span>
         )}
         <div className="min-w-0 grow">
@@ -154,7 +154,7 @@ export function SessionCard({ slug, session, action }: { slug: string; session: 
     <Card asChild className="relative flex flex-col p-4 transition-colors hover:border-line-strong">
       <li>
         <div className="flex items-center gap-2.5">
-          <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed }} size={28} />
+          <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed, look: session.agent_look }} size={28} />
           <div className="min-w-0 grow leading-tight">
             <p className="truncate text-sm font-medium">{session.agent_name}</p>
             <p className="truncate text-xs text-faint">

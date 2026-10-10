@@ -393,6 +393,7 @@ class Docs {
           role: agent?.role ?? null,
           title: agent?.title || null,
           avatar_seed: agent?.avatar_seed ?? null,
+          look: agent?.look ?? null,
         });
       }
     }
@@ -832,7 +833,7 @@ class Docs {
         const key = memberKey(m.principal);
         if (key?.kind === "team") return { key: m.principal, kind: "team", name: key.id, display_name: `@${workspace.slug}/${key.id}`, avatar: null, role: m.role };
         const p = people.get(m.principal)!;
-        return { key: m.principal, kind: p.kind, name: p.name, display_name: p.display_name, avatar: p.avatar, avatar_seed: p.avatar_seed ?? null, role: m.role };
+        return { key: m.principal, kind: p.kind, name: p.name, display_name: p.display_name, avatar: p.avatar, avatar_seed: p.avatar_seed ?? null, look: p.look ?? null, role: m.role };
       })
       .sort((x, y) => RANK[y.role] - RANK[x.role] || x.display_name.localeCompare(y.display_name));
   }
@@ -2047,7 +2048,7 @@ class Docs {
               title: `${who.display_name} mentioned you on ${page.title || "Untitled"}`,
               body: text.slice(0, 140),
               href,
-              actor: { kind: who.kind, id: who.id, name: who.display_name, avatar: who.avatar, avatar_seed: who.avatar_seed ?? null },
+              actor: { kind: who.kind, id: who.id, name: who.display_name, avatar: who.avatar, avatar_seed: who.avatar_seed ?? null, look: who.look ?? null },
               created_at: now(),
             },
           )
@@ -2439,7 +2440,7 @@ class Docs {
               title: `${suggestion.author.display_name} suggested a change to ${page.title || "Untitled"}`,
               body: suggestion.note ?? excerpt(suggestion.after_markdown, 140),
               href,
-              actor: { kind: "agent", id: suggestion.author.id, name: suggestion.author.display_name, avatar: suggestion.author.avatar, avatar_seed: suggestion.author.avatar_seed ?? null },
+              actor: { kind: "agent", id: suggestion.author.id, name: suggestion.author.display_name, avatar: suggestion.author.avatar, avatar_seed: suggestion.author.avatar_seed ?? null, look: suggestion.author.look ?? null },
               created_at: suggestion.created_at,
             },
           )

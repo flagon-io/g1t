@@ -38,6 +38,7 @@ import { CardBox, CardToasts, showToast } from "./card";
 import { Composer } from "./composer";
 import { type LiveState, useChatLive } from "./live";
 import { AgentPill, MemberAvatar } from "./marks";
+import { AgentAvatar } from "../agent-avatar";
 import { PersonStatusEmoji, PersonStatusLine, PresenceSummary, WithPresence } from "../presence";
 import { CardContext, MemberCard, type PersonCard, personCard } from "./profile-card";
 
@@ -64,7 +65,7 @@ import { Hint } from "../ui/hint";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { type Mentionable, type ShownMessage, channelPath, mentionNames, mergeMessages, shownHandle, shownName, timeline } from "../../lib/chat";
+import { type Mentionable, type ShownMessage, agentsAmong, channelPath, dmPlaceholder, isMixed, mentionNames, mergeMessages, mixedNotice, shownHandle, shownName, timeline } from "../../lib/chat";
 import { codeAccessPath } from "../../lib/workspace-nav";
 import { conversationCache } from "./conversation-cache";
 // Reactions and the workspace's own emoji (components/emoji).
@@ -599,8 +600,11 @@ export function ChannelView({ data }: { data: Loaded }) {
   const typers = [...typing.values()].map((t) => t.member);
   const name = channel.name ?? "";
   const archived = channel.kind === "channel" && !!channel.archived_at;
+  // A mixed direct message names each member and says which are agents.
   const placeholder = isDm
-    ? `Message ${others.map(shownName).join(", ") || "yourself"}`
+    ? isMixed(others)
+      ? dmPlaceholder(others)
+      : `Message ${others.map(shownName).join(", ") || "yourself"}`
     : `Message #${name}. @ a teammate or an agent`;
   const rootMessage = threadId ? (messages.find((m) => m.id === threadId) ?? (threadRoot?.id === threadId ? threadRoot : null)) : null;
   const cardContext = useMemo(
@@ -838,6 +842,7 @@ function ChannelHeader({
 }) {
   const channel = data.channel;
   const agentDm = channel.kind === "dm" && others.length === 1 && others[0]!.kind === "agent" ? others[0]! : null;
+  const mixed = channel.kind === "dm" && isMixed(others);
   return (
     <header data-page-head className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4 sm:px-5 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] max-md:gap-2 max-md:pt-[env(safe-area-inset-top)] max-md:pl-1.5">
       <Button variant="ghost" size="icon-bar" onClick={onBack} aria-label="Back to conversations" className="rounded-full md:hidden">
@@ -896,6 +901,7 @@ function ChannelHeader({
               {agentDm && (titleOf(agentDm) ?? agentDm.role) && (
                 <p className="truncate text-xs leading-tight text-muted">{titleOf(agentDm) ?? agentDm.role}</p>
               )}
+              {mixed && <MixedChip agents={agentsAmong(others)} />}
               {/* One person: their status under their name, as their card has it. */}
               {!agentDm && others.length === 1 && others[0]!.kind === "user" && <PersonStatusLine person={{ id: others[0]!.id, username: others[0]!.name }} className="truncate text-xs leading-tight text-muted" />}
             </div>
@@ -958,6 +964,7 @@ function ConversationStart({ data, others }: { data: Loaded; others: MemberProfi
   const channel = data.channel;
   if (channel.kind === "dm") {
     const agent = others.length === 1 && others[0]!.kind === "agent" ? others[0]! : null;
+    const mixed = isMixed(others);
     return (
       <div className="px-2 pb-6 sm:px-3">
         <div className="flex -space-x-2">
@@ -970,12 +977,20 @@ function ConversationStart({ data, others }: { data: Loaded; others: MemberProfi
         <h2 className="mt-3 flex items-center gap-2 text-xl font-semibold tracking-tight">
           {others.map(shownName).join(", ") || "Just you"}
           {agent && <AgentPill />}
+          {mixed && (
+            <Badge tone="accent" size="md" className="font-normal">
+              with an agent
+            </Badge>
+          )}
         </h2>
         <p className="mt-1 max-w-xl text-sm text-muted">
           {agent
             ? `${agent.role ? `${agent.role}. ` : ""}Ask a question or give it a job: it answers here, and opens a task when the work needs one.`
-            : "This is the start of your conversation."}
+            : mixed
+              ? "A conversation between people and an agent. Everyone here, the agent too, reads every message."
+              : "This is the start of your conversation."}
         </p>
+        {mixed && <MixedNotice channelId={channel.id} others={others} />}
       </div>
     );
   }
@@ -987,6 +1002,72 @@ function ConversationStart({ data, others }: { data: Loaded; others: MemberProfi
       <h2 className="mt-3 text-xl font-semibold tracking-tight">Welcome to #{channel.name}</h2>
       <p className="mt-1 max-w-xl text-sm text-muted">{channel.topic ?? "This is the very beginning of the channel."}</p>
     </div>
+  );
+}
+
+/**
+ * The chip a mixed direct message carries in its header, always: each agent
+ * in it by face and handle, said to be an agent, so a person writing to a
+ * colleague never forgets who else reads along.
+ */
+function MixedChip({ agents }: { agents: MemberProfile[] }) {
+  const handles = agents.map((a) => `@${shownHandle(a)}`);
+  const list = handles.length <= 2 ? handles.join(" and ") : `${handles.slice(0, -1).join(", ")} and ${handles[handles.length - 1]}`;
+  return (
+    <Badge tone="accent" size="md" className="mt-0.5 max-w-full gap-1.5 pl-1 font-normal">
+      <span className="flex shrink-0 -space-x-1">
+        {agents.slice(0, 3).map((a) => (
+          <AgentAvatar key={a.id} agent={a} size={16} ring="var(--color-bg)" />
+        ))}
+      </span>
+      <span className="truncate">
+        {list}, {agents.length === 1 ? "agent" : "agents"}
+        <span className="max-md:hidden">, {agents.length === 1 ? "is" : "are"} in this conversation</span>
+      </span>
+    </Badge>
+  );
+}
+
+const MIXED_SEEN_KEY = (channelId: string) => `g1t:chat-mixed-seen:${channelId}`;
+
+/**
+ * The one-line notice above a mixed conversation's first message, the
+ * first time a person opens it on this device: who the agents are and
+ * that they read everything and can act on it. Dismissed, it stays away.
+ */
+function MixedNotice({ channelId, others }: { channelId: string; others: MemberProfile[] }) {
+  const [seen, setSeen] = useState(true);
+  useEffect(() => {
+    try {
+      setSeen(localStorage.getItem(MIXED_SEEN_KEY(channelId)) === "1");
+    } catch {
+      setSeen(false);
+    }
+  }, [channelId]);
+  const dismiss = () => {
+    setSeen(true);
+    try {
+      localStorage.setItem(MIXED_SEEN_KEY(channelId), "1");
+    } catch {
+      // Not kept: it shows again next time, which is fine.
+    }
+  };
+  const words = mixedNotice(others);
+  if (seen || !words) return null;
+  return (
+    <Card tone="bg" radius="lg" className="mt-4 flex max-w-xl items-center gap-2.5 py-2 pr-1.5 pl-3 text-sm text-fg-soft" role="note">
+      <span className="flex shrink-0 -space-x-1">
+        {agentsAmong(others).slice(0, 3).map((a) => (
+          <AgentAvatar key={a.id} agent={a} size={20} ring="var(--color-bg)" />
+        ))}
+      </span>
+      <span className="min-w-0 grow">{words}</span>
+      <Hint label="Got it">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="Dismiss" onClick={dismiss} className="shrink-0 text-faint">
+          <X size={14} />
+        </Button>
+      </Hint>
+    </Card>
   );
 }
 

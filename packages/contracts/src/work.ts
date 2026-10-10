@@ -1,3 +1,4 @@
+import type { AgentLook } from "./agent-look";
 import type { ChecksApi } from "./checks";
 import type { CodeownersReport, PullCodeOwners } from "./codeowners";
 import type { User, Viewer } from "./identity";
@@ -384,7 +385,7 @@ export type Comment = {
 
 /**
  * One of a workspace's own agents as a comment or review it wrote shows
- * it: Margo (@margo), with the pixel face drawn from `avatarSeed`. Its page
+ * it: Margo (@margo), with the face drawn from `avatarSeed` or chosen as `look`. Its page
  * is `/<workspace>/-/agents/<handle>`.
  */
 export type AgentRef = {
@@ -392,6 +393,8 @@ export type AgentRef = {
   handle: string;
   displayName: string;
   avatarSeed: string;
+  /** Its chosen face (./agent-look.ts), when it has one. */
+  look?: AgentLook | null;
 };
 
 /** An agent's review: all of them advisory. */
@@ -401,8 +404,8 @@ export type AgentVerdict = "comment" | "approve" | "request_changes";
 export const AGENT_COMMENTS_PER_HOUR = 5;
 
 /** An agent as its comments name it, from the agents service's record of it. */
-export function agentRef(agent: { id: string; handle: string; display_name: string; avatar_seed: string }): AgentRef {
-  return { id: agent.id, handle: agent.handle, displayName: agent.display_name, avatarSeed: agent.avatar_seed };
+export function agentRef(agent: { id: string; handle: string; display_name: string; avatar_seed: string; look?: AgentLook | null }): AgentRef {
+  return { id: agent.id, handle: agent.handle, displayName: agent.display_name, avatarSeed: agent.avatar_seed, look: agent.look ?? null };
 }
 
 export type NewComment = {

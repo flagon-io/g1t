@@ -16,6 +16,7 @@ import type { CardActionResult } from "./chat";
 import type { ModelTier } from "./integrations";
 import type { ExtensionInstall, InstallRequest, InstallRequestStatus, InstallRequests } from "./marketplace";
 import type { AgentAbilities, AgentAbilitiesChange, McpServer } from "./abilities";
+import type { AgentLook } from "./agent-look";
 
 /** The built-in orchestrator's handle; nobody else's agent may take it. */
 export const BUILTIN_AGENT_HANDLE = "g1t";
@@ -86,11 +87,16 @@ export type WorkspaceAgent = {
   /** Uploaded avatar hash, or null for the generated mark. */
   avatar: string | null;
   /**
-   * What its generated avatar is drawn from: a little pixel creature, the
-   * same for the same seed everywhere. Set from the handle when it is
+   * What its generated face is drawn from (./agent-look.ts `lookFromSeed`),
+   * the same for the same seed everywhere. Set from the handle when it is
    * made; changing it gives the agent a new face.
    */
   avatar_seed: string;
+  /**
+   * Its face as its owner chose it, part by part (./agent-look.ts), or
+   * null: the face `avatar_seed` draws. Shown wherever the agent appears.
+   */
+  look: AgentLook | null;
   /**
    * One line, as lists show it: "QA Engineer". Its title when not written.
    */
@@ -231,6 +237,8 @@ export type NewWorkspaceAgent = {
   template?: string | null;
   /** Its avatar's seed; left out, the handle. */
   avatar_seed?: string;
+  /** Its face, chosen part by part (./agent-look.ts); null goes back to the seed's face. */
+  look?: AgentLook | null;
   /**
    * When creating: `workspace` (owners only, and their default) or
    * `personal` (any member, when the workspace lets members make them; a
@@ -415,6 +423,7 @@ export type AgentSession = {
   agent_handle: string;
   agent_name: string;
   agent_avatar_seed: string;
+  agent_look: AgentLook | null;
   /** The subagent running it, by name, when kind is `subagent`. */
   subagent: string | null;
   kind: AgentSessionKind;
@@ -734,6 +743,7 @@ export type AgentRecommendation = {
   agent_handle: string;
   agent_name: string;
   agent_avatar_seed: string;
+  agent_look: AgentLook | null;
   /** Lowering its effort setting. */
   kind: "effort";
   /** `thin`: not enough history to recommend anything yet. */

@@ -9,8 +9,11 @@ import {
   channelName,
   channelPath,
   dayLabel,
+  dmPlaceholder,
   filterEntries,
   inline,
+  mixedDm,
+  mixedNotice,
   mentionNames,
   mentionQuery,
   mergeMessages,
@@ -149,17 +152,32 @@ test("the sidebar: sections, filters and the rail's count", () => {
     entry("d1", { kind: "dm", title: "reviewer", others: [bot], last: "2026-10-02T00:00:00Z", mentions: 1, unread: 1 }),
     entry("d2", { kind: "dm", title: "ana", others: [ana], last: "2026-10-05T00:00:00Z" }),
     entry("noisy", { muted: true, unread: 9 }),
+    // Ana and the reviewer together: a person is in it, so it lists under People, marked as mixed.
+    entry("d3", { kind: "dm", title: "ana, reviewer", others: [ana, bot], last: "2026-10-03T00:00:00Z" }),
+    entry("d4", { kind: "dm", title: "notes", others: [], last: "2026-10-01T00:00:00Z" }),
   ];
-  const { pinned, channels, agentDms, dms } = sections(all);
+  const { pinned, channels, agentDms, people, agents } = sections(all);
   assert.deepEqual(pinned.map((e) => e.title), ["general"]);
   assert.deepEqual(channels.map((e) => e.title), ["noisy", "random"]);
-  // Direct messages, the latest first: people and agents alike.
-  assert.deepEqual(dms.map((e) => e.title), ["ana", "reviewer"]);
-  assert.equal(agentDms.get("a1")?.title, "reviewer");
+  // Direct messages in two buckets, each the latest first: people (mixed ones and your notes among them), and agents alone.
+  assert.deepEqual(people.map((e) => e.title), ["ana", "ana, reviewer", "notes"]);
+  assert.deepEqual(agents.map((e) => e.title), ["reviewer"]);
+  assert.equal(agentDms.get("a1")?.title, "reviewer", "the agent's own conversation, not the mixed one");
+  assert.deepEqual(all.map(mixedDm), [false, false, false, false, false, true, false]);
   assert.deepEqual(filterEntries(all, "unread", "").map((e) => e.title), ["general", "reviewer", "noisy"]);
   assert.deepEqual(filterEntries(all, "mentions", "").map((e) => e.title), ["reviewer"]);
-  assert.deepEqual(filterEntries(all, "all", "@Review").map((e) => e.title), ["reviewer"]);
+  // Jump to finds the agent's own conversation and the mixed one it is in.
+  assert.deepEqual(filterEntries(all, "all", "@Review").map((e) => e.title), ["reviewer", "ana, reviewer"]);
   assert.deepEqual(unreadTotals(all), { unread: 3, mentions: 1 });
+});
+
+test("a mixed conversation says who the agents are, in the composer and above its first message", () => {
+  assert.equal(dmPlaceholder([ana, bot]), "Message @ana and @reviewer (agent)");
+  assert.equal(dmPlaceholder([{ ...ana, display_username: "Ana" }, bot, { ...bot, id: "a2", name: "scribe", display_name: "Scribe" }]), "Message @Ana, @reviewer (agent) and @scribe (agent)");
+  assert.equal(dmPlaceholder([]), "Message yourself");
+  assert.equal(mixedNotice([ana, bot]), "Reviewer is an agent and reads everything here; it can act on what you say.");
+  assert.equal(mixedNotice([ana, bot, { ...bot, id: "a2", name: "scribe", display_name: "Scribe" }]), "Reviewer and Scribe are agents and read everything here; they can act on what you say.");
+  assert.equal(mixedNotice([ana]), "");
 });
 
 test("addresses, names, money and reconnecting", () => {

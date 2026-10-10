@@ -8,6 +8,7 @@ import type {
   AgentAbilities,
   AgentAutonomy,
   AgentBudget,
+  AgentLook,
   AgentRouting,
   McpServer,
   NewWorkspaceAgent,
@@ -16,6 +17,7 @@ import type {
   SubagentDef,
 } from "@g1t/contracts";
 import { ABILITY_LEVELS, EMPTY_ABILITIES, MAX_MCP_SERVERS, integrationAbilities, maxLevel, mcpAbility, withinLevel } from "../../../packages/contracts/src/abilities.ts";
+import { readLook } from "../../../packages/contracts/src/agent-look.ts";
 import { FOUNDATIONAL_SKILL_IDS } from "../../../packages/contracts/src/skills.ts";
 
 import { checkHandle } from "./handle.ts";
@@ -56,8 +58,10 @@ export type Definition = {
   autonomy: AgentAutonomy;
   capacity: number;
   template: string | null;
-  /** What its generated avatar is drawn from. */
+  /** What its generated face is drawn from, when it has chosen none. */
   avatar_seed: string;
+  /** Its face as chosen (@g1t/contracts agent-look.ts), or null for the seed's. */
+  look: AgentLook | null;
   title: string;
   responsibilities: string[];
   subagents: SubagentDef[];
@@ -319,6 +323,7 @@ export function applyChanges(
     capacity: DEFAULT_CAPACITY,
     template: null,
     avatar_seed: "",
+    look: null,
     title: "",
     responsibilities: [],
     subagents: [],
@@ -327,7 +332,7 @@ export function applyChanges(
     skills_off: [],
     abilities: EMPTY_ABILITIES,
   };
-  const next: Definition = { ...from, skills_off: from.skills_off ?? [], abilities: from.abilities ?? EMPTY_ABILITIES };
+  const next: Definition = { ...from, look: from.look ?? null, skills_off: from.skills_off ?? [], abilities: from.abilities ?? EMPTY_ABILITIES };
   // Whether the role was made from the title, so it follows it.
   const roleDerived = !from.role || from.role === roleOf(from);
   if (creating || changes.handle !== undefined) {
@@ -364,6 +369,15 @@ export function applyChanges(
   }
   // A new face from the handle, unless one was chosen; renaming keeps the face.
   if (!next.avatar_seed) next.avatar_seed = next.handle;
+  // A chosen face, part by part; null goes back to the seed's.
+  if (changes.look !== undefined) {
+    if (changes.look === null) next.look = null;
+    else {
+      const look = readLook(changes.look);
+      if (!look) return bad("A look names each part of the face (shape, color, eyes, mouth, antenna, accessory, pattern) with one of its choices.");
+      next.look = look;
+    }
+  }
   if (changes.personality_preset !== undefined) {
     if (!PRESETS.includes(changes.personality_preset)) return bad(`The personality preset is one of ${PRESETS.join(", ")}.`);
     next.personality_preset = changes.personality_preset;

@@ -296,6 +296,7 @@ async function agentsFor(slug: string, user: User): Promise<ShellData["agents"]>
           display_name: agent.display_name,
           avatar: agent.avatar,
           avatar_seed: agent.avatar_seed,
+          look: agent.look ?? null,
           role: agent.role,
           title: agent.title,
           status: agent.status,

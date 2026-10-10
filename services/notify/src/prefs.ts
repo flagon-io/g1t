@@ -12,6 +12,8 @@
  */
 import type { CardAction, FeedNotification, NotificationCard, NotificationKind, NotifyLevel, NotifyPreferences } from "@g1t/contracts";
 
+import { readLook } from "../../../packages/contracts/src/agent-look.ts";
+
 // The same as NOTIFY_LEVELS and DEFAULT_NOTIFY_PREFERENCES in @g1t/contracts, kept here so
 // Node runs the tests on this file without the contracts package.
 const NOTIFY_LEVELS: readonly NotifyLevel[] = ["all", "dms_mentions", "none"];
@@ -133,6 +135,7 @@ export function cleanNotification(value: unknown): FeedNotification | null {
       name: text(a.name, 100) || "g1t",
       avatar: text(a.avatar, 100) || null,
       avatar_seed: text(a.avatar_seed, 100) || null,
+      look: readLook(a.look),
     },
     channel_id: text(n.channel_id, 100) || null,
     thread_root: text(n.thread_root, 100) || null,

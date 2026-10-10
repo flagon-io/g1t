@@ -278,7 +278,7 @@ export function TimelineItem({
 }) {
   const face = (size: number) =>
     agent ? (
-      <AgentAvatar agent={{ id: agent.ref.id, handle: agent.ref.handle, avatar_seed: agent.ref.avatarSeed }} size={size} />
+      <AgentAvatar agent={{ id: agent.ref.id, handle: agent.ref.handle, avatar_seed: agent.ref.avatarSeed, look: agent.ref.look }} size={size} />
     ) : (
       <Avatar name={author} size={size} />
     );
@@ -751,7 +751,7 @@ export function AgentReviewLine({ agent, verdict, base }: { agent: AgentRef; ver
   const said = verdict === "approve" ? "approved" : verdict === "request_changes" ? "requested changes" : "reviewed";
   return (
     <span className="flex items-center gap-1.5 text-muted">
-      <AgentAvatar agent={{ id: agent.id, handle: agent.handle, avatar_seed: agent.avatarSeed }} size={16} />
+      <AgentAvatar agent={{ id: agent.id, handle: agent.handle, avatar_seed: agent.avatarSeed, look: agent.look }} size={16} />
       <AgentName agent={agent} href={href} />
       <span>{said}</span>
       <AdvisoryChip />

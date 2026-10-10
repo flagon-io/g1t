@@ -6,6 +6,7 @@
  * tested under Node.
  */
 import type { AgentBudget, AgentRouting, NewWorkspaceAgent, PersonalityPreset, WorkspaceAgent, WorkspaceAgentScope } from "@g1t/contracts";
+import { readLook } from "@g1t/contracts/agent-look";
 import { connectorById, connectorPath } from "@g1t/contracts/connectors";
 
 import { wholeDollars } from "./money.ts";
@@ -50,6 +51,7 @@ export function readDefinition(raw: FormDataEntryValue | null): BuilderDefinitio
     skills_off: list("skills_off", 40, 20),
     template: null,
     avatar_seed: text("avatar_seed", 64) || undefined,
+    look: readLook(d.look),
     scope: d.scope === "personal" ? "personal" : "workspace",
   };
 }
@@ -138,6 +140,9 @@ export function changeRows(agent: Pick<WorkspaceAgent, keyof NewWorkspaceAgent &
   }
   plain("personality_preset", "Voice");
   plain("personality", "Personality");
+  if (changes.look !== undefined) {
+    rows.push({ field: "look", label: "Face", before: agent.look ? "A chosen face" : "Its own face", after: changes.look ? "A chosen face" : "Its own face" });
+  }
   if (changes.skills_off !== undefined) {
     const off = new Set(changes.skills_off);
     const was = new Set(agent.skills_off ?? []);

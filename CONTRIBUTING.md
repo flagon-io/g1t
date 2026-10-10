@@ -60,6 +60,14 @@ cd apps/docs && npm run build
 - Hover hints use the `Tooltip` component, never `title=`. Native
   `<select>`, file inputs, checkboxes and radios use their `ui`
   components.
+- **Every avatar is `Avatar`** (`ui/avatar.tsx`), and every agent's is
+  `Avatar` with `agent` set, or `AgentAvatar` (`components/agent-avatar.tsx`),
+  which wraps it. That draws the agent's bot face (`AgentFace`,
+  `components/agent-face.tsx`) from its `look` or its `avatar_seed`, puts
+  the agent marker in its corner and names it "…, agent" to a screen
+  reader. Never hand-draw an agent's face, a sparkle, a letter on a tile or
+  the marker at a call site: a place that shows an agent differently is a
+  bug.
 - Look at every page you change, in light and dark, on a desktop and a
   phone, before calling it done.
 

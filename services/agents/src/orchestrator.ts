@@ -33,6 +33,7 @@ export function builtinDefinition(): Definition {
     capacity: DEFAULT_CAPACITY,
     template: ORCHESTRATOR_TEMPLATE,
     avatar_seed: BUILTIN_AGENT_HANDLE,
+    look: null,
     title: "Orchestrator",
     responsibilities: [],
     subagents: [],

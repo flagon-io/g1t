@@ -3,7 +3,8 @@
  * it: what each field means, and the checks made before it is sent. Pure,
  * so it is tested on its own.
  */
-import type { AgentEffort, ModelTier, NewWorkspaceAgent, PersonalityPreset, SubagentDef, WorkspaceAgent } from "@g1t/contracts";
+import type { AgentEffort, AgentLook, ModelTier, NewWorkspaceAgent, PersonalityPreset, SubagentDef, WorkspaceAgent } from "@g1t/contracts";
+import { readLook } from "@g1t/contracts/agent-look";
 
 import { plainDollars } from "./money.ts";
 
@@ -139,12 +140,27 @@ export function readAgentForm(form: FormData, options: { orchestrator?: boolean 
       ...(form.get("scope") === "personal" || form.get("scope") === "workspace" ? { scope: form.get("scope") as "personal" | "workspace" } : {}),
       ...(form.has("skills_off") ? { skills_off: String(form.get("skills_off") ?? "").split(",").map((id) => id.trim()).filter(Boolean) } : {}),
       ...(String(form.get("avatar_seed") ?? "").trim() ? { avatar_seed: String(form.get("avatar_seed")).trim().slice(0, 64) } : {}),
+      // Its face: a chosen look, or `null` for the seed's; a form without the field leaves it as it is.
+      ...readLookField(form.get("look")),
     },
   };
 }
 
 /** Most responsibilities an agent lists. */
 export const MAX_RESPONSIBILITIES = 8;
+
+/**
+ * The Face section's field: `null` (the word) gives the agent back its
+ * seed's face, a look as JSON sets one, and nothing or something that is
+ * not a look changes nothing.
+ */
+export function readLookField(value: FormDataEntryValue | null): { look?: AgentLook | null } {
+  const text = String(value ?? "").trim();
+  if (!text) return {};
+  if (text === "null") return { look: null };
+  const look = readLook(text);
+  return look ? { look } : {};
+}
 
 /** The subagents, as the form sends them (JSON); null when they are not valid. */
 function readSubagents(value: FormDataEntryValue | null): SubagentDef[] | null {
@@ -211,6 +227,7 @@ export type AgentDraft = Pick<
   | "autonomy"
   | "capacity"
   | "template"
+  | "look"
 >;
 
 export const BLANK_DRAFT: AgentDraft = {
@@ -229,6 +246,7 @@ export const BLANK_DRAFT: AgentDraft = {
   autonomy: { open_pull_requests: "alone", merge: "approval", deploy_production: "approval", edit_docs: "suggest" },
   capacity: 3,
   template: null,
+  look: null,
 };
 
 /** Dollars from micro-dollars, for a form field: empty for none, `20` for a whole sum, else to the cent. */

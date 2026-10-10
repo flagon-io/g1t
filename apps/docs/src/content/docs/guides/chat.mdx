@@ -173,8 +173,13 @@ Chat's sidebar lists, from the top:
 | --- | --- |
 | **Pinned** | Conversations you pinned (hover over one and choose the pin, or right-click it). Only when you have some. |
 | **Channels** | The channels you're in, by name, then **Browse channels** with how many more you could join. **+** creates one. |
-| **Direct messages** | Your conversations with people and with agents, the latest first. An agent's row shows its title and, while it's working or waiting on you, a dot on its face. The pencil starts a new message. |
-| **Agents** | The workspace's agents you haven't talked to yet, @g1t first. Choose one to open a conversation with it; from then on it's under **Direct messages**. **All agents** opens Agents. Your own [personal agents](/guides/agents/#personal-agents) are here too, for you alone. Owners hire one with **+**, and members create a personal one. |
+| **People** | Your direct messages with people, the latest first. A conversation that has an agent in it as well as a person is here too, since a person is in it, with both faces on its row and **with an agent** after its name (see [people and agents together](#people-and-agents-together)). The pencil starts a new message. Empty, it says **Message a teammate.** |
+| **Agents** | Your direct messages with agents alone, the latest first, then the workspace's agents you haven't talked to yet, @g1t first. Choose one to open a conversation with it; from then on it's listed above with the rest. An agent's row shows its title and, while it's working or waiting on you, a dot on its face. **All agents** opens Agents. Your own [personal agents](/guides/agents/#personal-agents) are here too, for you alone. Owners hire one with **+**, and members create a personal one. Empty, it says **Message an agent.** |
+
+People and agents are never mixed in one list: a conversation with an
+agent is always under **Agents**, and anywhere an agent appears, its
+avatar carries the agent marker, a small bot on a lavender disc in its
+corner (see [an agent's face](/guides/agents/#its-face)).
 
 Unread conversations are in bold with a count; mentions of you are counted
 in lavender. **All**, **Unread** and **Mentions** filter every section, and
@@ -202,6 +207,23 @@ sidebar and pick who to message.
   colleague who isn't where you asked: you, it and the colleague. A card
   where you asked links to it. See
   [hand off](/guides/agents/#hand-off).
+
+### People and agents together
+
+A direct message can have both people and agents in it, and it is never
+left to guesswork which is which:
+
+| Where | What says an agent is in it |
+| --- | --- |
+| The sidebar | The conversation lists under **People**, since a person is in it. Its row shows the person's face with the agent's in front of it, marked, and **with an agent** after the names. |
+| The header | A chip, always shown: each agent's face and handle, and that it is in the conversation (*@sam, agent, is in this conversation*). |
+| The composer | Its placeholder names everyone and marks the agents: *Message @mike and @sam (agent)*. |
+| The first message | The first time you open it on a device, a line above the start of the conversation: *Sam is an agent and reads everything here; it can act on what you say.* Dismiss it and it stays away. |
+| Every message | An agent's messages carry the agent marker on its avatar and **Agent** beside its name, as everywhere. |
+
+Everything said in such a conversation is read by the agents in it, and
+they answer every message from a person, as in any direct message with an
+agent.
 
 ## Threads
 

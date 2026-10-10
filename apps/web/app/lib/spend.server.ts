@@ -34,7 +34,7 @@ export function loadUsage(viewer: User, slug: string, period: SpendPeriod, now: 
 }
 
 /** One agent's budget and month, as the budgets list shows it. */
-export type AgentBudgetRow = Pick<WorkspaceAgent, "id" | "handle" | "display_name" | "avatar_seed" | "budget" | "spent_month_micros" | "builtin">;
+export type AgentBudgetRow = Pick<WorkspaceAgent, "id" | "handle" | "display_name" | "avatar_seed" | "look" | "budget" | "spent_month_micros" | "builtin">;
 
 /** Every level of budget, widest first, with what is spent against each this month. */
 export type Budgets = {
@@ -68,7 +68,7 @@ export async function loadBudgets(viewer: User, slug: string, monthBreakdown: Pr
     agents: agents
       ? agents
           .filter((a) => !a.archived_at)
-          .map((a) => ({ id: a.id, handle: a.handle, display_name: a.display_name, avatar_seed: a.avatar_seed, budget: a.budget, spent_month_micros: a.spent_month_micros, builtin: a.builtin }))
+          .map((a) => ({ id: a.id, handle: a.handle, display_name: a.display_name, avatar_seed: a.avatar_seed, look: a.look ?? null, budget: a.budget, spent_month_micros: a.spent_month_micros, builtin: a.builtin }))
           .sort((a, b) => Number(b.builtin) - Number(a.builtin) || b.spent_month_micros - a.spent_month_micros)
       : null,
   };

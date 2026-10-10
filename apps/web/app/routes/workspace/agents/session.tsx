@@ -22,6 +22,7 @@ import type { AgentSession, AgentSessionDetail, SessionEvent } from "@g1t/contra
 
 import type { Route } from "./+types/session";
 import { AgentAvatar } from "../../../components/agent-avatar";
+import { sessionFaceOf } from "../../../components/agent-face";
 import { agentsAction, answer } from "../../../components/agents/actions.server";
 import { type ActionResult, ApproveDialog, Confirm } from "../../../components/agents/dialogs";
 import { isLive, kindLabel, sessionRows, whereLabel } from "../../../components/agents/format";
@@ -159,7 +160,7 @@ function Header({ slug, detail }: { slug: string; detail: AgentSessionDetail }) 
       <dl className="mt-5 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <Meta label="Agent">
           <Link to={`/${slug}/-/agents/${session.agent_handle}`} className="inline-flex items-center gap-1.5 hover:underline">
-            <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed }} size={18} />
+            <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed, look: session.agent_look }} size={18} state={sessionFaceOf(session.status)} />
             {session.agent_name}
           </Link>
         </Meta>
@@ -508,7 +509,7 @@ function TreePanel({ slug, tree, current }: { slug: string; tree: AgentSession[]
             const body = (
               <>
                 {depth > 0 && <CornerDownRight size={12} className="shrink-0 text-faint" />}
-                <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed }} size={18} />
+                <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed, look: session.agent_look }} size={18} state={sessionFaceOf(session.status)} />
                 <span className="min-w-0 grow">
                   <span className="block truncate text-[0.8125rem]">{session.visible ? session.title : "A private session"}</span>
                   <span className="block truncate text-[0.6875rem] text-faint">

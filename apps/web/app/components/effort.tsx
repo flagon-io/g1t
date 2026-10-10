@@ -211,7 +211,7 @@ export function Savings({ recs, owner, action, showAgent = true }: { recs: Agent
           <ul className="mt-1.5 space-y-1.5">
             {recs.thin.map((rec) => (
               <li key={rec.id} className="flex min-w-0 items-start gap-2 text-xs text-faint">
-                {showAgent && <AgentAvatar agent={{ handle: rec.agent_handle, avatar_seed: rec.agent_avatar_seed }} size={16} />}
+                {showAgent && <AgentAvatar agent={{ handle: rec.agent_handle, avatar_seed: rec.agent_avatar_seed, look: rec.agent_look }} size={16} />}
                 <span className="min-w-0">
                   {showAgent && <span className="text-muted">@{rec.agent_handle}: </span>}
                   {rec.reason}
@@ -252,7 +252,7 @@ function Suggestion({ rec, owner, action, showAgent }: { rec: AgentRecommendatio
   return (
     <li className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 px-4 py-3.5 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
       <span className="pt-0.5">
-        {showAgent ? <AgentAvatar agent={{ handle: rec.agent_handle, avatar_seed: rec.agent_avatar_seed }} size={26} /> : <Gauge size={18} className="text-accent" aria-hidden="true" />}
+        {showAgent ? <AgentAvatar agent={{ handle: rec.agent_handle, avatar_seed: rec.agent_avatar_seed, look: rec.agent_look }} size={26} /> : <Gauge size={18} className="text-accent" aria-hidden="true" />}
       </span>
       <div className="min-w-0">
         <p className="text-sm font-medium">{rec.title}</p>

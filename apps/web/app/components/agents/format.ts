@@ -268,6 +268,7 @@ const FIELD_LABELS: Record<string, string> = {
   autonomy: "what it may do alone",
   capacity: "capacity",
   avatar_seed: "face",
+  look: "face",
   faces: "who it works with",
   skills_off: "skills",
   abilities: "abilities",

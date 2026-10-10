@@ -32,10 +32,12 @@ export function PersonFace({ person, size = 28, ring }: { person: Pick<Directory
 export function AgentPersonFace({ agent, size = 28, ring = "var(--color-bg)" }: { agent: PeopleAgent; size?: number; ring?: string }) {
   return (
     <span className="relative inline-flex shrink-0">
-      <AgentFace agent={agent} size={size} />
-      <span className="absolute -right-0.5 -bottom-0.5 inline-flex rounded-full" style={{ boxShadow: `0 0 0 2px ${ring}` }}>
-        <StatusDot status={agent.status} className="block" />
-      </span>
+      <AgentFace agent={agent} size={size} ring={ring} />
+      {agent.status !== "idle" && (
+        <span className="absolute -top-0.5 -right-0.5 inline-flex rounded-full" style={{ boxShadow: `0 0 0 2px ${ring}` }}>
+          <StatusDot status={agent.status} className="block" />
+        </span>
+      )}
     </span>
   );
 }

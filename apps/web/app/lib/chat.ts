@@ -168,18 +168,72 @@ export function agentDmOf(entry: ChatSidebarEntry): string | null {
   return entry.channel.kind === "dm" && only?.kind === "agent" ? only.id : null;
 }
 
+type Members = Pick<MemberProfile, "kind">[];
+
+/** Whether a direct message is with agents alone (one or several, nobody else). */
+export function agentsOnlyDm(entry: Pick<ChatSidebarEntry, "channel" | "others">): boolean {
+  return entry.channel.kind === "dm" && entry.others.length > 0 && entry.others.every((member) => member.kind === "agent");
+}
+
+/**
+ * Whether a direct message is mixed: at least one person besides you and
+ * at least one agent in it. Such a conversation lists under People (a
+ * person is in it) and says, everywhere it shows, that an agent is too.
+ */
+export function mixedDm(entry: Pick<ChatSidebarEntry, "channel" | "others">): boolean {
+  return entry.channel.kind === "dm" && isMixed(entry.others);
+}
+
+/** Whether the others in a conversation are a person or more and an agent or more. */
+export function isMixed(others: Members): boolean {
+  return others.some((member) => member.kind === "agent") && others.some((member) => member.kind === "user");
+}
+
+/** The agents among a conversation's other members. */
+export function agentsAmong<M extends Pick<MemberProfile, "kind">>(others: readonly M[]): M[] {
+  return others.filter((member) => member.kind === "agent");
+}
+
+/**
+ * The composer's placeholder in a direct message: "Message @mike and @sam
+ * (agent)", each agent said to be one, so nobody writes to a person and
+ * reaches a bot unawares. A conversation with yourself alone is for notes.
+ */
+export function dmPlaceholder(others: readonly Pick<MemberProfile, "kind" | "name" | "display_username">[]): string {
+  if (others.length === 0) return "Message yourself";
+  const names = others.map((member) => `@${shownHandle(member)}${member.kind === "agent" ? " (agent)" : ""}`);
+  const list = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `Message ${list}`;
+}
+
+/**
+ * The one-line notice above a mixed conversation's first message, the
+ * first time a person opens it: who the agents are and that they read and
+ * can act on what is said.
+ */
+export function mixedNotice(others: readonly Pick<MemberProfile, "kind" | "name" | "display_name" | "display_username">[]): string {
+  const agents = agentsAmong(others).map(shownName);
+  if (agents.length === 0) return "";
+  if (agents.length === 1) return `${agents[0]} is an agent and reads everything here; it can act on what you say.`;
+  const list = `${agents.slice(0, -1).join(", ")} and ${agents[agents.length - 1]}`;
+  return `${list} are agents and read everything here; they can act on what you say.`;
+}
+
 /**
  * The sidebar's sections, in the order they show: what is pinned (the
- * `starred` preference), channels, and direct messages, the latest first,
- * with people and agents alike (an agent is a member you message like
- * anyone). `agentDms` finds the direct message with each agent, by agent
- * id, so the Agents section lists only the agents you have not talked to.
+ * `starred` preference), channels, then direct messages in two buckets,
+ * each the latest first: People, every conversation with a person in it
+ * (a mixed one too, since a person is in it), and Agents, conversations
+ * with agents alone. `agentDms` finds the direct message with each agent
+ * on its own, by agent id, so the Agents section lists only the agents
+ * you have not talked to yet.
  */
 export function sections(entries: ChatSidebarEntry[]): {
   pinned: ChatSidebarEntry[];
   channels: ChatSidebarEntry[];
   agentDms: Map<string, ChatSidebarEntry>;
-  dms: ChatSidebarEntry[];
+  people: ChatSidebarEntry[];
+  agents: ChatSidebarEntry[];
 } {
   const byName = (a: ChatSidebarEntry, b: ChatSidebarEntry) => a.title.localeCompare(b.title);
   // Direct messages: the latest conversation first, as people scan them.
@@ -190,11 +244,13 @@ export function sections(entries: ChatSidebarEntry[]): {
     const agent = agentDmOf(entry);
     if (agent) agentDms.set(agent, entry);
   }
+  const dms = entries.filter((e) => !e.starred && e.channel.kind === "dm");
   return {
     pinned: entries.filter((e) => e.starred).sort(byName),
     channels: entries.filter((e) => !e.starred && e.channel.kind === "channel").sort(byName),
     agentDms,
-    dms: entries.filter((e) => !e.starred && e.channel.kind === "dm").sort(byRecent),
+    people: dms.filter((e) => !agentsOnlyDm(e)).sort(byRecent),
+    agents: dms.filter(agentsOnlyDm).sort(byRecent),
   };
 }
 

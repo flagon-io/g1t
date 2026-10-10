@@ -6,6 +6,7 @@ import type { AgentAbilities, SubagentDef, WorkspaceAgent } from "@g1t/contracts
 
 import { agentStatus, budgetBlock, dayKey, monthKey } from "./budget.ts";
 import { EMPTY_ABILITIES } from "../../../packages/contracts/src/abilities.ts";
+import { readLook } from "../../../packages/contracts/src/agent-look.ts";
 import { type Definition, DEFAULT_AUTONOMY, DEFAULT_BUDGET, DEFAULT_ROUTING, legacyRoleOf, PRESETS, readJson } from "./definition.ts";
 
 export type Row = {
@@ -24,6 +25,8 @@ export type Row = {
   capacity: number;
   template: string | null;
   avatar_seed: string | null;
+  /** Its chosen face (JSON, @g1t/contracts agent-look.ts); null or missing before looks. */
+  look?: string | null;
   title: string | null;
   /**
    * Unused columns from when an agent carried its own team and department.
@@ -91,6 +94,7 @@ export function definitionOf(row: Row): Definition {
     capacity: row.capacity,
     template: row.template,
     avatar_seed: row.avatar_seed || row.handle,
+    look: readLook(row.look ?? null),
     title,
     responsibilities: readList<string>(row.responsibilities),
     subagents: readList<SubagentDef>(row.subagents),
@@ -182,6 +186,7 @@ export const DEFINITION_COLUMNS = [
   "capacity",
   "template",
   "avatar_seed",
+  "look",
   "title",
   "responsibilities",
   "subagents",
@@ -206,6 +211,7 @@ export function definitionColumns(d: Definition): (string | number | null)[] {
     d.capacity,
     d.template,
     d.avatar_seed,
+    d.look ? JSON.stringify(d.look) : null,
     d.title,
     JSON.stringify(d.responsibilities),
     JSON.stringify(d.subagents),

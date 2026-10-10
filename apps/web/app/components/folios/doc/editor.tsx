@@ -13,7 +13,7 @@ import { RESTYjsThreadStore, withCollaboration } from "@blocknote/core/yjs";
 import { syntaxHighlighter } from "@blocknote/code-block";
 import { BlockNoteViewEditor, SuggestionMenuController, ThreadsSidebar, getDefaultReactSlashMenuItems, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
-import type { DocFile, DocRole, FolioSearchHit, FolioSuggestion, Result } from "@g1t/contracts";
+import type { AgentLook, DocFile, DocRole, FolioSearchHit, FolioSuggestion, Result } from "@g1t/contracts";
 import { AlertTriangle, AtSign, Calendar, CheckCircle2, FileCode2, FileText, GitPullRequest, Info, Link2, Sigma, Workflow } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -28,7 +28,7 @@ import type { Presence } from "../shell";
 import { whoAre } from "../who";
 
 /** Someone who can be mentioned: a person (by username) or an agent (by id). */
-export type DocMentionable = { kind: "user" | "agent"; id: string; name: string; display_name: string; avatar: string | null; avatar_seed?: string | null };
+export type DocMentionable = { kind: "user" | "agent"; id: string; name: string; display_name: string; avatar: string | null; avatar_seed?: string | null; look?: AgentLook | null };
 
 export type DocEditorProps = {
   slug: string;

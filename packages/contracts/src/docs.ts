@@ -24,6 +24,7 @@
  *   where that person can edit AND the space lets agents edit
  *   (`agent_mode: "edit"`). Otherwise its edit becomes a suggestion.
  */
+import type { AgentLook } from "./agent-look";
 import type { MemberProfile, Principal } from "./chat";
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
@@ -106,6 +107,7 @@ export type DocSpaceMember = {
   display_name: string;
   avatar: string | null;
   avatar_seed?: string | null;
+  look?: AgentLook | null;
   role: DocRole;
 };
 

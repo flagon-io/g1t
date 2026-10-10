@@ -191,6 +191,7 @@ export class Who {
           role: agent?.role ?? null,
           title: agent?.title || null,
           avatar_seed: agent?.avatar_seed ?? null,
+          look: agent?.look ?? null,
         });
       }
     }

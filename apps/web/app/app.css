@@ -61,7 +61,7 @@
 
   --animate-fade-up: fade-up 0.6s ease-out both;
   --animate-dash: dash 1.2s linear infinite;
-  /* An agent's face, on hover: a small, quick wiggle (components/agent-avatar.tsx). */
+  /* A template's creature, on hover: a small, quick wiggle (components/agent-avatar.tsx). */
   --animate-wiggle: wiggle 0.45s ease-in-out;
 
   /* Menus, popovers and dialogs (components/ui): in quickly, out quicker. */
@@ -168,6 +168,166 @@
 @keyframes dash {
   to {
     stroke-dashoffset: -16;
+  }
+}
+
+/*
+ * An agent's face (components/agent-face.tsx). Its colours are the face's
+ * own body colour (set on the element, a light-dark() pair) and these: the
+ * ink of its eyes and mouth, a second ink for what sits outside the head,
+ * the rim around its head, a highlight, the glow of a visor or a working
+ * face, and two accents for a bow and a spark. It moves with transforms and opacity only: a blink and a breath
+ * on its own beat (the delays are set per face from its seed), a pulse
+ * while it works, a bounce when it is happy, a z when it sleeps. The
+ * reduced-motion rule below stops every one of them, and the state's
+ * still pose (narrowed or closed eyes) is a plain transform, so it holds.
+ */
+.agent-face {
+  --face-ink: #1b1b22;
+  /* What sits outside the head (antenna, hat, headphones, a z) reads on the page, not the body. */
+  --face-ink-out: light-dark(#1b1b22, #e9e9ee);
+  --face-rim: color-mix(in oklab, var(--face-body), #000 24%);
+  --face-light: #ffffff;
+  --face-glow: light-dark(#0d7a52, #86efc4);
+  --face-ribbon: light-dark(#6b52c8, #b6a8ff);
+  --face-spark: light-dark(#d4a90f, #f2dc72);
+  display: inline-block;
+  vertical-align: middle;
+}
+.agent-face .face-bob,
+.agent-face .face-eyes,
+.agent-face .face-pupils,
+.agent-face .face-glow,
+.agent-face .face-bulb,
+.agent-face .face-spark,
+.agent-face .face-z {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.agent-face .face-bob {
+  animation: face-bob 4.2s ease-in-out infinite;
+  animation-delay: var(--face-bob-delay, 0s);
+}
+.agent-face .face-eyes {
+  animation: face-blink var(--face-blink-period, 5s) ease-in-out infinite;
+  animation-delay: var(--face-blink-delay, 0s);
+}
+.agent-face .face-pupils {
+  transition: transform 0.25s ease-out;
+}
+/* A glance toward the pointer, on hover only. */
+.agent-face:hover .face-pupils,
+a:hover > .agent-face .face-pupils,
+button:hover > .agent-face .face-pupils {
+  transform: translateX(2.5px);
+}
+.agent-face .face-glow {
+  opacity: 0;
+}
+.agent-face .face-spark {
+  animation: face-twinkle 2.8s ease-in-out infinite;
+  animation-delay: var(--face-bob-delay, 0s);
+}
+/* Working: eyes narrowed, no blink, a soft pulse around the head and in the bulb. */
+.agent-face[data-state="working"] .face-eyes {
+  animation: none;
+  transform: scaleY(0.55);
+}
+.agent-face[data-state="working"] .face-glow {
+  animation: face-pulse 1.6s ease-in-out infinite;
+}
+.agent-face[data-state="working"] .face-bulb {
+  animation: face-bulb 1.6s ease-in-out infinite;
+}
+/* Asleep: eyes shut, a slower breath, a z drifting up. */
+.agent-face[data-state="asleep"] .face-eyes {
+  animation: none;
+  transform: scaleY(0.1);
+}
+.agent-face[data-state="asleep"] .face-bob {
+  animation-duration: 6s;
+}
+.agent-face[data-state="asleep"] .face-z {
+  animation: face-zz 2.6s ease-in-out infinite;
+}
+.agent-face[data-state="asleep"] .face-z-2 {
+  animation-delay: 1.3s;
+}
+/* Happy: a bounce, twice, then still. */
+.agent-face[data-state="happy"] .face-bob {
+  animation: face-happy 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 2;
+}
+@keyframes face-blink {
+  0%,
+  91%,
+  100% {
+    transform: scaleY(1);
+  }
+  94%,
+  96% {
+    transform: scaleY(0.08);
+  }
+}
+@keyframes face-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.6px);
+  }
+}
+@keyframes face-pulse {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+@keyframes face-bulb {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+@keyframes face-twinkle {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(0.9) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1) rotate(20deg);
+  }
+}
+@keyframes face-zz {
+  0% {
+    opacity: 0;
+    transform: translate(0, 4px);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(5px, -9px);
+  }
+}
+@keyframes face-happy {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    transform: translateY(-6px) scale(1.06);
   }
 }
 

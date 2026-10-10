@@ -45,7 +45,7 @@ function ActorAvatar({ notification }: { notification: FeedNotification }) {
   if (actor.kind === "user" || actor.kind === "agent") {
     return (
       <MemberAvatar
-        member={{ kind: actor.kind, id: actor.id, name: actor.name, avatar: actor.avatar ?? null, avatar_seed: actor.avatar_seed ?? null }}
+        member={{ kind: actor.kind, id: actor.id, name: actor.name, avatar: actor.avatar ?? null, avatar_seed: actor.avatar_seed ?? null, look: actor.look ?? null }}
         size={32}
       />
     );

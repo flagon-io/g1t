@@ -29,6 +29,8 @@
  */
 import type { AgentEffort, AgentEffortCosts, AgentRecommendation, AgentRecommendations, EffortCost, EffortEvidence, EffortLevel } from "@g1t/contracts";
 
+import { readLook } from "../../../packages/contracts/src/agent-look.ts";
+
 import { dollars } from "./money.ts";
 import { effortOf, isLevel, lowerEffort } from "./routing.ts";
 import { type Row, definitionOf } from "./store.ts";
@@ -206,6 +208,7 @@ type RecommendationRow = {
   handle?: string;
   display_name?: string;
   avatar_seed?: string;
+  look?: string | null;
 };
 
 function parse<T>(raw: string, fallback: T): T {
@@ -224,6 +227,7 @@ export function toRecommendation(row: RecommendationRow): AgentRecommendation {
     agent_handle: row.handle ?? "agent",
     agent_name: row.display_name ?? "An agent",
     agent_avatar_seed: row.avatar_seed || row.handle || row.agent_id,
+    agent_look: readLook(row.look ?? null),
     kind: "effort",
     status: (["open", "applied", "dismissed", "thin"].includes(row.status) ? row.status : "open") as AgentRecommendation["status"],
     from_effort: (row.from_effort as AgentEffort) ?? "auto",
@@ -338,7 +342,7 @@ export async function readRecommendations(db: D1Database, workspaceId: string, a
   const [rows, check] = await Promise.all([
     db
       .prepare(
-        `SELECT r.*, a.handle, a.display_name, a.avatar_seed FROM agent_recommendations r JOIN agents a ON a.id = r.agent_id
+        `SELECT r.*, a.handle, a.display_name, a.avatar_seed, a.look FROM agent_recommendations r JOIN agents a ON a.id = r.agent_id
          WHERE r.workspace_id = ?1 AND a.archived_at IS NULL AND (?2 IS NULL OR r.agent_id = ?2)
            AND (r.status IN ('open', 'thin') OR (r.status IN ('applied', 'dismissed') AND r.resolved_at >= ?3))
          ORDER BY r.saving_month_micros DESC, a.handle`,
@@ -360,7 +364,7 @@ export async function readRecommendations(db: D1Database, workspaceId: string, a
 export async function recommendationRow(db: D1Database, workspaceId: string, id: string): Promise<RecommendationRow | null> {
   return db
     .prepare(
-      `SELECT r.*, a.handle, a.display_name, a.avatar_seed FROM agent_recommendations r JOIN agents a ON a.id = r.agent_id
+      `SELECT r.*, a.handle, a.display_name, a.avatar_seed, a.look FROM agent_recommendations r JOIN agents a ON a.id = r.agent_id
        WHERE r.workspace_id = ? AND r.id = ?`,
     )
     .bind(workspaceId, id)

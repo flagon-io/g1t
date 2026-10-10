@@ -8,6 +8,7 @@
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
 import type { Result } from "./result";
+import type { AgentLook } from "./agent-look";
 import type { AskerAccess } from "./workspace-agents";
 
 /** Who is speaking: a person (by user id) or a workspace agent (by agent id). */
@@ -49,8 +50,10 @@ export type MemberProfile = Principal & {
    * it; optional so profiles a page makes for itself need not.
    */
   title?: string | null;
-  /** What an agent's pixel creature is drawn from; null for a person. Always set by chat. */
+  /** What an agent's face is drawn from when it chose none; null for a person. Always set by chat. */
   avatar_seed?: string | null;
+  /** An agent's chosen face (./agent-look.ts); null for a person, or an agent wearing its seed's face. */
+  look?: AgentLook | null;
 };
 
 /**

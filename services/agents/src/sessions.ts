@@ -23,6 +23,7 @@
  * so a step is billed, capped and recorded exactly as a reply is.
  */
 import {
+  type AgentLook,
   type AgentRef,
   type AgentSession,
   type AgentSessionKind,
@@ -42,6 +43,7 @@ import {
   workClient,
 } from "@g1t/contracts";
 
+import { readLook } from "../../../packages/contracts/src/agent-look.ts";
 import { CHAT_MAX_HOPS } from "../../../packages/contracts/src/chat.ts";
 import { Audience } from "./audience.ts";
 import { type MeterEnv, metered } from "./meter.ts";
@@ -161,7 +163,7 @@ function json<T>(raw: string | null | undefined, fallback: T): T {
 const iso = () => new Date().toISOString();
 
 /** A session as the contract shows it; `visible` false hides what it was about. */
-export function toSession(row: SessionRow, agent: { handle: string; display_name: string; avatar_seed: string } | null, visible: boolean): AgentSession {
+export function toSession(row: SessionRow, agent: { handle: string; display_name: string; avatar_seed: string; look?: AgentLook | null } | null, visible: boolean): AgentSession {
   return {
     id: row.id,
     workspace_id: row.workspace_id,
@@ -169,6 +171,7 @@ export function toSession(row: SessionRow, agent: { handle: string; display_name
     agent_handle: agent?.handle ?? "agent",
     agent_name: agent?.display_name ?? "An agent",
     agent_avatar_seed: agent?.avatar_seed ?? agent?.handle ?? row.agent_id,
+    agent_look: agent?.look ?? null,
     subagent: row.subagent,
     kind: row.kind as AgentSessionKind,
     parent_id: row.parent_id,
@@ -652,7 +655,7 @@ export function actionPorts(
 
 /** How work names an agent on issues and pull requests. */
 function refOf(agent: Row): AgentRef {
-  return agentRef({ id: agent.id, handle: agent.handle, display_name: agent.display_name, avatar_seed: agent.avatar_seed || agent.handle });
+  return agentRef({ id: agent.id, handle: agent.handle, display_name: agent.display_name, avatar_seed: agent.avatar_seed || agent.handle, look: readLook(agent.look ?? null) });
 }
 
 async function treeDepth(db: D1Database, row: SessionRow): Promise<number> {
@@ -1125,7 +1128,7 @@ async function notifyApproval(env: SessionEnv, row: SessionRow, agent: Row): Pro
           title: `${agent.display_name} needs more budget`,
           body: `"${row.title}" reached its cap of ${dollars(row.cap_micros ?? 0)}.`,
           href,
-          actor: { kind: "agent", id: agent.id, name: agent.display_name, avatar_seed: agent.avatar_seed || agent.handle },
+          actor: { kind: "agent", id: agent.id, name: agent.display_name, avatar_seed: agent.avatar_seed || agent.handle, look: readLook(agent.look ?? null) },
           // While that conversation is open the card is there already: no toast.
           channel_id: root.channel_id,
           card,

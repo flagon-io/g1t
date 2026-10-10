@@ -8,7 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import { Link, data } from "react-router";
 
 import type { Route } from "./+types/template";
-import { PixelCreature } from "../../../components/agent-avatar";
+import { AgentAvatar } from "../../../components/agent-avatar";
 import { StartAction } from "../../../components/agent-templates";
 import { PRESETS } from "../../../lib/agent-form";
 import { routingWords, templateListings, templatesPath } from "../../../lib/agent-templates";
@@ -57,7 +57,7 @@ export default function AgentTemplate({ loaderData, params }: Route.ComponentPro
     <div className="pb-4">
       {back}
       <header className="mt-5 flex flex-wrap items-center gap-4">
-        <PixelCreature seed={template.handle} size={64} />
+        <AgentAvatar agent={{ handle: template.handle }} size={64} />
         <div className="min-w-0 grow basis-60">
           <h1 className="text-2xl font-semibold tracking-tight">{template.title}</h1>
           <p className="mt-0.5 text-sm text-muted">A role template from g1t · Suggests {template.display_name}</p>
@@ -153,7 +153,7 @@ export default function AgentTemplate({ loaderData, params }: Route.ComponentPro
                 <ul className="mt-2 space-y-1.5">
                   {agents.map((agent) => (
                     <li key={agent.id} className="flex items-center gap-2">
-                      <PixelCreature seed={agent.handle} size={20} />
+                      <AgentAvatar agent={agent} size={20} />
                       <Link to={`/${slug}/-/agents/${agent.handle}`} className="truncate hover:underline">
                         {agent.display_name} <span className="text-faint">@{agent.handle}</span>
                       </Link>

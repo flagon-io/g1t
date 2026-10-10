@@ -8,14 +8,15 @@ import type { ChatSidebarEntry, WorkspaceAgent } from "@g1t/contracts";
 import { conversationCache } from "./conversation-cache";
 import { CreateChannelButton, NewMessageButton, useChatData, useChatSend, useChatSidebar } from "./actions";
 import { DndMenu } from "./dnd-menu";
-import { MemberAvatar, StatusDot, statusLabel } from "./marks";
+import { MemberAvatar, PairAvatar, StatusDot, statusLabel } from "./marks";
 import { AgentAvatar } from "../agent-avatar";
 import { PersonStatusEmoji } from "../presence";
 import { isOrchestrator } from "../orchestrator";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { Skeleton } from "../ui/skeleton";
-import { type ChatFilter, agentDmOf, channelPath, filterEntries, sections } from "../../lib/chat";
+import { type ChatFilter, agentDmOf, agentsAmong, channelPath, filterEntries, mixedDm, sections } from "../../lib/chat";
 import { feedConnected } from "../../lib/notify-client";
 import { FALLBACK_REFRESH_MS } from "../../lib/notify-store";
 import { setMutedConversations } from "../../lib/sound-events";
@@ -44,12 +45,14 @@ function Count({ entry }: { entry: ChatSidebarEntry | undefined }) {
 
 /**
  * Chat mode's sidebar: what you pinned, the channels (and a way to browse
- * the rest), then direct messages, the latest first, with people and
- * agents alike. Last, the agents you have not talked to yet, g1t first:
- * one click opens a conversation with any of them. Sections fold, and
- * stay folded on this device. All, Unread and Mentions filter every
- * section. It refreshes itself while the tab is shown, so unread counts
- * move without a reload.
+ * the rest), then direct messages in two buckets so it is always clear who
+ * is on the other side: People, your conversations with people, the latest
+ * first (a conversation with a person and an agent in it is here, marked
+ * as such), and Agents, your conversations with agents alone, the latest
+ * first, then the agents you have not talked to yet, g1t first: one click
+ * opens a conversation with any of them. Sections fold, and stay folded on
+ * this device. All, Unread and Mentions filter every section. It refreshes
+ * itself while the tab is shown, so unread counts move without a reload.
  */
 export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: boolean }) {
   const data = useChatData();
@@ -84,7 +87,7 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
   }, [sidebar]);
   const entries = (sidebar?.entries ?? []).map((e) => (pins.has(e.channel.id) ? { ...e, starred: pins.get(e.channel.id)! } : e));
   const shown = filterEntries(entries, filter, query);
-  const { pinned, channels, dms } = sections(shown);
+  const { pinned, channels, people, agents: agentConversations } = sections(shown);
   const { agentDms } = sections(entries);
   const loading = !data;
   const owner = data?.role === "owner";
@@ -165,7 +168,7 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
-                  const first = [...pinned, ...channels, ...dms][0];
+                  const first = [...pinned, ...channels, ...people, ...agentConversations][0];
                   if (first) {
                     navigate(channelPath(slug, first.channel));
                     setQuery("");
@@ -232,17 +235,17 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
               )}
             </Section>
             <Section
-              id="dms"
-              title="Direct messages"
+              id="people"
+              title="People"
               folded={folded}
               onFold={fold}
               action={<NewMessageButton slug={slug} />}
-              keep={dms.filter(keepShown).map(conversation)}
+              keep={people.filter(keepShown).map(conversation)}
             >
-              {dms.map(conversation)}
-              {dms.length === 0 && filter === "all" && !query && <Empty>Message a teammate or an agent.</Empty>}
+              {people.map(conversation)}
+              {people.length === 0 && filter === "all" && !query && <Empty>Message a teammate.</Empty>}
             </Section>
-            {(agents.length > 0 || (filter === "all" && !query)) && (
+            {(agentConversations.length > 0 || agents.length > 0 || (filter === "all" && !query)) && (
               <Section
                 id="agents"
                 title="Agents"
@@ -261,7 +264,10 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
                     </Hint>
                   ) : null
                 }
+                keep={agentConversations.filter(keepShown).map(conversation)}
               >
+                {agentConversations.map(conversation)}
+                {agentConversations.length === 0 && agents.length === 0 && filter === "all" && !query && <Empty>Message an agent.</Empty>}
                 {agents.map((agent) => (
                   <AgentRow
                     key={agent.id}
@@ -463,8 +469,12 @@ function ConversationRow({
   const agent = agentId ? agents.find((a) => a.id === agentId) : null;
   const other = entry.others[0];
   const g1t = agent ? isOrchestrator(agent) : false;
+  // A person and an agent together: both faces, the agent's marked, and the word.
+  const mixed = mixedDm(entry);
   const icon = agent ? (
     <AgentFace agent={agent} g1t={g1t} />
+  ) : mixed ? (
+    <PairAvatar person={entry.others.find((m) => m.kind === "user")!} agent={agentsAmong(entry.others)[0]!} size={20} ring="var(--chat-sidebar-bg)" />
   ) : entry.channel.kind === "dm" && other ? (
     // One person: their dot, cut out of the sidebar behind it.
     <MemberAvatar member={other} size={18} presence={entry.others.length === 1} ring="var(--chat-sidebar-bg)" />
@@ -484,7 +494,7 @@ function ConversationRow({
             current ? "bg-sidebar-accent text-fg" : unread ? "text-fg hover:bg-sidebar-accent/60" : entry.muted ? "text-faint hover:bg-sidebar-accent/60 hover:text-muted" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"
           }`}
         >
-          <span className={`flex w-4.5 shrink-0 justify-center ${current || unread ? "text-muted" : "text-faint"}`}>{icon}</span>
+          <span className={`flex shrink-0 justify-center ${mixed ? "w-7" : "w-4.5"} ${current || unread ? "text-muted" : "text-faint"}`}>{icon}</span>
           <span className={`min-w-0 grow truncate ${unread ? "font-semibold" : current ? "font-medium" : ""}`}>
             {agent ? agent.display_name : entry.title}
             {agent && <span className="ml-1.5 text-[0.6875rem] font-normal text-faint">{g1t ? "orchestrator" : agent.title}</span>}
@@ -492,6 +502,11 @@ function ConversationRow({
               <PersonStatusEmoji person={{ id: other.id, username: other.name }} size={13} className="ml-1.5 align-[-2px]" inert />
             )}
           </span>
+          {mixed && (
+            <Badge tone="accent" className="shrink-0 px-1.5 font-normal">
+              with an agent
+            </Badge>
+          )}
           {entry.muted && <BellOff size={12} className="shrink-0 text-faint" aria-label="Muted" />}
           <Count entry={entry} />
         </NavLink>
@@ -501,13 +516,16 @@ function ConversationRow({
   );
 }
 
-/** An agent's face in a row; any but g1t carries its status, cut out of the sidebar behind it. */
+/**
+ * An agent's face in a row, the agent marker ringed in the sidebar's own
+ * colour; any but g1t carries its status in the other corner.
+ */
 function AgentFace({ agent, g1t }: { agent: WorkspaceAgent; g1t: boolean }) {
   return (
     <span className="relative inline-flex shrink-0">
-      <AgentAvatar agent={{ ...agent, builtin: g1t }} size={18} />
+      <AgentAvatar agent={{ ...agent, builtin: g1t }} size={18} ring="var(--chat-sidebar-bg)" />
       {!g1t && agent.status !== "idle" && (
-        <span className="absolute -right-1 -bottom-1 flex rounded-full p-[2px]" style={{ background: "var(--chat-sidebar-bg)" }}>
+        <span className="absolute -top-1 -right-1 flex rounded-full p-[2px]" style={{ background: "var(--chat-sidebar-bg)" }}>
           <StatusDot status={agent.status} className="size-[7px] shadow-none" />
         </span>
       )}

@@ -8,13 +8,13 @@ import type { DirectoryPerson, DirectoryTeam, PeopleDirectory, TeamLead, Workspa
 /** An agent as People's pages need it. */
 export type PeopleAgent = Pick<
   WorkspaceAgent,
-  "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "title" | "role" | "status" | "responsibilities" | "builtin" | "spent_month_micros"
+  "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "look" | "title" | "role" | "status" | "responsibilities" | "builtin" | "spent_month_micros"
 >;
 
 /** Just what People's pages read of an agent, so loaders send no more. */
 export function peopleAgent(agent: PeopleAgent): PeopleAgent {
-  const { id, handle, display_name, avatar, avatar_seed, title, role, status, responsibilities, builtin, spent_month_micros } = agent;
-  return { id, handle, display_name, avatar, avatar_seed, title, role, status, responsibilities, builtin, spent_month_micros };
+  const { id, handle, display_name, avatar, avatar_seed, look, title, role, status, responsibilities, builtin, spent_month_micros } = agent;
+  return { id, handle, display_name, avatar, avatar_seed, look, title, role, status, responsibilities, builtin, spent_month_micros };
 }
 
 /** Where a person's profile is. */
