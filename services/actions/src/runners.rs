@@ -1260,6 +1260,9 @@ impl Actions {
                 reference: format!("selfhosted/{}/{}", job.id, started),
                 kind: Some(ComputeKind::Workflow),
                 cpu_seconds: None,
+                // A workflow job on a self-hosted runner: no agent ran it and nobody asked an agent for it.
+                agent: None,
+                asked_by: None,
                 reservation_id: None,
                 self_hosted: true,
                 instance: None,
