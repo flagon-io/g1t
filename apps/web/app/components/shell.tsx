@@ -127,6 +127,13 @@ function SidebarLink({
   children: ReactNode;
 }) {
   const { pathname } = useLocation();
+  const navigation = useNavigation();
+  // NavLink's own pending state compares paths only, so a list whose rows
+  // differ by query (Notifications' views and reasons) would light every
+  // row while one loads. Where the list says which row is current, a row
+  // is pending only when the page on its way is that row's, query and all.
+  const loading = navigation.location;
+  const pendingHere = loading != null && `${loading.pathname}${loading.search}` === to;
   return (
     <NavLink
       to={to}
@@ -136,10 +143,11 @@ function SidebarLink({
         const current =
           lit ??
           (isActive || [also ?? []].flat().some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/")));
+        const pending = lit === undefined ? isPending : pendingHere;
         return `group flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${
           current
             ? "bg-raised font-medium text-fg"
-            : isPending
+            : pending
               ? "bg-raised/60 text-fg"
               : "text-muted hover:bg-raised/60 hover:text-fg"
         }`;
