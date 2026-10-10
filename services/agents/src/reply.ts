@@ -19,6 +19,8 @@
  */
 import { type AgentDelivery, type ServiceBinding, identityClient, newId } from "@g1t/contracts";
 
+import { type AbilityEnv, abilitiesFor, abilitiesSection, abilityPorts, saidText } from "./abilities.ts";
+
 import { CHAT_MAX_HOPS } from "../../../packages/contracts/src/chat.ts";
 import type { Tokens } from "./budget.ts";
 import { handOffPort } from "./handoff.ts";
@@ -59,6 +61,10 @@ export type ReplyEnv = MeterEnv & {
   SEARCH: ServiceBinding;
   /** Notifications: a session waiting for more budget. */
   NOTIFY?: ServiceBinding;
+  /** The workspace's connections, for abilities outside g1t (abilities.ts). */
+  INTEGRATIONS: ServiceBinding;
+  /** The audit log, for refusals. */
+  EVENTS: ServiceBinding;
   /** Every agent's desk: sessions are worked on their agent's. */
   DESKS: DurableObjectNamespace<Desk>;
 };
@@ -378,6 +384,8 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
       // What colleagues consulted along the way used: billed to this reply.
       const consulted = { tokens: NO_TOKENS, cost: 0 };
       let toolbox: ToolBox | null = null;
+      // The "Your abilities outside g1t" section, once the tool box has them.
+      let abilitiesText: string | null = null;
       let place: RecallPlace = { channel_id: delivery.channel_id, kind: delivery.channel_kind === "dm" ? "dm" : "private", people: [delivery.asked_by] };
       if (!delivery.hello) {
         try {
@@ -464,6 +472,27 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
             actions,
           );
           consult.attach(toolbox);
+          // Its abilities outside g1t (abilities.ts): offered and enforced by the tool box, for the person it acts for.
+          if (viewer && !delivery.hello) {
+            const sections = await abilitiesFor(env as unknown as AbilityEnv, { agent: row, definition, workspace: slug, asker: viewer }).catch(() => null);
+            if (sections) {
+              const saidByPeople = saidText([...history].reverse().filter((m) => m.author.kind === "user").slice(0, 3).map((m) => m.body));
+              toolbox.useAbilities(
+                sections,
+                abilityPorts(env as unknown as AbilityEnv, {
+                  agent: row,
+                  workspace: slug,
+                  channel_id: delivery.channel_id,
+                  session: null,
+                  asker: { id: delivery.asked_by, username: askerName },
+                  postCard: (card) => surface.post("", card).catch(() => null),
+                }),
+                saidByPeople,
+                definition.abilities.mcp_servers,
+              );
+              abilitiesText = abilitiesSection(sections);
+            }
+          }
         } catch (error) {
           // Without an audience nothing may be read: the reply goes on with this conversation only.
           console.error("agents: no audience for a reply, so no tools", row.id, String(error));
@@ -501,6 +530,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
           conversation: conversationHere,
           teams: teamsSection(row.id, teamsHere, now),
           canHandOff: !!toolbox?.definitions().some((tool) => tool.name === "hand_off"),
+          abilities: abilitiesText,
           handedOffBy: sender?.handle ?? null,
           skills: skillsSection(shelf, toolbox?.definitions().map((tool) => tool.name) ?? []),
         }),

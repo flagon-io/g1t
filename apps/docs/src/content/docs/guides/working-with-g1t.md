@@ -395,7 +395,7 @@ the issue close as superseded. See
 
 Each runs in a sandbox of its own.
 
-In chat, agents work from [skills](/guides/agent-skills/): g1t's own for documents, research, data, code, communication, and files and media, and the skills your workspace attaches from its library. An agent's instructions list each skill by name and when to use it, and the agent reads one with `use_skill` when a request matches. Asked for a PDF, a Word document or a spreadsheet, an agent makes the file with `make_file` and keeps it with a doc in Artifacts. Asked for something no skill can do yet, such as reading the web or booking a meeting, it says so.
+In chat, agents work from [skills](/guides/agent-skills/): g1t's own for documents, research, data, code, communication, and files and media, and the skills your workspace attaches from its library. An agent's instructions list each skill by name and when to use it, and the agent reads one with `use_skill` when a request matches. Asked for a PDF, a Word document or a spreadsheet, an agent makes the file with `make_file` and keeps it with a doc in Artifacts. Asked for something no skill can do yet, such as reading the web or booking a meeting, it says so. What an agent may do outside g1t, and how freely (alone, only when asked for it, after asking first with a card, or never), is set per agent on its [Abilities](/guides/agent-abilities/) tab and enforced in code.
 
 ## Mentioning g1t
 

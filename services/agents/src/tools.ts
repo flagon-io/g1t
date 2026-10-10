@@ -18,8 +18,9 @@
  *
  * Pure apart from its ports, so the rules are tested adversarially.
  */
-import type { DocEditTarget, FolioAgentEdit, FolioAgentEditResult, FolioAgentRead, FolioAudience, FolioKind, FolioPassage, FolioRef, User } from "@g1t/contracts";
+import type { Ability, AbilitySection, AbilitySource, DocEditTarget, FolioAgentEdit, FolioAgentEditResult, FolioAgentRead, FolioAudience, FolioKind, FolioPassage, FolioRef, McpServer, McpTool, User } from "@g1t/contracts";
 
+import { askedFor, levelWords, mcpToolName } from "../../../packages/contracts/src/abilities.ts";
 import { FOLIO_KINDS, folioIdFrom, isFolioKind } from "../../../packages/contracts/src/folios.ts";
 import type { MakeFileFormat } from "../../../packages/contracts/src/skills.ts";
 import { type Audience, type RepoRef, WITHHELD } from "./audience.ts";
@@ -482,13 +483,107 @@ const USE_SKILL: ToolDef = {
   },
 };
 
+/**
+ * Outside g1t, through the workspace's integrations (abilities.ts,
+ * docs.g1t.sh/guides/agent-abilities/): each call is checked against the
+ * agent's abilities for the system that knows the item, in `gate`, before
+ * anything runs.
+ */
+const LOOKUP_OUTSIDE: ToolDef = {
+  name: "lookup_outside",
+  description:
+    "Look up an item in one of the workspace's connected integrations by its key or address: a Linear issue (ENG-42), a Jira ticket (TECH-1234) or a Sentry issue (its link). You get its title, status and description. Only where your abilities allow reading it.",
+  input_schema: { type: "object", properties: { reference: { type: "string", description: "A key such as ENG-42, or the item's address." } }, required: ["reference"] },
+};
+
+const IMPORT_OUTSIDE: ToolDef = {
+  name: "import_outside",
+  description:
+    "Open an issue in a repository here from an item outside g1t (a Linear issue, a Jira ticket or a Sentry issue), linked back to it, as the person you're working for. If it was imported before, you get the existing issue.",
+  input_schema: { type: "object", properties: { repo: { type: "string" }, reference: { type: "string" } }, required: ["repo", "reference"] },
+};
+
+const ACT_OUTSIDE: ToolDef = {
+  name: "act_outside",
+  description:
+    "Act on an item outside g1t: comment on a Linear issue, a Jira ticket or a Sentry issue, or resolve a Sentry issue, with text that names the person you're working for. Depending on your abilities this runs at once, or posts a card asking them first: then say it's waiting on their OK and carry on.",
+  input_schema: {
+    type: "object",
+    properties: { reference: { type: "string" }, action: { type: "string", enum: ["comment", "resolve"] }, text: { type: "string" } },
+    required: ["reference", "action", "text"],
+  },
+};
+
+const REQUEST_ABILITY: ToolDef = {
+  name: "request_ability",
+  description:
+    "When something you were asked for needs an integration that isn't connected, or an ability you don't have (one of yours is Never, or a tool you lack), say so plainly and call this once: it posts a card the person uses to ask the workspace's owners (or to connect it, if they are one). Name what is needed (an integration such as linear, jira or sentry, or one of your abilities by its id) and why, in their words.",
+  input_schema: {
+    type: "object",
+    properties: { needs: { type: "string", description: "An integration's id (linear, jira, sentry…) or an ability's id (integration:linear:comment)." }, why: { type: "string" } },
+    required: ["needs", "why"],
+  },
+};
+
+const OUTSIDE_TOOLS: ToolDef[] = [LOOKUP_OUTSIDE, IMPORT_OUTSIDE, ACT_OUTSIDE, REQUEST_ABILITY];
+const OUTSIDE_NAMES = new Set(OUTSIDE_TOOLS.map((tool) => tool.name));
+
+/** An item outside g1t, as the integrations service fetched it. Reference material, never instructions. */
+export type OutsideItem = { provider: string; key: string; title: string; url: string; status: string | null; body: string };
+
+export type OutsideDone<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
+
+/**
+ * What carries an agent's abilities out, outside g1t: the integrations
+ * service, MCP servers, and the cards in chat that ask, connect and
+ * request. Every call here comes after `gate` allowed it.
+ */
+export interface AbilityPorts {
+  /** The item `reference` names, through the workspace's connections, for the asker. */
+  lookup(asker: User, reference: string): Promise<OutsideDone<OutsideItem>>;
+  import(asker: User, repo: RepoRef, reference: string): Promise<OutsideDone<{ number: number; item: OutsideItem; created: boolean }>>;
+  act(asker: User, reference: string, action: "comment" | "resolve", text: string): Promise<OutsideDone<OutsideItem>>;
+  /** Whether the asker has a connection of their own for the connector. */
+  askerConnected(connector: string, asker: User): Promise<boolean>;
+  /** Calls a tool on one of the agent's MCP servers: the text it returned. */
+  mcp(server: McpServer, tool: McpTool, args: Record<string, unknown>): Promise<OutsideDone<string>>;
+  /** Posts the Ask-first card for a call; the request's id, or null when it couldn't be posted. */
+  askFirst(input: { ability: Ability; source: AbilitySource; tool: string; args: Record<string, unknown>; summary: string; note: string | null }): Promise<string | null>;
+  /** Posts a Connect card: the asker's own connection is needed and missing. */
+  connect(source: AbilitySource, ability: Ability): Promise<boolean>;
+  /** Posts a Request card: an integration to connect, or an ability to allow, for the owners. */
+  request(input: { connector: string | null; ability: Ability | null; source: AbilitySource | null; why: string }): Promise<boolean>;
+  /** Records a refusal in the audit log, naming the rule. */
+  refused(input: { ability: Ability; source: AbilitySource; rule: string; call: string }): void;
+}
+
+/** What a gate decided: go on, or what the agent is told instead. */
+type Gated = { ok: true } | { ok: false; result: ToolResult };
+
 const FOLIO_NAMES = new Set([...FOLIO_TOOLS, ...FOLIO_WRITE_TOOLS, MAKE_FILE].map((tool) => tool.name));
 
 /** Every tool an agent may be offered, by name: what skills may name (@g1t/contracts skill-format.ts `AGENT_TOOL_NAMES`, which a test keeps equal). */
 export const TOOL_NAMES: ReadonlySet<string> = new Set(
-  [...CODE_TOOLS, ...CHAT_TOOLS, ...FOLIO_TOOLS, ...FOLIO_WRITE_TOOLS, MAKE_FILE, ASK_COLLEAGUE, HAND_OFF, REMEMBER, FORGET, DRAFT_ISSUE, COMMENT, REVIEW_PULL, START_SESSION, POST_UPDATE, USE_SUBAGENT, BRING_IN, USE_SKILL].map(
-    (tool) => tool.name,
-  ),
+  [
+    ...CODE_TOOLS,
+    ...CHAT_TOOLS,
+    ...FOLIO_TOOLS,
+    ...FOLIO_WRITE_TOOLS,
+    ...OUTSIDE_TOOLS,
+    MAKE_FILE,
+    ASK_COLLEAGUE,
+    HAND_OFF,
+    REMEMBER,
+    FORGET,
+    DRAFT_ISSUE,
+    COMMENT,
+    REVIEW_PULL,
+    START_SESSION,
+    POST_UPDATE,
+    USE_SUBAGENT,
+    BRING_IN,
+    USE_SKILL,
+  ].map((tool) => tool.name),
 );
 
 /** Reads a library skill's version (skill-library.ts), for `use_skill`. */
@@ -532,6 +627,10 @@ export class ToolBox {
   /** The agent's skills this turn (skills.ts), and how to read a library skill's text. */
   private shelf: readonly ShelfSkill[] = [];
   private readSkill: SkillReader | null = null;
+  /** The agent's abilities this turn (abilities.ts), what carries them out, and what the asker said (for "alone when asked for it"). */
+  private sections: AbilitySection[] | null = null;
+  private abilityPorts: AbilityPorts | null = null;
+  private said = "";
 
   constructor(audience: Audience, ports: ToolPorts, context: ToolContext, calls: ToolCall[] = [], actions: ActionPorts | null = null) {
     this.audience = audience;
@@ -546,6 +645,51 @@ export class ToolBox {
     this.shelf = shelf;
     this.readSkill = read;
   }
+
+  /**
+   * Gives the agent its abilities: the sections `resolveAbilities` made
+   * for it, the ports that carry them out, and what the person said (the
+   * latest messages, or a session's goal), which "alone when asked for it"
+   * reads. Outside tools and MCP tools are offered from here on.
+   */
+  useAbilities(sections: AbilitySection[], ports: AbilityPorts, said: string, servers: McpServer[] = []): void {
+    this.sections = sections;
+    this.abilityPorts = ports;
+    this.said = said.slice(0, 20_000);
+    this.servers = servers;
+  }
+
+  /** The abilities of one group's sources, flat, with their source. */
+  private abilities(group: "integration" | "mcp"): { ability: Ability; source: AbilitySource }[] {
+    return (this.sections ?? []).filter((section) => section.group === group).flatMap((section) => section.sources.flatMap((source) => source.abilities.map((ability) => ({ ability, source }))));
+  }
+
+  /** The MCP tools offered: every tool of every server whose ability isn't Never. */
+  private mcpTools(): { def: ToolDef; server: McpServer; tool: McpTool; ability: Ability; source: AbilitySource }[] {
+    if (!this.abilityPorts) return [];
+    const out: { def: ToolDef; server: McpServer; tool: McpTool; ability: Ability; source: AbilitySource }[] = [];
+    for (const { ability, source } of this.abilities("mcp")) {
+      if (ability.level === "never" || !source.connected) continue;
+      const server = this.servers.find((s) => s.id === source.id);
+      const tool = server?.tools.find((t) => `mcp:${server.id}:${t.name}` === ability.id);
+      if (!server || !tool) continue;
+      out.push({
+        def: {
+          name: mcpToolName(server.name, tool.name),
+          description: `${tool.description || tool.name} (a tool of the ${server.name} MCP server, outside g1t; ${tool.kind === "read" ? "it reads" : "it may change things there"}).`.slice(0, 1024),
+          input_schema: tool.input_schema && typeof tool.input_schema === "object" ? tool.input_schema : { type: "object", properties: {} },
+        },
+        server,
+        tool,
+        ability,
+        source,
+      });
+    }
+    return out;
+  }
+
+  /** The agent's MCP servers themselves (addresses and tools), given with `useAbilities`. */
+  private servers: McpServer[] = [];
 
   /** A colleague's tool box for a consult: the same audience, the same budget, one hop further, reading only. */
   forColleague(ports: ToolPorts, context: ToolContext): ToolBox {
@@ -588,6 +732,25 @@ export class ToolBox {
       ...(actions?.useSubagent && this.context.session && roomForHop ? [USE_SUBAGENT] : []),
       ...(actions?.bringIn && this.context.session && roomForHop ? [BRING_IN] : []),
       ...(this.shelf.length ? [USE_SKILL] : []),
+      ...this.outsideTools(),
+      ...this.mcpTools().map((entry) => entry.def),
+    ];
+  }
+
+  /**
+   * The outside tools offered: each only where some connected integration
+   * lets the agent use it at a level other than Never, for a person it can
+   * act for; `request_ability` whenever it has abilities at all.
+   */
+  private outsideTools(): ToolDef[] {
+    if (!this.sections || !this.abilityPorts || !this.audience.asker || !this.actions) return [];
+    const live = this.abilities("integration").filter(({ ability, source }) => source.connected && ability.level !== "never");
+    const offers = (tool: string) => live.some(({ ability }) => ability.tools.includes(tool));
+    return [
+      ...(offers("lookup_outside") ? [LOOKUP_OUTSIDE] : []),
+      ...(offers("import_outside") && this.canFile() ? [IMPORT_OUTSIDE] : []),
+      ...(offers("act_outside") ? [ACT_OUTSIDE] : []),
+      REQUEST_ABILITY,
     ];
   }
 
@@ -642,6 +805,9 @@ export class ToolBox {
 
   private async dispatch(name: string, input: Record<string, unknown>): Promise<ToolResult> {
     const asker = this.audience.asker;
+    if (OUTSIDE_NAMES.has(name)) return this.outside(name, input);
+    const mcp = this.mcpTools().find((entry) => entry.def.name === name);
+    if (mcp) return this.mcp(mcp, input);
     if (FOLIO_NAMES.has(name)) {
       if (!this.definitions().some((tool) => tool.name === name) || !asker || !this.ports.folios) return { text: `There is no tool called ${name} here.`, outcome: "refused" };
       return this.folios(name, input, asker, this.ports.folios);
@@ -1017,6 +1183,131 @@ export class ToolBox {
       default:
         return { text: `There is no tool called ${name}.`, outcome: "refused" };
     }
+  }
+
+  /**
+   * The rule for one ability, applied before a call: Never refuses and
+   * names the rule; the asker's own connection must exist; Ask first posts
+   * the card and tells the agent to wait; "alone when asked for it" is
+   * alone only when what the person said names the item or the ability.
+   */
+  private async gate(found: { ability: Ability; source: AbilitySource }, call: { tool: string; args: Record<string, unknown>; summary: string; keys: string[] }, asker: User): Promise<Gated> {
+    const { ability, source } = found;
+    const ports = this.abilityPorts!;
+    const rule = `${source.name}: ${ability.label}`;
+    const refused = (text: string): Gated => ({ ok: false, result: { text, outcome: "refused" } });
+    if (!source.connected) return refused(`${source.name} isn't connected to this workspace, so you can't ${ability.label.toLowerCase()} there. Say so, and use request_ability if they want it connected.`);
+    if (ability.level === "never") {
+      ports.refused({ ability, source, rule: `${ability.id}=never`, call: call.summary });
+      return refused(`Not allowed: your abilities say "${rule}" is Never. Tell them plainly you aren't allowed to, without trying another way; an owner can change it on your Abilities tab.`);
+    }
+    if (ability.credentials === "asker" && !(await ports.askerConnected(source.id, asker))) {
+      const posted = await ports.connect(source, ability);
+      ports.refused({ ability, source, rule: `${ability.id}=asker-not-connected`, call: call.summary });
+      return refused(
+        `This runs on @${asker.username}'s own ${source.name} connection, and they haven't connected one. ${posted ? "A Connect card was posted: tell them to press it, then ask you again." : "Ask them to connect it under their Integrations settings, then ask you again."}`,
+      );
+    }
+    let note: string | null = null;
+    if (ability.level === "asked") {
+      if (askedFor(this.said, call.keys)) return { ok: true };
+      note = `${ability.label} in ${source.name} runs on its own only when asked for it, and this wasn't.`;
+    } else if (ability.level !== "ask") return { ok: true };
+    const id = await ports.askFirst({ ability, source, tool: call.tool, args: call.args, summary: call.summary, note });
+    ports.refused({ ability, source, rule: `${ability.id}=${ability.level}`, call: call.summary });
+    if (!id) return refused(`"${rule}" is ${levelWords(ability.level)}, and the card asking for it couldn't be posted just now. Say what you'd do and ask them to allow it.`);
+    return refused(
+      `${note ? `${note} ` : ""}"${rule}" is ${levelWords(ability.level)}: a card was posted asking @${asker.username} (or an owner) to allow it. Don't do it another way. Say in a sentence that it's waiting on their OK, and carry on with the rest.${this.context.session ? " Your session pauses at the end of this step until they answer; the result comes to you then." : ""}`,
+    );
+  }
+
+  /** The ability `tool` on the connector `provider`, among the agent's. */
+  private integrationAbility(provider: string, tool: string): { ability: Ability; source: AbilitySource } | null {
+    return this.abilities("integration").find(({ ability, source }) => source.id === provider.toLowerCase() && ability.tools.includes(tool)) ?? null;
+  }
+
+  /** The outside tools: each checked against the agent's abilities for the system that knows the item. */
+  private async outside(name: string, input: Record<string, unknown>): Promise<ToolResult> {
+    const asker = this.audience.asker;
+    const ports = this.abilityPorts;
+    if (!ports || !this.sections || !asker || !this.actions || !this.definitions().some((tool) => tool.name === name)) return { text: `There is no tool called ${name} here.`, outcome: "refused" };
+    const text = (key: string, max: number) => String(input[key] ?? "").trim().slice(0, max);
+    const reference = text("reference", 500);
+    const notFound = (): ToolResult => ({ text: `No connected integration knows ${reference || "that"}. If it's in a system that isn't connected, say so; request_ability lets them ask for it.`, outcome: "refused" });
+    switch (name) {
+      case "request_ability": {
+        const needs = text("needs", 120).toLowerCase();
+        const why = text("why", 500);
+        if (!needs || !why) return { text: "Say what is needed and why.", outcome: "refused" };
+        const abilityFound = this.abilities("integration").find(({ ability }) => ability.id === needs) ?? this.abilities("mcp").find(({ ability }) => ability.id === needs) ?? null;
+        const connector = abilityFound ? null : needs.replace(/^integration:/, "").split(":")[0]!;
+        const posted = await ports.request({ connector, ability: abilityFound?.ability ?? null, source: abilityFound?.source ?? null, why });
+        if (!posted) return { text: "The request card couldn't be posted just now. Say what's needed and that an owner can add it from the Marketplace or your Abilities tab.", outcome: "error" };
+        return { text: "A Request card was posted. Say in a sentence what it asks for, and that the owners will see it once they press it.", outcome: "allowed" };
+      }
+      case "lookup_outside": {
+        if (!reference) return { text: "Give the item's key or address.", outcome: "refused" };
+        const found = await ports.lookup(asker, reference);
+        if (!found.ok) return found.code === "not_found" ? notFound() : { text: found.message, outcome: found.code === "forbidden" ? "withheld" : "refused" };
+        const item = found.value;
+        const own = this.integrationAbility(item.provider, "lookup_outside");
+        if (!own) return notFound();
+        const gated = await this.gate(own, { tool: name, args: input, summary: `Read ${item.key} in ${own.source.name}`, keys: [item.key, reference, own.ability.label] }, asker);
+        if (!gated.ok) return gated.result;
+        return { text: untrusted(`${own.source.name} ${item.key}`, `${item.key}: ${item.title}${item.status ? ` [${item.status}]` : ""}
+${item.url}
+
+${item.body}`), outcome: "allowed" };
+      }
+      case "import_outside": {
+        if (!reference) return { text: "Give the item's key or address.", outcome: "refused" };
+        if (!this.audience.codeAllowed()) return this.withheld();
+        const repo = await this.audience.repo(input.repo);
+        if (!repo) return this.withheld();
+        const found = await ports.lookup(asker, reference);
+        if (!found.ok) return found.code === "not_found" ? notFound() : { text: found.message, outcome: found.code === "forbidden" ? "withheld" : "refused" };
+        const own = this.integrationAbility(found.value.provider, "import_outside");
+        if (!own) return { text: `Importing from ${found.value.provider} isn't one of your abilities.`, outcome: "refused" };
+        const gated = await this.gate(own, { tool: name, args: input, summary: `Import ${found.value.key} from ${own.source.name} into ${repo.namespace}/${repo.name}`, keys: [found.value.key, reference, "import"] }, asker);
+        if (!gated.ok) return gated.result;
+        const done = await ports.import(asker, repo, reference);
+        if (!done.ok) return { text: `It couldn't be imported: ${done.message}`, outcome: "refused" };
+        const path = `/${repo.namespace}/${repo.name}/issues/${done.value.number}`;
+        return { text: `${done.value.created ? "Opened" : "Already imported as"} ${repo.namespace}/${repo.name}#${done.value.number} from ${done.value.item.key}. Link it: ${path}`, outcome: "allowed" };
+      }
+      case "act_outside": {
+        const action = input.action === "resolve" ? "resolve" : input.action === "comment" ? "comment" : null;
+        const body = String(input.text ?? "").trim().slice(0, 8000);
+        if (!reference || !action) return { text: "Give the item, and whether to comment or resolve.", outcome: "refused" };
+        if (!body) return { text: "Say what to write.", outcome: "refused" };
+        const found = await ports.lookup(asker, reference);
+        if (!found.ok) return found.code === "not_found" ? notFound() : { text: found.message, outcome: found.code === "forbidden" ? "withheld" : "refused" };
+        const item = found.value;
+        const own = this.abilities("integration").find(({ ability, source }) => source.id === item.provider.toLowerCase() && ability.id.endsWith(`:${action}`)) ?? null;
+        if (!own) return { text: `${action === "resolve" ? "Resolving" : "Commenting on"} items in ${item.provider} isn't one of your abilities.`, outcome: "refused" };
+        const summary = action === "resolve" ? `Resolve ${item.key} in ${own.source.name}` : `Comment on ${item.key} in ${own.source.name}`;
+        const gated = await this.gate(own, { tool: name, args: input, summary, keys: [item.key, reference, action, own.ability.label] }, asker);
+        if (!gated.ok) return gated.result;
+        const done = await ports.act(asker, reference, action, body);
+        if (!done.ok) return { text: `It didn't work: ${done.message}`, outcome: "refused" };
+        return { text: `${action === "resolve" ? "Resolved" : "Commented on"} ${done.value.key} in ${own.source.name} (${done.value.url}).`, outcome: "allowed" };
+      }
+      default:
+        return { text: `There is no tool called ${name}.`, outcome: "refused" };
+    }
+  }
+
+  /** A tool of one of the agent's MCP servers, gated by its ability. */
+  private async mcp(entry: { def: ToolDef; server: McpServer; tool: McpTool; ability: Ability; source: AbilitySource }, input: Record<string, unknown>): Promise<ToolResult> {
+    const asker = this.audience.asker;
+    const ports = this.abilityPorts;
+    if (!ports || !asker) return { text: `There is no tool called ${entry.def.name} here.`, outcome: "refused" };
+    const summary = `Call ${entry.tool.name} on ${entry.server.name}`;
+    const gated = await this.gate({ ability: entry.ability, source: entry.source }, { tool: entry.def.name, args: input, summary, keys: [entry.tool.name, entry.server.name] }, asker);
+    if (!gated.ok) return gated.result;
+    const done = await ports.mcp(entry.server, entry.tool, input);
+    if (!done.ok) return { text: `${entry.server.name} didn't do it: ${done.message}`, outcome: "error" };
+    return { text: untrusted(`${entry.server.name} ${entry.tool.name}`, done.value), outcome: "allowed" };
   }
 
   private async code(name: string, input: Record<string, unknown>, viewer: User): Promise<ToolResult> {

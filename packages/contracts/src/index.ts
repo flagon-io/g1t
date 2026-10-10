@@ -1,3 +1,4 @@
+export * from "./abilities";
 export * from "./about";
 export * from "./access";
 export * from "./account-deletion";

@@ -78,6 +78,8 @@ export type PromptInput = {
   handedOffBy?: string | null;
   /** The "Your skills" section (skills.ts), for the skills that are on and the tools this turn offers. */
   skills?: string | null;
+  /** The "Your abilities outside g1t" section (abilities.ts): integrations and MCP servers, with the level of each. */
+  abilities?: string | null;
 };
 
 function askerLine(asker: PromptInput["asker"]): string {
@@ -140,6 +142,7 @@ export function systemPrompt(input: PromptInput): string {
     ].join("\n"),
     ...(input.teams ? [input.teams] : []),
     ...(input.skills ? [input.skills] : []),
+    ...(input.abilities ? [input.abilities] : []),
     ...(input.colleagues ? [colleaguesSection(input.colleagues, !!input.session)] : []),
     ...(input.recentSessions
       ? [

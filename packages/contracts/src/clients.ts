@@ -772,6 +772,8 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     resolve: (workspace, viewer, reference) => call("resolve", { workspace, viewer, reference }),
     references: (workspace, text, limit) => call("references", { workspace, text, limit }),
     import: (actor, repo, reference, assign) => call("import", { actor, repo, reference, assign }),
+    comment: (actor, workspace, reference, text, link) => call("comment", { actor, workspace, reference, text, link }),
+    close: (actor, workspace, reference, text, link) => call("close", { actor, workspace, reference, text, link }),
     links: (repo, number) => call("links", { repo, number }),
     modelProvider: (workspace) => call("model_provider", { workspace }),
     openModelSession: (run) => call("open_model_session", run),

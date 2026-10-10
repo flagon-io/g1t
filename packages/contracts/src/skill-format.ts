@@ -50,6 +50,7 @@ export const AGENT_TOOL_GROUPS: { group: string; tools: string[] }[] = [
   { group: "Chat", tools: ["search_messages", "read_thread", "workspace_roster"] },
   { group: "Teamwork", tools: ["ask_colleague", "hand_off", "start_session", "post_update", "use_subagent", "bring_in", "use_skill"] },
   { group: "Memory", tools: ["remember", "forget"] },
+  { group: "Outside g1t", tools: ["lookup_outside", "import_outside", "act_outside", "request_ability"] },
 ];
 
 /** Every tool a skill may name. */

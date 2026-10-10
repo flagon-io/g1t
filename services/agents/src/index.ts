@@ -21,6 +21,7 @@ import {
   type ExtensionInstall,
   type InstallRequest,
   type InstallRequests,
+  type McpServer,
   type AgentEffortCosts,
   type AgentRecommendation,
   type AgentRecommendations,
@@ -47,6 +48,8 @@ import { MANAGE_REFUSAL, NOT_YOURS_REFUSAL, canArchive, canChange, canManage, ca
 import { DRAFT_OUTPUT_TOKENS, draftSystem, jsonIn, proposalFrom, redraftFrom, redraftSystem, startingBudget, trySystem, tryTurns, wordsOf } from "./builder.ts";
 import { callBuilder } from "./builder-call.ts";
 import { type Definition, applyChanges } from "./definition.ts";
+import { listMcpTools } from "./mcp-client.ts";
+import { MAX_MCP_SERVERS, checkMcpName, checkMcpUrl } from "../../../packages/contracts/src/abilities.ts";
 import { builtinChanges } from "./orchestrator.ts";
 import type { Desk } from "./desk.ts";
 import type { ReplyEnv } from "./reply.ts";
@@ -401,6 +404,106 @@ class Agents {
    * memory and direct messages kept with it (owners can't read a member's
    * memory to choose from it, so none is carried).
    */
+  // ── MCP servers (docs.g1t.sh/guides/agent-abilities/, "MCP servers") ─────
+
+  /** The agent, if the viewer may add servers to it: owners only, a workspace agent or a personal one alike. */
+  private async forMcp(a: { workspace: string; handle: string; viewer: User | null }): Promise<Result<{ row: Row; workspaceId: string }>> {
+    const found = await this.visible(a?.workspace ?? "", a?.viewer ?? null, a?.handle);
+    if (!found.ok) return found;
+    if (!canManage(a.viewer, a.workspace)) return fail("forbidden", "Only the workspace's owners add MCP servers to an agent.");
+    return ok({ row: found.value.row, workspaceId: found.value.workspaceId });
+  }
+
+  /** Saves `definition` as the agent's next version, from the version read; what the agent is now. */
+  private async saveVersion(row: Row, definition: Definition, by: User, workspace: string, what: string): Promise<Result<WorkspaceAgent>> {
+    const now = new Date().toISOString();
+    const version = row.version + 1;
+    const [updated] = await this.db.batch([
+      updateAgent(this.db, row.id, row.version, definition, { version, updated_at: now }),
+      this.db
+        .prepare(
+          `INSERT INTO agent_versions (agent_id, version, definition, changed_by, created_at)
+           SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM agents WHERE id = ?1 AND version = ?2 AND updated_at = ?5)`,
+        )
+        .bind(row.id, version, JSON.stringify(definition), by.username, now),
+    ]);
+    if (!updated.meta.changes) return fail("conflict", `@${row.handle} was changed meanwhile. Reload it and try again.`);
+    this.audit(by, workspace, "update_agent", row.handle, `${what} (version ${version})`, "agents", "owner");
+    const saved = await this.row(row.workspace_id, row.handle);
+    return ok(toAgent(saved!, new Date()));
+  }
+
+  /**
+   * Adds an MCP server to an agent: the name and address are checked, its
+   * tools are listed from it now, and the agent gets a new version with
+   * the server and its tools as abilities (each a write unless the server
+   * says it only reads). Owners only.
+   */
+  async addMcpServer(a: { workspace: string; handle: string; viewer: User | null; name: unknown; url: unknown }): Promise<Result<McpServer>> {
+    const found = await this.forMcp(a);
+    if (!found.ok) return found;
+    const { row } = found.value;
+    const name = checkMcpName(a.name);
+    if (!name.ok) return fail("invalid", name.message);
+    const url = checkMcpUrl(a.url);
+    if (!url.ok) return fail("invalid", url.message);
+    const before = definitionOf(row);
+    const servers = before.abilities.mcp_servers ?? [];
+    if (servers.length >= MAX_MCP_SERVERS) return fail("limit", `An agent has at most ${MAX_MCP_SERVERS} MCP servers.`);
+    if (servers.some((server) => server.name === name.value)) return fail("conflict", `@${row.handle} already has a server called ${name.value}.`);
+    if (servers.some((server) => server.url === url.value)) return fail("conflict", `@${row.handle} already has that server.`);
+    const listed = await listMcpTools(url.value);
+    const now = new Date().toISOString();
+    const server: McpServer = {
+      id: newId("mcp"),
+      name: name.value,
+      url: url.value,
+      tools: listed.ok ? listed.tools : [],
+      added_by: a.viewer!.username,
+      added_at: now,
+      checked_at: now,
+      problem: listed.ok ? null : listed.message,
+    };
+    const checked = applyChanges(before, {}, TEMPLATE_IDS, { builtin: !!row.builtin, mcp_servers: [...servers, server] });
+    if (!checked.ok) return fail("invalid", checked.message);
+    const saved = await this.saveVersion(row, checked.value, a.viewer!, a.workspace, `Added the MCP server ${server.name} (${server.tools.length} tools) to @${row.handle}`);
+    return saved.ok ? ok(server) : saved;
+  }
+
+  /** Takes an MCP server off an agent, with its abilities' settings: a new version. Owners only. */
+  async removeMcpServer(a: { workspace: string; handle: string; viewer: User | null; id: unknown }): Promise<Result<null>> {
+    const found = await this.forMcp(a);
+    if (!found.ok) return found;
+    const { row } = found.value;
+    const before = definitionOf(row);
+    const servers = before.abilities.mcp_servers ?? [];
+    const server = servers.find((s) => s.id === a.id);
+    if (!server) return fail("not_found", "There is no such server on this agent.");
+    const checked = applyChanges(before, {}, TEMPLATE_IDS, { builtin: !!row.builtin, mcp_servers: servers.filter((s) => s.id !== server.id) });
+    if (!checked.ok) return fail("invalid", checked.message);
+    const saved = await this.saveVersion(row, checked.value, a.viewer!, a.workspace, `Removed the MCP server ${server.name} from @${row.handle}`);
+    return saved.ok ? ok(null) : saved;
+  }
+
+  /** Lists a server's tools again; a new version when they changed. Owners only. */
+  async refreshMcpServer(a: { workspace: string; handle: string; viewer: User | null; id: unknown }): Promise<Result<McpServer>> {
+    const found = await this.forMcp(a);
+    if (!found.ok) return found;
+    const { row } = found.value;
+    const before = definitionOf(row);
+    const servers = before.abilities.mcp_servers ?? [];
+    const server = servers.find((s) => s.id === a.id);
+    if (!server) return fail("not_found", "There is no such server on this agent.");
+    const listed = await listMcpTools(server.url);
+    const now = new Date().toISOString();
+    const fresh: McpServer = { ...server, tools: listed.ok ? listed.tools : server.tools, checked_at: now, problem: listed.ok ? null : listed.message };
+    if (JSON.stringify(fresh.tools) === JSON.stringify(server.tools) && fresh.problem === server.problem) return ok(fresh);
+    const checked = applyChanges(before, {}, TEMPLATE_IDS, { builtin: !!row.builtin, mcp_servers: servers.map((s) => (s.id === server.id ? fresh : s)) });
+    if (!checked.ok) return fail("invalid", checked.message);
+    const saved = await this.saveVersion(row, checked.value, a.viewer!, a.workspace, `Listed the MCP server ${server.name}'s tools again for @${row.handle} (${fresh.tools.length} tools)`);
+    return saved.ok ? ok(fresh) : saved;
+  }
+
   async promote(a: { workspace: string; handle: string; viewer: User | null }): Promise<Result<WorkspaceAgent>> {
     const managed = await this.managed(a?.workspace ?? "", a?.viewer ?? null);
     if (!managed.ok) return managed.error.code === "forbidden" ? fail("forbidden", "Only the workspace's owners promote personal agents.") : managed;
@@ -879,6 +982,12 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
       return Response.json(await service.tryDraft(args));
     case "redraft":
       return Response.json(await service.redraft(args));
+    case "add_mcp_server":
+      return Response.json(await service.addMcpServer(args));
+    case "remove_mcp_server":
+      return Response.json(await service.removeMcpServer(args));
+    case "refresh_mcp_server":
+      return Response.json(await service.refreshMcpServer(args));
     case "promote":
       return Response.json(await service.promote(args));
     case "builtin":

@@ -591,6 +591,30 @@ pub struct ReferencesArgs {
     pub limit: Option<u32>,
 }
 
+/// `comment`: for g1t's agents, a comment on the item `reference` names in
+/// the system that knows it (Linear, Jira or Sentry), on the workspace's
+/// connection, with `link` (a g1t address) at the end. The actor is the
+/// person the agent acts for. Returns `Outcome<ContextItem>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommentArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub reference: String,
+    pub text: String,
+    pub link: String,
+}
+
+/// `close`: for g1t's agents, marks a Sentry issue resolved with a note and
+/// `link`. Only Sentry items can be closed. Returns `Outcome<ContextItem>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CloseArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub reference: String,
+    pub text: String,
+    pub link: String,
+}
+
 /// `import`: opens an issue from a ticket. Returns `Outcome<Imported>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImportArgs {

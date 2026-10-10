@@ -53,6 +53,7 @@ import { loadShelf, skillsSection, teamSlugs } from "./skills.ts";
 import { readVersion } from "./skill-library.ts";
 import { conversationFrom } from "./surface.ts";
 import { type Row, definitionOf, periods } from "./store.ts";
+import { abilitiesFor, abilitiesSection, abilityPorts, pendingRequests, saidText } from "./abilities.ts";
 import { type ActionPorts, type ToolCall, ToolBox } from "./tools.ts";
 import { type ModelMessage, SESSION_LIMITS, runTurn } from "./turn.ts";
 import { effortOf, effortPlan, higherEffort, isLevel } from "./routing.ts";
@@ -70,6 +71,10 @@ export type SessionEnv = MeterEnv &
     IDENTITY: ServiceBinding;
     WORK: ServiceBinding;
     NOTIFY?: ServiceBinding;
+    /** The workspace's connections, for abilities outside g1t (abilities.ts). */
+    INTEGRATIONS: ServiceBinding;
+    /** The audit log, for refusals. */
+    EVENTS: ServiceBinding;
     DESKS: DurableObjectNamespace<Desk>;
   };
 
@@ -805,6 +810,31 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
       } catch (error) {
         console.error("agents: no audience for a session step, so no tools", current.id, String(error));
       }
+      // Its abilities outside g1t (abilities.ts), for the person it acts for: offered and enforced by the tool box.
+      let abilitiesText: string | null = null;
+      if (toolbox && current.asked_by) {
+        const askerUser = await identityClient(env.IDENTITY)
+          .usersForAudience([current.asked_by])
+          .then((users) => users[0] ?? null)
+          .catch(() => null);
+        const sections = askerUser ? await abilitiesFor(env, { agent, definition, workspace: slug, asker: askerUser }).catch(() => null) : null;
+        if (sections) {
+          toolbox.useAbilities(
+            sections,
+            abilityPorts(env, {
+              agent,
+              workspace: slug,
+              channel_id: current.channel_id,
+              session: { id: current.id, title: current.title },
+              asker,
+              postCard: (card) => postCardInThread(env, current, agent, card),
+            }),
+            saidText([current.goal, ...inbox.filter((item) => item.kind === "steer").map((item) => item.body)]),
+            definition.abilities.mcp_servers,
+          );
+          abilitiesText = abilitiesSection(sections);
+        }
+      }
       // What the workspace's artifacts say about the work: its goal, and whatever arrived for this step.
       const asked = [current.goal, ...inbox.map((item) => item.body)].reverse();
       const [facts, passages, shelf] = await Promise.all([
@@ -853,6 +883,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
           session: true,
           conversation: here,
           skills: skillsSection(shelf, toolbox?.definitions().map((tool) => tool.name) ?? []),
+          abilities: abilitiesText,
         }),
         sessionSection(current, current.asked_by_username ? `@${current.asked_by_username}` : "the person who asked", plan.steps),
         memorySection(facts),
@@ -921,6 +952,13 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
   row = (await sessionRow(db, id))!;
   if (row.status === "stopped" || answer.stopped) return finished(env, id);
 
+  // A call waiting on an Ask-first card: the session waits with it, and goes on when the card is answered (cards.ts).
+  const asked = await pendingRequests(db, id).catch(() => []);
+  if (asked.length) {
+    if (answer.text) await db.batch([eventStatement(db, id, "text", agent.handle, answer.text)]);
+    await setStatus(env, row, "needs_approval", `Waiting for an OK: ${asked.map((r) => r.summary).join("; ").slice(0, 200)}.`);
+    return;
+  }
   const children = await db
     .prepare("SELECT COUNT(*) AS n FROM agent_sessions WHERE parent_id = ? AND status IN ('queued','working','waiting','needs_approval')")
     .bind(id)
@@ -982,7 +1020,7 @@ async function finished(env: SessionEnv, id: string): Promise<void> {
   await refreshCard(env, row);
 }
 
-async function pushInbox(db: D1Database, id: string, item: Inbound): Promise<void> {
+export async function pushInbox(db: D1Database, id: string, item: Inbound): Promise<void> {
   const row = await db.prepare("SELECT inbox FROM agent_sessions WHERE id = ?").bind(id).first<{ inbox: string }>();
   const list = json<Inbound[]>(row?.inbox, []);
   list.push(item);
@@ -1039,6 +1077,27 @@ export async function approve(env: SessionEnv, row: SessionRow, by: string, capM
   await refreshCard(env, fresh);
   await wake(env, row.agent_id, row.id);
   return fresh;
+}
+
+/**
+ * After an Ask-first card was answered (cards.ts): the session that asked
+ * reads the answer at its next step and goes on, if it was waiting for it.
+ * A reply (no session) hears nothing more: the card says what happened.
+ */
+export async function resumeAfterDecision(env: SessionEnv, request: { session_id: string | null; decided_by?: string | null }, body: string): Promise<void> {
+  if (!request.session_id) return;
+  const db = env.DB;
+  const row = await sessionRow(db, request.session_id);
+  if (!row || OVER.includes(row.status as AgentSessionStatus)) return;
+  await pushInbox(db, row.id, { kind: "child", by: "the Ask-first card", body: body.slice(0, 8000) });
+  await db.batch([eventStatement(db, row.id, "note", null, body.slice(0, 2000))]);
+  const waiting = await db.prepare("SELECT COUNT(*) AS n FROM agent_ability_requests WHERE session_id = ? AND status = 'pending'").bind(row.id).first<{ n: number }>();
+  if (row.status === "needs_approval" && (waiting?.n ?? 0) === 0) {
+    await db.prepare("UPDATE agent_sessions SET status = 'queued', status_note = NULL, updated_at = ? WHERE id = ?").bind(iso(), row.id).run();
+    const fresh = (await sessionRow(db, row.id))!;
+    await refreshCard(env, fresh);
+  }
+  await wake(env, row.agent_id, row.id);
 }
 
 /** Tells whoever asked, and the agent's maker, that a session waits for more budget. */

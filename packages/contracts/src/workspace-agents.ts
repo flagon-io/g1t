@@ -15,6 +15,7 @@ import type { CardActionResult } from "./chat";
 // same ones runs are routed between.
 import type { ModelTier } from "./integrations";
 import type { ExtensionInstall, InstallRequest, InstallRequestStatus, InstallRequests } from "./marketplace";
+import type { AgentAbilities, AgentAbilitiesChange, McpServer } from "./abilities";
 
 /** The built-in orchestrator's handle; nobody else's agent may take it. */
 export const BUILTIN_AGENT_HANDLE = "g1t";
@@ -120,6 +121,12 @@ export type WorkspaceAgent = {
    */
   skills_off: string[];
   /**
+   * What it may do (./abilities.ts, docs.g1t.sh/guides/agent-abilities/):
+   * its level and credentials for each ability it has a choice about, and
+   * the MCP servers an owner added to it. Empty means every default.
+   */
+  abilities: AgentAbilities;
+  /**
    * Who it works with: `internal`, the workspace's own people (back
    * office), or `customers` (front office). Only `internal` for now.
    */
@@ -206,6 +213,12 @@ export type NewWorkspaceAgent = {
   reading?: string[];
   /** Foundational skills to turn off, by id (./skills.ts). */
   skills_off?: string[];
+  /**
+   * Its abilities' levels and credentials (./abilities.ts), whole: what is
+   * sent replaces what it had. MCP servers are added and removed with
+   * `addMcpServer` and `removeMcpServer`, never here.
+   */
+  abilities?: AgentAbilitiesChange;
   /** Only `internal` for now; `customers` is refused. */
   faces?: AgentFaces;
   instructions: string;
@@ -848,6 +861,16 @@ export type WorkspaceAgentsApi = {
    * the personal one is archived, with its memory and direct messages.
    */
   promote(workspace: string, handle: string, viewer: User): Promise<Result<WorkspaceAgent>>;
+  /**
+   * Adds an MCP server to an agent (docs.g1t.sh/guides/agent-abilities/,
+   * "MCP servers"): its host is checked, its tools are listed from it, and
+   * the agent gets a new version with each tool as an ability. Owners only.
+   */
+  addMcpServer(workspace: string, handle: string, viewer: User, input: { name: string; url: string }): Promise<Result<McpServer>>;
+  /** Takes an MCP server off an agent, with its abilities: a new version. Owners only. */
+  removeMcpServer(workspace: string, handle: string, viewer: User, id: string): Promise<Result<null>>;
+  /** Lists a server's tools again, for one that changed; a new version when they did. Owners only. */
+  refreshMcpServer(workspace: string, handle: string, viewer: User, id: string): Promise<Result<McpServer>>;
   templates(): Promise<AgentTemplate[]>;
   /**
    * Internal: the workspace's built-in `@g1t` agent, made if it does not
@@ -981,6 +1004,9 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     tryDraft: (workspace, viewer, input) => call("try_draft", { workspace, viewer, definition: input.definition, messages: input.messages }),
     redraft: (workspace, handle, viewer, request) => call("redraft", { workspace, handle, viewer, request }),
     promote: (workspace, handle, viewer) => call("promote", { workspace, handle, viewer }),
+    addMcpServer: (workspace, handle, viewer, input) => call("add_mcp_server", { workspace, handle, viewer, name: input.name, url: input.url }),
+    removeMcpServer: (workspace, handle, viewer, id) => call("remove_mcp_server", { workspace, handle, viewer, id }),
+    refreshMcpServer: (workspace, handle, viewer, id) => call("refresh_mcp_server", { workspace, handle, viewer, id }),
     templates: () => call("templates", {}),
     builtin: (workspace, workspaceId) => call("builtin", { workspace, workspace_id: workspaceId }),
     deliver: (delivery) => call("deliver", delivery),

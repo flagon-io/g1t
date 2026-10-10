@@ -237,6 +237,16 @@ export interface IntegrationsApi {
   /** For g1t's agents: what `text` refers to outside g1t, fetched. */
   references(workspace: string, text: string, limit?: number): Promise<ContextItem[]>;
   import(actor: User, repo: RepoPath, reference: string, assign: boolean): Promise<Result<{ number: number; item: ContextItem; created: boolean }>>;
+  /**
+   * For g1t's agents (docs.g1t.sh/guides/agent-abilities/): comments on
+   * the item `reference` names, in the system that knows it (Linear, Jira
+   * or Sentry), on the workspace's connection, with `link` (a g1t address)
+   * at the end. The actor is the person the agent acts for; they must be a
+   * member. Returns the item.
+   */
+  comment(actor: User, workspace: string, reference: string, text: string, link: string): Promise<Result<ContextItem>>;
+  /** For g1t's agents: marks a Sentry issue resolved, with a note and `link`. Only Sentry items can be closed. */
+  close(actor: User, workspace: string, reference: string, text: string, link: string): Promise<Result<ContextItem>>;
   links(repo: RepoPath, number: number): Promise<Link[]>;
   modelProvider(workspace: string): Promise<Connection | null>;
   openModelSession(run: {

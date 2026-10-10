@@ -1029,6 +1029,76 @@ impl Integrations {
         Ok(items)
     }
 
+    /// The item `reference` names, for an agent acting for `actor` in
+    /// `workspace`: a member, and a connection that knows it.
+    async fn found_for(&self, actor: &User, workspace: &str, reference: &str) -> Result<std::result::Result<Found, Outcome<ContextItem>>> {
+        if !actor.is_member(workspace) {
+            return Ok(Err(fail(FailureCode::Forbidden, "Only members can act through a workspace's integrations.")));
+        }
+        let Some(parsed) = refs::find(reference).into_iter().next() else {
+            return Ok(Err(fail(FailureCode::Invalid, "Give a ticket key such as TECH-1234, or a Jira, Linear or Sentry address.")));
+        };
+        let rows = self.rows(workspace).await?;
+        Ok(match self.find(&rows, &parsed).await? {
+            Ok(Some(found)) => Ok(found),
+            Ok(None) => Err(fail(FailureCode::NotFound, format!("None of the {workspace} workspace's integrations knows {}.", reference.trim()))),
+            Err(problem) => Err(fail(FailureCode::Conflict, problem)),
+        })
+    }
+
+    /// A comment from an agent on an item outside g1t, with the g1t link
+    /// that explains it, through the connection that knows the item.
+    async fn comment_outside(&self, a: CommentArgs) -> Result<Outcome<ContextItem>> {
+        let workspace = a.workspace.to_lowercase();
+        let found = match self.found_for(&a.actor, &workspace, &a.reference).await? {
+            Ok(found) => found,
+            Err(outcome) => return Ok(outcome),
+        };
+        let text = a.text.trim();
+        if text.is_empty() || text.len() > 8_000 {
+            return Ok(fail(FailureCode::Invalid, "A comment is 1 to 8,000 characters."));
+        }
+        let row = &found.connection;
+        let config = row.config();
+        let Some(token) = self.secrets(row).secret else {
+            return Ok(fail(FailureCode::Conflict, format!("{} has no key to act with. An owner can set one under Integrations.", row.name)));
+        };
+        let told = match row.provider() {
+            Provider::Sentry => sentry::comment(&config, &token, &found.external_id, &format!("{text} {}", a.link)).await?,
+            Provider::Jira => trackers::jira_comment(&config, &token, &found.external_id, text, &a.link).await?,
+            Provider::Linear => trackers::linear_comment(&token, &found.external_id, text, &a.link).await?,
+            _ => return Ok(fail(FailureCode::Invalid, "Only Linear, Jira and Sentry items take comments.")),
+        };
+        self.note(&row.id, told.as_ref().err().map(String::as_str)).await?;
+        Ok(match told {
+            Ok(()) => Outcome::Ok(found.item),
+            Err(problem) => fail(FailureCode::Conflict, problem),
+        })
+    }
+
+    /// An agent marks a Sentry issue resolved, with a note and the g1t link.
+    async fn close_outside(&self, a: CloseArgs) -> Result<Outcome<ContextItem>> {
+        let workspace = a.workspace.to_lowercase();
+        let found = match self.found_for(&a.actor, &workspace, &a.reference).await? {
+            Ok(found) => found,
+            Err(outcome) => return Ok(outcome),
+        };
+        let row = &found.connection;
+        if row.provider() != Provider::Sentry {
+            return Ok(fail(FailureCode::Invalid, "Only Sentry issues can be resolved from here."));
+        }
+        let Some(token) = self.secrets(row).secret else {
+            return Ok(fail(FailureCode::Conflict, format!("{} has no key to act with. An owner can set one under Integrations.", row.name)));
+        };
+        let note = format!("{} {}", a.text.trim(), a.link);
+        let told = sentry::resolve(&row.config(), &token, &found.external_id, &note).await?;
+        self.note(&row.id, told.as_ref().err().map(String::as_str)).await?;
+        Ok(match told {
+            Ok(()) => Outcome::Ok(found.item),
+            Err(problem) => fail(FailureCode::Conflict, problem),
+        })
+    }
+
     async fn import(&self, a: ImportArgs) -> Result<Outcome<Imported>> {
         let workspace = a.repo.namespace.to_lowercase();
         if !a.actor.is_member(&workspace) {
@@ -1598,6 +1668,8 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "resolve" => reply(&service.resolve(args(body)?).await?),
         "references" => reply(&service.references(args(body)?).await?),
         "import" => reply(&service.import(args(body)?).await?),
+        "comment" => reply(&service.comment_outside(args(body)?).await?),
+        "close" => reply(&service.close_outside(args(body)?).await?),
         "links" => reply(&service.links(args(body)?).await?),
         "model_provider" => reply(&service.model_provider(args(body)?).await?),
         "open_model_session" => reply(&service.open_model_session(args(body)?).await?),

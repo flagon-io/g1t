@@ -3,14 +3,19 @@
  * set, and how a stored row reads. Pure, so it is tested on its own.
  */
 import type {
+  AbilityLevel,
+  AbilitySetting,
+  AgentAbilities,
   AgentAutonomy,
   AgentBudget,
   AgentRouting,
+  McpServer,
   NewWorkspaceAgent,
   PersonalityPreset,
   AgentFaces,
   SubagentDef,
 } from "@g1t/contracts";
+import { ABILITY_LEVELS, EMPTY_ABILITIES, MAX_MCP_SERVERS, integrationAbilities, maxLevel, mcpAbility, withinLevel } from "../../../packages/contracts/src/abilities.ts";
 import { FOUNDATIONAL_SKILL_IDS } from "../../../packages/contracts/src/skills.ts";
 
 import { checkHandle } from "./handle.ts";
@@ -61,6 +66,8 @@ export type Definition = {
   reading: string[];
   /** Foundational skills turned off for it, by id (@g1t/contracts skills.ts). */
   skills_off: string[];
+  /** Its abilities' levels and credentials, and its MCP servers (@g1t/contracts abilities.ts). */
+  abilities: AgentAbilities;
 };
 
 /**
@@ -164,6 +171,73 @@ function autonomyOf(base: AgentAutonomy, given: unknown): Checked<AgentAutonomy>
   return { ok: true, value: next as AgentAutonomy };
 }
 
+/** The most abilities with a choice of their own one agent keeps. */
+const MAX_ABILITY_SETTINGS = 400;
+
+/**
+ * The abilities' settings, checked against what the agent can have: an
+ * integration ability the catalog knows, or a tool of one of its MCP
+ * servers, each at a level its kind allows. g1t's own abilities keep their
+ * choices in `autonomy`, so nothing is kept for them here.
+ */
+function abilitiesOf(base: AgentAbilities, given: unknown, servers: McpServer[]): Checked<AgentAbilities> {
+  if (given === undefined || given === null) return { ok: true, value: { ...base, mcp_servers: servers } };
+  if (typeof given !== "object" || Array.isArray(given)) return bad("Abilities are an object.");
+  const settings = (given as { settings?: unknown }).settings;
+  if (settings === undefined) return { ok: true, value: { ...base, mcp_servers: servers } };
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return bad("Abilities' settings are an object by ability id.");
+  const entries = Object.entries(settings as Record<string, unknown>);
+  if (entries.length > MAX_ABILITY_SETTINGS) return bad(`At most ${MAX_ABILITY_SETTINGS} abilities keep a setting.`);
+  const next: Record<string, AbilitySetting> = {};
+  for (const [id, raw] of entries) {
+    const def = abilityDef(id, servers);
+    if (!def) return bad(`There is no ability called ${id.slice(0, 60)} for this agent.`);
+    if (!raw || typeof raw !== "object") return bad(`${id}'s setting is an object.`);
+    const setting = raw as Record<string, unknown>;
+    const kept: AbilitySetting = {};
+    if (setting.level !== undefined && setting.level !== null) {
+      if (typeof setting.level !== "string" || !ABILITY_LEVELS.includes(setting.level as AbilityLevel)) return bad(`${id}'s level is alone, asked, ask or never.`);
+      const level = setting.level as AbilityLevel;
+      const max = maxLevel(def.kind);
+      if (!withinLevel(level, max)) return bad(`${def.label} can't be set above ${max === "ask" ? "Ask first" : max}: it ${def.kind === "restricted" ? "is a purchase, a credential or a permission change" : "isn't allowed that freely"}.`);
+      kept.level = level;
+    }
+    if (setting.credentials !== undefined && setting.credentials !== null) {
+      if (def.group !== "integration") return bad(`Only an integration's abilities say whose connection they run on.`);
+      if (setting.credentials !== "workspace" && setting.credentials !== "asker") return bad(`${id}'s credentials are workspace or asker.`);
+      kept.credentials = setting.credentials;
+    }
+    if (Object.keys(kept).length) next[id] = kept;
+  }
+  // In id order, so the same choices always read the same.
+  return { ok: true, value: { settings: Object.fromEntries(Object.entries(next).sort(([a], [b]) => a.localeCompare(b))), mcp_servers: servers } };
+}
+
+/** The ability `id` names, among the catalog's integration abilities and the agent's MCP servers' tools; null when there is none. */
+function abilityDef(id: string, servers: McpServer[]) {
+  const parts = id.split(":");
+  if (parts[0] === "integration" && parts.length === 3) return integrationAbilities(parts[1]!).find((def) => def.id === id) ?? null;
+  if (parts[0] === "mcp" && parts.length >= 3) {
+    const server = servers.find((s) => s.id === parts[1]);
+    const tool = server?.tools.find((t) => `mcp:${server.id}:${t.name}` === id);
+    return server && tool ? mcpAbility(server, tool) : null;
+  }
+  return null;
+}
+
+/** The MCP servers as kept: at most `MAX_MCP_SERVERS`, names unique. Only the service's own MCP calls change them. */
+function mcpServersOf(given: unknown): Checked<McpServer[]> {
+  if (!Array.isArray(given)) return bad("MCP servers are a list.");
+  if (given.length > MAX_MCP_SERVERS) return bad(`An agent has at most ${MAX_MCP_SERVERS} MCP servers.`);
+  const names = new Set<string>();
+  for (const server of given as McpServer[]) {
+    if (!server || typeof server !== "object" || typeof server.id !== "string" || typeof server.name !== "string" || typeof server.url !== "string" || !Array.isArray(server.tools)) return bad("An MCP server has an id, a name, a url and tools.");
+    if (names.has(server.name)) return bad(`Two servers are called ${server.name}.`);
+    names.add(server.name);
+  }
+  return { ok: true, value: given as McpServer[] };
+}
+
 function responsibilitiesOf(given: unknown): Checked<string[]> {
   if (!Array.isArray(given) || given.some((d) => typeof d !== "string")) return bad("Responsibilities are a list of short duties.");
   const duties = [...new Set((given as string[]).map((d) => d.trim()).filter(Boolean))];
@@ -228,7 +302,7 @@ export function applyChanges(
   base: Definition | null,
   changes: Partial<NewWorkspaceAgent>,
   templates: string[],
-  options: { builtin?: boolean } = {},
+  options: { builtin?: boolean; mcp_servers?: McpServer[] } = {},
 ): Checked<Definition> {
   if (!changes || typeof changes !== "object") return bad("Send the agent's fields.");
   const creating = base === null;
@@ -251,8 +325,9 @@ export function applyChanges(
     faces: "internal",
     reading: [],
     skills_off: [],
+    abilities: EMPTY_ABILITIES,
   };
-  const next: Definition = { ...from, skills_off: from.skills_off ?? [] };
+  const next: Definition = { ...from, skills_off: from.skills_off ?? [], abilities: from.abilities ?? EMPTY_ABILITIES };
   // Whether the role was made from the title, so it follows it.
   const roleDerived = !from.role || from.role === roleOf(from);
   if (creating || changes.handle !== undefined) {
@@ -337,6 +412,18 @@ export function applyChanges(
     // In the skills' own order, so the same choice always reads the same.
     next.skills_off = [...FOUNDATIONAL_SKILL_IDS.filter((id) => ids.has(id)), ...library.sort()];
   }
+  // MCP servers change only through the service's own calls (index.ts), which pass them here; a change never carries them.
+  let servers = next.abilities.mcp_servers ?? [];
+  if (options.mcp_servers) {
+    const checked = mcpServersOf(options.mcp_servers);
+    if (!checked.ok) return checked;
+    servers = checked.value;
+  }
+  const abilities = abilitiesOf(next.abilities, changes.abilities, servers);
+  if (!abilities.ok) return abilities;
+  // A setting for a tool of a server that is gone goes with it.
+  abilities.value.settings = Object.fromEntries(Object.entries(abilities.value.settings).filter(([id]) => abilityDef(id, servers)));
+  next.abilities = abilities.value;
   if (changes.faces !== undefined) {
     if (changes.faces === "customers") return bad("Customer-facing agents aren't available yet.");
     if (changes.faces !== "internal") return bad("An agent faces internal: the workspace's own people.");

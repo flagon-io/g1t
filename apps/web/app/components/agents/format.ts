@@ -270,6 +270,7 @@ const FIELD_LABELS: Record<string, string> = {
   avatar_seed: "face",
   faces: "who it works with",
   skills_off: "skills",
+  abilities: "abilities",
 };
 
 /**

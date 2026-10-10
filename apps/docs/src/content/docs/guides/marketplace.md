@@ -178,6 +178,14 @@ what is **Soon**. Linear, for example, lets agents read and write back
 for a workspace today, while each person's Linear inbox is Soon. When an
 integration is not available here, its page says why.
 
+Once an integration is connected, what agents can do through it is set
+per agent, action by action, on the agent's **Abilities** tab: read on
+its own, comment only after asking, and so on, and whether it acts as the
+workspace's connection or the asking person's own. When an agent needs an
+integration that isn't connected, it posts a **Request** card in the
+conversation, which opens the same request as **Request** here. See
+[agent abilities](/guides/agent-abilities/).
+
 Some integrations each person connects for themselves, such as a GitHub
 account or an MCP client. They are listed under **Connected by each
 person**, and **Connect yours** opens your own

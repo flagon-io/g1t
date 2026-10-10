@@ -2,9 +2,10 @@
  * Agents as stored in D1, and their spend. Shared by the RPC methods and
  * the desk.
  */
-import type { SubagentDef, WorkspaceAgent } from "@g1t/contracts";
+import type { AgentAbilities, SubagentDef, WorkspaceAgent } from "@g1t/contracts";
 
 import { agentStatus, budgetBlock, dayKey, monthKey } from "./budget.ts";
+import { EMPTY_ABILITIES } from "../../../packages/contracts/src/abilities.ts";
 import { type Definition, DEFAULT_AUTONOMY, DEFAULT_BUDGET, DEFAULT_ROUTING, legacyRoleOf, PRESETS, readJson } from "./definition.ts";
 
 export type Row = {
@@ -36,6 +37,8 @@ export type Row = {
   faces: string | null;
   reading?: string | null;
   skills_off?: string | null;
+  /** Its abilities (JSON); missing before abilities. */
+  abilities?: string | null;
   version: number;
   /** 1 for the workspace's built-in @g1t. */
   builtin: number;
@@ -94,6 +97,16 @@ export function definitionOf(row: Row): Definition {
     faces: "internal",
     reading: readList<string>(row.reading ?? null),
     skills_off: readList<string>(row.skills_off ?? null),
+    abilities: abilitiesRead(row.abilities ?? null),
+  };
+}
+
+/** A stored abilities column, read defensively: settings by id and the MCP servers, each a list or an object or nothing. */
+function abilitiesRead(raw: string | null): AgentAbilities {
+  const read = readJson<Partial<AgentAbilities>>(raw, {});
+  return {
+    settings: read.settings && typeof read.settings === "object" && !Array.isArray(read.settings) ? read.settings : {},
+    mcp_servers: Array.isArray(read.mcp_servers) ? read.mcp_servers : EMPTY_ABILITIES.mcp_servers,
   };
 }
 
@@ -175,6 +188,7 @@ export const DEFINITION_COLUMNS = [
   "faces",
   "reading",
   "skills_off",
+  "abilities",
 ] as const;
 
 /** A definition's values, in `DEFINITION_COLUMNS` order. */
@@ -198,6 +212,7 @@ export function definitionColumns(d: Definition): (string | number | null)[] {
     d.faces,
     JSON.stringify(d.reading ?? []),
     JSON.stringify(d.skills_off ?? []),
+    JSON.stringify(d.abilities ?? EMPTY_ABILITIES),
   ];
 }
 

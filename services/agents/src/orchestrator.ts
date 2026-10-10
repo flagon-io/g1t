@@ -10,6 +10,7 @@
  */
 import type { AgentStatus, ModelTier, NewWorkspaceAgent } from "@g1t/contracts";
 
+import { EMPTY_ABILITIES } from "../../../packages/contracts/src/abilities.ts";
 import { BUILTIN_AGENT_HANDLE, ORCHESTRATOR_TEMPLATE } from "../../../packages/contracts/src/workspace-agents.ts";
 import { type Checked, type Definition, DEFAULT_AUTONOMY, DEFAULT_BUDGET, DEFAULT_CAPACITY, DEFAULT_ROUTING } from "./definition.ts";
 import { listOf } from "./teammates.ts";
@@ -38,6 +39,7 @@ export function builtinDefinition(): Definition {
     faces: "internal",
     reading: [],
     skills_off: [],
+    abilities: EMPTY_ABILITIES,
   };
 }
 

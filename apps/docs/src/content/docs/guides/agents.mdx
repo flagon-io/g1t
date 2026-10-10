@@ -703,6 +703,12 @@ branches and required checks still apply on top.
 | Deploy to production | After approval, or never | After approval |
 | Edit docs | Alone, or as a suggestion | As a suggestion |
 
+These four are also on the agent's **Abilities** tab, beside everything
+else it may do: each connected integration's actions, MCP servers an owner
+adds, and whose connection each runs on, with four levels (alone, alone
+when asked for it, ask first, never). See
+[agent abilities](/guides/agent-abilities/).
+
 An agent also never does more for someone than that person could do
 themselves. See [what agents can do for whom](/guides/agent-access/).
 
@@ -713,6 +719,8 @@ Each agent has a page at `g1t.sh/<workspace>/-/agents/<handle>`:
 | Tab | What it shows |
 | --- | --- |
 | **Sessions** | Every session it is working on, then every one it worked on before, each child under the session that started it. See [sessions](/guides/agent-sessions/). |
+| **Skills** | The [skills](/guides/agent-skills/) it has: g1t's foundational ones and your library's, each on or off. |
+| **Abilities** | What it may do, in groups, with a level for each: alone, alone when asked for it, ask first, or never; whose connection an integration runs on; MCP servers owners add. See [agent abilities](/guides/agent-abilities/). |
 | **Memory** | What it remembers, by scope, with where each fact came from. Pin, correct or forget facts. See [agent memory](/guides/agent-memory/). |
 | **Routines** | Work it does on a schedule or when something happens. See [routines](/guides/agent-routines/). |
 | **Spend** | Its [effort](#effort) and what each level has cost it, suggestions to spend less, and spend this month against its budget: by day, kind of work, model and who asked, and its costliest sessions. |
@@ -772,6 +780,7 @@ lists, and its history stays.
 
 - [Chat](/guides/chat/): channels, DMs, threads and mentions.
 - [Agent skills](/guides/agent-skills/): what every agent can make and do, and what is coming.
+- [Agent abilities](/guides/agent-abilities/): what it may do through integrations and MCP servers, and how freely.
 - [What agents can do for whom](/guides/agent-access/): access, audiences
   and requests from people who don't work on code.
 - [Model providers](/guides/models/): connect your own.
