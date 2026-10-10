@@ -28,7 +28,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
   const [folio, versions] = await Promise.all([folios.folio(slug, viewer, id), folios.versions(slug, viewer, id)]);
   if (!folio.ok || !versions.ok) throw data(null, { status: 404 });
   const url = new URL(request.url);
-  if (url.pathname !== `${folio.value.path}/history`) throw redirect(`${folio.value.path}/history`);
+  // A navigation in the app asks for this page's data with `.data` on the end: the same address.
+  if (url.pathname.replace(/\.data$/, "") !== `${folio.value.path}/history`) throw redirect(`${folio.value.path}/history`);
   return { folio: folio.value, versions: versions.value };
 }
 

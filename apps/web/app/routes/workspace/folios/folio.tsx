@@ -56,9 +56,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     if (found.error.code === "not_found" || found.error.code === "forbidden") return data<Loaded>({ denied: id }, { status: 403 });
     throw data(null, { status: 503 });
   }
-  // An old address (renamed since) goes to the current one.
+  // An old address (renamed since) goes to the current one. A navigation
+  // in the app asks for the page's data at the same path with `.data` on
+  // the end: that is this address, not an old one.
   const url = new URL(request.url);
-  if (url.pathname !== found.value.folio.path) throw redirect(`${found.value.folio.path}${url.search}`);
+  if (url.pathname.replace(/\.data$/, "") !== found.value.folio.path) {
+    url.searchParams.delete("_routes");
+    throw redirect(`${found.value.folio.path}${url.search}`);
+  }
   return { page: found.value, ticket } as Loaded;
 }
 
