@@ -45,6 +45,24 @@ cd apps/docs && npm run build
 - Never hand-copy an icon's SVG paths into a file. If Lucide lacks the
   icon you need, pick the closest one that it has.
 
+## Interface components
+
+- **Build the site from the components in `apps/web/app/components/ui`**,
+  which are [shadcn/ui](https://ui.shadcn.com) components themed with
+  g1t's tokens: buttons, cards, badges, tables, tabs, separators,
+  breadcrumbs, menus, dialogs, sheets, tooltips, form controls.
+- **If shadcn has a component you need and `ui` doesn't, add it there**
+  first, themed with the tokens, then use it. Don't rebuild it inline.
+- **Change how something looks through the component's variants**, not
+  with a one-off class string at the call site. A long `className` on a
+  `div` that draws a card, a pill or a button is a component that should
+  exist.
+- Hover hints use the `Tooltip` component, never `title=`. Native
+  `<select>`, file inputs, checkboxes and radios use their `ui`
+  components.
+- Look at every page you change, in light and dark, on a desktop and a
+  phone, before calling it done.
+
 ## Before you push
 
 - `cargo test` in the crate or service you changed.
