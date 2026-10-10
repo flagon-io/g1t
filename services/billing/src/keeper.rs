@@ -423,6 +423,10 @@ struct Unsettled {
     session_id: String,
     created_at: String,
     finished_at: Option<String>,
+    #[serde(default)]
+    agent: Option<String>,
+    #[serde(default)]
+    asked_by: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -641,7 +645,7 @@ impl Billing {
         let runs = self
             .db
             .prepare(
-                "SELECT id, workspace, repo, number, task, model, token_hash, billed_to, session_id, created_at, finished_at
+                "SELECT id, workspace, repo, number, task, model, token_hash, billed_to, session_id, created_at, finished_at, agent, asked_by
                  FROM runs
                  WHERE session_id IS NOT NULL AND settled_at IS NULL AND COALESCE(billed_to, 'g1t') = 'g1t'
                    AND ((finished_at IS NOT NULL AND finished_at < ?1) OR created_at < ?2)
@@ -683,12 +687,16 @@ impl Billing {
             model: String,
             token_hash: String,
             billed_to: Option<String>,
+            #[serde(default)]
+            agent: Option<String>,
+            #[serde(default)]
+            asked_by: Option<String>,
         }
         let now = now_ms();
         let runs = self
             .db
             .prepare(
-                "SELECT id, workspace, repo, number, task, model, token_hash, billed_to
+                "SELECT id, workspace, repo, number, task, model, token_hash, billed_to, agent, asked_by
                  FROM runs
                  WHERE billed_to = 'workspace' AND session_id IS NOT NULL AND settled_at IS NULL
                    AND ((finished_at IS NOT NULL AND finished_at < ?1) OR created_at < ?2)
@@ -720,6 +728,8 @@ impl Billing {
                 model: run.model,
                 token_hash: run.token_hash,
                 billed_to: run.billed_to,
+                agent: run.agent,
+                asked_by: run.asked_by,
             };
             self.charge_agent_rate(&run.id, &row, None).await?;
         }
@@ -736,6 +746,8 @@ impl Billing {
             model: run.model.clone(),
             token_hash: run.token_hash.clone(),
             billed_to: run.billed_to.clone(),
+            agent: run.agent.clone(),
+            asked_by: run.asked_by.clone(),
         };
         let charged = self
             .db

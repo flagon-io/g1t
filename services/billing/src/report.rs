@@ -14,8 +14,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use futures_util::future::{try_join, try_join5};
 use g1t_contracts::billing::{
-    Allowance, FeatureUsage, MeterLine, ModelTokens, PlanKind, ProductUsage, ProjectUsage, UsageDay, UsageReport, UsageReportArgs, UsageTotals,
-    PRODUCTS,
+    Allowance, FeatureUsage, MeterLine, ModelTokens, PlanKind, ProductUsage, ProjectUsage, UsageDay, UsageReport, UsageReportArgs, UsageShare,
+    UsageTotals, PRODUCTS,
 };
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::{FailureCode, Outcome};
@@ -23,8 +23,13 @@ use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 
+use crate::charged::{charged, pending_split};
 use crate::statement::{PRICE_SQL, RUN_SQL};
 use crate::{Billing, members_only};
+
+/// The meters that make up the agent product, as `METER_KEY_SQL` names
+/// them: what agents cost, attributed to the agent and the person asking.
+pub(crate) const AGENT_METERS_SQL: &str = "('agent_models', 'agent_rate', 'agent_rate_own', 'agent_sandbox')";
 
 /// The longest range the page reads at once.
 pub(crate) const MAX_DAYS: u64 = 400;
@@ -143,11 +148,50 @@ pub(crate) struct TokenCell {
     pub tokens: Option<f64>,
 }
 
-/// What is metered this month and charged when it closes, by meter.
-#[derive(Clone, Debug, PartialEq)]
+/// What is metered this month and charged when it closes, by meter: at
+/// price, with what g1t covers of it and what the discount takes off, as
+/// the close will enter it (`charged::pending_split`).
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Pending {
     pub meter: &'static str,
     pub micros: i64,
+    pub covered: i64,
+    pub discount: i64,
+}
+
+/// One agent's and one asker's agent-product lines over the range.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub(crate) struct Attributed {
+    #[serde(default)]
+    pub agent: String,
+    #[serde(default)]
+    pub person: String,
+    #[serde(default)]
+    pub price: Option<f64>,
+    #[serde(default)]
+    pub entries: Option<f64>,
+}
+
+/// The agent product by agent and by person, most first, from its lines:
+/// each group's price under the agent's handle and the asker's username,
+/// and lines attributed to no one under an empty key. Both sum to the
+/// agent product's total.
+pub(crate) fn attribution(rows: &[Attributed]) -> (Vec<UsageShare>, Vec<UsageShare>) {
+    fn fold(rows: &[Attributed], key_of: impl Fn(&Attributed) -> &str, label_of: impl Fn(&str) -> String) -> Vec<UsageShare> {
+        let mut by: BTreeMap<&str, UsageShare> = BTreeMap::new();
+        for row in rows {
+            let key = key_of(row);
+            let slice = by.entry(key).or_insert_with(|| UsageShare { key: key.to_owned(), label: label_of(key), ..UsageShare::default() });
+            slice.micros += row.price.unwrap_or(0.0).round() as i64;
+            slice.count += row.entries.unwrap_or(0.0).max(0.0) as u32;
+        }
+        let mut out: Vec<UsageShare> = by.into_values().filter(|s| s.micros != 0 || s.count > 0).collect();
+        out.sort_by(|a, b| b.micros.cmp(&a.micros).then(a.key.cmp(&b.key)));
+        out
+    }
+    let agents = fold(rows, |r| r.agent.as_str(), |k| if k.is_empty() { "Not attributed to an agent".to_owned() } else { format!("@{k}") });
+    let people = fold(rows, |r| r.person.as_str(), |k| if k.is_empty() { "No one asked".to_owned() } else { format!("@{k}") });
+    (agents, people)
 }
 
 /// Shapes the groups into the page: products in order, each with its
@@ -237,6 +281,8 @@ pub(crate) fn shape(
             }
             totals.price_micros += p.micros;
             totals.pending_micros += p.micros;
+            totals.included_micros += p.covered;
+            totals.discount_micros += p.discount;
         }
     }
     for ((meter, project), (micros, quantity)) in projects_of {
@@ -263,12 +309,6 @@ pub(crate) fn shape(
         .collect();
     let days_out = by_day.into_iter().filter(|(_, micros)| *micros != 0).map(|((day, product), micros)| UsageDay { day, product, micros }).collect();
     (products_out, days_out, totals, all_projects.into_iter().collect())
-}
-
-/// What is left to pay: usage at price less the discount, included usage
-/// and credit.
-pub(crate) fn charged(totals: &UsageTotals) -> i64 {
-    (totals.price_micros - totals.discount_micros - totals.included_micros - totals.credits_micros).max(0)
 }
 
 impl Billing {
@@ -342,38 +382,55 @@ impl Billing {
                 .await?
                 .results::<Feature>()
         };
-        #[derive(Deserialize)]
-        struct PendingRow {
-            source: String,
-            cost_micros: Option<f64>,
-        }
         let pending = async {
             if !this_month {
                 return Ok(vec![]);
             }
+            self.pending_this_month(&[workspace.as_str().into()], &month).await
+        };
+        // The agent product by the agent that did the work and by who
+        // asked, from the same lines: only when the agent product is shown.
+        let agents_wanted = a.products.is_empty() || a.products.iter().any(|p| p == "agent");
+        let attributed = async {
+            if !agents_wanted {
+                return Ok(vec![]);
+            }
+            let mut binds: Vec<worker::wasm_bindgen::JsValue> = vec![workspace.as_str().into(), from.as_str().into(), end.as_str().into()];
+            let projects = if a.projects.is_empty() {
+                String::new()
+            } else {
+                binds.extend(a.projects.iter().map(|p| worker::wasm_bindgen::JsValue::from(p.as_str())));
+                format!(" AND COALESCE(repo, '') IN ({})", vec!["?"; a.projects.len()].join(", "))
+            };
             self.db
-                .prepare("SELECT source, cost_micros FROM pending_usage WHERE workspace = ? AND month = ? AND charged_at IS NULL")
-                .bind(&[workspace.as_str().into(), month.as_str().into()])?
+                .prepare(format!(
+                    "SELECT COALESCE(agent, '') AS agent, COALESCE(asked_by, '') AS person, SUM({measure}) AS price, COUNT(*) AS entries
+                     FROM ledger WHERE workspace = ?1 AND kind = 'usage' AND created_at >= ?2 AND created_at < ?3
+                       AND ({meter}) IN {AGENT_METERS_SQL}{projects}
+                     GROUP BY 1, 2 LIMIT 5000",
+                    meter = METER_KEY_SQL
+                ))
+                .bind(&binds)?
                 .all()
                 .await?
-                .results::<PendingRow>()
+                .results::<Attributed>()
         };
         let credits = self.credit_paid_between(&workspace, &from, &end);
-        let ((cells, tokens, features, pending, (credits_paid, credits)), account) =
-            try_join(try_join5(cells, tokens, features, pending, credits), self.account_of(&workspace)).await?;
+        let ((cells, tokens, features, pending, (credits_paid, credits)), (attributed, account)) =
+            try_join(try_join5(cells, tokens, features, pending, credits), try_join(attributed, self.account_of(&workspace))).await?;
+        let percent = account.terms.percent_off();
+        // What is metered so far is entered on the account's terms when the
+        // month closes: its discount, and what g1t covers, come off it now.
         let pending: Vec<Pending> = pending
             .into_iter()
-            .map(|p| Pending {
-                meter: meter_of_pending(&p.source),
-                micros: crate::credits::with_margin(p.cost_micros.unwrap_or(0.0).round() as i64, self.margin_percent),
+            .map(|p| {
+                let split = pending_split(p.cost(), p.charge(), self.margin_percent, percent);
+                Pending { meter: meter_of_pending(&p.source), micros: split.price, covered: split.covered, discount: split.discount }
             })
             .filter(|p| p.micros > 0)
             .collect();
         let (mut products, days_out, mut totals, all_projects) = shape(&days, &cells, &tokens, &pending, &a.products, &a.projects);
-        let percent = account.terms.percent_off();
-        // What is metered so far is charged on the account's terms when the
-        // month closes: its discount comes off it too.
-        totals.discount_micros += totals.pending_micros * i64::from(percent.min(100)) / 100;
+        let (by_agent, by_person) = attribution(&attributed);
         let filtered = !a.products.is_empty() || !a.projects.is_empty();
         // Credit is the workspace's, not a product's or a project's: only
         // without a filter is it taken off.
@@ -446,6 +503,8 @@ impl Billing {
             products,
             projects: all_projects,
             models,
+            by_agent,
+            by_person,
             included,
             discount_percent: (percent > 0).then_some(percent),
             ai_credit_micros: ai,
@@ -529,7 +588,7 @@ mod tests {
             Cell { covered: Some(1_000_000.0), discount: Some(0.0), ..cell("2026-10-03", "storage", "", 30_000.0) },
         ];
         let tokens = vec![TokenCell { day: "2026-10-01".into(), project: "acme/web".into(), tokens: Some(2_000_000.0) }];
-        let pending = vec![Pending { meter: "git", micros: 40_000 }];
+        let pending = vec![Pending { meter: "git", micros: 40_000, ..Pending::default() }];
         let (products, by_day, totals, projects) = shape(&days, &cells, &tokens, &pending, &[], &[]);
         // Every product family, in order.
         assert_eq!(products.iter().map(|p| p.key.as_str()).collect::<Vec<_>>(), ["agent", "sandboxes", "gateway", "deployments", "git_storage", "packages", "security", "search"]);
@@ -555,7 +614,7 @@ mod tests {
     fn filters_keep_only_the_products_and_projects_asked_for() {
         let days = days_between("2026-10-01", "2026-10-01").unwrap();
         let cells = vec![cell("2026-10-01", "agent_models", "acme/web", 100.0), cell("2026-10-01", "agent_models", "acme/api", 50.0), cell("2026-10-01", "sandbox", "acme/web", 10.0)];
-        let pending = vec![Pending { meter: "git", micros: 7 }];
+        let pending = vec![Pending { meter: "git", micros: 7, ..Pending::default() }];
         let (products, _, totals, projects) = shape(&days, &cells, &[], &pending, &["agent".into()], &["acme/web".into()]);
         assert_eq!(products.len(), 1);
         assert_eq!(totals.price_micros, 100);
@@ -564,12 +623,93 @@ mod tests {
     }
 
     #[test]
-    fn what_is_left_to_pay_takes_off_the_discount_included_usage_and_credit() {
-        let t = UsageTotals { price_micros: 10_000_000, discount_micros: 0, included_micros: 4_000_000, credits_micros: 5_000_000, ..UsageTotals::default() };
-        assert_eq!(charged(&t), 1_000_000);
-        // A 100% discount: shown at price, then nothing to pay.
-        let comped = UsageTotals { price_micros: 3_320_000, discount_micros: 3_320_000, ..UsageTotals::default() };
-        assert_eq!(charged(&comped), 0);
+    fn pending_usage_counts_at_price_with_what_is_covered_and_discounted() {
+        let days = days_between("2026-10-01", "2026-10-02").unwrap();
+        // Storage on a 100% discount, and scans g1t covers on a free workspace.
+        let pending = [
+            Pending { meter: "storage", micros: 9_000, covered: 0, discount: 9_000 },
+            Pending { meter: "security", micros: 2_400, covered: 2_400, discount: 0 },
+        ];
+        let (_, _, totals, _) = shape(&days, &[], &[], &pending, &[], &[]);
+        assert_eq!(totals.price_micros, 11_400);
+        assert_eq!(totals.pending_micros, 11_400);
+        assert_eq!(totals.included_micros, 2_400);
+        assert_eq!(totals.discount_micros, 9_000);
+        assert_eq!(charged(&totals), 0);
+        // With a project chosen, pending usage (no project's) is left out.
+        let (_, _, filtered, _) = shape(&days, &[], &[], &pending, &[], &["acme/api".to_owned()]);
+        assert_eq!(filtered.pending_micros, 0);
+    }
+
+    fn attributed(agent: &str, person: &str, price: f64, entries: f64) -> Attributed {
+        Attributed { agent: agent.into(), person: person.into(), price: Some(price), entries: Some(entries) }
+    }
+
+    #[test]
+    fn the_agent_product_is_attributed_to_agents_and_to_who_asked() {
+        let rows = [
+            attributed("g1t", "chase", 2_000_000.0, 3.0),
+            attributed("mike", "chase", 20_000.0, 2.0),
+            attributed("mike", "", 5_000.0, 1.0),
+            attributed("", "", 500_000.0, 4.0),
+        ];
+        let (agents, people) = attribution(&rows);
+        assert_eq!(agents.iter().map(|s| (s.key.as_str(), s.micros, s.count)).collect::<Vec<_>>(), [("g1t", 2_000_000, 3), ("", 500_000, 4), ("mike", 25_000, 3)]);
+        assert_eq!(agents[0].label, "@g1t");
+        assert_eq!(agents[1].label, "Not attributed to an agent");
+        assert_eq!(people.iter().map(|s| (s.key.as_str(), s.micros)).collect::<Vec<_>>(), [("chase", 2_020_000), ("", 505_000)]);
+        assert_eq!(people[1].label, "No one asked");
+        // Both views are the same money.
+        let total: i64 = rows.iter().map(|r| r.price.unwrap() as i64).sum();
+        assert_eq!(agents.iter().map(|s| s.micros).sum::<i64>(), total);
+        assert_eq!(people.iter().map(|s| s.micros).sum::<i64>(), total);
+    }
+
+    /// The figures every page shows come from one ledger: Home's and
+    /// Spend's "Spent" are the products' sum at price, the top bar's and
+    /// Spend's "Agents" are the agent product, agents by handle sum to it,
+    /// and a full discount is charged nothing.
+    #[test]
+    fn home_spend_and_the_top_bar_reconcile_on_the_ledger() {
+        let days = days_between("2026-10-01", "2026-10-10").unwrap();
+        // The same lines, grouped two ways: by day, meter and project for
+        // the products; by agent and asker for the attribution.
+        let lines: [(&str, &str, &str, &str, &str, f64); 7] = [
+            ("2026-10-02", "agent_models", "flagon-io/g1t", "g1t", "chase", 1_900_000.0),
+            ("2026-10-02", "agent_rate", "flagon-io/g1t", "g1t", "chase", 400_000.0),
+            ("2026-10-03", "agent_sandbox", "flagon-io/g1t", "g1t", "chase", 220_000.0),
+            ("2026-10-04", "agent_models", "flagon-io/@mike", "mike", "chase", 20_000.0),
+            ("2026-10-05", "agent_models", "flagon-io/@margo", "margo", "", 4_000.0),
+            ("2026-10-03", "sandbox", "flagon-io/g1t", "", "", 3_360_000.0),
+            ("2026-10-06", "requests", "flagon-io/site", "", "", 4_480_000.0),
+        ];
+        let cells: Vec<Cell> = lines
+            .iter()
+            .map(|(day, meter, project, _, _, price)| Cell { discount: Some(*price), ..cell(day, meter, project, *price) })
+            .collect();
+        let rows: Vec<Attributed> = lines
+            .iter()
+            .filter(|(_, meter, ..)| meter.starts_with("agent"))
+            .map(|(_, _, _, agent, person, price)| attributed(agent, person, *price, 1.0))
+            .collect();
+        let (products, by_day, totals, _) = shape(&days, &cells, &[], &[], &[], &[]);
+        let (agents, people) = attribution(&rows);
+        // Spent, on Home and Spend: every product at price.
+        let spent: i64 = lines.iter().map(|l| l.5 as i64).sum();
+        assert_eq!(totals.price_micros, spent);
+        assert_eq!(products.iter().map(|p| p.micros).sum::<i64>(), spent);
+        assert_eq!(by_day.iter().map(|d| d.micros).sum::<i64>(), spent);
+        // Agents, in the top bar and on Spend: the agent product, which is
+        // what the agents by handle add up to, g1t's own runs included.
+        let agent_product = products.iter().find(|p| p.key == "agent").unwrap().micros;
+        assert_eq!(agent_product, 1_900_000 + 400_000 + 220_000 + 20_000 + 4_000);
+        assert_eq!(agents.iter().map(|s| s.micros).sum::<i64>(), agent_product);
+        assert_eq!(people.iter().map(|s| s.micros).sum::<i64>(), agent_product);
+        assert!(agents.iter().all(|s| s.micros <= agent_product));
+        assert_eq!(agents[0].key, "g1t");
+        // Charged, on Billing, Spend and in the top bar: nothing, on a 100% discount.
+        assert_eq!(totals.discount_micros, spent);
+        assert_eq!(charged(&totals), 0);
     }
 
     #[test]

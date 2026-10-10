@@ -19,7 +19,9 @@
 
 mod accounts;
 mod ai;
+mod attribution;
 mod budget;
+mod charged;
 mod catalogue;
 mod cards;
 mod closing;
@@ -171,6 +173,12 @@ struct RunRow {
     model: String,
     token_hash: String,
     billed_to: Option<String>,
+    /// The agent doing the work, by handle, and who asked, by username:
+    /// copied onto every ledger line the run makes.
+    #[serde(default)]
+    agent: Option<String>,
+    #[serde(default)]
+    asked_by: Option<String>,
 }
 
 impl RunRow {
@@ -367,8 +375,8 @@ impl Billing {
                     .prepare(
                         "INSERT INTO ledger
                            (id, workspace, kind, amount_micros, description, repo, number, task,
-                            model, cost_micros, reference, created_by, created_at, billed_to)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            model, cost_micros, reference, created_by, created_at, billed_to, agent, asked_by)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         new_id("led", now).into(),
@@ -387,6 +395,8 @@ impl Billing {
                         optional(created_by),
                         timestamp.as_str().into(),
                         run.map_or("g1t", |run| if run.own_provider() { "workspace" } else { "g1t" }).into(),
+                        optional(run.and_then(|run| run.agent.as_deref())),
+                        optional(run.and_then(|run| run.asked_by.as_deref())),
                     ])?,
                 self.db
                     .prepare(
@@ -794,8 +804,8 @@ impl Billing {
         let token = hex::encode(bytes);
         self.db
             .prepare(
-                "INSERT INTO runs (id, workspace, repo, number, task, model, token_hash, created_at, billed_to, session_id, tier)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO runs (id, workspace, repo, number, task, model, token_hash, created_at, billed_to, session_id, tier, agent, asked_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 run_id.as_str().into(),
@@ -811,6 +821,11 @@ impl Billing {
                 // run's tokens under it, and the agent rate is charged on them.
                 optional(a.session.as_deref()),
                 optional(a.tier.as_deref().filter(|tier| tokens::is_tier(tier))),
+                // Whose work it is, for Spend: the agent by handle (a run
+                // under `<workspace>/@<handle>` is that agent's even when
+                // the caller does not say), and who asked.
+                optional(attribution::agent_of(a.agent.as_deref(), &a.repo.name).as_deref()),
+                optional(attribution::handle(a.asked_by.as_deref()).as_deref()),
             ])?
             .run()
             .await?;
@@ -821,7 +836,7 @@ impl Billing {
         let run = self
             .db
             .prepare(
-                "SELECT workspace, repo, number, task, model, token_hash, billed_to FROM runs
+                "SELECT workspace, repo, number, task, model, token_hash, billed_to, agent, asked_by FROM runs
                  WHERE id = ? AND finished_at IS NULL",
             )
             .bind(&[a.run_id.as_str().into()])?
@@ -945,8 +960,8 @@ impl Billing {
                 .prepare(
                     "INSERT INTO ledger
                        (id, workspace, kind, amount_micros, description, repo, task,
-                        cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, quantity)
-                     VALUES (?, ?, 'usage', 0, ?, ?, 'self_hosted', 0, ?, ?, 'workspace', 0, 0, 0, 0, ?)",
+                        cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, quantity, agent, asked_by)
+                     VALUES (?, ?, 'usage', 0, ?, ?, 'self_hosted', 0, ?, ?, 'workspace', 0, 0, 0, 0, ?, ?, ?)",
                 )
                 .bind(&[
                     new_id("led", now).into(),
@@ -956,6 +971,8 @@ impl Billing {
                     a.reference.as_str().into(),
                     timestamp.as_str().into(),
                     (seconds as f64).into(),
+                    optional(attribution::handle(a.agent.as_deref()).as_deref()),
+                    optional(attribution::handle(a.asked_by.as_deref()).as_deref()),
                 ])?
                 .run()
                 .await?;
@@ -1008,8 +1025,8 @@ impl Billing {
                     .prepare(
                         "INSERT INTO ledger
                            (id, workspace, kind, amount_micros, description, repo, task,
-                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, price_version, quantity, compute)
-                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?, ?, ?, ?, ?)",
+                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, price_version, quantity, compute, agent, asked_by)
+                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         new_id("led", now).into(),
@@ -1027,6 +1044,10 @@ impl Billing {
                         optional(Some(price_version.as_str()).filter(|v| !v.is_empty())),
                         (seconds as f64).into(),
                         optional(a.kind.map(ComputeKind::as_str)),
+                        // An agent's sandbox is its work too: on its own
+                        // line with it, under whoever asked.
+                        optional(attribution::handle(a.agent.as_deref()).as_deref()),
+                        optional(attribution::handle(a.asked_by.as_deref()).as_deref()),
                     ])?,
                 self.db
                     .prepare(
@@ -1586,6 +1607,9 @@ mod tests {
         include_str!("../migrations/0049_superseded_proposals.sql"),
         include_str!("../migrations/0050_ledger_usage_by_time.sql"),
         include_str!("../migrations/0051_platform_guardrails.sql"),
+        include_str!("../migrations/0052_cloudflare_cycle.sql"),
+        include_str!("../migrations/0053_models_at_cost.sql"),
+        include_str!("../migrations/0054_agent_attribution.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an

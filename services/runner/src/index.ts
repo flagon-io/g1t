@@ -267,7 +267,15 @@ type Run =
  * Whose sandbox time it is, reported when the sandbox stops, and the
  * machine it ran on when it was not the standard one.
  */
-type Meter = { workspace: string; repo: string; description: string; instance?: string | null };
+type Meter = {
+  workspace: string;
+  repo: string;
+  description: string;
+  instance?: string | null;
+  /** The agent whose work the sandbox time is (`g1t` for g1t's own runs), and who asked, for Spend; neither for checks, the queue and workflows. */
+  agent?: string | null;
+  askedBy?: string | null;
+};
 /**
  * What billing reserved for a sandbox's work (`ComputeGate.admit`), settled
  * when it stops at what it cost: its seconds, plus its model when g1t paid
@@ -358,6 +366,11 @@ const STOP_ENDS: ReadonlySet<string> = new Set(["agent", "revise", "update", "an
 
 function meter(repo: RepoPath, description: string): Meter {
   return { workspace: repo.namespace, repo: `${repo.namespace}/${repo.name}`, description };
+}
+
+/** An agent run's meter: g1t's own agent at work, for the person who asked, so its sandbox time is attributed with the rest of the run. */
+function agentMeter(repo: RepoPath, description: string, askedBy: string | null): Meter {
+  return { ...meter(repo, description), agent: "g1t", askedBy };
 }
 
 /** What the deployments service asks a sandbox to build. */
@@ -727,6 +740,8 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         kind: run ? computeKindOf(run.kind) : null,
         selfHosted,
         instance: metered.instance ?? null,
+        agent: metered.agent ?? null,
+        askedBy: metered.askedBy ?? null,
       })
       .catch((error: unknown) => ({ ok: false as const, error: { message: String(error) } }));
     if (!recorded.ok) console.log("sandbox time not recorded", metered.workspace, seconds, recorded.error.message);
@@ -1525,6 +1540,10 @@ export default class RunnerService
       // it for the agent rate.
       session: session?.id ?? direct ?? null,
       tier: named ? null : tier,
+      // g1t's own agent at work on a repository, for whoever asked: every
+      // line of the run says so, and Spend reads it from the ledger.
+      agent: "g1t",
+      askedBy: requestedBy,
     });
     if (!ticket.ok) return ticket;
     const vars: Record<string, string> = session
@@ -2304,7 +2323,7 @@ export default class RunnerService
       limits: granted.limits,
       selfHosted: granted.route,
       track: { actor: job.author, repo: job.repo, kind: "answer", number: job.number, pullId: job.pullId },
-      meter: meter(job.repo, `Agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
+      meter: agentMeter(job.repo, `Agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`, job.author.username),
       envVars: {
         // Answered from its change as it stands: no merging in of the
         // default branch, which would push a commit for a question.
@@ -2356,7 +2375,7 @@ export default class RunnerService
       limits: granted.limits,
       selfHosted: granted.route,
       track: { actor: job.author, repo: job.repo, kind: "revise", number: job.number, pullId: job.pullId, startedBy: startedBy ?? null },
-      meter: meter(job.repo, `Agent revising ${job.repo.namespace}/${job.repo.name}#${job.number}`),
+      meter: agentMeter(job.repo, `Agent revising ${job.repo.namespace}/${job.repo.name}#${job.number}`, job.author.username),
       envVars: {
         MODE: "revise",
         G1T_API: "https://api.g1t.sh",
@@ -2630,7 +2649,7 @@ export default class RunnerService
         // One a person asked for, rather than g1t by itself.
         startedBy: update.pullId ? null : actor.username,
       },
-      meter: meter(repo, `Catching up ${repo.namespace}/${repo.name}#${number}`),
+      meter: agentMeter(repo, `Catching up ${repo.namespace}/${repo.name}#${number}`, update.pullId ? null : actor.username),
       envVars: {
         MODE: "update",
         G1T_API: "https://api.g1t.sh",
@@ -2719,7 +2738,7 @@ export default class RunnerService
       limits: granted.limits,
       selfHosted: granted.route,
       track: { actor: job.author, repo, kind: "review", number, pullId },
-      meter: meter(repo, `Review of ${repo.namespace}/${repo.name}#${number}`),
+      meter: agentMeter(repo, `Review of ${repo.namespace}/${repo.name}#${number}`, job.author.username),
       envVars: {
         MODE: "review",
         G1T_API: "https://api.g1t.sh",
@@ -2788,7 +2807,7 @@ export default class RunnerService
       limits: granted.limits,
       selfHosted: granted.route,
       track: { actor, repo, kind: "plan", title: job.brief, startedBy: actor.username },
-      meter: meter(repo, `Planning for ${repo.namespace}/${repo.name}`),
+      meter: agentMeter(repo, `Planning for ${repo.namespace}/${repo.name}`, actor.username),
       envVars: {
         MODE: "plan",
         G1T_API: "https://api.g1t.sh",
@@ -2950,7 +2969,7 @@ export default class RunnerService
       limits: granted.limits,
       selfHosted: granted.route,
       track: { actor, repo, kind: "implement", number: pull.number, pullId: pull.id, startedBy: actor.username },
-      meter: meter(repo, `Agent on ${repo.namespace}/${repo.name}#${pull.number}`),
+      meter: agentMeter(repo, `Agent on ${repo.namespace}/${repo.name}#${pull.number}`, actor.username),
       envVars: {
         G1T_API: "https://api.g1t.sh",
         G1T_TOKEN: token,
@@ -3102,7 +3121,7 @@ export default class RunnerService
         title: `Answering ${job.actor.username} on #${job.number}`,
         startedBy: job.actor.username,
       },
-      meter: meter(job.repo, `Agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
+      meter: agentMeter(job.repo, `Agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`, job.actor.username),
       envVars: {
         MODE: "reply",
         G1T_API: "https://api.g1t.sh",

@@ -284,6 +284,16 @@ pub struct StartRunArgs {
     /// None when the workspace's own provider names its model.
     #[serde(default)]
     pub tier: Option<String>,
+    /// The agent doing the work, by handle: a workspace agent's (the one
+    /// whose budget pays), or `g1t` for g1t's own work on a repository.
+    /// Every line the run puts on the ledger carries it, so Spend's "by
+    /// agent" reads from the ledger that is charged.
+    #[serde(default)]
+    pub agent: Option<String>,
+    /// Who asked for the work, by username; none for a routine's or
+    /// another agent's. The runner, which is TypeScript, sends `askedBy`.
+    #[serde(default, alias = "askedBy")]
+    pub asked_by: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1102,6 +1112,14 @@ pub struct RecordSandboxArgs {
     /// one. A larger machine's memory and disk cost more each second.
     #[serde(default)]
     pub instance: Option<String>,
+    /// The agent whose work this was, by handle (`g1t` for g1t's own runs
+    /// on a repository), so an agent's sandbox time is attributed with
+    /// the rest of its work. Absent for checks, workflows and builds.
+    #[serde(default)]
+    pub agent: Option<String>,
+    /// Who asked for the work, by username.
+    #[serde(default, alias = "asked_by")]
+    pub asked_by: Option<String>,
 }
 
 /// How much a workspace has earned g1t's trust with money, which sets how
@@ -1160,7 +1178,13 @@ pub struct Limit {
     pub state: LimitState,
     /// What to tell people when work is stopped or close to it.
     pub message: Option<String>,
-    /// Charged this month, which the spend limit is measured against.
+    /// Charged this month, which the spend limit is measured against: the
+    /// month's usage at price, less the account's discount, what the
+    /// plan's included usage, the trial or a pool paid, and what credit
+    /// paid; usage metered through the month and charged when it closes
+    /// counted on the same terms. The one figure the Billing page's plan
+    /// card, Spend's "Charged" and the top bar show (`UsageTotals::charged_micros`
+    /// over the month is the same number).
     #[serde(default)]
     pub spent_micros: i64,
     /// True while the owners have not chosen a spend limit of their own, so
@@ -4030,6 +4054,21 @@ pub struct UsageTotals {
     pub cost_micros: i64,
 }
 
+/// One agent's or one person's share of the agent product over the range,
+/// at price, from the ledger lines attributed to them.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageShare {
+    /// The agent's handle or the person's username; empty for lines
+    /// attributed to no one (work from before attribution, or that no
+    /// person asked for).
+    pub key: String,
+    pub label: String,
+    pub micros: i64,
+    /// Ledger lines.
+    pub count: u32,
+}
+
 /// One day's usage of one product, at price.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -4139,6 +4178,16 @@ pub struct UsageReport {
     /// Agent tokens by model over the range, most first.
     #[serde(default)]
     pub models: Vec<ModelTokens>,
+    /// The agent product (model tokens, the agent rate and agents'
+    /// sandbox time) by the agent that did the work, most first. Their sum
+    /// is the agent product's total: what agents cost is what the ledger
+    /// charges for them, not a second count.
+    #[serde(default)]
+    pub by_agent: Vec<UsageShare>,
+    /// The same by who asked; work no person asked for (routines, agents
+    /// helping agents, lines from before attribution) under an empty key.
+    #[serde(default)]
+    pub by_person: Vec<UsageShare>,
     /// The plan's included usage this month, when the workspace has it.
     #[serde(default)]
     pub included: Option<Allowance>,

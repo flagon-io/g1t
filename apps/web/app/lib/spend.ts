@@ -6,10 +6,38 @@
  * imports, so it is tested on its own. Every number comes from a service;
  * nothing here invents one.
  */
-import type { AgentSession, PriceBook, SpendPeriod, SpendSlice, UsageDay } from "@g1t/contracts";
+import type { AgentSession, PriceBook, SpendPeriod, SpendSlice, UsageDay, UsageReport, UsageShare } from "@g1t/contracts";
 
 /** Whose spend: your own (what agents did for you), or the whole workspace's. */
 export type SpendScope = "me" | "workspace";
+
+/**
+ * What agents cost over the report's range, at price: the agent product
+ * (model tokens, the agent rate and agents' sandbox time), every agent's
+ * replies, sessions and runs on repositories together. The top bar's and
+ * Spend's "Agents" figure, from the same ledger as "Spent", so it is part
+ * of it: Spent = Agents + the other products.
+ */
+export function agentMicros(report: Pick<UsageReport, "products">): number {
+  return report.products.find((p) => p.key === "agent")?.micros ?? 0;
+}
+
+/**
+ * The agent product by the agent that did the work and by who asked, as
+ * Spend's slices, from the ledger's own attribution. Null when billing did
+ * not attribute the range (a report from before attribution), so the
+ * caller can fall back to the agents service's own count.
+ */
+export function attributionSlices(report: Pick<UsageReport, "byAgent" | "byPerson"> | null): { agent: SpendSlice[]; person: SpendSlice[] } | null {
+  if (!report?.byAgent || !report.byPerson) return null;
+  const slice = (s: UsageShare): SpendSlice => ({ key: s.key, label: s.label, micros: s.micros, count: s.count });
+  return { agent: report.byAgent.map(slice), person: report.byPerson.map(slice) };
+}
+
+/** Where an agent's slice opens: its own Spend tab, for a slice that names one. */
+export function agentSpendHref(slug: string, slice: Pick<SpendSlice, "key">): string | null {
+  return slice.key ? `/${slug}/-/agents/${slice.key}/spend` : null;
+}
 
 export const SPEND_PERIODS: { key: SpendPeriod; label: string; short: string }[] = [
   { key: "month", label: "This month", short: "This month" },

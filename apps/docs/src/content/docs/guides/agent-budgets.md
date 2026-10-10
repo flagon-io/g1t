@@ -24,6 +24,14 @@ widest to the narrowest. The first one that is used up stops the work.
 
 Months and days are UTC. An idle agent costs nothing.
 
+Every budget below the workspace's counts an agent's chat replies and
+sessions at list price, as the ledger enters them, before any discount or
+included usage; the workspace's spend limit is on what is charged after
+those. g1t's own runs on your repositories are on the same ledger as
+**@g1t** and count toward the spend limit, not toward the agent budgets.
+[How spend is counted](/guides/usage-and-billing/#how-spend-is-counted)
+defines each figure.
+
 An agent on several teams with budgets is held to each of them. Its work
 counts towards every team it is on, and towards its own budget, at once.
 A team's header shows what its agents spent this month against its

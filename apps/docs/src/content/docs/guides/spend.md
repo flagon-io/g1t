@@ -31,7 +31,7 @@ UTC. Budgets are always this month's, whatever the period.
 
 | View | Figures |
 | --- | --- |
-| **Workspace** | **Spent**: usage at price over the period, every product, the same figure as [Usage](/guides/usage-and-billing/#the-usage-page). **Agents**: every agent's replies and sessions. **Charged**: what the workspace was charged this month, against its spend limit when it has one. |
+| **Workspace** | **Spent**: usage at price over the period, every product, the same figure as [Usage](/guides/usage-and-billing/#the-usage-page). **Agents**: the agent product within it, every agent's replies, sessions and runs on repositories at price, from the same ledger. **Charged**: what the workspace was charged this month after included usage, credit and any discount, the same figure as Billing, against its spend limit when it has one. [How spend is counted](/guides/usage-and-billing/#how-spend-is-counted) defines each. |
 | **You** | **Agents for you** over the period. **Your budget** this month, and what is spent against it. **Your chats with agents**: the replies agents wrote you. |
 
 **By day** shows the period one day at a time. Hover or focus a day for
@@ -43,8 +43,8 @@ Slice the period's spend with the tabs:
 
 | Slice | Shows |
 | --- | --- |
-| **Agents** | Each agent's share. A session's helpers and subagents count on the agent that started it. Open one for its own Spend tab. |
-| **People** | Who asked. Routines and agent-to-agent work have no asker. Workspace view only. |
+| **Agents** | Each agent's share of the agent product, from the ledger: its replies, sessions, runs on repositories and sandbox time at price. **@g1t** is g1t's own work on your repositories. A session's helpers and subagents count on the agent that started it. Open one for its own Spend tab. In the **You** view, the agents service's count of what agents did for you. |
+| **People** | Who asked, from the ledger. Routines, agent-to-agent work and runs from before attribution have no asker. Workspace view only. |
 | **Channels** | Where it was asked: each channel, direct messages together, and channels you aren't in together, without their names. |
 | **Models** | Each model's share. |
 | **Kind of work** | Chat replies, sessions, routines, helping colleagues and subagents. |
@@ -185,5 +185,5 @@ instead.
 
 - [Effort](/guides/agents/#effort): how hard each agent works, and what each level costs.
 - [Agent budgets and spend](/guides/agent-budgets/): who pays for a session tree.
-- [Usage and billing](/guides/usage-and-billing/): the spend limit, caps, AI credit and rates.
+- [Usage and billing](/guides/usage-and-billing/): the spend limit, caps, AI credit and rates, and [how spend is counted](/guides/usage-and-billing/#how-spend-is-counted).
 - [Sessions](/guides/agent-sessions/): caps and approving more spend.

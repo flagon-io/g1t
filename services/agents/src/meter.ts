@@ -15,7 +15,8 @@
  * 4. The compute gate's reservation (`ComputeGate.admit`, kind `agent`):
  *    the workspace's spend limit, AI credit, pauses and g1t's breaker.
  * 5. A billing run (`start_run`), so the work is charged as Agent tokens on
- *    the workspace's bill, under the paying agent.
+ *    the workspace's bill, under the paying agent, attributed to it and to
+ *    who asked: Spend's "by agent" and "by person" read the ledger.
  * 6. The work itself, through the model proxy with the session's token.
  * 7. `finish_run` with its cost and tokens, the reservation settled at
  *    cost, and the charge added to the paying agent's and the workspace's
@@ -293,6 +294,10 @@ export async function metered<T extends WorkUsage>(env: MeterEnv, input: MeterIn
       billedTo: ownModel ? "workspace" : "g1t",
       session: session.id,
       tier: named ? null : model.tier,
+      // Whose work it is, on every line the run puts on the ledger: the
+      // agent that pays, and who asked. Spend reads both from the ledger.
+      agent: payer.handle,
+      askedBy: input.askerName,
     });
     if (!started.ok) return { ok: false, reason: "billing", message: started.error.message };
     const ticket: RunTicket | null = started.value;

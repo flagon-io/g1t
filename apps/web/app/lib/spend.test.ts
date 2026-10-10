@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { AgentSession, PriceBook } from "@g1t/contracts";
+import type { AgentSession, MeterLine, PriceBook, UsageReport } from "@g1t/contracts";
 
-import { agentRateLabel, daySeries, markupLabel, percentLabel, pricingOf, readPeriod, readScope, receiptOf, spanFor, tokenCount } from "./spend.ts";
+import { agentMicros, agentRateLabel, agentSpendHref, attributionSlices, daySeries, markupLabel, percentLabel, pricingOf, readPeriod, readScope, receiptOf, spanFor, tokenCount } from "./spend.ts";
 
 const OCT_8 = new Date("2026-10-08T15:00:00Z");
 
@@ -97,4 +97,63 @@ test("token counts and percents read short", () => {
   assert.equal(tokenCount(1_250_000), "1.3M");
   assert.equal(percentLabel(62, 100), "62%");
   assert.equal(percentLabel(62, null), "");
+});
+
+/** A usage report as billing answers it for a comped workspace in October: every line discounted in full, attributed to its agent. */
+function octoberReport(): Pick<UsageReport, "totals" | "products" | "byAgent" | "byPerson"> {
+  const meter = (key: string, product: string, micros: number): MeterLine => ({ key, label: key, product, unit: "entries", quantity: 1, micros, daily: [micros], byProject: [] });
+  const products = [
+    { key: "agent", label: "Agent", micros: 2_544_000, meters: [meter("agent_models", "agent", 1_900_000), meter("agent_rate", "agent", 400_000), meter("agent_sandbox", "agent", 244_000)] },
+    { key: "sandboxes", label: "Sandboxes", micros: 3_360_000, meters: [meter("sandbox", "sandboxes", 3_360_000)] },
+    { key: "deployments", label: "Deployments", micros: 4_480_000, meters: [meter("requests", "deployments", 4_480_000)] },
+  ];
+  return {
+    totals: { priceMicros: 10_384_000, discountMicros: 10_384_000, includedMicros: 0, creditsMicros: 0, chargedMicros: 0, pendingMicros: 0, costMicros: 8_650_000 },
+    products,
+    byAgent: [
+      { key: "g1t", label: "@g1t", micros: 2_520_000, count: 9 },
+      { key: "mike", label: "@mike", micros: 20_000, count: 2 },
+      { key: "margo", label: "@margo", micros: 4_000, count: 1 },
+    ],
+    byPerson: [
+      { key: "chase", label: "@chase", micros: 2_540_000, count: 11 },
+      { key: "", label: "No one asked", micros: 4_000, count: 1 },
+    ],
+  };
+}
+
+test("Home's Spent, Spend's tiles and the top bar's Agents reconcile on the one ledger", () => {
+  const report = octoberReport();
+  // Spent: every product at price, which is the report's total.
+  const spent = report.products.reduce((n, p) => n + p.micros, 0);
+  assert.equal(spent, report.totals.priceMicros);
+  // Agents: the agent product, part of Spent, and what the agents by handle add up to.
+  assert.equal(agentMicros(report), 2_544_000);
+  assert.ok(agentMicros(report) <= spent);
+  const slices = attributionSlices(report);
+  assert.ok(slices);
+  assert.equal(
+    slices.agent.reduce((n, s) => n + s.micros, 0),
+    agentMicros(report),
+  );
+  assert.equal(
+    slices.person.reduce((n, s) => n + s.micros, 0),
+    agentMicros(report),
+  );
+  assert.ok(slices.agent.every((s) => s.micros <= agentMicros(report)));
+  // Charged: nothing, on a 100% discount, however much was spent.
+  assert.equal(report.totals.chargedMicros, 0);
+  assert.equal(report.totals.priceMicros - report.totals.discountMicros - report.totals.includedMicros - report.totals.creditsMicros, 0);
+});
+
+test("an agent's slice opens its own Spend tab; work attributed to no one opens nothing", () => {
+  const slices = attributionSlices(octoberReport());
+  assert.ok(slices);
+  assert.equal(agentSpendHref("flagon-io", slices.agent[0]), "/flagon-io/-/agents/g1t/spend");
+  assert.equal(agentSpendHref("flagon-io", slices.person[1]), null);
+  assert.deepEqual(slices.agent[1], { key: "mike", label: "@mike", micros: 20_000, count: 2 });
+  // A report from before attribution has no slices: the caller falls back.
+  assert.equal(attributionSlices({ byAgent: undefined, byPerson: undefined }), null);
+  assert.equal(attributionSlices(null), null);
+  assert.equal(agentMicros({ products: [] }), 0);
 });

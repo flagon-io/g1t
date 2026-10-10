@@ -22,7 +22,10 @@
 //! what can be used before work stops by the same amount, at once: it comes
 //! off what is owed before anything counts against the ceiling.
 //!
-//! Owners also set a monthly **spend limit** on what is charged. They may
+//! Owners also set a monthly **spend limit** on what is charged: the
+//! month's usage at price less the discount, included usage, pools and
+//! credit, with month-end usage counted on the same terms (`charged`, the
+//! one definition the Billing page and Usage share). They may
 //! put it anywhere up to the highest ceiling the workspace has ever had,
 //! plus what is prepaid, without asking anyone; once per workspace they may
 //! raise it to twice that highest ceiling themselves. Past that, they ask
@@ -39,7 +42,7 @@
 
 use std::collections::BTreeSet;
 
-use futures_util::future::{try_join, try_join5, try_join_all};
+use futures_util::future::{try_join, try_join3, try_join4, try_join_all};
 use g1t_contracts::billing::{
     BillingAccount, CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetBudgetArgs, SetSpendLimitArgs, Trust,
 };
@@ -50,8 +53,22 @@ use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{Env, Result};
 
+use crate::charged::{PendingLine, PendingSplit, month_totals, pending_split};
 use crate::features::dollars as dollars_plain;
 use crate::{Billing, members_only};
+
+/// A month's usage on the ledger, in the parts `charged` is made of.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct MonthCharges {
+    /// At price.
+    price: i64,
+    /// What the account's discount took off.
+    discount: i64,
+    /// What the plan's included usage, the trial, a pool or g1t paid.
+    covered: i64,
+    /// Last month's charge, as the ledger has it, for the automatic limit.
+    last_month: i64,
+}
 
 /// The ceilings, from the billing service's variables.
 pub(crate) struct Ceilings {
@@ -298,11 +315,8 @@ impl Billing {
         let now = rfc3339(now_ms());
         let month_start = format!("{}-01", &now[..7]);
         let marks = vec!["?"; account.workspaces.len().max(1)].join(", ");
-        let members: Vec<JsValue> = if account.workspaces.is_empty() {
-            vec![JsValue::from(workspace.as_str())]
-        } else {
-            account.workspaces.iter().map(|w| JsValue::from(w.as_str())).collect()
-        };
+        let names: Vec<String> = if account.workspaces.is_empty() { vec![workspace.clone()] } else { account.workspaces.clone() };
+        let members: Vec<JsValue> = names.iter().map(|w| JsValue::from(w.as_str())).collect();
         let row = async {
             self.db
                 .prepare(
@@ -340,22 +354,18 @@ impl Billing {
                 .first::<Month>(None)
                 .await
         };
-        // And what is metered but not charged until the month closes.
-        let mut pending_args = members.clone();
-        pending_args.push(month_start[..7].into());
-        let pending = async {
-            Ok::<i64, worker::Error>(
-                self.db
-                    .prepare(format!(
-                        "SELECT SUM(charge_micros) AS paid FROM pending_usage WHERE workspace IN ({marks}) AND month = ?"
-                    ))
-                    .bind(&pending_args)?
-                    .first::<Paid>(None)
-                    .await?
-                    .and_then(|row| row.paid)
-                    .unwrap_or(0),
-            )
-        };
+        // And what is metered but not charged until the month closes: it
+        // counts toward what is unpaid at its charge, and toward what is
+        // charged on the account's terms (see `charged`).
+        let pending = self.pending_this_month(&members, &month_start[..7]);
+        // What credit (AI credit, credit from g1t) paid this month: charged
+        // to no one, so not against the spend limit. Read only for
+        // workspaces with grants; the rest answer at once.
+        let next_month = crate::credits::next_month_start(&month_start[..7]);
+        let credits = try_join_all(names.iter().map(|name| {
+            let (from, until) = (month_start.as_str(), next_month.as_str());
+            async move { Ok::<i64, worker::Error>(self.credit_paid_between(name, from, until).await?.0) }
+        }));
         // Test-mode payments are not money: they pay nothing off.
         let live = self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live);
         // The balance the month started with: owed from before (so a new
@@ -407,14 +417,22 @@ impl Billing {
                 }
             })
         };
-        // This month's charges, and last month's, for the spend limit.
-        let charged = self.charged_months(&members, &month_start);
+        // This month's charges on the ledger, measured as every page
+        // measures them, and last month's, for the automatic spend limit.
+        let charges = self.month_charges(&members, &month_start);
         // None of these reads needs another's answer, so they go to D1 at
         // once: the limit is on every signed-in page.
-        let ((row, month, pending, balance_before, (spent, last_month)), (trust, trust_ceiling, first_month)) =
-            try_join(try_join5(row, month, pending, balance_before, charged), trust).await?;
+        let ((row, month, balance_before, charges), (pending, credits), (trust, trust_ceiling, first_month)) =
+            try_join3(try_join4(row, month, balance_before, charges), try_join(pending, credits), trust).await?;
+        // Charged this month: the one definition (`charged`), so this is
+        // the Billing page's and Usage's figure, to the micro.
+        let percent = account.terms.percent_off();
+        let splits: Vec<PendingSplit> = pending.iter().map(|p| pending_split(p.cost(), p.charge(), self.margin_percent, percent)).collect();
+        let totals = month_totals(charges.price, charges.discount, charges.covered, credits.into_iter().sum(), &splits);
+        let spent = totals.charged_micros;
+        let last_month = charges.last_month;
         let (used, paid_month) = month.map_or((0, 0), |m| (m.used.unwrap_or(0), m.paid.unwrap_or(0)));
-        let used = used + pending;
+        let used = used + pending.iter().map(PendingLine::charge).sum::<i64>();
         let (exposure, prepaid) = exposure(used, if live { paid_month } else { 0 }, balance_before);
 
         // A ceiling g1t granted is a floor under the trust ceiling.
@@ -436,7 +454,6 @@ impl Billing {
                 .run()
                 .await?;
         }
-        let spent = spent + pending;
         let raised_at = row.as_ref().and_then(|row| row.raised_at.clone());
         let self_serve = matches!(trust, Trust::New | Trust::Paid | Trust::Established) && plan != PlanKind::Free;
         let (available, raise_once) = match (ceiling, self_serve) {
@@ -587,12 +604,16 @@ impl Billing {
             .unwrap_or(0))
     }
 
-    /// This month's charges and last month's, across the workspaces.
-    async fn charged_months(&self, members: &[JsValue], month_start: &str) -> Result<(i64, i64)> {
+    /// This month's usage on the ledger across the workspaces, in the parts
+    /// `charged` is made of (at price, the discount, what included usage,
+    /// the trial, a pool or g1t paid), and last month's charge.
+    async fn month_charges(&self, members: &[JsValue], month_start: &str) -> Result<MonthCharges> {
         #[derive(Deserialize)]
-        struct Charged {
-            this_month: Option<i64>,
-            last_month: Option<i64>,
+        struct Row {
+            price: Option<f64>,
+            discount: Option<f64>,
+            covered: Option<f64>,
+            last_month: Option<f64>,
         }
         let last_start = format!("{}-01", previous_month(&month_start[..7]));
         let marks = vec!["?"; members.len().max(1)].join(", ");
@@ -600,14 +621,24 @@ impl Billing {
             .db
             .prepare(format!(
                 "SELECT
-                   -SUM(CASE WHEN created_at >= '{month_start}' THEN amount_micros END) AS this_month,
+                   SUM(CASE WHEN created_at >= '{month_start}' THEN {price} END) AS price,
+                   SUM(CASE WHEN created_at >= '{month_start}' THEN COALESCE(discount_micros, 0) END) AS discount,
+                   SUM(CASE WHEN created_at >= '{month_start}' THEN COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0)
+                            + COALESCE(oss_micros, 0) + COALESCE(given_micros, 0) END) AS covered,
                    -SUM(CASE WHEN created_at >= '{last_start}' AND created_at < '{month_start}' THEN amount_micros END) AS last_month
-                 FROM ledger WHERE kind = 'usage' AND workspace IN ({marks}) AND created_at >= '{last_start}'"
+                 FROM ledger WHERE kind = 'usage' AND workspace IN ({marks}) AND created_at >= '{last_start}'",
+                price = crate::statement::PRICE_SQL
             ))
             .bind(members)?
-            .first::<Charged>(None)
+            .first::<Row>(None)
             .await?;
-        Ok(row.map_or((0, 0), |r| (r.this_month.unwrap_or(0).max(0), r.last_month.unwrap_or(0).max(0))))
+        let whole = |n: Option<f64>| n.unwrap_or(0.0).round() as i64;
+        Ok(row.map_or(MonthCharges::default(), |r| MonthCharges {
+            price: whole(r.price),
+            discount: whole(r.discount),
+            covered: whole(r.covered),
+            last_month: whole(r.last_month).max(0),
+        }))
     }
 
     /// An Established ceiling, if the workspaces have paid steadily: three

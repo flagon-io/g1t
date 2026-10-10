@@ -727,7 +727,12 @@ export type Limit = {
   spendLimitMicros: number | null;
   state: "ok" | "warning" | "stopped";
   message: string | null;
-  /** Charged this month: what the spend limit is measured against. */
+  /**
+   * Charged this month, which the spend limit is measured against: usage at
+   * price less the discount, included usage, the trial, pools and credit,
+   * with usage metered through the month counted on the same terms. The
+   * same number as the month's `UsageTotals.chargedMicros`.
+   */
   spentMicros?: number;
   /** True while the owners have not chosen a limit, so the automatic one applies: $200, or twice last month's spend. */
   defaultSpendLimit?: boolean;
@@ -1125,6 +1130,10 @@ export interface BillingApi {
     selfHosted?: boolean;
     /** The machine it ran on, by label (`g1t-4core`); absent, the standard one. */
     instance?: string | null;
+    /** The agent whose work this was, by handle (`g1t` for g1t's own runs on a repository); absent for checks, workflows and builds. */
+    agent?: string | null;
+    /** Who asked for the work, by username. */
+    askedBy?: string | null;
   }): Promise<Result<boolean>>;
   startRun(run: {
     workspace: string;
@@ -1142,6 +1151,10 @@ export interface BillingApi {
     session?: string | null;
     /** The tier g1t routed the run to: `small`, `large` or `frontier`. */
     tier?: "small" | "large" | "frontier" | null;
+    /** The agent doing the work, by handle: a workspace agent's, or `g1t` for g1t's own work on a repository. Every line of the run carries it. */
+    agent?: string | null;
+    /** Who asked, by username; none for a routine's or another agent's work. */
+    askedBy?: string | null;
   }): Promise<Result<RunTicket | null>>;
   /** Usage over a range of days (`YYYY-MM-DD`, both included), at price, by product, meter, project and day. Members only. */
   usageReport(
@@ -1887,6 +1900,9 @@ export type UsageTotals = {
 
 export type UsageDay = { day: string; product: string; micros: number };
 
+/** One agent's (by handle) or one person's (by username) share of the agent product, at price; an empty key for lines attributed to no one. */
+export type UsageShare = { key: string; label: string; micros: number; count: number };
+
 export type UsageAllowance = { used: number; of: number; unit: string };
 
 export type ProjectUsage = { project: string; micros: number; quantity: number };
@@ -1925,6 +1941,10 @@ export type UsageReport = {
   projects: string[];
   /** Agent tokens by model over the range, most first. */
   models?: ModelTokens[];
+  /** The agent product by the agent that did the work, most first; their sum is the agent product's total. */
+  byAgent?: UsageShare[];
+  /** The agent product by who asked; work no person asked for under an empty key. */
+  byPerson?: UsageShare[];
   /** The plan's included usage this month, in micros. */
   included?: UsageAllowance | null;
   discountPercent?: number | null;

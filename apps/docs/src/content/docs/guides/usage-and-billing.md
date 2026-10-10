@@ -526,6 +526,29 @@ is stored. Public repositories are never charged, and neither is a free
 workspace: its pushes to private repositories stop at 1 GB instead. On the
 plan they never stop.
 
+## How spend is counted
+
+Everything a workspace uses is entered on one ledger, as it happens, and
+every figure on every page is read back from it. There is no second count
+to disagree with it.
+
+| Figure | What it is | Where it shows |
+| --- | --- | --- |
+| **Spent**, or usage **at price** | Every entry at its price: what was charged, plus what the plan's included usage, the trial, a pool or g1t paid of it, plus what a discount took off. The one measure of usage. | Home's **Spent** card, Spend's **Spent**, the [Usage page](#the-usage-page), the [statement](#the-statement) |
+| **Agents** | The agent product within Spent: model tokens, the [agent rate](#the-agent-rate) and agents' sandbox time, for every agent's chat replies, sessions and runs on repositories. Each entry names the agent that did the work (g1t's own runs on your repositories are **@g1t**) and the person who asked, so **by agent** and **by person** are the same money sliced two ways, and the agents add up to the product. | The top bar's spend pill, Spend's **Agents** tile and its **Agents** and **People** slices, Usage's **Agent** product |
+| **Charged** | What is left for the workspace to pay this month: usage at price, less your discount, less what included usage, the trial, a pool or g1t paid, less what [credit](#credits-from-g1t) paid. Never below zero: a workspace with a 100% discount is charged exactly nothing. Usage metered through the month and charged when it closes (storage, git operations, scans, embeddings, domains, app traffic) counts now on the same terms. | Billing's plan card, Spend's **Charged**, the top bar's **Workspace** view, and the figure your [spend limit](#your-spend-limit) is measured against |
+
+The [agent budgets](/guides/agent-budgets/) count the same entries at
+the same price, before any discount or included usage: an agent's chat
+replies and sessions against its own budget, its team's, the person's and
+the workspace's agent budget. Budgets at list price are what makes them
+predictable; the spend limit is on what is charged.
+
+Through the API, `GET /workspaces/:workspace/usage` answers with the
+products, `by_agent` and `by_person`, and `totals.charged_micros`;
+`GET /workspaces/:workspace/budget` answers with the spend limit and
+`spent_micros`, the same charged figure.
+
 ## Limits
 
 Every workspace has two limits: **g1t's ceiling** on usage not yet paid
@@ -567,8 +590,11 @@ open-source pool paid for does not count.
 
 ### Your spend limit
 
-What the workspace may be charged in a month (UTC). At it, new work stops
-until the month turns or an owner raises it. Until owners set one, it is
+What the workspace may be charged in a month (UTC): usage at price after
+your discount, included usage, the trial, pools and credit, as
+[How spend is counted](#how-spend-is-counted) defines it, the same figure
+as the plan card's **charged**. At it, new work stops until the month
+turns or an owner raises it. Until owners set one, it is
 **automatic**: $200, or twice last month's spend, whichever is more, up to
 what is available.
 

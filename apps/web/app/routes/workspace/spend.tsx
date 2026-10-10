@@ -32,7 +32,7 @@ import { cn } from "../../lib/cn";
 import { page } from "../../lib/meta";
 import { workspaceAgents } from "../../lib/services.server";
 import { managesBilling, requireUser, roleIn } from "../../lib/session.server";
-import { SPEND_PERIODS, type SpendScope, daySeries, periodLabel, readPeriod, readScope, spanFor, usageByDay, withoutSelf } from "../../lib/spend";
+import { SPEND_PERIODS, type SpendScope, agentMicros, agentSpendHref, attributionSlices, daySeries, periodLabel, readPeriod, readScope, spanFor, usageByDay, withoutSelf } from "../../lib/spend";
 import { loadBreakdown, loadBudgets, loadPricing, loadUsage } from "../../lib/spend.server";
 import { money } from "../../lib/usage";
 
@@ -196,7 +196,17 @@ export default function SpendPage({ loaderData }: Route.ComponentProps) {
               {scope === "workspace" ? (
                 <>
                   <Tile label={`Spent, ${label}`} value={used ? money(used.free ? used.totals.costMicros : used.totals.priceMicros) : "—"} sub={used ? (used.free ? "At cost: g1t charges nothing for now" : "Usage at price, every product") : "Usage couldn't be read"} />
-                  <Tile label={`Agents, ${label}`} value={spent ? money(spent.total_micros) : "—"} sub={spent ? `${countOf(spent.by_kind)} replies and sessions` : "The agents service didn't answer"} />
+                  <Tile
+                    label={`Agents, ${label}`}
+                    value={used ? money(agentMicros(used)) : spent ? money(spent.total_micros) : "—"}
+                    sub={
+                      used
+                        ? `Every agent's replies, sessions and runs, at price${spent ? `; ${countOf(spent.by_kind)} replies and sessions` : ""}`
+                        : spent
+                          ? `${countOf(spent.by_kind)} replies and sessions, from the agents service`
+                          : "Usage couldn't be read"
+                    }
+                  />
                   <Tile
                     label="Charged, this month"
                     value={levels.limit?.spentMicros != null ? money(levels.limit.spentMicros) : "—"}
@@ -296,8 +306,8 @@ export default function SpendPage({ loaderData }: Route.ComponentProps) {
       </Section>
 
       <p className="text-xs text-faint">
-        Agent figures count every reply and session at list price, as budgets do. What the workspace is charged, after included usage, credit and any
-        discount, is on{" "}
+        Every figure is the ledger&apos;s, at price: Spent is every product, Agents is the agent product within it, and the agent budgets count replies and
+        sessions at the same price. What the workspace is charged, after included usage, credit and any discount, is on{" "}
         <Link to={`/${slug}/-/billing`} className="hover:text-fg hover:underline">
           Billing
         </Link>
@@ -349,6 +359,26 @@ function Slices({ by, spent, used, slug, me, scope }: { by: SliceKey; spent: Age
     return (
       <SlicePanel foot="Every product, at price, from Usage. Code and Deployments are built in.">
         <SliceList slices={slices} empty="Nothing used in this period." href={() => `/${slug}/-/usage`} />
+      </SlicePanel>
+    );
+  }
+  // The workspace's agents and people come from the ledger that is
+  // charged: every agent's replies, sessions and runs on repositories, by
+  // the agent that did them and by who asked. Your own view, and the
+  // channels, models and kinds of work, are the agents service's.
+  const attributed = scope === "workspace" ? attributionSlices(used) : null;
+  if (attributed && (by === "agent" || by === "person")) {
+    const chosen =
+      by === "agent"
+        ? {
+            slices: attributed.agent,
+            foot: "From the ledger, at price: each agent's replies, sessions, runs on repositories and sandbox time. @g1t is g1t's own work on your repositories.",
+            link: (s: SpendSlice) => agentSpendHref(slug, s),
+          }
+        : { slices: attributed.person, foot: "Who asked, from the ledger. Routines, agent-to-agent work and runs from before attribution have no asker.", link: undefined };
+    return (
+      <SlicePanel foot={chosen.foot}>
+        <SliceList slices={chosen.slices} unit="entries" empty="Nothing spent in this period." href={chosen.link} />
       </SlicePanel>
     );
   }
