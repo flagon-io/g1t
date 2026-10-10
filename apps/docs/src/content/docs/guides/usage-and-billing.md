@@ -76,7 +76,7 @@ until it starts the plan:
   waits, and works once the plan is on).
 
 Its members can still be given a role on its repositories, and put on its
-[teams](/guides/teams/). On the **People** page and a repository's
+[teams](/guides/teams/). On the **Members and invites** page and a repository's
 **Settings → Access**, an owner sees **Start the plan to invite people**
 with a button to the plan. Through the API and MCP, adding a member,
 inviting, adding an outside collaborator and accepting are refused with

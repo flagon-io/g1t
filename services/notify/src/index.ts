@@ -14,6 +14,8 @@
  *   items arrive or are marked, naming the person by username;
  * - the site: `subscribe`, `unsubscribe`, `status`, `set_preferences`,
  *   `test`, `presence` and `set_presence`, for the person signed in;
+ * - agents and the site: `workspace_presence`, how a workspace's people
+ *   show now (away, in Do Not Disturb, offline, and their statuses);
  * - integrations, later: `set_presence` with a status of `source`
  *   `calendar` or `integration`, for the person they act for.
  *
@@ -30,6 +32,7 @@ import {
 } from "@g1t/contracts";
 
 import { FEED_USERNAME_HEADER, FEED_USER_ID_HEADER, Feed, type FeedEnv } from "./feed.ts";
+import { onlyPeople } from "./presence.ts";
 
 export { Feed } from "./feed.ts";
 export { Room } from "./room.ts";
@@ -60,6 +63,13 @@ async function userIdOf(env: Env, given: { user_id?: unknown; username?: unknown
 const MAX_DELIVERIES = 1000;
 
 async function answer(env: Env, method: string, args: any): Promise<Response> {
+  if (method === "workspace_presence") {
+    // For services: how a workspace's people show now, as its room keeps them.
+    const slug = typeof args?.workspace === "string" ? args.workspace.trim().toLowerCase() : "";
+    if (!slug || !env.ROOMS) return Response.json([]);
+    const everyone = await env.ROOMS.get(env.ROOMS.idFromName(slug)).people();
+    return Response.json(onlyPeople(everyone, Array.isArray(args.user_ids) ? args.user_ids : null));
+  }
   if (method === "deliver") {
     const items = (Array.isArray(args?.items) ? args.items : []).slice(0, MAX_DELIVERIES) as FeedDelivery[];
     const byUser = new Map<string, FeedDelivery[]>();

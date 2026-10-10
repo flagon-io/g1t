@@ -94,12 +94,16 @@ export default [
     index("routes/workspace/overview.tsx"),
     // Its pages, each in the sidebar: Overview (above), Projects, People, Insights; Teams and Packages below.
     route("-/projects", "routes/workspace/projects.tsx"),
+    // People mode: the directory of people and agents, each one's profile, and the org chart.
     route("-/people", "routes/workspace/people.tsx"),
+    route("-/people/agents/:handle", "routes/workspace/people/agent.tsx"),
+    route("-/people/:username", "routes/workspace/people/person.tsx"),
+    route("-/org-chart", "routes/workspace/org-chart.tsx"),
+    // Who is a member, their roles, invitations and outside collaborators.
+    route("-/members", "routes/workspace/members.tsx"),
     route("-/insights", "routes/workspace/tab-soon.tsx", { id: "routes/workspace/insights" }),
     // Pinning its projects, for the person signed in.
     route("-/pins", "routes/workspace/pins.ts"),
-    // Pages that moved: Members is People, and the overview is the workspace.
-    route("-/members", "routes/workspace/moved.ts", { id: "routes/workspace/moved-members" }),
     // Code's Overview: Mission control's code panels, for this workspace.
     route("-/overview", "routes/workspace/code-overview.tsx"),
     // The workspace itself, at a glance: members, plan and spend.

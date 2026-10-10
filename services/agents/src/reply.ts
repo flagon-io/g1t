@@ -33,13 +33,14 @@ import { type SessionEnv, type SessionRow, actionPorts, sessionRow, startSession
 import { type Row, definitionOf, periods, selectAgents, toAgent } from "./store.ts";
 import { type SurfaceMessage, surfaceFor } from "./surface.ts";
 import { Audience } from "./audience.ts";
-import { audiencePorts, toolPorts } from "./ports.ts";
+import { audiencePorts, loadTeams, toolPorts } from "./ports.ts";
 import { type ToolCall, type ToolPorts, ToolBox } from "./tools.ts";
 import type { Surface } from "./surface.ts";
 import type { Desk } from "./desk.ts";
 import { type ModelMessage, type Send, NO_TOKENS, addTokens, runTurn } from "./turn.ts";
 import type { AgentRouting as Policy } from "../../runner/src/model-env.ts";
 import { dollars } from "./money.ts";
+import { teamsSection } from "./teammates.ts";
 
 export { billingRepo } from "./meter.ts";
 
@@ -334,10 +335,12 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
     // Read the conversation while showing that the agent is on it.
     // A hello has no conversation yet: it is asked to introduce itself.
     // And who is here: said every turn, so the agent knows who reads it and who doesn't.
-    const [, history, conversationHere] = await Promise.all([
+    // And its teams, from their pages: who leads, who owns what, who is around.
+    const [, history, conversationHere, teamsHere] = await Promise.all([
       surface.typing(),
       delivery.hello ? Promise.resolve([]) : surface.history(HISTORY_LIMIT),
       delivery.hello ? Promise.resolve(null) : surface.conversation(),
+      loadTeams(env, slug, row.workspace_id, { id: row.id, team: row.team ?? null }).catch(() => null),
     ]);
     const conversation = delivery.hello ? [{ role: "user" as const, content: helloAsk(delivery.asker?.username ?? null) }] : turns(history, row.id);
     if (!conversation.length) return await finish({ status: "skipped", error: "nothing to answer" });
@@ -355,7 +358,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
     let posted: string | null = null;
     let spinOffs = 0;
 
-    const done = await metered(env, { row, payer: row, slug, task: "reply", start, askerName, person: delivery.asker?.username ?? null }, async (model) => {
+    const done = await metered(env, { row, payer: row, slug, task: "reply", start, askerName, person: delivery.asker?.username ?? null, teams: teamsHere }, async (model) => {
       // What colleagues consulted along the way used: billed to this reply.
       const consulted = { tokens: NO_TOKENS, cost: 0 };
       let toolbox: ToolBox | null = null;
@@ -476,6 +479,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
           colleagues: row.builtin ? null : rosterLines(specialists),
           recentSessions: recent,
           conversation: conversationHere,
+          teams: teamsSection(row.id, teamsHere, now),
           canHandOff: !!toolbox?.definitions().some((tool) => tool.name === "hand_off"),
           handedOffBy: sender?.handle ?? null,
           skills: skillsSection(definition.skills_off, toolbox?.definitions().map((tool) => tool.name) ?? []),

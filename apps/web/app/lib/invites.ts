@@ -346,7 +346,7 @@ export function peoplePages(memberships: Membership[], current: string | null | 
   const here = current?.trim().toLowerCase() || null;
   return memberships
     .filter((m) => m.role === "owner")
-    .map((m) => ({ slug: m.slug.toLowerCase(), name: m.name?.trim() || m.slug, to: `/${m.slug.toLowerCase()}/-/people` }))
+    .map((m) => ({ slug: m.slug.toLowerCase(), name: m.name?.trim() || m.slug, to: `/${m.slug.toLowerCase()}/-/members` }))
     .sort((a, b) => Number(b.slug === here) - Number(a.slug === here));
 }
 

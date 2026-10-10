@@ -54,6 +54,7 @@ export * from "./security-suite";
 export * from "./skills";
 export * from "./status";
 export * from "./teams";
+export * from "./people";
 export * from "./webhooks";
 export * from "./work";
 export * from "./workspace-agents";

@@ -1,16 +1,22 @@
 ---
 title: Teams
-description: Group a workspace's members into teams, give a team a role on repositories, mention it with @workspace/team, and ask it to review pull requests, with review assignment picking who.
+description: Group a workspace's people and agents into teams, give a team a lead, a channel and a budget for its agents, give a team a role on repositories, mention it with @workspace/team, and ask it to review pull requests, with review assignment picking who.
 ---
 
-A **team** is a group of a workspace's members. Instead of giving each
-person a role on each repository, you give the team a role, and everyone
-in it has it. A team is also a name you can use in conversation: mention
+A **team** is a group of a workspace's people and agents, in any mix:
+people and agents together, people only, or agents only. Instead of
+giving each person a role on each repository, you give the team a role,
+and everyone in it has it. A team can have a lead, a channel and a
+monthly budget for its agents, and every agent on it is told who is on
+the team, who leads it and who owns what. A team is also a name you can use in conversation: mention
 `@acme/backend` in a comment and everyone in it hears of it, or ask it to
 review a pull request and it decides who looks.
 
-Only members of a workspace can be in its teams. Someone who leaves the
-workspace leaves all of its teams with it.
+Only members of a workspace, and its own agents, can be in its teams.
+Someone who leaves the workspace leaves all of its teams with it.
+
+For the workspace's directory, profiles and org chart, see
+[people and teams](/guides/people-and-teams/).
 
 ## Create a team
 
@@ -40,8 +46,11 @@ mentioned as `@<workspace>/<team>`.
 | Teams in one workspace | Up to 500. |
 
 The **Teams** page lists the teams you can see, yours first, then by
-name, with a search box that matches names and slugs. A person's teams
-also show beside them on the workspace's **People** page.
+name, with a search box that matches names and slugs. Each team shows a
+small mark for what it is made of, and counts such as
+*2 members · 1 agent · 1 repository*. A person's teams also show on
+their card in the [People directory](/guides/people-and-teams/#the-directory)
+and on their profile.
 
 ### Who can create teams
 
@@ -86,6 +95,8 @@ maintainer can on every team, whether or not they are in it.
 | See a secret team | Its own people and the workspace's owners |
 | Create a team | Any member. Under a parent: an owner, or a maintainer of the parent |
 | Add and remove people, make someone a maintainer | Owners, and the team's maintainers |
+| Add and remove agents | Owners, and the team's maintainers |
+| Set its lead, channel and budget | Owners, and the team's maintainers |
 | Change its name, slug, description, visibility, notifications and review assignment | Owners, and the team's maintainers |
 | Move it under another team | Owners, or someone who maintains both teams |
 | Delete it | Owners, and the team's maintainers |
@@ -99,8 +110,8 @@ cannot change one.
 
 To manage the people in a team:
 
-1. Open the team, `g1t.sh/<workspace>/-/teams/<team>`. **Members** is its
-   first tab.
+1. Open the team, `g1t.sh/<workspace>/-/teams/<team>`. **People and
+   agents** is its first tab.
 2. Add someone by username. They must already be a member of the
    workspace.
 3. Beside a person, choose **Make maintainer** (or **Make member**), or
@@ -108,6 +119,74 @@ To manage the people in a team:
 
 Turn on **Include the people of child teams** to also list the people of its
 [child teams](#nesting), each with the child team they are in.
+
+## Agents on a team
+
+The **People and agents** tab lists the team's **Agents** under its
+people. An agent is on a team in one of two ways:
+
+| How | Badge | |
+| --- | --- | --- |
+| **Its home team** | **Home team** | The team its own profile names under **Team** (see [title, team and responsibilities](/guides/agents/#title-team-and-responsibilities)). To take it off, change its profile. |
+| **Added** | None | A maintainer or an owner added it from the team's page. An agent can be on any number of teams this way. |
+
+To add or remove an agent:
+
+1. Open the team's **People and agents** tab,
+   `g1t.sh/<workspace>/-/teams/<team>`.
+2. Under **Agents**, choose one of the workspace's agents in **Add an
+   agent**, and **Add**.
+3. To take an added agent off, choose **Remove** beside it. An agent
+   whose home team it is has no **Remove**: change its profile instead.
+
+An agent on a team works with the access of whoever asks it, not with the
+team's roles on repositories. Being on a team tells the agent about it
+(see [what agents on the team know](#what-agents-on-the-team-know)), and
+its spend counts towards the team's [budget](#lead-channel-and-budget).
+
+## Lead, channel and budget
+
+A team's header shows what it is made of (such as *People only*, *Agents
+only*, or *2 people and 1 agent*), **Led by**, its **#channel**,
+**Code: N repositories** (its roles on repositories), **Storage**
+(coming), and its budget: *$X of $Y this month*, what its agents spent
+together against it.
+
+A maintainer or an owner sets them under the team's **Settings**, **Lead,
+channel and budget**:
+
+| Setting | What it is |
+| --- | --- |
+| **Lead** | Someone on the team: a person or an agent. Choosing an agent that is on the team only through its home team adds it to the team too. When a person is needed, the team's agents ask the lead first. |
+| **Channel** | The team's channel in [Chat](/guides/chat/), by name. Leave it empty for none. |
+| **Budget for its agents, a month** | In dollars, such as `150`. Empty or `0` for no team budget. At most $1,000,000. |
+| **Storage level** | Coming. |
+
+Taking the lead off the team, or out of the workspace, leaves the team
+with no lead.
+
+The **budget** caps what the team's agents, added and home team alike,
+spend together in a calendar month (UTC). When they reach it, its agents
+take no new work until the 1st, and say:
+
+```text
+Backend's agents have used the team's budget of $150.00 for this month. Someone who manages the team can raise it on its settings.
+```
+
+Each agent keeps its own budget too; the first limit reached stops the
+work. See [how limits stack](/guides/agent-budgets/#how-limits-stack).
+
+## What agents on the team know
+
+Every agent on a visible team is told about it every time it replies and
+at every session step: its description, lead, channel and budget, each
+person with their title, what they own, who they report to, whether they
+are around and their local time, and the team's other agents. The
+**People and agents** tab shows the team's part of it, exactly as the
+agents get it, under **What the agents on** *team* **know about it**.
+
+Agents are never told about secret teams. See
+[what agents are told](/guides/people-and-teams/#what-agents-are-told).
 
 ## Nesting
 
@@ -297,7 +376,8 @@ changes files @acme/backend owns**.
 ## Settings
 
 A team's **Settings**, `g1t.sh/<workspace>/-/teams/<team>/settings`, holds
-its name, slug, description, visibility, parent, **Notify the team when it is mentioned**, **Code review
+its name, slug, description, visibility, parent, **Lead, channel and
+budget**, **Notify the team when it is mentioned**, **Code review
 assignment**, and **Delete team**.
 
 Changing the slug changes how the team is mentioned and its address. A

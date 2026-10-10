@@ -68,6 +68,10 @@ against it this month, and what happens at 100%.
 | **Each agent** | Owners, on the agent's **Profile**. A new agent starts with the default set here. | That agent takes no new work until the 1st, or the next day for a daily cap. |
 | **Each task** | Owners, here: the cap a session starts with. The plan's caps on one run and one issue are under [Billing → Caps](/guides/usage-and-billing/#caps). | The session stops at **Needs approval**, and an owner decides whether it goes on. |
 
+A team can also have a budget for what its agents spend together, set on
+the team's own settings and checked after a person's budget. See
+[lead, channel and budget](/guides/teams/#lead-channel-and-budget).
+
 Work already running finishes, so spend can go slightly past a budget.
 
 ### A person's budget

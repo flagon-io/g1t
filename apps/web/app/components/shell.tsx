@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PanelLeft, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Store, Sun, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PanelLeft, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Store, Sun, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -1265,7 +1265,10 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
   );
 }
 
-/** People's sidebar: everyone in the workspace, and its teams. */
+/**
+ * People's sidebar: everyone in the workspace, people and agents; its
+ * teams; the org chart; and, to manage who belongs, members and invites.
+ */
 function PeopleSidebar({ slug }: { slug: string }) {
   const { pathname } = useLocation();
   const going = useNavigation().location?.pathname;
@@ -1282,7 +1285,15 @@ function PeopleSidebar({ slug }: { slug: string }) {
           <SidebarLink to={`/${slug}/-/teams`} icon={<UsersRound size={15} />} current={at("teams")}>
             Teams
           </SidebarLink>
+          <SidebarLink to={`/${slug}/-/org-chart`} icon={<Network size={15} />} current={at("org-chart")}>
+            Org chart
+          </SidebarLink>
         </div>
+        <SidebarGroup title="Membership" className="mt-3">
+          <SidebarLink to={`/${slug}/-/members`} icon={<UserPlus size={15} />} current={at("members")}>
+            Members and invites
+          </SidebarLink>
+        </SidebarGroup>
       </nav>
     </div>
   );
@@ -1379,6 +1390,8 @@ const SECTIONS: Record<string, string> = {
   secrets: "Secrets and variables",
   settings: "Settings",
   people: "People",
+  "org-chart": "Org chart",
+  members: "Members and invites",
   projects: "Projects",
   teams: "Teams",
   tokens: "Access tokens",

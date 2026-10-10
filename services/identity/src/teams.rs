@@ -83,12 +83,70 @@ pub(crate) struct TeamRow {
     pub members_count: u32,
     pub repos_count: u32,
     pub child_teams_count: u32,
+    #[serde(default)]
+    pub agents_count: u32,
     /// The viewer's role in it, if they are in it.
     #[serde(default)]
     pub viewer_role: Option<String>,
+    /// Its lead: `user` or `agent`, and the id; for a person, who they are.
+    #[serde(default)]
+    pub lead_kind: Option<String>,
+    #[serde(default)]
+    pub lead_id: Option<String>,
+    #[serde(default)]
+    pub lead_username: Option<String>,
+    #[serde(default)]
+    pub lead_name: Option<String>,
+    #[serde(default)]
+    pub lead_avatar: Option<String>,
+    #[serde(default)]
+    pub channel_id: Option<String>,
+    #[serde(default)]
+    pub channel_name: Option<String>,
+    /// D1 hands numbers over as doubles.
+    #[serde(default)]
+    pub budget_micros: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
 }
+
+/// A team's lead from its columns: a person still on record, or an agent.
+pub(crate) fn lead_of(
+    kind: Option<&str>,
+    id: Option<&str>,
+    username: Option<&str>,
+    name: Option<&str>,
+    avatar: Option<&str>,
+) -> Option<TeamLead> {
+    match (kind?, id?) {
+        ("agent", id) => Some(TeamLead::Agent { agent_id: id.to_owned() }),
+        ("user", _) => Some(TeamLead::User {
+            username: username?.to_owned(),
+            name: name.map(str::to_owned),
+            avatar: avatar.map(str::to_owned),
+        }),
+        _ => None,
+    }
+}
+
+/// A channel from its columns, when it has both.
+pub(crate) fn channel_of(id: Option<&str>, name: Option<&str>) -> Option<TeamChannel> {
+    match (id, name) {
+        (Some(id), Some(name)) if !id.is_empty() => Some(TeamChannel {
+            id: id.to_owned(),
+            name: name.to_owned(),
+        }),
+        _ => None,
+    }
+}
+
+/// A stored budget: a whole positive number of micros, or none.
+pub(crate) fn budget_of(micros: Option<f64>) -> Option<i64> {
+    micros.filter(|m| m.is_finite() && *m > 0.0).map(|m| m as i64)
+}
+
+/// The most a team budget may be: a million dollars a month.
+pub const MAX_TEAM_BUDGET_MICROS: i64 = 1_000_000 * 1_000_000;
 
 impl TeamRow {
     pub fn visibility(&self) -> TeamVisibility {
@@ -104,6 +162,16 @@ impl TeamRow {
 
     fn viewer_role(&self) -> Option<TeamRole> {
         self.viewer_role.as_deref().and_then(TeamRole::parse)
+    }
+
+    pub(crate) fn lead(&self) -> Option<TeamLead> {
+        lead_of(
+            self.lead_kind.as_deref(),
+            self.lead_id.as_deref(),
+            self.lead_username.as_deref(),
+            self.lead_name.as_deref(),
+            self.lead_avatar.as_deref(),
+        )
     }
 
     fn shown(&self, owner: bool) -> Team {
@@ -127,6 +195,10 @@ impl TeamRow {
             members_count: self.members_count,
             repos_count: self.repos_count,
             child_teams_count: self.child_teams_count,
+            agents_count: self.agents_count,
+            lead: self.lead(),
+            channel: channel_of(self.channel_id.as_deref(), self.channel_name.as_deref()),
+            budget_micros: budget_of(self.budget_micros),
             viewer_role,
             can_manage: may_manage(owner, viewer_role),
             created_at: self.created_at.clone(),
@@ -154,10 +226,14 @@ const TEAM_COLUMNS: &str = "t.id, t.workspace_id, w.slug AS workspace, t.slug, t
   (SELECT count(*) FROM repo_grants g WHERE g.principal_kind = 'team' AND g.principal_id = t.id) AS repos_count,
   (SELECT count(*) FROM teams c WHERE c.parent_id = t.id) AS child_teams_count,
   (SELECT role FROM team_members me WHERE me.team_id = t.id AND me.user_id = ?1) AS viewer_role,
+  (SELECT count(*) FROM team_agents ta WHERE ta.team_id = t.id) AS agents_count,
+  t.lead_kind, t.lead_id, lu.username AS lead_username, lu.display_name AS lead_name, lu.avatar AS lead_avatar,
+  t.channel_id, t.channel_name, t.budget_micros,
   t.created_at, t.updated_at
   FROM teams t
   JOIN workspaces w ON w.id = t.workspace_id AND w.deleted_at IS NULL
-  LEFT JOIN teams p ON p.id = t.parent_id";
+  LEFT JOIN teams p ON p.id = t.parent_id
+  LEFT JOIN users lu ON t.lead_kind = 'user' AND lu.id = t.lead_id AND lu.deleted_at IS NULL";
 
 // --- The rules, apart from the database ---------------------------------------
 
@@ -202,7 +278,7 @@ pub fn nesting_problem(
 /// The workspace role the viewer has, counting g1t acting in it, and a
 /// workspace's own token an owner gave Admin, as owners. Any other
 /// workspace token is a member.
-fn role_of(viewer: &User, workspace: &str) -> Option<Role> {
+pub(crate) fn role_of(viewer: &User, workspace: &str) -> Option<Role> {
     if matches!(viewer.kind, PrincipalKind::Workspace | PrincipalKind::System) && viewer.is_member(workspace) {
         if viewer.kind == PrincipalKind::Workspace && viewer.token.as_deref().is_some_and(|token| !token.admin) {
             return Some(Role::Member);
@@ -238,7 +314,7 @@ struct RoleRow {
 }
 
 impl Identity {
-    async fn team_rows(&self, filter: &str, binds: &[JsValue]) -> Result<Vec<TeamRow>> {
+    pub(crate) async fn team_rows(&self, filter: &str, binds: &[JsValue]) -> Result<Vec<TeamRow>> {
         self.db
             .prepare(format!("SELECT {TEAM_COLUMNS} {filter} LIMIT {LIST_LIMIT}"))
             .bind(binds)?
@@ -764,6 +840,72 @@ impl Identity {
                 changes.push("review_assignment");
             }
         }
+        if let Some(lead) = a.lead.as_deref().map(str::trim) {
+            let (kind, id): (JsValue, JsValue) = if lead.is_empty() {
+                (JsValue::NULL, JsValue::NULL)
+            } else {
+                match parse_lead(lead) {
+                    Some(LeadInput::User(username)) => {
+                        let Some((user_id, username)) = self.person_by_username(&username).await? else {
+                            return Ok(Outcome::fail(FailureCode::NotFound, NO_SUCH_USER));
+                        };
+                        if self.team_role_of(&row.id, &user_id).await?.is_none() {
+                            return Ok(Outcome::fail(
+                                FailureCode::Invalid,
+                                format!("{username} is not on {}. Add them to the team first.", row.name),
+                            ));
+                        }
+                        ("user".into(), user_id.into())
+                    }
+                    Some(LeadInput::Agent(agent_id)) => {
+                        if !self.has_team_agent(&row.id, &agent_id).await? {
+                            return Ok(Outcome::fail(
+                                FailureCode::Invalid,
+                                format!("That agent is not on {}. Add it to the team first.", row.name),
+                            ));
+                        }
+                        ("agent".into(), agent_id.into())
+                    }
+                    None => return Ok(Outcome::fail(FailureCode::Invalid, "Name the lead as @username, or agent:<id> for an agent.")),
+                }
+            };
+            let same = kind.as_string() == row.lead_kind && id.as_string() == row.lead_id;
+            if !same {
+                set("lead_kind", kind, &mut binds);
+                set("lead_id", id, &mut binds);
+                changes.push("lead");
+            }
+        }
+        if let Some(channel_id) = a.channel_id.as_deref().map(str::trim) {
+            let name = a
+                .channel_name
+                .as_deref()
+                .map(|name| name.trim().trim_start_matches('#').chars().take(80).collect::<String>())
+                .unwrap_or_default();
+            if !channel_id.is_empty() && name.is_empty() {
+                return Ok(Outcome::fail(FailureCode::Invalid, "Give the channel's name with its id."));
+            }
+            if Some(channel_id) != row.channel_id.as_deref() || (!channel_id.is_empty() && Some(name.as_str()) != row.channel_name.as_deref()) {
+                if channel_id.is_empty() {
+                    set("channel_id", JsValue::NULL, &mut binds);
+                    set("channel_name", JsValue::NULL, &mut binds);
+                } else {
+                    set("channel_id", channel_id.into(), &mut binds);
+                    set("channel_name", name.into(), &mut binds);
+                }
+                changes.push("channel");
+            }
+        }
+        if let Some(budget) = a.budget_micros {
+            if budget > MAX_TEAM_BUDGET_MICROS {
+                return Ok(Outcome::fail(FailureCode::Invalid, "A team budget can be at most $1,000,000 a month."));
+            }
+            let budget = (budget > 0).then_some(budget);
+            if budget != budget_of(row.budget_micros) {
+                set("budget_micros", budget.map_or(JsValue::NULL, |m| JsValue::from_f64(m as f64)), &mut binds);
+                changes.push("budget");
+            }
+        }
         if !changes.is_empty() {
             set("updated_at", rfc3339(now_ms()).into(), &mut binds);
             binds.push(row.id.as_str().into());
@@ -805,6 +947,7 @@ impl Identity {
                     .prepare("UPDATE teams SET parent_id = ?1 WHERE parent_id = ?2")
                     .bind(&[opt(row.parent_id.as_deref()), id.clone()])?,
                 self.db.prepare("DELETE FROM team_members WHERE team_id = ?").bind(std::slice::from_ref(&id))?,
+                self.db.prepare("DELETE FROM team_agents WHERE team_id = ?").bind(std::slice::from_ref(&id))?,
                 self.db
                     .prepare("DELETE FROM repo_grants WHERE principal_kind = 'team' AND principal_id = ?")
                     .bind(std::slice::from_ref(&id))?,
@@ -987,9 +1130,15 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::NotFound, format!("{username} is not in {}.", row.name)));
         };
         self.db
-            .prepare("DELETE FROM team_members WHERE team_id = ? AND user_id = ?")
-            .bind(&[row.id.as_str().into(), user_id.as_str().into()])?
-            .run()
+            .batch(vec![
+                self.db
+                    .prepare("DELETE FROM team_members WHERE team_id = ? AND user_id = ?")
+                    .bind(&[row.id.as_str().into(), user_id.as_str().into()])?,
+                // Someone off the team no longer leads it.
+                self.db
+                    .prepare("UPDATE teams SET lead_kind = NULL, lead_id = NULL WHERE id = ? AND lead_kind = 'user' AND lead_id = ?")
+                    .bind(&[row.id.as_str().into(), user_id.as_str().into()])?,
+            ])
             .await?;
         self.team_event(
             "team.member_removed",
@@ -1472,6 +1621,224 @@ impl Identity {
         })
     }
 
+    // --- Agents on teams ---
+
+    pub(crate) async fn has_team_agent(&self, team_id: &str, agent_id: &str) -> Result<bool> {
+        Ok(self
+            .db
+            .prepare("SELECT agent_id AS id FROM team_agents WHERE team_id = ? AND agent_id = ?")
+            .bind(&[team_id.into(), agent_id.into()])?
+            .first::<IdRow>(None)
+            .await?
+            .is_some())
+    }
+
+    /// The agents added to a team, as the viewer may see the team.
+    pub async fn team_agents(&self, a: TeamArgs) -> Result<Outcome<Vec<TeamAgent>>> {
+        let (row, _) = match self.seen_team(&a.viewer, &a.workspace, &a.team).await? {
+            Outcome::Ok(found) => found,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        #[derive(Deserialize)]
+        struct AgentRow {
+            agent_id: String,
+            #[serde(default)]
+            added_by: Option<String>,
+            created_at: String,
+        }
+        let rows = self
+            .db
+            .prepare(
+                "SELECT ta.agent_id, u.username AS added_by, ta.created_at FROM team_agents ta
+                 LEFT JOIN users u ON u.id = ta.added_by AND u.deleted_at IS NULL
+                 WHERE ta.team_id = ? ORDER BY ta.created_at LIMIT 500",
+            )
+            .bind(&[row.id.as_str().into()])?
+            .all()
+            .await?
+            .results::<AgentRow>()?;
+        Ok(Outcome::Ok(
+            rows.into_iter()
+                .map(|row| TeamAgent {
+                    agent_id: row.agent_id,
+                    added_by: row.added_by,
+                    created_at: row.created_at,
+                })
+                .collect(),
+        ))
+    }
+
+    pub async fn set_team_agent(&self, a: SetTeamAgentArgs) -> Result<Outcome<TeamAgent>> {
+        let (row, _) = match self.managed_team(&a.actor, &a.workspace, &a.team).await? {
+            Outcome::Ok(found) => found,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let agent_id = a.agent_id.trim();
+        if !matches!(parse_lead(&format!("agent:{agent_id}")), Some(LeadInput::Agent(_))) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "That is not an agent's id."));
+        }
+        let now = rfc3339(now_ms());
+        let added = !self.has_team_agent(&row.id, agent_id).await?;
+        self.db
+            .prepare(
+                "INSERT INTO team_agents (team_id, agent_id, added_by, created_at) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (team_id, agent_id) DO NOTHING",
+            )
+            .bind(&[row.id.as_str().into(), agent_id.into(), a.actor.id.as_str().into(), now.as_str().into()])?
+            .run()
+            .await?;
+        if added {
+            self.team_event(
+                "team.edited",
+                &a.actor,
+                TeamChanged {
+                    changes: vec!["agents".to_owned()],
+                    ..row.event()
+                },
+                a.surface.unwrap_or(Surface::Web),
+                format!("Added an agent ({agent_id}) to {}", row.name),
+            )
+            .await;
+        }
+        Ok(Outcome::Ok(TeamAgent {
+            agent_id: agent_id.to_owned(),
+            added_by: Some(a.actor.username.clone()),
+            created_at: now,
+        }))
+    }
+
+    pub async fn remove_team_agent(&self, a: RemoveTeamAgentArgs) -> Result<Outcome<bool>> {
+        let (row, _) = match self.managed_team(&a.actor, &a.workspace, &a.team).await? {
+            Outcome::Ok(found) => found,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let agent_id = a.agent_id.trim();
+        if !self.has_team_agent(&row.id, agent_id).await? {
+            return Ok(Outcome::fail(FailureCode::NotFound, format!("That agent was not added to {}.", row.name)));
+        }
+        self.db
+            .batch(vec![
+                self.db
+                    .prepare("DELETE FROM team_agents WHERE team_id = ? AND agent_id = ?")
+                    .bind(&[row.id.as_str().into(), agent_id.into()])?,
+                self.db
+                    .prepare("UPDATE teams SET lead_kind = NULL, lead_id = NULL WHERE id = ? AND lead_kind = 'agent' AND lead_id = ?")
+                    .bind(&[row.id.as_str().into(), agent_id.into()])?,
+            ])
+            .await?;
+        self.team_event(
+            "team.edited",
+            &a.actor,
+            TeamChanged {
+                changes: vec!["agents".to_owned()],
+                ..row.event()
+            },
+            a.surface.unwrap_or(Surface::Web),
+            format!("Took an agent ({agent_id}) off {}", row.name),
+        )
+        .await;
+        Ok(Outcome::Ok(true))
+    }
+
+    /// For the agents service: the visible teams an agent is on, with
+    /// everyone on each, for what it is told every turn.
+    pub async fn agent_teams(&self, a: AgentTeamsArgs) -> Result<Vec<AgentTeam>> {
+        let workspace = a.workspace.trim().to_lowercase();
+        let home = a.home_team.as_deref().map(|slug| slug.trim().to_lowercase()).unwrap_or_default();
+        let rows = self
+            .team_rows(
+                "WHERE w.slug = ?2 AND t.visibility = 'visible'
+                   AND (t.id IN (SELECT team_id FROM team_agents WHERE agent_id = ?3) OR t.slug = ?4)
+                 ORDER BY lower(t.name)",
+                &[JsValue::NULL, workspace.as_str().into(), a.agent_id.trim().into(), home.as_str().into()],
+            )
+            .await?;
+        let rows: Vec<TeamRow> = rows.into_iter().take(20).collect();
+        if rows.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids = serde_json::to_string(&rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>())?;
+        #[derive(Deserialize)]
+        struct PersonRow {
+            team_id: String,
+            user_id: String,
+            username: String,
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
+            timezone: Option<String>,
+            role: String,
+            #[serde(default)]
+            title: Option<String>,
+            #[serde(default)]
+            owns: Option<String>,
+            #[serde(default)]
+            manager: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct AgentRow {
+            team_id: String,
+            agent_id: String,
+        }
+        // One trip for both.
+        let mut found = self
+            .db
+            .batch(vec![
+                self.db
+                .prepare(
+                    "SELECT tm.team_id, u.id AS user_id, u.username, u.display_name AS name, u.timezone, tm.role,
+                       wm.title, wm.owns, mu.username AS manager
+                     FROM team_members tm
+                     JOIN teams t ON t.id = tm.team_id
+                     JOIN users u ON u.id = tm.user_id AND u.deleted_at IS NULL
+                     LEFT JOIN workspace_members wm ON wm.workspace_id = t.workspace_id AND wm.user_id = u.id
+                     LEFT JOIN users mu ON mu.id = wm.manager_id AND mu.deleted_at IS NULL
+                     WHERE tm.team_id IN (SELECT value FROM json_each(?1))
+                     ORDER BY tm.role DESC, u.username LIMIT 2000",
+                )
+                .bind(&[ids.as_str().into()])?,
+                self.db
+                    .prepare("SELECT team_id, agent_id FROM team_agents WHERE team_id IN (SELECT value FROM json_each(?1)) ORDER BY created_at LIMIT 2000")
+                    .bind(&[ids.as_str().into()])?,
+            ])
+            .await?
+            .into_iter();
+        let people = match found.next() {
+            Some(result) => result.results::<PersonRow>()?,
+            None => Vec::new(),
+        };
+        let agents = match found.next() {
+            Some(result) => result.results::<AgentRow>()?,
+            None => Vec::new(),
+        };
+        Ok(rows
+            .iter()
+            .map(|row| AgentTeam {
+                slug: row.slug.clone(),
+                name: row.name.clone(),
+                description: row.description.clone(),
+                lead: row.lead(),
+                channel: channel_of(row.channel_id.as_deref(), row.channel_name.as_deref()),
+                budget_micros: budget_of(row.budget_micros),
+                people: people
+                    .iter()
+                    .filter(|person| person.team_id == row.id)
+                    .map(|person| RosterPerson {
+                        user_id: person.user_id.clone(),
+                        username: person.username.clone(),
+                        name: person.name.clone(),
+                        title: person.title.clone(),
+                        timezone: person.timezone.clone(),
+                        owns: crate::people::owns_from(person.owns.as_deref()),
+                        manager: person.manager.clone(),
+                        maintainer: person.role == TeamRole::Maintainer.as_str(),
+                    })
+                    .collect(),
+                agent_ids: agents.iter().filter(|agent| agent.team_id == row.id).map(|agent| agent.agent_id.clone()).collect(),
+            })
+            .collect())
+    }
+
     // --- Telling others ---
 
     /// Publishes a change to a team and records it in the workspace's
@@ -1599,6 +1966,26 @@ mod tests {
                 ("acme/web", RepoRole::Maintain, Some("everyone")),
             ]
         );
+    }
+
+    #[test]
+    fn a_teams_lead_channel_and_budget_read_from_their_columns() {
+        assert_eq!(
+            lead_of(Some("agent"), Some("agt_1"), None, None, None),
+            Some(TeamLead::Agent { agent_id: "agt_1".into() })
+        );
+        assert_eq!(
+            lead_of(Some("user"), Some("usr_1"), Some("priya"), Some("Priya Shah"), None),
+            Some(TeamLead::User { username: "priya".into(), name: Some("Priya Shah".into()), avatar: None })
+        );
+        // A person whose account is gone leads nothing.
+        assert_eq!(lead_of(Some("user"), Some("usr_1"), None, None, None), None);
+        assert_eq!(lead_of(None, None, None, None, None), None);
+        assert_eq!(channel_of(Some("chn_1"), Some("sales")).map(|c| c.name), Some("sales".into()));
+        assert_eq!(channel_of(Some(""), Some("sales")), None);
+        assert_eq!(budget_of(Some(150_000_000.0)), Some(150_000_000));
+        assert_eq!(budget_of(Some(0.0)), None);
+        assert_eq!(budget_of(None), None);
     }
 
     #[test]

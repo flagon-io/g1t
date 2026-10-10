@@ -22,7 +22,8 @@ test("a path is one of the workspace's pages, or none", () => {
 });
 
 test("old addresses go to where their pages are now", () => {
-  assert.equal(workspaceRedirect("/acme/-/members"), "/acme/-/people");
+  // Members and invites is a page of People's again.
+  assert.equal(workspaceRedirect("/acme/-/members"), null);
   assert.equal(workspaceRedirect("/acme/-/home", "?x=1"), "/acme/-/today?x=1");
   // Code's Overview lives at -/overview now: not an old address.
   assert.equal(workspaceRedirect("/acme/-/overview"), null);
@@ -41,7 +42,8 @@ test("old addresses go to where their pages are now", () => {
 test("?tab= opens that page, keeping the rest of the query", () => {
   assert.equal(workspaceRedirect("/acme", "?tab=repositories"), "/acme/-/projects");
   assert.equal(workspaceRedirect("/acme", "?tab=projects&q=api"), "/acme/-/projects?q=api");
-  assert.equal(workspaceRedirect("/acme", "?tab=members"), "/acme/-/people");
+  assert.equal(workspaceRedirect("/acme", "?tab=members"), "/acme/-/members");
+  assert.equal(workspaceRedirect("/acme", "?tab=people"), "/acme/-/people");
   assert.equal(workspaceRedirect("/acme", "?tab=overview"), "/acme");
   assert.equal(workspaceRedirect("/acme", "?tab=settings"), "/acme/-/settings");
   assert.equal(workspaceRedirect("/acme", "?tab=nonsense"), null);
@@ -51,8 +53,8 @@ test("?tab= opens that page, keeping the rest of the query", () => {
 test("a click's data request is for the same page as a full load", () => {
   assert.equal(pagePath("/acme/-/insights.data"), "/acme/-/insights");
   assert.equal(pagePath("/acme/-/insights/"), "/acme/-/insights");
-  assert.equal(workspaceRedirect("/acme/-/members.data", "?_routes=routes%2Fworkspace%2Fmoved-members"), "/acme/-/people");
-  assert.equal(workspaceRedirect("/acme/-/members.data", "?_routes=x&q=ada"), "/acme/-/people?q=ada");
+  assert.equal(workspaceRedirect("/acme/-/home.data", "?_routes=routes%2Fworkspace%2Fmoved-home"), "/acme/-/today");
+  assert.equal(workspaceRedirect("/acme/-/home.data", "?_routes=x&q=ada"), "/acme/-/today?q=ada");
 });
 
 test("an alias or old name leads to the same page under the workspace", () => {
@@ -97,6 +99,10 @@ test("the dock's mode follows the address", async () => {
   assert.equal(modeOf("/acme/-/security/settings", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/people", "acme"), "people");
   assert.equal(modeOf("/acme/-/teams/web", "acme"), "people");
+  assert.equal(modeOf("/acme/-/people/ana", "acme"), "people");
+  assert.equal(modeOf("/acme/-/people/agents/margo", "acme"), "people");
+  assert.equal(modeOf("/acme/-/org-chart", "acme"), "people");
+  assert.equal(modeOf("/acme/-/members", "acme"), "people");
   assert.equal(modeOf("/acme/-/apps", "acme"), "apps");
   assert.equal(modeOf("/acme/-/billing", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/tokens", "acme"), "workspace");

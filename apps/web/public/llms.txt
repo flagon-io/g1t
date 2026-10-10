@@ -425,9 +425,9 @@ variables need `admin`, seeing them included; security alerts need
 secret alert `admin`, turning security updates on or off `maintain`;
 enabling or disabling a workflow needs `maintain`; plans and project memory
 are read by anyone who can read the repository, and project memory is
-changed with `write`; workspace memory is for members. People: the
-workspace's Settings → Members (`g1t.sh/<owner>/-/people`, with an Outside
-collaborators tab and the Base permission for owners); a repository's
+changed with `write`; workspace memory is for members. Members: the
+workspace's Members and invites (`g1t.sh/<owner>/-/members`, with an
+Outside collaborators tab and the Base permission for owners); a repository's
 Settings → Access (`g1t.sh/<owner>/<repo>/settings/access`); invitations
 are answered at `g1t.sh/<owner>/<repo>/invitations`.
 `GET {repo}/collaborators/{username}/permission` gives a role and what it
@@ -440,6 +440,16 @@ everyone in it and its child teams, and `source` is then `team`.
 ask a team to review (`POST {repo}/pulls/{number}/requested_reviewers` with
 `team_reviewers`), and the team may pick who. Guide:
 https://docs.g1t.sh/guides/teams/
+
+A team can hold people, agents or both, with a lead, a Chat channel and a
+monthly budget its agents share. Every reply and session step, an agent is
+told each visible team it is on: who leads it, each person's title, what
+they own, who they report to, whether they are around and their local
+time, and who to ask when a person is needed. Ask the person who owns
+something before guessing. The directory of people and agents is
+`g1t.sh/<owner>/-/people`, profiles `-/people/<username>` and
+`-/people/agents/<handle>`, the org chart `-/org-chart`. Guide:
+https://docs.g1t.sh/guides/people-and-teams/
 
 A CODEOWNERS file (`.g1t/CODEOWNERS`, `.github/CODEOWNERS`, `CODEOWNERS`,
 `docs/CODEOWNERS` or `.gitlab/CODEOWNERS`, the first found on the default
@@ -759,6 +769,7 @@ https://docs.g1t.sh/guides/search/
 - [Workspaces and tokens](https://docs.g1t.sh/guides/workspaces/)
 - [Access and roles](https://docs.g1t.sh/guides/access-and-roles/)
 - [Teams](https://docs.g1t.sh/guides/teams/)
+- [People and teams](https://docs.g1t.sh/guides/people-and-teams/)
 - [CODEOWNERS](https://docs.g1t.sh/guides/codeowners/)
 - [Managing a repository](https://docs.g1t.sh/guides/managing-repositories/)
 - [Integrations](https://docs.g1t.sh/guides/integrations/)

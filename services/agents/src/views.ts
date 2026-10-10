@@ -16,6 +16,7 @@ import {
   type AgentRoutine,
   type AgentSession,
   type AgentSessionDetail,
+  type AgentTeamContext,
   type AgentSpendBreakdown,
   type AgentVersion,
   type AgentsOverview,
@@ -42,6 +43,8 @@ import { type RoutineRow, MAX_ROUTINES, checkRoutine, newRoutineId, nextRun, run
 import { type SessionEnv, type SessionRow, LIVE, approve, sessionRow, steer, stop, toSession } from "./sessions.ts";
 import { type Row, definitionOf, periods, selectAgents, toAgent } from "./store.ts";
 import { suggestRoutines } from "./suggest.ts";
+import { teamsSection } from "./teammates.ts";
+import { loadTeams } from "./ports.ts";
 
 export type ViewContext = {
   env: SessionEnv;
@@ -93,6 +96,21 @@ async function agentByHandle(ctx: ViewContext, handle: string): Promise<Row | nu
     .prepare("SELECT * FROM agents WHERE workspace_id = ? AND handle = ? AND archived_at IS NULL")
     .bind(ctx.workspaceId, String(handle ?? "").trim().replace(/^@/, "").toLowerCase())
     .first<Row>();
+}
+
+// ── Teams ─────────────────────────────────────────────────────────────────
+
+/**
+ * What an agent is told about its teams this turn, word for word as it
+ * gets it (teammates.ts), for its People profile and its teams' pages.
+ * Null when it is on no visible team.
+ */
+export async function teamContext(ctx: ViewContext, handle: string): Promise<Result<AgentTeamContext>> {
+  const agent = await agentByHandle(ctx, handle);
+  if (!agent) return fail("not_found", `There is no agent called @${handle}.`);
+  const here = await loadTeams(ctx.env, ctx.slug, ctx.workspaceId, { id: agent.id, team: agent.team ?? null });
+  if (!here) return fail("not_found", "Its teams could not be read just now.");
+  return ok({ handle: agent.handle, teams: here.teams.map((team) => team.slug), text: teamsSection(agent.id, here, new Date()) });
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────

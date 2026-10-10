@@ -8,7 +8,8 @@ import { page } from "../../lib/meta";
 import { TeamRow } from "../../components/teams";
 import { ButtonLink, EmptyState, notACredential } from "../../components/ui";
 import { filterTeams, splitTeams } from "../../lib/teams";
-import { identity } from "../../lib/services.server";
+import { agentIdsOn } from "../../lib/people";
+import { identity, workspaceAgents } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -20,12 +21,19 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // A workspace's teams are its members' business.
   const role = roleIn(viewer, params.owner);
   if (!role) throw data(null, { status: 404 });
-  const [teams, workspace] = await Promise.all([
+  const [teams, workspace, directory, agents] = await Promise.all([
     identity.listTeams(viewer, params.owner).then(unwrap),
     identity.getWorkspace(params.owner).catch(() => null),
+    // Which agents are on each team: added to it, or their home team.
+    identity.peopleDirectory(viewer, params.owner).catch(() => null),
+    workspaceAgents.list(params.owner, viewer!).catch(() => null),
   ]);
+  const listed = agents?.ok ? agents.value : [];
+  const agentCounts = Object.fromEntries(
+    (directory?.ok ? directory.value.teams : []).map((team) => [team.slug, agentIdsOn(team, listed).length]),
+  );
   // Who may create one is the workspace's to say (its settings).
-  return { teams, slug: params.owner.toLowerCase(), canCreate: mayCreateTeams(workspace?.teamCreation, role) };
+  return { teams, agentCounts, slug: params.owner.toLowerCase(), canCreate: mayCreateTeams(workspace?.teamCreation, role) };
 }
 
 /** Searching changes only the address: the list is already here. */
@@ -35,7 +43,7 @@ export function shouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShoul
 }
 
 export default function WorkspaceTeams({ loaderData }: Route.ComponentProps) {
-  const { teams, slug, canCreate } = loaderData;
+  const { teams, agentCounts, slug, canCreate } = loaderData;
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
   const { mine, others } = splitTeams(filterTeams(teams, query));
@@ -80,8 +88,8 @@ export default function WorkspaceTeams({ loaderData }: Route.ComponentProps) {
 
       {teams.length === 0 ? (
         <EmptyState title="No teams yet">
-          A team gives a group of members a role on repositories at once. Mention it as{" "}
-          <span className="font-mono text-fg">@{slug}/team</span>, or ask it to review a pull request.
+          A team brings people and agents together: a lead, a channel, roles on repositories and a budget for its agents.
+          Mention it as <span className="font-mono text-fg">@{slug}/team</span>, or ask it to review a pull request.
         </EmptyState>
       ) : mine.length + others.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
@@ -92,15 +100,15 @@ export default function WorkspaceTeams({ loaderData }: Route.ComponentProps) {
         </p>
       ) : (
         <>
-          {mine.length > 0 && <TeamList title="Your teams" teams={mine} />}
-          {others.length > 0 && <TeamList title={mine.length > 0 ? "Other teams" : "All teams"} teams={others} />}
+          {mine.length > 0 && <TeamList title="Your teams" teams={mine} agents={agentCounts} />}
+          {others.length > 0 && <TeamList title={mine.length > 0 ? "Other teams" : "All teams"} teams={others} agents={agentCounts} />}
         </>
       )}
     </div>
   );
 }
 
-function TeamList({ title, teams }: { title: string; teams: Team[] }) {
+function TeamList({ title, teams, agents }: { title: string; teams: Team[]; agents: Record<string, number> }) {
   return (
     <section aria-label={title}>
       <h2 className="mb-3 text-sm font-medium text-muted">
@@ -108,7 +116,7 @@ function TeamList({ title, teams }: { title: string; teams: Team[] }) {
       </h2>
       <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
         {teams.map((team) => (
-          <TeamRow key={team.id} team={team} />
+          <TeamRow key={team.id} team={team} agents={agents[team.slug]} />
         ))}
       </ul>
     </section>

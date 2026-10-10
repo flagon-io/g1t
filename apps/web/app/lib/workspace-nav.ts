@@ -52,7 +52,7 @@ const TAB_WORDS: Record<string, string> = {
   repos: "-/projects",
   packages: "-/packages",
   people: "-/people",
-  members: "-/people",
+  members: "-/members",
   teams: "-/teams",
   insights: "-/insights",
   settings: "-/settings",
@@ -61,7 +61,6 @@ const TAB_WORDS: Record<string, string> = {
 /** Workspace pages that moved, by their old name under `-/`. */
 const MOVED: Record<string, string> = {
   home: "-/today",
-  members: "-/people",
   "soon/teams": "-/teams",
   "soon/insights": "-/insights",
 };
@@ -158,6 +157,7 @@ const PAGE_MODES: Record<string, ModeKey> = {
   people: "people",
   members: "people",
   teams: "people",
+  "org-chart": "people",
   workspace: "workspace",
   spend: "workspace",
   usage: "workspace",

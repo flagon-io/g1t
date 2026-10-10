@@ -303,7 +303,8 @@ Neither passes to an agent working for the person.
 
 ### Change someone's role
 
-On **People**, an owner opens the **⋯** menu beside a member:
+On **Members and invites**, `g1t.sh/<workspace>/-/members` (People →
+Members and invites), an owner opens the **⋯** menu beside a member:
 
 1. **Make owner** or **Make member** changes their role.
 2. **Billing manager** and **Security manager** turn each role on or off.
@@ -321,8 +322,8 @@ else an owner first, or [delete the workspace](#delete-a-workspace).
 
 ### Leave a workspace
 
-Anyone can leave a workspace they belong to: at the bottom of **People**,
-choose **Leave {workspace}** and confirm. Your roles on its repositories
+Anyone can leave a workspace they belong to: at the bottom of **Members and
+invites**, choose **Leave {workspace}** and confirm. Your roles on its repositories
 and your place in its teams go with you at once. The only owner cannot
 leave.
 
@@ -337,17 +338,17 @@ invite to g1t, which only lets someone make an account:
 
 | | Invite to a workspace | Invite to g1t |
 | --- | --- | --- |
-| Where | The workspace's **People** page, **Invite to** *workspace* | [Settings → Invites](https://g1t.sh/settings/invites) |
+| Where | The workspace's **Members and invites** page, **Invite to** *workspace* | [Settings → Invites](https://g1t.sh/settings/invites) |
 | What they get | An invitation to join the workspace, to accept or decline | One new account, in no workspace but its own |
 | Without an account | The invitation lets them sign up first, while g1t is invite-only | It lets them sign up |
 | When | Always | Only while g1t is invite-only |
 
 To invite someone to g1t without adding them to your workspace, use
-[Settings → Invites](/guides/authentication/#making-invites); the People
-page links there while g1t is invite-only.
+[Settings → Invites](/guides/authentication/#making-invites); the Members
+and invites page links there while g1t is invite-only.
 
-On the workspace's **People**, `g1t.sh/<workspace>/-/people` (in the
-sidebar):
+On the workspace's **Members and invites**, `g1t.sh/<workspace>/-/members`
+(People → Members and invites in the sidebar):
 
 1. Under **Invite to** *workspace name*, type a username, a name or an email address.
    As you type, people on g1t are offered by username and name, with their
@@ -396,8 +397,8 @@ add them as an [outside collaborator](/guides/access-and-roles/#outside-collabor
 
 **A free workspace cannot add people.** Until it starts the g1t plan, it
 cannot add members, send invites, or invite outside collaborators, and an
-invite sent before waits until the plan is on. Its members stay. People
-shows **Start the plan to invite people** with the button in place of the
+invite sent before waits until the plan is on. Its members stay. Members and
+invites shows **Start the plan to invite people** with the button in place of the
 form, and the API and MCP answer `402` (`payment_required`). See
 [who a free workspace can add](/guides/usage-and-billing/#who-a-free-workspace-can-add).
 
@@ -486,7 +487,9 @@ top bar, such as *acme / Projects*, leads back to the workspace's page.
 | **Projects** | `/-/projects` | Everyone | Every project you can see. See [the Projects page](#the-projects-page). |
 | [**Packages**](/guides/packages/) | `/-/packages` | Everyone | What the workspace publishes. A visitor opens it from **Packages** on the workspace's page. |
 | [**Teams**](/guides/teams/) | `/-/teams` | Members | Groups of members given roles on repositories together, mentioned as `@workspace/team` and asked to review together. Each team has its own page at `/-/teams/<team>`. |
-| **People** | `/-/people` | Members | Who belongs. Owners add and remove people here. |
+| [**People**](/guides/people-and-teams/) | `/-/people` | Members | Everyone in the workspace, people and agents, with their titles, teams and what they own. Each has a profile at `/-/people/<username>`, or `/-/people/agents/<handle>` for an agent. |
+| [**Org chart**](/guides/people-and-teams/#the-org-chart) | `/-/org-chart` | Members | Who reports to whom, with the agents of the teams each person leads. |
+| **Members and invites** | `/-/members` | Members | Who belongs. Owners invite, change roles and remove people here. |
 | **Insights** | `/-/insights` | Members | Coming soon: how the whole workspace delivers. |
 | **Settings** | `/-/settings` | Owners | How the workspace is set up and connected (below). |
 
@@ -495,9 +498,8 @@ is None, an [outside collaborator](/guides/access-and-roles/#outside-collaborato
 or a visitor sees the public ones and those shared with them, without the
 workspace's people, deployments or settings.
 
-Older addresses still work: `/-/members` opens People, and
 `g1t.sh/<workspace>?tab=projects` (or `repositories`, `packages`,
-`teams`, `people`, `insights` or `settings`) opens that page.
+`teams`, `people`, `members`, `insights` or `settings`) opens that page.
 
 ### The Projects page
 
@@ -552,7 +554,7 @@ unread:
 | **Agents** | The workspace's agents and their sessions. See [agents](/guides/agents/). |
 | **Code** | Projects, pull requests and checks. Not shown to a member without [Code access](/guides/agent-access/). |
 | **Artifacts** | Documents, decks and pages. See [artifacts](/guides/artifacts/). |
-| **People** | Everyone in the workspace, and its [teams](/guides/teams/). |
+| **People** | Everyone in the workspace, people and agents; its [teams](/guides/teams/); the org chart; and, under **Membership**, **Members and invites**. See [people and teams](/guides/people-and-teams/). |
 | **Workspace** | Usage, billing, integrations, policies and settings. |
 
 A bar on the dock's edge marks the app you are in. Your account is the
@@ -602,7 +604,8 @@ GitHub, each opening its own page; installed extensions join them once
 extensions are published. An app you can't use shows **Request access**.
 The built-in apps' own pages are in their sidebars, not in Apps: Code's has
 **Projects**, **Security** and **Packages**; Agents' has **Templates**,
-**Context** and **Memory**; People's has **Teams**; Workspace's has **Usage**,
+**Context** and **Memory**; People's has **Everyone**, **Teams**, **Org chart** and
+**Members and invites**; Workspace's has **Usage**,
 **AI Gateway**, **Integrations** and the **Audit log**.
 
 A pinned app shows as its mark under the built-in ones, in the order you
@@ -660,10 +663,12 @@ set up:
 | **Actions** | Members | How workflows run in the workspace. |
 | **Runners** | Owners | The workspace's self-hosted machines, their groups and registration tokens. |
 
-**People** is for every member to see; owners add and remove people there,
-set the [base permission](/guides/access-and-roles/#the-base-permission),
-and see the **Outside collaborators** tab. Each member's row also shows the
-[teams](/guides/teams/) they are in that you can see.
+**Members and invites** is for every member to see; owners invite, add and
+remove people there, set the
+[base permission](/guides/access-and-roles/#the-base-permission), and see
+the **Outside collaborators** tab. Each member's row also shows the
+[teams](/guides/teams/) they are in that you can see. To find someone, and
+what they work on, use the [People directory](/guides/people-and-teams/#the-directory).
 
 Below 1024px wide, the sidebar opens over the page from the left, from the
 header's button, and closes when you open a page.

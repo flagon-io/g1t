@@ -64,7 +64,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Tile icon={<Users size={12} />} label="Members" value={members ? String(members.length) : "—"} to={`/${slug}/-/people`} action={role === "owner" ? "Manage people" : "See everyone"} />
+        <Tile icon={<Users size={12} />} label="Members" value={members ? String(members.length) : "—"} to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`} action={role === "owner" ? "Manage people" : "See everyone"} />
         <Tile icon={<Sparkles size={12} />} label="Agents" value={agents == null ? "—" : String(agents)} to={`/${slug}/-/agents`} action="Open Agents" />
         <Tile icon={<Box size={12} />} label="Projects" value={projects == null ? "—" : String(projects)} to={`/${slug}/-/projects`} action="Open Code" />
       </div>
@@ -108,7 +108,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
         <section className="self-start rounded-xl border border-line bg-surface p-5">
           <div className="flex items-center justify-between">
             <h2 className="font-medium">Members</h2>
-            <Link to={`/${slug}/-/people`} className="text-xs text-muted hover:text-fg">
+            <Link to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`} className="text-xs text-muted hover:text-fg">
               {role === "owner" ? "Manage" : "See all"}
             </Link>
           </div>

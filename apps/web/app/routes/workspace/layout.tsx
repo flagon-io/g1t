@@ -51,7 +51,15 @@ const PAGES: Record<string, { title: string; about: string }> = {
   settings: { title: "General", about: "The workspace's name, icon, address and description, who can create teams, and deleting it." },
   people: {
     title: "People",
+    about: "Everyone in the workspace, people and agents, in one directory: who they are, what they own, the teams they're on and who's around.",
+  },
+  members: {
+    title: "Members and invites",
     about: "Members create repositories and have the base permission on each one. Owners are Admins on every repository, and also manage members, tokens, billing and integrations.",
+  },
+  "org-chart": {
+    title: "Org chart",
+    about: "Who reports to whom, with each team's agents beside the person who leads it.",
   },
   projects: {
     title: "Projects",
@@ -59,7 +67,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   teams: {
     title: "Teams",
-    about: "Groups of members, given roles on repositories together, mentioned as @workspace/team and asked to review together. Child teams inherit their parent's access.",
+    about: "People, agents, or both, with a lead, a channel, roles on repositories and a budget for their agents. Everyone on a team, agents included, knows who their teammates are.",
   },
   repositories: {
     title: "Repositories",

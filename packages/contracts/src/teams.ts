@@ -70,6 +70,55 @@ export const DEFAULT_REVIEW_ASSIGNMENT: ReviewAssignment = {
 
 export type TeamRef = { slug: string; name: string };
 
+/** Who leads a team: a person on it, or an agent on it (by its id in the agents service). */
+export type TeamLead =
+  | { kind: "user"; username: string; name: string | null; avatar: string | null }
+  | { kind: "agent"; agent_id: string };
+
+/** A team's chat channel: its id, and its name (without `#`) when it was chosen. */
+export type TeamChannel = { id: string; name: string };
+
+/** An agent added to a team. */
+export type TeamAgent = {
+  agent_id: string;
+  /** Who added it, by username. */
+  added_by: string | null;
+  created_at: string;
+};
+
+/** A person on a team, as an agent on it is told of them (`agent_teams`). */
+export type RosterPerson = {
+  user_id: string;
+  username: string;
+  name: string | null;
+  title: string | null;
+  /** An IANA time zone, for their local time. */
+  timezone: string | null;
+  owns: string[];
+  /** Who they report to, by username. */
+  manager: string | null;
+  maintainer: boolean;
+};
+
+/** A visible team an agent is on, with everyone on it. For the agents service. */
+export type AgentTeam = {
+  slug: string;
+  name: string;
+  description: string | null;
+  lead: TeamLead | null;
+  channel: TeamChannel | null;
+  budget_micros: number | null;
+  people: RosterPerson[];
+  /** Agents added to it, by id. */
+  agent_ids: string[];
+};
+
+/** How `update_team` takes a lead: `@username`, or `agent:<id>`; `""` for none. */
+export function leadInput(lead: { kind: "user"; username: string } | { kind: "agent"; agent_id: string } | null): string {
+  if (!lead) return "";
+  return lead.kind === "user" ? `@${lead.username}` : `agent:${lead.agent_id}`;
+}
+
 export type Team = {
   id: string;
   workspace: string;
@@ -83,6 +132,12 @@ export type Team = {
   members_count: number;
   repos_count: number;
   child_teams_count: number;
+  /** Agents added to it. Agents whose home team it is are on it too. */
+  agents_count: number;
+  lead: TeamLead | null;
+  channel: TeamChannel | null;
+  /** What its agents may spend together in a calendar month, in micro-dollars; null for none. */
+  budget_micros: number | null;
   viewer_role: TeamRole | null;
   can_manage: boolean;
   created_at: string;
@@ -135,6 +190,13 @@ export type TeamChanges = {
   parent?: string;
   notify?: boolean;
   review_assignment?: ReviewAssignment;
+  /** `@username` or `agent:<id>`, someone on the team (see `leadInput`); `""` for no lead. */
+  lead?: string;
+  /** The chat channel's id; `""` for none. Given with `channel_name`. */
+  channel_id?: string;
+  channel_name?: string;
+  /** What its agents may spend together in a month, in micro-dollars; 0 for no team budget. */
+  budget_micros?: number;
 };
 
 /** `@acme/backend`, the way a team is mentioned. */
@@ -172,6 +234,13 @@ export interface TeamsClient {
   teamRepos(viewer: User | null, workspace: string, team: string): Promise<Result<TeamRepo[]>>;
   setTeamRepo(actor: User, workspace: string, team: string, owner: string, name: string, role: RepoRole): Promise<Result<TeamRepo>>;
   removeTeamRepo(actor: User, workspace: string, team: string, owner: string, name: string): Promise<Result<boolean>>;
+  /** The agents added to a team. Agents whose home team it is are on it too (`agentsOnTeam`). */
+  teamAgents(viewer: User | null, workspace: string, team: string): Promise<Result<TeamAgent[]>>;
+  /** Adds one of the workspace's agents, by id; check it is the workspace's first. Owners and maintainers. */
+  setTeamAgent(actor: User, workspace: string, team: string, agentId: string): Promise<Result<TeamAgent>>;
+  removeTeamAgent(actor: User, workspace: string, team: string, agentId: string): Promise<Result<boolean>>;
+  /** For the agents service: the visible teams an agent is on, with everyone on each. */
+  agentTeams(workspace: string, agentId: string, homeTeam: string | null): Promise<AgentTeam[]>;
   userTeams(viewer: User | null, workspace: string, username: string): Promise<Result<Team[]>>;
   /** Each member's teams the viewer can see. Members only. */
   teamMemberships(viewer: User | null, workspace: string): Promise<Result<MemberTeams[]>>;

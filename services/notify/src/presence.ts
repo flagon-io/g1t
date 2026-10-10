@@ -146,6 +146,13 @@ export function liveEntry(entry: PresenceEntry, now: number): PresenceEntry {
   return status === entry.status && dnd === entry.dnd_until ? entry : { ...entry, status, dnd_until: dnd };
 }
 
+/** The entries for `ids`, or every entry when none are named. */
+export function onlyPeople(entries: PresenceEntry[], ids: unknown[] | null): PresenceEntry[] {
+  if (!ids) return entries;
+  const wanted = new Set(ids.filter((id): id is string => typeof id === "string").slice(0, 5000));
+  return entries.filter((entry) => wanted.has(entry.user_id));
+}
+
 /** What is kept, read back; nothing for anything that is not it. */
 export function readKept(json: string | null | undefined): Kept {
   if (!json) return { ...NOTHING_KEPT };

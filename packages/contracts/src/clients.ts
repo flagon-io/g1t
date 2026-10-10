@@ -241,6 +241,13 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("remove_team_repo", { actor, workspace, team, repo: { namespace: owner, name } }),
     userTeams: (viewer, workspace, username) => call("user_teams", { viewer, workspace, username }),
     teamMemberships: (viewer, workspace) => call("team_memberships", { viewer, workspace }),
+    teamAgents: (viewer, workspace, team) => call("team_agents", { viewer, workspace, team }),
+    setTeamAgent: (actor, workspace, team, agentId) => call("set_team_agent", { actor, workspace, team, agent_id: agentId }),
+    removeTeamAgent: (actor, workspace, team, agentId) => call("remove_team_agent", { actor, workspace, team, agent_id: agentId }),
+    agentTeams: (workspace, agentId, homeTeam) => call("agent_teams", { workspace, agent_id: agentId, home_team: homeTeam }),
+    // People; see people.ts.
+    peopleDirectory: (viewer, workspace) => call("people_directory", { viewer, workspace }),
+    setMemberProfile: (actor, workspace, username, changes) => call("set_member_profile", { actor, workspace, username, ...changes }),
   };
 }
 

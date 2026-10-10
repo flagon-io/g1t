@@ -619,6 +619,8 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
       return Response.json(await service.view(args, (ctx) => views.personBudgetsView(ctx)));
     case "set_person_budget":
       return Response.json(await service.view(args, (ctx) => views.setPersonBudget(ctx, args.username, args.monthly_micros)));
+    case "team_context":
+      return Response.json(await service.view(args, (ctx) => views.teamContext(ctx, args.handle)));
     case "activity":
       return Response.json(await service.view(args, (ctx) => views.activity(ctx, args.handle)));
     case "versions":

@@ -5,6 +5,7 @@ import type { Acting, CreateRunCredentialInput, RunBinding } from "./audit";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
 import type { TeamCreation, TeamsClient } from "./teams";
+import type { PeopleClient } from "./people";
 import type { DeployKeysClient } from "./deploy-keys";
 import type { EmailConfirmed } from "./accounts";
 
@@ -764,7 +765,7 @@ export type DeletedWorkspace = {
   restorable: boolean;
 };
 
-export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient {
+export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, DeployKeysClient {
   /**
    * Creates an account and signs it in. While registration is invite-only,
    * `inviteCode` must be an unused, unexpired invite (and, when it names an

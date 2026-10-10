@@ -34,6 +34,7 @@ import { monthStart, ownBudget, personSpent } from "./person-budget.ts";
 import { BUILTIN_NO_MODEL } from "./orchestrator.ts";
 import { type PolicyRow, alertDue, markAlerted, policyBlock, readPolicy, workspaceSpendStatements } from "./policy.ts";
 import { dollars } from "./money.ts";
+import { type TeamsHere, teamBudgetBlock, teamSpends } from "./teammates.ts";
 import { type ReplyModel, allowedProviders, replyModel } from "./routing.ts";
 import { type Row, definitionOf, periods, spendStatements } from "./store.ts";
 import type { ModelAnswer, Send } from "./turn.ts";
@@ -162,6 +163,8 @@ export type MeterInput = {
   leftMicros?: number | null;
   /** Agent tier limits narrower than the agent's own (a subagent's). */
   limits?: { floor: ModelTier | null; ceiling: ModelTier | null } | null;
+  /** The paying agent's teams (teammates.ts): a team's budget caps what its agents spend together. */
+  teams?: TeamsHere | null;
 };
 
 export type MeterBlock = { ok: false; reason: string; message: string };
@@ -210,6 +213,9 @@ export async function metered<T extends WorkUsage>(env: MeterEnv, input: MeterIn
   const personUsed = asker && personCap != null ? await personSpent(db, row.workspace_id, asker, monthStart(now)) : 0;
   const personStop = asker ? personBlock(asker, personCap, personUsed, now) : null;
   if (personStop) return { ok: false, reason: "person_budget", message: personStop };
+  // The budgets of the teams the paying agent is on, read only when one has one.
+  const teamStop = input.teams?.teams.some((team) => team.budget_micros) ? teamBudgetBlock(await teamSpends(db, input.teams, month)) : null;
+  if (teamStop) return { ok: false, reason: "team_budget", message: teamStop };
 
   // 2. Whether it may use a model at all.
   const definition = definitionOf(row);

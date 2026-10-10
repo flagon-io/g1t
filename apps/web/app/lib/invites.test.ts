@@ -289,8 +289,8 @@ test("the two invites say which they are", () => {
       "flagon-io",
     ),
     [
-      { slug: "flagon-io", name: "Flagon, Inc.", to: "/flagon-io/-/people" },
-      { slug: "side", name: "side", to: "/side/-/people" },
+      { slug: "flagon-io", name: "Flagon, Inc.", to: "/flagon-io/-/members" },
+      { slug: "side", name: "side", to: "/side/-/members" },
     ],
   );
 });

@@ -118,7 +118,8 @@ const READS = new Set(
     "settings statement statement_entries status status_by_id suggest tree usage usage_meters user_by_username " +
     "user_for_session user_for_access_token usernames waiting_workspaces workflows workspace workspace_invites github_enabled " +
     "stars about public_links branch_drift tags last_commits languages contributors license releases release " +
-    "stargazers starred commit_checks shortcuts spend person_budgets usage_report templates install_requests extension_installs"
+    "stargazers starred commit_checks shortcuts spend person_budgets usage_report templates install_requests extension_installs " +
+    "people_directory team_agents team_context team_members"
   ).split(" "),
 );
 

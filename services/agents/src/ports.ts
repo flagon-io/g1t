@@ -12,6 +12,7 @@ import {
   docsClient,
   foliosClient,
   identityClient,
+  notifyClient,
   reposClient,
   searchClient,
   workClient,
@@ -21,6 +22,37 @@ import type { AudiencePorts, RepoRef } from "./audience.ts";
 import type { FolioDone, FoliosPorts, FoundMessage, ToolPorts } from "./tools.ts";
 import { RECALL_LIMIT, passageSource } from "./recall.ts";
 import { base64 } from "./files.ts";
+import type { TeamAgentInfo, TeamsHere } from "./teammates.ts";
+
+export type TeamsEnv = { DB: D1Database; IDENTITY: ServiceBinding; NOTIFY?: ServiceBinding };
+
+/**
+ * The teams an agent is on (teammates.ts), with who is on them and how
+ * they show now. Null when identity can't be asked; presence is left out
+ * when notify can't be (then no one reads as offline).
+ */
+export async function loadTeams(env: TeamsEnv, slug: string, workspaceId: string, agent: { id: string; team: string | null }): Promise<TeamsHere | null> {
+  const teams = await identityClient(env.IDENTITY)
+    .agentTeams(slug, agent.id, agent.team)
+    .catch(() => null);
+  if (!teams) return null;
+  if (!teams.length) return { teams: [], agents: [], presence: [] };
+  const userIds = [...new Set(teams.flatMap((team) => team.people.map((person) => person.user_id)))];
+  const slugs = teams.map((team) => team.slug);
+  const added = [...new Set(teams.flatMap((team) => team.agent_ids))].slice(0, 90);
+  const [presence, rows] = await Promise.all([
+    env.NOTIFY && userIds.length ? notifyClient(env.NOTIFY).workspacePresence(slug, userIds).catch(() => null) : Promise.resolve(null),
+    env.DB.prepare(
+      `SELECT id, handle, display_name, title, team FROM agents
+       WHERE workspace_id = ?1 AND archived_at IS NULL
+         AND (id IN (SELECT value FROM json_each(?2)) OR team IN (SELECT value FROM json_each(?3)))
+       ORDER BY builtin DESC, handle LIMIT 200`,
+    )
+      .bind(workspaceId, JSON.stringify(added), JSON.stringify(slugs))
+      .all<TeamAgentInfo>(),
+  ]);
+  return { teams, agents: rows.results, presence: presence ?? [] };
+}
 
 export type PortsEnv = {
   DB: D1Database;

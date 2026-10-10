@@ -273,6 +273,13 @@ make them, and the checks and review run again. g1t's runs working at the
 same time can also ask each other questions and hand each other work. See
 [talk to agents](/guides/talking-to-agents/).
 
+An agent on one of the workspace's [teams](/guides/teams/) is told about
+its teams at every reply and every session step: who leads each, who is on
+it and what they own, who is around now, and who to ask when a person is
+needed. It asks the person who owns something before guessing, and holds
+non-urgent questions for someone who is focusing or away. See
+[what agents are told](/guides/people-and-teams/#what-agents-are-told).
+
 ### Merging automatically
 
 A repository can land g1t's pull request by itself once it is

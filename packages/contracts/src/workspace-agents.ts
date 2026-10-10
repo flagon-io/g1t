@@ -714,6 +714,8 @@ export type WorkspaceAgentsApi = {
    */
   setPersonBudget(workspace: string, viewer: User, username: string, monthlyMicros: number | null): Promise<Result<PersonBudgets>>;
   activity(workspace: string, handle: string, viewer: User): Promise<Result<AgentActivity[]>>;
+  /** What an agent is told about its teams this turn, word for word. Members only. */
+  teamContext(workspace: string, handle: string, viewer: User): Promise<Result<AgentTeamContext>>;
   versions(workspace: string, handle: string, viewer: User): Promise<Result<AgentVersion[]>>;
   /**
    * Internal, from chat: a person pressed an action on one of agents'
@@ -760,6 +762,13 @@ async function rpc<T>(service: ServiceBinding, method: string, args: object): Pr
   return (await response.json()) as T;
 }
 
+/**
+ * What an agent is told about its teams every turn (docs.g1t.sh/guides/people-and-teams/,
+ * "What agents are told"): the visible teams it is on, by slug, and the text
+ * itself; null when it is on none.
+ */
+export type AgentTeamContext = { handle: string; teams: string[]; text: string | null };
+
 export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
@@ -789,6 +798,7 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     spend: (workspace, viewer, handle, options) =>
       call("spend", { workspace, viewer, handle: handle ?? null, period: options?.period ?? null, person: options?.person ?? null }),
     personBudgets: (workspace, viewer) => call("person_budgets", { workspace, viewer }),
+    teamContext: (workspace, handle, viewer) => call("team_context", { workspace, handle, viewer }),
     setPersonBudget: (workspace, viewer, username, monthlyMicros) =>
       call("set_person_budget", { workspace, viewer, username, monthly_micros: monthlyMicros }),
     activity: (workspace, handle, viewer) => call("activity", { workspace, handle, viewer }),

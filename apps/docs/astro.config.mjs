@@ -178,6 +178,7 @@ export default defineConfig({
 						{ label: 'Workspaces and tokens', slug: 'guides/workspaces' },
 						{ label: 'Access and roles', slug: 'guides/access-and-roles' },
 						{ label: 'Teams', slug: 'guides/teams' },
+						{ label: 'People and teams', slug: 'guides/people-and-teams' },
 						{ label: 'Managing a repository', slug: 'guides/managing-repositories' },
 						{ label: 'Releases', slug: 'guides/releases' },
 						{ label: 'Transferring a repository', slug: 'guides/transferring-repositories' },

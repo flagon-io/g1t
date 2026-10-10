@@ -5427,6 +5427,10 @@ impl Op {
                     parent: words("parent"),
                     notify: if self == Op::UpdateTeam { yes(input, "notify") } else { None },
                     review_assignment: review,
+                    lead: None,
+                    channel_id: None,
+                    channel_name: None,
+                    budget_micros: None,
                     surface: Some(services.audit.surface),
                 };
                 if args.name.is_none()

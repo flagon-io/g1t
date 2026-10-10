@@ -120,6 +120,8 @@ test("review assignment is read within bounds", () => {
 test("counts leave out what is none", () => {
   assert.equal(teamCounts({ members_count: 1, repos_count: 0, child_teams_count: 2 }), "1 member · 2 child teams");
   assert.equal(teamCounts({ members_count: 0, repos_count: 0, child_teams_count: 0 }), "No members yet");
+  assert.equal(teamCounts({ members_count: 2, repos_count: 1, child_teams_count: 0 }, 1), "2 members · 1 agent · 1 repository");
+  assert.equal(teamCounts({ members_count: 0, repos_count: 0, child_teams_count: 0 }, 3), "3 agents");
 });
 
 test("who may create teams follows the workspace's setting", async () => {

@@ -1,5 +1,5 @@
 /**
- * Workspace pages that moved: `-/members` is People now, and `-/overview`
+ * Workspace pages that moved: `-/home` is Today now, and `-/overview`
  * the workspace's own page (lib/workspace-nav.ts).
  */
 import { data, redirect } from "react-router";

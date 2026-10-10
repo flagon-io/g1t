@@ -32,6 +32,7 @@ mod ids;
 mod names;
 mod outcome;
 pub mod packages;
+pub mod people;
 pub mod projects;
 pub mod repos;
 pub mod rules;

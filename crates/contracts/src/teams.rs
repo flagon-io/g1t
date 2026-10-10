@@ -238,6 +238,61 @@ impl ReviewAssignment {
     }
 }
 
+/// Who leads a team: a person on it, or an agent on it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TeamLead {
+    User {
+        username: String,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        avatar: Option<String>,
+    },
+    /// An agent, by its id in the agents service.
+    Agent { agent_id: String },
+}
+
+/// A lead as written to `update_team`: `@username` (or a bare username)
+/// for a person, `agent:<id>` for an agent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LeadInput {
+    User(String),
+    Agent(String),
+}
+
+/// `lead` as `update_team` takes it; `None` when it is not one. An empty
+/// string means no lead, and is not parsed here.
+pub fn parse_lead(text: &str) -> Option<LeadInput> {
+    let text = text.trim();
+    if let Some(id) = text.strip_prefix("agent:") {
+        let id = id.trim();
+        let ok = !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+        return ok.then(|| LeadInput::Agent(id.to_owned()));
+    }
+    let name = text.trim_start_matches('@').to_lowercase();
+    crate::is_valid_namespace(&name).then_some(LeadInput::User(name))
+}
+
+/// A team's chat channel.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamChannel {
+    /// Its id in the chat service.
+    pub id: String,
+    /// Its name, without `#`, as it was when chosen.
+    pub name: String,
+}
+
+/// One agent on a team.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamAgent {
+    pub agent_id: String,
+    /// Who added it, by username; null when its account is gone.
+    pub added_by: Option<String>,
+    /// RFC 3339.
+    pub created_at: String,
+}
+
 /// A team as another names it: its parent, or a child.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamRef {
@@ -264,6 +319,19 @@ pub struct Team {
     /// Repositories it has a role on itself, not counting inherited ones.
     pub repos_count: u32,
     pub child_teams_count: u32,
+    /// Agents added to it. Agents whose home team it is are on it too.
+    #[serde(default)]
+    pub agents_count: u32,
+    /// Who leads it, if anyone.
+    #[serde(default)]
+    pub lead: Option<TeamLead>,
+    /// Its chat channel, if it has one.
+    #[serde(default)]
+    pub channel: Option<TeamChannel>,
+    /// What its agents may spend together in a calendar month, in
+    /// millionths of a dollar; null for no team budget.
+    #[serde(default)]
+    pub budget_micros: Option<i64>,
     /// The viewer's place in it, if any.
     pub viewer_role: Option<TeamRole>,
     /// Whether the viewer may change it: an owner of the workspace, or one
@@ -468,8 +536,90 @@ pub struct UpdateTeamArgs {
     pub notify: Option<bool>,
     #[serde(default)]
     pub review_assignment: Option<ReviewAssignment>,
+    /// Who leads it: `@username` or `agent:<id>`, someone on the team; an
+    /// empty string for no lead.
+    #[serde(default)]
+    pub lead: Option<String>,
+    /// Its chat channel's id in the chat service; an empty string for none.
+    #[serde(default)]
+    pub channel_id: Option<String>,
+    /// That channel's name, without `#`; given with `channel_id`.
+    #[serde(default)]
+    pub channel_name: Option<String>,
+    /// What its agents may spend together in a month, in millionths of a
+    /// dollar; 0 for no team budget.
+    #[serde(default)]
+    pub budget_micros: Option<i64>,
     #[serde(default)]
     pub surface: Option<crate::audit::Surface>,
+}
+
+/// `set_team_agent`: adds one of the workspace's agents to a team. The
+/// caller checks the agent is the workspace's (identity knows agents only
+/// by id). Owners and the team's maintainers. Returns `Outcome<TeamAgent>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetTeamAgentArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub team: String,
+    pub agent_id: String,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `remove_team_agent`: takes an agent off a team; if it led the team,
+/// the team has no lead after. Owners and the team's maintainers.
+/// Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RemoveTeamAgentArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub team: String,
+    pub agent_id: String,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `agent_teams`: for the agents service. The visible teams an agent is
+/// on in a workspace (added to, or its home team), each with everyone on
+/// it, for what the agent is told every turn and its team budgets.
+/// Returns `Vec<AgentTeam>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AgentTeamsArgs {
+    /// The workspace's slug.
+    pub workspace: String,
+    pub agent_id: String,
+    /// The team its profile names, by slug.
+    #[serde(default)]
+    pub home_team: Option<String>,
+}
+
+/// A person on a team, as an agent on it is told of them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RosterPerson {
+    pub user_id: String,
+    pub username: String,
+    pub name: Option<String>,
+    pub title: Option<String>,
+    pub timezone: Option<String>,
+    pub owns: Vec<String>,
+    /// Who they report to, by username.
+    pub manager: Option<String>,
+    pub maintainer: bool,
+}
+
+/// A team an agent is on, as it is told of it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentTeam {
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub lead: Option<TeamLead>,
+    pub channel: Option<TeamChannel>,
+    pub budget_micros: Option<i64>,
+    pub people: Vec<RosterPerson>,
+    /// The agents added to it, by id.
+    pub agent_ids: Vec<String>,
 }
 
 /// `delete_team`: its child teams move up to its parent, and the roles it
@@ -631,6 +781,20 @@ mod tests {
         assert_eq!(slug_of(&"a".repeat(80)).map(|slug| slug.len()), Some(60));
         assert!(is_valid_slug("platform-2"));
         assert!(!is_valid_slug("Platform") && !is_valid_slug("-a") && !is_valid_slug("a--b") && !is_valid_slug(""));
+    }
+
+    #[test]
+    fn leads_are_people_or_agents() {
+        assert_eq!(parse_lead("@Priya"), Some(LeadInput::User("priya".into())));
+        assert_eq!(parse_lead("priya"), Some(LeadInput::User("priya".into())));
+        assert_eq!(parse_lead("agent:agt_123"), Some(LeadInput::Agent("agt_123".into())));
+        assert_eq!(parse_lead("agent:"), None);
+        assert_eq!(parse_lead("agent:a b"), None);
+        assert_eq!(parse_lead("not a name"), None);
+        let lead = TeamLead::Agent { agent_id: "agt_1".into() };
+        assert_eq!(serde_json::to_value(&lead).unwrap(), serde_json::json!({ "kind": "agent", "agent_id": "agt_1" }));
+        let lead: TeamLead = serde_json::from_value(serde_json::json!({ "kind": "user", "username": "ana" })).unwrap();
+        assert_eq!(lead, TeamLead::User { username: "ana".into(), name: None, avatar: None });
     }
 
     #[test]

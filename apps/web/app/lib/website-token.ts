@@ -97,7 +97,7 @@ const CHANGES: { page: RegExp; field: string; values: string[] }[] = [
   // Deleting a workspace.
   { page: /^\/[^/]+\/-\/settings$/, field: "intent", values: ["delete"] },
   // Giving a workspace to another owner.
-  { page: /^\/[^/]+\/-\/people$/, field: "action", values: ["transfer"] },
+  { page: /^\/[^/]+\/-\/(?:members|people)$/, field: "action", values: ["transfer"] },
   // Payment methods: the card on file, and the payment pages that take one.
   { page: /^\/[^/]+\/-\/billing$/, field: "intent", values: ["portal", "card-check", "subscribe", "buy-ai-credit"] },
 ];

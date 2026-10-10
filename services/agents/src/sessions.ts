@@ -47,7 +47,7 @@ import { Audience } from "./audience.ts";
 import { type MeterEnv, metered } from "./meter.ts";
 import { type RecallPlace, MAX_FACTS, cleanFact, memorySection, recall, scopeFor } from "./memory.ts";
 import { readPolicy } from "./policy.ts";
-import { type PortsEnv, audiencePorts, toolPorts } from "./ports.ts";
+import { type PortsEnv, audiencePorts, loadTeams, toolPorts } from "./ports.ts";
 import { systemPrompt } from "./prompt.ts";
 import { skillsSection } from "./skills.ts";
 import { conversationFrom } from "./surface.ts";
@@ -56,6 +56,7 @@ import { type ActionPorts, type ToolCall, ToolBox } from "./tools.ts";
 import { type ModelMessage, SESSION_LIMITS, runTurn } from "./turn.ts";
 import { recallQuery, recallSection } from "./recall.ts";
 import { rosterLines } from "./orchestrator.ts";
+import { teamsSection } from "./teammates.ts";
 import { dollars } from "./money.ts";
 import { postDraft } from "./cards.ts";
 import { sessionActions } from "./card-views.ts";
@@ -732,6 +733,8 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
   const startTier: ModelTier = "large";
   const asker = { id: row.asked_by, username: row.asked_by_username };
   const current = row;
+  // Its teams, from their pages: told every step, and their budgets apply.
+  const teamsHere = await loadTeams(env, slug, agent.workspace_id, { id: agent.id, team: agent.team ?? null }).catch(() => null);
 
   const outcome = await metered(
     env,
@@ -745,6 +748,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
       person: row.asked_by_username,
       leftMicros: row.cap_micros != null ? row.cap_micros - row.charged_micros : null,
       limits: subagent ? subagent.routing : null,
+      teams: teamsHere,
     },
     async (model) => {
       // The audience: who reads what this session posts. Without one it reads nothing but its own context.
@@ -826,6 +830,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
           today: new Date(),
           tools: toolbox ? { code: toolbox.definitions().some((tool) => tool.name === "read_file") } : null,
           colleagues: roster,
+          teams: teamsSection(agent.id, teamsHere, new Date()),
           session: true,
           conversation: here,
           skills: skillsSection(definition.skills_off, toolbox?.definitions().map((tool) => tool.name) ?? []),

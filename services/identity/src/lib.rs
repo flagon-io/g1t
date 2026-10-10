@@ -21,6 +21,7 @@ mod invites;
 mod members;
 mod oauth;
 mod paid;
+mod people;
 mod profiles;
 mod rename;
 mod job_tokens;
@@ -1078,6 +1079,13 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "user_teams" => reply(&identity.user_teams(args(body)?).await?),
         "team_memberships" => reply(&identity.team_memberships(args(body)?).await?),
         "resolve_teams" => reply(&identity.resolve_teams(args(body)?).await?),
+        // Agents on teams (teams.rs), and the people directory (people.rs).
+        "team_agents" => reply(&identity.team_agents(args(body)?).await?),
+        "set_team_agent" => reply(&identity.set_team_agent(args(body)?).await?),
+        "remove_team_agent" => reply(&identity.remove_team_agent(args(body)?).await?),
+        "agent_teams" => reply(&identity.agent_teams(args(body)?).await?),
+        "people_directory" => reply(&identity.people_directory(args(body)?).await?),
+        "set_member_profile" => reply(&identity.set_member_profile(args(body)?).await?),
         "resolve_owners" => reply(&identity.resolve_owners(args(body)?).await?),
         // Staff only: sudo.g1t.sh, over its service binding. See admin.rs.
         "notify_owners" => reply(&identity.notify_owners(args(body)?).await?),

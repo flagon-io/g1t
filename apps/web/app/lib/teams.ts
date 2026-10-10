@@ -113,10 +113,11 @@ export function reviewAssignmentFromForm(form: FormData, current: ReviewAssignme
 }
 
 /** "3 members · 2 repositories · 1 child team", leaving out what is none. */
-export function teamCounts(team: Pick<Team, "members_count" | "repos_count" | "child_teams_count">): string {
+export function teamCounts(team: Pick<Team, "members_count" | "repos_count" | "child_teams_count">, agents = 0): string {
   const part = (n: number, one: string, many: string) => (n === 0 ? null : `${n} ${n === 1 ? one : many}`);
   const parts = [
     part(team.members_count, "member", "members"),
+    part(agents, "agent", "agents"),
     part(team.repos_count, "repository", "repositories"),
     part(team.child_teams_count, "child team", "child teams"),
   ].filter(Boolean);

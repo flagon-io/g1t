@@ -292,6 +292,13 @@ impl Identity {
                          WHERE team_id IN (SELECT id FROM teams WHERE workspace_id = ?) AND user_id = ?",
                     )
                     .bind(&[workspace_id.into(), user_id.into()])?,
+                // No one reports to them here any more, and they lead no team.
+                self.db
+                    .prepare("UPDATE workspace_members SET manager_id = NULL WHERE workspace_id = ? AND manager_id = ?")
+                    .bind(&[workspace_id.into(), user_id.into()])?,
+                self.db
+                    .prepare("UPDATE teams SET lead_kind = NULL, lead_id = NULL WHERE workspace_id = ? AND lead_kind = 'user' AND lead_id = ?")
+                    .bind(&[workspace_id.into(), user_id.into()])?,
             ])
             .await?;
         Ok(())

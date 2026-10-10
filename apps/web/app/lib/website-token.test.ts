@@ -125,7 +125,7 @@ test("deleting or giving away a workspace and payment methods are refused; other
     request(path, { method: "POST", headers: bearer("g1t_web"), body: new URLSearchParams(fields) });
   for (const [path, fields] of [
     ["/acme/-/settings.data", { intent: "delete" }],
-    ["/acme/-/people", { action: "transfer", member: "bob" }],
+    ["/acme/-/members", { action: "transfer", member: "bob" }],
     ["/acme/-/billing.data", { intent: "portal" }],
     ["/acme/-/billing", { intent: "card-check" }],
     ["/acme/-/billing", { intent: "subscribe" }],
@@ -135,7 +135,7 @@ test("deleting or giving away a workspace and payment methods are refused; other
   }
   for (const [path, fields] of [
     ["/acme/-/settings", { intent: "rename", slug: "acme2" }],
-    ["/acme/-/people", { action: "role", member: "bob", role: "member" }],
+    ["/acme/-/members", { action: "role", member: "bob", role: "member" }],
     ["/acme/-/billing", { intent: "budget" }],
   ] as const) {
     assert.equal((await tokenVerdict(post(path, fields), tokens)).kind, "signed-in", `${path} ${JSON.stringify(fields)}`);

@@ -254,6 +254,11 @@ export type NotifyApi = {
    * `source`; one the person set by hand is kept over theirs.
    */
   setPresence(user: Pick<User, "id" | "username">, change: PresenceChange): Promise<OwnPresence>;
+  /**
+   * For services: how a workspace's people show now (`userIds` narrows it).
+   * Someone the room has never heard from is not listed: they are offline.
+   */
+  workspacePresence(workspace: string, userIds?: string[] | null): Promise<PresenceEntry[]>;
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -278,5 +283,6 @@ export function notifyClient(service: ServiceBinding): NotifyApi {
     test: (user) => call("test", { user_id: user.id, username: user.username }),
     presence: (user) => call("presence", { user_id: user.id, username: user.username }),
     setPresence: (user, change) => call("set_presence", { user_id: user.id, username: user.username, change }),
+    workspacePresence: (workspace, userIds) => call("workspace_presence", { workspace, user_ids: userIds ?? null }),
   };
 }

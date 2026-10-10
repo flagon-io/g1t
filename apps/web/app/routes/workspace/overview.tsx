@@ -379,7 +379,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
           <section>
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-medium">Members</h2>
-              <Link to={`/${slug}/-/people`} className="text-xs text-muted hover:text-fg">
+              <Link to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`} className="text-xs text-muted hover:text-fg">
                 {role === "owner" ? "Manage" : "See all"}
               </Link>
             </div>
