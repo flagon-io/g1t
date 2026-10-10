@@ -7,7 +7,8 @@ import { FOLIO_MAX_TITLE, type Folio, type FoliosSidebar, type Result } from "@g
 import { useEffect, useMemo, useState } from "react";
 
 import { buildTree, canDo, flatten } from "../../lib/folios";
-import { Button, ErrorText } from "../ui";
+import { ErrorText } from "../ui";
+import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { SelectField } from "../ui/select";
 

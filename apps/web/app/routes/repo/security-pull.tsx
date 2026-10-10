@@ -6,6 +6,8 @@ import { page } from "../../lib/meta";
 import { SeverityBadge } from "../../components/security";
 import { CARD, LIST, SectionHeader, shortRule } from "../../components/security-suite";
 import { Badge } from "../../components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { cn } from "../../lib/cn";
 import { securitySuite } from "../../lib/services.server";
 import { getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireInsider } from "../../lib/access.server";
@@ -87,25 +89,25 @@ export default function PullSecurity({ loaderData, params }: Route.ComponentProp
           <>
             <Verdict passed={scanning.review.passed} text={scanning.review.headline} />
             {scanning.review.changes.length > 0 && (
-              <div className={`${CARD} overflow-x-auto`}>
-                <table className="w-full min-w-[36rem] text-sm">
-                  <thead className="text-left text-xs text-muted">
-                    <tr className="border-b border-line">
-                      <th className="px-4 py-2 font-medium">Change</th>
-                      <th className="px-3 py-2 font-medium">Package</th>
-                      <th className="px-3 py-2 font-medium">License</th>
-                      <th className="px-3 py-2 font-medium">Vulnerabilities</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <div className={CARD}>
+                <Table className="min-w-[36rem]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="px-4">Change</TableHead>
+                      <TableHead>Package</TableHead>
+                      <TableHead>License</TableHead>
+                      <TableHead>Vulnerabilities</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {scanning.review.changes.map((change) => (
-                      <tr key={`${change.changeType}:${change.manifest}:${change.name}@${change.version}`} className="border-b border-line last:border-0">
-                        <td className="px-4 py-2 text-xs">{change.changeType === "added" ? "Added" : "Removed"}</td>
-                        <td className="px-3 py-2 font-mono text-xs">
+                      <TableRow key={`${change.changeType}:${change.manifest}:${change.name}@${change.version}`}>
+                        <TableCell className="px-4 text-xs">{change.changeType === "added" ? "Added" : "Removed"}</TableCell>
+                        <TableCell className="font-mono text-xs">
                           {change.name}@{change.version}
-                        </td>
-                        <td className={`px-3 py-2 text-xs ${change.deniedLicense ? "text-danger" : "text-muted"}`}>{change.license ?? "—"}</td>
-                        <td className="px-3 py-2 text-xs">
+                        </TableCell>
+                        <TableCell className={cn("text-xs", change.deniedLicense ? "text-danger" : "text-muted")}>{change.license ?? "—"}</TableCell>
+                        <TableCell className="text-xs">
                           {change.vulnerabilities.length === 0 ? (
                             <span className="text-faint">none known</span>
                           ) : (
@@ -115,11 +117,11 @@ export default function PullSecurity({ loaderData, params }: Route.ComponentProp
                               </a>
                             ))
                           )}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
           </>

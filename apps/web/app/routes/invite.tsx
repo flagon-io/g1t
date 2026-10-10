@@ -8,7 +8,9 @@ import type { Route } from "./+types/invite";
 import { page } from "../lib/meta";
 import { ContinueWithGithub, OrDivider } from "../components/github";
 import { Honeypot } from "../components/honeypot";
-import { Avatar, ButtonLink, ErrorText, Field, Input, SubmitButton } from "../components/ui";
+import { ButtonLink, ErrorText, Field, Input, SubmitButton } from "../components/ui";
+import { Avatar } from "../components/ui/avatar";
+import { Card } from "../components/ui/card";
 import { githubSignInEnabled } from "../lib/github.server";
 import { identity } from "../lib/services.server";
 import { cleanCode, cleanProof, invitePageCopy, inviteSignUpCopy, landingFor, looksAutomated, suggestUsername, welcomeCookie } from "../lib/invites";
@@ -196,75 +198,77 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
   const github = `/auth/github?${new URLSearchParams({ invite: loaded.code, next: back })}`;
   const copy = inviteSignUpCopy(invite);
   return (
-    <section aria-labelledby="sign-up" className="rounded-xl border border-line bg-surface/60 p-5 sm:p-6">
-      <h2 id="sign-up" className="text-base font-semibold">
-        Create your account
-      </h2>
-      <p className="mt-1 text-sm text-muted">{copy.intro}</p>
-      {copy.confirmed && (
-        <p className="mt-4 flex items-start gap-2 rounded-md border border-success/40 bg-success/5 p-3 text-sm" role="status">
-          <MailCheck size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-success" />
-          <span>{copy.confirmed}</span>
-        </p>
-      )}
-      {loaded.github && (
-        <div className="mt-5">
-          <ContinueWithGithub href={github} />
-          <OrDivider />
-        </div>
-      )}
-      <Form method="post" className={`relative space-y-4 ${loaded.github ? "" : "mt-5"}`}>
-        <input type="hidden" name="intent" value="register" />
-        <Honeypot started={loaded.started} />
-        {loaded.proof && <input type="hidden" name="proof" value={loaded.proof} />}
-        {invite.address ? (
-          <Field label="Email" hint={copy.hint}>
-            <span className="relative block">
-              <Input name="email" type="email" value={invite.address} readOnly aria-readonly="true" autoComplete="email" />
-              {copy.confirmed ? (
-                <MailCheck size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-success" />
-              ) : (
-                <Lock size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-faint" />
-              )}
-            </span>
-          </Field>
-        ) : (
-          <Field label="Email" hint={copy.hint}>
-            <Input name="email" type="email" autoComplete="email" required maxLength={254} />
-          </Field>
+    <Card asChild tone="plain" className="bg-surface/60 p-5 sm:p-6">
+      <section aria-labelledby="sign-up">
+        <h2 id="sign-up" className="text-base font-semibold">
+          Create your account
+        </h2>
+        <p className="mt-1 text-sm text-muted">{copy.intro}</p>
+        {copy.confirmed && (
+          <p className="mt-4 flex items-start gap-2 rounded-md border border-success/40 bg-success/5 p-3 text-sm" role="status">
+            <MailCheck size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-success" />
+            <span>{copy.confirmed}</span>
+          </p>
         )}
-        <Field label="Username" hint="Letters, digits and single hyphens. It is how you sign in, and how others see you, in the case you type it.">
-          <Input
-            name="username"
-            autoComplete="username"
-            required
-            autoFocus
-            maxLength={39}
-            defaultValue={loaded.suggestion}
-            pattern={USERNAME_PATTERN}
-          />
-        </Field>
-        <Field label="Password" hint="At least 10 characters.">
-          <Input name="password" type="password" autoComplete="new-password" required minLength={10} />
-        </Field>
-        <ErrorText>{error}</ErrorText>
-        <div className="pt-1 *:w-full">
-          <SubmitButton pending="Creating account…" match={{ intent: "register" }}>
-            {invite.workspace
-              ? `Create account and join ${invite.workspace.name}`
-              : invite.repository
-                ? "Create account and accept"
-                : "Create account"}
-          </SubmitButton>
-        </div>
-      </Form>
-      <p className="mt-5 text-center text-sm text-muted">
-        Already on g1t?{" "}
-        <Link to={`/login?next=${encodeURIComponent(back)}`} className="text-fg underline underline-offset-4">
-          Sign in to accept
-        </Link>
-      </p>
-    </section>
+        {loaded.github && (
+          <div className="mt-5">
+            <ContinueWithGithub href={github} />
+            <OrDivider />
+          </div>
+        )}
+        <Form method="post" className={`relative space-y-4 ${loaded.github ? "" : "mt-5"}`}>
+          <input type="hidden" name="intent" value="register" />
+          <Honeypot started={loaded.started} />
+          {loaded.proof && <input type="hidden" name="proof" value={loaded.proof} />}
+          {invite.address ? (
+            <Field label="Email" hint={copy.hint}>
+              <span className="relative block">
+                <Input name="email" type="email" value={invite.address} readOnly aria-readonly="true" autoComplete="email" />
+                {copy.confirmed ? (
+                  <MailCheck size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-success" />
+                ) : (
+                  <Lock size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-faint" />
+                )}
+              </span>
+            </Field>
+          ) : (
+            <Field label="Email" hint={copy.hint}>
+              <Input name="email" type="email" autoComplete="email" required maxLength={254} />
+            </Field>
+          )}
+          <Field label="Username" hint="Letters, digits and single hyphens. It is how you sign in, and how others see you, in the case you type it.">
+            <Input
+              name="username"
+              autoComplete="username"
+              required
+              autoFocus
+              maxLength={39}
+              defaultValue={loaded.suggestion}
+              pattern={USERNAME_PATTERN}
+            />
+          </Field>
+          <Field label="Password" hint="At least 10 characters.">
+            <Input name="password" type="password" autoComplete="new-password" required minLength={10} />
+          </Field>
+          <ErrorText>{error}</ErrorText>
+          <div className="pt-1 *:w-full">
+            <SubmitButton pending="Creating account…" match={{ intent: "register" }}>
+              {invite.workspace
+                ? `Create account and join ${invite.workspace.name}`
+                : invite.repository
+                  ? "Create account and accept"
+                  : "Create account"}
+            </SubmitButton>
+          </div>
+        </Form>
+        <p className="mt-5 text-center text-sm text-muted">
+          Already on g1t?{" "}
+          <Link to={`/login?next=${encodeURIComponent(back)}`} className="text-fg underline underline-offset-4">
+            Sign in to accept
+          </Link>
+        </p>
+      </section>
+    </Card>
   );
 }
 
@@ -284,7 +288,7 @@ function Next({ loaded, error }: { loaded: Loaded; error: string | null }) {
       </p>
     );
     // Its own intent, which /logout ignores, so only its button says it is working.
-    const signOut = (label: string, variant: "primary" | "quiet") => (
+    const signOut = (label: string, variant: "default" | "outline") => (
       <Form method="post" action={`/logout?next=${encodeURIComponent(here)}`}>
         <input type="hidden" name="intent" value="sign-out" />
         <SubmitButton variant={variant} pending="Signing out…" match={{ intent: "sign-out" }}>
@@ -303,7 +307,7 @@ function Next({ loaded, error }: { loaded: Loaded; error: string | null }) {
             </p>
           </div>
           <ErrorText>{error}</ErrorText>
-          <div className="flex flex-wrap gap-3">{signOut("Sign out and continue", "primary")}</div>
+          <div className="flex flex-wrap gap-3">{signOut("Sign out and continue", "default")}</div>
         </div>
       );
     }
@@ -327,7 +331,7 @@ function Next({ loaded, error }: { loaded: Loaded; error: string | null }) {
             </p>
             <p className="mt-2 text-muted">Pass it on to whoever it was meant for, or keep it for someone else.</p>
           </div>
-          <div className="flex flex-wrap gap-3">{signOut("Sign out to use it", "quiet")}</div>
+          <div className="flex flex-wrap gap-3">{signOut("Sign out to use it", "outline")}</div>
         </div>
       );
     }
@@ -354,7 +358,9 @@ function Next({ loaded, error }: { loaded: Loaded; error: string | null }) {
                 form="invite-sign-out"
                 pending="Signing out…"
                 match={{ intent: "sign-out" }}
-                className="inline-flex items-center gap-1 text-fg underline underline-offset-4 disabled:opacity-50"
+                variant="link"
+                size="inline"
+                className="gap-1 text-fg underline"
               >
                 Sign out
               </SubmitButton>
@@ -410,7 +416,7 @@ function Dead({ loaded }: { loaded: Loaded }) {
         <p className="mt-3 text-sm leading-6 text-muted">{loaded.error}</p>
       )}
       {from && (
-        <div className="mt-5 flex items-center gap-3 rounded-lg border border-line bg-surface p-3">
+        <Card radius="lg" className="mt-5 flex items-center gap-3 p-3">
           <Avatar name={from.username} image={from.avatar} size={36} />
           <p className="min-w-0 text-sm">
             Ask <span className="font-medium text-fg">{from.name ?? from.username}</span>{" "}
@@ -419,11 +425,11 @@ function Dead({ loaded }: { loaded: Loaded }) {
             </Link>{" "}
             <span className="text-muted">for a new invite.</span>
           </p>
-        </div>
+        </Card>
       )}
       <div className="mt-8 flex flex-wrap gap-3">
         <ButtonLink to="/register#request">Sign up</ButtonLink>
-        <ButtonLink to={loaded.viewer ? "/" : "/login"} variant="quiet">
+        <ButtonLink to={loaded.viewer ? "/" : "/login"} variant="outline">
           {loaded.viewer ? "Go to g1t" : "Sign in"}
         </ButtonLink>
       </div>

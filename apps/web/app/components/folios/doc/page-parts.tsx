@@ -6,7 +6,8 @@ import type { FolioSuggestion as DocSuggestion, MemberProfile } from "@g1t/contr
 import { Check, MessageSquare, Sparkles, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import { Button, TimeAgo } from "../../ui";
+import { TimeAgo } from "../../ui";
+import { Button } from "../../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
 import { Face } from "../parts";
 
@@ -62,19 +63,19 @@ export function SuggestionCard({ suggestion, canDecide, onDecide, compact = fals
             <DiffBlock text={s.after_markdown} tone="add" />
           </>
         ) : (
-          <button type="button" onClick={() => setOpen(true)} className="text-xs text-accent hover:underline">
+          <Button type="button" onClick={() => setOpen(true)} variant="link" size="inline" className="text-xs font-normal">
             Show the change
-          </button>
+          </Button>
         )}
       </div>
       {canDecide && (
         <footer className="flex gap-2 border-t border-line px-3 py-2">
-          <button type="button" onClick={() => onDecide(s.id, "accept")} className="inline-flex h-7 items-center gap-1 rounded-md bg-success/15 px-2.5 text-xs font-medium text-success hover:bg-success/25">
+          <Button type="button" onClick={() => onDecide(s.id, "accept")} size="xs" className="bg-success/15 px-2.5 text-success hover:bg-success/25">
             <Check size={13} /> Accept
-          </button>
-          <button type="button" onClick={() => onDecide(s.id, "reject")} className="inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-xs text-muted hover:bg-raised hover:text-fg">
+          </Button>
+          <Button type="button" onClick={() => onDecide(s.id, "reject")} variant="ghost" size="xs" className="px-2.5 font-normal">
             <X size={13} /> Reject
-          </button>
+          </Button>
         </footer>
       )}
     </article>
@@ -117,21 +118,23 @@ export function IconPicker({ value, onChange, children }: { value: string | null
           }}
         >
           <input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="Any emoji" aria-label="Any emoji" className="h-8 min-w-0 grow rounded-md border border-line bg-bg px-2 text-sm outline-none focus:border-accent/60" />
-          <button type="submit" className="h-8 rounded-md bg-raised px-2 text-xs hover:bg-line">
+          <Button type="submit" variant="secondary" size="xs" className="h-8 font-normal">
             Use
-          </button>
+          </Button>
         </form>
         {value && (
-          <button
+          <Button
             type="button"
             onClick={() => {
               onChange(null);
               setOpen(false);
             }}
-            className="mt-2 text-xs text-faint hover:text-fg"
+            variant="link"
+            size="inline"
+            className="mt-2 text-xs text-faint hover:text-fg font-normal"
           >
             Remove icon
-          </button>
+          </Button>
         )}
       </PopoverContent>
     </Popover>
@@ -190,9 +193,9 @@ export function Discussion({
           }}
         >
           <input value={replies[t.id] ?? ""} onChange={(e) => setReplies((r) => ({ ...r, [t.id]: e.target.value }))} placeholder="Reply" aria-label="Reply" className="h-8 min-w-0 grow bg-transparent text-sm outline-none placeholder:text-faint" />
-          <button type="button" onClick={() => onResolve(t.id, !t.resolved)} className="shrink-0 text-xs text-faint hover:text-fg">
+          <Button type="button" onClick={() => onResolve(t.id, !t.resolved)} variant="link" size="inline" className="text-xs text-faint hover:text-fg font-normal">
             {t.resolved ? "Reopen" : "Resolve"}
-          </button>
+          </Button>
         </form>
       )}
     </li>
@@ -206,9 +209,9 @@ export function Discussion({
       <ul className="mt-4 space-y-3">{open.map(thread)}</ul>
       {resolved.length > 0 && (
         <>
-          <button type="button" onClick={() => setShowResolved(!showResolved)} className="mt-3 text-xs text-faint hover:text-fg">
+          <Button type="button" onClick={() => setShowResolved(!showResolved)} variant="link" size="inline" className="mt-3 text-xs text-faint hover:text-fg font-normal">
             {showResolved ? "Hide" : "Show"} {resolved.length} resolved
-          </button>
+          </Button>
           {showResolved && <ul className="mt-3 space-y-3">{resolved.map(thread)}</ul>}
         </>
       )}
@@ -228,7 +231,7 @@ export function Discussion({
             aria-label="Add a comment"
             className="min-h-16 min-w-0 grow resize-y rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-faint focus:border-accent/60"
           />
-          <Button type="submit" variant="quiet" disabled={!draft.trim()}>
+          <Button type="submit" variant="outline" disabled={!draft.trim()}>
             Comment
           </Button>
         </form>

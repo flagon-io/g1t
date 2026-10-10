@@ -8,6 +8,7 @@ import { WaitingCards } from "./notifications/card-actions";
 import { SubmitButton } from "./ui";
 import { Badge, type BadgeTone } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
@@ -127,7 +128,7 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
           <fetcher.Form method="post" action={ACTION}>
             <Fields intent="undone" id={item.id} />
             <Hint label="Move back to Notifications">
-              <SubmitButton fetcher={fetcher} icon aria-label="Move back to Notifications" className={ICON_BUTTON}>
+              <SubmitButton fetcher={fetcher} icon aria-label="Move back to Notifications" variant="outline" size="icon-xs" className={ICON_BUTTON}>
                 <Undo2 size={14} />
               </SubmitButton>
             </Hint>
@@ -136,15 +137,17 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
           <fetcher.Form method="post" action={ACTION}>
             <Fields intent="done" id={item.id} />
             <Hint label="Done">
-              <SubmitButton fetcher={fetcher} icon aria-label="Done" className={ICON_BUTTON}>
+              <SubmitButton fetcher={fetcher} icon aria-label="Done" variant="outline" size="icon-xs" className={ICON_BUTTON}>
                 <Check size={14} />
               </SubmitButton>
             </Hint>
           </fetcher.Form>
         )}
         <DropdownMenu>
-          <DropdownMenuTrigger aria-label="More actions" className={ICON_BUTTON}>
-            <Ellipsis size={14} />
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon-xs" aria-label="More actions" className={ICON_BUTTON}>
+              <Ellipsis size={14} />
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onSelect={() => submit(unread ? "read" : "unread")}>
@@ -174,18 +177,18 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
   );
 }
 
-const ICON_BUTTON =
-  "flex size-7 max-sm:size-10 items-center justify-center rounded-md border border-line bg-surface text-muted transition-colors outline-none hover:border-line-strong hover:text-fg focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60";
+/** A row's small action: an outline icon button on the surface, a finger wide on a phone. */
+const ICON_BUTTON = "bg-surface text-muted max-sm:size-10 disabled:opacity-60";
 
 /** What an empty list says, for its tab. */
 export function InboxEmpty({ tab, view }: { tab: InboxTab; view?: "inbox" | "saved" | "done" }) {
   const { title, detail } = emptyFor(tab, view);
   return (
-    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-line px-6 py-12 text-center">
+    <Card tone="plain" radius="lg" className="flex flex-col items-center gap-2 border-dashed px-6 py-12 text-center">
       <Bell size={20} className="text-faint" aria-hidden="true" />
       <p className="text-sm font-medium">{title}</p>
       <p className="max-w-64 text-xs text-muted">{detail}</p>
-    </div>
+    </Card>
   );
 }
 
@@ -228,7 +231,9 @@ export function MarkAllRead({ tab, disabled }: { tab: InboxTab; disabled: boolea
         fetcher={fetcher}
         disabled={disabled}
         pending="Marking…"
-        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-fg disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted"
+        variant="ghost"
+        size="inline"
+        className="px-2 py-1 text-xs"
       >
         <CheckCheck size={14} />
         Mark all read
@@ -312,13 +317,15 @@ export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | nu
             ) : (
               <ul aria-busy="true" className="space-y-2">
                 {Array.from({ length: 4 }, (_, index) => (
-                  <li key={index} className="flex gap-3 rounded-lg border border-line p-3">
-                    <Skeleton className="size-8 rounded-full" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-3.5 w-3/4" />
-                      <Skeleton className="h-3 w-1/2" />
-                    </div>
-                  </li>
+                  <Card asChild key={index} tone="plain" radius="lg" className="flex gap-3 p-3">
+                    <li>
+                      <Skeleton className="size-8 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-3.5 w-3/4" />
+                        <Skeleton className="h-3 w-1/2" />
+                      </div>
+                    </li>
+                  </Card>
                 ))}
               </ul>
             )
@@ -354,22 +361,24 @@ export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | nu
 export function InboxNeedsCard({ items, total }: { items: InboxItem[]; total: number }) {
   if (items.length === 0) return null;
   return (
-    <section className="rounded-xl border border-line bg-surface p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold">
-          <Bell size={14} className="text-warn" aria-hidden="true" />
-          From your notifications
-          <span className="rounded-full bg-warn/15 px-1.5 text-[0.6875rem] font-medium tabular-nums text-warn">{total}</span>
-        </h2>
-        <Link to="/notifications" className="text-xs font-medium text-accent hover:underline">
-          Open Notifications
-        </Link>
-      </div>
-      <ul className="mt-3 space-y-2">
-        {items.map((item) => (
-          <InboxCard key={item.id} item={item} />
-        ))}
-      </ul>
-    </section>
+    <Card asChild className="p-5">
+      <section>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <Bell size={14} className="text-warn" aria-hidden="true" />
+            From your notifications
+            <span className="rounded-full bg-warn/15 px-1.5 text-[0.6875rem] font-medium tabular-nums text-warn">{total}</span>
+          </h2>
+          <Link to="/notifications" className="text-xs font-medium text-accent hover:underline">
+            Open Notifications
+          </Link>
+        </div>
+        <ul className="mt-3 space-y-2">
+          {items.map((item) => (
+            <InboxCard key={item.id} item={item} />
+          ))}
+        </ul>
+      </section>
+    </Card>
   );
 }

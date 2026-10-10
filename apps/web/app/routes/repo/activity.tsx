@@ -6,7 +6,9 @@ import type { EventType } from "@g1t/contracts";
 
 import type { Route } from "./+types/activity";
 import { encodeTag } from "../../components/releases";
-import { Avatar, ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
+import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
+import { Card } from "../../components/ui/card";
 import { requireRepo } from "../../lib/access.server";
 import { ACTIVITY_TYPES, type ActivityLine, activityLine } from "../../lib/about";
 import { page } from "../../lib/meta";
@@ -103,38 +105,40 @@ export default function ActivityPage({ loaderData, params }: Route.ComponentProp
       {lines.length === 0 ? (
         <EmptyState title="No activity yet">Pushes and merges show here as they happen.</EmptyState>
       ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-          {lines.map(({ id, time, who, line }) => {
-            const { icon, text } = describe(line, base);
-            return (
-              <li key={id} className="flex items-start gap-3 px-4 py-3 text-sm">
-                <span className="mt-0.5 shrink-0 text-faint">{icon}</span>
-                <span className="min-w-0 grow">
-                  <span className="inline-flex items-center gap-1.5 align-middle">
-                    <Avatar name={who ?? "someone"} size={18} system={who === "g1t"} />
-                    {who && who !== "g1t" ? (
-                      <UserCard username={who}>
-                        <Link to={`/u/${who}`} className="font-medium hover:text-accent">
-                          {who}
-                        </Link>
-                      </UserCard>
-                    ) : (
-                      <span className="font-medium">{who ?? "Someone"}</span>
-                    )}
-                  </span>{" "}
-                  <span className="text-muted">{text}</span>
-                </span>
-                <span className="shrink-0 text-xs text-faint">
-                  <TimeAgo at={time} />
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+        <Card asChild divided className="overflow-hidden">
+          <ul>
+            {lines.map(({ id, time, who, line }) => {
+              const { icon, text } = describe(line, base);
+              return (
+                <li key={id} className="flex items-start gap-3 px-4 py-3 text-sm">
+                  <span className="mt-0.5 shrink-0 text-faint">{icon}</span>
+                  <span className="min-w-0 grow">
+                    <span className="inline-flex items-center gap-1.5 align-middle">
+                      <Avatar name={who ?? "someone"} size={18} system={who === "g1t"} />
+                      {who && who !== "g1t" ? (
+                        <UserCard username={who}>
+                          <Link to={`/u/${who}`} className="font-medium hover:text-accent">
+                            {who}
+                          </Link>
+                        </UserCard>
+                      ) : (
+                        <span className="font-medium">{who ?? "Someone"}</span>
+                      )}
+                    </span>{" "}
+                    <span className="text-muted">{text}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-faint">
+                    <TimeAgo at={time} />
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
       )}
       {next && (
         <div className="flex justify-center">
-          <ButtonLink variant="quiet" to={`?before=${encodeURIComponent(next)}`}>
+          <ButtonLink variant="outline" to={`?before=${encodeURIComponent(next)}`}>
             Older
           </ButtonLink>
         </div>

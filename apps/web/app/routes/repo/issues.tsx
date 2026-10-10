@@ -5,7 +5,10 @@ import { Form, Link, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/issues";
 import { page } from "../../lib/meta";
-import { Button, ButtonLink, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
+import { ButtonLink, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { mirrorReason, type MirroredRepo } from "../../lib/mirror";
@@ -236,81 +239,83 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
             Agents and people open pull requests against it.
           </EmptyState>
         ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-            {issues.map((issue) => (
-              <li key={issue.id} className="flex items-start transition-colors hover:bg-surface">
-                {assignable && (
-                  <Checkbox
-                    name="issue"
-                    value={String(issue.number)}
-                    // Already being worked on: nothing more to hand over.
-                    disabled={issue.agent != null || issue.queued}
-                    aria-label={`Select issue #${issue.number}`}
-                    className="mt-4 ml-4 disabled:opacity-30"
-                  />
-                )}
-                <Link
-                  prefetch="intent"
-                  to={`${base}/${issue.number}`}
-                  className="flex min-w-0 grow items-start gap-3 px-4 py-3"
-                >
-                  <span className="mt-0.5">
-                    <IssueIcon issue={issue} />
-                  </span>
-                  <span className="min-w-0 grow">
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="font-medium">{issue.title}</span>
-                      {issue.labels.map((name) => (
-                        <LabelChip key={name} name={name} color={colors[name]} />
-                      ))}
-                      {issue.state === "open" && issue.agent && (
-                        <Assignee agent={issue.agent} />
-                      )}
-                      {issue.state === "open" && issue.queued && !issue.agent && (
-                        <span className="rounded-full border border-line px-2 py-px text-xs text-muted">
-                          queued for g1t
-                          {issue.blockedBy.length > 0 &&
-                            `, after ${issue.blockedBy.map((number) => `#${number}`).join(", ")}`}
-                        </span>
-                      )}
+          <Card asChild tone="plain" divided className="overflow-hidden">
+            <ul>
+              {issues.map((issue) => (
+                <li key={issue.id} className="flex items-start transition-colors hover:bg-surface">
+                  {assignable && (
+                    <Checkbox
+                      name="issue"
+                      value={String(issue.number)}
+                      // Already being worked on: nothing more to hand over.
+                      disabled={issue.agent != null || issue.queued}
+                      aria-label={`Select issue #${issue.number}`}
+                      className="mt-4 ml-4 disabled:opacity-30"
+                    />
+                  )}
+                  <Link
+                    prefetch="intent"
+                    to={`${base}/${issue.number}`}
+                    className="flex min-w-0 grow items-start gap-3 px-4 py-3"
+                  >
+                    <span className="mt-0.5">
+                      <IssueIcon issue={issue} />
                     </span>
-                    <span className="mt-0.5 block text-xs text-faint">
-                      #{issue.number} opened <TimeAgo at={issue.createdAt} /> by{" "}
-                      {issue.author.username}
-                      {issue.requestedBy && <> for {issue.requestedBy.username}</>}
-                      {issue.resolvedBy != null && (
-                        <span className="text-merged"> · resolved by #{issue.resolvedBy}</span>
-                      )}
-                      {issue.milestone && (
-                        <span className="inline-flex items-center gap-1">
-                          {" "}
-                          · <MilestoneIcon size={11} className="inline" /> {issue.milestone.title}
-                        </span>
-                      )}
-                    </span>
-                  </span>
-                  <span className="mt-0.5 flex shrink-0 items-center gap-3 text-xs text-muted">
-                    <AssigneeStack people={issue.assignees} />
-                    {issue.pullCount > 0 && (
-                      <Hint label={`${issue.pullCount} pull ${issue.pullCount === 1 ? "request" : "requests"}`}>
-                        <span className="flex items-center gap-1">
-                          <GitPullRequest size={13} />
-                          {issue.pullCount}
-                          <span className="sr-only">pull {issue.pullCount === 1 ? "request" : "requests"}</span>
-                        </span>
-                      </Hint>
-                    )}
-                    {issue.commentCount > 0 && (
-                      <span className="flex items-center gap-1">
-                        <MessageSquare size={13} />
-                        {issue.commentCount}
+                    <span className="min-w-0 grow">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-medium">{issue.title}</span>
+                        {issue.labels.map((name) => (
+                          <LabelChip key={name} name={name} color={colors[name]} />
+                        ))}
+                        {issue.state === "open" && issue.agent && (
+                          <Assignee agent={issue.agent} />
+                        )}
+                        {issue.state === "open" && issue.queued && !issue.agent && (
+                          <Badge size="md" className="py-px">
+                            queued for g1t
+                            {issue.blockedBy.length > 0 &&
+                              `, after ${issue.blockedBy.map((number) => `#${number}`).join(", ")}`}
+                          </Badge>
+                        )}
                       </span>
-                    )}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+                      <span className="mt-0.5 block text-xs text-faint">
+                        #{issue.number} opened <TimeAgo at={issue.createdAt} /> by{" "}
+                        {issue.author.username}
+                        {issue.requestedBy && <> for {issue.requestedBy.username}</>}
+                        {issue.resolvedBy != null && (
+                          <span className="text-merged"> · resolved by #{issue.resolvedBy}</span>
+                        )}
+                        {issue.milestone && (
+                          <span className="inline-flex items-center gap-1">
+                            {" "}
+                            · <MilestoneIcon size={11} className="inline" /> {issue.milestone.title}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 flex shrink-0 items-center gap-3 text-xs text-muted">
+                      <AssigneeStack people={issue.assignees} />
+                      {issue.pullCount > 0 && (
+                        <Hint label={`${issue.pullCount} pull ${issue.pullCount === 1 ? "request" : "requests"}`}>
+                          <span className="flex items-center gap-1">
+                            <GitPullRequest size={13} />
+                            {issue.pullCount}
+                            <span className="sr-only">pull {issue.pullCount === 1 ? "request" : "requests"}</span>
+                          </span>
+                        </Hint>
+                      )}
+                      {issue.commentCount > 0 && (
+                        <span className="flex items-center gap-1">
+                          <MessageSquare size={13} />
+                          {issue.commentCount}
+                        </span>
+                      )}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
       </Form>
     </div>

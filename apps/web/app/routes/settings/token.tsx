@@ -77,7 +77,7 @@ export default function TokenPage({ loaderData, actionData }: Route.ComponentPro
         <p className="mt-1 text-xs text-muted">Anything still using it stops working at once.</p>
         <Form method="post" className="mt-3">
           <input type="hidden" name="intent" value="delete" />
-          <SubmitButton variant="danger" pending="Deleting…" match={{ intent: "delete" }}>
+          <SubmitButton variant="destructive" pending="Deleting…" match={{ intent: "delete" }}>
             Delete token
           </SubmitButton>
         </Form>

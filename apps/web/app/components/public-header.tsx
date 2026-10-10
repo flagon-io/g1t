@@ -14,7 +14,9 @@ import type { User } from "@g1t/contracts";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
 import { THEME_COMMANDS, ThemeMenuSwitch } from "./theme-switch";
 import { Logo } from "./logo";
-import { Avatar, ButtonLink, notACredential } from "./ui";
+import { ButtonLink, notACredential } from "./ui";
+import { Avatar } from "./ui/avatar";
+import { Button } from "./ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,14 +85,16 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
           />
           <PaletteKey className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line" />
         </Form>
-        <button
+        <Button
           type="button"
           aria-label="Search g1t"
           onClick={() => setPalette(true)}
-          className="flex size-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-fg sm:hidden"
+          variant="ghost"
+          size="icon-lg"
+          className="sm:hidden"
         >
           <Search size={18} />
-        </button>
+        </Button>
         <CommandPalette
           open={palette}
           onOpenChange={setPalette}
@@ -107,11 +111,10 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
         <div className="ml-auto flex items-center gap-2">
           {/* On a phone the links fold into one menu, so the bar fits. */}
           <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label="Menu"
-              className="flex size-10 items-center justify-center rounded-md text-muted outline-none transition-colors hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised data-[state=open]:text-fg sm:hidden"
-            >
-              <Menu size={18} />
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-lg" aria-label="Menu" className="sm:hidden">
+                <Menu size={18} />
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem asChild className="min-h-11">

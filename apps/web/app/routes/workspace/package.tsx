@@ -10,6 +10,8 @@ import { PackageSettingsSkeleton, PackageSettingsTab, type SettingsOutcome } fro
 import { ConfirmDialog } from "../../components/repo-lifecycle";
 import { CopyLine, ErrorText, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { Loading } from "../../components/ui/skeleton";
 import { TabStrip } from "../../components/ui/tab-strip";
@@ -275,15 +277,17 @@ function Overview({
       </section>
 
       {detail.readme && (
-        <section className="overflow-hidden rounded-xl border border-line">
-          <h2 className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm font-medium">
-            <BookOpen size={15} className="text-faint" />
-            README
-          </h2>
-          <div className="p-6">
-            <Markdown source={detail.readme} repo={pkg.repo ? { namespace: pkg.repo.namespace, name: pkg.repo.name } : undefined} />
-          </div>
-        </section>
+        <Card asChild tone="plain" className="overflow-hidden">
+          <section>
+            <h2 className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm font-medium">
+              <BookOpen size={15} className="text-faint" />
+              README
+            </h2>
+            <div className="p-6">
+              <Markdown source={detail.readme} repo={pkg.repo ? { namespace: pkg.repo.namespace, name: pkg.repo.name } : undefined} />
+            </div>
+          </section>
+        </Card>
       )}
 
       <section className="space-y-3">
@@ -299,18 +303,20 @@ function Overview({
         {images.length === 0 ? (
           <p className="text-sm text-muted">No versions are left.</p>
         ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {images.map((version) => (
-              <VersionRow
-                key={version.id}
-                version={version}
-                attached={attached(version.digest)}
-                canDelete={permissions.delete && !fromGit}
-                npm={npm}
-                pulls={!npm}
-              />
-            ))}
-          </ul>
+          <Card asChild divided className="overflow-hidden">
+            <ul>
+              {images.map((version) => (
+                <VersionRow
+                  key={version.id}
+                  version={version}
+                  attached={attached(version.digest)}
+                  canDelete={permissions.delete && !fromGit}
+                  npm={npm}
+                  pulls={!npm}
+                />
+              ))}
+            </ul>
+          </Card>
         )}
       </section>
     </div>
@@ -394,9 +400,9 @@ function VersionRow({
           busy="Deleting…"
           trigger={(open) => (
             <Hint label="Delete this version">
-              <button type="button" onClick={open} aria-label="Delete version" className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-danger">
+              <Button type="button" onClick={open} aria-label="Delete version" variant="ghost" size="inline" className="p-1.5 text-faint hover:text-danger">
                 <Trash2 size={14} />
-              </button>
+              </Button>
             </Hint>
           )}
         >

@@ -7,7 +7,8 @@ import type { Label as RepoLabel, Milestone, MilestoneRef } from "@g1t/contracts
 import { chipStyle, matchLabels, percentDone, tidyColor, tidyLabelName } from "../lib/labels";
 import { cn } from "../lib/cn";
 import { ErrorText } from "./ui";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/combobox";
+import { Button } from "./ui/button";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 /** A label as a colored chip. Without a known color it is neutral. */
@@ -114,13 +115,15 @@ export function LabelsBox({
             }}
           >
             <PopoverTrigger asChild>
-              <button
+              <Button
                 type="button"
                 aria-label="Edit labels"
-                className="rounded-md p-1 text-faint transition-colors hover:bg-raised hover:text-fg"
+                variant="ghost"
+                size="inline"
+                className="p-1 text-faint"
               >
                 <Settings2 size={15} />
-              </button>
+              </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-72 p-0">
               <Command shouldFilter={false}>
@@ -240,13 +243,15 @@ export function MilestoneBox({
         {canEdit && (
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-              <button
+              <Button
                 type="button"
                 aria-label="Choose a milestone"
-                className="rounded-md p-1 text-faint transition-colors hover:bg-raised hover:text-fg"
+                variant="ghost"
+                size="inline"
+                className="p-1 text-faint"
               >
                 <Settings2 size={15} />
-              </button>
+              </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-72 p-0">
               <Command>

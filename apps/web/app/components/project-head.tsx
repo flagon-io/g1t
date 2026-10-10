@@ -12,6 +12,7 @@ import type { DeployStatus, Project } from "@g1t/contracts";
 
 import { DeployLink, host, StatusDot } from "./deploy";
 import { ButtonLink, Input, SubmitButton, TimeAgo } from "./ui";
+import { Button } from "./ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Hint } from "./ui/hint";
 
@@ -96,7 +97,7 @@ function AddressForm({
         <div className="min-w-0 grow">
           <Input name={field} type="text" inputMode="url" required placeholder={placeholder} aria-label={label} maxLength={255} />
         </div>
-        <SubmitButton fetcher={fetcher} variant="quiet" pending="Saving…">
+        <SubmitButton fetcher={fetcher} variant="outline" pending="Saving…">
           Save
         </SubmitButton>
       </div>
@@ -232,25 +233,27 @@ export function WhereItRuns({ project, base, canChange, canDeploy }: Head) {
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {canDeploy && (
-          <ButtonLink to={`${base}/settings/deployments`} variant="quiet">
+          <ButtonLink to={`${base}/settings/deployments`} variant="outline">
             <Rocket size={14} />
             Deploy on g1t
           </ButtonLink>
         )}
-        <button
+        <Button
           type="button"
           onClick={() => setElsewhere((open) => !open)}
           aria-expanded={elsewhere}
-          className="inline-flex items-center justify-center gap-2 rounded-md border border-line px-3.5 py-2 text-sm font-medium text-fg/80 transition-colors hover:border-line-strong hover:bg-surface hover:text-fg"
+          variant="outline"
         >
           <Globe size={14} />
           It's deployed elsewhere
-        </button>
+        </Button>
         <DropdownMenu>
-          <DropdownMenuTrigger className="inline-flex items-center justify-center gap-2 rounded-md border border-line px-3.5 py-2 text-sm font-medium text-fg/80 transition-colors hover:border-line-strong hover:bg-surface hover:text-fg">
-            <Box size={14} />
-            It isn't deployed
-            <ChevronDown size={13} className="text-faint" />
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              <Box size={14} />
+              It isn't deployed
+              <ChevronDown size={13} className="text-faint" />
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             {NOT_DEPLOYED.map((option) => (

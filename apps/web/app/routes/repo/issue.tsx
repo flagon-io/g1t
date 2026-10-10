@@ -9,7 +9,6 @@ import { excerpt, page } from "../../lib/meta";
 import { Markdown } from "../../components/markdown";
 import { AgentStepLine } from "../../components/agents";
 import {
-  Avatar,
   CopyLine,
   EmptyState,
   ComputeNote,
@@ -19,6 +18,8 @@ import {
   Textarea,
   TimeAgo,
 } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
+import { Card } from "../../components/ui/card";
 import { CheckBadge } from "../../components/checks";
 import { LabelChip, LabelsBox, MilestoneBox } from "../../components/labels";
 import {
@@ -406,15 +407,15 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
               <Form method="post" className="flex flex-wrap justify-end gap-2">
                 {open ? (
                   <>
-                    <SubmitButton variant="quiet" name="action" value="close-not-planned" pending="Closing…">
+                    <SubmitButton variant="outline" name="action" value="close-not-planned" pending="Closing…">
                       Close as not planned
                     </SubmitButton>
-                    <SubmitButton variant="quiet" name="action" value="close-completed" pending="Closing…">
+                    <SubmitButton variant="outline" name="action" value="close-completed" pending="Closing…">
                       Close issue
                     </SubmitButton>
                   </>
                 ) : (
-                  <SubmitButton variant="quiet" name="action" value="reopen" pending="Reopening…">
+                  <SubmitButton variant="outline" name="action" value="reopen" pending="Reopening…">
                     Reopen issue
                   </SubmitButton>
                 )}
@@ -497,17 +498,19 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
               </li>
             ))}
             {open && issue.queued && !assigned && (
-              <li className="flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-2">
-                <Sparkles size={15} className="shrink-0 text-faint" />
-                <span className="min-w-0 grow">
-                  <span className="block font-mono text-xs font-medium">g1t</span>
-                  <span className="block text-xs text-muted">
-                    {issue.blockedBy.length > 0
-                      ? "Queued. Starts when what this depends on has merged."
-                      : "Queued. Starts as soon as there is room."}
+              <Card asChild radius="lg" className="flex items-center gap-2 px-2.5 py-2">
+                <li>
+                  <Sparkles size={15} className="shrink-0 text-faint" />
+                  <span className="min-w-0 grow">
+                    <span className="block font-mono text-xs font-medium">g1t</span>
+                    <span className="block text-xs text-muted">
+                      {issue.blockedBy.length > 0
+                        ? "Queued. Starts when what this depends on has merged."
+                        : "Queued. Starts as soon as there is room."}
+                    </span>
                   </span>
-                </span>
-              </li>
+                </li>
+              </Card>
             )}
             {!open && resolver && resolver.agent === "g1t" && (
               <li>
@@ -583,7 +586,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
 
           {open && !agentsEnabled && can.run && !assigned && !issue.queued && (
             // Where g1t's agent would be, and what makes it appear.
-            <div className="mt-3 rounded-lg border border-dashed border-line p-3 text-sm">
+            <Card tone="plain" radius="lg" className="mt-3 border-dashed p-3 text-sm">
               <p className="flex items-center gap-1.5 font-medium">
                 <Sparkles size={14} className="text-accent" />
                 g1t
@@ -598,7 +601,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
               >
                 Connect a model
               </Link>
-            </div>
+            </Card>
           )}
 
           {viewer && can.triage && open && (
@@ -611,7 +614,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                   ))}
                   <input type="hidden" name="assignee" value={viewer.username} />
                   <div className="*:w-full">
-                    <SubmitButton variant="quiet" name="who" value="self" pending="Assigning…">
+                    <SubmitButton variant="outline" name="who" value="self" pending="Assigning…">
                       Assign yourself
                     </SubmitButton>
                   </div>
@@ -624,7 +627,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 <Form method="post" className="mt-2 space-y-2" key={issue.assignees.join()}>
                   <input type="hidden" name="action" value="assign" />
                   <PeoplePicker name="assignee" members={members} chosen={issue.assignees} />
-                  <SubmitButton variant="quiet" name="who" value="picked" pending="Saving…">
+                  <SubmitButton variant="outline" name="who" value="picked" pending="Saving…">
                     Save assignees
                   </SubmitButton>
                 </Form>
@@ -635,46 +638,48 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
 
         {/* Another way to start the work: not once a pull request is doing it. */}
         {open && !pulls.some((pull) => pull.status === "open" || pull.status === "draft") && (
-          <section className="rounded-xl border border-line bg-surface p-4">
-            <h3 className="text-sm font-medium">Bring your own agent</h3>
-            <p className="mt-1 text-xs text-muted">
-              With g1t connected to your agent, ask it to work on this issue.
-            </p>
-            <div className="mt-3">
-              <CopyLine text={reference} />
-            </div>
-            {viewer ? (
-              <Form method="post" className="mt-4 space-y-2 border-t border-line pt-4">
-                <input type="hidden" name="action" value="open-pull" />
-                <p className="text-xs text-muted">
-                  Or open a draft pull request yourself and get a fork to push to.
-                </p>
-                <Input name="agent" placeholder="Who is working, e.g. claude-code" maxLength={60} />
-                <div className="*:w-full">
-                  <SubmitButton match={{ action: "open-pull" }} pending="Opening…">
-                    Open pull request
-                  </SubmitButton>
-                </div>
-                <p className="text-xs text-muted">
-                  Already pushed a branch?{" "}
-                  <Link
-                    to={`${base}/pulls/new?issue=${issue.number}`}
-                    className="text-fg underline underline-offset-4"
-                  >
-                    Open a pull request from it
-                  </Link>
-                  .
-                </p>
-              </Form>
-            ) : (
-              <p className="mt-4 border-t border-line pt-4 text-sm text-muted">
-                <Link to="/login" className="text-fg underline underline-offset-4">
-                  Sign in
-                </Link>{" "}
-                to open a pull request.
+          <Card asChild className="p-4">
+            <section>
+              <h3 className="text-sm font-medium">Bring your own agent</h3>
+              <p className="mt-1 text-xs text-muted">
+                With g1t connected to your agent, ask it to work on this issue.
               </p>
-            )}
-          </section>
+              <div className="mt-3">
+                <CopyLine text={reference} />
+              </div>
+              {viewer ? (
+                <Form method="post" className="mt-4 space-y-2 border-t border-line pt-4">
+                  <input type="hidden" name="action" value="open-pull" />
+                  <p className="text-xs text-muted">
+                    Or open a draft pull request yourself and get a fork to push to.
+                  </p>
+                  <Input name="agent" placeholder="Who is working, e.g. claude-code" maxLength={60} />
+                  <div className="*:w-full">
+                    <SubmitButton match={{ action: "open-pull" }} pending="Opening…">
+                      Open pull request
+                    </SubmitButton>
+                  </div>
+                  <p className="text-xs text-muted">
+                    Already pushed a branch?{" "}
+                    <Link
+                      to={`${base}/pulls/new?issue=${issue.number}`}
+                      className="text-fg underline underline-offset-4"
+                    >
+                      Open a pull request from it
+                    </Link>
+                    .
+                  </p>
+                </Form>
+              ) : (
+                <p className="mt-4 border-t border-line pt-4 text-sm text-muted">
+                  <Link to="/login" className="text-fg underline underline-offset-4">
+                    Sign in
+                  </Link>{" "}
+                  to open a pull request.
+                </p>
+              )}
+            </section>
+          </Card>
         )}
 
         <LabelsBox

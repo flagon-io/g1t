@@ -32,7 +32,9 @@ import { CommitAvatar } from "./commit-person";
 import { UserCard } from "./user-card";
 import { PackageIcon as EcosystemIcon } from "./package-icon";
 import { Topics } from "./topics";
-import { Avatar, Pill, TimeAgo } from "./ui";
+import { TimeAgo } from "./ui";
+import { Avatar } from "./ui/avatar";
+import { Badge } from "./ui/badge";
 import { Hint } from "./ui/hint";
 import { SkeletonLine } from "./ui/skeleton";
 
@@ -154,7 +156,7 @@ function Releases({ base, about, canPush }: { base: string; about: RepoAbout; ca
             <span className="min-w-0">
               <span className="flex flex-wrap items-center gap-1.5">
                 <span className="truncate font-medium">{latest.name || latest.tagName}</span>
-                <Pill>Latest</Pill>
+                <Badge size="md">Latest</Badge>
               </span>
               <span className="text-xs text-faint">{latest.publishedAt && <TimeAgo at={latest.publishedAt} />}</span>
             </span>

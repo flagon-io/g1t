@@ -50,11 +50,7 @@ export function SubscriptionBox({
       <fetcher.Form method="post" action={action} className="mt-2">
         <input type="hidden" name="intent" value={intent} />
         <input type="hidden" name="number" value={number} />
-        <SubmitButton
-          variant="quiet"
-          fetcher={fetcher}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm text-fg/80 transition-colors hover:border-line-strong hover:bg-surface hover:text-fg disabled:opacity-60"
-        >
+        <SubmitButton variant="outline" size="sm" fetcher={fetcher} className="w-full">
           {intent === "subscribe" ? <Bell size={14} /> : <BellOff size={14} />}
           {label}
         </SubmitButton>

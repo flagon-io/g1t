@@ -41,6 +41,7 @@ import { ProviderMark } from "./model-providers";
 import { Badge } from "./ui/badge";
 import { Hint } from "./ui/hint";
 import { Input } from "./ui";
+import { Card } from "./ui/card";
 
 const CATEGORY_ICONS: Record<CategoryFilter, ReactNode> = {
   all: <LayoutGrid size={15} />,
@@ -190,16 +191,18 @@ export function ConnectorDirectory({ scope, views, connected, workspace, canMana
         </div>
 
         {empty && (
-          <p className="mt-8 rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
-            Nothing matches “{query.trim()}”.{" "}
-            <a
-              href={askHref({ connector: { id: "other", name: query.trim() || "something else" }, scope, workspace, address: CONTACT.support })}
-              className="text-accent hover:underline"
-            >
-              Ask for it
-            </a>
-            , and say what you would use it for.
-          </p>
+          <Card asChild tone="plain" className="mt-8 border-dashed px-4 py-8 text-center text-sm text-muted">
+            <p>
+              Nothing matches “{query.trim()}”.{" "}
+              <a
+                href={askHref({ connector: { id: "other", name: query.trim() || "something else" }, scope, workspace, address: CONTACT.support })}
+                className="text-accent hover:underline"
+              >
+                Ask for it
+              </a>
+              , and say what you would use it for.
+            </p>
+          </Card>
         )}
 
         {found.connected.length > 0 && (
@@ -360,22 +363,24 @@ function ConnectorCard({
 /** A short line saying who a page's connections are for, and where the other kind lives. */
 export function ScopeNote({ scope, workspace }: { scope: ConnectorScope; workspace: string | null }) {
   return (
-    <p className="mb-6 rounded-xl border border-line bg-surface/60 px-4 py-3 text-sm text-muted">
-      {scope === "workspace" ? (
-        <>
-          Connected here, a tool works <span className="text-fg">for everyone in {workspace}</span>: its people and its agents.
-          Your own accounts, such as your calendar, are under{" "}
-          <Link to="/settings/integrations" className="text-accent hover:underline">
-            your integrations
-          </Link>
-          .
-        </>
-      ) : (
-        <>
-          Connected here, a tool works <span className="text-fg">just for you, in every workspace</span> you belong to. Tools
-          the whole team shares are connected by a workspace owner, under the workspace's Integrations.
-        </>
-      )}
-    </p>
+    <Card asChild tone="plain" className="mb-6 bg-surface/60 px-4 py-3 text-sm text-muted">
+      <p>
+        {scope === "workspace" ? (
+          <>
+            Connected here, a tool works <span className="text-fg">for everyone in {workspace}</span>: its people and its agents.
+            Your own accounts, such as your calendar, are under{" "}
+            <Link to="/settings/integrations" className="text-accent hover:underline">
+              your integrations
+            </Link>
+            .
+          </>
+        ) : (
+          <>
+            Connected here, a tool works <span className="text-fg">just for you, in every workspace</span> you belong to. Tools
+            the whole team shares are connected by a workspace owner, under the workspace's Integrations.
+          </>
+        )}
+      </p>
+    </Card>
   );
 }

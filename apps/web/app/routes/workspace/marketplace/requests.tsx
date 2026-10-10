@@ -12,6 +12,7 @@ import { connectorsFor } from "@g1t/contracts/connectors";
 import type { Route } from "./+types/requests";
 import { RequestRow, SectionHead } from "../../../components/marketplace";
 import { EmptyState } from "../../../components/ui";
+import { Card } from "../../../components/ui/card";
 import { addPath, marketplaceForm, marketplacePath, openRequests } from "../../../lib/marketplace";
 import { workspaceAgents } from "../../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.server";
@@ -70,23 +71,29 @@ export default function MarketplaceRequests() {
             : "Your requests the workspace's owners haven't answered yet."}
         </SectionHead>
         {waiting.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">Nothing is waiting.</p>
+          <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
+            <p>Nothing is waiting.</p>
+          </Card>
         ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {waiting.map((request) => (
-              <RequestRow key={request.id} request={request} slug={slug} owner={owner} addTo={owner ? addPath(request, slug, views) : null} />
-            ))}
-          </ul>
+          <Card asChild divided className="overflow-hidden">
+            <ul>
+              {waiting.map((request) => (
+                <RequestRow key={request.id} request={request} slug={slug} owner={owner} addTo={owner ? addPath(request, slug, views) : null} />
+              ))}
+            </ul>
+          </Card>
         )}
       </section>
       {answered.length > 0 && (
         <section aria-labelledby="answered">
           <SectionHead id="answered" title="Answered" aside="Last 30 days" />
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {answered.map((request) => (
-              <RequestRow key={request.id} request={request} slug={slug} owner={owner} addTo={null} />
-            ))}
-          </ul>
+          <Card asChild divided className="overflow-hidden">
+            <ul>
+              {answered.map((request) => (
+                <RequestRow key={request.id} request={request} slug={slug} owner={owner} addTo={null} />
+              ))}
+            </ul>
+          </Card>
         </section>
       )}
       {!owner && (

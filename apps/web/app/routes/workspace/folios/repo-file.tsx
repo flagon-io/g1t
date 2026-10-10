@@ -7,6 +7,8 @@ import { useFoliosAction } from "../../../components/folios/actions";
 import { Crumbs } from "../../../components/folios/parts";
 import { Markdown } from "../../../components/markdown";
 import { ErrorText, TimeAgo } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
 import { page as pageMeta } from "../../../lib/meta";
 import { docs } from "../../../lib/services.server";
@@ -50,17 +52,19 @@ export default function RepoDocFile({ loaderData, params }: Route.ComponentProps
         </Link>
         {space.can_remove && (
           <Hint label={`Stop showing ${space.repo}'s docs in Artifacts`}>
-            <button
+            <Button
               type="button"
               aria-label={`Stop showing ${space.repo}'s docs`}
               onClick={async () => {
                 const done = await send("remove_repo_space", { id: space.id });
                 if (done.ok) navigate(`/${slug}/-/artifacts`);
               }}
-              className="flex size-8 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-danger"
+              variant="ghost"
+              size="icon-sm"
+              className="text-faint hover:text-danger"
             >
               <Trash2 size={15} />
-            </button>
+            </Button>
           </Hint>
         )}
       </div>
@@ -76,10 +80,12 @@ export default function RepoDocFile({ loaderData, params }: Route.ComponentProps
             </span>
           )}
         </p>
-        <p className="mt-3 flex items-start gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-xs leading-relaxed text-muted">
-          <GitPullRequestArrow size={14} className="mt-px shrink-0 text-faint" aria-hidden="true" />
-          This file lives in the repository and changes through pull requests. Edit it in Code, or ask an agent to open a pull request for it.
-        </p>
+        <Card asChild radius="lg" className="mt-3 flex items-start gap-2 px-3 py-2 text-xs leading-relaxed text-muted">
+          <p>
+            <GitPullRequestArrow size={14} className="mt-px shrink-0 text-faint" aria-hidden="true" />
+            This file lives in the repository and changes through pull requests. Edit it in Code, or ask an agent to open a pull request for it.
+          </p>
+        </Card>
         {error && (
           <div className="mt-3">
             <ErrorText>{error}</ErrorText>

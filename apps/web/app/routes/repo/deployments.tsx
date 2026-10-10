@@ -24,6 +24,7 @@ import type { Route } from "./+types/deployments";
 import { page } from "../../lib/meta";
 import { ButtonLink, ComputeNote, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { computeNoteFor } from "../../lib/compute.server";
 import { neverDeploys } from "../../lib/project-kind";
@@ -173,9 +174,11 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
       </div>
 
       {!environments && !list ? (
-        <p className="rounded-xl border border-line bg-surface p-6 text-sm text-muted">
-          Deployments could not be loaded just now. Reload the page to try again.
-        </p>
+        <Card asChild className="p-6 text-sm text-muted">
+          <p>
+            Deployments could not be loaded just now. Reload the page to try again.
+          </p>
+        </Card>
       ) : !any ? (
         <Start base={base} pages={pages} can={can} owner={params.owner} planNeeded={planNeeded} />
       ) : (
@@ -232,49 +235,53 @@ function Start({
   planNeeded: boolean;
 }) {
   return (
-    <section className="rounded-xl border border-line bg-surface">
-      <div className="border-b border-line px-6 py-5">
-        <h2 className="font-medium">No deployments yet</h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Host it here on g1t.page, or deploy it wherever it runs and report each deployment. Either way they show here, by
-          environment.
-        </p>
-      </div>
-      <div className="grid divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
-        <div className="min-w-0 p-6">
-          <h3 className="flex items-center gap-2 text-sm font-medium">
-            <Globe size={14} className="text-accent" />
-            Host it on g1t.page
-          </h3>
-          {!pages ? (
-            <p className="mt-1.5 text-sm text-muted">
-              Members of the workspace can turn on hosting: production from the default branch, and a live preview for every
-              pull request.
-            </p>
-          ) : planNeeded ? (
-            <PlanNeeded plan={pages.plan} owner={owner} quiet />
-          ) : (
-            <PagesOff pages={pages} base={base} can={can} />
-          )}
-        </div>
-        <div className="min-w-0 p-6">
-          <h3 className="flex items-center gap-2 text-sm font-medium">
-            <Terminal size={14} className="text-accent" />
-            Report deployments from your CI
-          </h3>
-          <p className="mt-1.5 text-sm text-muted">
-            A g1t Actions job with an <code className="font-mono text-fg">environment:</code> reports its deployment by
-            itself. From any other CI, create a deployment and its statuses with the API.
+    <Card asChild>
+      <section>
+        <div className="border-b border-line px-6 py-5">
+          <h2 className="font-medium">No deployments yet</h2>
+          <p className="mt-1 max-w-2xl text-sm text-muted">
+            Host it here on g1t.page, or deploy it wherever it runs and report each deployment. Either way they show here, by
+            environment.
           </p>
-          <pre className="mt-3 overflow-x-auto rounded-lg border border-line bg-bg p-3 font-mono text-xs leading-relaxed text-muted">
-            {"jobs:\n  deploy:\n    environment:\n      name: production\n      url: https://example.com"}
-          </pre>
-          <a href={API_GUIDE} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
-            Reporting deployments <ArrowUpRight size={13} />
-          </a>
         </div>
-      </div>
-    </section>
+        <div className="grid divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
+          <div className="min-w-0 p-6">
+            <h3 className="flex items-center gap-2 text-sm font-medium">
+              <Globe size={14} className="text-accent" />
+              Host it on g1t.page
+            </h3>
+            {!pages ? (
+              <p className="mt-1.5 text-sm text-muted">
+                Members of the workspace can turn on hosting: production from the default branch, and a live preview for every
+                pull request.
+              </p>
+            ) : planNeeded ? (
+              <PlanNeeded plan={pages.plan} owner={owner} quiet />
+            ) : (
+              <PagesOff pages={pages} base={base} can={can} />
+            )}
+          </div>
+          <div className="min-w-0 p-6">
+            <h3 className="flex items-center gap-2 text-sm font-medium">
+              <Terminal size={14} className="text-accent" />
+              Report deployments from your CI
+            </h3>
+            <p className="mt-1.5 text-sm text-muted">
+              A g1t Actions job with an <code className="font-mono text-fg">environment:</code> reports its deployment by
+              itself. From any other CI, create a deployment and its statuses with the API.
+            </p>
+            <Card asChild tone="bg" radius="lg" className="mt-3 overflow-x-auto p-3 font-mono text-xs leading-relaxed text-muted">
+              <pre>
+                {"jobs:\n  deploy:\n    environment:\n      name: production\n      url: https://example.com"}
+              </pre>
+            </Card>
+            <a href={API_GUIDE} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
+              Reporting deployments <ArrowUpRight size={13} />
+            </a>
+          </div>
+        </div>
+      </section>
+    </Card>
   );
 }
 
@@ -286,71 +293,73 @@ function EnvironmentCard({ env, base }: { env: DeploymentEnvironment; base: stri
   const serving = current && latest && current.id !== latest.id ? current : null;
   const filtered = `${base}/deployments?environment=${encodeURIComponent(env.name)}#history`;
   return (
-    <li className="flex min-w-0 flex-col rounded-xl border border-line bg-surface p-4">
-      <div className="flex min-w-0 items-center gap-2">
-        <Link to={filtered} className="min-w-0 truncate font-medium hover:text-accent">
-          {environmentLabel(env.name)}
-        </Link>
-        {env.production_environment && env.name !== "production" && <Badge tone="accent">Production</Badge>}
-        {env.transient_environment && <Badge>Transient</Badge>}
-        <span className="grow" />
-        {latest && <DeploymentStateBadge state={latest.state} />}
-      </div>
-      {url ? (
-        <DeployLink href={url} className="mt-2 flex min-w-0 items-center gap-1.5 font-mono text-sm text-accent hover:underline">
-          <span className="truncate">{host(url)}</span>
-          <ExternalLink size={12} className="shrink-0" />
-        </DeployLink>
-      ) : (
-        <p className="mt-2 text-sm text-faint">No address</p>
-      )}
-      {latest && (
-        <dl className="mt-3 space-y-1.5 text-xs text-muted">
-          <div className="flex min-w-0 items-center gap-2">
-            <dt className="sr-only">Commit</dt>
-            <dd className="flex min-w-0 items-center gap-3">
-              <Link to={`${base}/commit/${latest.sha}`} className="inline-flex shrink-0 items-center gap-1 font-mono hover:text-fg">
-                <GitCommitHorizontal size={13} className="text-faint" />
-                {shortSha(latest.sha)}
-              </Link>
-              <span className="inline-flex min-w-0 items-center gap-1 font-mono">
-                <GitBranch size={12} className="shrink-0 text-faint" />
-                <span className="truncate">{latest.ref}</span>
-              </span>
-            </dd>
-          </div>
-          <div className="flex min-w-0 items-center gap-1">
-            <dt className="sr-only">Deployed by</dt>
-            <dd className="min-w-0 truncate">
-              <Made deployment={latest} base={base} /> · <TimeAgo at={latest.updated_at} />
-            </dd>
-          </div>
-          {serving && (
-            <div className="flex min-w-0 items-center gap-1">
-              <dt className="sr-only">Serving</dt>
-              <dd className="min-w-0 truncate text-faint">
-                Serving{" "}
-                <Link to={`${base}/deployments/${serving.id}`} className="font-mono hover:text-fg">
-                  {shortSha(serving.sha)}
-                </Link>{" "}
-                since <TimeAgo at={serving.updated_at} />
+    <Card asChild className="flex min-w-0 flex-col p-4">
+      <li>
+        <div className="flex min-w-0 items-center gap-2">
+          <Link to={filtered} className="min-w-0 truncate font-medium hover:text-accent">
+            {environmentLabel(env.name)}
+          </Link>
+          {env.production_environment && env.name !== "production" && <Badge tone="accent">Production</Badge>}
+          {env.transient_environment && <Badge>Transient</Badge>}
+          <span className="grow" />
+          {latest && <DeploymentStateBadge state={latest.state} />}
+        </div>
+        {url ? (
+          <DeployLink href={url} className="mt-2 flex min-w-0 items-center gap-1.5 font-mono text-sm text-accent hover:underline">
+            <span className="truncate">{host(url)}</span>
+            <ExternalLink size={12} className="shrink-0" />
+          </DeployLink>
+        ) : (
+          <p className="mt-2 text-sm text-faint">No address</p>
+        )}
+        {latest && (
+          <dl className="mt-3 space-y-1.5 text-xs text-muted">
+            <div className="flex min-w-0 items-center gap-2">
+              <dt className="sr-only">Commit</dt>
+              <dd className="flex min-w-0 items-center gap-3">
+                <Link to={`${base}/commit/${latest.sha}`} className="inline-flex shrink-0 items-center gap-1 font-mono hover:text-fg">
+                  <GitCommitHorizontal size={13} className="text-faint" />
+                  {shortSha(latest.sha)}
+                </Link>
+                <span className="inline-flex min-w-0 items-center gap-1 font-mono">
+                  <GitBranch size={12} className="shrink-0 text-faint" />
+                  <span className="truncate">{latest.ref}</span>
+                </span>
               </dd>
             </div>
-          )}
-        </dl>
-      )}
-      <div className="mt-auto flex items-center gap-3 pt-3 text-xs">
-        <Link to={filtered} className="text-muted hover:text-fg">
-          {env.deployments_count.toLocaleString("en-US")} {env.deployments_count === 1 ? "deployment" : "deployments"}
-        </Link>
-        {latest && (
-          <Link to={`${base}/deployments/${latest.id}`} className="ml-auto inline-flex items-center gap-0.5 text-muted hover:text-fg">
-            Latest
-            <ChevronRight size={13} />
-          </Link>
+            <div className="flex min-w-0 items-center gap-1">
+              <dt className="sr-only">Deployed by</dt>
+              <dd className="min-w-0 truncate">
+                <Made deployment={latest} base={base} /> · <TimeAgo at={latest.updated_at} />
+              </dd>
+            </div>
+            {serving && (
+              <div className="flex min-w-0 items-center gap-1">
+                <dt className="sr-only">Serving</dt>
+                <dd className="min-w-0 truncate text-faint">
+                  Serving{" "}
+                  <Link to={`${base}/deployments/${serving.id}`} className="font-mono hover:text-fg">
+                    {shortSha(serving.sha)}
+                  </Link>{" "}
+                  since <TimeAgo at={serving.updated_at} />
+                </dd>
+              </div>
+            )}
+          </dl>
         )}
-      </div>
-    </li>
+        <div className="mt-auto flex items-center gap-3 pt-3 text-xs">
+          <Link to={filtered} className="text-muted hover:text-fg">
+            {env.deployments_count.toLocaleString("en-US")} {env.deployments_count === 1 ? "deployment" : "deployments"}
+          </Link>
+          {latest && (
+            <Link to={`${base}/deployments/${latest.id}`} className="ml-auto inline-flex items-center gap-0.5 text-muted hover:text-fg">
+              Latest
+              <ChevronRight size={13} />
+            </Link>
+          )}
+        </div>
+      </li>
+    </Card>
   );
 }
 
@@ -484,11 +493,13 @@ function History({
 
       <div className="mt-3">
         {!list ? (
-          <p className="rounded-xl border border-line bg-surface p-6 text-sm text-muted">
-            The history could not be loaded just now. Reload the page to try again.
-          </p>
+          <Card asChild className="p-6 text-sm text-muted">
+            <p>
+              The history could not be loaded just now. Reload the page to try again.
+            </p>
+          </Card>
         ) : rows.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-line px-6 py-12 text-center">
+          <Card tone="plain" radius="lg" className="border-dashed px-6 py-12 text-center">
             {isFiltered(filter) ? (
               <>
                 <p className="font-medium">No deployments match</p>
@@ -522,13 +533,15 @@ function History({
                 </p>
               </>
             )}
-          </div>
+          </Card>
         ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-            {rows.map((deployment) => (
-              <HistoryRow key={deployment.id} deployment={deployment} base={base} />
-            ))}
-          </ul>
+          <Card asChild tone="plain" divided className="overflow-hidden">
+            <ul>
+              {rows.map((deployment) => (
+                <HistoryRow key={deployment.id} deployment={deployment} base={base} />
+              ))}
+            </ul>
+          </Card>
         )}
       </div>
 
@@ -537,7 +550,7 @@ function History({
           <span className="tabular-nums">{pageRange(list.page, list.per_page, total)}</span>
           <span className="grow" />
           {list.page > 1 ? (
-            <ButtonLink variant="quiet" to={withFilter(path, filter, "page", list.page - 1)}>
+            <ButtonLink variant="outline" to={withFilter(path, filter, "page", list.page - 1)}>
               <ChevronLeft size={14} />
               Previous
             </ButtonLink>
@@ -548,7 +561,7 @@ function History({
             </span>
           )}
           {list.page < pageCount ? (
-            <ButtonLink variant="quiet" to={withFilter(path, filter, "page", list.page + 1)}>
+            <ButtonLink variant="outline" to={withFilter(path, filter, "page", list.page + 1)}>
               Next
               <ChevronRight size={14} />
             </ButtonLink>
@@ -631,7 +644,7 @@ function PagesOn({ pages, base, can }: { pages: Pages; base: string; can: Loaded
           off={!settings.production}
           actions={can.run ? <AppActions branch={null} up={!!production} /> : null}
         />
-        <div className="min-w-0 rounded-xl border border-line bg-surface p-5">
+        <Card className="min-w-0 p-5">
           <h3 className="text-sm font-medium">Previews</h3>
           <p className="mt-0.5 text-xs text-faint">
             {settings.previews
@@ -660,7 +673,7 @@ function PagesOn({ pages, base, can }: { pages: Pages; base: string; can: Loaded
               ))}
             </ul>
           )}
-        </div>
+        </Card>
       </div>
       <p className="mt-4 text-sm text-muted">
         Its builds are in the history above, under{" "}
@@ -708,7 +721,7 @@ function PagesOff({ pages, base, can, quiet }: { pages: Pages; base: string; can
         <Form method="post" className="mt-4">
           <Hint label={whyNot(can, "manage_integrations")} disabled={!can.manage_integrations}>
             <SubmitButton
-              variant={quiet ? "quiet" : "accent"}
+              variant={quiet ? "outline" : "accent"}
               name="intent"
               value="enable"
               pending="Turning on…"
@@ -745,7 +758,7 @@ function PlanNeeded({ plan, owner, quiet }: { plan: FeatureState | null; owner: 
       )}
       {plan && <p className="mt-3 text-xs text-faint">{plan.plan.overage}</p>}
       <div className="mt-4">
-        <ButtonLink variant={quiet ? "quiet" : "accent"} to={`/${owner}/-/billing`}>
+        <ButtonLink variant={quiet ? "outline" : "accent"} to={`/${owner}/-/billing`}>
           See the plan under Billing
         </ButtonLink>
       </div>
@@ -771,7 +784,7 @@ function LiveCard({
 }) {
   const href = url ?? app?.url;
   return (
-    <div className="min-w-0 rounded-xl border border-line bg-surface p-5">
+    <Card className="min-w-0 p-5">
       <h3 className="text-sm font-medium">{title}</h3>
       <p className="mt-0.5 text-xs text-faint">{off ? "Off for this repository." : hint}</p>
       {app && href ? (
@@ -788,7 +801,7 @@ function LiveCard({
         <p className="mt-4 text-sm text-muted">Not up.</p>
       )}
       {!off && <div className="mt-4">{actions}</div>}
-    </div>
+    </Card>
   );
 }
 
@@ -801,7 +814,7 @@ function AppActions({ branch, up, compact }: { branch: string | null; up: boolea
       <input type="hidden" name="app" value={app} />
       <Hint label="Build again from the current head">
         <SubmitButton
-          variant="quiet"
+          variant="outline"
           name="intent"
           value="redeploy"
           match={{ app }}
@@ -816,7 +829,7 @@ function AppActions({ branch, up, compact }: { branch: string | null; up: boolea
       {up && (
         <Hint label="Take it down now">
           <SubmitButton
-            variant="quiet"
+            variant="outline"
             name="intent"
             value="take-down"
             match={{ app }}

@@ -12,10 +12,14 @@ import { AGENT_TOOL_GROUPS, SKILL_DESCRIPTION_MAX, type SkillDetail, type SkillI
 
 import type { Route } from "./+types/skill-edit";
 import { agentsAction } from "../../../components/agents/actions.server";
-import { type ActionResult, BUTTONS } from "../../../components/agents/dialogs";
+import { type ActionResult } from "../../../components/agents/dialogs";
 import { originText, skillsPath } from "../../../components/agents/skills";
 import { Markdown } from "../../../components/markdown";
+import { ButtonLink } from "../../../components/ui";
+import { Alert } from "../../../components/ui/alert";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { CheckboxOption } from "../../../components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldLabel } from "../../../components/ui/field";
 import { FileDrop } from "../../../components/ui/file-drop";
@@ -94,10 +98,10 @@ export default function SkillEditor({ loaderData, params }: Route.ComponentProps
           <ArrowLeft size={14} />
           {params.name}
         </Link>
-        <div className="rounded-xl border border-dashed border-line px-6 py-14 text-center">
+        <Card tone="plain" className="border-dashed px-6 py-14 text-center">
           <p className="font-medium">{params.name} can&apos;t be edited right now</p>
           <p className="mt-1.5 text-sm text-muted">The agents service didn&apos;t answer. Reload in a moment.</p>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -179,14 +183,14 @@ export default function SkillEditor({ loaderData, params }: Route.ComponentProps
             <p className="mt-1 text-xs text-faint">Naming a tool never gives it to an agent. An agent without one is told that part doesn&apos;t work where it&apos;s asked.</p>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               {AGENT_TOOL_GROUPS.map((group) => (
-                <div key={group.group} className="rounded-lg border border-line bg-surface px-3 py-2.5">
+                <Card key={group.group} radius="lg" className="px-3 py-2.5">
                   <p className="mb-2 text-xs font-medium text-muted">{group.group}</p>
                   <div className="grid gap-1.5">
                     {group.tools.map((tool) => (
                       <CheckboxOption key={tool} name="tools" value={tool} defaultChecked={detail?.tools.includes(tool)} label={<span className="font-mono text-[0.8125rem]">{tool}</span>} />
                     ))}
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
           </fieldset>
@@ -198,27 +202,31 @@ export default function SkillEditor({ loaderData, params }: Route.ComponentProps
               computer, which is coming, so for now they&apos;re kept with the skill and never run. At most 1 MB for everything.
             </p>
             {detail && detail.files.length > 0 && (
-              <ul className="mt-3 divide-y divide-line/60 overflow-hidden rounded-lg border border-line bg-surface">
-                {detail.files.map((file) => {
-                  const gone = removed.includes(file.path);
-                  return (
-                    <li key={file.path} className="flex items-center gap-2.5 px-3 py-2 text-sm">
-                      {file.script ? <FileCode size={14} className="shrink-0 text-faint" aria-hidden /> : <FileText size={14} className="shrink-0 text-faint" aria-hidden />}
-                      <span className={cn("min-w-0 grow truncate font-mono text-[0.8125rem]", gone && "text-faint line-through")}>{file.path}</span>
-                      <span className="shrink-0 text-xs text-faint">{skillSize(file.bytes)}</span>
-                      {gone && <input type="hidden" name="remove" value={file.path} />}
-                      <button
-                        type="button"
-                        onClick={() => setRemoved((now) => (gone ? now.filter((p) => p !== file.path) : [...now, file.path]))}
-                        aria-label={gone ? `Keep ${file.path}` : `Remove ${file.path}`}
-                        className="flex size-7 shrink-0 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg"
-                      >
-                        {gone ? <Undo2 size={14} /> : <X size={14} />}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              <Card asChild radius="lg" className="mt-3 divide-y divide-line/60 overflow-hidden">
+                <ul>
+                  {detail.files.map((file) => {
+                    const gone = removed.includes(file.path);
+                    return (
+                      <li key={file.path} className="flex items-center gap-2.5 px-3 py-2 text-sm">
+                        {file.script ? <FileCode size={14} className="shrink-0 text-faint" aria-hidden /> : <FileText size={14} className="shrink-0 text-faint" aria-hidden />}
+                        <span className={cn("min-w-0 grow truncate font-mono text-[0.8125rem]", gone && "text-faint line-through")}>{file.path}</span>
+                        <span className="shrink-0 text-xs text-faint">{skillSize(file.bytes)}</span>
+                        {gone && <input type="hidden" name="remove" value={file.path} />}
+                        <Button
+                          type="button"
+                          onClick={() => setRemoved((now) => (gone ? now.filter((p) => p !== file.path) : [...now, file.path]))}
+                          aria-label={gone ? `Keep ${file.path}` : `Remove ${file.path}`}
+                          variant="ghost"
+                          size="icon-xs"
+                          className="text-faint"
+                        >
+                          {gone ? <Undo2 size={14} /> : <X size={14} />}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
             )}
             <div className="mt-3 flex flex-wrap items-start gap-2">
               <input type="hidden" name="folder" value={folder} />
@@ -245,7 +253,7 @@ export default function SkillEditor({ loaderData, params }: Route.ComponentProps
           />
 
           {editing && !draft && (
-            <div className="grid gap-4 rounded-lg border border-line bg-surface px-4 py-3.5">
+            <Card radius="lg" className="grid gap-4 px-4 py-3.5">
               <Field>
                 <FieldLabel htmlFor={`${id}-note`}>What changed</FieldLabel>
                 <Input id={`${id}-note`} name="note" maxLength={200} placeholder="Optional, shown in its history" />
@@ -261,26 +269,28 @@ export default function SkillEditor({ loaderData, params }: Route.ComponentProps
                   />
                 </>
               )}
-            </div>
+            </Card>
           )}
 
           {result && !result.ok && result.field !== "files" && (
-            <p role="alert" className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
-              {result.error}
-            </p>
+            <Alert asChild>
+              <p role="alert">
+                {result.error}
+              </p>
+            </Alert>
           )}
           <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
-            <Link to={back} className={`${BUTTONS.QUIET} h-9 py-0`}>
+            <ButtonLink to={back} variant="outline">
               Cancel
-            </Link>
-            <button type="submit" className={`${BUTTONS.PRIMARY} h-9 py-0`} disabled={busy}>
+            </ButtonLink>
+            <Button type="submit" variant="accent" disabled={busy}>
               {busy ? "Saving…" : draft ? "Publish" : editing ? "Save a new version" : "Add to the library"}
-            </button>
+            </Button>
           </div>
         </div>
 
         <aside className="space-y-4 text-sm text-muted lg:pt-7">
-          <div className="rounded-xl border border-line bg-surface px-4 py-3.5">
+          <Card className="px-4 py-3.5">
             <p className="font-medium text-fg">A good skill</p>
             <ul className="mt-2 list-disc space-y-1.5 pl-4 text-xs leading-relaxed">
               <li>Covers one kind of work, the way your team does it.</li>
@@ -288,8 +298,8 @@ export default function SkillEditor({ loaderData, params }: Route.ComponentProps
               <li>Lists the steps, where to look first, and the checks before it&apos;s done.</li>
               <li>Points to its files by path, such as resources/template.md.</li>
             </ul>
-          </div>
-          <div className="rounded-xl border border-line bg-surface px-4 py-3.5 text-xs leading-relaxed">
+          </Card>
+          <Card className="px-4 py-3.5 text-xs leading-relaxed">
             <p className="text-sm font-medium text-fg">Saved as SKILL.md</p>
             <p className="mt-1.5">The open format other tools read, so a skill moves between them and can live in a repository. Every save is a new version; attachments pin the one they use.</p>
             {detail && !draft && (
@@ -297,7 +307,7 @@ export default function SkillEditor({ loaderData, params }: Route.ComponentProps
                 <Badge tone="neutral">Now version {detail.skill.version}</Badge>
               </p>
             )}
-          </div>
+          </Card>
         </aside>
       </Form>
     </div>

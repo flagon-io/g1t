@@ -6,7 +6,8 @@ import type { Ability, AbilityLevel, AbilitySection, AbilitySource, McpServer } 
 import { ABILITY_LEVEL_LABELS } from "@g1t/contracts/abilities";
 
 import { cn } from "../../lib/cn";
-import { Button, ButtonLink, SubmitButton } from "../ui";
+import { ButtonLink, SubmitButton } from "../ui";
+import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field";
@@ -168,7 +169,7 @@ export function SourceBlock({
             )}
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {integration && !source.connected && (isOwner ? <ButtonLink to={source.href ?? askHref} variant="quiet">Connect</ButtonLink> : <ButtonLink to={askHref} variant="quiet">Ask an owner</ButtonLink>)}
+            {integration && !source.connected && (isOwner ? <ButtonLink to={source.href ?? askHref} variant="outline">Connect</ButtonLink> : <ButtonLink to={askHref} variant="outline">Ask an owner</ButtonLink>)}
             {integration && source.connected && source.href && (
               <Link to={source.href} className="text-xs text-muted underline-offset-2 hover:underline">
                 Manage
@@ -180,7 +181,7 @@ export function SourceBlock({
                   <input type="hidden" name="intent" value="mcp_refresh" />
                   <input type="hidden" name="server" value={source.id} />
                   <Hint label="List its tools again">
-                    <SubmitButton variant="quiet" icon pending="" className="inline-flex size-8 items-center justify-center rounded-md border border-line text-muted hover:border-line-strong hover:text-fg" fetcher={fetcher} match={{ intent: "mcp_refresh", server: source.id }} aria-label={`List ${source.name}'s tools again`}>
+                    <SubmitButton variant="outline" icon pending="" className="inline-flex size-8 items-center justify-center rounded-md border border-line text-muted hover:border-line-strong hover:text-fg" fetcher={fetcher} match={{ intent: "mcp_refresh", server: source.id }} aria-label={`List ${source.name}'s tools again`}>
                       <RefreshCw size={14} />
                     </SubmitButton>
                   </Hint>
@@ -189,7 +190,7 @@ export function SourceBlock({
                   <input type="hidden" name="intent" value="mcp_remove" />
                   <input type="hidden" name="server" value={source.id} />
                   <Hint label="Remove this server">
-                    <SubmitButton variant="danger" icon pending="" className="inline-flex size-8 items-center justify-center rounded-md border border-danger/40 text-danger hover:border-danger hover:bg-danger/10" fetcher={fetcher} match={{ intent: "mcp_remove", server: source.id }} aria-label={`Remove ${source.name}`}>
+                    <SubmitButton variant="destructive" icon pending="" className="inline-flex size-8 items-center justify-center rounded-md border border-danger/40 text-danger hover:border-danger hover:bg-danger/10" fetcher={fetcher} match={{ intent: "mcp_remove", server: source.id }} aria-label={`Remove ${source.name}`}>
                       <Trash2 size={14} />
                     </SubmitButton>
                   </Hint>
@@ -218,7 +219,7 @@ export function AddMcpServerDialog({ agentName, count, max }: { agentName: strin
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button type="button" variant="quiet" disabled={count >= max}>
+        <Button type="button" variant="outline" disabled={count >= max}>
           <Plus size={14} />
           Add a server
         </Button>
@@ -244,7 +245,7 @@ export function AddMcpServerDialog({ agentName, count, max }: { agentName: strin
           </Field>
           <FieldError>{error}</FieldError>
           <DialogFooter>
-            <Button type="button" variant="quiet" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <SubmitButton variant="accent" fetcher={fetcher} match={{ intent: "mcp_add" }} busy={busy} pending="Listing its tools…">

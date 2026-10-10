@@ -5,7 +5,9 @@ import { Form, Link } from "react-router";
 import type { ExploreRepo } from "@g1t/contracts";
 
 import type { Route } from "./+types/explore";
-import { EmptyState, Pill, TimeAgo, notACredential } from "../components/ui";
+import { EmptyState, TimeAgo, notACredential } from "../components/ui";
+import { Badge } from "../components/ui/badge";
+import { Card } from "../components/ui/card";
 import { page } from "../lib/meta";
 import { DeployLink, host } from "../components/deploy";
 import { projects, search } from "../lib/services.server";
@@ -51,7 +53,7 @@ function href(current: { sort: string; language: string | null; topic: string | 
 
 function RepoCard({ repo, link }: { repo: ExploreRepo; link: string | null }) {
   return (
-    <div className="relative flex h-full flex-col rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong">
+    <Card className="relative flex h-full flex-col p-4 transition-colors hover:border-line-strong">
       <span className="flex items-center gap-2">
         <BookMarked size={15} className="shrink-0 text-faint" />
         <Link prefetch="intent" to={`/${repo.namespace}/${repo.name}`} className="truncate font-mono text-sm after:absolute after:inset-0">
@@ -60,7 +62,7 @@ function RepoCard({ repo, link }: { repo: ExploreRepo; link: string | null }) {
         </Link>
         {repo.archived && (
           <span className="ml-auto shrink-0">
-            <Pill>archived</Pill>
+            <Badge size="md">archived</Badge>
           </span>
         )}
       </span>
@@ -98,7 +100,7 @@ function RepoCard({ repo, link }: { repo: ExploreRepo; link: string | null }) {
           )}
         </span>
       </span>
-    </div>
+    </Card>
   );
 }
 
@@ -141,23 +143,25 @@ export default function ExplorePage({ loaderData }: Route.ComponentProps) {
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
         <section>
           <div className="flex flex-wrap items-center gap-3">
-            <nav aria-label="Order" className="flex items-center gap-1 rounded-lg border border-line bg-bg p-1">
-              {[
-                { value: "active", label: "Recently active" },
-                { value: "new", label: "New" },
-              ].map((option) => (
-                <Link
-                  key={option.value}
-                  to={href(current, { sort: option.value })}
-                  aria-current={sort === option.value ? "page" : undefined}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                    sort === option.value ? "bg-raised text-fg ring-1 ring-line" : "text-muted hover:text-fg"
-                  }`}
-                >
-                  {option.label}
-                </Link>
-              ))}
-            </nav>
+            <Card asChild tone="bg" radius="lg" className="flex items-center gap-1 p-1">
+              <nav aria-label="Order">
+                {[
+                  { value: "active", label: "Recently active" },
+                  { value: "new", label: "New" },
+                ].map((option) => (
+                  <Link
+                    key={option.value}
+                    to={href(current, { sort: option.value })}
+                    aria-current={sort === option.value ? "page" : undefined}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                      sort === option.value ? "bg-raised text-fg ring-1 ring-line" : "text-muted hover:text-fg"
+                    }`}
+                  >
+                    {option.label}
+                  </Link>
+                ))}
+              </nav>
+            </Card>
             {filtered && (
               <Link to={href(current, { language: null, topic: null })} className="text-xs text-muted hover:text-fg">
                 Clear {language ? "language" : "topic"}

@@ -55,7 +55,6 @@ import { BaseBranch } from "../../components/base-branch";
 import { LabelChip, LabelsBox, MilestoneBox } from "../../components/labels";
 import { Markdown } from "../../components/markdown";
 import {
-  Avatar,
   ButtonLink,
   CopyLine,
   EmptyState,
@@ -66,6 +65,8 @@ import {
   TimeAgo,
   usePending,
 } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
+import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { TabStrip } from "../../components/ui/tab-strip";
@@ -527,24 +528,26 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
         <Icon size={14} />
       </span>
       {isTool ? (
-        <details className="group rounded-lg border border-line bg-surface">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 text-sm">
-            <ChevronRight
-              size={14}
-              className="text-faint transition-transform group-open:rotate-90"
-            />
-            <span className="font-mono text-xs text-accent">
-              {entry.tool ?? "tool"}
-            </span>
-            <span className="truncate font-mono text-xs text-muted">
-              {entry.kind === "tool_result" ? "→ " : ""}
-              {entry.text.split("\n")[0]}
-            </span>
-          </summary>
-          <pre className="overflow-x-auto border-t border-line p-3 font-mono text-xs whitespace-pre-wrap text-muted">
-            <code>{entry.text}</code>
-          </pre>
-        </details>
+        <Card asChild radius="lg" className="group">
+          <details>
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 text-sm">
+              <ChevronRight
+                size={14}
+                className="text-faint transition-transform group-open:rotate-90"
+              />
+              <span className="font-mono text-xs text-accent">
+                {entry.tool ?? "tool"}
+              </span>
+              <span className="truncate font-mono text-xs text-muted">
+                {entry.kind === "tool_result" ? "→ " : ""}
+                {entry.text.split("\n")[0]}
+              </span>
+            </summary>
+            <pre className="overflow-x-auto border-t border-line p-3 font-mono text-xs whitespace-pre-wrap text-muted">
+              <code>{entry.text}</code>
+            </pre>
+          </details>
+        </Card>
       ) : (
         <div>
           <p className="text-xs font-medium text-faint">
@@ -559,9 +562,9 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
               <Markdown source={entry.text} />
             </div>
           ) : entry.kind === "prompt" ? (
-            <div className="mt-1.5 max-h-[32rem] overflow-y-auto rounded-xl border border-line bg-surface p-4">
+            <Card className="mt-1.5 max-h-[32rem] overflow-y-auto p-4">
               <Markdown source={entry.text} />
-            </div>
+            </Card>
           ) : (
             <p className="mt-1 text-[0.9375rem] leading-relaxed wrap-break-word whitespace-pre-wrap">
               {entry.text}
@@ -919,16 +922,18 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 </p>
               )}
               {pull.supersededBy != null && (
-                <p className="mt-4 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-muted">
-                  Closed because{" "}
-                  <Link
-                    to={`${base}/pull/${pull.supersededBy}`}
-                    className="font-medium text-fg hover:underline"
-                  >
-                    #{pull.supersededBy}
-                  </Link>{" "}
-                  was merged for this issue instead.
-                </p>
+                <Card asChild className="mt-4 px-4 py-2.5 text-sm text-muted">
+                  <p>
+                    Closed because{" "}
+                    <Link
+                      to={`${base}/pull/${pull.supersededBy}`}
+                      className="font-medium text-fg hover:underline"
+                    >
+                      #{pull.supersededBy}
+                    </Link>{" "}
+                    was merged for this issue instead.
+                  </p>
+                </Card>
               )}
               {lifecycle && <LifecyclePanel lifecycle={lifecycle} />}
               {/* The agent on it: who, doing what this minute, for how long, at what cost. */}
@@ -1006,7 +1011,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               )}
               {attempts && pull.issue != null && <AttemptsBox attempts={attempts} issue={pull.issue} base={base} />}
               {collisions.length > 0 && active && (
-                <div className="mt-4 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
+                <Card className="mt-4 px-4 py-3 text-sm">
                   <p className="flex items-center gap-2.5 font-medium">
                     <Radar size={16} className="shrink-0 text-info" />
                     Other work is changing the same files
@@ -1027,7 +1032,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   <p className="mt-2 text-xs text-faint">
                     Whichever merges second will have to catch up, and may conflict.
                   </p>
-                </div>
+                </Card>
               )}
             </div>
           )}
@@ -1252,7 +1257,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         {canUpdate && (
                           <Form method="post" className="mt-2">
                             <input type="hidden" name="action" value="update" />
-                            <SubmitButton variant="quiet" match={{ action: "update" }} pending={`Merging ${defaultBranch} in…`}>
+                            <SubmitButton variant="outline" match={{ action: "update" }} pending={`Merging ${defaultBranch} in…`}>
                               Catch up with {defaultBranch} now
                             </SubmitButton>
                           </Form>
@@ -1334,7 +1339,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                           <Layers size={15} />
                           See the queue
                         </ButtonLink>
-                        <SubmitButton variant="quiet" name="action" value="unqueue" pending="Removing…">
+                        <SubmitButton variant="outline" name="action" value="unqueue" pending="Removing…">
                           Remove from the queue
                         </SubmitButton>
                       </Form>
@@ -1402,16 +1407,16 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 {canManage && (active || pull.status === "closed") && (
                   <Form method="post" className="flex flex-wrap justify-end gap-2">
                     {pull.status === "open" && (
-                      <SubmitButton variant="quiet" name="action" value="draft" pending="Converting…">
+                      <SubmitButton variant="outline" name="action" value="draft" pending="Converting…">
                         Convert to draft
                       </SubmitButton>
                     )}
                     {active ? (
-                      <SubmitButton variant="quiet" name="action" value="close" pending="Closing…">
+                      <SubmitButton variant="outline" name="action" value="close" pending="Closing…">
                         Close pull request
                       </SubmitButton>
                     ) : (
-                      <SubmitButton variant="quiet" name="action" value="reopen" pending="Reopening…">
+                      <SubmitButton variant="outline" name="action" value="reopen" pending="Reopening…">
                         Reopen pull request
                       </SubmitButton>
                     )}
@@ -1492,7 +1497,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       <input key={name} type="hidden" name="reviewer" value={name} />
                     ))}
                     <div className="*:w-full">
-                      <SubmitButton variant="quiet" match={{ action: "agent-review" }} pending="Asking g1t…">
+                      <SubmitButton variant="outline" match={{ action: "agent-review" }} pending="Asking g1t…">
                         <Sparkles size={14} className="text-accent" />
                         Request review from g1t
                       </SubmitButton>
@@ -1536,7 +1541,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         ))}
                       </div>
                     )}
-                    <SubmitButton variant="quiet" match={{ action: "reviewers" }} pending="Saving…">
+                    <SubmitButton variant="outline" match={{ action: "reviewers" }} pending="Saving…">
                       Save reviewers
                     </SubmitButton>
                   </Form>
@@ -1573,7 +1578,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     ))}
                     <input type="hidden" name="assignee" value={viewer.username} />
                     <div className="*:w-full">
-                      <SubmitButton variant="quiet" name="who" value="self" pending="Assigning…">
+                      <SubmitButton variant="outline" name="who" value="self" pending="Assigning…">
                         Assign yourself
                       </SubmitButton>
                     </div>
@@ -1586,7 +1591,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   <Form method="post" className="mt-2 space-y-2" key={pull.assignees.join()}>
                     <input type="hidden" name="action" value="assign" />
                     <PeoplePicker name="assignee" members={members} chosen={pull.assignees} />
-                    <SubmitButton variant="quiet" name="who" value="picked" pending="Saving…">
+                    <SubmitButton variant="outline" name="who" value="picked" pending="Saving…">
                       Save assignees
                     </SubmitButton>
                   </Form>
@@ -1667,56 +1672,58 @@ function DeploymentCard({
   const building = build?.status === "queued" || build?.status === "building";
   const failed = build?.status === "failed";
   return (
-    <section className="ml-12 overflow-hidden rounded-xl border border-line bg-surface">
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-        <span
-          className={`flex size-8 shrink-0 items-center justify-center rounded-full ring-1 ${
-            failed ? "text-danger ring-danger/40" : building ? "text-warn ring-warn/40" : "text-success ring-success/40"
-          }`}
-        >
-          {building ? <Loader size={15} className="animate-spin" /> : <Rocket size={15} />}
-        </span>
-        <div className="min-w-0 grow">
-          <p className="text-sm font-medium">
-            {building
-              ? preview
-                ? "Deploying the latest push. The last preview is still live."
-                : "Deploying a preview"
-              : failed
-                ? "The preview failed to deploy"
-                : "This branch is live"}
+    <Card asChild className="ml-12 overflow-hidden">
+      <section>
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+          <span
+            className={`flex size-8 shrink-0 items-center justify-center rounded-full ring-1 ${
+              failed ? "text-danger ring-danger/40" : building ? "text-warn ring-warn/40" : "text-success ring-success/40"
+            }`}
+          >
+            {building ? <Loader size={15} className="animate-spin" /> : <Rocket size={15} />}
+          </span>
+          <div className="min-w-0 grow">
+            <p className="text-sm font-medium">
+              {building
+                ? preview
+                  ? "Deploying the latest push. The last preview is still live."
+                  : "Deploying a preview"
+                : failed
+                  ? "The preview failed to deploy"
+                  : "This branch is live"}
+            </p>
+            {preview ? (
+              <DeployLink href={preview.url} className="mt-0.5 block truncate font-mono text-xs text-muted hover:text-accent">
+                {preview.url.replace(/^https?:[/][/]/, "")}
+              </DeployLink>
+            ) : (
+              build?.error && <p className="mt-0.5 truncate text-xs text-muted">{build.error}</p>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {build && (
+              <Link to={`${base}/deployments/${build.id}`} className="text-xs text-muted hover:text-fg">
+                {failed ? "See why" : "Build log"}
+              </Link>
+            )}
+            {preview && (
+              <DeployLink
+                href={preview.url}
+                className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-bg hover:opacity-90"
+              >
+                Visit preview
+                <ArrowUpRight size={13} />
+              </DeployLink>
+            )}
+          </div>
+        </div>
+        {preview && (
+          <p className="border-t border-line px-4 py-2 text-xs text-faint">
+            <span className="font-mono">{preview.commit.slice(0, 7)}</span> · deployed <TimeAgo at={preview.deployedAt} />
+            {preview.branch && ` · from ${preview.branch}`}
           </p>
-          {preview ? (
-            <DeployLink href={preview.url} className="mt-0.5 block truncate font-mono text-xs text-muted hover:text-accent">
-              {preview.url.replace(/^https?:[/][/]/, "")}
-            </DeployLink>
-          ) : (
-            build?.error && <p className="mt-0.5 truncate text-xs text-muted">{build.error}</p>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {build && (
-            <Link to={`${base}/deployments/${build.id}`} className="text-xs text-muted hover:text-fg">
-              {failed ? "See why" : "Build log"}
-            </Link>
-          )}
-          {preview && (
-            <DeployLink
-              href={preview.url}
-              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-bg hover:opacity-90"
-            >
-              Visit preview
-              <ArrowUpRight size={13} />
-            </DeployLink>
-          )}
-        </div>
-      </div>
-      {preview && (
-        <p className="border-t border-line px-4 py-2 text-xs text-faint">
-          <span className="font-mono">{preview.commit.slice(0, 7)}</span> · deployed <TimeAgo at={preview.deployedAt} />
-          {preview.branch && ` · from ${preview.branch}`}
-        </p>
-      )}
-    </section>
+        )}
+      </section>
+    </Card>
   );
 }

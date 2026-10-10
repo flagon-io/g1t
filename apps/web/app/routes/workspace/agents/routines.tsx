@@ -5,11 +5,13 @@ import { type AgentRoutine, type NewRoutine, ROUTINE_EVENTS, type RoutineEvent, 
 
 import type { Route } from "./+types/routines";
 import { agentsAction, answer, readOrNull } from "../../../components/agents/actions.server";
-import { type ActionResult, BUTTONS, Confirm } from "../../../components/agents/dialogs";
+import { type ActionResult, Confirm } from "../../../components/agents/dialogs";
 import { reposFrom, routineInWords, scheduleFrom, untilLabel } from "../../../components/agents/format";
 import { Quiet } from "../../../components/agents/parts";
 import { type RoutineChannel, RoutineDialog } from "../../../components/agents/routine-dialog";
 import { TimeAgo } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
 import { Switch } from "../../../components/ui/switch";
 import { agentDmOf } from "../../../lib/chat";
@@ -110,10 +112,10 @@ export default function Routines({ loaderData, params }: Route.ComponentProps) {
             channels={channels}
             title="New routine"
             trigger={
-              <button type="button" className={`${BUTTONS.PRIMARY} h-9 py-0`}>
+              <Button type="button" variant="accent">
                 <Plus size={15} />
                 New routine
-              </button>
+              </Button>
             }
           />
         )}
@@ -124,11 +126,13 @@ export default function Routines({ loaderData, params }: Route.ComponentProps) {
           {isOwner ? `Add one, or start from a suggestion below.` : `An owner can give ${agent.display_name} work to do on a schedule or when something happens.`}
         </Quiet>
       ) : (
-        <ul className="divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
-          {routines.map((routine) => (
-            <RoutineRow key={routine.id} routine={routine} agent={agent} channels={channels} isOwner={isOwner} slug={params.owner} />
-          ))}
-        </ul>
+        <Card asChild className="divide-y divide-line/60 overflow-hidden">
+          <ul>
+            {routines.map((routine) => (
+              <RoutineRow key={routine.id} routine={routine} agent={agent} channels={channels} isOwner={isOwner} slug={params.owner} />
+            ))}
+          </ul>
+        </Card>
       )}
 
       {isOwner && suggestions.length > 0 && <Suggestions agent={agent} suggestions={suggestions} channels={channels} />}
@@ -183,9 +187,9 @@ function RoutineRow({ routine, agent, channels, isOwner, slug }: { routine: Agen
               <input type="hidden" name="intent" value="run" />
               <input type="hidden" name="id" value={routine.id} />
               <Hint label="Run now">
-                <button type="submit" aria-label="Run now" disabled={run.state !== "idle"} className="flex size-8 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg disabled:opacity-50">
+                <Button type="submit" aria-label="Run now" disabled={run.state !== "idle"} variant="ghost" size="icon-sm" className="text-faint">
                   <Play size={14} />
-                </button>
+                </Button>
               </Hint>
             </run.Form>
             <RoutineDialog
@@ -194,9 +198,9 @@ function RoutineRow({ routine, agent, channels, isOwner, slug }: { routine: Agen
               channels={channels}
               title="Edit routine"
               trigger={
-                <button type="button" aria-label="Edit" className="flex size-8 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg">
+                <Button type="button" aria-label="Edit" variant="ghost" size="icon-sm" className="text-faint">
                   <Pencil size={14} />
-                </button>
+                </Button>
               }
             />
             <Confirm
@@ -205,9 +209,9 @@ function RoutineRow({ routine, agent, channels, isOwner, slug }: { routine: Agen
               fields={{ intent: "delete", id: routine.id }}
               fetcherKey={`delete-${routine.id}`}
               trigger={
-                <button type="button" aria-label="Delete" className="flex size-8 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-danger">
+                <Button type="button" aria-label="Delete" variant="ghost" size="icon-sm" className="text-faint hover:text-danger">
                   <Trash2 size={14} />
-                </button>
+                </Button>
               }
             >
               It stops running. The sessions it already ran stay, with what they cost.
@@ -239,25 +243,27 @@ function Suggestions({ agent, suggestions, channels }: { agent: WorkspaceAgent; 
       </h2>
       <ul className="mt-3 grid gap-3 sm:grid-cols-2">
         {suggestions.map((suggestion) => (
-          <li key={`${suggestion.responsibility}:${suggestion.routine.name}`} className="flex flex-col rounded-xl border border-dashed border-line bg-surface/60 p-4">
-            <p className="text-xs text-faint">&ldquo;{suggestion.responsibility}&rdquo;</p>
-            <p className="mt-2 text-sm font-medium">{suggestion.routine.name}</p>
-            <p className="mt-0.5 text-xs text-muted">{routineInWords({ schedule: suggestion.routine.schedule, events: suggestion.routine.events, repos: suggestion.routine.repos }, EVENT_LABELS)}</p>
-            <div className="mt-auto pt-3">
-              <RoutineDialog
-                agentName={agent.display_name}
-                draft={suggestion.routine}
-                channels={channels}
-                title="Add routine"
-                trigger={
-                  <button type="button" className={`${BUTTONS.QUIET} h-8 py-0`}>
-                    <Plus size={14} />
-                    Add
-                  </button>
-                }
-              />
-            </div>
-          </li>
+          <Card asChild key={`${suggestion.responsibility}:${suggestion.routine.name}`} tone="plain" className="flex flex-col border-dashed bg-surface/60 p-4">
+            <li>
+              <p className="text-xs text-faint">&ldquo;{suggestion.responsibility}&rdquo;</p>
+              <p className="mt-2 text-sm font-medium">{suggestion.routine.name}</p>
+              <p className="mt-0.5 text-xs text-muted">{routineInWords({ schedule: suggestion.routine.schedule, events: suggestion.routine.events, repos: suggestion.routine.repos }, EVENT_LABELS)}</p>
+              <div className="mt-auto pt-3">
+                <RoutineDialog
+                  agentName={agent.display_name}
+                  draft={suggestion.routine}
+                  channels={channels}
+                  title="Add routine"
+                  trigger={
+                    <Button type="button" variant="outline" size="sm">
+                      <Plus size={14} />
+                      Add
+                    </Button>
+                  }
+                />
+              </div>
+            </li>
+          </Card>
         ))}
       </ul>
     </section>

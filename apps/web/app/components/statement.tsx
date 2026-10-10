@@ -5,6 +5,8 @@ import { Link, useFetcher, useNavigate } from "react-router";
 import { MICROS_PER_DOLLAR, type LedgerEntry, type Statement } from "@g1t/contracts";
 
 import { EmptyState, TimeAgo } from "./ui";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { SkeletonRows } from "./ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
@@ -106,39 +108,43 @@ export function StatementView({
       </div>
 
       {atPrice ? (
-        <dl className="mt-3 grid grid-cols-2 divide-line rounded-xl border border-line bg-surface text-sm sm:grid-cols-4 sm:divide-x">
-          <div className="px-4 py-3">
-            <dt className="text-xs text-faint">Usage at price</dt>
-            <dd className="mt-0.5 font-mono tabular-nums">{charge(totals.priceMicros ?? 0)}</dd>
-          </div>
-          <div className="px-4 py-3">
-            <dt className="text-xs text-faint">{discountLabel}</dt>
-            <dd className="mt-0.5 font-mono tabular-nums text-success">{charge(-(totals.discountMicros ?? 0))}</dd>
-          </div>
-          <div className="px-4 py-3">
-            <dt className="text-xs text-faint">Charged</dt>
-            <dd className="mt-0.5 font-mono tabular-nums">{charge(totals.chargedMicros)}</dd>
-          </div>
-          <div className="px-4 py-3">
-            <dt className="text-xs text-faint">Paid and credited</dt>
-            <dd className="mt-0.5 font-mono tabular-nums">{dollars(totals.paidMicros)}</dd>
-          </div>
-        </dl>
+        <Card asChild className="mt-3 grid grid-cols-2 divide-line text-sm sm:grid-cols-4 sm:divide-x">
+          <dl>
+            <div className="px-4 py-3">
+              <dt className="text-xs text-faint">Usage at price</dt>
+              <dd className="mt-0.5 font-mono tabular-nums">{charge(totals.priceMicros ?? 0)}</dd>
+            </div>
+            <div className="px-4 py-3">
+              <dt className="text-xs text-faint">{discountLabel}</dt>
+              <dd className="mt-0.5 font-mono tabular-nums text-success">{charge(-(totals.discountMicros ?? 0))}</dd>
+            </div>
+            <div className="px-4 py-3">
+              <dt className="text-xs text-faint">Charged</dt>
+              <dd className="mt-0.5 font-mono tabular-nums">{charge(totals.chargedMicros)}</dd>
+            </div>
+            <div className="px-4 py-3">
+              <dt className="text-xs text-faint">Paid and credited</dt>
+              <dd className="mt-0.5 font-mono tabular-nums">{dollars(totals.paidMicros)}</dd>
+            </div>
+          </dl>
+        </Card>
       ) : (
-        <dl className="mt-3 grid grid-cols-1 divide-y divide-line sm:grid-cols-3 sm:divide-x sm:divide-y-0 rounded-xl border border-line bg-surface text-sm">
-          <div className="px-4 py-3">
-            <dt className="text-xs text-faint">Charged</dt>
-            <dd className="mt-0.5 font-mono tabular-nums">{charge(totals.chargedMicros)}</dd>
-          </div>
-          <div className="px-4 py-3">
-            <dt className="text-xs text-faint">Paid and credited</dt>
-            <dd className="mt-0.5 font-mono tabular-nums">{dollars(totals.paidMicros)}</dd>
-          </div>
-          <div className="px-4 py-3">
-            <dt className="text-xs text-faint">Entries</dt>
-            <dd className="mt-0.5 font-mono tabular-nums">{totals.entries.toLocaleString("en-US")}</dd>
-          </div>
-        </dl>
+        <Card asChild divided className="mt-3 grid grid-cols-1 sm:grid-cols-3 sm:divide-x sm:divide-y-0 text-sm">
+          <dl>
+            <div className="px-4 py-3">
+              <dt className="text-xs text-faint">Charged</dt>
+              <dd className="mt-0.5 font-mono tabular-nums">{charge(totals.chargedMicros)}</dd>
+            </div>
+            <div className="px-4 py-3">
+              <dt className="text-xs text-faint">Paid and credited</dt>
+              <dd className="mt-0.5 font-mono tabular-nums">{dollars(totals.paidMicros)}</dd>
+            </div>
+            <div className="px-4 py-3">
+              <dt className="text-xs text-faint">Entries</dt>
+              <dd className="mt-0.5 font-mono tabular-nums">{totals.entries.toLocaleString("en-US")}</dd>
+            </div>
+          </dl>
+        </Card>
       )}
 
       {((totals.taxMicros ?? 0) !== 0 || (totals.cardFeeMicros ?? 0) !== 0) && (
@@ -148,20 +154,22 @@ export function StatementView({
         </p>
       )}
       {((totals.covered?.length ?? 0) > 0 || (totals.carriedMicros ?? 0) > 0) && (
-        <ul className="mt-2 space-y-1 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
-          {totals.covered?.map((paid) => (
-            <li key={paid.source} className="flex justify-between gap-4">
-              <span className="text-muted">{paid.label}</span>
-              <span className="font-mono tabular-nums text-success">{charge(paid.micros)}</span>
-            </li>
-          ))}
-          {(totals.carriedMicros ?? 0) > 0 && (
-            <li className="flex justify-between gap-4">
-              <span className="text-muted">Under the minimum charge, so carried over to the next invoice</span>
-              <span className="font-mono tabular-nums">{charge(totals.carriedMicros ?? 0)}</span>
-            </li>
-          )}
-        </ul>
+        <Card asChild className="mt-2 space-y-1 px-4 py-3 text-sm">
+          <ul>
+            {totals.covered?.map((paid) => (
+              <li key={paid.source} className="flex justify-between gap-4">
+                <span className="text-muted">{paid.label}</span>
+                <span className="font-mono tabular-nums text-success">{charge(paid.micros)}</span>
+              </li>
+            ))}
+            {(totals.carriedMicros ?? 0) > 0 && (
+              <li className="flex justify-between gap-4">
+                <span className="text-muted">Under the minimum charge, so carried over to the next invoice</span>
+                <span className="font-mono tabular-nums">{charge(totals.carriedMicros ?? 0)}</span>
+              </li>
+            )}
+          </ul>
+        </Card>
       )}
 
       <div className="mt-3">
@@ -170,7 +178,7 @@ export function StatementView({
             Agent runs, sandbox time, deployments and payments appear here, a line per kind each day.
           </EmptyState>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-line">
+          <Card tone="plain" className="overflow-hidden">
             {statement.groups.map((g) => (
               <div key={g.key} className="border-b border-line last:border-b-0">
                 <div className="flex items-center gap-4 bg-surface px-4 py-2 text-xs">
@@ -214,7 +222,7 @@ export function StatementView({
                 </ul>
               </div>
             ))}
-          </div>
+          </Card>
         )}
       </div>
     </section>
@@ -329,13 +337,15 @@ function StatementLineRow({
             </div>
           )}
           {!done && entries.length > 0 && entries.length < count && fetcher.state === "idle" && (
-            <button
+            <Button
               type="button"
               onClick={() => load(entries[entries.length - 1].id)}
-              className="mt-1 ml-11 text-xs text-muted hover:text-fg"
+              variant="link"
+              size="inline"
+              className="mt-1 ml-11 text-xs text-muted hover:text-fg font-normal"
             >
               Show {Math.min(50, count - entries.length)} more of {count - entries.length}
-            </button>
+            </Button>
           )}
         </div>
       )}

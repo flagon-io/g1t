@@ -14,8 +14,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import type { IssueProgress, Plan } from "@g1t/contracts";
-
-import { Avatar } from "./ui";
+import { Avatar } from "./ui/avatar";
 
 type Look = { label: string; icon: ReactNode; ring: string; text: string; bar: string; live?: boolean };
 

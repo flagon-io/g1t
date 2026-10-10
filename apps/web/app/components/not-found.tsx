@@ -47,7 +47,7 @@ export function NotFound({ data }: { data?: unknown }) {
         ) : user ? (
           <ButtonLink to="/">Go home</ButtonLink>
         ) : null}
-        <ButtonLink to="/explore" variant="quiet">
+        <ButtonLink to="/explore" variant="outline">
           {user ? "Explore" : "Explore public projects"}
         </ButtonLink>
       </div>
@@ -77,7 +77,9 @@ export function NotFound({ data }: { data?: unknown }) {
           Signed in as <span className="font-mono text-muted">@{copy.signedInAs}</span> ·{" "}
           <SubmitButton
             pending="Signing out…"
-            className="inline-flex items-center gap-1 text-muted underline-offset-4 hover:text-fg hover:underline disabled:opacity-50"
+            variant="link"
+            size="inline"
+            className="gap-1 text-muted hover:text-fg"
           >
             Switch account
           </SubmitButton>

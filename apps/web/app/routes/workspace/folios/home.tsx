@@ -11,6 +11,8 @@ import { FolioDays, FolioGrid } from "../../../components/folios/list";
 import { FoliosSidebar } from "../../../components/folios/sidebar";
 import { BottomSheet } from "../../../components/mobile";
 import { EmptyState, ErrorText } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { Hint } from "../../../components/ui/hint";
@@ -254,9 +256,9 @@ export default function FoliosHome({ loaderData, params }: Route.ComponentProps)
         )}
         {cursor && (
           <div className="mt-4 flex justify-center">
-            <button type="button" onClick={showMore} disabled={more} className="inline-flex h-9 items-center rounded-md border border-line px-4 text-sm text-muted hover:border-line-strong hover:text-fg disabled:opacity-60">
+            <Button type="button" onClick={showMore} disabled={more} variant="outline" className="px-4 text-muted disabled:opacity-60 font-normal">
               {more ? "Loading…" : "Show more"}
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -307,9 +309,9 @@ function MakeTiles({ slug, spaces }: { slug: string; spaces: { id: string; name:
         if (!ui.ready) {
           return (
             <Hint key={kind} label={`${COMING[kind]} are coming soon.`}>
-              <div tabIndex={0} aria-disabled="true" className="flex w-40 shrink-0 snap-start flex-col rounded-xl border border-dashed border-line bg-surface/40 p-4 opacity-60 sm:w-auto">
+              <Card tabIndex={0} aria-disabled="true" tone="plain" className="flex w-40 shrink-0 snap-start flex-col border-dashed bg-surface/40 p-4 opacity-60 sm:w-auto">
                 {body}
-              </div>
+              </Card>
             </Hint>
           );
         }
@@ -322,9 +324,9 @@ function MakeTiles({ slug, spaces }: { slug: string; spaces: { id: string; name:
             </Form>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button type="button" aria-label={`More ways to make ${ui.label.toLowerCase()}`} className="absolute top-2 right-2 flex size-7 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg">
+                <Button type="button" aria-label={`More ways to make ${ui.label.toLowerCase()}`} variant="ghost" size="icon-xs" className="absolute top-2 right-2 text-faint">
                   <ChevronDown size={14} />
-                </button>
+                </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuItem asChild>
@@ -368,9 +370,9 @@ function SpaceChooser({ slug, kind, spaces, open, onOpenChange }: { slug: string
         <Form method="post" action={`/${slug}/-/artifacts/new/${kind}`} className="space-y-4">
           <SelectField name="space" aria-label="Space" value={space} onValueChange={setSpace} options={spaces.map((s) => ({ value: s.id, label: s.name }))} className="h-9 w-full" />
           <div className="flex justify-end">
-            <button type="submit" disabled={busy || !space} className="inline-flex h-9 items-center rounded-md bg-accent px-3.5 text-sm font-medium text-bg hover:bg-accent-hover disabled:opacity-60">
+            <Button type="submit" disabled={busy || !space} variant="accent" className="disabled:opacity-60">
               {busy ? "Starting…" : "Make it"}
-            </button>
+            </Button>
           </div>
         </Form>
       </DialogContent>

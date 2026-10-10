@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import { cn } from "../lib/cn";
 import { usd } from "../lib/mission-control";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import {
   HEAT_LEVELS,
@@ -50,32 +51,34 @@ export function TokenUsagePanel({
   const [scope, setScope] = useState<Scope>("workspace");
   const usage = scope === "mine" ? mine : workspace;
   return (
-    <section aria-labelledby="token-usage" className="rounded-xl border border-line bg-surface p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 id="token-usage" className="text-base font-semibold tracking-tight">
-          Usage
-        </h2>
-        <div role="tablist" aria-label="Whose usage" className="flex rounded-md border border-line p-0.5 text-xs">
-          {(["workspace", "mine"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              role="tab"
-              aria-selected={scope === option}
-              disabled={option === "mine" && !mine}
-              onClick={() => setScope(option)}
-              className={cn(
-                "rounded px-2 py-0.5 transition-colors disabled:opacity-40",
-                scope === option ? "bg-raised text-fg" : "text-muted hover:text-fg",
-              )}
-            >
-              {option === "workspace" ? "Workspace" : "You"}
-            </button>
-          ))}
+    <Card asChild className="p-5">
+      <section aria-labelledby="token-usage">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="token-usage" className="text-base font-semibold tracking-tight">
+            Usage
+          </h2>
+          <div role="tablist" aria-label="Whose usage" className="flex rounded-md border border-line p-0.5 text-xs">
+            {(["workspace", "mine"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                role="tab"
+                aria-selected={scope === option}
+                disabled={option === "mine" && !mine}
+                onClick={() => setScope(option)}
+                className={cn(
+                  "rounded px-2 py-0.5 transition-colors disabled:opacity-40",
+                  scope === option ? "bg-raised text-fg" : "text-muted hover:text-fg",
+                )}
+              >
+                {option === "workspace" ? "Workspace" : "You"}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
-      {usage ? <Figures usage={usage} usageHref={usageHref} /> : <p className="mt-4 text-sm text-muted">Usage could not be loaded.</p>}
-    </section>
+        {usage ? <Figures usage={usage} usageHref={usageHref} /> : <p className="mt-4 text-sm text-muted">Usage could not be loaded.</p>}
+      </section>
+    </Card>
   );
 }
 
@@ -111,13 +114,13 @@ function Figures({ usage, usageHref }: { usage: TokenUsageView; usageHref: strin
 function Tile({ label, value, hint, title }: { label: string; value: string; hint?: string; title?: string }) {
   return (
     <Hint label={title}>
-      <div className="rounded-lg border border-line bg-bg/40 px-3 py-2.5">
+      <Card tone="plain" radius="lg" className="bg-bg/40 px-3 py-2.5">
         <dt className="text-[0.6875rem] text-muted">{label}</dt>
         <dd className="mt-0.5 text-lg font-semibold tracking-tight tabular-nums">
           {value}
           {hint && <span className="ml-1 text-xs font-normal text-faint">{hint}</span>}
         </dd>
-      </div>
+      </Card>
     </Hint>
   );
 }

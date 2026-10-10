@@ -9,6 +9,8 @@ import { page } from "../../lib/meta";
 import { CARD, PatternEditor, patternFields } from "../../components/security-suite";
 import { WorkspaceSecurityHeading, WorkspaceSecurityTabs } from "../../components/workspace-security-tabs";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesSecurity, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -72,27 +74,31 @@ export default function WorkspacePatterns({ loaderData, params }: Route.Componen
         </p>
       )}
       {owner && editing === null && (
-        <button
+        <Button
           type="button"
           onClick={() => setEditing("new")}
-          className="mb-4 inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm hover:border-line-strong"
+          variant="outline"
+          size="sm"
+          className="mb-4 px-3 text-sm font-normal"
         >
           <Plus size={14} /> New pattern
-        </button>
+        </Button>
       )}
       {editing !== null && (
         <section className={`${CARD} mb-6 p-4`}>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-semibold">{editing === "new" ? "New pattern" : editing.name}</h2>
-            <button type="button" onClick={() => setEditing(null)} className="text-sm text-muted hover:text-fg">
+            <Button type="button" onClick={() => setEditing(null)} variant="link" size="inline" className="text-sm text-muted hover:text-fg font-normal">
               Close
-            </button>
+            </Button>
           </div>
           <PatternEditor key={editing === "new" ? "new" : editing.id} action={`/${params.owner}/-/security/patterns`} draft={draftOf(editing === "new" ? null : editing)} />
         </section>
       )}
       {list.patterns.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">No custom patterns yet.</p>
+        <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
+          <p>No custom patterns yet.</p>
+        </Card>
       ) : (
         <ul className={`${CARD} divide-y divide-line`}>
           {list.patterns.map((pattern) => (
@@ -108,9 +114,9 @@ export default function WorkspacePatterns({ loaderData, params }: Route.Componen
                 {pattern.openAlerts} open {pattern.openAlerts === 1 ? "alert" : "alerts"}
               </span>
               {owner && (
-                <button type="button" onClick={() => setEditing(pattern)} className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs text-muted hover:text-fg">
+                <Button type="button" onClick={() => setEditing(pattern)} variant="outline" size="inline" className="px-2.5 py-1 text-xs text-muted font-normal">
                   Edit
-                </button>
+                </Button>
               )}
             </li>
           ))}

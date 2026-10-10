@@ -7,7 +7,7 @@ import type { Domain, DomainRecord, DomainStatus } from "@g1t/contracts";
 import type { Route } from "./+types/settings-domains";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
-import { Button, CopyLine, EmptyState, ErrorText, Field, Input, SubmitButton, usePending } from "../../components/ui";
+import { CopyLine, EmptyState, ErrorText, Field, Input, SubmitButton, usePending } from "../../components/ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +19,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "../../components/ui/alert-dialog";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { deployments } from "../../lib/services.server";
@@ -146,49 +148,53 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
       )}
 
       {!settings.enabled && (
-        <p className="mb-6 rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted">
-          Deployments are off for this project, so a domain added now shows that nothing is deployed until they are on.{" "}
-          <Link to={`${base}/settings/deployments`} className="text-fg hover:underline">
-            Turn on deployments
-          </Link>
-        </p>
+        <Card asChild radius="lg" className="mb-6 px-4 py-3 text-sm text-muted">
+          <p>
+            Deployments are off for this project, so a domain added now shows that nothing is deployed until they are on.{" "}
+            <Link to={`${base}/settings/deployments`} className="text-fg hover:underline">
+              Turn on deployments
+            </Link>
+          </p>
+        </Card>
       )}
 
-      <Form method="post" className="rounded-xl border border-line bg-surface p-5">
-        <input type="hidden" name="intent" value="add" />
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="grow">
-            <Field label="Domain" hint="A domain (the apex, such as example.com) or any subdomain, such as www.example.com or app.example.com.">
-              <Input
-                name="hostname"
-                value={hostname}
-                onChange={(event) => setHostname(event.target.value)}
-                placeholder="example.com"
-                autoComplete="off"
-                spellCheck={false}
-                required
-              />
-            </Field>
+      <Card asChild className="p-5">
+        <Form method="post">
+          <input type="hidden" name="intent" value="add" />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="grow">
+              <Field label="Domain" hint="A domain (the apex, such as example.com) or any subdomain, such as www.example.com or app.example.com.">
+                <Input
+                  name="hostname"
+                  value={hostname}
+                  onChange={(event) => setHostname(event.target.value)}
+                  placeholder="example.com"
+                  autoComplete="off"
+                  spellCheck={false}
+                  required
+                />
+              </Field>
+            </div>
+            <div className="sm:mb-6">
+              <SubmitButton variant="accent" match={{ intent: "add" }} pending="Adding…" disabled={!hostname.trim()}>
+                Add domain
+              </SubmitButton>
+            </div>
           </div>
-          <div className="sm:mb-6">
-            <SubmitButton variant="accent" match={{ intent: "add" }} pending="Adding…" disabled={!hostname.trim()}>
-              Add domain
-            </SubmitButton>
-          </div>
-        </div>
-        <CheckboxOption
-          name="twin"
-          defaultChecked
-          disabled={!twin}
-          className="mt-2"
-          label={twin ? `Also add ${twin}, redirecting to ${hostname.trim().toLowerCase()}` : "Also add the www or apex twin, redirecting to it"}
-          description="Most sites answer at both example.com and www.example.com; one serves the app and the other sends visitors to it, path and query kept."
-        />
-        <p className="mt-4 text-xs text-faint">
-          Each custom domain is {domainPrice(monthlyMicros)} a month on the g1t plan, its cost plus 20%, from the included usage
-          first. As many as you like: {used} in use across the workspace.
-        </p>
-      </Form>
+          <CheckboxOption
+            name="twin"
+            defaultChecked
+            disabled={!twin}
+            className="mt-2"
+            label={twin ? `Also add ${twin}, redirecting to ${hostname.trim().toLowerCase()}` : "Also add the www or apex twin, redirecting to it"}
+            description="Most sites answer at both example.com and www.example.com; one serves the app and the other sends visitors to it, path and query kept."
+          />
+          <p className="mt-4 text-xs text-faint">
+            Each custom domain is {domainPrice(monthlyMicros)} a month on the g1t plan, its cost plus 20%, from the included usage
+            first. As many as you like: {used} in use across the workspace.
+          </p>
+        </Form>
+      </Card>
 
       <div className="mt-8 space-y-4">
         {domains.length === 0 ? (
@@ -209,14 +215,16 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
 
 function DomainCard({ domain, redirects }: { domain: Domain; redirects: Domain[] }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-surface">
-      <DomainRow domain={domain} />
-      {redirects.map((other) => (
-        <div key={other.id} className="border-t border-line">
-          <DomainRow domain={other} />
-        </div>
-      ))}
-    </section>
+    <Card asChild className="overflow-hidden">
+      <section>
+        <DomainRow domain={domain} />
+        {redirects.map((other) => (
+          <div key={other.id} className="border-t border-line">
+            <DomainRow domain={other} />
+          </div>
+        ))}
+      </section>
+    </Card>
   );
 }
 
@@ -240,7 +248,7 @@ function DomainRow({ domain }: { domain: Domain }) {
               <input type="hidden" name="intent" value="refresh" />
               <input type="hidden" name="id" value={domain.id} />
               <Hint label="Ask Cloudflare to check the records again now">
-                <SubmitButton variant="quiet" match={{ intent: "refresh", id: domain.id }} pending="Checking…">
+                <SubmitButton variant="outline" match={{ intent: "refresh", id: domain.id }} pending="Checking…">
                   <RotateCw size={14} />
                   Check now
                 </SubmitButton>
@@ -289,7 +297,7 @@ function Records({ domain }: { domain: Domain }) {
 function RecordRow({ record }: { record: DomainRecord }) {
   const type = record.type === "ALIAS" ? "CNAME (flattened) or ALIAS" : record.type;
   return (
-    <div className="grid gap-2 rounded-lg border border-line bg-bg p-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
+    <Card tone="bg" radius="lg" className="grid gap-2 p-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
       <div className="text-xs">
         <p className="font-medium text-fg">{type}</p>
         <p className="mt-0.5 text-faint">{record.purpose}</p>
@@ -304,7 +312,7 @@ function RecordRow({ record }: { record: DomainRecord }) {
           <CopyLine text={record.value} />
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -314,7 +322,7 @@ function RemoveDomain({ domain }: { domain: Domain }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button type="button" variant="quiet" disabled={removing} aria-label={`Remove ${domain.hostname}`}>
+        <Button type="button" variant="outline" disabled={removing} aria-label={`Remove ${domain.hostname}`}>
           {removing ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <Trash2 size={14} />}
           {removing ? "Removing…" : "Remove"}
         </Button>

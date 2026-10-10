@@ -5,6 +5,7 @@ import { MAX_RELEASE_BODY_CHARS, MAX_RELEASE_NAME_CHARS } from "@g1t/contracts";
 import type { Route } from "./+types/release-new";
 import { encodeTag } from "../../components/releases";
 import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { requireRepo } from "../../lib/access.server";
 import { page } from "../../lib/meta";
@@ -54,42 +55,44 @@ export default function NewRelease({ loaderData, actionData }: Route.ComponentPr
           Publish a tag with a title and notes. A tag that does not exist yet is made at the branch or commit you choose.
         </p>
       </div>
-      <Form method="post" className="space-y-4 rounded-xl border border-line bg-surface p-5">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Tag" hint={tags.length > 0 ? "An existing tag, or a new one such as v1.0.0." : "A new tag, such as v1.0.0."}>
-            <Input name="tag" list="release-tags" required placeholder="v1.0.0" />
+      <Card asChild className="space-y-4 p-5">
+        <Form method="post">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Tag" hint={tags.length > 0 ? "An existing tag, or a new one such as v1.0.0." : "A new tag, such as v1.0.0."}>
+              <Input name="tag" list="release-tags" required placeholder="v1.0.0" />
+            </Field>
+            <Field label="Target" hint="Where a new tag is made. Ignored for a tag that exists.">
+              <Input name="target" list="release-targets" placeholder={defaultBranch} />
+            </Field>
+          </div>
+          <datalist id="release-tags">
+            {tags.map((tag) => (
+              <option key={tag} value={tag} />
+            ))}
+          </datalist>
+          <datalist id="release-targets">
+            {branches.map((branch) => (
+              <option key={branch} value={branch} />
+            ))}
+          </datalist>
+          <Field label="Title">
+            <Input name="name" maxLength={MAX_RELEASE_NAME_CHARS} placeholder="What this release is" />
           </Field>
-          <Field label="Target" hint="Where a new tag is made. Ignored for a tag that exists.">
-            <Input name="target" list="release-targets" placeholder={defaultBranch} />
+          <Field label="Notes" hint="Markdown: what changed, and anything people need to do.">
+            <Textarea name="body" rows={12} maxLength={MAX_RELEASE_BODY_CHARS} placeholder={"## What changed\n\n- "} />
           </Field>
-        </div>
-        <datalist id="release-tags">
-          {tags.map((tag) => (
-            <option key={tag} value={tag} />
-          ))}
-        </datalist>
-        <datalist id="release-targets">
-          {branches.map((branch) => (
-            <option key={branch} value={branch} />
-          ))}
-        </datalist>
-        <Field label="Title">
-          <Input name="name" maxLength={MAX_RELEASE_NAME_CHARS} placeholder="What this release is" />
-        </Field>
-        <Field label="Notes" hint="Markdown: what changed, and anything people need to do.">
-          <Textarea name="body" rows={12} maxLength={MAX_RELEASE_BODY_CHARS} placeholder={"## What changed\n\n- "} />
-        </Field>
-        <CheckboxOption name="prerelease" label="Set as a pre-release: not ready for everyone, never the latest" />
-        {actionData?.error && <ErrorText>{actionData.error}</ErrorText>}
-        <div className="flex flex-wrap items-center gap-2">
-          <SubmitButton name="intent" value="publish" pending="Publishing…">
-            Publish release
-          </SubmitButton>
-          <SubmitButton variant="quiet" name="intent" value="draft" pending="Saving…">
-            Save draft
-          </SubmitButton>
-        </div>
-      </Form>
+          <CheckboxOption name="prerelease" label="Set as a pre-release: not ready for everyone, never the latest" />
+          {actionData?.error && <ErrorText>{actionData.error}</ErrorText>}
+          <div className="flex flex-wrap items-center gap-2">
+            <SubmitButton name="intent" value="publish" pending="Publishing…">
+              Publish release
+            </SubmitButton>
+            <SubmitButton variant="outline" name="intent" value="draft" pending="Saving…">
+              Save draft
+            </SubmitButton>
+          </div>
+        </Form>
+      </Card>
     </div>
   );
 }

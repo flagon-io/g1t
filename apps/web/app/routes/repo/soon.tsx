@@ -4,6 +4,8 @@ import { Link, data, redirect } from "react-router";
 import type { Route } from "./+types/soon";
 import { page } from "../../lib/meta";
 import { ROADMAP, type RoadmapItem, roadmapIn, roadmapItem } from "../../lib/roadmap";
+import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   const item = roadmapItem(params.feature);
@@ -67,58 +69,62 @@ export function SoonView({
       )}
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-3xl font-semibold tracking-tight">{item.title}</h1>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
+        <Badge tone="accent" size="md" className="gap-1.5 px-2.5 font-medium">
           <Sparkles size={12} />
           Soon
-        </span>
+        </Badge>
       </div>
       <p className="mt-3 text-lg text-muted">{item.summary}</p>
 
-      <section className="mt-8 rounded-xl border border-line bg-surface p-6">
-        <p className="leading-relaxed">{item.why}</p>
-        <h2 className="mt-6 text-sm font-medium text-muted">What it will do</h2>
-        <ul className="mt-3 space-y-2.5">
-          {item.plans.map((plan) => (
-            <li key={plan} className="flex gap-3 text-sm">
-              <Check size={16} className="mt-0.5 shrink-0 text-accent" />
-              <span>{plan}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <Card asChild className="mt-8 p-6">
+        <section>
+          <p className="leading-relaxed">{item.why}</p>
+          <h2 className="mt-6 text-sm font-medium text-muted">What it will do</h2>
+          <ul className="mt-3 space-y-2.5">
+            {item.plans.map((plan) => (
+              <li key={plan} className="flex gap-3 text-sm">
+                <Check size={16} className="mt-0.5 shrink-0 text-accent" />
+                <span>{plan}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </Card>
 
       {item.today && inProjects && (
-        <section className="mt-4 rounded-xl border border-line px-5 py-4">
-          <span className="block text-xs text-faint">Until then: {item.today.label.toLowerCase()} in each project</span>
-          {inProjects.length > 0 ? (
-            <ul className="mt-2 divide-y divide-line">
-              {inProjects.map((project) => (
-                <li key={project.to}>
-                  <Link
-                    to={`${project.to}/${item.today!.path}`}
-                    className="group flex items-center justify-between gap-4 py-2.5 text-sm"
-                  >
-                    <span className="font-medium">
-                      {item.today!.label} in {project.name}
-                    </span>
-                    <ArrowRight size={16} className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-fg" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Link
-              to={newProject ?? "/new"}
-              className="group mt-2 flex items-center justify-between gap-4 text-sm"
-            >
-              <span>
-                <span className="font-medium">Create a project</span>
-                <span className="text-muted"> to plan {item.today.label.toLowerCase()} in it.</span>
-              </span>
-              <ArrowRight size={16} className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-fg" />
-            </Link>
-          )}
-        </section>
+        <Card asChild tone="plain" className="mt-4 px-5 py-4">
+          <section>
+            <span className="block text-xs text-faint">Until then: {item.today.label.toLowerCase()} in each project</span>
+            {inProjects.length > 0 ? (
+              <ul className="mt-2 divide-y divide-line">
+                {inProjects.map((project) => (
+                  <li key={project.to}>
+                    <Link
+                      to={`${project.to}/${item.today!.path}`}
+                      className="group flex items-center justify-between gap-4 py-2.5 text-sm"
+                    >
+                      <span className="font-medium">
+                        {item.today!.label} in {project.name}
+                      </span>
+                      <ArrowRight size={16} className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-fg" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Link
+                to={newProject ?? "/new"}
+                className="group mt-2 flex items-center justify-between gap-4 text-sm"
+              >
+                <span>
+                  <span className="font-medium">Create a project</span>
+                  <span className="text-muted"> to plan {item.today.label.toLowerCase()} in it.</span>
+                </span>
+                <ArrowRight size={16} className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-fg" />
+              </Link>
+            )}
+          </section>
+        </Card>
       )}
 
       {item.today && !inProjects && (

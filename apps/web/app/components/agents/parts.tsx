@@ -8,6 +8,7 @@ import { AgentAvatar } from "../agent-avatar";
 import { Badge } from "../ui/badge";
 import { Hint } from "../ui/hint";
 import { TimeAgo } from "../ui";
+import { Card } from "../ui/card";
 import { cn } from "../../lib/cn";
 import { money } from "../../lib/usage";
 import { kindLabel, meterTone, monthDays, sessionStatus, shareOf, shortDay, topSlices, whereLabel } from "./format";
@@ -150,33 +151,35 @@ export function SessionRow({ slug, session, depth = 0, showAgent = false }: { sl
 /** A live session as a card: the agent, what it is doing, how far and what it has cost. */
 export function SessionCard({ slug, session, action }: { slug: string; session: AgentSession; action?: ReactNode }) {
   return (
-    <li className="relative flex flex-col rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong">
-      <div className="flex items-center gap-2.5">
-        <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed }} size={28} />
-        <div className="min-w-0 grow leading-tight">
-          <p className="truncate text-sm font-medium">{session.agent_name}</p>
-          <p className="truncate text-xs text-faint">
-            {whereLabel(session)}
-            {session.asked_by_username ? ` · @${session.asked_by_username}` : ""}
-          </p>
+    <Card asChild className="relative flex flex-col p-4 transition-colors hover:border-line-strong">
+      <li>
+        <div className="flex items-center gap-2.5">
+          <AgentAvatar agent={{ handle: session.agent_handle, avatar_seed: session.agent_avatar_seed }} size={28} />
+          <div className="min-w-0 grow leading-tight">
+            <p className="truncate text-sm font-medium">{session.agent_name}</p>
+            <p className="truncate text-xs text-faint">
+              {whereLabel(session)}
+              {session.asked_by_username ? ` · @${session.asked_by_username}` : ""}
+            </p>
+          </div>
+          <StatusChip status={session.status} />
         </div>
-        <StatusChip status={session.status} />
-      </div>
-      <Link to={sessionHref(slug, session)} className="mt-3 line-clamp-2 text-[0.9375rem] font-medium text-fg after:absolute after:inset-0 hover:underline">
-        {session.visible ? session.title || "Untitled session" : "A private session"}
-      </Link>
-      {session.status_note && <p className="mt-1 line-clamp-2 text-xs text-muted">{session.status_note}</p>}
-      <div className="mt-auto pt-4">
-        <div className="flex items-center justify-between gap-3 text-xs text-muted">
-          <span>
-            {stepsLine(session)} · <TimeAgo at={session.created_at} />
-          </span>
-          <SpendOfCap spent={session.charged_micros} cap={session.cap_micros} />
+        <Link to={sessionHref(slug, session)} className="mt-3 line-clamp-2 text-[0.9375rem] font-medium text-fg after:absolute after:inset-0 hover:underline">
+          {session.visible ? session.title || "Untitled session" : "A private session"}
+        </Link>
+        {session.status_note && <p className="mt-1 line-clamp-2 text-xs text-muted">{session.status_note}</p>}
+        <div className="mt-auto pt-4">
+          <div className="flex items-center justify-between gap-3 text-xs text-muted">
+            <span>
+              {stepsLine(session)} · <TimeAgo at={session.created_at} />
+            </span>
+            <SpendOfCap spent={session.charged_micros} cap={session.cap_micros} />
+          </div>
+          {session.cap_micros != null && <Meter spent={session.charged_micros} cap={session.cap_micros} label="Spent of its cap" size="sm" className="mt-2" />}
+          {action && <div className="relative z-10 mt-3">{action}</div>}
         </div>
-        {session.cap_micros != null && <Meter spent={session.charged_micros} cap={session.cap_micros} label="Spent of its cap" size="sm" className="mt-2" />}
-        {action && <div className="relative z-10 mt-3">{action}</div>}
-      </div>
-    </li>
+      </li>
+    </Card>
   );
 }
 
@@ -286,10 +289,10 @@ export function DailyBars({ period, days, className }: { period: string; days: {
 /** A quiet empty state inside a panel or a tab. */
 export function Quiet({ title, children, icon }: { title: string; children?: ReactNode; icon?: ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-line px-6 py-10 text-center">
+    <Card tone="plain" className="border-dashed px-6 py-10 text-center">
       {icon && <span className="mx-auto mb-3 flex size-10 items-center justify-center rounded-xl bg-raised text-muted">{icon}</span>}
       <p className="text-sm font-medium">{title}</p>
       {children && <div className="mx-auto mt-1 max-w-md text-sm text-muted">{children}</div>}
-    </div>
+    </Card>
   );
 }

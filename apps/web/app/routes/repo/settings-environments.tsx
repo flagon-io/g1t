@@ -8,7 +8,7 @@ import type { BranchPattern, Environment, EnvironmentReviewer } from "@g1t/contr
 import type { Route } from "./+types/settings-environments";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { SettingsSection as Section } from "../../components/settings-section";
-import { Button, EmptyState, ErrorText, Input, SubmitButton, TimeAgo } from "../../components/ui";
+import { EmptyState, ErrorText, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +21,8 @@ import {
   AlertDialogTrigger,
 } from "../../components/ui/alert-dialog";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
@@ -115,33 +117,35 @@ function EnvironmentList({ environments, base, badName }: { environments: Enviro
             below.
           </EmptyState>
         ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {environments.map((environment) => (
-              <li key={environment.name}>
-                <Link
-                  to={`?environment=${encodeURIComponent(environment.name)}`}
-                  className="group flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-raised/40"
-                >
-                  <Layers size={16} className="mt-0.5 shrink-0 text-muted" />
-                  <span className="min-w-0 grow">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="min-w-0 truncate font-mono text-sm font-medium">{environment.name}</span>
-                      {environment.protected ? <Badge tone="accent">Protected</Badge> : <Badge>No rules</Badge>}
+          <Card asChild divided className="overflow-hidden">
+            <ul>
+              {environments.map((environment) => (
+                <li key={environment.name}>
+                  <Link
+                    to={`?environment=${encodeURIComponent(environment.name)}`}
+                    className="group flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-raised/40"
+                  >
+                    <Layers size={16} className="mt-0.5 shrink-0 text-muted" />
+                    <span className="min-w-0 grow">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="min-w-0 truncate font-mono text-sm font-medium">{environment.name}</span>
+                        {environment.protected ? <Badge tone="accent">Protected</Badge> : <Badge>No rules</Badge>}
+                      </span>
+                      <span className="mt-1 block text-sm text-muted">
+                        {environment.protected
+                          ? environmentSummary(environment).join(" · ")
+                          : "Named by a workflow or a secret. Jobs that deploy here start at once."}
+                      </span>
                     </span>
-                    <span className="mt-1 block text-sm text-muted">
-                      {environment.protected
-                        ? environmentSummary(environment).join(" · ")
-                        : "Named by a workflow or a secret. Jobs that deploy here start at once."}
+                    <span className="mt-0.5 hidden shrink-0 text-xs text-muted group-hover:text-fg sm:inline">
+                      {environment.protected ? "Edit rules" : "Add rules"}
                     </span>
-                  </span>
-                  <span className="mt-0.5 hidden shrink-0 text-xs text-muted group-hover:text-fg sm:inline">
-                    {environment.protected ? "Edit rules" : "Add rules"}
-                  </span>
-                  <ChevronRight size={16} className="mt-0.5 shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
-                </Link>
-              </li>
-            ))}
-          </ul>
+                    <ChevronRight size={16} className="mt-0.5 shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
       </section>
 
@@ -160,7 +164,7 @@ function EnvironmentList({ environments, base, badName }: { environments: Enviro
             />
             <span className="mt-1.5 block text-xs text-faint">Lowercase letters, digits, - and _, up to 40.</span>
           </div>
-          <Button type="submit" variant="quiet">
+          <Button type="submit" variant="outline">
             <Plus size={14} />
             Add rules
           </Button>
@@ -257,14 +261,16 @@ function EnvironmentEditor({
               ))}
             </ul>
           ) : (
-            <p className="rounded-xl border border-dashed border-line px-4 py-3 text-sm text-muted">
-              No reviewers: jobs need no approval to deploy here.
-            </p>
+            <Card asChild tone="plain" className="border-dashed px-4 py-3 text-sm text-muted">
+              <p>
+                No reviewers: jobs need no approval to deploy here.
+              </p>
+            </Card>
           )}
           <div className="flex flex-wrap items-center gap-3">
             <Button
               type="button"
-              variant="quiet"
+              variant="outline"
               disabled={full}
               onClick={() => setReviewers((list) => [...list, ...rows<EnvironmentReviewer>([{ type: "user", name: "" }])])}
             >
@@ -308,7 +314,7 @@ function EnvironmentEditor({
             />
           </RadioGroup>
           {policy === "selected" && (
-            <div className="space-y-2 rounded-xl border border-line bg-surface p-3">
+            <Card className="space-y-2 p-3">
               <ul className="space-y-2">
                 {patterns.map((pattern, index) => (
                   <li key={pattern.id} className="flex items-center gap-2">
@@ -345,13 +351,13 @@ function EnvironmentEditor({
               </ul>
               <Button
                 type="button"
-                variant="quiet"
+                variant="outline"
                 onClick={() => setPatterns((list) => [...list, ...rows<BranchPattern>([{ name: "", type: "branch" }])])}
               >
                 <Plus size={14} />
                 Add a pattern
               </Button>
-            </div>
+            </Card>
           )}
         </Section>
 
@@ -386,14 +392,16 @@ function EnvironmentEditor({
 function RemoveRow({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <Hint label={label}>
-      <button
+      <Button
         type="button"
         aria-label={label}
         onClick={onClick}
-        className="flex size-9 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger"
+        variant="ghost"
+        size="icon"
+        className="hover:text-danger"
       >
         <Trash2 size={14} />
-      </button>
+      </Button>
     </Hint>
   );
 }
@@ -404,7 +412,7 @@ function RemoveRules({ name }: { name: string }) {
       <div>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button type="button" variant="danger">
+            <Button type="button" variant="destructive">
               <Trash2 size={14} />
               Remove rules
             </Button>

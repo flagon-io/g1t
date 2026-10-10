@@ -7,6 +7,7 @@ import { PROVIDERS } from "@g1t/contracts";
 import type { Route } from "./+types/issue-new";
 import { page } from "../../lib/meta";
 import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { useMirrorReason } from "../../components/mirror";
@@ -103,33 +104,35 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
   return (
     <div className="max-w-2xl">
       {names.length > 0 && (
-        <Form method="post" className="mb-8 rounded-xl border border-line bg-surface p-4">
-          <input type="hidden" name="intent" value="import" />
-          <p className="flex items-center gap-2 text-sm font-medium">
-            <Download size={15} className="text-muted" />
-            Bring one in from {names.join(" or ")}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            Give a key such as TECH-1234 or paste its address. The issue stays linked: agents read the
-            original, and it hears back when the work lands.
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="min-w-56 grow">
-              <Input name="reference" required placeholder="TECH-1234" aria-label="Ticket key or address" />
+        <Card asChild className="mb-8 p-4">
+          <Form method="post">
+            <input type="hidden" name="intent" value="import" />
+            <p className="flex items-center gap-2 text-sm font-medium">
+              <Download size={15} className="text-muted" />
+              Bring one in from {names.join(" or ")}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              Give a key such as TECH-1234 or paste its address. The issue stays linked: agents read the
+              original, and it hears back when the work lands.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="min-w-56 grow">
+                <Input name="reference" required placeholder="TECH-1234" aria-label="Ticket key or address" />
+              </div>
+              <CheckboxOption name="assign" label="Put an agent on it" className="items-center" labelClassName="text-muted" />
+              <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
+                <SubmitButton variant="outline" match={{ intent: "import" }} pending="Importing…" disabled={mirrorBlocked != null}>
+                  Import
+                </SubmitButton>
+              </Hint>
             </div>
-            <CheckboxOption name="assign" label="Put an agent on it" className="items-center" labelClassName="text-muted" />
-            <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
-              <SubmitButton variant="quiet" match={{ intent: "import" }} pending="Importing…" disabled={mirrorBlocked != null}>
-                Import
-              </SubmitButton>
-            </Hint>
-          </div>
-          {actionData && "importError" in actionData && (
-            <div className="mt-2">
-              <ErrorText>{actionData.importError}</ErrorText>
-            </div>
-          )}
-        </Form>
+            {actionData && "importError" in actionData && (
+              <div className="mt-2">
+                <ErrorText>{actionData.importError}</ErrorText>
+              </div>
+            )}
+          </Form>
+        </Card>
       )}
       <Form method="post" className="space-y-4">
         <Field label="Title">

@@ -4,7 +4,8 @@ import { Form, data, redirect } from "react-router";
 import { REPO_ROLE_LABELS, REPO_ROLE_SUMMARIES } from "@g1t/contracts";
 
 import type { Route } from "./+types/invitations";
-import { Avatar, ButtonLink, ErrorText, SubmitButton, usePending } from "../../components/ui";
+import { ButtonLink, ErrorText, SubmitButton, usePending } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
 import { page } from "../../lib/meta";
 import { identity } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
@@ -64,10 +65,10 @@ export default function RepoInvitation({ loaderData, actionData, params }: Route
           it expired; an invitation lasts 7 days. Ask whoever invited you to send another.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <ButtonLink to={`/${full}`} variant="quiet">
+          <ButtonLink to={`/${full}`} variant="outline">
             Go to {full}
           </ButtonLink>
-          <ButtonLink to="/" variant="quiet">
+          <ButtonLink to="/" variant="outline">
             Mission control
           </ButtonLink>
         </div>
@@ -123,7 +124,7 @@ export default function RepoInvitation({ loaderData, actionData, params }: Route
           <SubmitButton name="intent" value="accept" disabled={answering} pending="Accepting…">
             Accept invitation
           </SubmitButton>
-          <SubmitButton name="intent" value="decline" variant="quiet" disabled={answering} pending="Declining…">
+          <SubmitButton name="intent" value="decline" variant="outline" disabled={answering} pending="Declining…">
             Decline
           </SubmitButton>
         </div>

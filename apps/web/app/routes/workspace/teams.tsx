@@ -7,6 +7,8 @@ import type { Route } from "./+types/teams";
 import { page } from "../../lib/meta";
 import { TeamRow } from "../../components/teams";
 import { ButtonLink, EmptyState, notACredential } from "../../components/ui";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { filterTeams, splitTeams } from "../../lib/teams";
 import { agentsOn } from "../../lib/people";
 import { identity, workspaceAgents } from "../../lib/services.server";
@@ -92,12 +94,14 @@ export default function WorkspaceTeams({ loaderData }: Route.ComponentProps) {
           Mention it as <span className="font-mono text-fg">@{slug}/team</span>, or ask it to review a pull request.
         </EmptyState>
       ) : mine.length + others.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
-          No teams match.{" "}
-          <button type="button" className="text-accent hover:underline" onClick={() => setQuery("")}>
-            Show them all
-          </button>
-        </p>
+        <Card asChild tone="plain" className="border-dashed px-4 py-8 text-center text-sm text-muted">
+          <p>
+            No teams match.{" "}
+            <Button type="button" variant="link" size="inline" onClick={() => setQuery("")}>
+              Show them all
+            </Button>
+          </p>
+        </Card>
       ) : (
         <>
           {mine.length > 0 && <TeamList title="Your teams" teams={mine} agents={agentCounts} />}
@@ -114,11 +118,13 @@ function TeamList({ title, teams, agents }: { title: string; teams: Team[]; agen
       <h2 className="mb-3 text-sm font-medium text-muted">
         {title} <span className="text-faint">{teams.length}</span>
       </h2>
-      <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-        {teams.map((team) => (
-          <TeamRow key={team.id} team={team} agents={agents[team.slug]} />
-        ))}
-      </ul>
+      <Card asChild tone="plain" divided className="overflow-hidden">
+        <ul>
+          {teams.map((team) => (
+            <TeamRow key={team.id} team={team} agents={agents[team.slug]} />
+          ))}
+        </ul>
+      </Card>
     </section>
   );
 }

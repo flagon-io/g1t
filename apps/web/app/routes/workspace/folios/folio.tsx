@@ -10,6 +10,7 @@ import { FOLIO_KIND_UI } from "../../../components/folios/kinds";
 import type { LiveStatus } from "../../../components/folios/provider";
 import { FolioHeader, type Presence } from "../../../components/folios/shell";
 import { ErrorText } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
 import { page as pageMeta } from "../../../lib/meta";
 import { folios } from "../../../lib/services.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
@@ -122,9 +123,9 @@ function NeedAccess({ slug, id }: { slug: string; id: string }) {
           }}
         >
           <input aria-label="Message" placeholder="Add a message (optional)" value={message} onChange={(e) => setMessage(e.target.value)} maxLength={500} className="h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none focus:border-accent/60" />
-          <button type="submit" disabled={state === "busy"} className="inline-flex h-9 items-center justify-center rounded-md bg-accent px-4 text-sm font-medium text-bg hover:bg-accent-hover disabled:opacity-60">
+          <Button type="submit" disabled={state === "busy"} variant="accent" className="px-4 disabled:opacity-60">
             {state === "busy" ? "Asking…" : "Ask for access"}
-          </button>
+          </Button>
           {error && <ErrorText>{error}</ErrorText>}
         </form>
       )}

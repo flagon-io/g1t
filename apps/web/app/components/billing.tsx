@@ -30,6 +30,7 @@ import {
   wholeDollars,
 } from "../lib/billing";
 import { ErrorText, SubmitButton } from "./ui";
+import { Badge } from "./ui/badge";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 
 /** An error the action returned, for the section it belongs to. */
@@ -287,13 +288,13 @@ export function PlanCard({
             </SubmitButton>
           ) : null}
           {(status.kind === "paid" || status.kind === "canceling" || status.kind === "past_due") && (
-            <SubmitButton variant={status.kind === "past_due" ? "accent" : "quiet"} name="intent" value="portal" pending="Opening Stripe…">
+            <SubmitButton variant={status.kind === "past_due" ? "accent" : "outline"} name="intent" value="portal" pending="Opening Stripe…">
               {status.kind === "past_due" ? "Update payment on Stripe" : "Manage on Stripe"}
               <ArrowUpRight size={14} />
             </SubmitButton>
           )}
           {status.kind === "paid" && subscription && (
-            <SubmitButton variant="quiet" name="intent" value="cancel" pending="Saving…">
+            <SubmitButton variant="outline" name="intent" value="cancel" pending="Saving…">
               End at the end of the period
             </SubmitButton>
           )}
@@ -401,7 +402,7 @@ export function TrialCard({
       {verified && left > 0 && <Meter label="Trial used" used={Math.max(0, trialMicros - left)} of={trialMicros} />}
       {!verified && enabled && owner && (
         <Form method="post" className="mt-4 flex flex-wrap items-center gap-3">
-          <SubmitButton variant="quiet" name="intent" value="card-check" pending="Opening Stripe…">
+          <SubmitButton variant="outline" name="intent" value="card-check" pending="Opening Stripe…">
             <ShieldCheck size={14} />
             Check a card
           </SubmitButton>
@@ -429,7 +430,7 @@ export function SpendLimitCard({ limit, owner, error }: { limit: Limit; owner: b
       icon={<Gauge size={16} />}
       title="Spend limit"
       about="What on-demand usage may reach this month, past what the plan includes. At the limit new work waits; runs already going finish."
-      aside={limit.firstMonth ? <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">First month</span> : null}
+      aside={limit.firstMonth ? <Badge size="md">First month</Badge> : null}
     >
       {limit.account.startsWith("ent_") && (
         <p className="mt-2 text-sm text-muted">
@@ -517,7 +518,7 @@ export function SpendLimitCard({ limit, owner, error }: { limit: Limit; owner: b
             </RadioGroup>
           </fieldset>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <SubmitButton variant="quiet" match={{ intent: "spend-limit" }} pending="Saving…">
+            <SubmitButton variant="outline" match={{ intent: "spend-limit" }} pending="Saving…">
               Save limit
             </SubmitButton>
             <a href="#raise" className="text-sm text-muted hover:text-fg">
@@ -596,7 +597,7 @@ export function RaiseCard({ requests, owner, error }: { requests: LimitRequest[]
               className={`${CONTROL} w-full`}
             />
           </label>
-          <SubmitButton variant="quiet" match={{ intent: "request", kind: "limit" }} pending="Sending…">
+          <SubmitButton variant="outline" match={{ intent: "request", kind: "limit" }} pending="Sending…">
             Send the request
           </SubmitButton>
           <ErrorText>{error}</ErrorText>
@@ -636,7 +637,7 @@ export function CreditsCard({ credits }: { credits: Credits }) {
           <li key={grant.id} className={`px-3.5 py-2.5 text-sm ${grant.state === "open" ? "" : "text-muted"}`}>
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className={`tabular-nums ${grant.state === "open" ? "font-medium" : ""}`}>{creditLine(grant)}</span>
-              <span className="rounded-full border border-line px-2 py-px text-xs text-muted">{CREDIT_KIND[grant.kind]}</span>
+              <Badge size="md" className="py-px">{CREDIT_KIND[grant.kind]}</Badge>
             </p>
             <p className="mt-0.5 text-xs text-faint">
               {grant.kind === "refund" && grant.refundFor ? `For ${grant.refundFor}. ` : ""}
@@ -682,7 +683,7 @@ export function PrepayCard({
           <input type="hidden" name="intent" value="prepay" />
           <div className="flex flex-wrap items-center gap-2">
             {PREPAY.presets.map((amount) => (
-              <SubmitButton key={amount} variant="quiet" name="amount" value={amount} match={{ intent: "prepay" }} pending="Opening Stripe…">
+              <SubmitButton key={amount} variant="outline" name="amount" value={amount} match={{ intent: "prepay" }} pending="Opening Stripe…">
                 {wholeDollars(amount * 1_000_000)}
               </SubmitButton>
             ))}
@@ -758,7 +759,7 @@ export function CapsCard({ entitlements, owner, error }: { entitlements: Entitle
             </span>
             <DollarInput name="issue" label="Issue cap in dollars" defaultValue={String(entitlements.issueCapMicros / 1_000_000)} />
           </label>
-          <SubmitButton variant="quiet" match={{ intent: "caps" }} pending="Saving…">
+          <SubmitButton variant="outline" match={{ intent: "caps" }} pending="Saving…">
             Save caps
           </SubmitButton>
         </Form>
@@ -795,7 +796,7 @@ export function OverageCard({ requests, owner, error }: { requests: LimitRequest
             placeholder="An agent kept retrying a failing check on Tuesday night."
             className={`${CONTROL} w-full`}
           />
-          <SubmitButton variant="quiet" match={{ intent: "request", kind: "overage" }} pending="Sending…">
+          <SubmitButton variant="outline" match={{ intent: "request", kind: "overage" }} pending="Sending…">
             Tell g1t
           </SubmitButton>
           <ErrorText>{error}</ErrorText>

@@ -8,9 +8,11 @@
 import type { Folio, FolioRef } from "@g1t/contracts";
 import { History, MessageSquare, Share2, Star, WifiOff } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Link, useRevalidator } from "react-router";
+import { useRevalidator } from "react-router";
 
 import { spacePath } from "../../lib/folios";
+import { ButtonLink } from "../ui";
+import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { foliosRequest } from "./actions";
 import { FolioGlyph } from "./kinds";
@@ -21,8 +23,6 @@ import { ShareDialog } from "./share-dialog";
 
 /** Someone here now, as the live document's awareness says. */
 export type Presence = { client: number; key: string; name: string; kind: "user" | "agent"; color: string; avatar: string | null; me: boolean };
-
-const ICON_BUTTON = "flex size-8 shrink-0 items-center justify-center rounded-md max-md:size-10";
 
 export function FolioHeader({
   slug,
@@ -88,23 +88,23 @@ export function FolioHeader({
         </span>
       )}
       {actions}
-      <button type="button" onClick={() => setSharing(true)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-line px-2.5 text-xs text-fg/85 hover:bg-raised max-md:size-10 max-md:justify-center max-md:px-0" aria-label="Share">
+      <Button type="button" onClick={() => setSharing(true)} variant="outline" size="sm" className="text-xs text-fg/85 hover:bg-raised max-md:size-10 max-md:justify-center max-md:px-0 font-normal" aria-label="Share">
         <Share2 size={13} /> <span className="max-md:hidden">Share</span>
-      </button>
+      </Button>
       {comments && (
         <Hint label={comments.open ? "Hide comments" : "Comments"}>
-          <button type="button" onClick={comments.onToggle} aria-pressed={comments.open} aria-label="Comments" className={`${ICON_BUTTON} ${comments.open ? "bg-raised text-fg" : "text-faint hover:bg-raised hover:text-fg"}`}>
+          <Button type="button" onClick={comments.onToggle} aria-pressed={comments.open} aria-label="Comments" variant="ghost" size="icon-sm" className="text-faint max-md:size-10">
             <MessageSquare size={16} />
-          </button>
+          </Button>
         </Hint>
       )}
       <Hint label="History">
-        <Link to={`${folio.path}/history`} aria-label="History" className={`${ICON_BUTTON} text-faint hover:bg-raised hover:text-fg max-sm:hidden`}>
+        <ButtonLink to={`${folio.path}/history`} aria-label="History" variant="ghost" size="icon-sm" className="text-faint max-md:size-10 max-sm:hidden">
           <History size={16} />
-        </Link>
+        </ButtonLink>
       </Hint>
       <Hint label={favorite ? "Remove from Favorites" : "Add to Favorites"}>
-        <button
+        <Button
           type="button"
           aria-label={favorite ? "Remove from Favorites" : "Add to Favorites"}
           aria-pressed={favorite}
@@ -117,10 +117,12 @@ export function FolioHeader({
               onError(done.error.message);
             }
           }}
-          className={`${ICON_BUTTON} text-faint hover:bg-raised hover:text-fg max-sm:hidden`}
+          variant="ghost"
+          size="icon-sm"
+          className="text-faint max-md:size-10 max-sm:hidden aria-pressed:bg-transparent aria-pressed:text-faint"
         >
           <Star size={16} className={favorite ? "fill-current text-warn" : ""} />
-        </button>
+        </Button>
       </Hint>
       <FolioMenu slug={slug} folio={{ ...folio, favorite }} page onError={onError} onTrashed={onTrashed} />
       <ShareDialog slug={slug} folio={folio} open={sharing} onOpenChange={setSharing} onChanged={() => void revalidate()} />

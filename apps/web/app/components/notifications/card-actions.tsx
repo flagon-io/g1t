@@ -3,6 +3,8 @@ import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
 import type { CardAction, CardActionResult, FeedNotification, Result } from "@g1t/contracts";
 
+import { Button, type ButtonVariant } from "../ui/button";
+import { Card } from "../ui/card";
 import { Hint } from "../ui/hint";
 import { InputAddon, InputGroup } from "../ui/input";
 import { cn } from "../../lib/cn";
@@ -16,16 +18,13 @@ import { cardActionRequest, notificationActions } from "../../lib/notify-store";
 // in the conversation; the card there changes for everyone, and this
 // notification is put away.
 
-const BASE =
-  "inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md px-2.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:pointer-events-none disabled:opacity-50 max-sm:h-9 max-sm:px-3";
-
-const STYLES: Record<NonNullable<CardAction["style"]>, string> = {
-  primary: "bg-accent text-bg hover:bg-accent-hover",
-  danger: "border border-danger/40 text-danger hover:border-danger hover:bg-danger/10",
-  default: "border border-line text-fg/85 hover:border-line-strong hover:bg-raised hover:text-fg",
-};
-
-const buttonClass = (style: CardAction["style"], active = false) => cn(BASE, STYLES[style ?? "default"], active && "border-accent/60 bg-raised text-fg");
+/** A notification's actions are the smallest buttons, taller to a finger on a phone; the action's style names the variant. */
+const VARIANT: Record<NonNullable<CardAction["style"]>, ButtonVariant> = { primary: "accent", danger: "destructive", default: "outline" };
+const buttonProps = (style: CardAction["style"], active = false) => ({
+  variant: VARIANT[style ?? "default"],
+  size: "xs" as const,
+  className: cn("max-sm:h-9 max-sm:px-3", active && "border-accent/60 bg-raised text-fg"),
+});
 
 type Said = { ok: boolean; message: string };
 
@@ -100,18 +99,18 @@ export function NotificationCardActions({
           const mode = actionMode(action);
           const asks = mode === "input" || mode === "confirm";
           return (
-            <button
+            <Button
               key={action.id}
               type="button"
               disabled={!!busy || !!said?.ok}
               aria-expanded={asks ? open === action.id : undefined}
               onClick={() => press(action)}
-              className={buttonClass(action.style, asks && open === action.id)}
+              {...buttonProps(action.style, asks && open === action.id)}
             >
               {busy === action.id && <LoaderCircle size={12} aria-hidden="true" className="-ml-0.5 animate-spin" />}
               {action.label}
               {mode === "link" && <ArrowUpRight size={12} aria-hidden="true" className="-mr-0.5 text-faint" />}
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -219,13 +218,13 @@ function Ask({ action, busy, onSubmit, onCancel }: { action: CardAction; busy: b
             />
           ))}
         <div className={cn("flex shrink-0 gap-1.5", !input && "w-full justify-end")}>
-          <button type="button" onClick={onCancel} className={buttonClass("default")}>
+          <Button type="button" onClick={onCancel} {...buttonProps("default")}>
             Cancel
-          </button>
-          <button type="submit" disabled={busy} aria-busy={busy || undefined} className={buttonClass(action.style === "danger" ? "danger" : "primary")}>
+          </Button>
+          <Button type="submit" disabled={busy} aria-busy={busy || undefined} {...buttonProps(action.style === "danger" ? "danger" : "primary")}>
             {busy && <LoaderCircle size={12} aria-hidden="true" className="-ml-0.5 animate-spin" />}
             {action.label}
-          </button>
+          </Button>
         </div>
       </div>
       {invalid && <p className="mt-1.5 text-[0.6875rem] text-danger">{money ? "Enter an amount in dollars, like 5.00." : "Write something first."}</p>}
@@ -248,33 +247,36 @@ export function WaitingCards({ onNavigate }: { onNavigate?: () => void }) {
       </h3>
       <ul className="space-y-2">
         {waiting.map((notification) => (
-          <li key={notification.id} className="relative rounded-lg border border-line bg-surface p-3">
-            <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-r bg-accent" />
-            <div className="flex items-start gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onNavigate?.();
-                  currentSink().open(notification.href);
-                }}
-                className="min-w-0 grow rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-              >
-                <span className="block truncate text-sm font-medium text-fg hover:underline">{notification.title}</span>
-                {notification.body && <span className="mt-0.5 line-clamp-2 block text-xs text-muted">{notification.body}</span>}
-              </button>
-              <Hint label="Put away">
+          <Card asChild key={notification.id} radius="lg" className="relative p-3">
+            <li>
+              <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-r bg-accent" />
+              <div className="flex items-start gap-2">
                 <button
                   type="button"
-                  aria-label="Put away"
-                  onClick={() => settle(notification.id)}
-                  className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
+                  onClick={() => {
+                    onNavigate?.();
+                    currentSink().open(notification.href);
+                  }}
+                  className="min-w-0 grow rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
                 >
-                  <X size={14} />
+                  <span className="block truncate text-sm font-medium text-fg hover:underline">{notification.title}</span>
+                  {notification.body && <span className="mt-0.5 line-clamp-2 block text-xs text-muted">{notification.body}</span>}
                 </button>
-              </Hint>
-            </div>
-            <NotificationCardActions notification={notification} onNavigate={onNavigate} className="mt-2.5" />
-          </li>
+                <Hint label="Put away">
+                  <Button
+                    type="button"
+                    aria-label="Put away"
+                    onClick={() => settle(notification.id)}
+                    variant="ghost" size="icon"
+                    className="size-6 text-faint"
+                  >
+                    <X size={14} />
+                  </Button>
+                </Hint>
+              </div>
+              <NotificationCardActions notification={notification} onNavigate={onNavigate} className="mt-2.5" />
+            </li>
+          </Card>
         ))}
       </ul>
     </section>

@@ -4,6 +4,7 @@ import type { Route } from "./+types/forgot";
 import { page } from "../lib/meta";
 import { AuthCard } from "../components/auth-card";
 import { ErrorText, Field, Input, SubmitButton } from "../components/ui";
+import { Card } from "../components/ui/card";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin, clientOf } from "../lib/session.server";
 
@@ -37,10 +38,12 @@ export default function Forgot({ actionData }: Route.ComponentProps) {
       }
     >
       {actionData?.sent ? (
-        <p className="rounded-lg border border-line bg-surface p-4 text-sm leading-6">
-          If that address belongs to an account, a reset link is on its way to
-          it. It works for one hour.
-        </p>
+        <Card asChild radius="lg" className="p-4 text-sm leading-6">
+          <p>
+            If that address belongs to an account, a reset link is on its way to
+            it. It works for one hour.
+          </p>
+        </Card>
       ) : (
         <Form method="post" className="space-y-4">
           <Field label="Email">

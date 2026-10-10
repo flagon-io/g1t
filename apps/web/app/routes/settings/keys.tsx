@@ -4,6 +4,7 @@ import { Form, Link } from "react-router";
 import type { Route } from "./+types/keys";
 import { page } from "../../lib/meta";
 import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { DeleteButton } from "../../components/account-settings";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 
@@ -40,14 +41,16 @@ export default function SshKeySettings({ loaderData, actionData }: Route.Compone
   const { keys } = loaderData;
   return (
     <section id="ssh-keys" className="scroll-mt-20">
-      <p className="mb-4 rounded-lg border border-dashed border-line p-3 text-xs text-muted">
-        Git over SSH is not on yet: it is waiting on inbound TCP on Cloudflare, which g1t has applied for. Keys you
-        add now will work as soon as it is. Until then, clone and push over HTTPS with an{" "}
-        <Link to="/settings/tokens" className="text-fg underline underline-offset-4">
-          access token
-        </Link>
-        .
-      </p>
+      <Card asChild tone="plain" radius="lg" className="mb-4 border-dashed p-3 text-xs text-muted">
+        <p>
+          Git over SSH is not on yet: it is waiting on inbound TCP on Cloudflare, which g1t has applied for. Keys you
+          add now will work as soon as it is. Until then, clone and push over HTTPS with an{" "}
+          <Link to="/settings/tokens" className="text-fg underline underline-offset-4">
+            access token
+          </Link>
+          .
+        </p>
+      </Card>
       <ul className="divide-y divide-line rounded-md border border-line empty:hidden">
         {keys.map((key) => (
           <li key={key.id} className="flex items-center gap-4 px-4 py-3">

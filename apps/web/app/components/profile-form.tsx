@@ -6,6 +6,7 @@ import { PROFILE_LIMITS, type Profile } from "@g1t/contracts";
 
 import { browserTimeZone, timeZoneLabel, timeZoneNames, utcOffset } from "../lib/time-zone";
 import { SubmitButton, usePending } from "./ui";
+import { Button } from "./ui/button";
 import { Combobox } from "./ui/combobox";
 import { Field, FieldDescription, FieldError, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
@@ -132,13 +133,15 @@ export function ProfileSection({
             {browserZone && browserZone !== timezone && (
               <>
                 {" "}
-                <button
+                <Button
                   type="button"
                   onClick={() => setTimezone(browserZone)}
-                  className="text-accent underline-offset-4 hover:underline"
+                  variant="link"
+                  size="inline"
+                  className="font-normal"
                 >
                   Use my browser's time zone ({timeZoneLabel(browserZone)})
-                </button>
+                </Button>
               </>
             )}
           </FieldDescription>

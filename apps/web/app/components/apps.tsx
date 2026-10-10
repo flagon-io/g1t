@@ -4,6 +4,7 @@ import { Link, useFetcher, useFetchers } from "react-router";
 
 import { ConnectorMark } from "./connectors";
 import { TierBadge } from "./marketplace";
+import { Card } from "./ui/card";
 import { Skeleton } from "./ui/skeleton";
 import { type BuiltinApp, type InstalledAppData, type PinnableApp, appPinFromForm, installedAppOf, withPin } from "../lib/apps";
 import { cn } from "../lib/cn";
@@ -196,17 +197,19 @@ export function AppsLauncher({ slug, pins, onToggle, onClose }: { slug: string; 
         <NoApps slug={slug} onOpen={onClose} compact />
       ) : (
         <>
-          <label className="flex h-9 items-center gap-2 rounded-lg border border-line bg-bg px-2.5 text-sm focus-within:border-line-strong">
-            <Search size={15} className="shrink-0 text-faint" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Find an app"
-              aria-label="Find an app"
-              autoComplete="off"
-              className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
-            />
-          </label>
+          <Card asChild tone="bg" radius="lg" className="flex h-9 items-center gap-2 px-2.5 text-sm focus-within:border-line-strong">
+            <label>
+              <Search size={15} className="shrink-0 text-faint" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Find an app"
+                aria-label="Find an app"
+                autoComplete="off"
+                className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
+              />
+            </label>
+          </Card>
           {apps.length === 0 ? (
             <p className="px-2 py-6 text-center text-sm text-muted">No installed app matches.</p>
           ) : (

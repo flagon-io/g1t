@@ -8,6 +8,7 @@ import type { Route } from "./+types/check-run";
 import { CheckStateIcon } from "../../components/commit-checks";
 import { Markdown } from "../../components/markdown";
 import { EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { accessTo, refusal } from "../../lib/access.server";
 import { checkDetail, took } from "../../lib/commit-checks";
@@ -90,7 +91,7 @@ function Annotations({ run, annotations, base }: { run: CommitCheckRun; annotati
         </span>
       </h3>
       {byFile(annotations).map(([path, list]) => (
-        <div key={path} className="overflow-hidden rounded-xl border border-line">
+        <Card key={path} tone="plain" className="overflow-hidden">
           <p className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm">
             <FileCode2 size={15} className="shrink-0 text-faint" />
             <Link to={`${base}/blob/${run.headSha}/${encodePath(path)}`} className="min-w-0 truncate font-mono text-[0.8125rem] hover:text-accent hover:underline">
@@ -124,7 +125,7 @@ function Annotations({ run, annotations, base }: { run: CommitCheckRun; annotati
               </li>
             ))}
           </ul>
-        </div>
+        </Card>
       ))}
     </section>
   );
@@ -150,96 +151,100 @@ export default function CheckRunPage({ loaderData, actionData, params }: Route.C
   const { title, summary, text } = run.output;
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-xl border border-line bg-surface">
-        <div className="flex flex-wrap items-start gap-x-4 gap-y-3 p-4 sm:p-5">
-          <span className="mt-1">
-            <CheckStateIcon state={shownState} size={22} />
-          </span>
-          <div className="min-w-0 grow basis-64">
-            <p className="text-xs text-faint">
-              <Link to={`${base}/commit/${run.headSha}`} className="hover:text-fg">
-                Checks
-              </Link>{" "}
-              · {run.app.name}
-            </p>
-            <h2 className="mt-1 text-xl font-semibold tracking-tight wrap-break-word">{run.name}</h2>
-            <p className="mt-1 text-sm text-muted">
-              {detail}
-              {run.conclusion && run.conclusion !== "success" && run.conclusion !== "failure" && (
-                <span className="text-faint"> · {run.conclusion.replace("_", " ")}</span>
-              )}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {run.detailsUrl && (
-              <a
-                href={run.detailsUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-fg/80 hover:border-line-strong hover:text-fg"
-              >
-                View on {run.app.name}
-                <ArrowUpRight size={14} />
-              </a>
-            )}
-            {canReport && (
-              <Form method="post">
-                <Hint label={`Ask ${run.app.name} to run it again`}>
-                  <SubmitButton variant="quiet" name="intent" value="rerequest" pending="Asking…" className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-fg/80 hover:border-line-strong hover:text-fg disabled:opacity-50">
-                    <RotateCw size={14} />
-                    Re-run
-                  </SubmitButton>
-                </Hint>
-              </Form>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line bg-bg/40 px-4 py-3 text-sm text-muted sm:px-5">
-          <span className="flex items-center gap-1.5">
-            <GitCommitHorizontal size={14} className="text-faint" />
-            <Link to={`${base}/commit/${run.headSha}`} className="font-mono text-xs text-fg/80 hover:text-accent hover:underline">
-              {run.headSha.slice(0, 7)}
-            </Link>
-          </span>
-          {run.startedAt && (
-            <span>
-              Started <TimeAgo at={run.startedAt} />
+      <Card asChild className="overflow-hidden">
+        <section>
+          <div className="flex flex-wrap items-start gap-x-4 gap-y-3 p-4 sm:p-5">
+            <span className="mt-1">
+              <CheckStateIcon state={shownState} size={22} />
             </span>
+            <div className="min-w-0 grow basis-64">
+              <p className="text-xs text-faint">
+                <Link to={`${base}/commit/${run.headSha}`} className="hover:text-fg">
+                  Checks
+                </Link>{" "}
+                · {run.app.name}
+              </p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight wrap-break-word">{run.name}</h2>
+              <p className="mt-1 text-sm text-muted">
+                {detail}
+                {run.conclusion && run.conclusion !== "success" && run.conclusion !== "failure" && (
+                  <span className="text-faint"> · {run.conclusion.replace("_", " ")}</span>
+                )}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {run.detailsUrl && (
+                <a
+                  href={run.detailsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-fg/80 hover:border-line-strong hover:text-fg"
+                >
+                  View on {run.app.name}
+                  <ArrowUpRight size={14} />
+                </a>
+              )}
+              {canReport && (
+                <Form method="post">
+                  <Hint label={`Ask ${run.app.name} to run it again`}>
+                    <SubmitButton variant="outline" size="sm" name="intent" value="rerequest" pending="Asking…">
+                      <RotateCw size={14} />
+                      Re-run
+                    </SubmitButton>
+                  </Hint>
+                </Form>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line bg-bg/40 px-4 py-3 text-sm text-muted sm:px-5">
+            <span className="flex items-center gap-1.5">
+              <GitCommitHorizontal size={14} className="text-faint" />
+              <Link to={`${base}/commit/${run.headSha}`} className="font-mono text-xs text-fg/80 hover:text-accent hover:underline">
+                {run.headSha.slice(0, 7)}
+              </Link>
+            </span>
+            {run.startedAt && (
+              <span>
+                Started <TimeAgo at={run.startedAt} />
+              </span>
+            )}
+            {run.completedAt && took(run.startedAt, run.completedAt) && <span>Took {took(run.startedAt, run.completedAt)}</span>}
+            {run.externalId && <span className="min-w-0 font-mono text-xs break-all text-faint">{run.externalId}</span>}
+          </div>
+          {run.actions.length > 0 && canReport && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-line px-5 py-3">
+              {run.actions.map((action) => (
+                <Form method="post" key={action.identifier}>
+                  <input type="hidden" name="intent" value="action" />
+                  <Hint label={action.description}>
+                    <SubmitButton variant="outline" size="sm" name="identifier" value={action.identifier} pending="Sending…">
+                      {action.label}
+                    </SubmitButton>
+                  </Hint>
+                </Form>
+              ))}
+            </div>
           )}
-          {run.completedAt && took(run.startedAt, run.completedAt) && <span>Took {took(run.startedAt, run.completedAt)}</span>}
-          {run.externalId && <span className="min-w-0 font-mono text-xs break-all text-faint">{run.externalId}</span>}
-        </div>
-        {run.actions.length > 0 && canReport && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-line px-5 py-3">
-            {run.actions.map((action) => (
-              <Form method="post" key={action.identifier}>
-                <input type="hidden" name="intent" value="action" />
-                <Hint label={action.description}>
-                  <SubmitButton variant="quiet" name="identifier" value={action.identifier} pending="Sending…" className="rounded-md border border-line px-3 py-1.5 text-sm text-fg/80 hover:border-line-strong hover:text-fg disabled:opacity-50">
-                    {action.label}
-                  </SubmitButton>
-                </Hint>
-              </Form>
-            ))}
-          </div>
-        )}
-        {actionData && (
-          <div className="border-t border-line px-5 py-2.5">
-            {"error" in actionData ? <ErrorText>{actionData.error}</ErrorText> : <p className="text-sm text-success">{actionData.notice}</p>}
-          </div>
-        )}
-      </section>
-
-      {title || summary || text ? (
-        <section className="rounded-xl border border-line p-4 sm:p-6">
-          {title && <h3 className="mb-3 text-lg font-semibold">{title}</h3>}
-          {summary && <Markdown source={summary} repo={{ namespace: params.owner, name: params.repo }} />}
-          {text && (
-            <div className={summary ? "mt-6 border-t border-line pt-6" : ""}>
-              <Markdown source={text} repo={{ namespace: params.owner, name: params.repo }} />
+          {actionData && (
+            <div className="border-t border-line px-5 py-2.5">
+              {"error" in actionData ? <ErrorText>{actionData.error}</ErrorText> : <p className="text-sm text-success">{actionData.notice}</p>}
             </div>
           )}
         </section>
+      </Card>
+
+      {title || summary || text ? (
+        <Card asChild tone="plain" className="p-4 sm:p-6">
+          <section>
+            {title && <h3 className="mb-3 text-lg font-semibold">{title}</h3>}
+            {summary && <Markdown source={summary} repo={{ namespace: params.owner, name: params.repo }} />}
+            {text && (
+              <div className={summary ? "mt-6 border-t border-line pt-6" : ""}>
+                <Markdown source={text} repo={{ namespace: params.owner, name: params.repo }} />
+              </div>
+            )}
+          </section>
+        </Card>
       ) : (
         <EmptyState title={run.status === "completed" ? "No report" : "No report yet"}>
           {run.app.name} {run.status === "completed" ? "said nothing more about this run." : "has not said anything more yet."}

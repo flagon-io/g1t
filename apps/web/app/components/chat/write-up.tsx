@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 
 import type { FoliosSidebar, Result } from "@g1t/contracts";
 
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Field, FieldError, FieldLabel } from "../ui/field";
 import { Input } from "../ui/input";
@@ -144,31 +146,33 @@ export function WriteUpDialog({
             />
           </Field>
           {body && (
-            <div className="rounded-lg border border-line bg-bg/60 p-3">
+            <Card tone="plain" radius="lg" className="bg-bg/60 p-3">
               <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted">
                 <FileText size={13} aria-hidden="true" />
                 Posts in this thread, as you
               </p>
               <p className="text-[0.8125rem] leading-snug break-words text-fg-soft">{body}</p>
-            </div>
+            </Card>
           )}
           <FieldError>{error}</FieldError>
           <DialogFooter>
-            <button
+            <Button
               type="button"
               onClick={() => onOpenChange(false)}
-              className="inline-flex h-9 items-center rounded-md border border-line px-3 text-sm font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-surface"
+              variant="outline"
+              className="px-3 text-fg/90"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={!body || busy}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-accent px-3.5 text-sm font-medium text-bg transition-colors hover:bg-accent-hover disabled:opacity-50"
+              variant="accent"
+              className="gap-1.5"
             >
               {busy && <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />}
               {busy ? "Asking…" : `Ask @${writer.handle}`}
-            </button>
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

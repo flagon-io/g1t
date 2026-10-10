@@ -3,8 +3,9 @@ import { Link } from "react-router";
 
 import { type CommitPerson, type ShownCommit, profileHref, shownName } from "../lib/commit-people";
 import { cn } from "../lib/cn";
-import { Avatar } from "./ui";
+
 import { UserCard } from "./user-card";
+import { Avatar } from "./ui/avatar";
 
 /**
  * A person on a commit, as an avatar: theirs and their card when the

@@ -59,16 +59,16 @@ export default function WorkspaceGateway({ loaderData }: Route.ComponentProps) {
         </dl>
         <div className="flex flex-wrap gap-2">
           {owner && (
-            <ButtonLink variant="quiet" to={`/${slug}/-/tokens`}>
+            <ButtonLink variant="outline" to={`/${slug}/-/tokens`}>
               <KeyRound size={14} />
               Access tokens
             </ButtonLink>
           )}
-          <ButtonLink variant="quiet" to={`/${slug}/-/integrations`}>
+          <ButtonLink variant="outline" to={`/${slug}/-/integrations`}>
             <Plug size={14} />
             Your own providers
           </ButtonLink>
-          <ButtonLink variant="quiet" to={GATEWAY_DOCS} reloadDocument>
+          <ButtonLink variant="outline" to={GATEWAY_DOCS} reloadDocument>
             <BookOpen size={14} />
             How to use it
           </ButtonLink>

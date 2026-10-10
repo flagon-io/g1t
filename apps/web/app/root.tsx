@@ -21,6 +21,7 @@ import appCss from "./app.css?url";
 import displayFont from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2?url";
 import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
 import { ButtonLink } from "./components/ui";
+import { Card } from "./components/ui/card";
 import { AppShell, Progress, type ShellData, useLeaving } from "./components/shell";
 import { SiteFooter } from "./components/footer";
 import { PublicHeader } from "./components/public-header";
@@ -529,14 +530,16 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
       <p className="mt-3 text-muted">{details}</p>
       <div className="mt-8">
-        <ButtonLink to="/" variant="quiet">
+        <ButtonLink to="/" variant="outline">
           Back to home
         </ButtonLink>
       </div>
       {stack && (
-        <pre className="mt-8 overflow-x-auto rounded-lg border border-line p-4 text-left text-xs">
-          <code>{stack}</code>
-        </pre>
+        <Card asChild tone="plain" radius="lg" className="mt-8 overflow-x-auto p-4 text-left text-xs">
+          <pre>
+            <code>{stack}</code>
+          </pre>
+        </Card>
       )}
     </PageMain>
   );

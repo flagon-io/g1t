@@ -5,6 +5,7 @@ import { Form, Link } from "react-router";
 import type { Invite, InvitesOverview } from "@g1t/contracts";
 
 import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
+import { Badge } from "./ui/badge";
 import { CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
 import { SelectField } from "./ui/select";
@@ -34,13 +35,13 @@ function InviteRow({ invite, origin }: { invite: Invite; origin: string }) {
               : "An invitation to join this workspace, which they accept or decline. Without an account, it lets them make one first."
           }
         >
-          <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">{kind.label}</span>
+          <Badge size="md">{kind.label}</Badge>
         </Hint>
         {(invite.status === "pending" || invite.status === "awaiting_confirmation" || invite.status === "awaiting_answer") && (
           <Form method="post" className="ml-auto">
             <input type="hidden" name="intent" value="revoke-invite" />
             <input type="hidden" name="id" value={invite.id} />
-            <SubmitButton variant="quiet" match={{ intent: "revoke-invite", id: invite.id }} pending="Revoking…">
+            <SubmitButton variant="outline" match={{ intent: "revoke-invite", id: invite.id }} pending="Revoking…">
               Revoke
             </SubmitButton>
           </Form>

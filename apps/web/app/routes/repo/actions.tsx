@@ -8,7 +8,9 @@ import type { Route } from "./+types/actions";
 import { page } from "../../lib/meta";
 import { Duration, Notes, StatusIcon, shortRef } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
-import { Button, ComputeNote, CopyLine, EmptyState, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
+import { ComputeNote, CopyLine, EmptyState, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { useWorkflowReason } from "../../components/mirror";
 import { Hint } from "../../components/ui/hint";
 import { CheckboxOption } from "../../components/ui/checkbox";
@@ -197,36 +199,36 @@ function RunWorkflow({ workflow }: { workflow: Workflow }) {
   return (
     <div className="relative">
       <Hint label={blocked} disabled={blocked != null}>
-        <Button type="button" variant="quiet" disabled={blocked != null} onClick={() => setOpen((v) => !v)}>
+        <Button type="button" variant="outline" disabled={blocked != null} onClick={() => setOpen((v) => !v)}>
           <Play size={14} />
           Run workflow
         </Button>
       </Hint>
       {open && (
-        <Form
-          method="post"
-          className="absolute right-0 z-20 mt-2 w-80 space-y-3 rounded-xl border border-line bg-surface p-4 shadow-xl"
-        >
-          <input type="hidden" name="intent" value="dispatch" />
-          <input type="hidden" name="workflow" value={workflow.id} />
-          <input type="hidden" name="booleans" value={booleans.join(",")} />
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-muted">Branch or tag</span>
-            <input
-              name="ref"
-              placeholder="The default branch"
-              className="w-full rounded-md border border-line bg-bg px-2.5 py-1.5 font-mono text-sm outline-none focus:border-accent-dim"
-              autoComplete="off"
-            />
-          </label>
-          {inputs.map(([name, spec]) => (
-            <InputField key={name} name={name} spec={spec} />
-          ))}
-          <SubmitButton match={{ intent: "dispatch", workflow: workflow.id }} pending="Starting…">
-            <PlayCircle size={14} />
-            Run
-          </SubmitButton>
-        </Form>
+        <Card asChild className="absolute right-0 z-20 mt-2 w-80 space-y-3 p-4 shadow-xl">
+          <Form
+            method="post">
+            <input type="hidden" name="intent" value="dispatch" />
+            <input type="hidden" name="workflow" value={workflow.id} />
+            <input type="hidden" name="booleans" value={booleans.join(",")} />
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">Branch or tag</span>
+              <input
+                name="ref"
+                placeholder="The default branch"
+                className="w-full rounded-md border border-line bg-bg px-2.5 py-1.5 font-mono text-sm outline-none focus:border-accent-dim"
+                autoComplete="off"
+              />
+            </label>
+            {inputs.map(([name, spec]) => (
+              <InputField key={name} name={name} spec={spec} />
+            ))}
+            <SubmitButton match={{ intent: "dispatch", workflow: workflow.id }} pending="Starting…">
+              <PlayCircle size={14} />
+              Run
+            </SubmitButton>
+          </Form>
+        </Card>
       )}
     </div>
   );
@@ -243,7 +245,7 @@ function StatusBadge({ workflow, repo }: { workflow: Workflow; repo: string }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button type="button" variant="quiet">
+        <Button type="button" variant="outline">
           <BadgeCheck size={14} />
           Create status badge
         </Button>
@@ -283,9 +285,9 @@ function StatusBadge({ workflow, repo }: { workflow: Workflow; repo: string }) {
             </Select>
           </div>
         </div>
-        <div className="flex min-h-10 items-center rounded-lg border border-line bg-bg px-3 py-2">
+        <Card tone="bg" radius="lg" className="flex min-h-10 items-center px-3 py-2">
           <img src={badgeUrl(site, repo, file, options)} alt={`${workflow.name} status`} height={20} />
-        </div>
+        </Card>
         <CopyLine text={badgeMarkdown(site, repo, { name: workflow.name, file }, options)} />
         <p className="text-xs text-muted">
           Anyone can see a public repository's badge. A private repository's shows only to people who can see the repository.
@@ -318,7 +320,7 @@ function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow
               <input type="hidden" name="workflow" value={workflow.id} />
               <input type="hidden" name="enabled" value={workflow.state === "active" ? "false" : "true"} />
               <SubmitButton
-                variant="quiet"
+                variant="outline"
                 match={{ intent: "toggle", workflow: workflow.id }}
                 pending={workflow.state === "active" ? "Turning off…" : "Turning on…"}
               >
@@ -447,11 +449,13 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
                 {workflow?.dispatch ? "Run it by hand, or wait for what starts it." : "Runs appear here when something starts one."}
               </EmptyState>
             ) : (
-              <ul className="overflow-hidden rounded-xl border border-line bg-surface">
-                {runs.map((run) => (
-                  <RunRow key={run.id} run={run} base={base} showWorkflow={!search.get("workflow")} />
-                ))}
-              </ul>
+              <Card asChild className="overflow-hidden">
+                <ul>
+                  {runs.map((run) => (
+                    <RunRow key={run.id} run={run} base={base} showWorkflow={!search.get("workflow")} />
+                  ))}
+                </ul>
+              </Card>
             )}
           </div>
         </div>

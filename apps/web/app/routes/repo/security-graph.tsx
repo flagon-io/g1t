@@ -5,6 +5,8 @@ import type { Route } from "./+types/security-graph";
 import { page } from "../../lib/meta";
 import { CARD, FilterSelect, SectionHeader } from "../../components/security-suite";
 import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { securitySuite } from "../../lib/services.server";
 import { getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireInsider } from "../../lib/access.server";
@@ -55,10 +57,12 @@ export default function DependencyGraph({ loaderData, params }: Route.ComponentP
         }
       />
       {graph.manifests.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">
-          No lockfiles on the default branch. g1t reads package-lock.json, pnpm-lock.yaml, yarn.lock, Cargo.lock, go.mod, go.sum,
-          requirements.txt and poetry.lock.
-        </p>
+        <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
+          <p>
+            No lockfiles on the default branch. g1t reads package-lock.json, pnpm-lock.yaml, yarn.lock, Cargo.lock, go.mod, go.sum,
+            requirements.txt and poetry.lock.
+          </p>
+        </Card>
       ) : (
         <>
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -89,21 +93,21 @@ export default function DependencyGraph({ loaderData, params }: Route.ComponentP
               onChange={(value) => set("relationship", value)}
             />
           </div>
-          <div className={`${CARD} overflow-x-auto`}>
-            <table className="w-full min-w-[40rem] text-sm">
-              <thead className="text-left text-xs text-muted">
-                <tr className="border-b border-line">
-                  <th className="px-4 py-2 font-medium">Package</th>
-                  <th className="px-3 py-2 font-medium">Version</th>
-                  <th className="px-3 py-2 font-medium">Relationship</th>
-                  <th className="px-3 py-2 font-medium">License</th>
-                  <th className="px-3 py-2 font-medium">Lockfile</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className={CARD}>
+            <Table className="min-w-[40rem]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="px-4">Package</TableHead>
+                  <TableHead>Version</TableHead>
+                  <TableHead>Relationship</TableHead>
+                  <TableHead>License</TableHead>
+                  <TableHead>Lockfile</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {shown.slice(0, SHOWN).map((dep) => (
-                  <tr key={`${dep.manifest}:${dep.name}@${dep.version}`} className="border-b border-line last:border-0">
-                    <td className="px-4 py-2">
+                  <TableRow key={`${dep.manifest}:${dep.name}@${dep.version}`}>
+                    <TableCell className="px-4">
                       <span className="font-mono text-xs">{dep.name}</span>
                       {dep.vulnerabilities > 0 && (
                         <Link to={`${base}/security/vulnerabilities`} className="ml-2">
@@ -112,18 +116,18 @@ export default function DependencyGraph({ loaderData, params }: Route.ComponentP
                           </Badge>
                         </Link>
                       )}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-xs">{dep.version}</td>
-                    <td className="px-3 py-2 text-xs text-muted">
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{dep.version}</TableCell>
+                    <TableCell className="text-xs text-muted">
                       {dep.relationship === "unknown" ? "not said" : dep.relationship}
                       {dep.development ? ", dev" : ""}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-muted">{dep.license ?? "—"}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-faint">{dep.manifest}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted">{dep.license ?? "—"}</TableCell>
+                    <TableCell className="font-mono text-xs text-faint">{dep.manifest}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           <p className="text-xs text-faint">
             {shown.length > SHOWN ? `The first ${SHOWN} of ${shown.length} shown; the SBOM has every package.` : `${shown.length} packages.`}

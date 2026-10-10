@@ -13,6 +13,7 @@ import type { Setting } from "@g1t/contracts";
 
 import type { SecretsAction, SecretsData } from "../lib/secrets.server";
 import { ButtonLink, EmptyState, ErrorText, SubmitButton, TimeAgo } from "./ui";
+import { Card } from "./ui/card";
 import { CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
 import { RadioCard, RadioGroup, RadioOption } from "./ui/radio-group";
@@ -87,11 +88,13 @@ export function SecretsPanel({
         )}
       </header>
 
-      <p className="mt-4 rounded-lg border border-line bg-surface px-4 py-2.5 text-xs text-muted">
-        Built in: workflows get <code className="text-fg">secrets.G1T_TOKEN</code>, the workspace's own token for
-        the run, with <code className="text-fg">secrets.GITHUB_TOKEN</code> as its alias. Agents
-        and the merge queue never read secrets or variables, and runs for people outside the workspace get no secrets.
-      </p>
+      <Card asChild radius="lg" className="mt-4 px-4 py-2.5 text-xs text-muted">
+        <p>
+          Built in: workflows get <code className="text-fg">secrets.G1T_TOKEN</code>, the workspace's own token for
+          the run, with <code className="text-fg">secrets.GITHUB_TOKEN</code> as its alias. Agents
+          and the merge queue never read secrets or variables, and runs for people outside the workspace get no secrets.
+        </p>
+      </Card>
 
       <div className="mt-5 flex flex-wrap gap-2">
         <label className="relative min-w-56 grow">
@@ -142,11 +145,13 @@ export function SecretsPanel({
         ) : shown.length === 0 ? (
           <EmptyState title="Nothing matches" />
         ) : (
-          <ul className="overflow-hidden rounded-xl border border-line bg-surface">
-            {shown.map((r) => (
-              <Row key={r.id} row={r} inherited={r.scope !== scope} manage={manage} />
-            ))}
-          </ul>
+          <Card asChild className="overflow-hidden">
+            <ul>
+              {shown.map((r) => (
+                <Row key={r.id} row={r} inherited={r.scope !== scope} manage={manage} />
+              ))}
+            </ul>
+          </Card>
         )}
       </div>
 
@@ -208,7 +213,9 @@ function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; man
                     icon
                     match={{ intent: "delete", id: row.id }}
                     aria-label={`Remove ${row.name}`}
-                    className="rounded-md p-1.5 text-faint max-sm:p-2.5 transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
+                    variant="ghost"
+                    size="inline"
+                    className="p-1.5 text-faint max-sm:p-2.5 hover:text-danger"
                   >
                     <Trash2 size={14} />
                   </SubmitButton>

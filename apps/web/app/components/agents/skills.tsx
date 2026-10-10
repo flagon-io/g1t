@@ -9,11 +9,12 @@ import { type ReactNode, useId, useState } from "react";
 import type { LibrarySkill, SkillAttachment, SkillLibrary, SkillOrigin, SkillScope } from "@g1t/contracts";
 
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field";
 import { Hint } from "../ui/hint";
 import { SelectField } from "../ui/select";
-import { BUTTONS, useDialogFetcher } from "./dialogs";
+import { useDialogFetcher } from "./dialogs";
 
 /** `/acme/-/agents/skills`, or one skill's page. */
 export function skillsPath(slug: string, name?: string, rest = ""): string {
@@ -148,12 +149,12 @@ export function AttachDialog({
           </Field>
           <FieldError>{error}</FieldError>
           <DialogFooter>
-            <button type="button" className={BUTTONS.QUIET} onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
-            </button>
-            <button type="submit" className={BUTTONS.PRIMARY} disabled={busy || !where}>
+            </Button>
+            <Button type="submit" variant="accent" disabled={busy || !where}>
               {busy ? "Attaching…" : "Attach"}
-            </button>
+            </Button>
           </DialogFooter>
         </fetcher.Form>
       </DialogContent>
@@ -189,12 +190,12 @@ export function AttachToAgentDialog({ agentName, skills, trigger }: { agentName:
           </Field>
           <FieldError>{error}</FieldError>
           <DialogFooter>
-            <button type="button" className={BUTTONS.QUIET} onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
-            </button>
-            <button type="submit" className={BUTTONS.PRIMARY} disabled={busy || !name}>
+            </Button>
+            <Button type="submit" variant="accent" disabled={busy || !name}>
               {busy ? "Attaching…" : "Attach"}
-            </button>
+            </Button>
           </DialogFooter>
         </fetcher.Form>
       </DialogContent>

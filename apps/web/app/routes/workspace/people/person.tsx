@@ -7,8 +7,9 @@ import type { DirectoryPerson } from "@g1t/contracts";
 import type { Route } from "./+types/person";
 import { AgentLink, AgentPersonFace, Coming, LocalTime, PersonFace, PersonLink, TeamKindMark } from "../../../components/people";
 import { PresenceSummary } from "../../../components/presence";
-import { Button, ErrorText, Field, Input, SubmitButton, Textarea } from "../../../components/ui";
+import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../../components/ui";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
 import { SelectField } from "../../../components/ui/select";
 import { channelPath } from "../../../lib/chat";
@@ -316,7 +317,7 @@ function EditProfile({
   const choices = managerChoices(people, person.username);
   return (
     <>
-      <Button variant="quiet" onClick={() => setOpen(true)}>
+      <Button variant="outline" onClick={() => setOpen(true)}>
         <Pencil size={14} />
         Edit profile
       </Button>
@@ -347,7 +348,7 @@ function EditProfile({
             )}
             {actionData?.intent === "profile" && <ErrorText>{actionData.error}</ErrorText>}
             <DialogFooter>
-              <Button variant="quiet" type="button" onClick={() => setOpen(false)}>
+              <Button variant="outline" type="button" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
               <SubmitButton pending="Saving…" match={{ intent: "profile" }}>

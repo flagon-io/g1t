@@ -6,6 +6,7 @@ import { answerInvitation, loadInvitations } from "../lib/invitations.server";
 import { declinedLine } from "../lib/invitations";
 import { page } from "../lib/meta";
 import { assertSameOrigin, nextPath, requireUser } from "../lib/session.server";
+import { Card } from "../components/ui/card";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Invitations · g1t" });
@@ -54,7 +55,7 @@ export default function Invitations({ loaderData, actionData }: Route.ComponentP
             next={next}
           />
         ) : (
-          <div className="rounded-xl border border-dashed border-line px-6 py-10 text-center">
+          <Card tone="plain" className="border-dashed px-6 py-10 text-center">
             <p className="text-sm font-medium">No invitations waiting</p>
             <p className="mt-1 text-sm text-muted">
               {hasWorkspace ? (
@@ -74,7 +75,7 @@ export default function Invitations({ loaderData, actionData }: Route.ComponentP
                 </>
               )}
             </p>
-          </div>
+          </Card>
         )}
       </div>
     </main>

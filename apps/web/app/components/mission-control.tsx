@@ -34,7 +34,9 @@ import type { ShellData } from "./shell";
 import { useLiveRefresh } from "./agents";
 import { Unavailable } from "./mission";
 import { TokenUsagePanel } from "./token-usage";
-import { Avatar, SubmitButton, TimeAgo } from "./ui";
+import { SubmitButton, TimeAgo } from "./ui";
+import { Avatar } from "./ui/avatar";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import type { Loaded } from "../lib/mission-control.server";
@@ -124,7 +126,7 @@ function Facts({ facts }: { facts: Fact[] }) {
  * has answered and the page has reloaded what it changed, then done, or
  * the error beside it.
  */
-function QuickForm({ quick, variant = "quiet" }: { quick: QuickAction; variant?: "quiet" | "accent" }) {
+function QuickForm({ quick, variant = "outline" }: { quick: QuickAction; variant?: "outline" | "accent" }) {
   const fetcher = useFetcher<{ error?: string } | null>();
   const [sent, setSent] = useState(false);
   const done = sent && fetcher.state === "idle" && !fetcher.data?.error;
@@ -236,7 +238,7 @@ function NeedCard({ row, first }: { row: NeedRow; first: boolean }) {
       chip={<Chip tone={CHIP_TONE[row.reason]}>{REASON_LABEL[row.reason]}</Chip>}
       at={row.at}
     >
-      <div className="grid gap-4 rounded-xl border border-line bg-bg/50 p-4 md:grid-cols-2 md:gap-x-6 2xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,0.95fr)]">
+      <Card tone="plain" className="grid gap-4 bg-bg/50 p-4 md:grid-cols-2 md:gap-x-6 2xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,0.95fr)]">
         <div className="min-w-0">
           <Eyebrow>The ask</Eyebrow>
           <p className="mt-2 text-sm leading-6 text-fg-soft">{row.ask}</p>
@@ -265,7 +267,7 @@ function NeedCard({ row, first }: { row: NeedRow; first: boolean }) {
             Started waiting <TimeAgo at={row.at} />
           </p>
         </div>
-      </div>
+      </Card>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Link
           to={row.to}
@@ -314,7 +316,7 @@ function WaitingCard({ row, first }: { row: WaitingRow; first: boolean }) {
       }
       at={row.at}
     >
-      <div className="grid gap-4 rounded-xl border border-line bg-bg/50 p-4 md:grid-cols-2 md:gap-6">
+      <Card tone="plain" className="grid gap-4 bg-bg/50 p-4 md:grid-cols-2 md:gap-6">
         <div className="min-w-0">
           <Eyebrow>{row.live ? "Doing now" : "Where it stands"}</Eyebrow>
           <p className="mt-2 text-sm leading-6 text-fg-soft">{row.detail}</p>
@@ -325,7 +327,7 @@ function WaitingCard({ row, first }: { row: WaitingRow; first: boolean }) {
             <Facts facts={row.facts} />
           </div>
         </div>
-      </div>
+      </Card>
       <div className="mt-3 flex flex-wrap gap-2">
         <Link
           to={row.to}
@@ -366,7 +368,7 @@ function LandedCard({ row, first }: { row: LandedRow; first: boolean }) {
       }
       at={row.at}
     >
-      <div className="grid gap-4 rounded-xl border border-line bg-bg/50 p-4 md:grid-cols-2 md:gap-6">
+      <Card tone="plain" className="grid gap-4 bg-bg/50 p-4 md:grid-cols-2 md:gap-6">
         <div className="min-w-0">
           <Eyebrow>How it landed</Eyebrow>
           <p className="mt-2 text-sm leading-6 text-fg-soft">
@@ -382,7 +384,7 @@ function LandedCard({ row, first }: { row: LandedRow; first: boolean }) {
             <Facts facts={row.facts} />
           </div>
         </div>
-      </div>
+      </Card>
       <div className="mt-3">
         <Link
           to={row.to}
@@ -454,9 +456,11 @@ function WeekChart({ week }: { week: Week }) {
         ) : null}
       </div>
       {week.total === 0 ? (
-        <p className="mt-4 rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm leading-6 text-muted">
-          Nothing landed in the last 7 days. Each change that does shows here, by day: agents' changes that landed on their own, agents' that a person merged, and people's own.
-        </p>
+        <Card asChild tone="plain" radius="lg" className="mt-4 border-dashed px-4 py-6 text-center text-sm leading-6 text-muted">
+          <p>
+            Nothing landed in the last 7 days. Each change that does shows here, by day: agents' changes that landed on their own, agents' that a person merged, and people's own.
+          </p>
+        </Card>
       ) : (
         <div className="relative mt-5" style={{ height: height + 20 }}>
           <div className="absolute inset-x-0 border-t border-line" style={{ top: height }} />
@@ -626,43 +630,45 @@ type Step = { done: boolean; title: string; about: string; to: string | null; ac
 function GetStarted({ steps }: { steps: Step[] }) {
   const left = steps.filter((step) => !step.done).length;
   return (
-    <section className="rounded-xl border border-line bg-surface p-5">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-base font-semibold tracking-tight">Get started</h2>
-        <span className="text-xs text-muted">
-          {steps.length - left} of {steps.length} done
-        </span>
-      </div>
-      <ol className="mt-4 space-y-2">
-        {steps.map((step, index) => (
-          <li
-            key={step.title}
-            className={cn("flex items-start gap-3 rounded-lg px-3 py-2.5", step.done ? "" : "bg-bg/50 ring-1 ring-line")}
-          >
-            <span
-              className={cn(
-                "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-medium",
-                step.done ? "bg-success text-bg" : "text-muted ring-1 ring-line-strong",
-              )}
+    <Card asChild className="p-5">
+      <section>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-base font-semibold tracking-tight">Get started</h2>
+          <span className="text-xs text-muted">
+            {steps.length - left} of {steps.length} done
+          </span>
+        </div>
+        <ol className="mt-4 space-y-2">
+          {steps.map((step, index) => (
+            <li
+              key={step.title}
+              className={cn("flex items-start gap-3 rounded-lg px-3 py-2.5", step.done ? "" : "bg-bg/50 ring-1 ring-line")}
             >
-              {step.done ? <Check size={12} /> : index + 1}
-            </span>
-            <span className="min-w-0 grow">
-              <span className={cn("block text-sm font-medium", step.done && "text-muted line-through decoration-faint")}>{step.title}</span>
-              {!step.done && <span className="mt-0.5 block text-xs leading-5 text-muted">{step.about}</span>}
-            </span>
-            {!step.done && step.to && (
-              <Link
-                to={step.to}
-                className="shrink-0 rounded-md bg-fg px-2.5 py-1 text-xs font-medium text-bg transition-colors hover:bg-fg-hover"
+              <span
+                className={cn(
+                  "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-medium",
+                  step.done ? "bg-success text-bg" : "text-muted ring-1 ring-line-strong",
+                )}
               >
-                {step.action}
-              </Link>
-            )}
-          </li>
-        ))}
-      </ol>
-    </section>
+                {step.done ? <Check size={12} /> : index + 1}
+              </span>
+              <span className="min-w-0 grow">
+                <span className={cn("block text-sm font-medium", step.done && "text-muted line-through decoration-faint")}>{step.title}</span>
+                {!step.done && <span className="mt-0.5 block text-xs leading-5 text-muted">{step.about}</span>}
+              </span>
+              {!step.done && step.to && (
+                <Link
+                  to={step.to}
+                  className="shrink-0 rounded-md bg-fg px-2.5 py-1 text-xs font-medium text-bg transition-colors hover:bg-fg-hover"
+                >
+                  {step.action}
+                </Link>
+              )}
+            </li>
+          ))}
+        </ol>
+      </section>
+    </Card>
   );
 }
 
@@ -918,235 +924,239 @@ export default function MissionControl({
 
       {starting && <GetStarted steps={steps} />}
 
-      <section
-        aria-label="At a glance"
-        className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line lg:grid-cols-5"
-      >
-        <Stat
-          label="Projects"
-          value={stats.projects == null ? "—" : String(stats.projects)}
-          hint={
-            stats.projectsThisMonth == null
-              ? "in this workspace"
-              : stats.projectsThisMonth > 0
-                ? `+${stats.projectsThisMonth} this month`
-                : "none new this month"
-          }
-        />
-        <Stat
-          label="Agents"
-          value={loaded.runsLoaded || !workspace ? String(liveTotal) : "—"}
-          dot={liveTotal > 0 ? "bg-success animate-pulse" : undefined}
-          hint={
-            liveTotal > 0
-              ? `live now · ${stats.agentHours < 10 ? stats.agentHours.toFixed(1) : Math.round(stats.agentHours)}h this week`
-              : stats.agentHours > 0
-                ? `none live · ${stats.agentHours < 10 ? stats.agentHours.toFixed(1) : Math.round(stats.agentHours)}h this week`
-                : "none live now"
-          }
-        />
-        <Stat
-          label="Changes this week"
-          value={loaded.perRepoLoaded ? String(week.total) : "—"}
-          hint={
-            delta != null ? `${signedPercent(delta)} vs last week` : week.previous === 0 ? "none the week before" : "merged pull requests"
-          }
-        />
-        <Stat
-          label="Landed without you"
-          dot="bg-accent"
-          value={share == null ? "—" : `${Math.round(share * 100)}%`}
-          hint={share == null ? "no agent changes yet" : `${week.byAgents} of ${week.agentChanges} agent changes`}
-          title="Of the changes agents wrote, those g1t merged by auto-merge or the merge queue, with no person pressing merge. People's own changes are not counted."
-        />
-        <div className="col-span-2 lg:col-span-1">
+      <Card asChild tone="plain" className="grid grid-cols-2 gap-px overflow-hidden bg-line lg:grid-cols-5">
+        <section
+          aria-label="At a glance">
           <Stat
-            label="Needs you"
-            dot="bg-warn"
-            value={String(needs.length)}
-            hint={blocking > 0 ? `${blocking} blocking` : needs.length > 0 ? "nothing blocking" : "all clear"}
+            label="Projects"
+            value={stats.projects == null ? "—" : String(stats.projects)}
+            hint={
+              stats.projectsThisMonth == null
+                ? "in this workspace"
+                : stats.projectsThisMonth > 0
+                  ? `+${stats.projectsThisMonth} this month`
+                  : "none new this month"
+            }
           />
-        </div>
-      </section>
+          <Stat
+            label="Agents"
+            value={loaded.runsLoaded || !workspace ? String(liveTotal) : "—"}
+            dot={liveTotal > 0 ? "bg-success animate-pulse" : undefined}
+            hint={
+              liveTotal > 0
+                ? `live now · ${stats.agentHours < 10 ? stats.agentHours.toFixed(1) : Math.round(stats.agentHours)}h this week`
+                : stats.agentHours > 0
+                  ? `none live · ${stats.agentHours < 10 ? stats.agentHours.toFixed(1) : Math.round(stats.agentHours)}h this week`
+                  : "none live now"
+            }
+          />
+          <Stat
+            label="Changes this week"
+            value={loaded.perRepoLoaded ? String(week.total) : "—"}
+            hint={
+              delta != null ? `${signedPercent(delta)} vs last week` : week.previous === 0 ? "none the week before" : "merged pull requests"
+            }
+          />
+          <Stat
+            label="Landed without you"
+            dot="bg-accent"
+            value={share == null ? "—" : `${Math.round(share * 100)}%`}
+            hint={share == null ? "no agent changes yet" : `${week.byAgents} of ${week.agentChanges} agent changes`}
+            title="Of the changes agents wrote, those g1t merged by auto-merge or the merge queue, with no person pressing merge. People's own changes are not counted."
+          />
+          <div className="col-span-2 lg:col-span-1">
+            <Stat
+              label="Needs you"
+              dot="bg-warn"
+              value={String(needs.length)}
+              hint={blocking > 0 ? `${blocking} blocking` : needs.length > 0 ? "nothing blocking" : "all clear"}
+            />
+          </div>
+        </section>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[minmax(0,1fr)_23rem]">
-        <section id="work" className="min-w-0 scroll-mt-20 self-start overflow-hidden rounded-xl border border-line bg-surface">
-          <div className="flex items-center gap-2 border-b border-line px-2 sm:px-3">
-            <nav className="-mb-px flex min-w-0 grow gap-1 overflow-x-auto [scrollbar-width:none]" aria-label="Overview">
-              {(["needs", "waiting", "landed"] as const).map((value) => (
-                <Link
-                  key={value}
-                  to={link({ tab: value, all: null })}
-                  preventScrollReset
-                  aria-current={tab === value ? "page" : undefined}
-                  className={cn(
-                    "flex shrink-0 items-center gap-1.5 border-b-2 px-2 py-3 text-sm whitespace-nowrap transition-colors sm:px-2.5",
-                    tab === value ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg",
-                  )}
-                >
-                  <span className="sm:hidden">{TAB_SHORT[value]}</span>
-                  <span className="hidden sm:inline">{TAB_LABEL[value]}</span>
-                  <span
+        <Card asChild className="min-w-0 scroll-mt-20 self-start overflow-hidden">
+          <section id="work">
+            <div className="flex items-center gap-2 border-b border-line px-2 sm:px-3">
+              <nav className="-mb-px flex min-w-0 grow gap-1 overflow-x-auto [scrollbar-width:none]" aria-label="Overview">
+                {(["needs", "waiting", "landed"] as const).map((value) => (
+                  <Link
+                    key={value}
+                    to={link({ tab: value, all: null })}
+                    preventScrollReset
+                    aria-current={tab === value ? "page" : undefined}
                     className={cn(
-                      "rounded-full px-1.5 text-[0.6875rem] tabular-nums",
-                      tab === value && value === "needs" && counts.needs > 0 ? "bg-warn/15 text-warn" : "bg-line text-muted",
+                      "flex shrink-0 items-center gap-1.5 border-b-2 px-2 py-3 text-sm whitespace-nowrap transition-colors sm:px-2.5",
+                      tab === value ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg",
                     )}
                   >
-                    {counts[value]}
-                  </span>
-                </Link>
-              ))}
-            </nav>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted hover:bg-raised hover:text-fg"
-                aria-label="Sort"
-              >
-                <ArrowDownWideNarrow size={14} />
-                <span className="hidden sm:inline">{SORT_LABEL[sort]}</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {(["impact", "newest"] as const).map((value) => (
-                  <DropdownMenuItem key={value} asChild>
-                    <Link to={link({ sort: value === "impact" ? null : value })} preventScrollReset>
-                      {sort === value ? <Check /> : <span className="size-4" />}
-                      {SORT_LABEL[value]}
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {!loaded.perRepoLoaded && tab !== "waiting" ? (
-            <div className="p-4">
-              <Unavailable what={tab === "needs" ? "Some of what needs you" : "What landed"} />
-            </div>
-          ) : null}
-
-          {tab === "needs" &&
-            (needs.length === 0 ? (
-              noProjects ? (
-                <Empty
-                  action={
-                    <Link
-                      to={"/new"}
-                      className="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg-hover"
+                    <span className="sm:hidden">{TAB_SHORT[value]}</span>
+                    <span className="hidden sm:inline">{TAB_LABEL[value]}</span>
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 text-[0.6875rem] tabular-nums",
+                        tab === value && value === "needs" && counts.needs > 0 ? "bg-warn/15 text-warn" : "bg-line text-muted",
+                      )}
                     >
-                      Create or import a project
-                    </Link>
-                  }
+                      {counts[value]}
+                    </span>
+                  </Link>
+                ))}
+              </nav>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted hover:bg-raised hover:text-fg"
+                  aria-label="Sort"
                 >
-                  <p className="font-medium text-fg">No projects yet</p>
+                  <ArrowDownWideNarrow size={14} />
+                  <span className="hidden sm:inline">{SORT_LABEL[sort]}</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {(["impact", "newest"] as const).map((value) => (
+                    <DropdownMenuItem key={value} asChild>
+                      <Link to={link({ sort: value === "impact" ? null : value })} preventScrollReset>
+                        {sort === value ? <Check /> : <span className="size-4" />}
+                        {SORT_LABEL[value]}
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {!loaded.perRepoLoaded && tab !== "waiting" ? (
+              <div className="p-4">
+                <Unavailable what={tab === "needs" ? "Some of what needs you" : "What landed"} />
+              </div>
+            ) : null}
+
+            {tab === "needs" &&
+              (needs.length === 0 ? (
+                noProjects ? (
+                  <Empty
+                    action={
+                      <Link
+                        to={"/new"}
+                        className="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg-hover"
+                      >
+                        Create or import a project
+                      </Link>
+                    }
+                  >
+                    <p className="font-medium text-fg">No projects yet</p>
+                    <p className="mt-1">
+                      Create a repository or import one. Assign its issues to g1t, and what needs you shows up here.
+                    </p>
+                  </Empty>
+                ) : (
+                  <>
+                    <Empty>
+                      <p className="font-medium text-fg">Nothing needs you</p>
+                      <p className="mt-1">
+                        Agents are handling everything.{" "}
+                        {landed.length > 0
+                          ? "Here's what they landed today."
+                          : "Reviews, stopped work and failed deploys show up here first."}
+                      </p>
+                    </Empty>
+                    {landed.length > 0 && (
+                      <div className="border-t border-line">
+                        <List>
+                          {landed.slice(0, ROWS).map((row) => (
+                            <LandedCard key={row.key} row={row} first={false} />
+                          ))}
+                        </List>
+                      </div>
+                    )}
+                  </>
+                )
+              ) : (
+                <List>
+                  {(shown as NeedRow[]).map((row, index) => (
+                    <NeedCard key={row.key} row={row} first={index === 0} />
+                  ))}
+                </List>
+              ))}
+
+            {tab === "waiting" &&
+              (!loaded.runsLoaded && workspace ? (
+                <div className="p-4">
+                  <Unavailable what="Agent runs" />
+                </div>
+              ) : waiting.length === 0 ? (
+                <Empty>
+                  <p className="font-medium text-fg">No agent is at work right now</p>
+                  <p className="mt-1">Assign an issue to g1t and one starts on it in seconds. Its run shows here while it works.</p>
+                </Empty>
+              ) : (
+                <List>
+                  {(shown as WaitingRow[]).map((row, index) => (
+                    <WaitingCard key={row.key} row={row} first={index === 0} />
+                  ))}
+                </List>
+              ))}
+
+            {tab === "landed" &&
+              loaded.perRepoLoaded &&
+              (landed.length === 0 ? (
+                <Empty>
+                  <p className="font-medium text-fg">Nothing has landed today yet</p>
                   <p className="mt-1">
-                    Create a repository or import one. Assign its issues to g1t, and what needs you shows up here.
+                    {week.total > 0
+                      ? `${plural(week.total, "change")} landed in the last 7 days.`
+                      : "Merged pull requests show up here the moment they land."}
                   </p>
                 </Empty>
               ) : (
-                <>
-                  <Empty>
-                    <p className="font-medium text-fg">Nothing needs you</p>
-                    <p className="mt-1">
-                      Agents are handling everything.{" "}
-                      {landed.length > 0
-                        ? "Here's what they landed today."
-                        : "Reviews, stopped work and failed deploys show up here first."}
-                    </p>
-                  </Empty>
-                  {landed.length > 0 && (
-                    <div className="border-t border-line">
-                      <List>
-                        {landed.slice(0, ROWS).map((row) => (
-                          <LandedCard key={row.key} row={row} first={false} />
-                        ))}
-                      </List>
-                    </div>
-                  )}
-                </>
-              )
-            ) : (
-              <List>
-                {(shown as NeedRow[]).map((row, index) => (
-                  <NeedCard key={row.key} row={row} first={index === 0} />
-                ))}
-              </List>
-            ))}
+                <List>
+                  {(shown as LandedRow[]).map((row, index) => (
+                    <LandedCard key={row.key} row={row} first={index === 0} />
+                  ))}
+                </List>
+              ))}
 
-          {tab === "waiting" &&
-            (!loaded.runsLoaded && workspace ? (
-              <div className="p-4">
-                <Unavailable what="Agent runs" />
+            {rows.length > ROWS && (
+              <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-xs text-muted sm:px-5">
+                <span>
+                  Showing {shown.length} of {rows.length}
+                </span>
+                <Link
+                  to={link({ all: all ? null : "1" })}
+                  preventScrollReset
+                  className="inline-flex items-center gap-1 font-medium text-fg-soft hover:text-fg"
+                >
+                  {all ? "Show fewer" : "See all"} <ChevronRight size={12} />
+                </Link>
               </div>
-            ) : waiting.length === 0 ? (
-              <Empty>
-                <p className="font-medium text-fg">No agent is at work right now</p>
-                <p className="mt-1">Assign an issue to g1t and one starts on it in seconds. Its run shows here while it works.</p>
-              </Empty>
-            ) : (
-              <List>
-                {(shown as WaitingRow[]).map((row, index) => (
-                  <WaitingCard key={row.key} row={row} first={index === 0} />
-                ))}
-              </List>
-            ))}
-
-          {tab === "landed" &&
-            loaded.perRepoLoaded &&
-            (landed.length === 0 ? (
-              <Empty>
-                <p className="font-medium text-fg">Nothing has landed today yet</p>
-                <p className="mt-1">
-                  {week.total > 0
-                    ? `${plural(week.total, "change")} landed in the last 7 days.`
-                    : "Merged pull requests show up here the moment they land."}
-                </p>
-              </Empty>
-            ) : (
-              <List>
-                {(shown as LandedRow[]).map((row, index) => (
-                  <LandedCard key={row.key} row={row} first={index === 0} />
-                ))}
-              </List>
-            ))}
-
-          {rows.length > ROWS && (
-            <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-xs text-muted sm:px-5">
-              <span>
-                Showing {shown.length} of {rows.length}
-              </span>
-              <Link
-                to={link({ all: all ? null : "1" })}
-                preventScrollReset
-                className="inline-flex items-center gap-1 font-medium text-fg-soft hover:text-fg"
-              >
-                {all ? "Show fewer" : "See all"} <ChevronRight size={12} />
-              </Link>
-            </div>
-          )}
-        </section>
+            )}
+          </section>
+        </Card>
 
         <aside className="min-w-0 space-y-6">
           <InboxNeedsCard items={loaderData.inboxNeeds.items} total={loaderData.inboxNeeds.total} />
-          <section className="rounded-xl border border-line bg-surface p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold tracking-tight">This week</h2>
-              {workspace && (
-                <Link to={`/${workspace}/-/agents`} className="text-xs text-muted hover:text-fg">
-                  Fleet
+          <Card asChild className="p-5">
+            <section>
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold tracking-tight">This week</h2>
+                {workspace && (
+                  <Link to={`/${workspace}/-/agents`} className="text-xs text-muted hover:text-fg">
+                    Fleet
+                  </Link>
+                )}
+              </div>
+              <div className="mt-4">{loaded.perRepoLoaded ? <WeekChart week={week} /> : <Unavailable what="The week" />}</div>
+              {workspace && stats.weekCost > 0 && (
+                <Link
+                  to={`/${workspace}/-/usage`}
+                  className="mt-4 flex items-center justify-between border-t border-line pt-3 text-xs text-muted hover:text-fg"
+                >
+                  <span>Usage at price this week: {usd(stats.weekCost)}</span>
+                  <ChevronRight size={12} />
                 </Link>
               )}
-            </div>
-            <div className="mt-4">{loaded.perRepoLoaded ? <WeekChart week={week} /> : <Unavailable what="The week" />}</div>
-            {workspace && stats.weekCost > 0 && (
-              <Link
-                to={`/${workspace}/-/usage`}
-                className="mt-4 flex items-center justify-between border-t border-line pt-3 text-xs text-muted hover:text-fg"
-              >
-                <span>Usage at price this week: {usd(stats.weekCost)}</span>
-                <ChevronRight size={12} />
-              </Link>
-            )}
-          </section>
+            </section>
+          </Card>
 
           {workspace && (
             <TokenUsagePanel
@@ -1156,57 +1166,61 @@ export default function MissionControl({
             />
           )}
 
-          <section id="activity" className="scroll-mt-20 rounded-xl border border-line bg-surface p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold tracking-tight">Activity</h2>
-              {groups.length > 8 && (
-                <Link
-                  to={`${link({ activity: everyActivity ? null : "all" })}#activity`}
-                  preventScrollReset
-                  className="inline-flex items-center gap-0.5 text-xs text-muted hover:text-fg"
-                >
-                  {everyActivity ? "Less" : "All activity"} <ChevronRight size={12} />
-                </Link>
-              )}
-            </div>
-            <p className="mt-1 flex items-center gap-3 text-[0.6875rem] text-faint">
-              <span className="inline-flex items-center gap-1.5">
-                <Avatar name="g1t" size={12} /> agents
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Avatar name={viewer.username} size={12} /> people
-              </span>
-            </p>
-            {!loaded.perRepoLoaded ? (
-              <div className="mt-3">
-                <Unavailable what="Activity" />
+          <Card asChild className="scroll-mt-20 p-5">
+            <section id="activity">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold tracking-tight">Activity</h2>
+                {groups.length > 8 && (
+                  <Link
+                    to={`${link({ activity: everyActivity ? null : "all" })}#activity`}
+                    preventScrollReset
+                    className="inline-flex items-center gap-0.5 text-xs text-muted hover:text-fg"
+                  >
+                    {everyActivity ? "Less" : "All activity"} <ChevronRight size={12} />
+                  </Link>
+                )}
               </div>
-            ) : feed.length === 0 ? (
-              <p className="mt-3 text-sm leading-6 text-muted">
-                Nothing has moved yet. Merges, deploys, checks, reviews and what agents learn show up here.
+              <p className="mt-1 flex items-center gap-3 text-[0.6875rem] text-faint">
+                <span className="inline-flex items-center gap-1.5">
+                  <Avatar name="g1t" size={12} /> agents
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Avatar name={viewer.username} size={12} /> people
+                </span>
               </p>
-            ) : (
-              <ol className="mt-2 divide-y divide-line/70">
-                {feed.map((group) => (
-                  <FeedLine key={group.id} group={group} titles={titles} />
-                ))}
-              </ol>
-            )}
-          </section>
+              {!loaded.perRepoLoaded ? (
+                <div className="mt-3">
+                  <Unavailable what="Activity" />
+                </div>
+              ) : feed.length === 0 ? (
+                <p className="mt-3 text-sm leading-6 text-muted">
+                  Nothing has moved yet. Merges, deploys, checks, reviews and what agents learn show up here.
+                </p>
+              ) : (
+                <ol className="mt-2 divide-y divide-line/70">
+                  {feed.map((group) => (
+                    <FeedLine key={group.id} group={group} titles={titles} />
+                  ))}
+                </ol>
+              )}
+            </section>
+          </Card>
 
-          <section className="rounded-xl border border-line bg-surface p-5">
-            <h2 className="text-sm font-semibold">Connect your own agent</h2>
-            <p className="mt-1.5 text-xs leading-5 text-muted">
-              Add g1t to your coding agent. It signs in through your browser; there is no token to copy.
-            </p>
-            <AgentSetup className="mt-3" />
-            <Link
-              to="https://docs.g1t.sh/guides/bring-your-own-agent/"
-              className="mt-3 inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
-            >
-              How it works <ArrowRight size={12} />
-            </Link>
-          </section>
+          <Card asChild className="p-5">
+            <section>
+              <h2 className="text-sm font-semibold">Connect your own agent</h2>
+              <p className="mt-1.5 text-xs leading-5 text-muted">
+                Add g1t to your coding agent. It signs in through your browser; there is no token to copy.
+              </p>
+              <AgentSetup className="mt-3" />
+              <Link
+                to="https://docs.g1t.sh/guides/bring-your-own-agent/"
+                className="mt-3 inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
+              >
+                How it works <ArrowRight size={12} />
+              </Link>
+            </section>
+          </Card>
         </aside>
       </div>
     </main>

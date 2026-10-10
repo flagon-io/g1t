@@ -8,8 +8,10 @@ import { DangerAction, DangerZone } from "./danger-zone";
 import { MirrorNotes, TakeOverDialog } from "./mirror";
 import { ConfirmDialog } from "./repo-lifecycle";
 import { SettingsSection as Section, SettingToggle } from "./settings-section";
-import { Button, ButtonLink, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
+import { ButtonLink, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
 import { Badge, type BadgeTone } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Checkbox, CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
@@ -147,14 +149,16 @@ export function MirroringSettings({
             about={`When you're done, everything g1t did goes back to ${leader.name}, branch by branch, and ${full} follows it again.`}
           >
             {mirror.state === "handing_back" ? (
-              <p className="rounded-xl border border-line bg-surface p-4 text-sm text-muted">
-                Handing back to {leader.name} now. {full} is read-only until every branch is across; this page shows it
-                standing by again once it is.
-              </p>
+              <Card asChild className="p-4 text-sm text-muted">
+                <p>
+                  Handing back to {leader.name} now. {full} is read-only until every branch is across; this page shows it
+                  standing by again once it is.
+                </p>
+              </Card>
             ) : view.plan ? (
               <HandBackForm full={full} remote={leader.name} plan={view.plan} canManage={view.canManage} result={resultFor("hand-back")} />
             ) : (
-              <div className="space-y-3 rounded-xl border border-line bg-surface p-4">
+              <Card className="space-y-3 p-4">
                 <p className="text-sm text-muted">
                   g1t compares each branch with {leader.name} and shows what will happen to it before anything goes back.
                 </p>
@@ -162,7 +166,7 @@ export function MirroringSettings({
                 <ButtonLink to="?plan=1#hand-back" preventScrollReset>
                   Review hand-back
                 </ButtonLink>
-              </div>
+              </Card>
             )}
           </Section>
         )}
@@ -191,19 +195,23 @@ export function MirroringSettings({
       >
         <Result result={resultFor("sync", "remove", "settings")} />
         {followers.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">
-            Not mirrored anywhere yet.
-          </p>
+          <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
+            <p>
+              Not mirrored anywhere yet.
+            </p>
+          </Card>
         ) : (
           <>
-            <ul className="divide-y divide-line rounded-xl border border-line">
-              {followers.map((remote) => (
-                <FollowerRow key={remote.id} remote={remote} canManage={view.canManage} />
-              ))}
-            </ul>
+            <Card asChild tone="plain" divided>
+              <ul>
+                {followers.map((remote) => (
+                  <FollowerRow key={remote.id} remote={remote} canManage={view.canManage} />
+                ))}
+              </ul>
+            </Card>
             {view.canManage && (
               <Form method="post" className="flex flex-wrap items-center gap-3">
-                <SubmitButton variant="quiet" name="intent" value="sync" pending="Syncing…">
+                <SubmitButton variant="outline" name="intent" value="sync" pending="Syncing…">
                   <RefreshCw size={14} />
                   Sync now
                 </SubmitButton>
@@ -254,7 +262,7 @@ function LeaderCard({
   const silent = !remote.reachable;
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border border-line bg-surface">
+      <Card>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line px-4 py-3">
           <ReachDot reachable={remote.reachable} />
           <a
@@ -309,7 +317,7 @@ function LeaderCard({
                 mirror={mirror}
                 error={result?.intent === "take-over" ? result.error : null}
                 trigger={(open) => (
-                  <Button type="button" variant={silent ? "primary" : "quiet"} onClick={open}>
+                  <Button type="button" variant={silent ? "default" : "outline"} onClick={open}>
                     Take over
                   </Button>
                 )}
@@ -318,16 +326,16 @@ function LeaderCard({
             {(state === "standby" || state === "ci") && (
               <Form method="post" className="contents">
                 {state === "standby" ? (
-                  <SubmitButton variant="quiet" name="intent" value="ci-on" pending="Starting…">
+                  <SubmitButton variant="outline" name="intent" value="ci-on" pending="Starting…">
                     Start CI failover
                   </SubmitButton>
                 ) : (
-                  <SubmitButton variant="quiet" name="intent" value="ci-off" pending="Ending…">
+                  <SubmitButton variant="outline" name="intent" value="ci-off" pending="Ending…">
                     End CI failover
                   </SubmitButton>
                 )}
                 {state === "standby" && (
-                  <SubmitButton variant="quiet" name="intent" value="sync" pending="Syncing…">
+                  <SubmitButton variant="outline" name="intent" value="sync" pending="Syncing…">
                     <RefreshCw size={14} />
                     Sync now
                   </SubmitButton>
@@ -341,7 +349,7 @@ function LeaderCard({
             )}
           </div>
         )}
-      </div>
+      </Card>
       <p className="text-xs text-muted">
         {state === "standby"
           ? `CI failover keeps the code on ${remote.name} and runs its workflows here, results going back. Taking over makes g1t lead until you hand it back.`
@@ -402,11 +410,13 @@ function HandBackForm({
         </p>
       )}
       {moving.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">
-          Every branch is already the same on both sides. Handing back only makes {remote} lead again.
-        </p>
+        <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
+          <p>
+            Every branch is already the same on both sides. Handing back only makes {remote} lead again.
+          </p>
+        </Card>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-line">
+        <Card tone="plain" className="overflow-hidden">
           <div className="hidden grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_minmax(0,1.5fr)] gap-4 border-b border-line bg-surface px-4 py-2 text-xs font-medium text-muted sm:grid">
             <span>Branch</span>
             <span>g1t</span>
@@ -460,7 +470,7 @@ function HandBackForm({
               </li>
             ))}
           </ul>
-        </div>
+        </Card>
       )}
       {same > 0 && moving.length > 0 && (
         <p className="text-xs text-muted">
@@ -516,7 +526,7 @@ function LeaderSettings({
             <RadioOption value="banner" label="Show it on the repository" description={`A line across ${full}'s pages, and an amber dot beside its name.`} />
             <RadioOption value="inbox" label="Also tell workspace owners in their notifications" description="Once when it stops answering, and once when it answers again." />
           </RadioGroup>
-          <div className="rounded-xl border border-line bg-surface p-4">
+          <Card className="p-4">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
               <Checkbox id={`${id}-auto`} name="autoTakeOver" checked={auto} onCheckedChange={(checked) => setAuto(checked === true)} />
               <label htmlFor={`${id}-auto`} className="cursor-pointer text-sm font-medium">
@@ -541,7 +551,7 @@ function LeaderSettings({
             <p className="mt-1.5 pl-6.5 text-xs text-faint">
               Off unless you turn it on: people take over when they want. From {least} minutes to a day.
             </p>
-          </div>
+          </Card>
           <SettingToggle name="handBackWhenClean" on={settings.handBack === "when_clean"} title="Hand back on its own when every branch goes back cleanly">
             Only after an automatic takeover. A branch that moved on both sides always waits for someone to choose.
           </SettingToggle>
@@ -585,7 +595,7 @@ function MoveToG1t({ full, remote, error }: { full: string; remote: string; erro
         <DangerAction
           title="Move to g1t"
           action={
-            <Button type="button" variant="danger" onClick={open}>
+            <Button type="button" variant="destructive" onClick={open}>
               Move to g1t
             </Button>
           }
@@ -632,7 +642,7 @@ function FollowerRow({ remote, canManage }: { remote: Remote; canManage: boolean
               submit="Remove"
               busy="Removing…"
               trigger={(open) => (
-                <Button type="button" variant="quiet" onClick={open} aria-label={`Remove ${remote.name}`}>
+                <Button type="button" variant="outline" onClick={open} aria-label={`Remove ${remote.name}`}>
                   <Trash2 size={14} />
                   <span className="hidden sm:inline">Remove</span>
                 </Button>
@@ -667,7 +677,7 @@ function FollowerRow({ remote, canManage }: { remote: Remote; canManage: boolean
             </SelectContent>
           </Select>
           <SubmitButton
-            variant="quiet"
+            variant="outline"
             match={{ intent: "settings", remoteId: remote.id }}
             pending="Saving…"
             className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg disabled:opacity-50"
@@ -688,41 +698,43 @@ function AddRemote({ result }: { result: MirrorOutcome | undefined }) {
     if (result?.ok) setRound((n) => n + 1);
   }, [result]);
   return (
-    <Form key={round} method="post" className="space-y-5 rounded-xl border border-line bg-surface p-4">
-      <input type="hidden" name="intent" value="add" />
-      <fieldset className="space-y-2">
-        <legend className="mb-1.5 text-sm font-medium text-muted">Provider</legend>
-        <RadioGroup name="provider" defaultValue="git" className="gap-2.5 sm:grid-cols-2">
-          <RadioOption value="g1t" label="Another g1t" description="A repository on another g1t, such as one you host yourself." />
-          <RadioOption value="git" label="Any git host" description="Anywhere that takes git over HTTPS." />
-        </RadioGroup>
-      </fieldset>
-      <fieldset className="space-y-2">
-        <legend className="mb-1.5 text-sm font-medium text-muted">Which one leads</legend>
-        <RadioGroup name="role" defaultValue="follower" className="gap-2.5">
-          <RadioOption value="follower" label="g1t leads; the remote follows" description="Every push here is pushed there." />
-          <RadioOption
-            value="leader"
-            label="The remote leads; this repository mirrors it"
-            description="Only for an empty repository: g1t copies the remote, and this repository becomes a read-only mirror of it."
-          />
-        </RadioGroup>
-      </fieldset>
-      <Field label="HTTPS URL">
-        <Input name="url" type="url" required inputMode="url" spellCheck={false} placeholder="https://git.example.com/acme/web.git" />
-      </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Username (optional)">
-          <Input name="username" spellCheck={false} autoCapitalize="off" />
+    <Card asChild key={round} className="space-y-5 p-4">
+      <Form method="post">
+        <input type="hidden" name="intent" value="add" />
+        <fieldset className="space-y-2">
+          <legend className="mb-1.5 text-sm font-medium text-muted">Provider</legend>
+          <RadioGroup name="provider" defaultValue="git" className="gap-2.5 sm:grid-cols-2">
+            <RadioOption value="g1t" label="Another g1t" description="A repository on another g1t, such as one you host yourself." />
+            <RadioOption value="git" label="Any git host" description="Anywhere that takes git over HTTPS." />
+          </RadioGroup>
+        </fieldset>
+        <fieldset className="space-y-2">
+          <legend className="mb-1.5 text-sm font-medium text-muted">Which one leads</legend>
+          <RadioGroup name="role" defaultValue="follower" className="gap-2.5">
+            <RadioOption value="follower" label="g1t leads; the remote follows" description="Every push here is pushed there." />
+            <RadioOption
+              value="leader"
+              label="The remote leads; this repository mirrors it"
+              description="Only for an empty repository: g1t copies the remote, and this repository becomes a read-only mirror of it."
+            />
+          </RadioGroup>
+        </fieldset>
+        <Field label="HTTPS URL">
+          <Input name="url" type="url" required inputMode="url" spellCheck={false} placeholder="https://git.example.com/acme/web.git" />
         </Field>
-        <Field label="Token" hint="Stored encrypted; never shown again.">
-          <Input name="token" type="password" spellCheck={false} />
-        </Field>
-      </div>
-      <Result result={result} />
-      <SubmitButton pending="Adding…" match={{ intent: "add" }}>
-        Add remote
-      </SubmitButton>
-    </Form>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Username (optional)">
+            <Input name="username" spellCheck={false} autoCapitalize="off" />
+          </Field>
+          <Field label="Token" hint="Stored encrypted; never shown again.">
+            <Input name="token" type="password" spellCheck={false} />
+          </Field>
+        </div>
+        <Result result={result} />
+        <SubmitButton pending="Adding…" match={{ intent: "add" }}>
+          Add remote
+        </SubmitButton>
+      </Form>
+    </Card>
   );
 }

@@ -16,6 +16,7 @@ import {
 } from "@g1t/contracts";
 
 import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
 import { Skeleton } from "./ui/skeleton";
 import { UserCard } from "./user-card";
 
@@ -104,14 +105,16 @@ export function CodeownersErrorList({ errors, lineHref }: { errors: CodeownersEr
 export function CodeownersReportPanel({ report, base, branch }: { report: CodeownersReport | null; base: string; branch: string }) {
   if (!report) {
     return (
-      <p className="rounded-xl border border-line bg-surface p-4 text-sm text-muted">
-        The CODEOWNERS file could not be read just now. Reload the page to try again.
-      </p>
+      <Card asChild className="p-4 text-sm text-muted">
+        <p>
+          The CODEOWNERS file could not be read just now. Reload the page to try again.
+        </p>
+      </Card>
     );
   }
   if (!report.path) {
     return (
-      <div className="rounded-xl border border-dashed border-line p-4 text-sm">
+      <Card tone="plain" className="border-dashed p-4 text-sm">
         <p className="font-medium">No CODEOWNERS file</p>
         <p className="mt-1 text-muted">
           g1t looks on {branch} for the first of these, and asks the owners it names to review changes to their files:
@@ -128,13 +131,13 @@ export function CodeownersReportPanel({ report, base, branch }: { report: Codeow
             How to write one
           </a>
         </p>
-      </div>
+      </Card>
     );
   }
   const path = report.path;
   const errors = report.errors.length;
   return (
-    <div className="overflow-hidden rounded-xl border border-line">
+    <Card tone="plain" className="overflow-hidden">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-surface px-4 py-3 text-sm">
         {errors > 0 ? (
           <FileWarning size={16} className="shrink-0 text-danger" />
@@ -158,19 +161,19 @@ export function CodeownersReportPanel({ report, base, branch }: { report: Codeow
           <CodeownersErrorList errors={report.errors} lineHref={(line) => blobHref(base, branch, path, line)} />
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
 /** The panel's shape while the file is read. */
 export function CodeownersReportSkeleton() {
   return (
-    <div aria-busy="true" className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+    <Card aria-busy="true" className="flex items-center gap-3 px-4 py-3">
       <Skeleton className="size-4 rounded-full" />
       <Skeleton className="h-3 w-36" />
       <Skeleton className="h-3 w-20" />
       <Skeleton className="ml-auto h-3 w-14" />
-    </div>
+    </Card>
   );
 }
 
@@ -316,33 +319,35 @@ export function PullCodeOwnersPanel({
 }) {
   const fileHref = (line: number) => blobHref(base, branch, owners.path, line);
   return (
-    <section className="overflow-hidden rounded-xl border border-line" aria-label="Code owners">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-4 py-2.5 text-sm">
-        <span className="flex items-center gap-2 font-medium">
-          <ShieldCheck size={15} className="shrink-0 text-faint" />
-          Code owners
-        </span>
-        <Link to={blobHref(base, branch, owners.path)} className="font-mono text-xs text-muted hover:text-fg hover:underline">
-          {owners.path}
-        </Link>
-        <span className="ml-auto flex items-center gap-2">
-          {owners.errors > 0 && (
-            <Link to={errorsHref} className="text-xs text-danger hover:underline">
-              {owners.errors === 1 ? "1 error" : `${owners.errors} errors`} in the file
-            </Link>
-          )}
-          {owners.required ? <Badge tone="warn">Approval required</Badge> : <Badge>Approval not required</Badge>}
-        </span>
-      </div>
-      {owners.reviews.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-muted">No rule in the file covers what this changes.</p>
-      ) : (
-        <ul className="divide-y divide-line">
-          {owners.reviews.map((review) => (
-            <OwnerReviewRow key={`${review.section ?? ""}:${review.line}`} review={review} fileHref={fileHref} />
-          ))}
-        </ul>
-      )}
-    </section>
+    <Card asChild tone="plain" className="overflow-hidden">
+      <section aria-label="Code owners">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-4 py-2.5 text-sm">
+          <span className="flex items-center gap-2 font-medium">
+            <ShieldCheck size={15} className="shrink-0 text-faint" />
+            Code owners
+          </span>
+          <Link to={blobHref(base, branch, owners.path)} className="font-mono text-xs text-muted hover:text-fg hover:underline">
+            {owners.path}
+          </Link>
+          <span className="ml-auto flex items-center gap-2">
+            {owners.errors > 0 && (
+              <Link to={errorsHref} className="text-xs text-danger hover:underline">
+                {owners.errors === 1 ? "1 error" : `${owners.errors} errors`} in the file
+              </Link>
+            )}
+            {owners.required ? <Badge tone="warn">Approval required</Badge> : <Badge>Approval not required</Badge>}
+          </span>
+        </div>
+        {owners.reviews.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-muted">No rule in the file covers what this changes.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {owners.reviews.map((review) => (
+              <OwnerReviewRow key={`${review.section ?? ""}:${review.line}`} review={review} fileHref={fileHref} />
+            ))}
+          </ul>
+        )}
+      </section>
+    </Card>
   );
 }

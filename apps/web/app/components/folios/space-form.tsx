@@ -6,7 +6,8 @@
 import { DOC_AGENT_MODE_LABELS, DOC_ROLE_LABELS, DOC_SPACE_KIND_LABELS, type DocAgentMode, type DocRole, type DocSpace, type DocSpaceKind } from "@g1t/contracts";
 import { type FormEvent, useState } from "react";
 
-import { Button, ErrorText } from "../ui";
+import { ErrorText } from "../ui";
+import { Button } from "../ui/button";
 import { SelectField } from "../ui/select";
 
 export type SpaceFormValue = {

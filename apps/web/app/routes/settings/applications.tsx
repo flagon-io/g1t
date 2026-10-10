@@ -70,7 +70,7 @@ export default function ApplicationSettings({ loaderData, actionData }: Route.Co
                   </div>
                   <div className="ml-auto flex shrink-0 items-center gap-2">
                     {!open && (
-                      <ButtonLink variant="quiet" to={`?edit=${application.id}`} preventScrollReset>
+                      <ButtonLink variant="outline" to={`?edit=${application.id}`} preventScrollReset>
                         Change access
                       </ButtonLink>
                     )}
@@ -91,7 +91,7 @@ export default function ApplicationSettings({ loaderData, actionData }: Route.Co
                       <SubmitButton pending="Saving…" match={{ intent: "update-application", id: application.id }}>
                         Save access
                       </SubmitButton>
-                      <ButtonLink variant="quiet" to="." preventScrollReset>
+                      <ButtonLink variant="outline" to="." preventScrollReset>
                         Cancel
                       </ButtonLink>
                     </div>

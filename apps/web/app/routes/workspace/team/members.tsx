@@ -6,8 +6,10 @@ import type { TeamRole } from "@g1t/contracts";
 import type { Route } from "./+types/members";
 import { AgentLink, AgentPersonFace, ToldText } from "../../../components/people";
 import { useTeam, useTeamAgents } from "../../../components/teams";
-import { Avatar, ErrorText, Field, Input, SubmitButton } from "../../../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../../../components/ui";
+import { Avatar } from "../../../components/ui/avatar";
 import { Badge } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
 import { CheckboxOption } from "../../../components/ui/checkbox";
 import { SelectField } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
@@ -102,65 +104,69 @@ export default function TeamMembers({ loaderData, actionData }: Route.ComponentP
         </div>
 
         {members.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line px-6 py-6 text-center text-sm text-muted">
-            {agents.length ? `No people on ${team.name}: it's agents only.` : `No one is in ${team.name} yet.`}
-            {manage && " Add members of the workspace below."}
-          </p>
+          <Card asChild tone="plain" className="border-dashed px-6 py-6 text-center text-sm text-muted">
+            <p>
+              {agents.length ? `No people on ${team.name}: it's agents only.` : `No one is in ${team.name} yet.`}
+              {manage && " Add members of the workspace below."}
+            </p>
+          </Card>
         ) : (
-          <ul className="divide-y divide-line rounded-xl border border-line">
-            {members.map((member) => {
-              const self = member.username === me;
-              return (
-                <li key={member.username} className="px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <WithPresence person={{ username: member.username }} size={28}>
-                      <Avatar name={member.username} image={member.avatar} size={28} />
-                    </WithPresence>
-                    <div className="min-w-0 grow basis-32 truncate">
-                      <UserCard username={member.username}>
-                        <Link to={personPath(team.workspace, member.username)} className="text-sm font-medium hover:text-accent">
-                          {member.name || member.username}
+          <Card asChild tone="plain" divided>
+            <ul>
+              {members.map((member) => {
+                const self = member.username === me;
+                return (
+                  <li key={member.username} className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <WithPresence person={{ username: member.username }} size={28}>
+                        <Avatar name={member.username} image={member.avatar} size={28} />
+                      </WithPresence>
+                      <div className="min-w-0 grow basis-32 truncate">
+                        <UserCard username={member.username}>
+                          <Link to={personPath(team.workspace, member.username)} className="text-sm font-medium hover:text-accent">
+                            {member.name || member.username}
+                          </Link>
+                        </UserCard>
+                        {member.name && <span className="ml-2 hidden font-mono text-xs text-faint sm:inline">{member.username}</span>}
+                      </div>
+                      {leads(team.lead, { username: member.username }) && <Badge tone="accent">Lead</Badge>}
+                      {member.via ? (
+                        <Link to={teamPath(team.workspace, member.via)}>
+                          <Badge>via {member.via}</Badge>
                         </Link>
-                      </UserCard>
-                      {member.name && <span className="ml-2 hidden font-mono text-xs text-faint sm:inline">{member.username}</span>}
-                    </div>
-                    {leads(team.lead, { username: member.username }) && <Badge tone="accent">Lead</Badge>}
-                    {member.via ? (
-                      <Link to={teamPath(team.workspace, member.via)}>
-                        <Badge>via {member.via}</Badge>
-                      </Link>
-                    ) : member.role === "maintainer" ? (
-                      <Badge tone="accent">Maintainer</Badge>
-                    ) : (
-                      <Badge>Member</Badge>
-                    )}
-                    {!member.via && (manage || self) && (
-                      <span className="flex items-center gap-1">
-                        {manage && (
+                      ) : member.role === "maintainer" ? (
+                        <Badge tone="accent">Maintainer</Badge>
+                      ) : (
+                        <Badge>Member</Badge>
+                      )}
+                      {!member.via && (manage || self) && (
+                        <span className="flex items-center gap-1">
+                          {manage && (
+                            <Form method="post">
+                              <input type="hidden" name="intent" value="role" />
+                              <input type="hidden" name="username" value={member.username} />
+                              <input type="hidden" name="role" value={member.role === "maintainer" ? "member" : "maintainer"} />
+                              <SubmitButton variant="outline" match={{ intent: "role", username: member.username }} pending="Saving…">
+                                {member.role === "maintainer" ? "Make member" : "Make maintainer"}
+                              </SubmitButton>
+                            </Form>
+                          )}
                           <Form method="post">
-                            <input type="hidden" name="intent" value="role" />
+                            <input type="hidden" name="intent" value="remove" />
                             <input type="hidden" name="username" value={member.username} />
-                            <input type="hidden" name="role" value={member.role === "maintainer" ? "member" : "maintainer"} />
-                            <SubmitButton variant="quiet" match={{ intent: "role", username: member.username }} pending="Saving…">
-                              {member.role === "maintainer" ? "Make member" : "Make maintainer"}
+                            <SubmitButton variant="outline" match={{ intent: "remove", username: member.username }} pending="Removing…">
+                              {self ? "Leave" : "Remove"}
                             </SubmitButton>
                           </Form>
-                        )}
-                        <Form method="post">
-                          <input type="hidden" name="intent" value="remove" />
-                          <input type="hidden" name="username" value={member.username} />
-                          <SubmitButton variant="quiet" match={{ intent: "remove", username: member.username }} pending="Removing…">
-                            {self ? "Leave" : "Remove"}
-                          </SubmitButton>
-                        </Form>
-                      </span>
-                    )}
-                  </div>
-                  <ErrorText>{rowError(member.username)}</ErrorText>
-                </li>
-              );
-            })}
-          </ul>
+                        </span>
+                      )}
+                    </div>
+                    <ErrorText>{rowError(member.username)}</ErrorText>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
         )}
 
         {manage && (
@@ -188,36 +194,40 @@ export default function TeamMembers({ loaderData, actionData }: Route.ComponentP
           Agents <span className="text-sm font-normal text-faint tabular-nums">{agents.length}</span>
         </h2>
         {agents.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line px-6 py-6 text-center text-sm text-muted">
-            No agents on {team.name}: it's people only.{manage && addable.length > 0 && " Add one below."}
-          </p>
+          <Card asChild tone="plain" className="border-dashed px-6 py-6 text-center text-sm text-muted">
+            <p>
+              No agents on {team.name}: it's people only.{manage && addable.length > 0 && " Add one below."}
+            </p>
+          </Card>
         ) : (
-          <ul className="divide-y divide-line rounded-xl border border-line">
-            {agents.map((agent) => {
-              return (
-                <li key={agent.id} className="px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <AgentPersonFace agent={agent} size={28} />
-                    <div className="min-w-0 grow basis-32 truncate text-sm">
-                      <AgentLink workspace={team.workspace} agent={agent} className="font-medium" />
-                      <span className="ml-2 text-muted">{agent.title || agent.role}</span>
+          <Card asChild tone="plain" divided>
+            <ul>
+              {agents.map((agent) => {
+                return (
+                  <li key={agent.id} className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <AgentPersonFace agent={agent} size={28} />
+                      <div className="min-w-0 grow basis-32 truncate text-sm">
+                        <AgentLink workspace={team.workspace} agent={agent} className="font-medium" />
+                        <span className="ml-2 text-muted">{agent.title || agent.role}</span>
+                      </div>
+                      {leads(team.lead, { id: agent.id }) && <Badge tone="accent">Lead</Badge>}
+                      {manage && (
+                        <Form method="post">
+                          <input type="hidden" name="intent" value="remove-agent" />
+                          <input type="hidden" name="agent_id" value={agent.id} />
+                          <SubmitButton variant="outline" match={{ intent: "remove-agent", agent_id: agent.id }} pending="Removing…">
+                            Remove
+                          </SubmitButton>
+                        </Form>
+                      )}
                     </div>
-                    {leads(team.lead, { id: agent.id }) && <Badge tone="accent">Lead</Badge>}
-                    {manage && (
-                      <Form method="post">
-                        <input type="hidden" name="intent" value="remove-agent" />
-                        <input type="hidden" name="agent_id" value={agent.id} />
-                        <SubmitButton variant="quiet" match={{ intent: "remove-agent", agent_id: agent.id }} pending="Removing…">
-                          Remove
-                        </SubmitButton>
-                      </Form>
-                    )}
-                  </div>
-                  <ErrorText>{rowError(agent.id)}</ErrorText>
-                </li>
-              );
-            })}
-          </ul>
+                    <ErrorText>{rowError(agent.id)}</ErrorText>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
         )}
         {manage && addable.length > 0 && (
           <Form method="post" key={`agents:${agents.length}`} className="flex flex-col gap-3 sm:flex-row sm:items-end">

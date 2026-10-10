@@ -4,8 +4,10 @@ import { Link } from "react-router";
 
 import type { Segment, SiteHit } from "@g1t/contracts";
 
-import { Avatar, TimeAgo } from "./ui";
+import { TimeAgo } from "./ui";
+import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
 import { PersonLink } from "./work";
 
 /** Text with the parts that matched the query marked. */
@@ -108,7 +110,7 @@ function Repository({ hit }: { hit: SiteHit }) {
 function Code({ hit }: { hit: SiteHit }) {
   const base = hit.url.split("#")[0];
   return (
-    <div className="overflow-hidden rounded-lg border border-line">
+    <Card tone="plain" radius="lg" className="overflow-hidden">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-surface px-3 py-2">
         {hit.repo && <RepoLink repo={hit.repo} />}
         <span className="text-line-strong">/</span>
@@ -139,7 +141,7 @@ function Code({ hit }: { hit: SiteHit }) {
           </tbody>
         </table>
       )}
-    </div>
+    </Card>
   );
 }
 

@@ -12,6 +12,7 @@ import { runAudit } from "../../lib/audit.server";
 import { agents } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 import { accessTo } from "../../lib/access.server";
+import { Card } from "../../components/ui/card";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const kind = loaderData ? RUN_KIND_LABEL[loaderData.run.kind] : "Run";
@@ -63,16 +64,18 @@ export default function AgentRunPage({ loaderData, params }: Route.ComponentProp
             {active ? "The sandbox is starting. Steps appear here as the agent takes them." : "This run reported no steps."}
           </p>
         ) : (
-          <ol className="mt-3 divide-y divide-line rounded-xl border border-line bg-surface">
-            {steps.map((step, index) => (
-              <li key={`${step.at}-${index}`} className="flex gap-3 px-4 py-2 text-sm">
-                <time dateTime={step.at} className="shrink-0 font-mono text-xs leading-5 text-faint" suppressHydrationWarning>
-                  {clock(step.at)}
-                </time>
-                <span className="min-w-0 font-mono text-xs leading-5 break-words text-fg/85">{step.text}</span>
-              </li>
-            ))}
-          </ol>
+          <Card asChild divided className="mt-3">
+            <ol>
+              {steps.map((step, index) => (
+                <li key={`${step.at}-${index}`} className="flex gap-3 px-4 py-2 text-sm">
+                  <time dateTime={step.at} className="shrink-0 font-mono text-xs leading-5 text-faint" suppressHydrationWarning>
+                    {clock(step.at)}
+                  </time>
+                  <span className="min-w-0 font-mono text-xs leading-5 break-words text-fg/85">{step.text}</span>
+                </li>
+              ))}
+            </ol>
+          </Card>
         )}
         {run.number != null && (
           <p className="mt-4 text-sm text-muted">

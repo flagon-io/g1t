@@ -3,7 +3,8 @@ import { useRef } from "react";
 import { Form } from "react-router";
 
 import { AVATAR_ACCEPT } from "../lib/avatar-upload";
-import { Avatar, ErrorText, SubmitButton, usePending } from "./ui";
+import { ErrorText, SubmitButton, usePending } from "./ui";
+import { Avatar } from "./ui/avatar";
 
 /**
  * Uploading an avatar, as GitHub's settings do: the one shown now, a
@@ -63,7 +64,7 @@ export function AvatarField({
           {image && (
             <Form method="post">
               <input type="hidden" name="intent" value="remove-avatar" />
-              <SubmitButton variant="quiet" pending="Removing…" match={{ intent: "remove-avatar" }} disabled={uploading}>
+              <SubmitButton variant="outline" pending="Removing…" match={{ intent: "remove-avatar" }} disabled={uploading}>
                 <Trash2 size={15} />
                 Remove
               </SubmitButton>

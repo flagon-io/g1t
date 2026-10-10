@@ -14,7 +14,10 @@ import {
   MilestoneStateButton,
   ProgressLine,
 } from "../../components/milestones";
-import { Button, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { IssueIcon, PullIcon } from "../../components/work";
 import { requireRepo } from "../../lib/access.server";
 import { colorsOf } from "../../lib/labels";
@@ -100,9 +103,9 @@ export default function MilestonePage({ loaderData, actionData, params }: Route.
             <h2 className="text-2xl font-semibold tracking-tight text-balance">
               {milestone.title}
               {milestone.state === "closed" && (
-                <span className="ml-2 rounded-full border border-line px-2 py-0.5 align-middle text-xs font-normal text-muted">
+                <Badge size="md" className="ml-2 align-middle">
                   Closed
-                </span>
+                </Badge>
               )}
             </h2>
             <p className="mt-1 text-sm">
@@ -121,7 +124,7 @@ export default function MilestonePage({ loaderData, actionData, params }: Route.
             </p>
             {canEdit && (
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button type="button" variant="quiet" onClick={() => setEditing(true)}>
+                <Button type="button" variant="outline" onClick={() => setEditing(true)}>
                   <Pencil size={14} />
                   Edit
                 </Button>
@@ -133,10 +136,10 @@ export default function MilestonePage({ loaderData, actionData, params }: Route.
         </header>
       )}
       {actionData?.error && actionData.intent !== "edit" && <ErrorText>{actionData.error}</ErrorText>}
-      <div className="flex gap-1 self-start rounded-lg border border-line p-1 sm:w-fit">
+      <Card tone="plain" radius="lg" className="flex gap-1 self-start p-1 sm:w-fit">
         {tab("open", "Open", openItems.length)}
         {tab("closed", "Closed", closedItems.length)}
-      </div>
+      </Card>
       {shown.length === 0 ? (
         <EmptyState title={state === "open" ? "Nothing open in this milestone" : "Nothing closed in this milestone yet"}>
           {canEdit
@@ -144,67 +147,69 @@ export default function MilestonePage({ loaderData, actionData, params }: Route.
             : "Issues and pull requests in this milestone show here."}
         </EmptyState>
       ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-          {shown.map((item) =>
-            item.kind === "issue" ? (
-              <li key={`i${item.issue.number}`}>
-                <Link
-                  to={`${base}/issues/${item.issue.number}`}
-                  className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface"
-                >
-                  <span className="mt-0.5">
-                    <IssueIcon issue={item.issue} />
-                  </span>
-                  <span className="min-w-0 grow">
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="font-medium">{item.issue.title}</span>
-                      {item.issue.labels.map((name) => (
-                        <LabelChip key={name} name={name} color={colors[name]} />
-                      ))}
+        <Card asChild tone="plain" divided className="overflow-hidden">
+          <ul>
+            {shown.map((item) =>
+              item.kind === "issue" ? (
+                <li key={`i${item.issue.number}`}>
+                  <Link
+                    to={`${base}/issues/${item.issue.number}`}
+                    className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface"
+                  >
+                    <span className="mt-0.5">
+                      <IssueIcon issue={item.issue} />
                     </span>
-                    <span className="mt-0.5 block text-xs text-faint">
-                      #{item.issue.number} opened <TimeAgo at={item.issue.createdAt} /> by {item.issue.author.username}
+                    <span className="min-w-0 grow">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-medium">{item.issue.title}</span>
+                        {item.issue.labels.map((name) => (
+                          <LabelChip key={name} name={name} color={colors[name]} />
+                        ))}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-faint">
+                        #{item.issue.number} opened <TimeAgo at={item.issue.createdAt} /> by {item.issue.author.username}
+                      </span>
                     </span>
-                  </span>
-                  {item.issue.commentCount > 0 && (
-                    <span className="mt-0.5 flex shrink-0 items-center gap-1 text-xs text-muted">
-                      <MessageSquare size={13} />
-                      {item.issue.commentCount}
+                    {item.issue.commentCount > 0 && (
+                      <span className="mt-0.5 flex shrink-0 items-center gap-1 text-xs text-muted">
+                        <MessageSquare size={13} />
+                        {item.issue.commentCount}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              ) : (
+                <li key={`p${item.pull.number}`}>
+                  <Link
+                    to={`${base}/pull/${item.pull.number}`}
+                    className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface"
+                  >
+                    <span className="mt-0.5">
+                      <PullIcon status={item.pull.status} />
                     </span>
-                  )}
-                </Link>
-              </li>
-            ) : (
-              <li key={`p${item.pull.number}`}>
-                <Link
-                  to={`${base}/pull/${item.pull.number}`}
-                  className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface"
-                >
-                  <span className="mt-0.5">
-                    <PullIcon status={item.pull.status} />
-                  </span>
-                  <span className="min-w-0 grow">
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="font-medium">{item.pull.title}</span>
-                      {(item.pull.labels ?? []).map((name) => (
-                        <LabelChip key={name} name={name} color={colors[name]} />
-                      ))}
+                    <span className="min-w-0 grow">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-medium">{item.pull.title}</span>
+                        {(item.pull.labels ?? []).map((name) => (
+                          <LabelChip key={name} name={name} color={colors[name]} />
+                        ))}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-faint">
+                        #{item.pull.number} opened <TimeAgo at={item.pull.createdAt} /> by {openedBy(item.pull).name}
+                        {item.pull.base && (
+                          <>
+                            {" "}
+                            into <span className="font-mono">{item.pull.base}</span>
+                          </>
+                        )}
+                      </span>
                     </span>
-                    <span className="mt-0.5 block text-xs text-faint">
-                      #{item.pull.number} opened <TimeAgo at={item.pull.createdAt} /> by {openedBy(item.pull).name}
-                      {item.pull.base && (
-                        <>
-                          {" "}
-                          into <span className="font-mono">{item.pull.base}</span>
-                        </>
-                      )}
-                    </span>
-                  </span>
-                </Link>
-              </li>
-            ),
-          )}
-        </ul>
+                  </Link>
+                </li>
+              ),
+            )}
+          </ul>
+        </Card>
       )}
     </div>
   );

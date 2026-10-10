@@ -3,6 +3,7 @@ import { Dialog as Primitive } from "radix-ui";
 import type { ComponentProps } from "react";
 
 import { cn } from "../../lib/cn";
+import { Button } from "./button";
 import { DialogOverlay } from "./dialog";
 
 // shadcn/ui's sheet, styled with g1t's tokens: a dialog that slides in
@@ -42,11 +43,15 @@ export function SheetContent({
       >
         {children}
         {showClose && (
-          <Primitive.Close
-            aria-label="Close"
-            className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 rounded-md p-1 text-faint transition-colors hover:bg-raised hover:text-fg max-sm:top-[calc(0.75rem+env(safe-area-inset-top))] max-sm:right-3 max-sm:flex max-sm:size-10 max-sm:items-center max-sm:justify-center"
-          >
-            <X size={16} />
+          <Primitive.Close asChild>
+            <Button
+              variant="ghost"
+              size="inline"
+              aria-label="Close"
+              className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 p-1 text-faint max-sm:top-[calc(0.75rem+env(safe-area-inset-top))] max-sm:right-3 max-sm:size-10"
+            >
+              <X size={16} />
+            </Button>
           </Primitive.Close>
         )}
       </Primitive.Content>

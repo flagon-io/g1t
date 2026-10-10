@@ -3,7 +3,9 @@ import { Outlet, data, redirect, useLocation, useNavigation } from "react-router
 
 import type { Route } from "./+types/layout";
 import { page } from "../../lib/meta";
-import { Avatar, ButtonLink, Pill } from "../../components/ui";
+import { ButtonLink } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
+import { Badge } from "../../components/ui/badge";
 import { WelcomeBanner } from "../../components/welcome";
 import { clearWelcome, welcomes } from "../../lib/invites";
 import { notFound } from "../../lib/not-found.server";
@@ -214,7 +216,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
                 <h1 className="truncate text-2xl font-semibold tracking-tight">
                   {workspace.name}
                 </h1>
-                {role && <Pill>{role}</Pill>}
+                {role && <Badge size="md">{role}</Badge>}
               </div>
               <p className="font-mono text-sm text-muted">g1t.sh/{workspace.slug}</p>
             </div>
@@ -226,7 +228,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
             ) : (
               // A visitor's sidebar is not this workspace's: its packages
               // are a link here, as its projects are below.
-              <ButtonLink to={`/${workspace.slug}/-/packages`} variant="quiet" prefetch="intent">
+              <ButtonLink to={`/${workspace.slug}/-/packages`} variant="outline" prefetch="intent">
                 <Package size={15} />
                 Packages
               </ButtonLink>

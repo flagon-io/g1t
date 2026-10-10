@@ -4,6 +4,7 @@ import type { Contributor, WeekCommits } from "@g1t/contracts";
 import type { Route } from "./+types/contributors";
 import { CommitAvatar, CommitName } from "../../components/commit-person";
 import { EmptyState, TimeAgo } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { requireRepo } from "../../lib/access.server";
 import { alignWeeks, count, peak } from "../../lib/about";
@@ -52,25 +53,27 @@ function Person({ contributor, rank, weeks, scale }: { contributor: Contributor;
   // The same person, avatar, link and card as on their commits.
   const person = contributorPerson(contributor);
   return (
-    <li className="rounded-xl border border-line bg-surface p-4">
-      <div className="flex items-center gap-3">
-        <CommitAvatar person={person} size={36} />
-        <div className="min-w-0 grow">
-          <p className="flex items-center gap-2 truncate text-sm">
-            <CommitName person={person} className="font-medium" />
-          </p>
-          <p className="text-xs text-muted">
-            {count(contributor.commits, "commit")} · last <TimeAgo at={contributor.lastAt} />
-          </p>
+    <Card asChild className="p-4">
+      <li>
+        <div className="flex items-center gap-3">
+          <CommitAvatar person={person} size={36} />
+          <div className="min-w-0 grow">
+            <p className="flex items-center gap-2 truncate text-sm">
+              <CommitName person={person} className="font-medium" />
+            </p>
+            <p className="text-xs text-muted">
+              {count(contributor.commits, "commit")} · last <TimeAgo at={contributor.lastAt} />
+            </p>
+          </div>
+          <span className="text-xs text-faint tabular-nums">#{rank}</span>
         </div>
-        <span className="text-xs text-faint tabular-nums">#{rank}</span>
-      </div>
-      {contributor.weeks.length > 0 && weeks.length > 0 && (
-        <div className="mt-3">
-          <WeekBars weeks={weeks} values={alignWeeks(weeks, contributor.weeks)} height={40} label={`${contributor.name}'s commits by week`} scale={scale} />
-        </div>
-      )}
-    </li>
+        {contributor.weeks.length > 0 && weeks.length > 0 && (
+          <div className="mt-3">
+            <WeekBars weeks={weeks} values={alignWeeks(weeks, contributor.weeks)} height={40} label={`${contributor.name}'s commits by week`} scale={scale} />
+          </div>
+        )}
+      </li>
+    </Card>
   );
 }
 
@@ -97,19 +100,21 @@ export default function Contributors({ loaderData }: Route.ComponentProps) {
         <EmptyState title="No commits yet">Push a first commit and who made it shows here.</EmptyState>
       ) : (
         <>
-          <section className="rounded-xl border border-line bg-surface p-5">
-            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-sm font-semibold">Commits per week</h3>
-              <span className="text-xs text-muted">
-                {count(contributors.commits, "commit")} · peak {peak(weeks)} a week
-              </span>
-            </div>
-            <WeekBars weeks={weeks} values={all} height={120} label="Commits per week" />
-            <div className="mt-2 flex justify-between text-xs text-faint">
-              <span>{weeks[0] && weekLabel(weeks[0].week)}</span>
-              <span>{weeks.at(-1) && weekLabel(weeks.at(-1)!.week)}</span>
-            </div>
-          </section>
+          <Card asChild className="p-5">
+            <section>
+              <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-sm font-semibold">Commits per week</h3>
+                <span className="text-xs text-muted">
+                  {count(contributors.commits, "commit")} · peak {peak(weeks)} a week
+                </span>
+              </div>
+              <WeekBars weeks={weeks} values={all} height={120} label="Commits per week" />
+              <div className="mt-2 flex justify-between text-xs text-faint">
+                <span>{weeks[0] && weekLabel(weeks[0].week)}</span>
+                <span>{weeks.at(-1) && weekLabel(weeks.at(-1)!.week)}</span>
+              </div>
+            </section>
+          </Card>
           <ul className="grid gap-3 md:grid-cols-2">
             {contributors.contributors.map((contributor, at) => (
               <Person key={`${contributor.kind}:${contributor.name}`} contributor={contributor} rank={at + 1} weeks={weeks} scale={scale} />

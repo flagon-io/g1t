@@ -5,7 +5,9 @@ import { Form, Link, data, useNavigation } from "react-router";
 import type { ChannelManagers, ChatAllowed, ChatSettings, EmojiUpload } from "@g1t/contracts";
 
 import type { Route } from "./+types/chat-settings";
-import { Button, ErrorText } from "../../components/ui";
+import { ErrorText } from "../../components/ui";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
 import { page } from "../../lib/meta";
@@ -80,9 +82,11 @@ export default function ChatSettingsPage({ loaderData, actionData }: Route.Compo
     <div className="max-w-2xl">
       <Header />
       {!owner && (
-        <p className="mb-8 rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted">
-          Only workspace owners can change these. They are shown so you know what members can do here.
-        </p>
+        <Card asChild radius="lg" className="mb-8 px-4 py-3 text-sm text-muted">
+          <p>
+            Only workspace owners can change these. They are shown so you know what members can do here.
+          </p>
+        </Card>
       )}
       <Form method="post" className="space-y-8">
         <fieldset disabled={!owner} className="space-y-8">

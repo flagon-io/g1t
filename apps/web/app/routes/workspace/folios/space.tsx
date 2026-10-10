@@ -8,6 +8,7 @@ import { useFoliosAction, useFoliosData, useViewerZone } from "../../../componen
 import { FolioDays } from "../../../components/folios/list";
 import { SpaceIcon, spaceKindLabel } from "../../../components/folios/parts";
 import { EmptyState, ErrorText } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
 import { Hint } from "../../../components/ui/hint";
 import { canDo, spacePath } from "../../../lib/folios";
 import { page } from "../../../lib/meta";
@@ -60,9 +61,9 @@ export default function SpacePage({ loaderData, params }: Route.ComponentProps) 
         </div>
         <div className="flex items-center gap-2">
           {joinable && (
-            <button type="button" disabled={busy} onClick={() => send(joined ? "leave_space" : "join_space", { space_id: space.id })} className="inline-flex h-9 items-center rounded-md border border-line px-3 text-sm text-fg/80 hover:border-line-strong hover:bg-surface hover:text-fg disabled:opacity-60">
+            <Button type="button" disabled={busy} onClick={() => send(joined ? "leave_space" : "join_space", { space_id: space.id })} variant="outline" className="px-3 disabled:opacity-60 font-normal">
               {joined ? "Leave" : "Join"}
-            </button>
+            </Button>
           )}
           {canDo(space.viewer_role, "manage") && (
             <Hint label="Space settings">
@@ -74,9 +75,9 @@ export default function SpacePage({ loaderData, params }: Route.ComponentProps) 
           {canDo(space.viewer_role, "edit") && (
             <Form method="post" action={`/${slug}/-/artifacts/new/doc`}>
               <input type="hidden" name="space" value={space.id} />
-              <button type="submit" disabled={starting} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-accent px-3 text-sm font-medium text-bg hover:bg-accent-hover disabled:opacity-60">
+              <Button type="submit" disabled={starting} variant="accent" className="gap-1.5 px-3 disabled:opacity-60">
                 <FilePlus2 size={15} /> {starting ? "Starting…" : "New doc"}
-              </button>
+              </Button>
             </Form>
           )}
         </div>

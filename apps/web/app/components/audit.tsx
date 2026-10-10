@@ -10,7 +10,9 @@ import { Link, useFetcher } from "react-router";
 import type { AuditEntry } from "@g1t/contracts";
 
 import { actionLabel, actorLabel, ruleLabel, targetLabel } from "../lib/audit";
-import { Avatar, TimeAgo } from "./ui";
+import { TimeAgo } from "./ui";
+import { Avatar } from "./ui/avatar";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { Loading, SkeletonRows } from "./ui/skeleton";
 
@@ -58,57 +60,59 @@ export function ActorLine({ entry }: { entry: AuditEntry }) {
 /** The workspace's log, one row an entry, newest first. */
 export function AuditTable({ entries, base }: { entries: AuditEntry[]; base: string }) {
   return (
-    <ol className="divide-y divide-line rounded-xl border border-line bg-surface">
-      {entries.map((entry) => (
-        <li key={entry.id} className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[9rem_1fr_auto]">
-          <span className="text-xs leading-5 text-faint">
-            <TimeAgo at={entry.time} />
-          </span>
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <ActorLine entry={entry} />
-              <span className="font-mono text-xs text-fg/85">{actionLabel(entry.action)}</span>
-              <span className="truncate font-mono text-xs text-muted">{targetLabel(entry)}</span>
-            </div>
-            <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-faint">
-              <Hint label={entry.rule}>
-                <span>{ruleLabel(entry.rule)}</span>
-              </Hint>
-              <span>{entry.surface.toUpperCase()}</span>
-              {entry.result && entry.result !== "ok" && <span>result: {entry.result}</span>}
-              {entry.runId && entry.repo && (
-                <Link to={`/${entry.repo}/agents/runs/${entry.runId}`} className="hover:text-fg">
-                  {entry.runKind ?? "agent"} run
-                </Link>
-              )}
-              {entry.runId && (
-                <Link to={`${base}?run=${encodeURIComponent(entry.runId)}`} className="hover:text-fg">
-                  everything this run did
-                </Link>
-              )}
-              {entry.credentialId && (
-                <Hint label="Credential">
+    <Card asChild divided>
+      <ol>
+        {entries.map((entry) => (
+          <li key={entry.id} className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[9rem_1fr_auto]">
+            <span className="text-xs leading-5 text-faint">
+              <TimeAgo at={entry.time} />
+            </span>
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <ActorLine entry={entry} />
+                <span className="font-mono text-xs text-fg/85">{actionLabel(entry.action)}</span>
+                <span className="truncate font-mono text-xs text-muted">{targetLabel(entry)}</span>
+              </div>
+              <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-faint">
+                <Hint label={entry.rule}>
+                  <span>{ruleLabel(entry.rule)}</span>
+                </Hint>
+                <span>{entry.surface.toUpperCase()}</span>
+                {entry.result && entry.result !== "ok" && <span>result: {entry.result}</span>}
+                {entry.runId && entry.repo && (
+                  <Link to={`/${entry.repo}/agents/runs/${entry.runId}`} className="hover:text-fg">
+                    {entry.runKind ?? "agent"} run
+                  </Link>
+                )}
+                {entry.runId && (
+                  <Link to={`${base}?run=${encodeURIComponent(entry.runId)}`} className="hover:text-fg">
+                    everything this run did
+                  </Link>
+                )}
+                {entry.credentialId && (
+                  <Hint label="Credential">
+                    <span className="font-mono">
+                      <span className="sr-only">Credential </span>
+                      {entry.credentialId}
+                    </span>
+                  </Hint>
+                )}
+                <Hint label="Request id">
                   <span className="font-mono">
-                    <span className="sr-only">Credential </span>
-                    {entry.credentialId}
+                    <span className="sr-only">Request id </span>
+                    {entry.requestId}
                   </span>
                 </Hint>
-              )}
-              <Hint label="Request id">
-                <span className="font-mono">
-                  <span className="sr-only">Request id </span>
-                  {entry.requestId}
-                </span>
-              </Hint>
-            </p>
-            {entry.outcome === "denied" && entry.message && <p className="mt-1 text-xs text-danger">{entry.message}</p>}
-          </div>
-          <span className="sm:text-right">
-            <OutcomeMark entry={entry} />
-          </span>
-        </li>
-      ))}
-    </ol>
+              </p>
+              {entry.outcome === "denied" && entry.message && <p className="mt-1 text-xs text-danger">{entry.message}</p>}
+            </div>
+            <span className="sm:text-right">
+              <OutcomeMark entry={entry} />
+            </span>
+          </li>
+        ))}
+      </ol>
+    </Card>
   );
 }
 
@@ -134,27 +138,29 @@ export function WhatItDid({ entries, compact = false }: { entries: AuditEntry[];
         {denied > 0 && <span className="text-danger"> · {denied} refused</span>}
         {compact && entries.length > shown.length && ` · the latest ${shown.length}`}
       </p>
-      <ol className="mt-2 divide-y divide-line rounded-xl border border-line bg-surface">
-        {shown.map((entry) => (
-          <li key={entry.id} className="flex items-start gap-3 px-4 py-2 text-sm">
-            <time dateTime={entry.time} className="shrink-0 font-mono text-xs leading-5 text-faint" suppressHydrationWarning>
-              {clock(entry.time)}
-            </time>
-            <div className="min-w-0 grow">
-              <p className="flex min-w-0 flex-wrap items-center gap-x-2 font-mono text-xs leading-5">
-                <span className="text-fg/85">{actionLabel(entry.action)}</span>
-                <span className="truncate text-muted">{targetLabel(entry)}</span>
-              </p>
-              {entry.outcome === "denied" && (
-                <p className="text-xs text-danger">
-                  {entry.message ?? "Refused."} <span className="text-faint">({ruleLabel(entry.rule)})</span>
+      <Card asChild divided className="mt-2">
+        <ol>
+          {shown.map((entry) => (
+            <li key={entry.id} className="flex items-start gap-3 px-4 py-2 text-sm">
+              <time dateTime={entry.time} className="shrink-0 font-mono text-xs leading-5 text-faint" suppressHydrationWarning>
+                {clock(entry.time)}
+              </time>
+              <div className="min-w-0 grow">
+                <p className="flex min-w-0 flex-wrap items-center gap-x-2 font-mono text-xs leading-5">
+                  <span className="text-fg/85">{actionLabel(entry.action)}</span>
+                  <span className="truncate text-muted">{targetLabel(entry)}</span>
                 </p>
-              )}
-            </div>
-            <OutcomeMark entry={entry} />
-          </li>
-        ))}
-      </ol>
+                {entry.outcome === "denied" && (
+                  <p className="text-xs text-danger">
+                    {entry.message ?? "Refused."} <span className="text-faint">({ruleLabel(entry.rule)})</span>
+                  </p>
+                )}
+              </div>
+              <OutcomeMark entry={entry} />
+            </li>
+          ))}
+        </ol>
+      </Card>
     </div>
   );
 }

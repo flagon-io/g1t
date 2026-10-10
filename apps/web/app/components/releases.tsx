@@ -9,7 +9,9 @@ import { Link } from "react-router";
 import type { Release, RepoPath } from "@g1t/contracts";
 
 import { Markdown } from "./markdown";
-import { Pill, TimeAgo } from "./ui";
+import { TimeAgo } from "./ui";
+import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
 import { UserCard } from "./user-card";
 
 export function encodeTag(tag: string): string {
@@ -35,7 +37,7 @@ export function ReleaseCard({ release, repo, linkTitle = true }: { release: Rele
           {release.target.slice(0, 7)}
         </Link>
       </div>
-      <div className="min-w-0 overflow-hidden rounded-xl border border-line bg-surface">
+      <Card className="min-w-0 overflow-hidden">
         <div className="border-b border-line px-5 py-4">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="min-w-0 text-xl font-semibold tracking-tight break-words">
@@ -47,9 +49,9 @@ export function ReleaseCard({ release, repo, linkTitle = true }: { release: Rele
                 title
               )}
             </h3>
-            {release.latest && <Pill>Latest</Pill>}
-            {release.prerelease && <Pill>Pre-release</Pill>}
-            {release.draft && <Pill>Draft</Pill>}
+            {release.latest && <Badge size="md">Latest</Badge>}
+            {release.prerelease && <Badge size="md">Pre-release</Badge>}
+            {release.draft && <Badge size="md">Draft</Badge>}
           </div>
           {release.author && (
             <p className="mt-1 text-xs text-faint">
@@ -85,7 +87,7 @@ export function ReleaseCard({ release, repo, linkTitle = true }: { release: Rele
             Source code (zip)
           </a>
         </div>
-      </div>
+      </Card>
     </article>
   );
 }

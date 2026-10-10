@@ -1,7 +1,9 @@
 import { Link } from "react-router";
 
 import type { Route } from "./+types/stargazers";
-import { Avatar, ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
+import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
+import { Card } from "../../components/ui/card";
 import { requireRepo } from "../../lib/access.server";
 import { page } from "../../lib/meta";
 import { repos } from "../../lib/services.server";
@@ -34,31 +36,33 @@ export default function Stargazers({ loaderData }: Route.ComponentProps) {
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {stargazers.map((person) => (
-            <li key={person.username} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3">
-              <Avatar name={person.username} image={person.avatar} size={36} />
-              <div className="min-w-0">
-                <UserCard username={person.username}>
-                  <Link to={`/u/${person.username}`} className="block truncate text-sm font-medium hover:text-accent">
-                    {person.username}
-                  </Link>
-                </UserCard>
-                <p className="text-xs text-faint">
-                  Starred <TimeAgo at={person.starredAt} />
-                </p>
-              </div>
-            </li>
+            <Card asChild key={person.username} className="flex items-center gap-3 p-3">
+              <li>
+                <Avatar name={person.username} image={person.avatar} size={36} />
+                <div className="min-w-0">
+                  <UserCard username={person.username}>
+                    <Link to={`/u/${person.username}`} className="block truncate text-sm font-medium hover:text-accent">
+                      {person.username}
+                    </Link>
+                  </UserCard>
+                  <p className="text-xs text-faint">
+                    Starred <TimeAgo at={person.starredAt} />
+                  </p>
+                </div>
+              </li>
+            </Card>
           ))}
         </ul>
       )}
       {(at > 1 || stargazers.length === 100) && (
         <div className="flex justify-center gap-2">
           {at > 1 && (
-            <ButtonLink variant="quiet" to={`?page=${at - 1}`}>
+            <ButtonLink variant="outline" to={`?page=${at - 1}`}>
               Newer
             </ButtonLink>
           )}
           {stargazers.length === 100 && (
-            <ButtonLink variant="quiet" to={`?page=${at + 1}`}>
+            <ButtonLink variant="outline" to={`?page=${at + 1}`}>
               Older
             </ButtonLink>
           )}

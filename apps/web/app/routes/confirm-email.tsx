@@ -6,6 +6,7 @@ import { CONFIRM_TTL_SECONDS, tidyConfirmCode } from "@g1t/contracts";
 import type { Route } from "./+types/confirm-email";
 import { page } from "../lib/meta";
 import { ButtonLink, ErrorText, Field, Input, SubmitButton } from "../components/ui";
+import { Button } from "../components/ui/button";
 import { Hint } from "../components/ui/hint";
 import { afterConfirming, confirmedLine } from "../lib/confirm-gate";
 import { safeNext } from "../lib/next";
@@ -157,7 +158,7 @@ export default function ConfirmEmail({ loaderData, actionData }: Route.Component
           <Form method="post" className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-muted">Did not get it?</span>
             <Hint label="Sends a new code and link. You can ask once a minute.">
-              <SubmitButton variant="quiet" name="intent" value="resend" pending="Sending…">
+              <SubmitButton variant="outline" name="intent" value="resend" pending="Sending…">
                 Send a new code
               </SubmitButton>
             </Hint>
@@ -185,7 +186,7 @@ export default function ConfirmEmail({ loaderData, actionData }: Route.Component
               <Input name="email" type="email" autoComplete="email" required maxLength={254} />
             </Field>
             <ErrorText>{errorFor("change")}</ErrorText>
-            <SubmitButton variant="quiet" name="intent" value="change" pending="Changing…">
+            <SubmitButton variant="outline" name="intent" value="change" pending="Changing…">
               Use this address
             </SubmitButton>
           </Form>
@@ -194,9 +195,9 @@ export default function ConfirmEmail({ loaderData, actionData }: Route.Component
 
       <Form method="post" action="/logout" className="mt-8 text-center text-sm text-muted">
         Signed in as <span className="font-mono text-fg">{username}</span> ·{" "}
-        <button type="submit" className="text-fg underline underline-offset-4 hover:text-accent">
+        <Button type="submit" variant="link" size="inline" className="text-fg underline hover:text-accent">
           Sign out
-        </button>
+        </Button>
       </Form>
     </main>
   );

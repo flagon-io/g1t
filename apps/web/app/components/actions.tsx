@@ -9,6 +9,7 @@ import { Link } from "react-router";
 
 import type { CommitStatus, Conclusion, LogChunk, WorkflowNote } from "@g1t/contracts";
 
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { type Line, blocks, highlight, searchLog } from "../lib/log-lines";
 
@@ -236,26 +237,28 @@ export function Notes({ notes }: { notes: WorkflowNote[] }) {
   const sorted = [...notes].sort((a, b) => order[a.severity] - order[b.severity]);
   const blocking = notes.filter((n) => n.severity === "unsupported").length;
   return (
-    <details className="group rounded-xl border border-line bg-surface" open={blocking > 0}>
-      <summary className="cursor-pointer list-none px-4 py-2.5 text-sm">
-        <span className="font-medium">How this runs on g1t</span>
-        <span className="text-muted">
-          {" · "}
-          {blocking > 0 ? `${blocking} thing${blocking === 1 ? "" : "s"} g1t cannot run yet` : `${notes.length} note${notes.length === 1 ? "" : "s"}`}
-        </span>
-      </summary>
-      <ul className="space-y-2 border-t border-line px-4 py-3 text-sm">
-        {sorted.map((note, index) => (
-          <li key={index} className="flex gap-2">
-            {NOTE_ICON[note.severity]}
-            <span>
-              {note.job && <span className="font-mono text-xs text-muted">{note.job}: </span>}
-              {note.message}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </details>
+    <Card asChild className="group">
+      <details open={blocking > 0}>
+        <summary className="cursor-pointer list-none px-4 py-2.5 text-sm">
+          <span className="font-medium">How this runs on g1t</span>
+          <span className="text-muted">
+            {" · "}
+            {blocking > 0 ? `${blocking} thing${blocking === 1 ? "" : "s"} g1t cannot run yet` : `${notes.length} note${notes.length === 1 ? "" : "s"}`}
+          </span>
+        </summary>
+        <ul className="space-y-2 border-t border-line px-4 py-3 text-sm">
+          {sorted.map((note, index) => (
+            <li key={index} className="flex gap-2">
+              {NOTE_ICON[note.severity]}
+              <span>
+                {note.job && <span className="font-mono text-xs text-muted">{note.job}: </span>}
+                {note.message}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </Card>
   );
 }
 
@@ -270,34 +273,36 @@ export function WorkflowStatuses({ statuses }: { statuses: CommitStatus[] }) {
   const failed = statuses.filter((s) => s.state === "failure" || s.state === "error").length;
   const pending = statuses.filter((s) => s.state === "pending").length;
   return (
-    <section className="rounded-xl border border-line bg-surface p-4">
-      <h3 className="text-sm font-medium">
-        {failed > 0 ? `${failed} workflow${failed === 1 ? "" : "s"} failed` : pending > 0 ? "Workflows running" : "Workflows passed"}
-      </h3>
-      <ul className="mt-3 space-y-2 text-sm">
-        {statuses.map((status) => {
-          const path = status.targetUrl?.replace(/^https:\/\/g1t\.sh/, "") ?? null;
-          const row = (
-            <>
-              <StatusIcon {...standing(status.state)} size={14} />
-              <span className="min-w-0 truncate">{status.context}</span>
-            </>
-          );
-          return (
-            <li key={status.context}>
-              {path ? (
-                <Hint label={status.description}>
-                  <Link to={path} className="flex items-center gap-2 hover:text-fg">
-                    {row}
-                  </Link>
-                </Hint>
-              ) : (
-                <span className="flex items-center gap-2">{row}</span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+    <Card asChild className="p-4">
+      <section>
+        <h3 className="text-sm font-medium">
+          {failed > 0 ? `${failed} workflow${failed === 1 ? "" : "s"} failed` : pending > 0 ? "Workflows running" : "Workflows passed"}
+        </h3>
+        <ul className="mt-3 space-y-2 text-sm">
+          {statuses.map((status) => {
+            const path = status.targetUrl?.replace(/^https:\/\/g1t\.sh/, "") ?? null;
+            const row = (
+              <>
+                <StatusIcon {...standing(status.state)} size={14} />
+                <span className="min-w-0 truncate">{status.context}</span>
+              </>
+            );
+            return (
+              <li key={status.context}>
+                {path ? (
+                  <Hint label={status.description}>
+                    <Link to={path} className="flex items-center gap-2 hover:text-fg">
+                      {row}
+                    </Link>
+                  </Hint>
+                ) : (
+                  <span className="flex items-center gap-2">{row}</span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    </Card>
   );
 }

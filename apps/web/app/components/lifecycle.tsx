@@ -1,6 +1,7 @@
 import { Hand, Loader } from "lucide-react";
 
 import type { Lifecycle, Stage } from "@g1t/contracts";
+import { Card } from "./ui/card";
 
 const STEPS = ["Change", "Checks", "Review", "Up to date", "Landing"];
 
@@ -85,7 +86,7 @@ export function LifecyclePanel({ lifecycle }: { lifecycle: Lifecycle }) {
   }
   const current = STEP_OF[stage];
   return (
-    <div className="mt-4 rounded-xl border border-line bg-surface px-4 py-3.5 text-sm">
+    <Card className="mt-4 px-4 py-3.5 text-sm">
       <div className="flex items-center gap-2.5">
         <Loader size={15} className="shrink-0 animate-spin text-accent motion-reduce:animate-none" />
         <p className="font-medium">
@@ -116,6 +117,6 @@ export function LifecyclePanel({ lifecycle }: { lifecycle: Lifecycle }) {
         })}
       </ol>
       <p className="mt-2.5 text-muted">{detail}</p>
-    </div>
+    </Card>
   );
 }

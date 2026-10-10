@@ -8,7 +8,9 @@ import { EmojiProvider, forgetCustomEmoji } from "./context";
 import { loadEmojiData } from "./data";
 import { CustomEmojiImage } from "./render";
 import { MemberAvatar } from "../chat/marks";
-import { Button, EmptyState, ErrorText, TimeAgo, notACredential } from "../ui";
+import { EmptyState, ErrorText, TimeAgo, notACredential } from "../ui";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Hint } from "../ui/hint";
 import { SelectField } from "../ui/select";
@@ -61,7 +63,7 @@ export function EmojiSettings({ slug, list, usercontent, meId }: { slug: string;
           {list.can_upload ? (
             <div className="flex gap-2">
               {list.emoji.length > 0 && (
-                <Button variant="quiet" onClick={() => setAliasing(true)}>
+                <Button variant="outline" onClick={() => setAliasing(true)}>
                   Add an alias
                 </Button>
               )}
@@ -89,7 +91,9 @@ export function EmojiSettings({ slug, list, usercontent, meId }: { slug: string;
               {query ? "Matching" : "All emoji"} <span className="text-faint">{shown.length}</span>
             </h2>
             {shown.length === 0 ? (
-              <p className="rounded-xl border border-line px-4 py-8 text-center text-sm text-muted">No emoji match “{query}”.</p>
+              <Card asChild tone="plain" className="px-4 py-8 text-center text-sm text-muted">
+                <p>No emoji match “{query}”.</p>
+              </Card>
             ) : (
               <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {shown.map((emoji) => (
@@ -116,56 +120,61 @@ function EmojiCard({ slug, emoji, usercontent, removable }: { slug: string; emoj
     if (fetcher.data?.ok) forgetCustomEmoji(slug);
   }, [fetcher.data, slug]);
   return (
-    <li className="group flex items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5">
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-bg">
-        <CustomEmojiImage name={emoji.name} file={emoji.file} usercontent={usercontent} size={32} />
-      </span>
-      <div className="min-w-0 grow">
-        <p className="truncate font-mono text-sm text-fg">:{emoji.name}:</p>
-        <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-faint">
-          {emoji.alias_of ? (
-            <span className="truncate">
-              Alias of <span className="font-mono text-muted">:{emoji.alias_of}:</span>
-            </span>
+    <Card asChild className="group flex items-center gap-3 px-3 py-2.5">
+      <li>
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-bg">
+          <CustomEmojiImage name={emoji.name} file={emoji.file} usercontent={usercontent} size={32} />
+        </span>
+        <div className="min-w-0 grow">
+          <p className="truncate font-mono text-sm text-fg">:{emoji.name}:</p>
+          <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-faint">
+            {emoji.alias_of ? (
+              <span className="truncate">
+                Alias of <span className="font-mono text-muted">:{emoji.alias_of}:</span>
+              </span>
+            ) : (
+              <>
+                <MemberAvatar member={emoji.created_by} size={14} />
+                <span className="truncate">{emoji.created_by.display_name || emoji.created_by.name}</span>
+                <span aria-hidden>·</span>
+                <TimeAgo at={emoji.created_at} />
+              </>
+            )}
+          </p>
+          {fetcher.data && !fetcher.data.ok && <p className="mt-0.5 text-xs text-danger">{fetcher.data.error}</p>}
+        </div>
+        {removable &&
+          (confirm ? (
+            <div className="flex shrink-0 items-center gap-1">
+              <Button type="button" onClick={() => setConfirm(false)} variant="ghost" size="inline" className="px-2 py-1 text-xs font-normal">
+                Keep
+              </Button>
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={() => fetcher.submit({ intent: "remove", name: emoji.name }, { method: "post" })}
+                size="inline"
+                className="bg-danger/15 px-2 py-1 text-xs text-danger hover:bg-danger/25 disabled:opacity-60"
+              >
+                {busy ? "Removing…" : emoji.alias_of ? "Remove" : "Remove with aliases"}
+              </Button>
+            </div>
           ) : (
-            <>
-              <MemberAvatar member={emoji.created_by} size={14} />
-              <span className="truncate">{emoji.created_by.display_name || emoji.created_by.name}</span>
-              <span aria-hidden>·</span>
-              <TimeAgo at={emoji.created_at} />
-            </>
-          )}
-        </p>
-        {fetcher.data && !fetcher.data.ok && <p className="mt-0.5 text-xs text-danger">{fetcher.data.error}</p>}
-      </div>
-      {removable &&
-        (confirm ? (
-          <div className="flex shrink-0 items-center gap-1">
-            <button type="button" onClick={() => setConfirm(false)} className="rounded-md px-2 py-1 text-xs text-muted hover:bg-raised hover:text-fg">
-              Keep
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => fetcher.submit({ intent: "remove", name: emoji.name }, { method: "post" })}
-              className="rounded-md bg-danger/15 px-2 py-1 text-xs font-medium text-danger hover:bg-danger/25 disabled:opacity-60"
-            >
-              {busy ? "Removing…" : emoji.alias_of ? "Remove" : "Remove with aliases"}
-            </button>
-          </div>
-        ) : (
-          <Hint label={`Remove :${emoji.name}:`}>
-            <button
-              type="button"
-              aria-label={`Remove :${emoji.name}:`}
-              onClick={() => setConfirm(true)}
-              className="flex size-8 shrink-0 items-center justify-center rounded-md text-faint opacity-100 transition hover:bg-raised hover:text-danger sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-            >
-              <Trash2 size={15} />
-            </button>
-          </Hint>
-        ))}
-    </li>
+            <Hint label={`Remove :${emoji.name}:`}>
+              <Button
+                type="button"
+                aria-label={`Remove :${emoji.name}:`}
+                onClick={() => setConfirm(true)}
+                variant="ghost"
+                size="icon-sm"
+                className="text-faint opacity-100 transition hover:text-danger sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+              >
+                <Trash2 size={15} />
+              </Button>
+            </Hint>
+          ))}
+      </li>
+    </Card>
   );
 }
 
@@ -173,20 +182,22 @@ function EmojiCard({ slug, emoji, usercontent, removable }: { slug: string; emoj
 /** Who may add emoji: one of the workspace's chat settings, changed in Settings, Chat. */
 function UploadSetting({ slug, value }: { slug: string; value: EmojiUpload }) {
   return (
-    <section aria-labelledby="emoji-upload" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-4">
-      <div>
-        <h2 id="emoji-upload" className="text-sm font-medium text-fg">
-          Who can add emoji: {value === "admins" ? "owners only" : "any member"}
-        </h2>
-        <p className="mt-1 text-xs text-muted">Whoever added an emoji, and owners, can remove it. Who can add them is one of the workspace&apos;s chat settings.</p>
-      </div>
-      <Link
-        to={`/${slug}/-/settings/chat`}
-        className="inline-flex h-8 items-center rounded-md border border-line px-3 text-[0.8125rem] font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-surface"
-      >
-        Chat settings
-      </Link>
-    </section>
+    <Card asChild tone="plain" className="flex flex-wrap items-center justify-between gap-3 p-4">
+      <section aria-labelledby="emoji-upload">
+        <div>
+          <h2 id="emoji-upload" className="text-sm font-medium text-fg">
+            Who can add emoji: {value === "admins" ? "owners only" : "any member"}
+          </h2>
+          <p className="mt-1 text-xs text-muted">Whoever added an emoji, and owners, can remove it. Who can add them is one of the workspace&apos;s chat settings.</p>
+        </div>
+        <Link
+          to={`/${slug}/-/settings/chat`}
+          className="inline-flex h-8 items-center rounded-md border border-line px-3 text-[0.8125rem] font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-surface"
+        >
+          Chat settings
+        </Link>
+      </section>
+    </Card>
   );
 }
 
@@ -329,7 +340,7 @@ export function UploadDialog({
         </label>
 
         {preview && (
-          <div className="rounded-xl border border-line bg-bg p-3" aria-label="Preview">
+          <Card tone="bg" className="p-3" aria-label="Preview">
             <p className="mb-2 text-[0.6875rem] font-semibold tracking-wide text-faint uppercase">Preview</p>
             <p className="text-[0.9375rem] text-fg-soft">
               Shipping it today <img src={preview} alt={`:${clean || "name"}:`} className="inline-block size-[1.375em] object-contain align-[-0.3em]" />
@@ -341,12 +352,12 @@ export function UploadDialog({
               <img src={preview} alt="" className="size-9 object-contain" />
               <span className="ml-auto font-mono text-xs text-faint">:{clean || "name"}:</span>
             </div>
-          </div>
+          </Card>
         )}
         {fetcher.data && !fetcher.data.ok && fetcher.data.intent === "add" && <ErrorText>{fetcher.data.error}</ErrorText>}
 
         <DialogFooter>
-          <Button variant="quiet" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button variant="accent" onClick={submit} disabled={!ready}>
@@ -423,7 +434,7 @@ function AliasDialog({
         </label>
         {fetcher.data && !fetcher.data.ok && fetcher.data.intent === "alias" && <ErrorText>{fetcher.data.error}</ErrorText>}
         <DialogFooter>
-          <Button variant="quiet" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button

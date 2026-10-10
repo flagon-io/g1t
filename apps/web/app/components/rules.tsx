@@ -59,8 +59,10 @@ import {
   ruleInfo,
   targetSummary,
 } from "../lib/rules";
-import { Button, ErrorText, SubmitButton, TimeAgo } from "./ui";
+import { ErrorText, SubmitButton, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { CheckboxOption } from "./ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Input } from "./ui/input";
@@ -114,14 +116,11 @@ export function PatternList({
             <li key={value} className="inline-flex max-w-full items-center gap-1 rounded-md border border-line bg-bg py-0.5 pr-1 pl-2 text-sm">
               <span className={cn("truncate", mono && !value.startsWith("~") && "font-mono text-[0.8125rem]")}>{patternLabel(value)}</span>
               {!disabled && (
-                <button
+                <Button
                   type="button"
-                  aria-label={`Remove ${patternLabel(value)}`}
-                  className="rounded p-0.5 text-faint hover:bg-surface hover:text-fg"
-                  onClick={() => onChange(values.filter((other) => other !== value))}
-                >
+                  aria-label={`Remove ${patternLabel(value)}`} variant="ghost" size="inline" className="rounded p-0.5 text-faint hover:bg-surface" onClick={() => onChange(values.filter((other) => other !== value))}>
                   <X size={13} />
-                </button>
+                </Button>
               )}
             </li>
           ))}
@@ -142,20 +141,17 @@ export function PatternList({
               }
             }}
           />
-          <Button type="button" variant="quiet" onClick={() => add(typed)} disabled={!typed.trim()}>
+          <Button type="button" variant="outline" onClick={() => add(typed)} disabled={!typed.trim()}>
             <Plus size={14} /> Add
           </Button>
           {quick
             .filter((option) => !values.includes(option.value))
             .map((option) => (
-              <button
+              <Button
                 key={option.value}
-                type="button"
-                className="rounded-full border border-dashed border-line px-2.5 py-1 text-xs text-muted hover:border-line-strong hover:text-fg"
-                onClick={() => add(option.value)}
-              >
+                type="button" variant="outline" size="inline" className="rounded-full border-dashed px-2.5 py-1 text-xs text-muted" onClick={() => add(option.value)}>
                 + {option.label}
-              </button>
+              </Button>
             ))}
         </div>
       )}
@@ -306,7 +302,7 @@ function PeriodList({
   return (
     <div className="space-y-2">
       {periods.map((period, index) => (
-        <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg border border-line p-2">
+        <Card key={index} tone="plain" radius="lg" className="flex flex-wrap items-center gap-2 p-2">
           <Input
             type="datetime-local"
             aria-label={`${label} ${index + 1} starts`}
@@ -333,23 +329,23 @@ function PeriodList({
             onChange={(event) => onChange(periods.map((one, at) => (at === index ? { ...one, reason: event.target.value } : one)))}
           />
           {!disabled && (
-            <button type="button" aria-label={`Remove ${label.toLowerCase()} ${index + 1}`} className="rounded p-1 text-faint hover:text-fg" onClick={() => onChange(periods.filter((_, at) => at !== index))}>
+            <Button type="button" aria-label={`Remove ${label.toLowerCase()} ${index + 1}`} variant="ghost" size="inline" className="rounded p-1 text-faint" onClick={() => onChange(periods.filter((_, at) => at !== index))}>
               <X size={14} />
-            </button>
+            </Button>
           )}
-        </div>
+        </Card>
       ))}
       {!disabled && (
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
-            variant="quiet"
+            variant="outline"
             onClick={() => onChange([...periods, { start: new Date().toISOString(), end: new Date(Date.now() + 86_400_000).toISOString(), reason: "" }])}
           >
             <Plus size={14} /> {label}
           </Button>
           {allowOpen && (
-            <Button type="button" variant="quiet" onClick={() => onChange([...periods, { start: new Date().toISOString(), end: null, reason: "Incident" }])}>
+            <Button type="button" variant="outline" onClick={() => onChange([...periods, { start: new Date().toISOString(), end: null, reason: "Incident" }])}>
               <ShieldAlert size={14} /> Freeze now, until lifted
             </Button>
           )}
@@ -428,35 +424,37 @@ function Parameters({
             <p className="mb-2 text-sm text-fg">Checks</p>
             <ul className="space-y-1.5">
               {p.checks.map((check, index) => (
-                <li key={check.context} className="flex flex-wrap items-center gap-2 rounded-lg border border-line px-2.5 py-1.5">
-                  <span className="grow font-mono text-[0.8125rem]">{check.context}</span>
-                  <Choice
-                    label={`Where ${check.context} comes from`}
-                    value={check.integration ?? "any"}
-                    disabled={disabled}
-                    options={[
-                      { value: "any", label: "Any source" },
-                      { value: "actions", label: "Workflows" },
-                      { value: "deployments", label: "Deployments" },
-                      { value: "security", label: "Security" },
-                      { value: "g1t", label: "g1t" },
-                      { value: "api", label: "The API" },
-                    ]}
-                    onChange={(value) =>
-                      set({
-                        ...p,
-                        checks: p.checks.map((one, at) =>
-                          at === index ? (value === "any" ? { context: one.context } : { context: one.context, integration: value }) : one,
-                        ),
-                      })
-                    }
-                  />
-                  {!disabled && (
-                    <button type="button" aria-label={`Stop requiring ${check.context}`} className="rounded p-1 text-faint hover:text-fg" onClick={() => set({ ...p, checks: p.checks.filter((_, at) => at !== index) })}>
-                      <X size={14} />
-                    </button>
-                  )}
-                </li>
+                <Card asChild key={check.context} tone="plain" radius="lg" className="flex flex-wrap items-center gap-2 px-2.5 py-1.5">
+                  <li>
+                    <span className="grow font-mono text-[0.8125rem]">{check.context}</span>
+                    <Choice
+                      label={`Where ${check.context} comes from`}
+                      value={check.integration ?? "any"}
+                      disabled={disabled}
+                      options={[
+                        { value: "any", label: "Any source" },
+                        { value: "actions", label: "Workflows" },
+                        { value: "deployments", label: "Deployments" },
+                        { value: "security", label: "Security" },
+                        { value: "g1t", label: "g1t" },
+                        { value: "api", label: "The API" },
+                      ]}
+                      onChange={(value) =>
+                        set({
+                          ...p,
+                          checks: p.checks.map((one, at) =>
+                            at === index ? (value === "any" ? { context: one.context } : { context: one.context, integration: value }) : one,
+                          ),
+                        })
+                      }
+                    />
+                    {!disabled && (
+                      <Button type="button" aria-label={`Stop requiring ${check.context}`} variant="ghost" size="inline" className="rounded p-1 text-faint" onClick={() => set({ ...p, checks: p.checks.filter((_, at) => at !== index) })}>
+                        <X size={14} />
+                      </Button>
+                    )}
+                  </li>
+                </Card>
               ))}
             </ul>
             <div className="mt-2">
@@ -599,7 +597,7 @@ function Parameters({
             <p className="mb-2 text-xs text-muted">None: open whenever no freeze covers the moment.</p>
             <div className="space-y-2">
               {p.windows.map((window, index) => (
-                <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg border border-line p-2">
+                <Card key={index} tone="plain" radius="lg" className="flex flex-wrap items-center gap-2 p-2">
                   <div className="flex flex-wrap gap-1">
                     {DAYS.map((day) => {
                       const on = window.days.includes(day);
@@ -628,14 +626,14 @@ function Parameters({
                   <span className="text-sm text-muted">to</span>
                   <Input type="time" aria-label="Closes" value={window.end} disabled={disabled} className="w-28" onChange={(event) => set({ ...p, windows: p.windows.map((one, at) => (at === index ? { ...one, end: event.target.value } : one)) })} />
                   {!disabled && (
-                    <button type="button" aria-label={`Remove window ${index + 1}`} className="rounded p-1 text-faint hover:text-fg" onClick={() => set({ ...p, windows: p.windows.filter((_, at) => at !== index) })}>
+                    <Button type="button" aria-label={`Remove window ${index + 1}`} variant="ghost" size="inline" className="rounded p-1 text-faint" onClick={() => set({ ...p, windows: p.windows.filter((_, at) => at !== index) })}>
                       <X size={14} />
-                    </button>
+                    </Button>
                   )}
-                </div>
+                </Card>
               ))}
               {!disabled && (
-                <Button type="button" variant="quiet" onClick={() => set({ ...p, windows: [...p.windows, { days: ["mon", "tue", "wed", "thu", "fri"], start: "09:00", end: "17:00" }] })}>
+                <Button type="button" variant="outline" onClick={() => set({ ...p, windows: [...p.windows, { days: ["mon", "tue", "wed", "thu", "fri"], start: "09:00", end: "17:00" }] })}>
                   <Plus size={14} /> Weekly hours
                 </Button>
               )}
@@ -697,30 +695,32 @@ function RuleCard({
   const info = ruleInfo(entry.type);
   const agentsOnly = info?.group === "agents";
   return (
-    <li className="rounded-xl border border-line bg-surface">
-      <div className="flex flex-wrap items-start justify-between gap-3 p-4">
-        <div className="min-w-0 grow basis-60">
-          <p className="flex items-center gap-2 text-sm font-medium">
-            {agentsOnly && <Bot size={14} className="text-accent" />}
-            {info?.label ?? entry.type}
-          </p>
-          <p className="mt-0.5 text-sm text-muted">{info?.about}</p>
+    <Card asChild>
+      <li>
+        <div className="flex flex-wrap items-start justify-between gap-3 p-4">
+          <div className="min-w-0 grow basis-60">
+            <p className="flex items-center gap-2 text-sm font-medium">
+              {agentsOnly && <Bot size={14} className="text-accent" />}
+              {info?.label ?? entry.type}
+            </p>
+            <p className="mt-0.5 text-sm text-muted">{info?.about}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Choice label={`Whose changes ${info?.label ?? entry.type} holds for`} value={entry.applies_to} options={APPLIES} disabled={disabled} onChange={(applies_to) => onChange({ ...entry, applies_to })} />
+            {!disabled && (
+              <Button type="button" aria-label={`Remove ${info?.label ?? entry.type}`} variant="ghost" size="inline" className="p-1.5 text-faint hover:bg-bg hover:text-danger" onClick={onRemove}>
+                <Trash2 size={15} />
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Choice label={`Whose changes ${info?.label ?? entry.type} holds for`} value={entry.applies_to} options={APPLIES} disabled={disabled} onChange={(applies_to) => onChange({ ...entry, applies_to })} />
-          {!disabled && (
-            <button type="button" aria-label={`Remove ${info?.label ?? entry.type}`} className="rounded-md p-1.5 text-faint hover:bg-bg hover:text-danger" onClick={onRemove}>
-              <Trash2 size={15} />
-            </button>
-          )}
-        </div>
-      </div>
-      {Object.keys(entry.parameters).length > 0 && (
-        <div className="border-t border-line px-4 py-3">
-          <Parameters entry={entry} onChange={onChange} seen={seen} disabled={disabled} />
-        </div>
-      )}
-    </li>
+        {Object.keys(entry.parameters).length > 0 && (
+          <div className="border-t border-line px-4 py-3">
+            <Parameters entry={entry} onChange={onChange} seen={seen} disabled={disabled} />
+          </div>
+        )}
+      </li>
+    </Card>
   );
 }
 
@@ -742,42 +742,44 @@ function BypassList({ actors, onChange, disabled }: { actors: BypassActor[]; onC
       {actors.length === 0 && <p className="text-sm text-muted">Nobody: these rules hold for everyone, people and agents alike, g1t included.</p>}
       <ul className="space-y-2">
         {actors.map((actor, index) => (
-          <li key={index} className="flex flex-wrap items-center gap-2 rounded-lg border border-line p-2">
-            <Choice label="Who" value={actor.kind} options={KINDS} disabled={disabled} onChange={(kind) => update(index, { kind, value: kind === "role" ? "admin" : "" })} />
-            {actor.kind === "role" ? (
+          <Card asChild key={index} tone="plain" radius="lg" className="flex flex-wrap items-center gap-2 p-2">
+            <li>
+              <Choice label="Who" value={actor.kind} options={KINDS} disabled={disabled} onChange={(kind) => update(index, { kind, value: kind === "role" ? "admin" : "" })} />
+              {actor.kind === "role" ? (
+                <Choice
+                  label="Role"
+                  value={actor.value || "admin"}
+                  disabled={disabled}
+                  options={[
+                    { value: "write", label: "Write and up" },
+                    { value: "maintain", label: "Maintain and up" },
+                    { value: "admin", label: "Admin" },
+                    { value: "owner", label: "Workspace owners" },
+                  ]}
+                  onChange={(value) => update(index, { value })}
+                />
+              ) : actor.kind === "g1t" ? (
+                <span className="grow text-sm text-muted">g1t's agents and g1t itself (the merge queue, security updates)</span>
+              ) : (
+                <Input aria-label="Who, by name" value={actor.value} disabled={disabled} placeholder={KINDS.find((kind) => kind.value === actor.kind)?.placeholder} className="w-48 grow" onChange={(event) => update(index, { value: event.target.value })} />
+              )}
               <Choice
-                label="Role"
-                value={actor.value || "admin"}
+                label="When"
+                value={actor.mode}
                 disabled={disabled}
                 options={[
-                  { value: "write", label: "Write and up" },
-                  { value: "maintain", label: "Maintain and up" },
-                  { value: "admin", label: "Admin" },
-                  { value: "owner", label: "Workspace owners" },
+                  { value: "always", label: "Always" },
+                  { value: "pull_requests", label: "Pull requests only" },
                 ]}
-                onChange={(value) => update(index, { value })}
+                onChange={(mode) => update(index, { mode })}
               />
-            ) : actor.kind === "g1t" ? (
-              <span className="grow text-sm text-muted">g1t's agents and g1t itself (the merge queue, security updates)</span>
-            ) : (
-              <Input aria-label="Who, by name" value={actor.value} disabled={disabled} placeholder={KINDS.find((kind) => kind.value === actor.kind)?.placeholder} className="w-48 grow" onChange={(event) => update(index, { value: event.target.value })} />
-            )}
-            <Choice
-              label="When"
-              value={actor.mode}
-              disabled={disabled}
-              options={[
-                { value: "always", label: "Always" },
-                { value: "pull_requests", label: "Pull requests only" },
-              ]}
-              onChange={(mode) => update(index, { mode })}
-            />
-            {!disabled && (
-              <button type="button" aria-label={`Remove ${describeBypassActor(actor)}`} className="rounded p-1 text-faint hover:text-fg" onClick={() => onChange(actors.filter((_, at) => at !== index))}>
-                <X size={14} />
-              </button>
-            )}
-          </li>
+              {!disabled && (
+                <Button type="button" aria-label={`Remove ${describeBypassActor(actor)}`} variant="ghost" size="inline" className="rounded p-1 text-faint" onClick={() => onChange(actors.filter((_, at) => at !== index))}>
+                  <X size={14} />
+                </Button>
+              )}
+            </li>
+          </Card>
         ))}
       </ul>
       {hasG1t && (
@@ -786,7 +788,7 @@ function BypassList({ actors, onChange, disabled }: { actors: BypassActor[]; onC
         </p>
       )}
       {!disabled && (
-        <Button type="button" variant="quiet" onClick={() => onChange([...actors, { kind: "role", value: "admin", mode: "pull_requests" }])}>
+        <Button type="button" variant="outline" onClick={() => onChange([...actors, { kind: "role", value: "admin", mode: "pull_requests" }])}>
           <Plus size={14} /> Add a bypass
         </Button>
       )}
@@ -1018,7 +1020,7 @@ export function RulesetForm({
         {editable && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button type="button" variant="quiet">
+              <Button type="button" variant="outline">
                 <Plus size={14} /> Add a rule
               </Button>
             </DropdownMenuTrigger>
@@ -1056,7 +1058,7 @@ export function RulesetForm({
           {editable ? "Cancel" : "Back to rules"}
         </Link>
         <span className="grow" />
-        <Button type="button" variant="quiet" onClick={() => download(spec)}>
+        <Button type="button" variant="outline" onClick={() => download(spec)}>
           <Download size={14} /> Export JSON
         </Button>
         {editable && (
@@ -1078,7 +1080,7 @@ export function RulesetForm({
                 }
               }}
             />
-            <Button type="button" variant="quiet" onClick={() => file.current?.click()}>
+            <Button type="button" variant="outline" onClick={() => file.current?.click()}>
               <FileUp size={14} /> Import JSON
             </Button>
           </>
@@ -1095,7 +1097,7 @@ export function RulesetForm({
         <h2 className="font-medium">Delete this ruleset</h2>
         <p className="mt-1 text-sm text-muted">Its rules stop holding at once. Its evaluations stay in Insights.</p>
         <div className="mt-3">
-          <SubmitButton variant="danger" pending="Deleting…" match={{ intent: "delete" }}>
+          <SubmitButton variant="destructive" pending="Deleting…" match={{ intent: "delete" }}>
             <Trash2 size={14} /> Delete ruleset
           </SubmitButton>
         </div>
@@ -1152,7 +1154,7 @@ export function RulesetList({
   empty: ReactNode;
 }) {
   if (rulesets.length === 0) {
-    return <div className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-muted">{empty}</div>;
+    return <Card tone="plain" className="border-dashed p-8 text-center text-sm text-muted">{empty}</Card>;
   }
   return (
     <ul className="space-y-2">
@@ -1169,9 +1171,11 @@ export function RulesetList({
 export function EffectiveRulesView({ effective, hrefFor }: { effective: EffectiveRules; hrefFor: (id: string, level: Level) => string }) {
   if (effective.rules.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-line p-6 text-sm text-muted">
-        No ruleset targets <span className="font-mono text-fg">{effective.name}</span>: anyone who may push can change it however they like.
-      </p>
+      <Card asChild tone="plain" className="border-dashed p-6 text-sm text-muted">
+        <p>
+          No ruleset targets <span className="font-mono text-fg">{effective.name}</span>: anyone who may push can change it however they like.
+        </p>
+      </Card>
     );
   }
   return (
@@ -1179,7 +1183,7 @@ export function EffectiveRulesView({ effective, hrefFor }: { effective: Effectiv
       {effective.rulesets.map((ruleset) => {
         const rules = effective.rules.filter((rule) => rule.ruleset_id === ruleset.id);
         return (
-          <div key={ruleset.id} className="rounded-xl border border-line">
+          <Card key={ruleset.id} tone="plain">
             <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
               <Link to={hrefFor(ruleset.id, ruleset.level)} className="font-medium hover:underline">
                 {ruleset.name}
@@ -1200,7 +1204,7 @@ export function EffectiveRulesView({ effective, hrefFor }: { effective: Effectiv
                 </li>
               ))}
             </ul>
-          </div>
+          </Card>
         );
       })}
     </div>
@@ -1211,10 +1215,10 @@ export function EffectiveRulesView({ effective, hrefFor }: { effective: Effectiv
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: "danger" | "info" | "warn" }) {
   return (
-    <div className="rounded-xl border border-line p-3">
+    <Card tone="plain" className="p-3">
       <p className="text-xs text-muted">{label}</p>
       <p className={cn("mt-1 text-xl font-semibold tabular-nums", tone === "danger" && "text-danger", tone === "info" && "text-info", tone === "warn" && "text-warn")}>{value}</p>
-    </div>
+    </Card>
   );
 }
 
@@ -1268,38 +1272,42 @@ export function InsightsView({ page, showRepository, olderHref }: { page: Evalua
       <div>
         <h3 className="mb-2 text-sm font-medium">Recent evaluations</h3>
         {page.evaluations.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line p-6 text-sm text-muted">Nothing evaluated yet. Pushes and merges show here as the rules judge them.</p>
+          <Card asChild tone="plain" className="border-dashed p-6 text-sm text-muted">
+            <p>Nothing evaluated yet. Pushes and merges show here as the rules judge them.</p>
+          </Card>
         ) : (
-          <ul className="divide-y divide-line rounded-xl border border-line">
-            {page.evaluations.map((evaluation) => (
-              <li key={evaluation.id} className="px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  {verdictBadge(evaluation)}
-                  <span className="font-medium">{ACTION_LABEL[evaluation.action] ?? evaluation.action}</span>
-                  <span className="font-mono text-[0.8125rem] text-muted">{evaluation.git_ref.replace(/^refs\/(heads|tags)\//, "")}</span>
-                  {evaluation.number != null && <span className="text-muted">#{evaluation.number}</span>}
-                  <span className="text-muted">
-                    by <span className="font-mono">{evaluation.actor}</span>
-                    {evaluation.actor_kind !== "person" && <Bot size={12} className="ml-1 inline text-accent" />}
-                  </span>
-                  {showRepository && evaluation.repository && <span className="text-faint">{evaluation.repository}</span>}
-                  <span className="grow" />
-                  <span className="text-xs text-faint">
-                    {evaluation.ruleset_name} · <TimeAgo at={evaluation.created_at} />
-                  </span>
-                </div>
-                {evaluation.violations.length > 0 && (
-                  <ul className="mt-1.5 space-y-0.5">
-                    {evaluation.violations.map((violation, index) => (
-                      <li key={index} className="text-sm text-muted">
-                        {violation.message}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ul>
+          <Card asChild tone="plain" divided>
+            <ul>
+              {page.evaluations.map((evaluation) => (
+                <li key={evaluation.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    {verdictBadge(evaluation)}
+                    <span className="font-medium">{ACTION_LABEL[evaluation.action] ?? evaluation.action}</span>
+                    <span className="font-mono text-[0.8125rem] text-muted">{evaluation.git_ref.replace(/^refs\/(heads|tags)\//, "")}</span>
+                    {evaluation.number != null && <span className="text-muted">#{evaluation.number}</span>}
+                    <span className="text-muted">
+                      by <span className="font-mono">{evaluation.actor}</span>
+                      {evaluation.actor_kind !== "person" && <Bot size={12} className="ml-1 inline text-accent" />}
+                    </span>
+                    {showRepository && evaluation.repository && <span className="text-faint">{evaluation.repository}</span>}
+                    <span className="grow" />
+                    <span className="text-xs text-faint">
+                      {evaluation.ruleset_name} · <TimeAgo at={evaluation.created_at} />
+                    </span>
+                  </div>
+                  {evaluation.violations.length > 0 && (
+                    <ul className="mt-1.5 space-y-0.5">
+                      {evaluation.violations.map((violation, index) => (
+                        <li key={index} className="text-sm text-muted">
+                          {violation.message}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
         {olderHref && (
           <Link to={olderHref} className="mt-3 inline-block text-sm text-muted hover:text-fg">

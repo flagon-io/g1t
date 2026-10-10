@@ -8,6 +8,7 @@ import type { Route } from "./+types/settings-agents";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { work } from "../../lib/services.server";
 import { instrumented } from "../../lib/perf.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
@@ -67,32 +68,34 @@ export default function AgentSettings({ loaderData, actionData, params }: Route.
             the project has room for another agent and nothing the issue depends on is still open.
           </p>
         </div>
-        <Form method="post" className="space-y-3 rounded-xl border border-line bg-surface p-4">
-          <Field label="Label" hint="An issue that already has it is not affected; adding it again is.">
-            {/* Keyed to the saved rule, so turning it off empties the box. */}
-            <Input key={rules.label ?? ""} name="label" list="known-labels" defaultValue={rules.label ?? ""} placeholder="agent" maxLength={40} />
-          </Field>
-          <datalist id="known-labels">
-            {labels.map((label) => (
-              <option key={label.name} value={label.name} />
-            ))}
-          </datalist>
-          <div className="flex flex-wrap items-center gap-3">
-            <SubmitButton name="intent" value="save" pending="Saving…">
-              Save
-            </SubmitButton>
-            {rules.label && (
-              <SubmitButton variant="quiet" name="intent" value="off" pending="Turning off…">
-                Turn off
+        <Card asChild className="space-y-3 p-4">
+          <Form method="post">
+            <Field label="Label" hint="An issue that already has it is not affected; adding it again is.">
+              {/* Keyed to the saved rule, so turning it off empties the box. */}
+              <Input key={rules.label ?? ""} name="label" list="known-labels" defaultValue={rules.label ?? ""} placeholder="agent" maxLength={40} />
+            </Field>
+            <datalist id="known-labels">
+              {labels.map((label) => (
+                <option key={label.name} value={label.name} />
+              ))}
+            </datalist>
+            <div className="flex flex-wrap items-center gap-3">
+              <SubmitButton name="intent" value="save" pending="Saving…">
+                Save
               </SubmitButton>
-            )}
-            {rules.updatedBy && rules.updatedAt && (
-              <span className="text-xs text-faint">
-                Changed by {rules.updatedBy} <TimeAgo at={rules.updatedAt} />
-              </span>
-            )}
-          </div>
-        </Form>
+              {rules.label && (
+                <SubmitButton variant="outline" name="intent" value="off" pending="Turning off…">
+                  Turn off
+                </SubmitButton>
+              )}
+              {rules.updatedBy && rules.updatedAt && (
+                <span className="text-xs text-faint">
+                  Changed by {rules.updatedBy} <TimeAgo at={rules.updatedAt} />
+                </span>
+              )}
+            </div>
+          </Form>
+        </Card>
       </section>
 
       <section className="mt-8 grid gap-x-10 gap-y-4 border-t border-line pt-8 lg:grid-cols-[16rem_1fr]">

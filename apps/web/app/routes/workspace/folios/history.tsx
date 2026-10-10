@@ -7,7 +7,9 @@ import type { Route } from "./+types/history";
 import { foliosQuery, foliosRequest } from "../../../components/folios/actions";
 import { FolioGlyph } from "../../../components/folios/kinds";
 import { Face } from "../../../components/folios/parts";
-import { Button, EmptyState, ErrorText } from "../../../components/ui";
+import { EmptyState, ErrorText } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { canDo } from "../../../lib/folios";
 import { page } from "../../../lib/meta";
 import { folios } from "../../../lib/services.server";
@@ -117,7 +119,7 @@ export default function FolioHistory({ loaderData, params }: Route.ComponentProp
               </li>
             ))}
           </ul>
-          <div className="min-w-0 overflow-hidden rounded-xl border border-line bg-surface">
+          <Card className="min-w-0 overflow-hidden">
             {detail ? (
               <div className="max-h-[calc(100dvh-14rem)] overflow-auto py-2 [scrollbar-width:thin]">
                 <DiffView lines={detail.diff} />
@@ -125,7 +127,7 @@ export default function FolioHistory({ loaderData, params }: Route.ComponentProp
             ) : (
               <p className="p-4 text-xs text-faint">{chosen ? "Loading…" : "Choose a version."}</p>
             )}
-          </div>
+          </Card>
         </div>
       )}
     </div>

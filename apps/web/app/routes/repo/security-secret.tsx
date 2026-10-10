@@ -9,6 +9,7 @@ import { DismissDialog, ReopenButton } from "../../components/security";
 import { BypassForm, CARD, FixWithG1t } from "../../components/security-suite";
 import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { security, securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
@@ -80,15 +81,17 @@ function ValidityCheck({ action, checkable, enabled }: { action: string; checkab
   if (!enabled) return <p className="text-xs text-muted">Validity checks are off for this workspace. An owner can turn them on in its Security settings.</p>;
   return (
     <span className="flex flex-col gap-1">
-      <button
+      <Button
         type="button"
         disabled={fetcher.state !== "idle"}
         onClick={() => fetcher.submit({ intent: "validity" }, { method: "post", action })}
-        className="inline-flex w-fit items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-muted hover:border-line-strong hover:text-fg disabled:opacity-50"
+        variant="outline"
+        size="inline"
+        className="w-fit px-2.5 py-1 text-xs text-muted"
       >
         <RefreshCw size={12} className={fetcher.state !== "idle" ? "animate-spin" : ""} />
         {fetcher.state !== "idle" ? "Asking…" : "Check with its issuer"}
-      </button>
+      </Button>
       {fetcher.data?.error && <span className="text-xs text-danger">{fetcher.data.error}</span>}
     </span>
   );

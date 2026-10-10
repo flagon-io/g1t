@@ -11,6 +11,7 @@ import { Link } from "react-router";
 
 import { dayGroups } from "../../lib/folios";
 import { TimeAgo } from "../ui";
+import { Card } from "../ui/card";
 import { Hint } from "../ui/hint";
 import { useFoliosData } from "./actions";
 import { FolioThumbnail, KindIcon } from "./kinds";
@@ -72,11 +73,13 @@ export function FolioDays({ slug, items, zone, onError }: { slug: string; items:
       {days.map((day) => (
         <section key={day.key} aria-label={day.label}>
           <h3 className="mb-1.5 px-1 text-xs font-medium text-faint">{day.label}</h3>
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {day.items.map((f) => (
-              <FolioRow key={f.id} slug={slug} folio={f} onError={onError} />
-            ))}
-          </ul>
+          <Card asChild divided className="overflow-hidden">
+            <ul>
+              {day.items.map((f) => (
+                <FolioRow key={f.id} slug={slug} folio={f} onError={onError} />
+              ))}
+            </ul>
+          </Card>
         </section>
       ))}
     </div>
@@ -86,7 +89,7 @@ export function FolioDays({ slug, items, zone, onError }: { slug: string; items:
 export function FolioCard({ slug, folio, onError }: { slug: string; folio: Folio; onError?: (message: string) => void }) {
   const me = useFoliosData()?.me.key;
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-xl border border-line bg-surface transition-colors hover:border-line-strong">
+    <Card className="group relative flex flex-col overflow-hidden transition-colors hover:border-line-strong">
       <div className="pointer-events-none h-32 shrink-0 border-b border-line">
         <FolioThumbnail folio={folio} />
       </div>
@@ -112,7 +115,7 @@ export function FolioCard({ slug, folio, onError }: { slug: string; folio: Folio
           <FolioMenu slug={slug} folio={folio} onError={onError} />
         </span>
       </div>
-    </div>
+    </Card>
   );
 }
 

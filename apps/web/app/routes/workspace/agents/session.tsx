@@ -1,5 +1,4 @@
-import {
-  ArrowLeft,
+import { ArrowLeft,
   Ban,
   BookmarkPlus,
   Check,
@@ -24,12 +23,14 @@ import type { AgentSession, AgentSessionDetail, SessionEvent } from "@g1t/contra
 import type { Route } from "./+types/session";
 import { AgentAvatar } from "../../../components/agent-avatar";
 import { agentsAction, answer } from "../../../components/agents/actions.server";
-import { type ActionResult, ApproveDialog, BUTTONS, Confirm } from "../../../components/agents/dialogs";
+import { type ActionResult, ApproveDialog, Confirm } from "../../../components/agents/dialogs";
 import { isLive, kindLabel, sessionRows, whereLabel } from "../../../components/agents/format";
 import { KindBadge, Meter, PrivateTitle, SpendOfCap, StatusChip, sessionHref, stepsLine } from "../../../components/agents/parts";
 import { skillsPath } from "../../../components/agents/skills";
 import { Markdown } from "../../../components/markdown";
-import { TimeAgo } from "../../../components/ui";
+import { ButtonLink, TimeAgo } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
 import { Textarea } from "../../../components/ui/textarea";
 import { microsFromDollars } from "../../../lib/agent-form";
@@ -100,10 +101,10 @@ export default function SessionPage({ loaderData, params }: Route.ComponentProps
     return (
       <div className="space-y-4">
         {back}
-        <div className="rounded-xl border border-dashed border-line px-6 py-14 text-center">
+        <Card tone="plain" className="border-dashed px-6 py-14 text-center">
           <p className="font-medium">This session can&apos;t be shown right now</p>
           <p className="mt-1.5 text-sm text-muted">The agents service didn&apos;t answer. Reload in a moment.</p>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -115,12 +116,12 @@ export default function SessionPage({ loaderData, params }: Route.ComponentProps
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
         <div className="min-w-0 space-y-6">
           {!session.visible ? (
-            <div className="flex items-start gap-3 rounded-xl border border-line bg-surface px-4 py-4 text-sm text-muted">
+            <Card className="flex items-start gap-3 px-4 py-4 text-sm text-muted">
               <Lock size={16} className="mt-0.5 shrink-0 text-faint" />
               <p>
                 This session came from a conversation you&apos;re not in. You can see that it ran, how far it got and what it cost, but not what it was about.
               </p>
-            </div>
+            </Card>
           ) : (
             <>
               {session.summary && !events.some((e) => e.kind === "result") && <Report body={session.summary} />}
@@ -192,18 +193,18 @@ function Header({ slug, detail }: { slug: string; detail: AgentSessionDetail }) 
               slug={slug}
               session={session}
               trigger={
-                <button type="button" className={`${BUTTONS.PRIMARY} h-9 py-0`}>
+                <Button type="button" variant="accent">
                   <Check size={15} />
                   Approve more…
-                </button>
+                </Button>
               }
             />
           )}
           {chat && (
-            <Link to={chat} className={`${BUTTONS.QUIET} h-9 py-0`}>
+            <ButtonLink to={chat} variant="outline">
               <MessageSquare size={15} />
               Open in chat
-            </Link>
+            </ButtonLink>
           )}
           {session.visible && session.status === "done" && <SaveAsSkill agentName={session.agent_name} />}
           {detail.can_stop && (
@@ -213,10 +214,10 @@ function Header({ slug, detail }: { slug: string; detail: AgentSessionDetail }) 
               fields={{ intent: "stop" }}
               fetcherKey={`stop-${session.id}`}
               trigger={
-                <button type="button" className={`${BUTTONS.QUIET} h-9 py-0 hover:border-danger/50 hover:text-danger`}>
+                <Button type="button" variant="outline" className="hover:border-danger/50 hover:text-danger">
                   <Square size={13} />
                   Stop
-                </button>
+                </Button>
               }
             >
               {session.agent_name} stops where it is, and so does every session it started. What it spent so far stays spent; its card in the conversation says it was
@@ -238,10 +239,10 @@ function SaveAsSkill({ agentName }: { agentName: string }) {
     <fetcher.Form method="post" className="contents">
       <input type="hidden" name="intent" value="save_skill" />
       <Hint label={`${agentName} drafts a skill from this session, so the work can be done the same way again. It is billed like a short step, and no agent uses it until it is reviewed and published.`}>
-        <button type="submit" className={`${BUTTONS.QUIET} h-9 py-0`} disabled={busy}>
+        <Button type="submit" variant="outline" disabled={busy}>
           <BookmarkPlus size={15} />
           {busy ? "Drafting…" : "Save as skill"}
-        </button>
+        </Button>
       </Hint>
       {error && (
         <p role="alert" className="w-full text-sm text-danger">
@@ -457,36 +458,38 @@ function Steer({ session, live }: { session: AgentSession; live: boolean }) {
     if (fetcher.state === "idle" && fetcher.data?.ok) form.current?.reset();
   }, [fetcher.state, fetcher.data]);
   return (
-    <fetcher.Form ref={form} method="post" className="rounded-xl border border-line bg-surface p-3 focus-within:border-accent-dim">
-      <input type="hidden" name="intent" value="steer" />
-      <label htmlFor="steer" className="sr-only">
-        Message this session
-      </label>
-      <Textarea
-        id="steer"
-        name="body"
-        rows={2}
-        maxLength={4000}
-        required
-        placeholder={live ? `Message this session: ${session.agent_name} reads it before its next step` : `Message this session: ${session.agent_name} picks it back up`}
-        className="min-h-14 border-0 bg-transparent px-1 hover:border-0 focus-visible:ring-0"
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            event.currentTarget.form?.requestSubmit();
-          }
-        }}
-      />
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="text-xs text-faint">
-          {fetcher.data && !fetcher.data.ok ? <span className="text-danger">{fetcher.data.error}</span> : live ? "It reads this before its next step." : "It picks the session back up with everything it knew."}
-        </p>
-        <button type="submit" disabled={busy} className={`${BUTTONS.PRIMARY} h-8 py-0`}>
-          <Send size={14} />
-          {busy ? "Sending…" : "Send"}
-        </button>
-      </div>
-    </fetcher.Form>
+    <Card asChild className="p-3 focus-within:border-accent-dim">
+      <fetcher.Form ref={form} method="post">
+        <input type="hidden" name="intent" value="steer" />
+        <label htmlFor="steer" className="sr-only">
+          Message this session
+        </label>
+        <Textarea
+          id="steer"
+          name="body"
+          rows={2}
+          maxLength={4000}
+          required
+          placeholder={live ? `Message this session: ${session.agent_name} reads it before its next step` : `Message this session: ${session.agent_name} picks it back up`}
+          className="min-h-14 border-0 bg-transparent px-1 hover:border-0 focus-visible:ring-0"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
+        />
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="text-xs text-faint">
+            {fetcher.data && !fetcher.data.ok ? <span className="text-danger">{fetcher.data.error}</span> : live ? "It reads this before its next step." : "It picks the session back up with everything it knew."}
+          </p>
+          <Button type="submit" disabled={busy} variant="accent" size="sm">
+            <Send size={14} />
+            {busy ? "Sending…" : "Send"}
+          </Button>
+        </div>
+      </fetcher.Form>
+    </Card>
   );
 }
 

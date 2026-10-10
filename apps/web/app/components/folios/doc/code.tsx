@@ -6,7 +6,8 @@ import { DOC_CITATION_KIND_LABELS, type DocCitationKind, type DocRepoSpace } fro
 import { FileCode2, FolderGit2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { Button, ErrorText, Field, Input } from "../../ui";
+import { ErrorText, Field, Input } from "../../ui";
+import { Button } from "../../ui/button";
 import { Combobox } from "../../ui/combobox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
 import { SelectField } from "../../ui/select";

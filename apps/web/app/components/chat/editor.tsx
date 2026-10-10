@@ -23,6 +23,7 @@ import {
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { AgentPill, MemberAvatar } from "./marks";
+import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 // `:shortcode` completion and the emoji picker (components/emoji).
@@ -622,7 +623,7 @@ export default function ChatEditor({ draftKey, placeholder, people, onSend, onTy
             </button>
           </Hint>
           <Hint label="Mention someone">
-            <button
+            <Button
               type="button"
               aria-label="Mention someone"
               disabled={disabled || !editor}
@@ -638,21 +639,25 @@ export default function ChatEditor({ draftKey, placeholder, people, onSend, onTy
                   .run();
                 look(editor);
               }}
-              className="flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
+              variant="ghost"
+              size="icon-xs"
+              className="text-faint"
             >
               <AtSign size={15} />
-            </button>
+            </Button>
           </Hint>
           <EmojiPickerPopover side="top" align="start" onPick={(picked) => editor?.chain().focus().insertContent({ type: "text", text: picked }).run()}>
             <Hint label="Add an emoji">
-              <button
+              <Button
                 type="button"
                 aria-label="Add an emoji"
                 disabled={disabled || !editor}
-                className="flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
+                variant="ghost"
+                size="icon-xs"
+                className="text-faint"
               >
                 <Smile size={15} />
-              </button>
+              </Button>
             </Hint>
           </EmojiPickerPopover>
           {editing ? (
@@ -661,21 +666,25 @@ export default function ChatEditor({ draftKey, placeholder, people, onSend, onTy
                 <kbd className="font-sans">Esc</kbd> to cancel · <kbd className="font-sans">Enter</kbd> to save
               </span>
               <span className="ml-auto flex items-center gap-1.5">
-                <button
+                <Button
                   type="button"
                   onClick={onCancel}
-                  className="h-8 rounded-lg border border-line px-3 text-[0.8125rem] font-medium text-fg-soft transition-colors hover:border-line-strong hover:bg-raised"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg px-3 text-fg-soft hover:bg-raised"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   disabled={disabled || !editor || state?.empty}
                   onClick={send}
-                  className="h-8 rounded-lg bg-accent px-3 text-[0.8125rem] font-medium text-bg transition-colors hover:bg-accent-hover disabled:bg-line disabled:text-faint"
+                  variant="accent"
+                  size="sm"
+                  className="rounded-lg px-3 disabled:bg-line disabled:text-faint disabled:opacity-100"
                 >
                   Save
-                </button>
+                </Button>
               </span>
             </>
           ) : (
@@ -683,16 +692,18 @@ export default function ChatEditor({ draftKey, placeholder, people, onSend, onTy
               <span className="ml-1 hidden text-[0.6875rem] text-faint sm:inline">
                 <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift+Enter</kbd> for a new line
               </span>
-              <button
+              <Button
                 type="button"
                 aria-label="Send"
                 disabled={disabled || !editor || state?.empty !== false}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={send}
-                className="ml-auto flex size-8 items-center justify-center rounded-lg bg-accent text-bg transition-[background-color,opacity] hover:bg-accent-hover disabled:bg-line disabled:text-faint"
+                variant="accent"
+                size="icon-sm"
+                className="ml-auto rounded-lg transition-[background-color,opacity] disabled:bg-line disabled:text-faint disabled:opacity-100"
               >
                 <ArrowUp size={16} strokeWidth={2.4} />
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -706,12 +717,10 @@ function ShortcutList() {
   return (
     <Popover>
       <Hint label="Formatting shortcuts">
-        <PopoverTrigger
-          aria-label="Formatting shortcuts"
-          onMouseDown={(event) => event.preventDefault()}
-          className="ml-auto flex size-8 shrink-0 items-center justify-center rounded-md text-faint transition-colors outline-none hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/50 sm:size-7"
-        >
-          <Keyboard size={15} />
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="icon-sm" aria-label="Formatting shortcuts" onMouseDown={(event) => event.preventDefault()} className="ml-auto text-faint sm:size-7">
+            <Keyboard size={15} />
+          </Button>
         </PopoverTrigger>
       </Hint>
       <PopoverContent side="top" align="end" className="w-80 p-3" onOpenAutoFocus={(event) => event.preventDefault()}>
@@ -823,17 +832,17 @@ function LinkForm({
       </div>
       <div className="flex items-center gap-1.5 pt-0.5">
         {onRemove && (
-          <button type="button" onClick={onRemove} className="flex h-8 items-center gap-1.5 rounded-md px-2 text-[0.8125rem] text-muted hover:bg-line hover:text-fg">
+          <Button type="button" onClick={onRemove} variant="ghost" size="sm" className="flex px-2 hover:bg-line font-normal">
             <Unlink size={14} />
             Remove link
-          </button>
+          </Button>
         )}
-        <button type="button" onClick={onClose} className="ml-auto h-8 rounded-md px-3 text-[0.8125rem] text-muted hover:bg-line hover:text-fg">
+        <Button type="button" onClick={onClose} variant="ghost" size="sm" className="ml-auto px-3 hover:bg-line font-normal">
           Cancel
-        </button>
-        <button type="submit" disabled={!href.trim()} className="h-8 rounded-md bg-accent px-3 text-[0.8125rem] font-medium text-bg hover:bg-accent-hover disabled:bg-line disabled:text-faint">
+        </Button>
+        <Button type="submit" disabled={!href.trim()} variant="accent" size="sm" className="px-3 disabled:bg-line disabled:text-faint disabled:opacity-100">
           {initial.existing ? "Save" : "Add link"}
-        </button>
+        </Button>
       </div>
     </form>
   );

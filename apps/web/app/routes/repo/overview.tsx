@@ -53,7 +53,9 @@ import { GithubLinkStrip } from "../../components/github";
 import { MirrorOverviewNote, useRepoMirror } from "../../components/mirror";
 import { distinctFacts } from "../../lib/memory-facts";
 import { githubApp } from "../../lib/github.server";
-import { Avatar, ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui";
+import { ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
+import { Card } from "../../components/ui/card";
 import { ChangeSize, PersonLink } from "../../components/work";
 import {
   type ActivityItem,
@@ -567,30 +569,32 @@ function Pipeline({ columns, base }: { columns: Loaded["columns"]; base: string 
         {PIPELINE.map(({ stage, label }, index) => {
           const cards = columns[stage];
           return (
-            <li key={stage} className="flex min-w-0 flex-col rounded-xl border border-line bg-surface p-2">
-              <p className="flex items-center gap-2 px-1 pt-0.5 pb-2 text-xs font-medium text-muted">
-                <span className={`size-1.5 rounded-full ${STAGE_TONE[stage]} ${cards.length && stage !== "landed" ? "animate-pulse" : ""}`} />
-                {label}
-                <span className="tabular-nums text-faint">{cards.length}</span>
-                {index < PIPELINE.length - 1 && <ArrowRight size={11} className="ml-auto text-line-strong" />}
-              </p>
-              {cards.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-line/70 px-2 py-3 text-center text-[0.6875rem] text-faint">Empty</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {cards.slice(0, 6).map((card) => (
-                    <PipelineCard key={card.number} card={card} base={base} stage={stage} />
-                  ))}
-                  {cards.length > 6 && (
-                    <li className="px-1 text-[0.6875rem] text-muted">
-                      <Link to={`${base}/pulls`} className="hover:text-fg">
-                        {cards.length - 6} more
-                      </Link>
-                    </li>
-                  )}
-                </ul>
-              )}
-            </li>
+            <Card asChild key={stage} className="flex min-w-0 flex-col p-2">
+              <li>
+                <p className="flex items-center gap-2 px-1 pt-0.5 pb-2 text-xs font-medium text-muted">
+                  <span className={`size-1.5 rounded-full ${STAGE_TONE[stage]} ${cards.length && stage !== "landed" ? "animate-pulse" : ""}`} />
+                  {label}
+                  <span className="tabular-nums text-faint">{cards.length}</span>
+                  {index < PIPELINE.length - 1 && <ArrowRight size={11} className="ml-auto text-line-strong" />}
+                </p>
+                {cards.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-line/70 px-2 py-3 text-center text-[0.6875rem] text-faint">Empty</p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {cards.slice(0, 6).map((card) => (
+                      <PipelineCard key={card.number} card={card} base={base} stage={stage} />
+                    ))}
+                    {cards.length > 6 && (
+                      <li className="px-1 text-[0.6875rem] text-muted">
+                        <Link to={`${base}/pulls`} className="hover:text-fg">
+                          {cards.length - 6} more
+                        </Link>
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </li>
+            </Card>
           );
         })}
       </ol>
@@ -747,10 +751,10 @@ function OverviewSkeleton() {
       {/* Right now: the work, column by column. */}
       <div aria-hidden="true" className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {Array.from({ length: 5 }, (_, index) => (
-          <div key={index} className="rounded-xl border border-line bg-surface p-3">
+          <Card key={index} className="p-3">
             <Skeleton className="h-3 w-20" />
             <Skeleton className="mt-3 h-14 rounded-lg" />
-          </div>
+          </Card>
         ))}
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
@@ -927,7 +931,7 @@ function Overview({
                 {settings?.enabled ? (
                   loaderData.can.run && <Form method="post">
                     <Hint label="Build production again from the default branch">
-                      <SubmitButton variant="quiet" name="intent" value="redeploy" pending="Redeploying…">
+                      <SubmitButton variant="outline" name="intent" value="redeploy" pending="Redeploying…">
                         <RotateCw size={14} />
                         Redeploy
                       </SubmitButton>
@@ -1163,71 +1167,73 @@ function Overview({
             {landed.length === 0 ? (
               <Quiet>Nothing has landed yet. Merged pull requests show here with who made them and why.</Quiet>
             ) : (
-              <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-                {landed.map((pull) => {
-                  const byAgent = pull.runtime === "hosted" || madeByG1t(pull);
-                  return (
-                    <li key={pull.id} className="flex items-start gap-3 px-4 py-3">
-                      <GitMerge size={15} className="mt-0.5 shrink-0 text-merged" />
-                      <span className="min-w-0 grow">
-                        <Link to={`${base}/pull/${pull.number}`} prefetch="intent" className="block truncate text-sm font-medium hover:text-accent">
-                          {pull.title}
-                        </Link>
-                        <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
-                          <span className="font-mono text-faint">#{pull.number}</span>
-                          <span>·</span>
-                          {/* The avatar is whoever the line names first: the
-                              agent that made it, or the person who wrote it
-                              with their own tools. */}
-                          <span className="inline-flex items-center gap-1">
-                            {pull.requestedBy ? (
+              <Card asChild divided className="overflow-hidden">
+                <ul>
+                  {landed.map((pull) => {
+                    const byAgent = pull.runtime === "hosted" || madeByG1t(pull);
+                    return (
+                      <li key={pull.id} className="flex items-start gap-3 px-4 py-3">
+                        <GitMerge size={15} className="mt-0.5 shrink-0 text-merged" />
+                        <span className="min-w-0 grow">
+                          <Link to={`${base}/pull/${pull.number}`} prefetch="intent" className="block truncate text-sm font-medium hover:text-accent">
+                            {pull.title}
+                          </Link>
+                          <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
+                            <span className="font-mono text-faint">#{pull.number}</span>
+                            <span>·</span>
+                            {/* The avatar is whoever the line names first: the
+                                agent that made it, or the person who wrote it
+                                with their own tools. */}
+                            <span className="inline-flex items-center gap-1">
+                              {pull.requestedBy ? (
+                                <>
+                                  <Avatar name={pull.author.username} size={13} />
+                                  made by <PersonLink name={pull.author.username} className="hover:text-fg" /> for{" "}
+                                  <PersonLink name={pull.requestedBy.username} className="hover:text-fg" />
+                                </>
+                              ) : byAgent ? (
+                                <>
+                                  <Avatar name={pull.agent} size={13} />
+                                  made by {pull.agent}
+                                </>
+                              ) : (
+                                <>
+                                  <Avatar name={pull.author.username} size={13} />
+                                  by <PersonLink name={pull.author.username} className="hover:text-fg" />
+                                </>
+                              )}
+                            </span>
+                            {pull.issue != null && (
                               <>
-                                <Avatar name={pull.author.username} size={13} />
-                                made by <PersonLink name={pull.author.username} className="hover:text-fg" /> for{" "}
-                                <PersonLink name={pull.requestedBy.username} className="hover:text-fg" />
-                              </>
-                            ) : byAgent ? (
-                              <>
-                                <Avatar name={pull.agent} size={13} />
-                                made by {pull.agent}
-                              </>
-                            ) : (
-                              <>
-                                <Avatar name={pull.author.username} size={13} />
-                                by <PersonLink name={pull.author.username} className="hover:text-fg" />
+                                <span>· for</span>
+                                <Link to={`${base}/issues/${pull.issue}`} className="hover:text-fg">
+                                  #{pull.issue}
+                                </Link>
                               </>
                             )}
-                          </span>
-                          {pull.issue != null && (
-                            <>
-                              <span>· for</span>
-                              <Link to={`${base}/issues/${pull.issue}`} className="hover:text-fg">
-                                #{pull.issue}
-                              </Link>
-                            </>
-                          )}
-                          {pull.mergedBy && (
+                            {pull.mergedBy && (
+                              <span>
+                                · landed by <PersonLink name={pull.mergedBy} className="hover:text-fg" />
+                              </span>
+                            )}
                             <span>
-                              · landed by <PersonLink name={pull.mergedBy} className="hover:text-fg" />
+                              · <TimeAgo at={pull.mergedAt ?? pull.updatedAt} />
                             </span>
-                          )}
-                          <span>
-                            · <TimeAgo at={pull.mergedAt ?? pull.updatedAt} />
                           </span>
                         </span>
-                      </span>
-                      <span className="hidden shrink-0 text-xs text-faint sm:block">
-                        <ChangeSize files={pull.files} />
-                      </span>
-                      {byAgent && (
-                        <Link to={`${base}/sessions/${pull.number}`} className="shrink-0 text-xs text-muted hover:text-fg">
-                          Session
-                        </Link>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+                        <span className="hidden shrink-0 text-xs text-faint sm:block">
+                          <ChangeSize files={pull.files} />
+                        </span>
+                        {byAgent && (
+                          <Link to={`${base}/sessions/${pull.number}`} className="shrink-0 text-xs text-muted hover:text-fg">
+                            Session
+                          </Link>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
             )}
           </Panel>
 
@@ -1237,27 +1243,29 @@ function Overview({
               icon={<GitCommitHorizontal size={14} />}
               all={{ to: `${base}/commits`, label: "All commits" }}
             >
-              <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-                {loaderData.commits.map((one) => (
-                  <li key={one.hash} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                    <CommitAvatars commit={one} size={18} max={2} />
-                    <span className="min-w-0 grow">
-                      <Link to={`${base}/commit/${one.hash}`} className="block truncate hover:text-accent">
-                        {one.message}
-                      </Link>
-                      <span className="text-xs text-muted">
-                        <CommitNames commit={one} className="hover:text-fg" />
+              <Card asChild divided className="overflow-hidden">
+                <ul>
+                  {loaderData.commits.map((one) => (
+                    <li key={one.hash} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                      <CommitAvatars commit={one} size={18} max={2} />
+                      <span className="min-w-0 grow">
+                        <Link to={`${base}/commit/${one.hash}`} className="block truncate hover:text-accent">
+                          {one.message}
+                        </Link>
+                        <span className="text-xs text-muted">
+                          <CommitNames commit={one} className="hover:text-fg" />
+                        </span>
                       </span>
-                    </span>
-                    <Link to={`${base}/commit/${one.hash}`} className="hidden shrink-0 font-mono text-xs text-faint hover:text-fg sm:block">
-                      {one.hash.slice(0, 7)}
-                    </Link>
-                    <span className="w-16 shrink-0 text-right text-xs text-faint">
-                      <TimeAgo at={one.at} />
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                      <Link to={`${base}/commit/${one.hash}`} className="hidden shrink-0 font-mono text-xs text-faint hover:text-fg sm:block">
+                        {one.hash.slice(0, 7)}
+                      </Link>
+                      <span className="w-16 shrink-0 text-right text-xs text-faint">
+                        <TimeAgo at={one.at} />
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
             </Panel>
           )}
 
@@ -1271,31 +1279,33 @@ function Overview({
 
           {previews.length > 0 && (
             <Panel title="Previews" icon={<GitBranch size={14} />} count={previews.length} all={{ to: `${base}/deployments`, label: "Deployments" }}>
-              <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-                {previews.map((app) => (
-                  <li key={app.url} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                    <span className="min-w-0 grow">
-                      <DeployLink href={app.url} className="block truncate font-mono text-[0.8125rem] hover:text-accent">
-                        {host(app.url)}
-                      </DeployLink>
-                      <span className="text-xs text-muted">
-                        {app.branch}
-                        {app.number != null && (
-                          <>
-                            {" · "}
-                            <Link to={`${base}/pull/${app.number}`} className="hover:underline">
-                              #{app.number}
-                            </Link>
-                          </>
-                        )}
+              <Card asChild divided className="overflow-hidden">
+                <ul>
+                  {previews.map((app) => (
+                    <li key={app.url} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                      <span className="min-w-0 grow">
+                        <DeployLink href={app.url} className="block truncate font-mono text-[0.8125rem] hover:text-accent">
+                          {host(app.url)}
+                        </DeployLink>
+                        <span className="text-xs text-muted">
+                          {app.branch}
+                          {app.number != null && (
+                            <>
+                              {" · "}
+                              <Link to={`${base}/pull/${app.number}`} className="hover:underline">
+                                #{app.number}
+                              </Link>
+                            </>
+                          )}
+                        </span>
                       </span>
-                    </span>
-                    <span className="shrink-0 text-xs text-faint">
-                      <TimeAgo at={app.deployedAt} />
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                      <span className="shrink-0 text-xs text-faint">
+                        <TimeAgo at={app.deployedAt} />
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
             </Panel>
           )}
         </div>
@@ -1304,179 +1314,187 @@ function Overview({
           {/* Deployments panel (deployments-panel.tsx): each environment's latest deployment. */}
           <DeploymentsPanel base={base} summary={loaderData.environments} className="rounded-xl border border-line bg-surface p-5" />
           {project && (
-            <section className="rounded-xl border border-line bg-surface p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold">About</h2>
-                {canChange && <AboutEditor project={project} />}
-              </div>
-              <p className={`mt-2.5 text-sm ${project.description ? "text-fg-soft" : "text-faint"}`}>
-                {project.description ?? "No description."}
-              </p>
-              <LinkList links={project.links} className="mt-3" />
-              <ul className="mt-4 space-y-2 text-xs text-muted">
-                <li className="flex items-center gap-2">
-                  {project.kind === "library" || project.kind === "tool" ? (
-                    <PackageGlyph size={13} className="shrink-0 text-faint" />
-                  ) : project.kind === "docs" ? (
-                    <BookOpen size={13} className="shrink-0 text-faint" />
-                  ) : (
-                    <Rocket size={13} className="shrink-0 text-faint" />
-                  )}
-                  <Hint label={project.kindReason.detail}>
-                    <span>{kindLabel(project)}</span>
-                  </Hint>
-                </li>
-                {loaderData.release && (
-                  <li className="flex items-center gap-2">
-                    <Tag size={13} className="shrink-0 text-faint" />
-                    <Link to={`${base}/tags`} className="hover:text-fg">
-                      <span className="font-mono text-fg-soft">{loaderData.release.name}</span>
-                      {loaderData.release.at && (
-                        <span className="text-faint">
-                          {" · "}
-                          <TimeAgo at={loaderData.release.at} />
-                        </span>
-                      )}
-                    </Link>
-                  </li>
-                )}
-                {loaderData.languages && loaderData.languages.length > 0 && (
-                  <li className="flex items-center gap-2">
-                    <Code2 size={13} className="shrink-0 text-faint" />
-                    <span>
-                      {loaderData.languages
-                        .slice(0, 3)
-                        .map((language) => `${language.name} ${Math.round(language.share * 100)}%`)
-                        .join(" · ")}
-                    </span>
-                  </li>
-                )}
-              </ul>
-              {loaderData.contributors && loaderData.contributors.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-1">
-                  {loaderData.contributors.slice(0, 12).map((person) => (
-                    <Hint key={person.username} label={person.username}>
-                      <Link to={`/${person.username}`}>
-                        <Avatar name={person.username} size={22} />
-                      </Link>
-                    </Hint>
-                  ))}
+            <Card asChild className="p-5">
+              <section>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold">About</h2>
+                  {canChange && <AboutEditor project={project} />}
                 </div>
-              )}
-            </section>
-          )}
-
-          {member && (
-            <section className="rounded-xl border border-line bg-surface p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Brain size={14} className="text-accent" />
-                  What agents know here
-                </h2>
-                <Link to={`${base}/memory`} className="text-xs text-muted hover:text-fg">
-                  Memory
-                </Link>
-              </div>
-              {!loaderData.memoriesLoaded ? (
-                <p className="mt-3 text-xs text-muted">Memory could not be loaded just now.</p>
-              ) : knows.length === 0 ? (
-                <p className="mt-3 text-xs leading-5 text-muted">
-                  Nothing yet. Agents note conventions, decisions and traps as they work, and every agent starting here reads them.
+                <p className={`mt-2.5 text-sm ${project.description ? "text-fg-soft" : "text-faint"}`}>
+                  {project.description ?? "No description."}
                 </p>
-              ) : (
-                <ul className="mt-3 space-y-2.5">
-                  {knows.map((memory) => (
-                    <li key={memory.id} className="text-xs leading-5">
-                      <p className="line-clamp-3 text-fg-soft">
-                        {memory.pinned && <Pin size={11} className="mr-1 inline text-accent" />}
-                        <InlineMarkdown text={memory.text} />
-                      </p>
-                      <p className="text-faint">
-                        {memory.kind} · {memory.createdBy} · <TimeAgo at={memory.createdAt} />
-                      </p>
-                    </li>
-                  ))}
-                  {loaderData.memoryCount > knows.length && (
-                    <li>
-                      <Link to={`${base}/memory`} className="text-xs text-muted hover:text-fg">
-                        {loaderData.memoryCount - knows.length} more
+                <LinkList links={project.links} className="mt-3" />
+                <ul className="mt-4 space-y-2 text-xs text-muted">
+                  <li className="flex items-center gap-2">
+                    {project.kind === "library" || project.kind === "tool" ? (
+                      <PackageGlyph size={13} className="shrink-0 text-faint" />
+                    ) : project.kind === "docs" ? (
+                      <BookOpen size={13} className="shrink-0 text-faint" />
+                    ) : (
+                      <Rocket size={13} className="shrink-0 text-faint" />
+                    )}
+                    <Hint label={project.kindReason.detail}>
+                      <span>{kindLabel(project)}</span>
+                    </Hint>
+                  </li>
+                  {loaderData.release && (
+                    <li className="flex items-center gap-2">
+                      <Tag size={13} className="shrink-0 text-faint" />
+                      <Link to={`${base}/tags`} className="hover:text-fg">
+                        <span className="font-mono text-fg-soft">{loaderData.release.name}</span>
+                        {loaderData.release.at && (
+                          <span className="text-faint">
+                            {" · "}
+                            <TimeAgo at={loaderData.release.at} />
+                          </span>
+                        )}
                       </Link>
+                    </li>
+                  )}
+                  {loaderData.languages && loaderData.languages.length > 0 && (
+                    <li className="flex items-center gap-2">
+                      <Code2 size={13} className="shrink-0 text-faint" />
+                      <span>
+                        {loaderData.languages
+                          .slice(0, 3)
+                          .map((language) => `${language.name} ${Math.round(language.share * 100)}%`)
+                          .join(" · ")}
+                      </span>
                     </li>
                   )}
                 </ul>
-              )}
-            </section>
+                {loaderData.contributors && loaderData.contributors.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-1">
+                    {loaderData.contributors.slice(0, 12).map((person) => (
+                      <Hint key={person.username} label={person.username}>
+                        <Link to={`/${person.username}`}>
+                          <Avatar name={person.username} size={22} />
+                        </Link>
+                      </Hint>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </Card>
           )}
 
-          <section className="rounded-xl border border-line bg-surface p-5">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-              <HeartPulse size={14} className="text-faint" />
-              Health
-            </h2>
-            <div className="mt-4 space-y-4 text-xs">
-              <div>
-                <div className="flex items-baseline justify-between">
-                  <span className="text-muted">Checks passing</span>
-                  <span className="font-medium tabular-nums">{percent(health.passRate)}</span>
-                </div>
-                <div className="mt-1.5">
-                  <Meter value={health.passRate} tone={health.passRate != null && health.passRate < 0.7 ? "bg-warn" : "bg-success"} />
-                </div>
-                <p className="mt-1 text-faint">
-                  {health.checkRuns
-                    ? `${health.checkRuns} recent runs · ${percent(health.firstPass.rate)} pass on the first try`
-                    : "No checks have run recently."}
-                </p>
-              </div>
-              {member && (plan === "production" || builds.length > 0) && (
-                <div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-muted">Deploys</span>
-                    <Link to={`${base}/deployments`} className="text-faint hover:text-fg">
-                      {builds.length ? `last ${Math.min(builds.length, 20)}` : "none yet"}
-                    </Link>
-                  </div>
-                  <div className="mt-1.5">
-                    <DeployStrip builds={builds} base={base} />
-                  </div>
-                </div>
-              )}
-              <div>
-                <div className="flex items-baseline justify-between">
-                  <span className="text-muted">Open issues by age</span>
-                  <Link to={`${base}/issues`} className="font-medium tabular-nums hover:text-accent">
-                    {open.issues}
+          {member && (
+            <Card asChild className="p-5">
+              <section>
+                <div className="flex items-center justify-between">
+                  <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+                    <Brain size={14} className="text-accent" />
+                    What agents know here
+                  </h2>
+                  <Link to={`${base}/memory`} className="text-xs text-muted hover:text-fg">
+                    Memory
                   </Link>
                 </div>
-                {ages ? (
-                  <ul className="mt-2 space-y-1.5">
-                    {ages.map((bucket) => (
-                      <li key={bucket.label} className="grid grid-cols-[6.5rem_1fr_1.5rem] items-center gap-2">
-                        <span className="text-faint">{bucket.label}</span>
-                        <span className="block h-1.5 overflow-hidden rounded-full bg-line">
-                          <span
-                            className={`block h-full rounded-full ${bucket.label === "Older" ? "bg-warn" : "bg-fg-soft/60"}`}
-                            style={{ width: `${(bucket.count / oldest) * 100}%` }}
-                          />
-                        </span>
-                        <span className="text-right tabular-nums text-muted">{bucket.count}</span>
+                {!loaderData.memoriesLoaded ? (
+                  <p className="mt-3 text-xs text-muted">Memory could not be loaded just now.</p>
+                ) : knows.length === 0 ? (
+                  <p className="mt-3 text-xs leading-5 text-muted">
+                    Nothing yet. Agents note conventions, decisions and traps as they work, and every agent starting here reads them.
+                  </p>
+                ) : (
+                  <ul className="mt-3 space-y-2.5">
+                    {knows.map((memory) => (
+                      <li key={memory.id} className="text-xs leading-5">
+                        <p className="line-clamp-3 text-fg-soft">
+                          {memory.pinned && <Pin size={11} className="mr-1 inline text-accent" />}
+                          <InlineMarkdown text={memory.text} />
+                        </p>
+                        <p className="text-faint">
+                          {memory.kind} · {memory.createdBy} · <TimeAgo at={memory.createdAt} />
+                        </p>
                       </li>
                     ))}
+                    {loaderData.memoryCount > knows.length && (
+                      <li>
+                        <Link to={`${base}/memory`} className="text-xs text-muted hover:text-fg">
+                          {loaderData.memoryCount - knows.length} more
+                        </Link>
+                      </li>
+                    )}
                   </ul>
-                ) : (
-                  <p className="mt-1 text-faint">Issues could not be loaded just now.</p>
                 )}
-              </div>
-            </div>
-          </section>
+              </section>
+            </Card>
+          )}
 
-          {source && (
-            <section className="rounded-xl border border-line bg-surface p-5">
-              <h2 className="text-sm font-semibold">Clone</h2>
-              <div className="mt-3">
-                <CopyLine breakAtSlashes text={`git clone ${cloneUrl(addresses, `${source.repo.namespace}/${source.repo.name}`)}`} />
+          <Card asChild className="p-5">
+            <section>
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+                <HeartPulse size={14} className="text-faint" />
+                Health
+              </h2>
+              <div className="mt-4 space-y-4 text-xs">
+                <div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-muted">Checks passing</span>
+                    <span className="font-medium tabular-nums">{percent(health.passRate)}</span>
+                  </div>
+                  <div className="mt-1.5">
+                    <Meter value={health.passRate} tone={health.passRate != null && health.passRate < 0.7 ? "bg-warn" : "bg-success"} />
+                  </div>
+                  <p className="mt-1 text-faint">
+                    {health.checkRuns
+                      ? `${health.checkRuns} recent runs · ${percent(health.firstPass.rate)} pass on the first try`
+                      : "No checks have run recently."}
+                  </p>
+                </div>
+                {member && (plan === "production" || builds.length > 0) && (
+                  <div>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-muted">Deploys</span>
+                      <Link to={`${base}/deployments`} className="text-faint hover:text-fg">
+                        {builds.length ? `last ${Math.min(builds.length, 20)}` : "none yet"}
+                      </Link>
+                    </div>
+                    <div className="mt-1.5">
+                      <DeployStrip builds={builds} base={base} />
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-muted">Open issues by age</span>
+                    <Link to={`${base}/issues`} className="font-medium tabular-nums hover:text-accent">
+                      {open.issues}
+                    </Link>
+                  </div>
+                  {ages ? (
+                    <ul className="mt-2 space-y-1.5">
+                      {ages.map((bucket) => (
+                        <li key={bucket.label} className="grid grid-cols-[6.5rem_1fr_1.5rem] items-center gap-2">
+                          <span className="text-faint">{bucket.label}</span>
+                          <span className="block h-1.5 overflow-hidden rounded-full bg-line">
+                            <span
+                              className={`block h-full rounded-full ${bucket.label === "Older" ? "bg-warn" : "bg-fg-soft/60"}`}
+                              style={{ width: `${(bucket.count / oldest) * 100}%` }}
+                            />
+                          </span>
+                          <span className="text-right tabular-nums text-muted">{bucket.count}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-faint">Issues could not be loaded just now.</p>
+                  )}
+                </div>
               </div>
             </section>
+          </Card>
+
+          {source && (
+            <Card asChild className="p-5">
+              <section>
+                <h2 className="text-sm font-semibold">Clone</h2>
+                <div className="mt-3">
+                  <CopyLine breakAtSlashes text={`git clone ${cloneUrl(addresses, `${source.repo.namespace}/${source.repo.name}`)}`} />
+                </div>
+              </section>
+            </Card>
           )}
         </aside>
       </div>

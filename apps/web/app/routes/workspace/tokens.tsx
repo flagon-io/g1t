@@ -5,6 +5,7 @@ import type { Route } from "./+types/tokens";
 import { page } from "../../lib/meta";
 import { useAddresses } from "../../lib/addresses";
 import { ButtonLink, CopyLine, EmptyState } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { TokenList } from "../../components/token-list";
 import { currentTokensPath } from "../../lib/access-tokens";
 import { identity } from "../../lib/services.server";
@@ -62,32 +63,36 @@ export default function WorkspaceTokens({ loaderData }: Route.ComponentProps) {
       </div>
 
       <aside className="space-y-5 text-sm">
-        <section className="rounded-xl border border-line bg-surface p-5">
-          <h3 className="font-medium">What a token can do</h3>
-          <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
-            <li>
-              What its permissions allow, in this workspace only, with Write on its repositories, as a member: push, open
-              and merge pull requests, manage issues. Admin only with Repositories: admin.
-            </li>
-            <li>
-              It acts as <span className="font-mono text-fg">{slug}</span>, so what it does is shown as the workspace's
-              doing.
-            </li>
-            <li>It keeps working when the person who made it leaves.</li>
-            <li>It cannot manage people, tokens or other workspaces.</li>
-          </ul>
-        </section>
-        {owner && (
-          <section className="rounded-xl border border-line p-5">
-            <h3 className="font-medium">Your members' own tokens</h3>
-            <p className="mt-2 text-muted">
-              Which personal tokens may reach {slug}, how long they may last, and approving the ones made for it:{" "}
-              <Link to={`/${slug}/-/personal-access-tokens`} className="text-fg underline underline-offset-4">
-                Personal access tokens
-              </Link>
-              .
-            </p>
+        <Card asChild className="p-5">
+          <section>
+            <h3 className="font-medium">What a token can do</h3>
+            <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
+              <li>
+                What its permissions allow, in this workspace only, with Write on its repositories, as a member: push, open
+                and merge pull requests, manage issues. Admin only with Repositories: admin.
+              </li>
+              <li>
+                It acts as <span className="font-mono text-fg">{slug}</span>, so what it does is shown as the workspace's
+                doing.
+              </li>
+              <li>It keeps working when the person who made it leaves.</li>
+              <li>It cannot manage people, tokens or other workspaces.</li>
+            </ul>
           </section>
+        </Card>
+        {owner && (
+          <Card asChild tone="plain" className="p-5">
+            <section>
+              <h3 className="font-medium">Your members' own tokens</h3>
+              <p className="mt-2 text-muted">
+                Which personal tokens may reach {slug}, how long they may last, and approving the ones made for it:{" "}
+                <Link to={`/${slug}/-/personal-access-tokens`} className="text-fg underline underline-offset-4">
+                  Personal access tokens
+                </Link>
+                .
+              </p>
+            </section>
+          </Card>
         )}
         <section>
           <h3 className="font-medium">Using one</h3>

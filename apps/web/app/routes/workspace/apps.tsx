@@ -19,6 +19,7 @@ import { workspaceAgents } from "../../lib/services.server";
 import { page } from "../../lib/meta";
 import { readCookie } from "../../lib/mission";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
+import { Card } from "../../components/ui/card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Apps · ${params.owner} · g1t` });
@@ -89,7 +90,9 @@ export default function Apps({ loaderData }: Route.ComponentProps) {
       </div>
 
       {apps == null ? (
-        <p className="mt-8 rounded-xl border border-line bg-surface px-4 py-6 text-center text-sm text-muted">What is installed can't be read right now. Reload in a minute.</p>
+        <Card asChild className="mt-8 px-4 py-6 text-center text-sm text-muted">
+          <p>What is installed can't be read right now. Reload in a minute.</p>
+        </Card>
       ) : apps.length === 0 ? (
         <div className="mt-8">
           <NoApps slug={slug} />
@@ -104,9 +107,11 @@ export default function Apps({ loaderData }: Route.ComponentProps) {
               <span className="text-xs text-faint">{pinned.length === 0 ? "None yet" : `${pinned.length} pinned`}</span>
             </div>
             {pinned.length === 0 ? (
-              <p className="mt-3 rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">
-                Nothing pinned yet. Pin an app below and it shows in your dock, under the built-in ones.
-              </p>
+              <Card asChild tone="plain" className="mt-3 border-dashed px-4 py-6 text-center text-sm text-muted">
+                <p>
+                  Nothing pinned yet. Pin an app below and it shows in your dock, under the built-in ones.
+                </p>
+              </Card>
             ) : (
               <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">
                 {pinned.map((app) => (

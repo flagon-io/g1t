@@ -13,7 +13,8 @@ import { Hint } from "./ui/hint";
 import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
 import { StatusDot, useSiteStatus } from "./footer";
 import { Logo, MarkGlyph } from "./logo";
-import { Avatar, SoonPill } from "./ui";
+import { SoonPill } from "./ui";
+import { Avatar } from "./ui/avatar";
 import { Skeleton } from "./ui/skeleton";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
@@ -1768,7 +1769,7 @@ export function Progress() {
 function AskG1tButton({ slug }: { slug: string }) {
   return (
     <Hint label="Ask g1t">
-      <Button asChild variant="soft" size="bar" className="gap-2 lg:px-3">
+      <Button asChild variant="soft" size="bar" className="gap-2 max-md:ring-0 lg:px-3">
         <Link to={`/${slug}/-/chat?agent=g1t`} aria-label="Ask g1t">
           <MarkGlyph className="h-3.5" />
           <span className="max-lg:hidden">Ask g1t</span>
@@ -1974,9 +1975,9 @@ export function AppShell({
         </Link>
       )}
       {inDrawer ? (
-        <button type="button" aria-label="Close menu" onClick={() => setDrawer(false)} className="flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg">
+        <Button type="button" aria-label="Close menu" onClick={() => setDrawer(false)} variant="ghost" size="icon-sm" className="text-faint">
           <X size={16} />
-        </button>
+        </Button>
       ) : (
         <SidebarToggle open onClick={toggleSidebar} />
       )}

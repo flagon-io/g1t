@@ -17,6 +17,8 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { citationHref } from "../../../lib/folios";
 import { useDrawnTheme } from "../../../lib/theme";
+import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 
 /** What an embed shows, from the site (`-/artifacts/api?embed=`). */
 export type EmbedCard = { kind: "issue" | "pull" | "channel" | "project" | "page" | "link"; title: string; subtitle: string | null; state: string | null; href: string };
@@ -118,20 +120,20 @@ export const Mermaid = createReactBlockSpec(
     render: ({ block, editor }) => {
       const [editing, setEditing] = useState(false);
       return (
-        <div className="my-1 w-full rounded-lg border border-line bg-surface p-3" contentEditable={false}>
+        <Card radius="lg" className="my-1 w-full p-3" contentEditable={false}>
           <div className="mb-2 flex items-center justify-between text-[0.6875rem] font-medium tracking-wide text-faint uppercase">
             <span>Diagram</span>
             {editor.isEditable && (
-              <button type="button" onClick={() => setEditing(!editing)} className="rounded px-1.5 py-0.5 normal-case hover:bg-raised hover:text-fg">
+              <Button type="button" onClick={() => setEditing(!editing)} variant="ghost" size="inline" className="rounded px-1.5 py-0.5 font-normal normal-case text-faint">
                 {editing ? "Done" : "Edit source"}
-              </button>
+              </Button>
             )}
           </div>
           {editing && <SourceEditor editable value={block.props.code} placeholder="flowchart LR&#10;  A --> B" onChange={(code) => editor.updateBlock(block, { props: { code } })} />}
           <div className={editing ? "mt-3" : ""}>
             <MermaidView code={block.props.code} />
           </div>
-        </div>
+        </Card>
       );
     },
   },
@@ -242,9 +244,9 @@ export const Embed = createReactBlockSpec(
               placeholder="Paste the address of an issue, pull request, channel, project or artifact"
               className="min-w-0 grow bg-transparent px-1.5 text-sm text-fg outline-none placeholder:text-faint"
             />
-            <button type="submit" className="rounded-md bg-raised px-2.5 py-1 text-xs font-medium text-fg hover:bg-line">
+            <Button type="submit" variant="secondary" size="inline" className="px-2.5 py-1 text-xs">
               Embed
-            </button>
+            </Button>
           </form>
         );
       }

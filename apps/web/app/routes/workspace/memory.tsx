@@ -5,6 +5,7 @@ import { page } from "../../lib/meta";
 import { AddMemory, MemoryList, memoryAction } from "../../components/memory";
 import { agents } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { Card } from "../../components/ui/card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Workspace memory · ${params.owner} · g1t` });
@@ -29,20 +30,20 @@ export default function WorkspaceMemory({ loaderData, params }: Route.ComponentP
   return (
     <div className="space-y-8">
       <div className="grid gap-3 text-sm sm:grid-cols-2">
-        <div className="rounded-xl border border-line bg-surface p-4">
+        <Card className="p-4">
           <p className="font-medium">Here: true in every project</p>
           <p className="mt-1 text-muted">
             "We use pnpm everywhere." "Staging lives at staging.example.com." "Every service logs
             JSON to stdout." What an agent in any project should know.
           </p>
-        </div>
-        <div className="rounded-xl border border-line bg-surface p-4">
+        </Card>
+        <Card className="p-4">
           <p className="font-medium">In a project: true of its code</p>
           <p className="mt-1 text-muted">
             How to build and test it, its conventions and its traps. Each project keeps its own under
             Agents, Memory.
           </p>
-        </div>
+        </Card>
       </div>
 
       <AddMemory scope="workspace" action={action} placeholder="We use pnpm everywhere, never npm or yarn." />

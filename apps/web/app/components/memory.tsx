@@ -21,6 +21,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "./ui/alert-dialog";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Hint } from "./ui/hint";
@@ -169,15 +171,17 @@ function MemoryItem({ memory, action, editable }: { memory: Memory; action: stri
       {editable && (
         <div className="flex shrink-0 items-start gap-0.5">
           <Hint label={pinned ? "Unpin" : "Pin: given to every agent first"}>
-            <button
+            <Button
               type="button"
               aria-label={pinned ? "Unpin" : "Pin"}
               onClick={() => fetcher.submit({ intent: "update", id: memory.id, pinned: String(!pinned) }, { method: "post", action })}
               disabled={fetcher.state !== "idle"}
-              className="rounded p-1 text-faint max-sm:p-2.5 transition-colors hover:bg-raised hover:text-fg disabled:opacity-50"
+              variant="ghost"
+              size="inline"
+              className="rounded p-1 text-faint max-sm:p-2.5"
             >
               {pinned ? <PinOff size={13} /> : <Pin size={13} />}
-            </button>
+            </Button>
           </Hint>
           <EditMemory memory={memory} action={action} />
           <AlertDialog>
@@ -220,11 +224,13 @@ export function MemoryList({
     return <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">{empty}</p>;
   }
   return (
-    <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
-      {memories.map((memory) => (
-        <MemoryItem key={memory.id} memory={memory} action={action} editable={editable} />
-      ))}
-    </ul>
+    <Card asChild divided>
+      <ul>
+        {memories.map((memory) => (
+          <MemoryItem key={memory.id} memory={memory} action={action} editable={editable} />
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -236,31 +242,33 @@ export function AddMemory({ scope, action, placeholder }: { scope: MemoryScope; 
     if (fetcher.state === "idle" && fetcher.data?.ok) form.current?.reset();
   }, [fetcher.state, fetcher.data]);
   return (
-    <fetcher.Form ref={form} method="post" action={action} className="rounded-xl border border-line bg-surface p-4">
-      <input type="hidden" name="intent" value="add" />
-      <input type="hidden" name="scope" value={scope} />
-      <label className="flex items-center gap-2 text-sm font-medium">
-        <Brain size={15} className="text-accent" />
-        Add to {scope === "workspace" ? "the workspace's" : "this project's"} memory
-      </label>
-      <textarea name="text" required rows={2} maxLength={1000} placeholder={placeholder} className={`${TEXTAREA} mt-3`} />
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <KindSelect />
-        <label className="flex items-center gap-2 text-xs text-muted">
-          <Switch name="pinned" value="true" size="sm" />
-          Pin it
+    <Card asChild className="p-4">
+      <fetcher.Form ref={form} method="post" action={action}>
+        <input type="hidden" name="intent" value="add" />
+        <input type="hidden" name="scope" value={scope} />
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <Brain size={15} className="text-accent" />
+          Add to {scope === "workspace" ? "the workspace's" : "this project's"} memory
         </label>
-        <span className="grow" />
-        <SubmitButton fetcher={fetcher} pending="Adding…">
-          Add
-        </SubmitButton>
-      </div>
-      {fetcher.data?.error && <p className="mt-2 text-sm text-danger">{fetcher.data.error}</p>}
-      <p className="mt-2 text-xs text-faint">
-        One fact, convention, decision or gotcha each. Never a secret: say where it lives instead, and
-        g1t refuses anything that looks like a key or a token.
-      </p>
-    </fetcher.Form>
+        <textarea name="text" required rows={2} maxLength={1000} placeholder={placeholder} className={`${TEXTAREA} mt-3`} />
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <KindSelect />
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <Switch name="pinned" value="true" size="sm" />
+            Pin it
+          </label>
+          <span className="grow" />
+          <SubmitButton fetcher={fetcher} pending="Adding…">
+            Add
+          </SubmitButton>
+        </div>
+        {fetcher.data?.error && <p className="mt-2 text-sm text-danger">{fetcher.data.error}</p>}
+        <p className="mt-2 text-xs text-faint">
+          One fact, convention, decision or gotcha each. Never a secret: say where it lives instead, and
+          g1t refuses anything that looks like a key or a token.
+        </p>
+      </fetcher.Form>
+    </Card>
   );
 }
 

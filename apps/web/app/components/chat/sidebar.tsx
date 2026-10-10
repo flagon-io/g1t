@@ -11,6 +11,7 @@ import { MemberAvatar, StatusDot, statusLabel } from "./marks";
 import { AgentAvatar } from "../agent-avatar";
 import { PersonStatusEmoji } from "../presence";
 import { isOrchestrator } from "../orchestrator";
+import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { Skeleton } from "../ui/skeleton";
 import { type ChatFilter, agentDmOf, channelPath, filterEntries, sections } from "../../lib/chat";
@@ -372,7 +373,7 @@ function Empty({ children }: { children: ReactNode }) {
 function PinButton({ pinned, onPin, label }: { pinned: boolean; onPin: () => void; label: string }) {
   return (
     <Hint label={pinned ? "Unpin" : "Pin to the top"}>
-      <button
+      <Button
         type="button"
         aria-label={`${pinned ? "Unpin" : "Pin"} ${label}`}
         onClick={(event) => {
@@ -380,10 +381,11 @@ function PinButton({ pinned, onPin, label }: { pinned: boolean; onPin: () => voi
           event.stopPropagation();
           onPin();
         }}
-        className="absolute top-1/2 right-1 hidden size-6 -translate-y-1/2 items-center justify-center rounded bg-raised text-faint group-hover/row:flex group-focus-within/row:flex hover:bg-line hover:text-fg [@media(hover:none)]:hidden"
+        variant="secondary" size="icon"
+        className="absolute top-1/2 right-1 hidden size-6 -translate-y-1/2 rounded text-faint group-hover/row:flex group-focus-within/row:flex hover:text-fg [@media(hover:none)]:hidden"
       >
         {pinned ? <PinOff size={13} /> : <Pin size={13} />}
-      </button>
+      </Button>
     </Hint>
   );
 }

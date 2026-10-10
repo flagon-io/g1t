@@ -46,6 +46,8 @@ import {
 
 import { InlineMarkdown } from "./inline-markdown";
 import { SubmitButton, TimeAgo } from "./ui";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -196,25 +198,28 @@ function Candidate({ memory, action }: { memory: Memory; action: string }) {
         {fetcher.data?.error && <p className="mt-1.5 text-xs text-danger">{fetcher.data.error}</p>}
       </div>
       <div className="flex shrink-0 items-start gap-1.5">
-        <button
+        <Button
           type="button"
           onClick={() => fetcher.submit({ intent: "keep", id: memory.id }, { method: "post", action })}
-          className="inline-flex items-center gap-1 rounded-md bg-fg px-2 py-1 text-xs font-medium text-bg hover:bg-fg-hover"
+          size="inline"
+          className="gap-1 px-2 py-1 text-xs"
         >
           <Check size={12} />
           Keep
-        </button>
+        </Button>
         <EditAndKeep memory={memory} action={action} />
         <Hint label="Dismiss: never suggested again in these words">
-          <button
+          <Button
             type="button"
             aria-label="Dismiss"
             onClick={() => fetcher.submit({ intent: "dismiss", id: memory.id }, { method: "post", action })}
-            className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-muted hover:border-line-strong hover:text-danger"
+            variant="outline"
+            size="inline"
+            className="gap-1 px-2 py-1 text-xs text-muted hover:text-danger font-normal"
           >
             <X size={12} />
             Dismiss
-          </button>
+          </Button>
         </Hint>
       </div>
     </li>
@@ -227,11 +232,13 @@ export function ReviewQueue({ candidates, action, empty }: { candidates: Memory[
     return <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">{empty}</p>;
   }
   return (
-    <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
-      {candidates.map((memory) => (
-        <Candidate key={memory.id} memory={memory} action={action} />
-      ))}
-    </ul>
+    <Card asChild divided>
+      <ul>
+        {candidates.map((memory) => (
+          <Candidate key={memory.id} memory={memory} action={action} />
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -269,47 +276,49 @@ export function RelationsGraph({ catalog }: { catalog: Catalog }) {
   );
   const edges = catalog.relations.filter((relation) => relation.kind === "depends_on" && at.has(relation.from) && at.has(relation.to));
   return (
-    <figure className="rounded-xl border border-line bg-surface p-3">
-      <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto block h-auto w-full max-w-md" role="img" aria-label="How the workspace's projects depend on each other">
-        <defs>
-          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" className="fill-muted" />
-          </marker>
-        </defs>
-        {edges.map((edge) => {
-          const from = at.get(edge.from)!;
-          const to = at.get(edge.to)!;
-          const dx = to.x - from.x;
-          const dy = to.y - from.y;
-          const length = Math.hypot(dx, dy) || 1;
-          const pad = 26;
-          return (
-            <line
-              key={`${edge.from}-${edge.to}`}
-              x1={from.x + (dx / length) * pad}
-              y1={from.y + (dy / length) * pad}
-              x2={to.x - (dx / length) * pad}
-              y2={to.y - (dy / length) * pad}
-              className="stroke-muted"
-              strokeWidth={1.25}
-              markerEnd="url(#arrow)"
-            />
-          );
-        })}
-        {[...at.values()].map(({ x, y, project }) => (
-          <g key={project.id}>
-            <circle cx={x} cy={y} r={20} className="fill-bg stroke-accent" strokeWidth={1.5} />
-            <text x={x} y={y + 36} textAnchor="middle" className="fill-fg text-[11px]">
-              {project.name.length > 16 ? `${project.name.slice(0, 15)}…` : project.name}
-            </text>
-            <text x={x} y={y + 4} textAnchor="middle" className="fill-accent text-[11px] font-semibold">
-              {project.name[0]?.toUpperCase()}
-            </text>
-          </g>
-        ))}
-      </svg>
-      <figcaption className="mt-1 text-center text-xs text-faint">An arrow points from a project to one it uses.</figcaption>
-    </figure>
+    <Card asChild className="p-3">
+      <figure>
+        <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto block h-auto w-full max-w-md" role="img" aria-label="How the workspace's projects depend on each other">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" className="fill-muted" />
+            </marker>
+          </defs>
+          {edges.map((edge) => {
+            const from = at.get(edge.from)!;
+            const to = at.get(edge.to)!;
+            const dx = to.x - from.x;
+            const dy = to.y - from.y;
+            const length = Math.hypot(dx, dy) || 1;
+            const pad = 26;
+            return (
+              <line
+                key={`${edge.from}-${edge.to}`}
+                x1={from.x + (dx / length) * pad}
+                y1={from.y + (dy / length) * pad}
+                x2={to.x - (dx / length) * pad}
+                y2={to.y - (dy / length) * pad}
+                className="stroke-muted"
+                strokeWidth={1.25}
+                markerEnd="url(#arrow)"
+              />
+            );
+          })}
+          {[...at.values()].map(({ x, y, project }) => (
+            <g key={project.id}>
+              <circle cx={x} cy={y} r={20} className="fill-bg stroke-accent" strokeWidth={1.5} />
+              <text x={x} y={y + 36} textAnchor="middle" className="fill-fg text-[11px]">
+                {project.name.length > 16 ? `${project.name.slice(0, 15)}…` : project.name}
+              </text>
+              <text x={x} y={y + 4} textAnchor="middle" className="fill-accent text-[11px] font-semibold">
+                {project.name[0]?.toUpperCase()}
+              </text>
+            </g>
+          ))}
+        </svg>
+        <figcaption className="mt-1 text-center text-xs text-faint">An arrow points from a project to one it uses.</figcaption>
+      </figure>
+    </Card>
   );
 }
 
@@ -382,16 +391,20 @@ export function CatalogView({ catalog, kind, project, base }: { catalog: Catalog
       )}
       {!kind && !project && <RelationsGraph catalog={catalog} />}
       {shown.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">
-          Nothing here yet. The catalog builds itself from each project's default branch: its manifests, docs and
-          workflows, with its deployments and integrations.
-        </p>
+        <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
+          <p>
+            Nothing here yet. The catalog builds itself from each project's default branch: its manifests, docs and
+            workflows, with its deployments and integrations.
+          </p>
+        </Card>
       ) : (
-        <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
-          {shown.slice(0, 500).map((entity) => (
-            <EntityRow key={entity.id} entity={entity} names={names} />
-          ))}
-        </ul>
+        <Card asChild divided>
+          <ul>
+            {shown.slice(0, 500).map((entity) => (
+              <EntityRow key={entity.id} entity={entity} names={names} />
+            ))}
+          </ul>
+        </Card>
       )}
       {catalog.builtAt && (
         <p className="text-xs text-faint">
@@ -457,20 +470,24 @@ export function SearchView({ result, query, base }: { result: SearchResult | nul
             className="w-full rounded-md border border-line bg-bg py-2 pr-3 pl-9 text-sm outline-none placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
           />
         </label>
-        <button type="submit" className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover">
+        <Button type="submit">
           {searching ? "Searching…" : "Search"}
-        </button>
+        </Button>
       </Form>
       {result &&
         (result.hits.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">Nothing matched “{result.query}”.</p>
+          <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
+            <p>Nothing matched “{result.query}”.</p>
+          </Card>
         ) : (
           <>
-            <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
-              {result.hits.map((hit) => (
-                <Hit key={`${hit.kind}:${hit.id}`} hit={hit} />
-              ))}
-            </ul>
+            <Card asChild divided>
+              <ul>
+                {result.hits.map((hit) => (
+                  <Hit key={`${hit.kind}:${hit.id}`} hit={hit} />
+                ))}
+              </ul>
+            </Card>
             <p className="text-xs text-faint">
               {result.mode === "semantic" ? "Ranked by meaning, then by matching words." : "Matched by words: the search index did not answer."}
             </p>
@@ -504,7 +521,9 @@ function Rule({ rule, project, action }: { rule: RuleResult; project: string; ac
             <SubmitButton
               fetcher={fetcher}
               pending="Opening…"
-              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-muted hover:border-accent-dim hover:text-fg disabled:opacity-50"
+              variant="outline"
+              size="inline"
+              className="gap-1 px-2 py-1 text-xs text-muted hover:border-accent-dim font-normal"
             >
               <Bot size={12} />
               Fix with an agent
@@ -522,21 +541,23 @@ export function ScorecardsView({ cards, action }: { cards: Scorecard[]; action: 
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {cards.map((card) => (
-        <section key={card.project} className="rounded-xl border border-line bg-surface p-4">
-          <div className="flex items-baseline justify-between gap-3">
-            <Link to={`/${card.repo.namespace}/${card.repo.name}`} className="font-medium hover:text-accent">
-              {card.name}
-            </Link>
-            <span className={`text-xs ${card.passed === card.total ? "text-success" : "text-muted"}`}>
-              {card.passed} of {card.total}
-            </span>
-          </div>
-          <ul className="mt-2">
-            {card.rules.map((rule) => (
-              <Rule key={rule.rule} rule={rule} project={card.project} action={action} />
-            ))}
-          </ul>
-        </section>
+        <Card asChild key={card.project} className="p-4">
+          <section>
+            <div className="flex items-baseline justify-between gap-3">
+              <Link to={`/${card.repo.namespace}/${card.repo.name}`} className="font-medium hover:text-accent">
+                {card.name}
+              </Link>
+              <span className={`text-xs ${card.passed === card.total ? "text-success" : "text-muted"}`}>
+                {card.passed} of {card.total}
+              </span>
+            </div>
+            <ul className="mt-2">
+              {card.rules.map((rule) => (
+                <Rule key={rule.rule} rule={rule} project={card.project} action={action} />
+              ))}
+            </ul>
+          </section>
+        </Card>
       ))}
     </div>
   );

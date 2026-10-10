@@ -40,7 +40,7 @@ import { type LiveState, useChatLive } from "./live";
 import { AgentPill, MemberAvatar } from "./marks";
 import { PersonStatusEmoji, PersonStatusLine, PresenceSummary, WithPresence } from "../presence";
 import { CardContext, MemberCard, type PersonCard, personCard } from "./profile-card";
-import { Avatar } from "../ui";
+
 import { localTime } from "../../lib/time-zone";
 import { BottomSheet, SheetRow, useBack, useSwipeBack } from "../mobile";
 import { MessageText, type TextContext } from "./text";
@@ -58,9 +58,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
+import { Avatar } from "../ui/avatar";
 import { Badge } from "../ui/badge";
 import { Hint } from "../ui/hint";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { type Mentionable, type ShownMessage, channelPath, mentionNames, mergeMessages, shownHandle, shownName, timeline } from "../../lib/chat";
 import { codeAccessPath } from "../../lib/workspace-nav";
@@ -638,13 +640,15 @@ export function ChannelView({ data }: { data: Loaded }) {
           <div className="mx-auto flex min-h-full max-w-[56rem] flex-col justify-end px-2 pt-6 pb-3 sm:px-4">
             {older ? (
               <div className="flex justify-center pb-4">
-                <button
+                <Button
                   type="button"
                   onClick={() => void loadOlder()}
-                  className="rounded-full border border-line px-3 py-1 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
+                  variant="outline"
+                  size="inline"
+                  className="rounded-full px-3 py-1 text-xs text-muted font-normal"
                 >
                   {loadingOlder ? "Loading…" : "Load earlier messages"}
-                </button>
+                </Button>
               </div>
             ) : (
               <ConversationStart data={view} others={others} />
@@ -678,7 +682,7 @@ export function ChannelView({ data }: { data: Loaded }) {
           <div className="mx-auto max-w-[56rem]">
             <TypingLine members={typers} />
             {archived ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+              <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <p className="flex items-center gap-2 text-sm text-muted">
                   <Archive size={15} className="shrink-0 text-faint" />
                   <span>
@@ -686,31 +690,32 @@ export function ChannelView({ data }: { data: Loaded }) {
                   </span>
                 </p>
                 {canManage && (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => void updateChannel({ archived: false })}
-                    className="inline-flex h-9 items-center gap-2 rounded-md border border-line px-3 text-sm font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-raised"
+                    variant="outline"
+                    className="px-3 text-fg/90 hover:bg-raised"
                   >
                     <ArchiveRestore size={15} />
                     Unarchive
-                  </button>
+                  </Button>
                 )}
-              </div>
+              </Card>
             ) : joined ? (
               <Composer draftKey={data.channel.id} placeholder={placeholder} people={people} onSend={(body) => void post(body, null)} onTyping={onTyping} autoFocus />
             ) : (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+              <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <p className="text-sm text-muted">
                   You're reading <span className="font-medium text-fg">#{name}</span>. Join to post and get its notifications.
                 </p>
-                <button
+                <Button
                   type="button"
                   onClick={() => void join()}
-                  className="inline-flex h-9 items-center rounded-md bg-accent px-3.5 text-sm font-medium text-bg hover:bg-accent-hover"
+                  variant="accent"
                 >
                   Join channel
-                </button>
-              </div>
+                </Button>
+              </Card>
             )}
           </div>
         </div>
@@ -978,9 +983,9 @@ function DayRule({ label }: { label: string }) {
   return (
     <div role="separator" aria-label={label} className="relative my-3 flex items-center justify-center">
       <span aria-hidden="true" className="absolute inset-x-2 top-1/2 h-px bg-line" />
-      <span className="relative rounded-full border border-line bg-bg px-3 py-0.5 text-[0.6875rem] font-medium text-muted" suppressHydrationWarning>
+      <Badge className="relative bg-bg px-3 py-0.5" suppressHydrationWarning>
         {label}
-      </span>
+      </Badge>
     </div>
   );
 }
@@ -1066,14 +1071,16 @@ function ProfilePanel({
       ) : (
         <ul className="space-y-3">
           {theirs.map((m) => (
-            <li key={m.id} className="rounded-lg border border-line bg-surface px-3 py-2.5">
-              <p className="mb-1 text-[0.6875rem] text-faint" suppressHydrationWarning>
-                {clock(m.created_at, zone)}
-              </p>
-              <div className="line-clamp-4 text-sm">
-                <MessageText body={m.body} context={context} />
-              </div>
-            </li>
+            <Card asChild key={m.id} radius="lg" className="px-3 py-2.5">
+              <li>
+                <p className="mb-1 text-[0.6875rem] text-faint" suppressHydrationWarning>
+                  {clock(m.created_at, zone)}
+                </p>
+                <div className="line-clamp-4 text-sm">
+                  <MessageText body={m.body} context={context} />
+                </div>
+              </li>
+            </Card>
           ))}
         </ul>
       )}
@@ -1284,16 +1291,18 @@ function MessageRow({
         {message.failed && (
           <p className="mt-0.5 text-xs text-danger">
             Not sent.{" "}
-            <button type="button" onClick={onRetry} className="font-medium underline underline-offset-2 hover:text-fg">
+            <Button type="button" onClick={onRetry} variant="link" size="inline" className="text-inherit underline underline-offset-2 hover:text-fg">
               Try again
-            </button>
+            </Button>
           </p>
         )}
         {!inThread && message.reply_count > 0 && onThread && (
-          <button
+          <Button
             type="button"
             onClick={onThread}
-            className="mt-1 -ml-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-[0.8125rem] font-medium text-accent transition-colors hover:bg-raised"
+            variant="ghost"
+            size="inline"
+            className="mt-1 -ml-1 flex gap-2 px-1 py-0.5 text-[0.8125rem] text-accent"
           >
             <MessageSquareText size={14} />
             {message.reply_count} {message.reply_count === 1 ? "reply" : "replies"}
@@ -1302,24 +1311,25 @@ function MessageRow({
                 Last reply {clock(message.last_reply_at, zone)}
               </span>
             )}
-          </button>
+          </Button>
         )}
       </div>
       {!inThread && onThread && !message.pending && (
-        <div className="absolute -top-3 right-3 hidden rounded-lg border border-line bg-surface p-0.5 shadow-lg shadow-black/30 group-hover/message:flex group-focus-within/message:flex has-[[data-state=open]]:flex">
+        <Card radius="lg" className="absolute -top-3 right-3 hidden p-0.5 shadow-lg shadow-black/30 group-hover/message:flex group-focus-within/message:flex has-[[data-state=open]]:flex">
           <AddReaction messageId={message.id} />
           <Hint label="Reply in thread">
-            <button
+            <Button
               type="button"
               aria-label="Reply in thread"
               onClick={onThread}
-              className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-fg"
+              variant="ghost"
+              size="icon-xs"
             >
               <MessageSquareText size={15} />
-            </button>
+            </Button>
           </Hint>
           {onCopyLink && <MoreActions onCopyLink={onCopyLink} onWriteUp={onWriteUp} onEdit={onEdit} />}
-        </div>
+        </Card>
       )}
     </article>
   );
@@ -1372,11 +1382,10 @@ function ThreadMenu({ onCopyLink, onWriteUp }: { onCopyLink: () => void; onWrite
   return (
     <DropdownMenu>
       <Hint label="Thread actions">
-        <DropdownMenuTrigger
-          aria-label="Thread actions"
-          className="flex size-10 items-center justify-center rounded-full text-muted outline-none hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/50 active:bg-raised lg:size-7 lg:rounded-md"
-        >
-          <Ellipsis size={16} />
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon-lg" aria-label="Thread actions" className="rounded-full active:bg-raised lg:size-7 lg:rounded-md">
+            <Ellipsis size={16} />
+          </Button>
         </DropdownMenuTrigger>
       </Hint>
       <DropdownMenuContent align="end">
@@ -1432,16 +1441,16 @@ function SidePanel({ title, subtitle, onClose, menu, children }: { title: string
       className="fixed inset-0 z-40 flex flex-col bg-bg lg:static lg:z-auto lg:w-[22rem] lg:shrink-0 lg:border-l lg:border-line xl:w-[24rem] max-md:top-(--vv-top,0px) max-md:bottom-auto max-md:h-(--vv-height,100dvh) max-md:pb-[env(safe-area-inset-bottom)]"
     >
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-4 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] max-md:pt-[env(safe-area-inset-top)] max-md:pl-1.5">
-        <button type="button" onClick={onClose} aria-label="Back" className="flex size-10 items-center justify-center rounded-full text-muted active:bg-raised lg:hidden">
+        <Button type="button" onClick={onClose} aria-label="Back" variant="ghost" size="icon-lg" className="rounded-full active:bg-raised lg:hidden">
           <ChevronLeft size={22} />
-        </button>
+        </Button>
         <h2 className="text-[0.9375rem] font-semibold">{title}</h2>
         {subtitle && <span className="truncate text-sm text-faint">{subtitle}</span>}
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {menu}
-          <button type="button" onClick={onClose} aria-label="Close" className="hidden rounded-md p-1 text-faint hover:bg-raised hover:text-fg lg:block">
+          <Button type="button" onClick={onClose} aria-label="Close" variant="ghost" size="inline" className="hidden p-1 text-faint lg:block">
             <X size={16} />
-          </button>
+          </Button>
         </div>
       </div>
       <div className="flex min-h-0 grow flex-col">{children}</div>
@@ -1578,45 +1587,49 @@ function ChannelAbout({
         />
       </span>
       <div className="flex justify-end gap-1.5">
-        <button type="button" onClick={() => setEditing(null)} className="h-7 rounded-md px-2.5 text-xs text-muted hover:bg-raised hover:text-fg">
+        <Button type="button" onClick={() => setEditing(null)} variant="ghost" size="xs" className="px-2.5 font-normal">
           Cancel
-        </button>
-        <button type="submit" disabled={busy} className="h-7 rounded-md bg-accent px-2.5 text-xs font-medium text-bg hover:bg-accent-hover disabled:opacity-50">
+        </Button>
+        <Button type="submit" disabled={busy} variant="accent" size="xs" className="px-2.5">
           {busy ? "Saving…" : "Save"}
-        </button>
+        </Button>
       </div>
     </form>
   );
   const editButton = (field: "name" | "topic", label: string) => (
-    <button
+    <Button
       type="button"
       onClick={() => start(field)}
       aria-label={label}
-      className="rounded px-1.5 py-0.5 text-xs text-muted opacity-0 transition-opacity group-hover/about:opacity-100 hover:bg-raised hover:text-fg focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+      variant="ghost"
+      size="inline"
+      className="rounded px-1.5 py-0.5 text-xs opacity-0 transition-opacity group-hover/about:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 font-normal"
     >
       Edit
-    </button>
+    </Button>
   );
   return (
     <>
-      <section className="group/about rounded-xl border border-line bg-surface p-3.5">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-medium text-faint">Name</h3>
-          {mayRename && editing !== "name" && editButton("name", "Rename channel")}
-        </div>
-        {editing === "name" ? edit("name") : <p className="mt-1 text-sm text-fg-soft">#{channel.name}</p>}
-        <div className="mt-3 flex items-center justify-between">
-          <h3 className="text-xs font-medium text-faint">Topic</h3>
-          {mayTopic && editing !== "topic" && editButton("topic", "Edit topic")}
-        </div>
-        {editing === "topic" ? edit("topic") : <p className="mt-1 text-sm text-fg-soft">{channel.topic || "No topic yet."}</p>}
-        <h3 className="mt-3 text-xs font-medium text-faint">Visibility</h3>
-        <p className="mt-1 flex items-center gap-1.5 text-sm text-fg-soft">
-          {channel.private ? <Lock size={13} /> : <Hash size={13} />}
-          {channel.private ? "Private: only its members can find and read it" : "Public: anyone in the workspace can read and join"}
-        </p>
-        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
-      </section>
+      <Card asChild className="group/about p-3.5">
+        <section>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-medium text-faint">Name</h3>
+            {mayRename && editing !== "name" && editButton("name", "Rename channel")}
+          </div>
+          {editing === "name" ? edit("name") : <p className="mt-1 text-sm text-fg-soft">#{channel.name}</p>}
+          <div className="mt-3 flex items-center justify-between">
+            <h3 className="text-xs font-medium text-faint">Topic</h3>
+            {mayTopic && editing !== "topic" && editButton("topic", "Edit topic")}
+          </div>
+          {editing === "topic" ? edit("topic") : <p className="mt-1 text-sm text-fg-soft">{channel.topic || "No topic yet."}</p>}
+          <h3 className="mt-3 text-xs font-medium text-faint">Visibility</h3>
+          <p className="mt-1 flex items-center gap-1.5 text-sm text-fg-soft">
+            {channel.private ? <Lock size={13} /> : <Hash size={13} />}
+            {channel.private ? "Private: only its members can find and read it" : "Public: anyone in the workspace can read and join"}
+          </p>
+          {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+        </section>
+      </Card>
       {canManage && !general && (
         <button
           type="button"
@@ -1769,10 +1782,10 @@ function AddMember({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted hover:bg-raised hover:text-fg">
+        <Button type="button" variant="ghost" size="inline" className="flex gap-1 px-1.5 py-0.5 text-xs font-normal">
           <UserPlus size={13} />
           Add
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-1.5">
         <input

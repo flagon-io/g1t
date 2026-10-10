@@ -10,6 +10,9 @@ import { type BuilderAnswer, PersonalNotice, RedraftBox } from "../../../compone
 import { readOrNull } from "../../../components/agents/actions.server";
 import { versionChanges } from "../../../components/agents/format";
 import { TimeAgo } from "../../../components/ui";
+import { Alert } from "../../../components/ui/alert";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { isOrchestrator } from "../../../components/orchestrator";
 import { readAgentForm } from "../../../lib/agent-form";
 import { docs, workspaceAgents } from "../../../lib/services.server";
@@ -122,27 +125,33 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
       {personal && <PersonalNotice agent={agent} owner={loaderData.owner} mine={mine} />}
       {mayChange && <RedraftBox agent={agent} />}
       {!isOrchestrator(agent) && (
-        <section aria-labelledby="agent-teams" className="mb-8 rounded-xl border border-line bg-surface p-4">
-          <h2 id="agent-teams" className="flex items-center gap-2 text-sm font-medium">
-            <UsersRound size={14} className="text-faint" />
-            Teams
-          </h2>
-          <p className="mt-0.5 mb-3 text-xs text-faint">On teams like anyone: owners and a team&apos;s maintainers add it and take it off.</p>
-          <AgentTeamsEditor
-            slug={loaderData.slug}
-            name={agent.display_name}
-            teams={loaderData.teams}
-            personal={personal}
-            change={actionData && "teamChange" in actionData ? actionData.teamChange : null}
-          />
-        </section>
+        <Card asChild className="mb-8 p-4">
+          <section aria-labelledby="agent-teams">
+            <h2 id="agent-teams" className="flex items-center gap-2 text-sm font-medium">
+              <UsersRound size={14} className="text-faint" />
+              Teams
+            </h2>
+            <p className="mt-0.5 mb-3 text-xs text-faint">On teams like anyone: owners and a team&apos;s maintainers add it and take it off.</p>
+            <AgentTeamsEditor
+              slug={loaderData.slug}
+              name={agent.display_name}
+              teams={loaderData.teams}
+              personal={personal}
+              change={actionData && "teamChange" in actionData ? actionData.teamChange : null}
+            />
+          </section>
+        </Card>
       )}
       {actionData && "saved" in actionData && actionData.saved && (
         <p role="status" className="mb-6 rounded-lg border border-success/30 bg-success/10 px-4 py-2.5 text-sm text-success">
           Saved as version {agent.version}.
         </p>
       )}
-      {errors?.form && <p className="mb-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">{errors.form}</p>}
+      {errors?.form && (
+        <Alert asChild className="mb-6 px-4 py-3">
+          <p>{errors.form}</p>
+        </Alert>
+      )}
       {/* A member's personal agent is theirs to change; owners promote or archive it. */}
       {(!personal || mine) && (
         <AgentForm
@@ -182,25 +191,27 @@ function Archive({ name }: { name: string }) {
         {asking ? (
           <Form method="post" className="mt-4 flex flex-wrap items-center gap-3">
             <input type="hidden" name="intent" value="archive" />
-            <button
+            <Button
               type="submit"
               disabled={busy}
-              className="rounded-lg border border-danger/50 bg-danger/15 px-4 py-2 text-sm font-medium text-danger hover:bg-danger/25 disabled:opacity-60"
+              variant="destructive"
+              className="rounded-lg border-danger/50 bg-danger/15 px-4 hover:bg-danger/25 disabled:opacity-60"
             >
               {busy ? "Archiving…" : `Archive ${name}`}
-            </button>
-            <button type="button" onClick={() => setAsking(false)} className="px-2 py-2 text-sm text-muted hover:text-fg">
+            </Button>
+            <Button type="button" onClick={() => setAsking(false)} variant="ghost" className="px-2 font-normal">
               Keep {name}
-            </button>
+            </Button>
           </Form>
         ) : (
-          <button
+          <Button
             type="button"
             onClick={() => setAsking(true)}
-            className="mt-4 rounded-lg border border-line px-4 py-2 text-sm text-muted hover:border-danger/50 hover:text-danger"
+            variant="outline"
+            className="mt-4 rounded-lg px-4 text-muted hover:border-danger/50 hover:text-danger font-normal"
           >
             Archive agent…
-          </button>
+          </Button>
         )}
       </div>
     </section>
@@ -226,41 +237,43 @@ function Versions({ versions, current }: { versions: AgentVersion[]; current: nu
         <p className="mt-1 text-sm text-muted">Every save is a new version. Sessions and replies record the one they ran with.</p>
       </div>
       <div>
-        <ol className="divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
-          {shown.map((version) => {
-            const before = sorted.find((v) => v.version < version.version) ?? null;
-            const definition = version.definition as Record<string, unknown>;
-            return (
-              <li key={version.version} className="px-4 py-3">
-                <details className="group">
-                  <summary className="flex cursor-pointer list-none items-center gap-3 text-sm [&::-webkit-details-marker]:hidden">
-                    <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-open:rotate-90" />
-                    <span className="font-medium tabular-nums">Version {version.version}</span>
-                    {version.version === current && <span className="rounded-full bg-accent/15 px-1.5 py-px text-[0.6875rem] font-medium text-accent">Current</span>}
-                    <span className="min-w-0 grow truncate text-muted">
-                      {before ? versionChanges(before.definition as Record<string, unknown>, definition) : version.version === 1 ? "Created" : "Saved"}
-                    </span>
-                    <span className="shrink-0 text-xs text-faint">
-                      @{version.changed_by} · <TimeAgo at={version.created_at} />
-                    </span>
-                  </summary>
-                  <dl className="mt-3 grid gap-x-6 gap-y-2 pl-7 text-xs sm:grid-cols-2">
-                    {summaryOf(definition).map(([label, value]) => (
-                      <div key={label} className="min-w-0">
-                        <dt className="text-faint">{label}</dt>
-                        <dd className="mt-0.5 line-clamp-3 text-fg-soft">{value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </details>
-              </li>
-            );
-          })}
-        </ol>
+        <Card asChild className="divide-y divide-line/60 overflow-hidden">
+          <ol>
+            {shown.map((version) => {
+              const before = sorted.find((v) => v.version < version.version) ?? null;
+              const definition = version.definition as Record<string, unknown>;
+              return (
+                <li key={version.version} className="px-4 py-3">
+                  <details className="group">
+                    <summary className="flex cursor-pointer list-none items-center gap-3 text-sm [&::-webkit-details-marker]:hidden">
+                      <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-open:rotate-90" />
+                      <span className="font-medium tabular-nums">Version {version.version}</span>
+                      {version.version === current && <span className="rounded-full bg-accent/15 px-1.5 py-px text-[0.6875rem] font-medium text-accent">Current</span>}
+                      <span className="min-w-0 grow truncate text-muted">
+                        {before ? versionChanges(before.definition as Record<string, unknown>, definition) : version.version === 1 ? "Created" : "Saved"}
+                      </span>
+                      <span className="shrink-0 text-xs text-faint">
+                        @{version.changed_by} · <TimeAgo at={version.created_at} />
+                      </span>
+                    </summary>
+                    <dl className="mt-3 grid gap-x-6 gap-y-2 pl-7 text-xs sm:grid-cols-2">
+                      {summaryOf(definition).map(([label, value]) => (
+                        <div key={label} className="min-w-0">
+                          <dt className="text-faint">{label}</dt>
+                          <dd className="mt-0.5 line-clamp-3 text-fg-soft">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </details>
+                </li>
+              );
+            })}
+          </ol>
+        </Card>
         {sorted.length > 3 && (
-          <button type="button" onClick={() => setOpen(!open)} className="mt-3 text-sm text-muted hover:text-fg">
+          <Button type="button" onClick={() => setOpen(!open)} variant="link" size="inline" className="mt-3 text-sm text-muted hover:text-fg font-normal">
             {open ? "Show fewer" : `Show all ${sorted.length} versions`}
-          </button>
+          </Button>
         )}
       </div>
     </section>

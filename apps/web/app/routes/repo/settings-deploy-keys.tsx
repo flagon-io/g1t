@@ -7,7 +7,7 @@ import { type DeployKey, MAX_DEPLOY_KEYS } from "@g1t/contracts";
 import type { Route } from "./+types/settings-deploy-keys";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { SettingsSection as Section } from "../../components/settings-section";
-import { Button, ErrorText, Field, Input, SubmitButton, Textarea, TimeAgo, usePending } from "../../components/ui";
+import { ErrorText, Field, Input, SubmitButton, Textarea, TimeAgo, usePending } from "../../components/ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +20,8 @@ import {
   AlertDialogTrigger,
 } from "../../components/ui/alert-dialog";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { page } from "../../lib/meta";
@@ -73,30 +75,36 @@ export default function DeployKeys({ loaderData, actionData, params }: Route.Com
     <>
       <RepoSettingsHeading base={`/${full}`} />
       <div className="space-y-10">
-        <p className="rounded-lg border border-dashed border-line p-3 text-xs text-muted">
-          Deploy keys are used over SSH, and git over SSH is not on yet: it is waiting on inbound TCP on Cloudflare,
-          which g1t has applied for. Keys you add now will work as soon as it is. Until then, machines can clone and
-          push over HTTPS with a{" "}
-          <Link to={`/${params.owner}/-/tokens`} className="text-fg underline underline-offset-4">
-            workspace access token
-          </Link>
-          .
-        </p>
+        <Card asChild tone="plain" radius="lg" className="border-dashed p-3 text-xs text-muted">
+          <p>
+            Deploy keys are used over SSH, and git over SSH is not on yet: it is waiting on inbound TCP on Cloudflare,
+            which g1t has applied for. Keys you add now will work as soon as it is. Until then, machines can clone and
+            push over HTTPS with a{" "}
+            <Link to={`/${params.owner}/-/tokens`} className="text-fg underline underline-offset-4">
+              workspace access token
+            </Link>
+            .
+          </p>
+        </Card>
 
         <Section
           title="Keys"
           about={`SSH keys that reach ${full} and no other repository, for a server or a pipeline. Each is read-only unless you allowed write access.`}
         >
           {keys.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">
-              No deploy keys yet.
-            </p>
+            <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
+              <p>
+                No deploy keys yet.
+              </p>
+            </Card>
           ) : (
-            <ul className="divide-y divide-line rounded-xl border border-line">
-              {keys.map((key) => (
-                <KeyRow key={key.id} deployKey={key} />
-              ))}
-            </ul>
+            <Card asChild tone="plain" divided>
+              <ul>
+                {keys.map((key) => (
+                  <KeyRow key={key.id} deployKey={key} />
+                ))}
+              </ul>
+            </Card>
           )}
           {result?.intent === "delete" && (
             <p className={`text-sm ${result.ok ? "text-success" : "text-danger"}`} role="status">
@@ -162,7 +170,7 @@ function DeleteKey({ deployKey }: { deployKey: DeployKey }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button type="button" variant="quiet" disabled={deleting} aria-label={`Delete ${deployKey.title}`}>
+        <Button type="button" variant="outline" disabled={deleting} aria-label={`Delete ${deployKey.title}`}>
           {deleting ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <Trash2 size={14} />}
           <span className="hidden sm:inline">{deleting ? "Deleting…" : "Delete"}</span>
         </Button>
@@ -204,45 +212,47 @@ function AddForm({ result }: { result: Outcome | undefined }) {
     }
   }, [result]);
   return (
-    <Form key={round} method="post" className="space-y-4 rounded-xl border border-line bg-surface p-4">
-      <input type="hidden" name="intent" value="add" />
-      <Field label="Title" hint="Such as the machine or the pipeline that uses it. Left empty, the key's comment.">
-        <Input name="title" maxLength={100} placeholder="Production server" />
-      </Field>
-      <Field label="Key">
-        <Textarea
-          name="key"
-          required
-          rows={3}
-          spellCheck={false}
-          placeholder="Begins with ssh-ed25519, ecdsa-sha2-nistp256, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521 or ssh-rsa"
+    <Card asChild key={round} className="space-y-4 p-4">
+      <Form method="post">
+        <input type="hidden" name="intent" value="add" />
+        <Field label="Title" hint="Such as the machine or the pipeline that uses it. Left empty, the key's comment.">
+          <Input name="title" maxLength={100} placeholder="Production server" />
+        </Field>
+        <Field label="Key">
+          <Textarea
+            name="key"
+            required
+            rows={3}
+            spellCheck={false}
+            placeholder="Begins with ssh-ed25519, ecdsa-sha2-nistp256, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521 or ssh-rsa"
+          />
+        </Field>
+        <CheckboxOption
+          name="write"
+          checked={write}
+          onCheckedChange={(checked) => setWrite(checked === true)}
+          label="Allow write access"
+          description="Lets this key push to the repository, workflow files included."
         />
-      </Field>
-      <CheckboxOption
-        name="write"
-        checked={write}
-        onCheckedChange={(checked) => setWrite(checked === true)}
-        label="Allow write access"
-        description="Lets this key push to the repository, workflow files included."
-      />
-      {write && (
-        <p className="flex items-start gap-2 rounded-lg border border-warn/40 bg-warn/5 px-3.5 py-2.5 text-sm text-fg-soft">
-          <TriangleAlert size={15} className="mt-0.5 shrink-0 text-warn" aria-hidden="true" />
-          <span>
-            Anyone with the private key can push to this repository and change its workflows, which run with its
-            secrets. Keep it read-only unless the machine must push.
-          </span>
-        </p>
-      )}
-      <ErrorText>{result && !result.ok ? result.error : null}</ErrorText>
-      {result?.ok && (
-        <p className="text-sm text-success" role="status">
-          {result.message}
-        </p>
-      )}
-      <SubmitButton pending="Adding…" match={{ intent: "add" }}>
-        Add deploy key
-      </SubmitButton>
-    </Form>
+        {write && (
+          <p className="flex items-start gap-2 rounded-lg border border-warn/40 bg-warn/5 px-3.5 py-2.5 text-sm text-fg-soft">
+            <TriangleAlert size={15} className="mt-0.5 shrink-0 text-warn" aria-hidden="true" />
+            <span>
+              Anyone with the private key can push to this repository and change its workflows, which run with its
+              secrets. Keep it read-only unless the machine must push.
+            </span>
+          </p>
+        )}
+        <ErrorText>{result && !result.ok ? result.error : null}</ErrorText>
+        {result?.ok && (
+          <p className="text-sm text-success" role="status">
+            {result.message}
+          </p>
+        )}
+        <SubmitButton pending="Adding…" match={{ intent: "add" }}>
+          Add deploy key
+        </SubmitButton>
+      </Form>
+    </Card>
   );
 }

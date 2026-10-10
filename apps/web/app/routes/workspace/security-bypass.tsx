@@ -8,6 +8,8 @@ import { CARD, FilterSelect } from "../../components/security-suite";
 import { WorkspaceSecurityHeading, WorkspaceSecurityTabs } from "../../components/workspace-security-tabs";
 import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -56,17 +58,17 @@ function Review({ request, mine }: { request: BypassRequest; mine: boolean }) {
       )}
       <div className="flex gap-2">
         {mine ? (
-          <button type="submit" name="decision" value="cancel" disabled={busy} className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-muted hover:text-fg disabled:opacity-50">
+          <Button type="submit" name="decision" value="cancel" disabled={busy} variant="outline" size="inline" className="px-2.5 py-1 text-xs text-muted">
             Cancel request
-          </button>
+          </Button>
         ) : (
           <>
-            <button type="submit" name="decision" value="approve" disabled={busy} className="rounded-md bg-fg px-3 py-1 text-xs font-medium text-bg hover:bg-fg-hover disabled:opacity-50">
+            <Button type="submit" name="decision" value="approve" disabled={busy} size="inline" className="px-3 py-1 text-xs">
               Approve
-            </button>
-            <button type="submit" name="decision" value="deny" disabled={busy} className="rounded-md border border-danger/40 px-3 py-1 text-xs font-medium text-danger hover:bg-danger/10 disabled:opacity-50">
+            </Button>
+            <Button type="submit" name="decision" value="deny" disabled={busy} variant="destructive" size="inline" className="px-3 py-1 text-xs">
               Deny
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -95,9 +97,11 @@ export default function BypassRequests({ loaderData, params }: Route.ComponentPr
         />
       </div>
       {requests.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">
-          No {state === "all" ? "" : `${state} `}requests. Delegated bypass is turned on in this workspace's Security settings.
-        </p>
+        <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
+          <p>
+            No {state === "all" ? "" : `${state} `}requests. Delegated bypass is turned on in this workspace's Security settings.
+          </p>
+        </Card>
       ) : (
         <ul className="space-y-3">
           {requests.map((request) => (

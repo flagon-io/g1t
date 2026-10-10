@@ -7,6 +7,7 @@ import type { Route } from "./+types/activity";
 import { readOrNull } from "../../../components/agents/actions.server";
 import { Quiet, StatusChip } from "../../../components/agents/parts";
 import { TimeAgo } from "../../../components/ui";
+import { Card } from "../../../components/ui/card";
 import { channelPath } from "../../../lib/chat";
 import { workspaceAgents } from "../../../lib/services.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
@@ -38,11 +39,13 @@ export default function ActivityTab({ loaderData, params }: Route.ComponentProps
   }
   return (
     <div className="space-y-4">
-      <ul className="divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
-        {activity.map((item) => (
-          <Item key={`${item.kind}:${item.id}`} item={item} slug={params.owner} handle={agent.handle} />
-        ))}
-      </ul>
+      <Card asChild className="divide-y divide-line/60 overflow-hidden">
+        <ul>
+          {activity.map((item) => (
+            <Item key={`${item.kind}:${item.id}`} item={item} slug={params.owner} handle={agent.handle} />
+          ))}
+        </ul>
+      </Card>
       <p className="text-xs text-faint">
         The latest replies and sessions. Every tool call is in the{" "}
         <Link to={`/${params.owner}/-/audit`} className="text-muted hover:text-fg hover:underline">

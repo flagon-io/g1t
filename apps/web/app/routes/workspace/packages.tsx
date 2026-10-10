@@ -7,6 +7,7 @@ import type { Route } from "./+types/packages";
 import { PackageIcon } from "../../components/package-icon";
 import { CopyLine, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { cn } from "../../lib/cn";
@@ -155,40 +156,42 @@ export default function Packages({ loaderData, actionData }: Route.ComponentProp
         />
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-line bg-surface">
-        <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5 text-sm">
-          <span className="font-medium">
-            {list.length} {list.length === 1 ? "package" : "packages"}
-            {filtered && (
-              <Link to={`/${workspace}/-/packages`} className="ml-3 text-xs font-normal text-muted hover:text-fg">
-                Clear filters
-              </Link>
-            )}
-          </span>
-          <span className="flex items-center gap-4">
-            {deleted.length > 0 && (
-              <Link to={`/${workspace}/-/packages?view=deleted`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
-                <Trash2 size={12} />
-                Deleted packages <span className="rounded-full bg-raised px-1.5 text-faint tabular-nums">{deleted.length}</span>
-              </Link>
-            )}
-            <a href={`${DOCS}/guides/packages/`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
-              How packages work <ArrowUpRight size={12} />
-            </a>
-          </span>
-        </header>
-        {list.length === 0 ? (
-          <div className="p-4">
-            <EmptyState title="No packages match">Try another type or visibility, or clear the search.</EmptyState>
-          </div>
-        ) : (
-          <ul className="divide-y divide-line">
-            {list.map((pkg) => (
-              <PackageRow key={pkg.id} pkg={pkg} />
-            ))}
-          </ul>
-        )}
-      </section>
+      <Card asChild className="overflow-hidden">
+        <section>
+          <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5 text-sm">
+            <span className="font-medium">
+              {list.length} {list.length === 1 ? "package" : "packages"}
+              {filtered && (
+                <Link to={`/${workspace}/-/packages`} className="ml-3 text-xs font-normal text-muted hover:text-fg">
+                  Clear filters
+                </Link>
+              )}
+            </span>
+            <span className="flex items-center gap-4">
+              {deleted.length > 0 && (
+                <Link to={`/${workspace}/-/packages?view=deleted`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+                  <Trash2 size={12} />
+                  Deleted packages <span className="rounded-full bg-raised px-1.5 text-faint tabular-nums">{deleted.length}</span>
+                </Link>
+              )}
+              <a href={`${DOCS}/guides/packages/`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+                How packages work <ArrowUpRight size={12} />
+              </a>
+            </span>
+          </header>
+          {list.length === 0 ? (
+            <div className="p-4">
+              <EmptyState title="No packages match">Try another type or visibility, or clear the search.</EmptyState>
+            </div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {list.map((pkg) => (
+                <PackageRow key={pkg.id} pkg={pkg} />
+              ))}
+            </ul>
+          )}
+        </section>
+      </Card>
     </div>
   );
 }
@@ -291,47 +294,49 @@ function DeletedPackages({ workspace, deleted, outcome }: { workspace: string; d
       {deleted.length === 0 ? (
         <EmptyState title="No deleted packages">Packages you delete stay here, restorable, for {PACKAGE_RESTORE_DAYS} days.</EmptyState>
       ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-          {deleted.map((pkg) => (
-            <li key={pkg.id} className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3.5">
-              <PackageIcon ecosystem={pkg.ecosystem} />
-              <span className="min-w-0 grow basis-48">
-                <span className="block truncate font-medium">{pkg.name}</span>
-                <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
-                  <span>{ECOSYSTEM_LABEL[pkg.ecosystem]}</span>
-                  <span className="text-faint">·</span>
-                  <span>
-                    {pkg.versions} {pkg.versions === 1 ? "version" : "versions"}
+        <Card asChild divided className="overflow-hidden">
+          <ul>
+            {deleted.map((pkg) => (
+              <li key={pkg.id} className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3.5">
+                <PackageIcon ecosystem={pkg.ecosystem} />
+                <span className="min-w-0 grow basis-48">
+                  <span className="block truncate font-medium">{pkg.name}</span>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
+                    <span>{ECOSYSTEM_LABEL[pkg.ecosystem]}</span>
+                    <span className="text-faint">·</span>
+                    <span>
+                      {pkg.versions} {pkg.versions === 1 ? "version" : "versions"}
+                    </span>
+                    {pkg.deleted_at && (
+                      <>
+                        <span className="text-faint">·</span>
+                        <span>
+                          Deleted {pkg.deleted_by ? `by ${pkg.deleted_by} ` : ""}
+                          <TimeAgo at={pkg.deleted_at} />
+                        </span>
+                      </>
+                    )}
+                    {pkg.purge_at && (
+                      <>
+                        <span className="text-faint">·</span>
+                        <span>Purged {new Date(pkg.purge_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                      </>
+                    )}
                   </span>
-                  {pkg.deleted_at && (
-                    <>
-                      <span className="text-faint">·</span>
-                      <span>
-                        Deleted {pkg.deleted_by ? `by ${pkg.deleted_by} ` : ""}
-                        <TimeAgo at={pkg.deleted_at} />
-                      </span>
-                    </>
-                  )}
-                  {pkg.purge_at && (
-                    <>
-                      <span className="text-faint">·</span>
-                      <span>Purged {new Date(pkg.purge_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                    </>
-                  )}
                 </span>
-              </span>
-              <Form method="post">
-                <input type="hidden" name="intent" value="restore" />
-                <input type="hidden" name="ecosystem" value={pkg.ecosystem} />
-                <input type="hidden" name="name" value={pkg.name} />
-                <SubmitButton variant="quiet" match={{ intent: "restore", name: pkg.name }} pending="Restoring…">
-                  <RotateCcw size={14} />
-                  Restore
-                </SubmitButton>
-              </Form>
-            </li>
-          ))}
-        </ul>
+                <Form method="post">
+                  <input type="hidden" name="intent" value="restore" />
+                  <input type="hidden" name="ecosystem" value={pkg.ecosystem} />
+                  <input type="hidden" name="name" value={pkg.name} />
+                  <SubmitButton variant="outline" match={{ intent: "restore", name: pkg.name }} pending="Restoring…">
+                    <RotateCcw size={14} />
+                    Restore
+                  </SubmitButton>
+                </Form>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </div>
   );
@@ -350,25 +355,27 @@ function ChooseRegistry({ workspace }: { workspace: string }) {
       </div>
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {REGISTRIES.map((registry) => (
-          <li key={registry.ecosystem} className="flex flex-col rounded-xl border border-line bg-surface p-4">
-            <div className="flex items-center gap-2.5">
-              <PackageIcon ecosystem={registry.ecosystem} />
-              <span className="font-medium">{ECOSYSTEM_LABEL[registry.ecosystem]}</span>
-              {!registry.ready && <Badge>Soon</Badge>}
-            </div>
-            <p className="mt-2.5 grow text-sm text-muted">{registry.blurb}</p>
-            {registry.ready && (
-              <div className="mt-3">
-                <CopyLine prompt text={registry.start.replaceAll("<workspace>", workspace)} />
+          <Card asChild key={registry.ecosystem} className="flex flex-col p-4">
+            <li>
+              <div className="flex items-center gap-2.5">
+                <PackageIcon ecosystem={registry.ecosystem} />
+                <span className="font-medium">{ECOSYSTEM_LABEL[registry.ecosystem]}</span>
+                {!registry.ready && <Badge>Soon</Badge>}
               </div>
-            )}
-            <a
-              href={`${DOCS}${registry.guide}`}
-              className="mt-3 inline-flex items-center gap-1 self-start text-sm text-fg-soft hover:text-fg"
-            >
-              {registry.ready ? "Set it up" : "What's planned"} <ArrowUpRight size={13} />
-            </a>
-          </li>
+              <p className="mt-2.5 grow text-sm text-muted">{registry.blurb}</p>
+              {registry.ready && (
+                <div className="mt-3">
+                  <CopyLine prompt text={registry.start.replaceAll("<workspace>", workspace)} />
+                </div>
+              )}
+              <a
+                href={`${DOCS}${registry.guide}`}
+                className="mt-3 inline-flex items-center gap-1 self-start text-sm text-fg-soft hover:text-fg"
+              >
+                {registry.ready ? "Set it up" : "What's planned"} <ArrowUpRight size={13} />
+              </a>
+            </li>
+          </Card>
         ))}
       </ul>
     </div>

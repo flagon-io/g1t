@@ -39,6 +39,8 @@ import {
 } from "../lib/dependency-updates";
 import { TimeAgo } from "./ui";
 import { Badge, type BadgeTone } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 
 type Done = { ok: boolean; error?: string } | undefined;
@@ -94,95 +96,99 @@ function Entry({ entry, action, canCheck }: { entry: VersionUpdateEntry; action:
     { label: "Reviewers", values: entry.reviewers },
   ].filter((rule) => rule.values.length > 0);
   return (
-    <li className="rounded-lg border border-line p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-mono font-medium text-fg">{entry.ecosystem}</span>
-            <span className="font-mono text-muted wrap-anywhere">{entry.directories.join(", ")}</span>
-            {entry.targetBranch && <span className="font-mono text-xs text-faint">→ {entry.targetBranch}</span>}
-            <Badge tone={status.tone}>{status.label}</Badge>
-          </p>
-          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-            {entry.schedule && (
-              <span className="inline-flex items-center gap-1">
-                <CalendarClock size={12} className="shrink-0" />
-                {entry.schedule}
-              </span>
-            )}
-            {entry.nextRunAt && (
-              <Hint label={utc(entry.nextRunAt)}>
-                <span>Next check {timeUntil(entry.nextRunAt)}</span>
-              </Hint>
-            )}
-            <span>
-              {entry.lastCheckedAt ? (
-                <>
-                  Last checked <TimeAgo at={entry.lastCheckedAt} />
-                </>
-              ) : (
-                "Not checked yet"
+    <Card asChild tone="plain" radius="lg" className="p-3">
+      <li>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-mono font-medium text-fg">{entry.ecosystem}</span>
+              <span className="font-mono text-muted wrap-anywhere">{entry.directories.join(", ")}</span>
+              {entry.targetBranch && <span className="font-mono text-xs text-faint">→ {entry.targetBranch}</span>}
+              <Badge tone={status.tone}>{status.label}</Badge>
+            </p>
+            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+              {entry.schedule && (
+                <span className="inline-flex items-center gap-1">
+                  <CalendarClock size={12} className="shrink-0" />
+                  {entry.schedule}
+                </span>
               )}
-            </span>
-            {entry.supported && <span>Up to {entry.openPullRequestsLimit} open</span>}
-          </p>
-        </div>
-        {entry.supported && canCheck && (
-          <check.Form method="post" action={action} className="shrink-0">
-            <input type="hidden" name="intent" value="check_updates" />
-            <input type="hidden" name="entry" value={entry.id} />
-            <button
-              type="submit"
-              disabled={checking || entry.openPullRequestsLimit === 0}
-              className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs text-fg/80 transition-colors hover:border-line-strong hover:bg-raised hover:text-fg disabled:opacity-50"
-            >
-              <RefreshCw size={12} className={checking ? "animate-spin" : ""} />
-              {checking ? "Checking…" : "Check for updates"}
-            </button>
-          </check.Form>
-        )}
-      </div>
-      {check.data?.error && <p className="mt-2 text-xs text-danger">{check.data.error}</p>}
-      {entry.lastError ? (
-        <p className="mt-2 flex items-start gap-1.5 text-xs text-danger">
-          <FileWarning size={12} className="mt-0.5 shrink-0" />
-          <span className="wrap-anywhere">
-            <Said text={entry.lastError} />
-          </span>
-        </p>
-      ) : (
-        entry.lastResult && (
-          <p className="mt-2 flex items-start gap-1.5 text-xs text-muted">
-            <CircleCheck size={12} className="mt-0.5 shrink-0 text-success" />
-            <span className="wrap-anywhere">
-              <Said text={entry.lastResult} />
-            </span>
-          </p>
-        )
-      )}
-      {rules.length > 0 && (
-        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-          {rules.map((rule) => (
-            <div key={rule.label} className="contents">
-              <dt className="text-faint">{rule.label}</dt>
-              <dd className="font-mono text-muted wrap-anywhere">{rule.values.join("; ")}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-      {entry.notes.length > 0 && (
-        <ul className="mt-2 space-y-1">
-          {entry.notes.map((note) => (
-            <li key={note} className="flex items-start gap-1.5 text-xs text-faint">
-              <Info size={12} className="mt-0.5 shrink-0" />
+              {entry.nextRunAt && (
+                <Hint label={utc(entry.nextRunAt)}>
+                  <span>Next check {timeUntil(entry.nextRunAt)}</span>
+                </Hint>
+              )}
               <span>
-                <Said text={note} />
+                {entry.lastCheckedAt ? (
+                  <>
+                    Last checked <TimeAgo at={entry.lastCheckedAt} />
+                  </>
+                ) : (
+                  "Not checked yet"
+                )}
               </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
+              {entry.supported && <span>Up to {entry.openPullRequestsLimit} open</span>}
+            </p>
+          </div>
+          {entry.supported && canCheck && (
+            <check.Form method="post" action={action} className="shrink-0">
+              <input type="hidden" name="intent" value="check_updates" />
+              <input type="hidden" name="entry" value={entry.id} />
+              <Button
+                type="submit"
+                disabled={checking || entry.openPullRequestsLimit === 0}
+                variant="outline"
+                size="inline"
+                className="px-2.5 py-1 text-xs hover:bg-raised font-normal"
+              >
+                <RefreshCw size={12} className={checking ? "animate-spin" : ""} />
+                {checking ? "Checking…" : "Check for updates"}
+              </Button>
+            </check.Form>
+          )}
+        </div>
+        {check.data?.error && <p className="mt-2 text-xs text-danger">{check.data.error}</p>}
+        {entry.lastError ? (
+          <p className="mt-2 flex items-start gap-1.5 text-xs text-danger">
+            <FileWarning size={12} className="mt-0.5 shrink-0" />
+            <span className="wrap-anywhere">
+              <Said text={entry.lastError} />
+            </span>
+          </p>
+        ) : (
+          entry.lastResult && (
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-muted">
+              <CircleCheck size={12} className="mt-0.5 shrink-0 text-success" />
+              <span className="wrap-anywhere">
+                <Said text={entry.lastResult} />
+              </span>
+            </p>
+          )
+        )}
+        {rules.length > 0 && (
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+            {rules.map((rule) => (
+              <div key={rule.label} className="contents">
+                <dt className="text-faint">{rule.label}</dt>
+                <dd className="font-mono text-muted wrap-anywhere">{rule.values.join("; ")}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {entry.notes.length > 0 && (
+          <ul className="mt-2 space-y-1">
+            {entry.notes.map((note) => (
+              <li key={note} className="flex items-start gap-1.5 text-xs text-faint">
+                <Info size={12} className="mt-0.5 shrink-0" />
+                <span>
+                  <Said text={note} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </li>
+    </Card>
   );
 }
 
@@ -246,7 +252,7 @@ export function DependencyUpdates({
   const pulls = livePulls(state.pulls);
   const fileLink = state.path && state.commit ? `${base}/blob/${state.commit}/${state.path}` : null;
   return (
-    <div className="rounded-xl border border-line bg-surface p-4">
+    <Card className="p-4">
       {titled && (
       <>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -416,6 +422,6 @@ export function DependencyUpdates({
           </p>
         </section>
       )}
-    </div>
+    </Card>
   );
 }

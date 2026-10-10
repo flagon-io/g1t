@@ -5,6 +5,7 @@ import { CODE_SCANNING_GATES, type CodeScanningGate, type RepoSecuritySettings, 
 import type { Route } from "./+types/security-settings";
 import { page } from "../../lib/meta";
 import { ActivationPrompt, CARD, SectionHeader } from "../../components/security-suite";
+import { Button } from "../../components/ui/button";
 import { Hint } from "../../components/ui/hint";
 import { SelectField } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
@@ -132,13 +133,11 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
         </fieldset>
         <div className="flex flex-wrap items-center gap-3">
           <Hint label={whyNot(can, "manage_settings")} disabled={!can.manage_settings}>
-            <button
+            <Button
               type="submit"
-              disabled={disabled || fetcher.state !== "idle"}
-              className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover disabled:opacity-50"
-            >
+              disabled={disabled || fetcher.state !== "idle"}>
               {fetcher.state !== "idle" ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </Hint>
           <Link to={`${base}/settings/branches`} className="text-sm text-muted underline underline-offset-2 hover:text-fg">
             Require the checks in branch protection

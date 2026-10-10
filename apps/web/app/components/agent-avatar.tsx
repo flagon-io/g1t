@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 
 import { G1tMark } from "./orchestrator";
-import { Avatar } from "./ui";
+
 import { COLUMNS, ROWS, creature } from "../lib/pixel-creature";
+import { Avatar } from "./ui/avatar";
 
 /** What an agent's face is drawn from. */
 export type AgentLike = {

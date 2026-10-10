@@ -52,8 +52,11 @@ import {
   splitSecrets,
   worstSeverity,
 } from "../lib/security-alerts";
-import { Avatar, TimeAgo } from "./ui";
+import { TimeAgo } from "./ui";
+import { Avatar } from "./ui/avatar";
 import { Badge, type BadgeTone } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
@@ -78,12 +81,12 @@ export function SeverityCountsGrid({ counts }: { counts: SeverityCounts }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
       {SEVERITIES.map((severity) => (
-        <div key={severity} className="rounded-xl border border-line bg-surface px-4 py-3">
+        <Card key={severity} className="px-4 py-3">
           <p className="text-xs text-muted">{SEVERITY[severity].label}</p>
           <p className={`mt-1 text-2xl font-semibold tabular-nums ${counts[severity] > 0 && severity === "critical" ? "text-danger" : ""}`}>
             {counts[severity]}
           </p>
-        </div>
+        </Card>
       ))}
     </div>
   );
@@ -214,13 +217,11 @@ export function DismissDialog({
             <textarea name="comment" rows={3} maxLength={500} placeholder="What someone reading this later should know." className={TEXTAREA} />
           </label>
           <div className="flex justify-end">
-            <button
+            <Button
               type="submit"
-              disabled={fetcher.state !== "idle" || !reason}
-              className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover disabled:opacity-50"
-            >
+              disabled={fetcher.state !== "idle" || !reason}>
               {fetcher.state !== "idle" ? "Dismissing…" : "Dismiss alert"}
-            </button>
+            </Button>
           </div>
           {fetcher.data?.error && <p className="text-sm text-danger">{fetcher.data.error}</p>}
         </fetcher.Form>
@@ -426,11 +427,11 @@ function SecretItem({
 
 function Empty({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-line px-6 py-10 text-center">
+    <Card tone="plain" className="border-dashed px-6 py-10 text-center">
       <ShieldCheck size={22} className="mx-auto text-success" />
       <p className="mt-2 font-medium">{title}</p>
       <p className="mt-1 text-sm text-muted">{children}</p>
-    </div>
+    </Card>
   );
 }
 
@@ -566,7 +567,7 @@ function UpdateStatus({ update, name, pulls, base }: { update: SecurityUpdate; n
     failed: <>{update.error ?? "g1t could not make the change."}</>,
   };
   return (
-    <div className="mt-2.5 rounded-lg border border-line bg-bg/40 px-3 py-2 text-xs sm:ml-7">
+    <Card tone="plain" radius="lg" className="mt-2.5 bg-bg/40 px-3 py-2 text-xs sm:ml-7">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
         {update.state === "requested" ? (
           <Loader size={13} className="animate-spin text-info motion-reduce:animate-none" />
@@ -593,7 +594,7 @@ function UpdateStatus({ update, name, pulls, base }: { update: SecurityUpdate; n
         </span>
       </div>
       <p className={`mt-1 ${update.state === "failed" ? "text-danger" : "text-muted"} wrap-anywhere`}>{about[update.state]}</p>
-    </div>
+    </Card>
   );
 }
 
@@ -706,21 +707,23 @@ function PackageItem({
           <FixLink issue={issue} fix={fixes[issue]} base={base} />
         </div>
       )}
-      <ul className="mt-2.5 space-y-px overflow-hidden rounded-lg border border-line sm:ml-7">
-        {group.vulns.map((vuln) => (
-          <AdvisoryItem
-            key={vuln.id}
-            vuln={vuln}
-            showManifest={manifests.length > 1}
-            activity={activity}
-            upkeep={upkeep}
-            base={base}
-            action={action}
-            focused={vuln.id === focus}
-            canDismiss={canDismiss}
-          />
-        ))}
-      </ul>
+      <Card asChild tone="plain" radius="lg" className="mt-2.5 space-y-px overflow-hidden sm:ml-7">
+        <ul>
+          {group.vulns.map((vuln) => (
+            <AdvisoryItem
+              key={vuln.id}
+              vuln={vuln}
+              showManifest={manifests.length > 1}
+              activity={activity}
+              upkeep={upkeep}
+              base={base}
+              action={action}
+              focused={vuln.id === focus}
+              canDismiss={canDismiss}
+            />
+          ))}
+        </ul>
+      </Card>
     </li>
   );
 }

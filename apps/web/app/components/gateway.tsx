@@ -11,6 +11,7 @@ import { cacheKinds, duration, formatLabel, servedBy, shortCount, statusTone, to
 import { money } from "../lib/usage";
 import { TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { Loading, SkeletonLine } from "./ui/skeleton";
 
@@ -96,7 +97,7 @@ const numeric = (index: number) => index >= 3 && index <= 6;
 /** The table's frame: its heading row, around its body. */
 function Frame({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+    <Card className="overflow-x-auto">
       <table className="w-full">
         <thead className="border-b border-line">
           <tr>
@@ -109,7 +110,7 @@ function Frame({ children }: { children: ReactNode }) {
         </thead>
         {children}
       </table>
-    </div>
+    </Card>
   );
 }
 

@@ -9,6 +9,7 @@ import { permissionChips, reachSummary, statusBadge } from "../lib/access-tokens
 import { describeExpiry } from "../lib/token-scopes";
 import { ButtonLink, CopyLine, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
 
 // One access token in a line, and the list of them: the same on your
 // settings, a workspace's tokens and a workspace's view of its members'
@@ -97,31 +98,33 @@ export function TokenList({
   aside?: (token: AccessToken) => ReactNode;
 }) {
   return (
-    <ul className="divide-y divide-line rounded-xl border border-line">
-      {tokens.map((token) => (
-        <li key={token.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start">
-          <div className="min-w-0 grow space-y-1">
-            <p className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-              {lead?.(token)}
-              <Link to={href(token)} className="flex min-w-0 items-center gap-1.5 font-medium text-fg hover:underline">
-                <KeyRound size={13} className="shrink-0 text-faint" />
-                <span className="truncate">{token.name}</span>
+    <Card asChild tone="plain" divided>
+      <ul>
+        {tokens.map((token) => (
+          <li key={token.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start">
+            <div className="min-w-0 grow space-y-1">
+              <p className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                {lead?.(token)}
+                <Link to={href(token)} className="flex min-w-0 items-center gap-1.5 font-medium text-fg hover:underline">
+                  <KeyRound size={13} className="shrink-0 text-faint" />
+                  <span className="truncate">{token.name}</span>
+                </Link>
+                <TokenBadges token={token} />
+              </p>
+              {token.description && <p className="truncate text-xs text-muted">{token.description}</p>}
+              <TokenMeta token={token} />
+              <TokenFacts token={token} />
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {aside?.(token)}
+              <Link to={href(token)} aria-label={`Open ${token.name}`} className="hidden text-faint hover:text-fg sm:block">
+                <ChevronRight size={16} />
               </Link>
-              <TokenBadges token={token} />
-            </p>
-            {token.description && <p className="truncate text-xs text-muted">{token.description}</p>}
-            <TokenMeta token={token} />
-            <TokenFacts token={token} />
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {aside?.(token)}
-            <Link to={href(token)} aria-label={`Open ${token.name}`} className="hidden text-faint hover:text-fg sm:block">
-              <ChevronRight size={16} />
-            </Link>
-          </div>
-        </li>
-      ))}
-    </ul>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -138,7 +141,7 @@ export function TokenCreated({ secret, token, back }: { secret: string; token: A
       </div>
       <TokenMeta token={token} />
       <TokenFacts token={token} />
-      <ButtonLink variant="quiet" to={back}>
+      <ButtonLink variant="outline" to={back}>
         Back to tokens
       </ButtonLink>
     </div>

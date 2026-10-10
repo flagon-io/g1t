@@ -7,6 +7,7 @@ import { page } from "../../lib/meta";
 import { KindFields, LinkFields } from "../../components/project-about";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { KIND_CHOICE_SETS, type KindChoice, choiceOf, linksFromForm, neverDeploys } from "../../lib/project-kind";
 import { deployments, identity, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
@@ -104,7 +105,9 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
                   name="inherit"
                   value="description"
                   pending="Resetting…"
-                  className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg disabled:opacity-50"
+                  variant="link"
+                  size="inline"
+                  className="mt-1.5 text-xs text-muted hover:text-fg"
                 >
                   Use the repository's description
                 </SubmitButton>
@@ -119,7 +122,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
             Source
           </h2>
           {source && (
-            <div className="rounded-xl border border-line bg-surface p-4 text-sm">
+            <Card className="p-4 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <Link to={`${base}/code`} className="font-mono hover:text-accent">
@@ -140,7 +143,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
                 </Link>
                 .
               </p>
-            </div>
+            </Card>
           )}
           <Field
             label="Root directory"

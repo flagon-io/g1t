@@ -48,7 +48,7 @@ export function SpikeBanner({
             <Play size={14} />
             Keep going
           </SubmitButton>
-          <SubmitButton variant="quiet" name="decision" value="stop" match={{ intent: "spike" }} pending="Stopping…">
+          <SubmitButton variant="outline" name="decision" value="stop" match={{ intent: "spike" }} pending="Stopping…">
             <OctagonX size={14} />
             Stop
           </SubmitButton>

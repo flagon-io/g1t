@@ -6,7 +6,10 @@ import type { SessionEntry } from "@g1t/contracts";
 import type { Route } from "./+types/session";
 import { page } from "../../lib/meta";
 import { RunCard, formatCost, useLiveRefresh } from "../../components/agents";
-import { Avatar, TimeAgo } from "../../components/ui";
+import { TimeAgo } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { agents } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
@@ -126,22 +129,26 @@ export default function SessionPage({ loaderData, params }: Route.ComponentProps
       <section className="mt-8">
         <div className="flex items-baseline justify-between">
           <h3 className="text-sm font-medium">What happened</h3>
-          <button
+          <Button
             type="button"
             onClick={() => setSearch(quiet ? { results: "1" } : {}, { replace: true, preventScrollReset: true })}
-            className="text-xs text-muted hover:text-fg"
+            variant="link"
+            size="inline"
+            className="text-xs text-muted hover:text-fg font-normal"
           >
             {quiet ? "Show tool results" : "Hide tool results"}
-          </button>
+          </Button>
         </div>
         {shown.length === 0 ? (
           <p className="mt-3 text-sm text-muted">Nothing recorded yet.</p>
         ) : (
-          <ol className="mt-3 divide-y divide-line rounded-xl border border-line bg-surface">
-            {shown.map((entry) => (
-              <Entry key={entry.seq} entry={entry} />
-            ))}
-          </ol>
+          <Card asChild divided className="mt-3">
+            <ol>
+              {shown.map((entry) => (
+                <Entry key={entry.seq} entry={entry} />
+              ))}
+            </ol>
+          </Card>
         )}
         {entries.length >= 2000 && (
           <p className="mt-3 text-xs text-muted">

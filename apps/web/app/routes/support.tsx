@@ -8,6 +8,7 @@ import { StatusDot, useSiteStatus } from "../components/footer";
 import { STATUS_URL, statusTitle } from "../lib/status";
 import { CONTACT } from "../lib/legal";
 import { page } from "../lib/meta";
+import { Card } from "../components/ui/card";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, {
@@ -136,25 +137,27 @@ export default function Support() {
               and start the subject with the topic below.
             </p>
           )}
-          <ul className="divide-y divide-line rounded-xl border border-line">
-            {MAILBOXES.map((box) => (
-              <li key={box.title} className="flex flex-col gap-1 px-4 py-4 sm:flex-row sm:items-start sm:gap-4">
-                <span className="flex shrink-0 items-center gap-2 font-medium sm:w-40">
-                  <span className="text-muted">{box.icon}</span>
-                  {box.title}
-                </span>
-                <span className="min-w-0">
-                  <a
-                    href={`mailto:${box.address}?subject=${encodeURIComponent(`[g1t ${box.title}] `)}`}
-                    className="font-mono text-sm text-accent hover:underline"
-                  >
-                    {new Set(MAILBOXES.map((other) => other.address)).size === 1 ? `Subject: [g1t ${box.title}]` : box.address}
-                  </a>
-                  <span className="mt-0.5 block text-sm text-muted">{box.about}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
+          <Card asChild tone="plain" divided>
+            <ul>
+              {MAILBOXES.map((box) => (
+                <li key={box.title} className="flex flex-col gap-1 px-4 py-4 sm:flex-row sm:items-start sm:gap-4">
+                  <span className="flex shrink-0 items-center gap-2 font-medium sm:w-40">
+                    <span className="text-muted">{box.icon}</span>
+                    {box.title}
+                  </span>
+                  <span className="min-w-0">
+                    <a
+                      href={`mailto:${box.address}?subject=${encodeURIComponent(`[g1t ${box.title}] `)}`}
+                      className="font-mono text-sm text-accent hover:underline"
+                    >
+                      {new Set(MAILBOXES.map((other) => other.address)).size === 1 ? `Subject: [g1t ${box.title}]` : box.address}
+                    </a>
+                    <span className="mt-0.5 block text-sm text-muted">{box.about}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
           <p className="mt-4 text-sm text-muted">
             Write from the email address on your g1t account, so we know it's you. Found a bug in g1t itself? You can
             also open an issue on <Link to="/flagon-io/g1t/issues" className="text-accent hover:underline">flagon-io/g1t</Link>.

@@ -9,6 +9,7 @@ import { refusal, requireRepo } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
 import { page } from "../../lib/meta";
 import { ComputeNote, EmptyState, ErrorText, SubmitButton, Textarea, TimeAgo } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { computeNoteFor } from "../../lib/compute.server";
 import { work } from "../../lib/services.server";
@@ -98,53 +99,57 @@ export default function Plans({ loaderData, actionData, params }: Route.Componen
           {plans.length === 0 ? (
             <EmptyState title="No plans yet" />
           ) : (
-            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-              {plans.map((plan) => (
-                <li key={plan.id}>
-                  <Link
-                    to={`${base}/plans/${plan.id}`}
-                    className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-surface"
-                  >
-                    <span className="min-w-0 grow">
-                      <span className="block truncate font-medium">{plan.brief}</span>
-                      <span className="mt-0.5 block text-xs text-faint">
-                        {plan.author.username} · <TimeAgo at={plan.createdAt} />
-                        {plan.issues.length > 0 &&
-                          ` · ${plan.issues.length} ${plan.issues.length === 1 ? "issue" : "issues"}`}
-                      </span>
-                    </span>
-                    <span
-                      className={`shrink-0 text-xs ${
-                        plan.status === "failed"
-                          ? "text-danger"
-                          : plan.status === "ready"
-                            ? "text-success"
-                            : "text-muted"
-                      }`}
+            <Card asChild tone="plain" divided className="overflow-hidden">
+              <ul>
+                {plans.map((plan) => (
+                  <li key={plan.id}>
+                    <Link
+                      to={`${base}/plans/${plan.id}`}
+                      className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-surface"
                     >
-                      {STATUS[plan.status]}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                      <span className="min-w-0 grow">
+                        <span className="block truncate font-medium">{plan.brief}</span>
+                        <span className="mt-0.5 block text-xs text-faint">
+                          {plan.author.username} · <TimeAgo at={plan.createdAt} />
+                          {plan.issues.length > 0 &&
+                            ` · ${plan.issues.length} ${plan.issues.length === 1 ? "issue" : "issues"}`}
+                        </span>
+                      </span>
+                      <span
+                        className={`shrink-0 text-xs ${
+                          plan.status === "failed"
+                            ? "text-danger"
+                            : plan.status === "ready"
+                              ? "text-success"
+                              : "text-muted"
+                        }`}
+                      >
+                        {STATUS[plan.status]}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           )}
         </div>
       </div>
 
       <aside className="space-y-5 text-sm">
-        <section className="rounded-xl border border-line bg-surface p-5">
-          <h3 className="font-medium">What a plan gives you</h3>
-          <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
-            <li>Issues small enough to be merged one at a time, written so that an agent needs nothing else.</li>
-            <li>What done looks like for each, in plain words, added to its description.</li>
-            <li>The files each will touch, and a dependency wherever two would collide.</li>
-            <li>
-              Independent issues are worked on at the same time. One that depends on
-              another starts when that has merged, from its result.
-            </li>
-          </ul>
-        </section>
+        <Card asChild className="p-5">
+          <section>
+            <h3 className="font-medium">What a plan gives you</h3>
+            <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
+              <li>Issues small enough to be merged one at a time, written so that an agent needs nothing else.</li>
+              <li>What done looks like for each, in plain words, added to its description.</li>
+              <li>The files each will touch, and a dependency wherever two would collide.</li>
+              <li>
+                Independent issues are worked on at the same time. One that depends on
+                another starts when that has merged, from its result.
+              </li>
+            </ul>
+          </section>
+        </Card>
       </aside>
     </div>
   );

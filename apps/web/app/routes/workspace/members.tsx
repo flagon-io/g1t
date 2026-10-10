@@ -17,7 +17,7 @@ import {
 
 import type { Route } from "./+types/members";
 import { page } from "../../lib/meta";
-import { Avatar, Button, CopyLine, ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "../../components/ui";
+import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { PersonStatusEmoji, WithPresence } from "../../components/presence";
 import {
@@ -29,6 +29,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
+import { Avatar } from "../../components/ui/avatar";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -205,13 +208,15 @@ function MemberMenu({ member, self, owners, slug }: { member: Member; self: bool
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             type="button"
             aria-label={`Manage ${member.username}`}
-            className="rounded-md p-1.5 text-faint transition-colors max-sm:p-2.5 hover:bg-raised hover:text-fg"
+            variant="ghost"
+            size="inline"
+            className="p-1.5 text-faint max-sm:p-2.5"
           >
             <Ellipsis size={16} />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuLabel>Role in {slug}</DropdownMenuLabel>
@@ -264,7 +269,7 @@ function MemberMenu({ member, self, owners, slug }: { member: Member; self: bool
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-              <SubmitButton variant="danger" match={{ action: confirm ?? "", member: member.username }} pending="Working…">
+              <SubmitButton variant="destructive" match={{ action: confirm ?? "", member: member.username }} pending="Working…">
                 {confirm === "transfer" ? "Transfer ownership" : "Remove"}
               </SubmitButton>
             </AlertDialogFooter>
@@ -287,7 +292,7 @@ function LeaveSection({ slug, soleOwner, error }: { slug: string; soleOwner: boo
           : "Your roles on its repositories and your place in its teams go too. An owner can add you again."}
       </p>
       <div className="mt-4">
-        <Button variant="danger" type="button" disabled={soleOwner} onClick={() => setOpen(true)}>
+        <Button variant="destructive" type="button" disabled={soleOwner} onClick={() => setOpen(true)}>
           Leave {slug}
         </Button>
       </div>
@@ -302,7 +307,7 @@ function LeaveSection({ slug, soleOwner, error }: { slug: string; soleOwner: boo
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-              <SubmitButton variant="danger" match={{ action: "leave" }} pending="Leaving…">
+              <SubmitButton variant="destructive" match={{ action: "leave" }} pending="Leaving…">
                 Leave
               </SubmitButton>
             </AlertDialogFooter>
@@ -331,51 +336,53 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
   const tab = search.get("tab") === "outside" && owner ? "outside" : "members";
   const membersTab = (
     <>
-      <ul className="divide-y divide-line rounded-xl border border-line">
-        {members.map((member) => (
-          <li key={member.username} className="flex flex-wrap items-center gap-3 px-4 py-3">
-            <WithPresence person={{ username: member.username }} size={28}>
-              <Avatar name={member.username} image={member.avatar} size={28} />
-            </WithPresence>
-            <div className="min-w-0 grow truncate">
-              <UserCard username={member.username}>
-                <Link to={`/u/${member.username}`} className="font-mono text-sm hover:text-accent">
-                  {member.username}
-                </Link>
-              </UserCard>
-              <PersonStatusEmoji person={{ username: member.username }} size={13} className="ml-1.5 align-[-2px]" />
-              {member.name && <span className="ml-2 hidden text-sm text-muted sm:inline">{member.name}</span>}
-              {(teams[member.username] ?? []).length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {(teams[member.username] ?? []).slice(0, 3).map((team) => (
-                    <Link
-                      key={team.slug}
-                      to={`/${params.owner}/-/teams/${team.slug}`}
-                      className="rounded-full border border-line px-2 py-px text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
-                    >
-                      {team.name}
-                    </Link>
-                  ))}
-                  {(teams[member.username] ?? []).length > 3 && (
-                    <span className="px-1 text-xs text-faint">+{(teams[member.username] ?? []).length - 3} more</span>
-                  )}
-                </div>
+      <Card asChild tone="plain" divided>
+        <ul>
+          {members.map((member) => (
+            <li key={member.username} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <WithPresence person={{ username: member.username }} size={28}>
+                <Avatar name={member.username} image={member.avatar} size={28} />
+              </WithPresence>
+              <div className="min-w-0 grow truncate">
+                <UserCard username={member.username}>
+                  <Link to={`/u/${member.username}`} className="font-mono text-sm hover:text-accent">
+                    {member.username}
+                  </Link>
+                </UserCard>
+                <PersonStatusEmoji person={{ username: member.username }} size={13} className="ml-1.5 align-[-2px]" />
+                {member.name && <span className="ml-2 hidden text-sm text-muted sm:inline">{member.name}</span>}
+                {(teams[member.username] ?? []).length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {(teams[member.username] ?? []).slice(0, 3).map((team) => (
+                      <Link
+                        key={team.slug}
+                        to={`/${params.owner}/-/teams/${team.slug}`}
+                        className="rounded-full border border-line px-2 py-px text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
+                      >
+                        {team.name}
+                      </Link>
+                    ))}
+                    {(teams[member.username] ?? []).length > 3 && (
+                      <span className="px-1 text-xs text-faint">+{(teams[member.username] ?? []).length - 3} more</span>
+                    )}
+                  </div>
+                )}
+              </div>
+              {/* Together, so on a narrow screen they move under the name as one. */}
+              <div className="ml-auto flex items-center gap-2">
+                {owner && <TwoFactorMark on={member.two_factor} />}
+                <RoleBadges member={member} />
+                {owner && <MemberMenu member={member} self={member.username === me} owners={owners} slug={params.owner} />}
+              </div>
+              {rowError(member.username) && (
+                <p className="basis-full text-sm text-danger" role="alert">
+                  {rowError(member.username)}
+                </p>
               )}
-            </div>
-            {/* Together, so on a narrow screen they move under the name as one. */}
-            <div className="ml-auto flex items-center gap-2">
-              {owner && <TwoFactorMark on={member.two_factor} />}
-              <RoleBadges member={member} />
-              {owner && <MemberMenu member={member} self={member.username === me} owners={owners} slug={params.owner} />}
-            </div>
-            {rowError(member.username) && (
-              <p className="basis-full text-sm text-danger" role="alert">
-                {rowError(member.username)}
-              </p>
-            )}
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
+      </Card>
       {owner && free && (
         <div className="mt-6">
           <StartPlanToInvite workspace={params.owner} owner={owner} />
@@ -462,40 +469,42 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
       {owner && pending.length > 0 && (
         <section className="mt-8">
           <h2 className="text-sm font-medium">Pending invitations</h2>
-          <ul className="mt-3 divide-y divide-line rounded-xl border border-line">
-            {pending.map((invite) => (
-              <li key={invite.id} className="space-y-2 px-4 py-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="min-w-0 grow truncate text-sm">
-                    {invite.email ??
-                      (invite.invitee ? (
-                        <UserCard username={invite.invitee}>
-                          <Link to={`/u/${invite.invitee}`} className="font-mono hover:text-accent">
-                            @{invite.invitee}
-                          </Link>
-                        </UserCard>
-                      ) : (
-                        "Anyone with the link"
-                      ))}
-                  </span>
-                  {invite.role === "owner" && <Pill>Owner</Pill>}
-                  <Pill>{inviteState(invite).label}</Pill>
-                  <Form method="post">
-                    <input type="hidden" name="action" value="revoke-invite" />
-                    <input type="hidden" name="id" value={invite.id} />
-                    <SubmitButton variant="quiet" match={{ action: "revoke-invite", id: invite.id }} pending="Revoking…">
-                      Revoke
-                    </SubmitButton>
-                  </Form>
-                </div>
-                <p className="text-xs text-faint">
-                  By {invite.invitedBy ?? "g1t"} · <TimeAgo at={invite.createdAt} /> · works until{" "}
-                  {new Date(invite.expiresAt).toISOString().slice(0, 10)}
-                </p>
-                {invite.code && <CopyLine text={inviteLink(invite.code, origin)} />}
-              </li>
-            ))}
-          </ul>
+          <Card asChild tone="plain" divided className="mt-3">
+            <ul>
+              {pending.map((invite) => (
+                <li key={invite.id} className="space-y-2 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="min-w-0 grow truncate text-sm">
+                      {invite.email ??
+                        (invite.invitee ? (
+                          <UserCard username={invite.invitee}>
+                            <Link to={`/u/${invite.invitee}`} className="font-mono hover:text-accent">
+                              @{invite.invitee}
+                            </Link>
+                          </UserCard>
+                        ) : (
+                          "Anyone with the link"
+                        ))}
+                    </span>
+                    {invite.role === "owner" && <Badge size="md">Owner</Badge>}
+                    <Badge size="md">{inviteState(invite).label}</Badge>
+                    <Form method="post">
+                      <input type="hidden" name="action" value="revoke-invite" />
+                      <input type="hidden" name="id" value={invite.id} />
+                      <SubmitButton variant="outline" match={{ action: "revoke-invite", id: invite.id }} pending="Revoking…">
+                        Revoke
+                      </SubmitButton>
+                    </Form>
+                  </div>
+                  <p className="text-xs text-faint">
+                    By {invite.invitedBy ?? "g1t"} · <TimeAgo at={invite.createdAt} /> · works until{" "}
+                    {new Date(invite.expiresAt).toISOString().slice(0, 10)}
+                  </p>
+                  {invite.code && <CopyLine text={inviteLink(invite.code, origin)} />}
+                </li>
+              ))}
+            </ul>
+          </Card>
         </section>
       )}
 
@@ -572,37 +581,39 @@ function BasePermissionSection({
         someone on one repository adds to this; it never takes away.
       </p>
       {owner ? (
-        <Form method="post" className="mt-4 rounded-xl border border-line bg-surface p-4">
-          <input type="hidden" name="action" value="base-permission" />
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Select name="base" value={chosen} onValueChange={(value) => setChosen(value as BasePermission)}>
-              <SelectTrigger aria-label="Base permission" className="sm:max-w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {BASE_PERMISSIONS.map((value) => (
-                  <SelectItem key={value} value={value} description={BASE_MEANS[value]}>
-                    {BASE_PERMISSION_LABELS[value]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <SubmitButton variant="quiet" match={{ action: "base-permission" }} pending="Saving…" disabled={chosen === base}>
-              Save
-            </SubmitButton>
-            {saved && chosen === base && <span className="text-sm text-muted">Saved.</span>}
-          </div>
-          <p className="mt-3 text-sm text-muted">{BASE_MEANS[chosen]}</p>
-          <ErrorText>{error}</ErrorText>
-        </Form>
+        <Card asChild className="mt-4 p-4">
+          <Form method="post">
+            <input type="hidden" name="action" value="base-permission" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Select name="base" value={chosen} onValueChange={(value) => setChosen(value as BasePermission)}>
+                <SelectTrigger aria-label="Base permission" className="sm:max-w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BASE_PERMISSIONS.map((value) => (
+                    <SelectItem key={value} value={value} description={BASE_MEANS[value]}>
+                      {BASE_PERMISSION_LABELS[value]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <SubmitButton variant="outline" match={{ action: "base-permission" }} pending="Saving…" disabled={chosen === base}>
+                Save
+              </SubmitButton>
+              {saved && chosen === base && <span className="text-sm text-muted">Saved.</span>}
+            </div>
+            <p className="mt-3 text-sm text-muted">{BASE_MEANS[chosen]}</p>
+            <ErrorText>{error}</ErrorText>
+          </Form>
+        </Card>
       ) : (
-        <div className="mt-4 rounded-xl border border-line bg-surface p-4 text-sm">
+        <Card className="mt-4 p-4 text-sm">
           <p>
             <span className="font-medium">{BASE_PERMISSION_LABELS[base]}.</span>{" "}
             <span className="text-muted">{BASE_MEANS[base]}</span>
           </p>
           <p className="mt-2 text-xs text-faint">Owners of the workspace choose it.</p>
-        </div>
+        </Card>
       )}
     </section>
   );
@@ -632,52 +643,54 @@ function OutsideCollaborators({
         </div>
       )}
       {people.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-line px-6 py-10 text-center">
+        <Card tone="plain" className="border-dashed px-6 py-10 text-center">
           <Users size={18} className="mx-auto text-faint" />
           <p className="mt-2 text-sm font-medium">No outside collaborators</p>
           <p className="mt-1 text-sm text-muted">Add someone to a single repository from its Settings → Access.</p>
-        </div>
+        </Card>
       ) : (
-        <ul className="divide-y divide-line rounded-xl border border-line">
-          {people.map((person) => (
-            <li key={person.username} className="px-4 py-3">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <Avatar name={person.username} image={person.avatar} size={28} />
-                <div className="min-w-0 grow basis-32">
-                  <UserCard username={person.username}>
-                    <Link to={`/u/${person.username}`} className="font-mono text-sm hover:text-accent">
-                      {person.username}
-                    </Link>
-                  </UserCard>
-                  {person.name && <span className="ml-2 text-sm text-muted">{person.name}</span>}
+        <Card asChild tone="plain" divided>
+          <ul>
+            {people.map((person) => (
+              <li key={person.username} className="px-4 py-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <Avatar name={person.username} image={person.avatar} size={28} />
+                  <div className="min-w-0 grow basis-32">
+                    <UserCard username={person.username}>
+                      <Link to={`/u/${person.username}`} className="font-mono text-sm hover:text-accent">
+                        {person.username}
+                      </Link>
+                    </UserCard>
+                    {person.name && <span className="ml-2 text-sm text-muted">{person.name}</span>}
+                  </div>
+                  {!free && (
+                    <Form method="post">
+                      <input type="hidden" name="action" value="convert" />
+                      <input type="hidden" name="member" value={person.username} />
+                      <SubmitButton variant="outline" match={{ action: "convert", member: person.username }} pending="Inviting…">
+                        Invite as a member
+                      </SubmitButton>
+                    </Form>
+                  )}
                 </div>
-                {!free && (
-                  <Form method="post">
-                    <input type="hidden" name="action" value="convert" />
-                    <input type="hidden" name="member" value={person.username} />
-                    <SubmitButton variant="quiet" match={{ action: "convert", member: person.username }} pending="Inviting…">
-                      Invite as a member
-                    </SubmitButton>
-                  </Form>
-                )}
-              </div>
-              <ul className="mt-2 flex flex-wrap gap-1.5 pl-10">
-                {person.repos.map((grant) => (
-                  <li key={grant.repo}>
-                    <Link
-                      to={`/${grant.repo}/settings/access`}
-                      className="group inline-flex items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-xs transition-colors hover:border-line-strong hover:bg-surface"
-                    >
-                      <span className="font-mono text-fg/90">{grant.repo}</span>
-                      <span className="text-muted">{REPO_ROLE_LABELS[grant.role]}</span>
-                      <ArrowUpRight size={11} className="text-faint group-hover:text-fg" />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
+                <ul className="mt-2 flex flex-wrap gap-1.5 pl-10">
+                  {person.repos.map((grant) => (
+                    <li key={grant.repo}>
+                      <Link
+                        to={`/${grant.repo}/settings/access`}
+                        className="group inline-flex items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-xs transition-colors hover:border-line-strong hover:bg-surface"
+                      >
+                        <span className="font-mono text-fg/90">{grant.repo}</span>
+                        <span className="text-muted">{REPO_ROLE_LABELS[grant.role]}</span>
+                        <ArrowUpRight size={11} className="text-faint group-hover:text-fg" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
       <ErrorText>{error}</ErrorText>
     </>

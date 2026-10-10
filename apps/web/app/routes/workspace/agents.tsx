@@ -7,12 +7,14 @@ import type { Route } from "./+types/agents";
 import { AgentFace, useAgentsData } from "../../components/agents-mode";
 import { SwitchCard } from "../../components/ui/switch";
 import { agentsAction, answer, readOrNull } from "../../components/agents/actions.server";
-import { ApproveDialog, BUTTONS, BudgetDialog } from "../../components/agents/dialogs";
+import { ApproveDialog, BudgetDialog } from "../../components/agents/dialogs";
 import { meterTone, monthName, scheduleInWords, shareOf, untilLabel } from "../../components/agents/format";
 import { DailyBars, Meter, Panel, Quiet, SessionCard, SessionRow, SliceList, SpendOfCap } from "../../components/agents/parts";
 import { StatusDot, statusLabel } from "../../components/chat/marks";
 import { isOrchestrator } from "../../components/orchestrator";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { microsFromDollars } from "../../lib/agent-form";
 import { page } from "../../lib/meta";
 import { useRefreshWhile } from "../../lib/refresh";
@@ -86,9 +88,9 @@ export default function AgentsOverviewPage({ loaderData, params }: Route.Compone
                       slug={slug}
                       session={session}
                       trigger={
-                        <button type="button" className={`${BUTTONS.PRIMARY} h-8 w-full py-0`}>
+                        <Button type="button" variant="accent" size="sm" className="w-full">
                           Approve more…
-                        </button>
+                        </Button>
                       }
                     />
                   ) : (
@@ -216,10 +218,10 @@ function BudgetHeader({ overview, slug, liveCount }: { overview: AgentsOverview;
             policy={policy}
             action={`/${slug}/-/agents?index`}
             trigger={
-              <button type="button" className={`${BUTTONS.QUIET} h-9 py-0`}>
+              <Button type="button" variant="outline">
                 <Coins size={15} />
                 Budget
-              </button>
+              </Button>
             }
           />
         )}
@@ -269,42 +271,44 @@ function Roster({ slug, agents, live, title = "Agents" }: { slug: string; agents
           <span className="text-xs text-faint">Personal: only you talk to them</span>
         )}
       </div>
-      <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-        {sorted.map((agent) => {
-          const count = live[agent.id] ?? 0;
-          const cap = agent.budget.monthly_micros;
-          return (
-            <li key={agent.id} className="relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised/40">
-              <span className="relative shrink-0">
-                <AgentFace agent={{ ...agent, builtin: isOrchestrator(agent) }} size={32} />
-                <StatusDot status={agent.status} className="absolute -right-0.5 -bottom-0.5 ring-2 ring-surface" />
-              </span>
-              <div className="min-w-0 grow">
-                <p className="flex items-center gap-2 text-sm">
-                  <Link to={`/${slug}/-/agents/${agent.handle}`} className="truncate font-medium after:absolute after:inset-0 hover:underline">
-                    {agent.display_name}
-                  </Link>
-                  {count > 0 && (
-                    <Badge tone="accent">
-                      {count} {count === 1 ? "session" : "sessions"}
-                    </Badge>
-                  )}
-                </p>
-                <p className="truncate text-xs text-faint">
-                  {isOrchestrator(agent) ? "Orchestrator" : agent.title || agent.role}
-                  {agent.status !== "idle" && ` · ${statusLabel(agent.status)}`}
-                </p>
-              </div>
-              <div className="w-28 shrink-0 text-right sm:w-40">
-                <p className="text-xs">
-                  <SpendOfCap spent={agent.spent_month_micros} cap={cap} />
-                </p>
-                {cap != null && <Meter spent={agent.spent_month_micros} cap={cap} label={`${agent.display_name}'s spend of its monthly budget`} size="sm" className="mt-1.5" />}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      <Card asChild divided className="mt-3 overflow-hidden">
+        <ul>
+          {sorted.map((agent) => {
+            const count = live[agent.id] ?? 0;
+            const cap = agent.budget.monthly_micros;
+            return (
+              <li key={agent.id} className="relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised/40">
+                <span className="relative shrink-0">
+                  <AgentFace agent={{ ...agent, builtin: isOrchestrator(agent) }} size={32} />
+                  <StatusDot status={agent.status} className="absolute -right-0.5 -bottom-0.5 ring-2 ring-surface" />
+                </span>
+                <div className="min-w-0 grow">
+                  <p className="flex items-center gap-2 text-sm">
+                    <Link to={`/${slug}/-/agents/${agent.handle}`} className="truncate font-medium after:absolute after:inset-0 hover:underline">
+                      {agent.display_name}
+                    </Link>
+                    {count > 0 && (
+                      <Badge tone="accent">
+                        {count} {count === 1 ? "session" : "sessions"}
+                      </Badge>
+                    )}
+                  </p>
+                  <p className="truncate text-xs text-faint">
+                    {isOrchestrator(agent) ? "Orchestrator" : agent.title || agent.role}
+                    {agent.status !== "idle" && ` · ${statusLabel(agent.status)}`}
+                  </p>
+                </div>
+                <div className="w-28 shrink-0 text-right sm:w-40">
+                  <p className="text-xs">
+                    <SpendOfCap spent={agent.spent_month_micros} cap={cap} />
+                  </p>
+                  {cap != null && <Meter spent={agent.spent_month_micros} cap={cap} label={`${agent.display_name}'s spend of its monthly budget`} size="sm" className="mt-1.5" />}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
     </section>
   );
 }

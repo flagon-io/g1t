@@ -11,6 +11,7 @@ import type { Stars } from "@g1t/contracts";
 
 import { compact } from "../lib/about";
 import { cn } from "../lib/cn";
+import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
 
 const BOX = "inline-flex h-8 shrink-0 items-center text-[0.8125rem] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent";
@@ -61,14 +62,16 @@ export function StarButton({ base, name, stars, signedIn }: { base: string; name
     <fetcher.Form method="post" action={`${base}/star`} className={cn(BOX, "overflow-hidden rounded-md border border-line", error && "border-danger/60")}>
       <input type="hidden" name="intent" value={starred ? "unstar" : "star"} />
       <Hint label={error ?? null}>
-        <button
+        <Button
           type="submit"
           aria-label={label}
           aria-pressed={starred}
-          className="inline-flex h-full items-center gap-1.5 px-2.5 text-fg/80 hover:bg-surface hover:text-fg"
+          variant="ghost"
+          size="inline"
+          className="h-full rounded-none px-2.5 font-normal text-fg/80 hover:bg-surface aria-pressed:bg-transparent aria-pressed:text-fg/80"
         >
           {face}
-        </button>
+        </Button>
       </Hint>
       {counter}
     </fetcher.Form>

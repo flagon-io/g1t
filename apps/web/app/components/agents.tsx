@@ -23,7 +23,7 @@ import {
 
 import { RunAudit } from "./audit";
 import { STAGE_LABEL, StageDots } from "./lifecycle";
-import { Avatar, SubmitButton, TimeAgo } from "./ui";
+import { SubmitButton, TimeAgo } from "./ui";
 import { Hint } from "./ui/hint";
 import {
   AlertDialog,
@@ -36,6 +36,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "./ui/alert-dialog";
+import { Avatar } from "./ui/avatar";
+import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { shownStep } from "../lib/agent-step";
 import { inlinePlain } from "../lib/inline-markdown";
@@ -199,9 +202,7 @@ export function MessageRun({ run }: { run: AgentRun }) {
           <div className="flex justify-end">
             <SubmitButton
               fetcher={fetcher}
-              pending="Sending…"
-              className="inline-flex items-center gap-2 rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover disabled:opacity-50"
-            >
+              pending="Sending…">
               Send
             </SubmitButton>
           </div>
@@ -484,10 +485,10 @@ export function AgentBadge({ run }: { run: AgentRun | undefined }) {
   if (!run) return null;
   return (
     <Hint label={run.step ? inlinePlain(shownStep(run.step)) : undefined}>
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-merged/40 bg-accent/10 px-2 py-0.5 text-xs text-merged">
+      <Badge tone="merged" size="md">
         <Loader2 size={11} className="animate-spin" />
         {RUN_KIND_LABEL[run.kind]}
-      </span>
+      </Badge>
     </Hint>
   );
 }
@@ -507,11 +508,13 @@ export function useActiveRuns(owner: string, repo: string, initial?: Live | null
 /** Nothing running, said plainly. */
 export function Idle({ children }: { children: ReactNode }) {
   return (
-    <p className="flex items-start gap-2 rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">
-      <CircleSlash size={15} className="mt-0.5 shrink-0 text-faint" />
-      {/* One run of text: a link inside it stays in the sentence. */}
-      <span className="min-w-0">{children}</span>
-    </p>
+    <Card asChild tone="plain" className="flex items-start gap-2 border-dashed px-4 py-6 text-sm text-muted">
+      <p>
+        <CircleSlash size={15} className="mt-0.5 shrink-0 text-faint" />
+        {/* One run of text: a link inside it stays in the sentence. */}
+        <span className="min-w-0">{children}</span>
+      </p>
+    </Card>
   );
 }
 

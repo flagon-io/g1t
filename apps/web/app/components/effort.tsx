@@ -11,9 +11,10 @@ import { useFetcher } from "react-router";
 import type { AgentEffort, AgentEffortCosts, AgentRecommendation, AgentRecommendations } from "@g1t/contracts";
 
 import { AgentAvatar } from "./agent-avatar";
-import { BUTTONS } from "./agents/dialogs";
 import { Hint } from "./ui/hint";
 import { TimeAgo } from "./ui";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { cn } from "../lib/cn";
 import { EFFORT_OPTIONS, acceptedLabel, costAt, costLine, effortLabel, savingLabel, totalSaving } from "../lib/effort";
 import { money } from "../lib/usage";
@@ -39,7 +40,7 @@ export function EffortPicker({
   const [chosen, setChosen] = useState<AgentEffort>(value);
   return (
     <div className="min-w-0">
-      <div role="radiogroup" aria-label="Effort" className="grid grid-cols-5 gap-0.5 rounded-lg border border-line bg-bg p-0.5 sm:inline-grid sm:w-auto sm:min-w-[22rem]">
+      <Card role="radiogroup" aria-label="Effort" tone="bg" radius="lg" className="grid grid-cols-5 gap-0.5 p-0.5 sm:inline-grid sm:w-auto sm:min-w-[22rem]">
         {EFFORT_OPTIONS.map((option) => {
           const on = chosen === option.key;
           return (
@@ -68,7 +69,7 @@ export function EffortPicker({
             </Hint>
           );
         })}
-      </div>
+      </Card>
       <p className="mt-2 text-xs text-muted">{EFFORT_OPTIONS.find((o) => o.key === chosen)?.about}</p>
       {costs !== undefined && <p className="mt-0.5 text-xs text-faint tabular-nums">{costLine(costs, chosen)}</p>}
     </div>
@@ -143,9 +144,9 @@ export function EffortCard({ value, costs, owner, action, name }: { value: Agent
         <EffortPicker value={value} costs={costs} disabled={!owner} onChange={setPicked} />
         {owner && (
           <div className="flex flex-wrap items-center gap-3">
-            <button type="submit" disabled={busy || picked === value} className={BUTTONS.PRIMARY}>
+            <Button type="submit" disabled={busy || picked === value} variant="accent">
               {busy ? "Saving…" : "Save effort"}
-            </button>
+            </Button>
             {result?.ok && picked === value && (
               <span role="status" className="inline-flex items-center gap-1 text-xs text-success">
                 <Check size={13} aria-hidden="true" /> Saved as a new version
@@ -266,12 +267,12 @@ function Suggestion({ rec, owner, action, showAgent }: { rec: AgentRecommendatio
         <fetcher.Form method="post" action={action} className="col-span-2 flex items-center gap-2 sm:col-span-1 sm:self-center">
           <input type="hidden" name="intent" value="recommendation" />
           <input type="hidden" name="id" value={rec.id} />
-          <button type="submit" name="do" value="apply" disabled={fetcher.state !== "idle"} className={cn(BUTTONS.PRIMARY, "h-8 px-3 py-0 text-xs")}>
+          <Button type="submit" name="do" value="apply" disabled={fetcher.state !== "idle"} variant="accent" size="sm">
             {doing === "apply" ? "Applying…" : "Apply"}
-          </button>
-          <button type="submit" name="do" value="dismiss" disabled={fetcher.state !== "idle"} className={cn(BUTTONS.QUIET, "h-8 px-3 py-0 text-xs")}>
+          </Button>
+          <Button type="submit" name="do" value="dismiss" disabled={fetcher.state !== "idle"} variant="outline" size="sm">
             {doing === "dismiss" ? "Dismissing…" : "Dismiss"}
-          </button>
+          </Button>
         </fetcher.Form>
       ) : (
         <p className="col-span-2 text-xs text-faint sm:col-span-1 sm:self-center">An owner can apply it</p>

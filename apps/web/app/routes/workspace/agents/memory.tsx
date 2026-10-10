@@ -6,10 +6,12 @@ import type { AgentMemory, AgentMemoryScope, WorkspaceAgent } from "@g1t/contrac
 
 import type { Route } from "./+types/memory";
 import { agentsAction, answer, readOrNull } from "../../../components/agents/actions.server";
-import { type ActionResult, BUTTONS, Confirm } from "../../../components/agents/dialogs";
+import { type ActionResult, Confirm } from "../../../components/agents/dialogs";
 import { memoryGroups } from "../../../components/agents/format";
 import { Quiet } from "../../../components/agents/parts";
 import { TimeAgo } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
 import { SelectField } from "../../../components/ui/select";
 import { Textarea } from "../../../components/ui/textarea";
@@ -85,11 +87,13 @@ export default function MemoryTab({ loaderData }: Route.ComponentProps) {
               </h2>
               <p className="text-xs text-faint">{group.about}</p>
             </div>
-            <ul className="mt-3 divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
-              {group.memories.map((memory) => (
-                <Fact key={memory.id} memory={memory} agent={agent} canChange={memory.scope !== "workspace" || isOwner} />
-              ))}
-            </ul>
+            <Card asChild className="mt-3 divide-y divide-line/60 overflow-hidden">
+              <ul>
+                {group.memories.map((memory) => (
+                  <Fact key={memory.id} memory={memory} agent={agent} canChange={memory.scope !== "workspace" || isOwner} />
+                ))}
+              </ul>
+            </Card>
           </section>
         ))
       )}
@@ -111,35 +115,37 @@ function AddFact({ agent, channels, isOwner }: { agent: WorkspaceAgent; channels
     ...(channels.length > 0 ? [{ value: "channel", label: "A channel", description: "Recalled only in that channel and its threads." }] : []),
   ];
   return (
-    <fetcher.Form ref={form} method="post" className="rounded-xl border border-line bg-surface p-4">
-      <input type="hidden" name="intent" value="remember" />
-      <label htmlFor="fact" className="text-sm font-medium">
-        Add a fact
-      </label>
-      <Textarea
-        id="fact"
-        name="body"
-        rows={2}
-        maxLength={MAX_FACT}
-        required
-        placeholder={`Something ${agent.display_name} should know, such as: Releases go out on Thursdays.`}
-        className="mt-2"
-      />
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <div className="w-44">
-          <SelectField name="scope" value={scope} onValueChange={(v) => setScope(v as AgentMemoryScope)} options={options} size="sm" aria-label="Who it's recalled for" />
-        </div>
-        {scope === "channel" && (
-          <div className="w-48">
-            <SelectField name="channel" options={channels.map((c) => ({ value: c.id, label: `#${c.name}` }))} placeholder="Choose a channel" size="sm" aria-label="Channel" required />
+    <Card asChild className="p-4">
+      <fetcher.Form ref={form} method="post">
+        <input type="hidden" name="intent" value="remember" />
+        <label htmlFor="fact" className="text-sm font-medium">
+          Add a fact
+        </label>
+        <Textarea
+          id="fact"
+          name="body"
+          rows={2}
+          maxLength={MAX_FACT}
+          required
+          placeholder={`Something ${agent.display_name} should know, such as: Releases go out on Thursdays.`}
+          className="mt-2"
+        />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="w-44">
+            <SelectField name="scope" value={scope} onValueChange={(v) => setScope(v as AgentMemoryScope)} options={options} size="sm" aria-label="Who it's recalled for" />
           </div>
-        )}
-        <span className="grow text-xs text-danger">{fetcher.data && !fetcher.data.ok && fetcher.data.intent === "remember" ? fetcher.data.error : ""}</span>
-        <button type="submit" disabled={busy} className={`${BUTTONS.PRIMARY} h-8 py-0`}>
-          {busy ? "Saving…" : "Remember"}
-        </button>
-      </div>
-    </fetcher.Form>
+          {scope === "channel" && (
+            <div className="w-48">
+              <SelectField name="channel" options={channels.map((c) => ({ value: c.id, label: `#${c.name}` }))} placeholder="Choose a channel" size="sm" aria-label="Channel" required />
+            </div>
+          )}
+          <span className="grow text-xs text-danger">{fetcher.data && !fetcher.data.ok && fetcher.data.intent === "remember" ? fetcher.data.error : ""}</span>
+          <Button type="submit" disabled={busy} variant="accent" size="sm">
+            {busy ? "Saving…" : "Remember"}
+          </Button>
+        </div>
+      </fetcher.Form>
+    </Card>
   );
 }
 
@@ -172,12 +178,12 @@ function Fact({ memory, agent, canChange }: { memory: AgentMemory; agent: Worksp
           <Textarea name="body" defaultValue={memory.body} rows={2} maxLength={MAX_FACT} required autoFocus aria-label="The fact" />
           <div className="flex items-center justify-end gap-2">
             <span className="grow text-xs text-danger">{edit.data && !edit.data.ok ? edit.data.error : ""}</span>
-            <button type="button" className={`${BUTTONS.QUIET} h-8 py-0`} onClick={() => setEditing(false)}>
+            <Button type="button" variant="outline" size="sm" onClick={() => setEditing(false)}>
               Cancel
-            </button>
-            <button type="submit" className={`${BUTTONS.PRIMARY} h-8 py-0`} disabled={edit.state !== "idle"}>
+            </Button>
+            <Button type="submit" variant="accent" size="sm" disabled={edit.state !== "idle"}>
               {edit.state !== "idle" ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </div>
         </edit.Form>
       ) : (
@@ -203,15 +209,15 @@ function Fact({ memory, agent, canChange }: { memory: AgentMemory; agent: Worksp
                 <input type="hidden" name="id" value={memory.id} />
                 <input type="hidden" name="pinned" value={pinned ? "false" : "true"} />
                 <Hint label={pinned ? "Unpin" : "Pin"}>
-                  <button type="submit" aria-label={pinned ? "Unpin" : "Pin"} className="flex size-7 items-center justify-center rounded-md text-faint max-sm:size-10 hover:bg-raised hover:text-fg">
+                  <Button type="submit" aria-label={pinned ? "Unpin" : "Pin"} variant="ghost" size="icon-xs" className="text-faint max-sm:size-10">
                     {pinned ? <PinOff size={14} /> : <Pin size={14} />}
-                  </button>
+                  </Button>
                 </Hint>
               </pin.Form>
               <Hint label="Edit">
-                <button type="button" aria-label="Edit" onClick={() => setEditing(true)} className="flex size-7 items-center justify-center rounded-md text-faint max-sm:size-10 hover:bg-raised hover:text-fg">
+                <Button type="button" aria-label="Edit" onClick={() => setEditing(true)} variant="ghost" size="icon-xs" className="text-faint max-sm:size-10">
                   <Pencil size={14} />
-                </button>
+                </Button>
               </Hint>
               <Confirm
                 title="Forget this fact?"
@@ -219,9 +225,9 @@ function Fact({ memory, agent, canChange }: { memory: AgentMemory; agent: Worksp
                 fields={{ intent: "forget", id: memory.id }}
                 fetcherKey={`forget-${memory.id}`}
                 trigger={
-                  <button type="button" aria-label="Forget" className="flex size-7 items-center justify-center rounded-md text-faint max-sm:size-10 hover:bg-raised hover:text-danger">
+                  <Button type="button" aria-label="Forget" variant="ghost" size="icon-xs" className="text-faint max-sm:size-10 hover:text-danger">
                     <Trash2 size={14} />
-                  </button>
+                  </Button>
                 }
               >
                 {agent.display_name} won&apos;t recall &ldquo;{memory.body}&rdquo; again, anywhere. It can learn it again if it comes up.

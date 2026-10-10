@@ -9,6 +9,7 @@ import { page } from "../../lib/meta";
 import { useRefreshWhile } from "../../lib/refresh";
 import { CatalogView, ReviewQueue, ScorecardsView, SearchView, fixRule, reviewAction } from "../../components/context";
 import { SubmitButton } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { context as hub, memoryReview, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
@@ -77,7 +78,9 @@ function Rebuild({ action, running }: { action: string; running: boolean }) {
         match={{ intent: "backfill" }}
         pending="Starting…"
         disabled={running}
-        className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs text-muted hover:border-line-strong hover:text-fg disabled:opacity-50"
+        variant="outline"
+        size="xs"
+        className="gap-1.5 px-2.5 text-muted font-normal"
       >
         <RefreshCw size={12} className={running ? "animate-spin" : ""} />
         {running ? "Building…" : "Rebuild"}
@@ -121,7 +124,7 @@ export default function WorkspaceContext({ loaderData, params }: Route.Component
 
       {tab === "memory" && candidates && (
         <div className="space-y-6">
-          <div className="rounded-xl border border-line bg-surface p-4 text-sm">
+          <Card className="p-4 text-sm">
             <p className="flex items-center gap-2 font-medium">
               <Brain size={15} className="text-accent" />
               Memory fills itself
@@ -131,7 +134,7 @@ export default function WorkspaceContext({ loaderData, params }: Route.Component
               project's docs add more. What two independent sources say, or a project's AGENTS.md and manifests state, is
               kept at once. The rest waits here: keep it, edit it, or dismiss it so it is never suggested again.
             </p>
-          </div>
+          </Card>
           <section>
             <div className="flex items-baseline justify-between">
               <h2 className="text-sm font-medium">Review queue</h2>

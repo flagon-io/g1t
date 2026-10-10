@@ -34,7 +34,7 @@ export function AddCiPrompt({
         </p>
         {canAdd && (
           <fetcher.Form method="post" action={`/${owner}/${repo}/add-ci`} className="mt-3 flex flex-wrap items-center gap-3">
-            <SubmitButton variant="primary" fetcher={fetcher} pending="Opening a pull request…">
+            <SubmitButton fetcher={fetcher} pending="Opening a pull request…">
               <Plus size={14} />
               Add CI
             </SubmitButton>

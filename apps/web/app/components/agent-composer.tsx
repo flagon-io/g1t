@@ -6,7 +6,9 @@ import type { RepoPath } from "@g1t/contracts";
 
 import { cn } from "../lib/cn";
 import type { NotStarted } from "../lib/delegate";
-import { Avatar } from "./ui";
+
+import { Avatar } from "./ui/avatar";
+import { Button } from "./ui/button";
 import { CONTROL } from "./ui/input";
 import { SelectField } from "./ui/select";
 
@@ -153,14 +155,15 @@ export function AgentComposer({
               <Avatar name="g1t" size={16} />
               <span className="truncate">g1t · no model to choose</span>
             </span>
-            <button
+            <Button
               type="submit"
               disabled={busy || repos.length === 0}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-sm font-semibold text-bg transition-colors hover:bg-accent-hover disabled:opacity-60"
+              variant="accent"
+              className="gap-1.5 font-semibold disabled:opacity-60"
             >
               {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
               {busy ? "Starting…" : "Put an agent on it"}
-            </button>
+            </Button>
           </div>
         </fetcher.Form>
       </div>

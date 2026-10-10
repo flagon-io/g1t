@@ -12,6 +12,8 @@ import { checksTally } from "../lib/commit-checks";
 import { CheckStateIcon } from "./commit-checks";
 import { ChangeSize } from "./work";
 import { PullIcon } from "./work-icons";
+import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
 import { SkeletonLine } from "./ui/skeleton";
 
 function ReviewIcon({ state }: { state: Attempt["review"]["state"] }) {
@@ -37,7 +39,7 @@ function AttemptRow({ attempt, base }: { attempt: Attempt; base: string }) {
           </Link>
         )}
         {attempt.current && (
-          <span className="shrink-0 rounded-full border border-line px-1.5 py-px text-[0.625rem] text-faint">This one</span>
+          <Badge className="px-1.5 text-[0.625rem] font-normal text-faint">This one</Badge>
         )}
         <span className="ml-auto shrink-0">
           <ChangeSize files={attempt.files} />
@@ -76,28 +78,30 @@ export function AttemptsBox({ attempts, issue, base }: { attempts: Promise<Attem
   return (
     <Suspense
       fallback={
-        <div className="mt-4 rounded-xl border border-line bg-surface px-4 py-3" aria-busy>
+        <Card className="mt-4 px-4 py-3" aria-busy>
           <SkeletonLine className="text-sm" barClassName="w-48" />
-        </div>
+        </Card>
       }
     >
       <Await resolve={attempts} errorElement={null}>
         {(found) =>
           found.filter((attempt) => !attempt.current).length > 0 && (
-            <section aria-label={`Other attempts at #${issue}`} className="mt-4 overflow-hidden rounded-xl border border-line bg-surface text-sm">
-              <h3 className="flex items-center gap-2.5 px-4 pt-3 font-medium">
-                <GitPullRequestArrow size={16} className="shrink-0 text-info" />
-                Other attempts at #{issue}
-              </h3>
-              <p className="px-4 pt-0.5 pb-2 text-xs text-faint">
-                Pull requests for the same issue. Merging one closes the others.
-              </p>
-              <ul className="divide-y divide-line border-t border-line">
-                {found.map((attempt) => (
-                  <AttemptRow key={attempt.number} attempt={attempt} base={base} />
-                ))}
-              </ul>
-            </section>
+            <Card asChild className="mt-4 overflow-hidden text-sm">
+              <section aria-label={`Other attempts at #${issue}`}>
+                <h3 className="flex items-center gap-2.5 px-4 pt-3 font-medium">
+                  <GitPullRequestArrow size={16} className="shrink-0 text-info" />
+                  Other attempts at #{issue}
+                </h3>
+                <p className="px-4 pt-0.5 pb-2 text-xs text-faint">
+                  Pull requests for the same issue. Merging one closes the others.
+                </p>
+                <ul className="divide-y divide-line border-t border-line">
+                  {found.map((attempt) => (
+                    <AttemptRow key={attempt.number} attempt={attempt} base={base} />
+                  ))}
+                </ul>
+              </section>
+            </Card>
           )
         }
       </Await>

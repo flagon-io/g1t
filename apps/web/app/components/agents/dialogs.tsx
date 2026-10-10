@@ -13,6 +13,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "../ui/alert-dialog";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field";
 import { Input, InputAddon, InputGroup } from "../ui/input";
@@ -34,8 +36,6 @@ export function useDialogFetcher(key?: string) {
   return { fetcher, open, setOpen, error, busy: fetcher.state !== "idle" };
 }
 
-const PRIMARY = "inline-flex items-center justify-center gap-2 rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-bg transition-colors hover:bg-accent-hover disabled:opacity-50";
-const QUIET = "inline-flex items-center justify-center gap-2 rounded-md border border-line px-3.5 py-2 text-sm font-medium text-fg/80 transition-colors hover:border-line-strong hover:bg-raised hover:text-fg";
 
 /** A dollars field: `$` before it, posted as dollars. */
 export function DollarsInput({ id, name, defaultValue, placeholder, required }: { id: string; name: string; defaultValue: string; placeholder?: string; required?: boolean }) {
@@ -83,12 +83,12 @@ export function BudgetDialog({ policy, action, trigger }: { policy: AgentPolicy;
           </Field>
           <FieldError>{error}</FieldError>
           <DialogFooter>
-            <button type="button" className={QUIET} onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
-            </button>
-            <button type="submit" className={PRIMARY} disabled={busy}>
+            </Button>
+            <Button type="submit" variant="accent" disabled={busy}>
               {busy ? "Saving…" : "Save budget"}
-            </button>
+            </Button>
           </DialogFooter>
         </fetcher.Form>
       </DialogContent>
@@ -117,9 +117,11 @@ export function ApproveDialog({ slug, session, trigger }: { slug: string; sessio
             {session.visible ? <>&ldquo;{session.title}&rdquo;</> : <PrivateTitle />} stopped at its cap. A new cap lets it go on; it stops again there.
           </DialogDescription>
         </DialogHeader>
-        <p className="rounded-lg border border-line bg-bg/50 px-3 py-2 text-sm text-muted">
-          {session.agent_name} has spent <SpendOfCap spent={session.charged_micros} cap={session.cap_micros} /> on it so far.
-        </p>
+        <Card asChild tone="plain" radius="lg" className="bg-bg/50 px-3 py-2 text-sm text-muted">
+          <p>
+            {session.agent_name} has spent <SpendOfCap spent={session.charged_micros} cap={session.cap_micros} /> on it so far.
+          </p>
+        </Card>
         <fetcher.Form method="post" action={`/${slug}/-/agents/${session.agent_handle}/sessions/${session.id}`} className="grid gap-5">
           <input type="hidden" name="intent" value="approve" />
           <Field>
@@ -129,12 +131,12 @@ export function ApproveDialog({ slug, session, trigger }: { slug: string; sessio
           </Field>
           <FieldError>{error}</FieldError>
           <DialogFooter>
-            <button type="button" className={QUIET} onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
-            </button>
-            <button type="submit" className={PRIMARY} disabled={busy}>
+            </Button>
+            <Button type="submit" variant="accent" disabled={busy}>
               {busy ? "Approving…" : "Approve and go on"}
-            </button>
+            </Button>
           </DialogFooter>
         </fetcher.Form>
       </DialogContent>
@@ -181,13 +183,11 @@ export function Confirm({
           ))}
           <AlertDialogFooter>
             <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-            <button
+            <Button
               type="submit"
-              disabled={busy}
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-danger px-3.5 py-2 text-sm font-medium text-bg transition-colors hover:bg-danger/90 disabled:opacity-50"
-            >
+              disabled={busy} className="bg-danger hover:bg-danger/90">
               {busy ? "Working…" : confirm}
-            </button>
+            </Button>
           </AlertDialogFooter>
         </fetcher.Form>
       </AlertDialogContent>
@@ -195,4 +195,3 @@ export function Confirm({
   );
 }
 
-export const BUTTONS = { PRIMARY, QUIET };

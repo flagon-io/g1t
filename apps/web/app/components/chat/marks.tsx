@@ -4,8 +4,9 @@ import type { AgentStatus } from "@g1t/contracts";
 
 import { AgentAvatar } from "../agent-avatar";
 import { WithPresence } from "../presence";
-import { Avatar } from "../ui";
+
 import { cn } from "../../lib/cn";
+import { Avatar } from "../ui/avatar";
 
 /**
  * A workspace agent's face when it has no picture: a sparkle on a lavender

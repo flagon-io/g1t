@@ -4,6 +4,7 @@ import { Form, data, redirect, useNavigation } from "react-router";
 import type { Route } from "./+types/new";
 import { FOLIO_KIND_UI, KindIcon } from "../../../components/folios/kinds";
 import { ErrorText } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
 import { page } from "../../../lib/meta";
 import { folios } from "../../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.server";
@@ -58,9 +59,9 @@ export default function NewFolio({ loaderData, actionData }: Route.ComponentProp
         </div>
       )}
       <Form method="post" className="mt-6">
-        <button type="submit" disabled={busy} className="inline-flex h-9 items-center rounded-md bg-accent px-4 text-sm font-medium text-bg hover:bg-accent-hover disabled:opacity-60">
+        <Button type="submit" disabled={busy} variant="accent" className="px-4 disabled:opacity-60">
           {busy ? "Starting…" : `Start the ${FOLIO_KIND_NOUNS[kind]}`}
-        </button>
+        </Button>
       </Form>
     </div>
   );

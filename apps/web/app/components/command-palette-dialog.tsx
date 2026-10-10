@@ -9,7 +9,7 @@ import type { SiteHit } from "@g1t/contracts";
 import { searchHref } from "../lib/search";
 import { hitIcon } from "./search";
 import type { PaletteCommand } from "./command-palette";
-import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "./ui/combobox";
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "./ui/command";
 import { SkeletonRows } from "./ui/skeleton";
 
 /** How long typing has to pause before results are asked for. */

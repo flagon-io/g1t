@@ -181,7 +181,7 @@ export function PlanSummary({
                 Keep the plan
               </SubmitButton>
             ) : status.kind === "paid" && subscription ? (
-              <SubmitButton variant="quiet" name="intent" value="cancel" pending="Saving…">
+              <SubmitButton variant="outline" name="intent" value="cancel" pending="Saving…">
                 Downgrade to free at the period's end
               </SubmitButton>
             ) : null}
@@ -342,7 +342,7 @@ function AutoReload({ credit, owner }: { credit: AiCredit; owner: boolean }) {
             At most <Dollar name="monthly" label="Monthly maximum in dollars" defaultValue={whole(r.monthlyMaxMicros)} /> a month
             {(r.reloadedMicros ?? 0) > 0 && <span className="text-faint">· {money(r.reloadedMicros ?? 0)} reloaded this month</span>}
           </div>
-          <SubmitButton variant="quiet" match={{ intent: "ai-reload" }} pending="Saving…">
+          <SubmitButton variant="outline" match={{ intent: "ai-reload" }} pending="Saving…">
             Save auto-reload
           </SubmitButton>
           <p className="text-xs text-faint">A reload that cannot be charged turns auto-reload off and tells the owners by email.</p>
@@ -403,7 +403,7 @@ export function BudgetAlerts({ limit, owner, error }: { limit: Limit; owner: boo
             <span className="block text-xs text-muted">Webhook, told of each alert (optional)</span>
             <input name="webhook" type="url" placeholder="https://hooks.example.com/g1t" defaultValue={limit.budgetWebhook ?? ""} className={`mt-1 ${FIELD} max-w-md`} />
           </label>
-          <SubmitButton variant="quiet" match={{ intent: "budget" }} pending="Saving…">
+          <SubmitButton variant="outline" match={{ intent: "budget" }} pending="Saving…">
             Save alerts
           </SubmitButton>
         </Form>
@@ -430,7 +430,7 @@ export function PaymentMethodCard({ details, owner, enabled, staff, error }: { d
       aside={
         owner && enabled ? (
           <Form method="post">
-            <SubmitButton variant="quiet" name="intent" value="portal" pending="Opening Stripe…">
+            <SubmitButton variant="outline" name="intent" value="portal" pending="Opening Stripe…">
               Manage in Stripe
               <ArrowUpRight size={14} />
             </SubmitButton>
@@ -633,7 +633,7 @@ export function InvoiceDetailsCard({ details, owner, enabled, error }: { details
           </label>
           {!disabled && (
             <div className="flex items-end">
-              <SubmitButton variant="quiet" match={{ intent: "details" }} pending="Saving…">
+              <SubmitButton variant="outline" match={{ intent: "details" }} pending="Saving…">
                 Save invoice details
               </SubmitButton>
             </div>

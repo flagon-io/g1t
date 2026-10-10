@@ -6,6 +6,7 @@ import type { Route } from "./+types/settings-deployments";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { SwitchCard } from "../../components/ui/switch";
 import { neverDeploys } from "../../lib/project-kind";
 import { deployments, projects } from "../../lib/services.server";
@@ -81,17 +82,19 @@ const DETECTED: Record<DetectedKind, { label: string; cost: string }> = {
 function Detected({ kind }: { kind: DetectedKind | null }) {
   const found = kind ? DETECTED[kind] : null;
   return (
-    <section className="mb-6 rounded-xl border border-line bg-surface p-5">
-      <h2 className="text-sm font-medium">What g1t detected</h2>
-      <p className="mt-1 text-sm">
-        {found ? found.label : <span className="text-muted">Detected at the first build</span>}
-      </p>
-      <p className="mt-1 text-xs text-muted">
-        {found
-          ? found.cost
-          : "A static site's files cost nothing to serve; a Workers project's requests and CPU time are metered. Builds are metered either way."}
-      </p>
-    </section>
+    <Card asChild className="mb-6 p-5">
+      <section>
+        <h2 className="text-sm font-medium">What g1t detected</h2>
+        <p className="mt-1 text-sm">
+          {found ? found.label : <span className="text-muted">Detected at the first build</span>}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {found
+            ? found.cost
+            : "A static site's files cost nothing to serve; a Workers project's requests and CPU time are metered. Builds are metered either way."}
+        </p>
+      </section>
+    </Card>
   );
 }
 
@@ -109,31 +112,33 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
       <Detected kind={settings.detected ?? null} />
 
       {!settings.enabled ? (
-        <section className="rounded-xl border border-line bg-surface p-5">
-          <h2 className="font-medium">Deployments are off</h2>
-          <p className="mt-1 text-sm text-muted">
-            Deployments are opt-in for each project, and nothing builds or runs until you turn them on. Then g1t builds
-            production at{" "}
-            <span className="font-mono text-fg">{settings.productionUrl.replace("https://", "")}</span> and a preview for
-            every pull request. The workspace needs the g1t plan, under Billing.
-          </p>
-          {notDeploying ? (
-            <p className="mt-4 text-sm text-muted">
-              This project is set to be something that doesn't deploy, such as a library or a tool. To deploy it, choose
-              App or site, deployed on g1t, under{" "}
-              <Link to={`${base}/settings#kind`} className="text-fg underline underline-offset-4">
-                General
-              </Link>{" "}
-              first.
+        <Card asChild className="p-5">
+          <section>
+            <h2 className="font-medium">Deployments are off</h2>
+            <p className="mt-1 text-sm text-muted">
+              Deployments are opt-in for each project, and nothing builds or runs until you turn them on. Then g1t builds
+              production at{" "}
+              <span className="font-mono text-fg">{settings.productionUrl.replace("https://", "")}</span> and a preview for
+              every pull request. The workspace needs the g1t plan, under Billing.
             </p>
-          ) : (
-            <Form method="post" className="mt-4">
-              <SubmitButton variant="accent" name="intent" value="enable" pending="Turning on…">
-                Turn on deployments
-              </SubmitButton>
-            </Form>
-          )}
-        </section>
+            {notDeploying ? (
+              <p className="mt-4 text-sm text-muted">
+                This project is set to be something that doesn't deploy, such as a library or a tool. To deploy it, choose
+                App or site, deployed on g1t, under{" "}
+                <Link to={`${base}/settings#kind`} className="text-fg underline underline-offset-4">
+                  General
+                </Link>{" "}
+                first.
+              </p>
+            ) : (
+              <Form method="post" className="mt-4">
+                <SubmitButton variant="accent" name="intent" value="enable" pending="Turning on…">
+                  Turn on deployments
+                </SubmitButton>
+              </Form>
+            )}
+          </section>
+        </Card>
       ) : (
         <>
           <Form method="post" className="space-y-5">
@@ -175,7 +180,7 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
               running or costing anything. The workspace's plan stays on; turn it off under Billing.
             </p>
             <Form method="post" className="mt-3">
-              <SubmitButton variant="quiet" name="intent" value="disable" pending="Turning off…">
+              <SubmitButton variant="outline" name="intent" value="disable" pending="Turning off…">
                 Turn off deployments
               </SubmitButton>
             </Form>

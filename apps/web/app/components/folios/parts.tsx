@@ -9,7 +9,9 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { AgentAvatar } from "../agent-avatar";
-import { Avatar } from "../ui";
+
+import { Avatar } from "../ui/avatar";
+import { Card } from "../ui/card";
 import { Hint } from "../ui/hint";
 import { KindIcon } from "./kinds";
 
@@ -130,7 +132,7 @@ export function SectionTitle({ children, action }: { children: ReactNode; action
 
 export function TemplateCard({ template, action }: { template: FolioTemplate; action: ReactNode }) {
   return (
-    <div className="flex flex-col rounded-xl border border-line bg-surface p-4">
+    <Card className="flex flex-col p-4">
       <span className="flex items-center gap-2">
         {template.icon ? (
           <span className="text-2xl leading-none" aria-hidden="true">
@@ -143,6 +145,6 @@ export function TemplateCard({ template, action }: { template: FolioTemplate; ac
       <span className="mt-3 text-sm font-medium">{template.name}</span>
       <span className="mt-1 grow text-xs leading-relaxed text-muted">{template.description || (template.builtin ? "" : `Saved by ${template.created_by?.display_name ?? "your workspace"}.`)}</span>
       <div className="mt-3 flex items-center gap-2">{action}</div>
-    </div>
+    </Card>
   );
 }

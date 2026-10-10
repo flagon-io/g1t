@@ -28,7 +28,11 @@ import { type Authored, type AuthoredItem, type AuthoredSort, type AuthoredState
 import type { Route } from "./+types/user";
 import { page } from "../lib/meta";
 import { ContributionCalendar } from "../components/contribution-calendar";
-import { Avatar, Button, ButtonLink, EmptyState, TimeAgo } from "../components/ui";
+import { ButtonLink, EmptyState, TimeAgo } from "../components/ui";
+import { Avatar } from "../components/ui/avatar";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card } from "../components/ui/card";
 import { RadioGroup, RadioOption } from "../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { IssueIcon, PullIcon } from "../components/work-icons";
@@ -200,7 +204,7 @@ function PersonColumn({
 
       {isSelf && (
         <div className="mt-4">
-          <ButtonLink to="/settings/profile" variant="quiet">
+          <ButtonLink to="/settings/profile" variant="outline">
             <Pencil size={14} />
             Edit profile
           </ButtonLink>
@@ -310,26 +314,28 @@ function StarredList({ starred, isSelf }: { starred: StarredRepo[]; isSelf: bool
     );
   }
   return (
-    <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-      {starred.map(({ repo, starredAt, stars }) => (
-        <li key={repo.id} className="px-4 py-3">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <Link to={`/${repo.namespace}/${repo.name}`} className="min-w-0 truncate font-medium hover:text-accent">
-              <span className="text-muted">{repo.namespace}/</span>
-              {repo.name}
-            </Link>
-            <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted tabular-nums">
-              <Star size={13} className="text-faint" />
-              {stars.toLocaleString("en-US")}
-            </span>
-          </div>
-          {repo.description && <p className="mt-1 text-sm text-muted">{repo.description}</p>}
-          <p className="mt-1 text-xs text-faint">
-            Starred <TimeAgo at={starredAt} />
-          </p>
-        </li>
-      ))}
-    </ul>
+    <Card asChild divided className="overflow-hidden">
+      <ul>
+        {starred.map(({ repo, starredAt, stars }) => (
+          <li key={repo.id} className="px-4 py-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Link to={`/${repo.namespace}/${repo.name}`} className="min-w-0 truncate font-medium hover:text-accent">
+                <span className="text-muted">{repo.namespace}/</span>
+                {repo.name}
+              </Link>
+              <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted tabular-nums">
+                <Star size={13} className="text-faint" />
+                {stars.toLocaleString("en-US")}
+              </span>
+            </div>
+            {repo.description && <p className="mt-1 text-sm text-muted">{repo.description}</p>}
+            <p className="mt-1 text-xs text-faint">
+              Starred <TimeAgo at={starredAt} />
+            </p>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -429,52 +435,54 @@ function itemUrl(item: AuthoredItem): string {
 
 function ItemList({ items }: { items: AuthoredItem[] }) {
   return (
-    <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-      {items.map((item) => (
-        <li key={`${item.kind}:${item.repo.namespace}/${item.repo.name}#${item.number}`}>
-          <Link
-            prefetch="intent"
-            to={itemUrl(item)}
-            className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface"
-          >
-            <span className="mt-0.5">
-              {item.kind === "pull" ? (
-                <PullIcon status={item.status ?? (item.state === "open" ? "open" : "closed")} />
-              ) : (
-                <IssueIcon issue={{ state: item.state, reason: item.reason }} />
-              )}
-            </span>
-            <span className="min-w-0 grow">
-              <span className="flex items-center gap-2">
-                <span className="truncate font-medium">{item.title}</span>
-                {item.draft && (
-                  <span className="shrink-0 rounded-full border border-line px-1.5 py-px text-[0.6875rem] text-faint">
-                    draft
-                  </span>
+    <Card asChild tone="plain" divided className="overflow-hidden">
+      <ul>
+        {items.map((item) => (
+          <li key={`${item.kind}:${item.repo.namespace}/${item.repo.name}#${item.number}`}>
+            <Link
+              prefetch="intent"
+              to={itemUrl(item)}
+              className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface"
+            >
+              <span className="mt-0.5">
+                {item.kind === "pull" ? (
+                  <PullIcon status={item.status ?? (item.state === "open" ? "open" : "closed")} />
+                ) : (
+                  <IssueIcon issue={{ state: item.state, reason: item.reason }} />
                 )}
               </span>
-              <span className="mt-0.5 block truncate text-xs text-faint">
-                <span className="font-mono text-muted">
-                  {item.repo.namespace}/{item.repo.name}
-                </span>{" "}
-                #{item.number} · opened <TimeAgo at={item.createdAt} />
-                {item.merged && item.mergedAt ? (
-                  <>
-                    {" "}
-                    · merged <TimeAgo at={item.mergedAt} />
-                  </>
-                ) : item.updatedAt !== item.createdAt ? (
-                  <>
-                    {" "}
-                    · updated <TimeAgo at={item.updatedAt} />
-                  </>
-                ) : null}
+              <span className="min-w-0 grow">
+                <span className="flex items-center gap-2">
+                  <span className="truncate font-medium">{item.title}</span>
+                  {item.draft && (
+                    <Badge className="px-1.5 font-normal text-faint">
+                      draft
+                    </Badge>
+                  )}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-faint">
+                  <span className="font-mono text-muted">
+                    {item.repo.namespace}/{item.repo.name}
+                  </span>{" "}
+                  #{item.number} · opened <TimeAgo at={item.createdAt} />
+                  {item.merged && item.mergedAt ? (
+                    <>
+                      {" "}
+                      · merged <TimeAgo at={item.mergedAt} />
+                    </>
+                  ) : item.updatedAt !== item.createdAt ? (
+                    <>
+                      {" "}
+                      · updated <TimeAgo at={item.updatedAt} />
+                    </>
+                  ) : null}
+                </span>
               </span>
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ul>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -522,14 +530,14 @@ function WorkList({ profile, tab, filter, activity, failed }: Data) {
             {(activity.next || filter.before) && (
               <nav aria-label="Pages" className="mt-4 flex items-center justify-between gap-3">
                 {filter.before ? (
-                  <ButtonLink to={`?${first}`} variant="quiet" preventScrollReset>
+                  <ButtonLink to={`?${first}`} variant="outline" preventScrollReset>
                     ← {filter.sort === "oldest" ? "Oldest" : "Newest"}
                   </ButtonLink>
                 ) : (
                   <span />
                 )}
                 {activity.next && (
-                  <ButtonLink to={`?${next}`} variant="quiet" preventScrollReset>
+                  <ButtonLink to={`?${next}`} variant="outline" preventScrollReset>
                     Next page →
                   </ButtonLink>
                 )}
@@ -585,86 +593,88 @@ function FilterAside({
   const filtered = filter.state != null || filter.repo != null || filter.sort !== "created";
   return (
     <aside aria-label="Filters" className="min-w-0 lg:order-2">
-      <Form method="get" className="space-y-5 rounded-xl border border-line p-4 lg:sticky lg:top-20">
-        <input type="hidden" name="tab" value={tab} />
-        <FilterGroup title="Type">
-          <RadioGroup
-            value={tab}
-            onValueChange={(value) => void navigate(`/u/${username}?tab=${value}`, { preventScrollReset: true })}
-            aria-label="Type"
-          >
-            <RadioOption value="pulls" label={<Counted label="Pull requests" count={counts.pulls} />} />
-            <RadioOption value="issues" label={<Counted label="Issues" count={counts.issues} />} />
-          </RadioGroup>
-        </FilterGroup>
-        <FilterGroup title="State">
-          <RadioGroup
-            name="state"
-            value={filter.state ?? "all"}
-            onValueChange={(value) => set("state", value === "all" ? null : value)}
-            aria-label="State"
-          >
-            {states.map((state) => (
-              <RadioOption
-                key={state.value}
-                value={state.value}
-                label={<Counted label={state.label} count={state.count} />}
-              />
-            ))}
-          </RadioGroup>
-        </FilterGroup>
-        <FilterGroup title="Repository">
-          <Select
-            name="repo"
-            value={filter.repo ?? "all"}
-            onValueChange={(value) => set("repo", value === "all" ? null : value)}
-          >
-            <SelectTrigger size="sm" aria-label="Repository">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All repositories</SelectItem>
-              {activity.repos.map(({ repo, count }) => {
-                const path = `${repo.namespace}/${repo.name}`;
-                return (
-                  <SelectItem key={path} value={path} description={`${count} by @${username}`}>
-                    {path}
-                  </SelectItem>
-                );
-              })}
-              {filter.repo && !activity.repos.some(({ repo }) => `${repo.namespace}/${repo.name}` === filter.repo) && (
-                <SelectItem value={filter.repo}>{filter.repo}</SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-        </FilterGroup>
-        <FilterGroup title="Sort">
-          <Select name="sort" value={filter.sort} onValueChange={(value) => set("sort", value === "created" ? null : value)}>
-            <SelectTrigger size="sm" aria-label="Sort">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SORTS.map((sort) => (
-                <SelectItem key={sort.value} value={sort.value}>
-                  {sort.label}
-                </SelectItem>
+      <Card asChild tone="plain" className="space-y-5 p-4 lg:sticky lg:top-20">
+        <Form method="get">
+          <input type="hidden" name="tab" value={tab} />
+          <FilterGroup title="Type">
+            <RadioGroup
+              value={tab}
+              onValueChange={(value) => void navigate(`/u/${username}?tab=${value}`, { preventScrollReset: true })}
+              aria-label="Type"
+            >
+              <RadioOption value="pulls" label={<Counted label="Pull requests" count={counts.pulls} />} />
+              <RadioOption value="issues" label={<Counted label="Issues" count={counts.issues} />} />
+            </RadioGroup>
+          </FilterGroup>
+          <FilterGroup title="State">
+            <RadioGroup
+              name="state"
+              value={filter.state ?? "all"}
+              onValueChange={(value) => set("state", value === "all" ? null : value)}
+              aria-label="State"
+            >
+              {states.map((state) => (
+                <RadioOption
+                  key={state.value}
+                  value={state.value}
+                  label={<Counted label={state.label} count={state.count} />}
+                />
               ))}
-            </SelectContent>
-          </Select>
-        </FilterGroup>
-        <div className="flex items-center justify-between gap-2">
-          <noscript>
-            <Button type="submit" variant="quiet">
-              Apply
-            </Button>
-          </noscript>
-          {filtered && (
-            <Link to={`/u/${username}?tab=${tab}`} preventScrollReset className="text-xs text-muted hover:text-fg">
-              Clear filters
-            </Link>
-          )}
-        </div>
-      </Form>
+            </RadioGroup>
+          </FilterGroup>
+          <FilterGroup title="Repository">
+            <Select
+              name="repo"
+              value={filter.repo ?? "all"}
+              onValueChange={(value) => set("repo", value === "all" ? null : value)}
+            >
+              <SelectTrigger size="sm" aria-label="Repository">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All repositories</SelectItem>
+                {activity.repos.map(({ repo, count }) => {
+                  const path = `${repo.namespace}/${repo.name}`;
+                  return (
+                    <SelectItem key={path} value={path} description={`${count} by @${username}`}>
+                      {path}
+                    </SelectItem>
+                  );
+                })}
+                {filter.repo && !activity.repos.some(({ repo }) => `${repo.namespace}/${repo.name}` === filter.repo) && (
+                  <SelectItem value={filter.repo}>{filter.repo}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </FilterGroup>
+          <FilterGroup title="Sort">
+            <Select name="sort" value={filter.sort} onValueChange={(value) => set("sort", value === "created" ? null : value)}>
+              <SelectTrigger size="sm" aria-label="Sort">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SORTS.map((sort) => (
+                  <SelectItem key={sort.value} value={sort.value}>
+                    {sort.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterGroup>
+          <div className="flex items-center justify-between gap-2">
+            <noscript>
+              <Button type="submit" variant="outline">
+                Apply
+              </Button>
+            </noscript>
+            {filtered && (
+              <Link to={`/u/${username}?tab=${tab}`} preventScrollReset className="text-xs text-muted hover:text-fg">
+                Clear filters
+              </Link>
+            )}
+          </div>
+        </Form>
+      </Card>
     </aside>
   );
 }

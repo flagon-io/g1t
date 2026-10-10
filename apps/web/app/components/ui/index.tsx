@@ -1,11 +1,11 @@
-import { Check, Copy, LoaderCircle, User } from "lucide-react";
+import { Check, Copy, LoaderCircle } from "lucide-react";
 import { type ComponentProps, Fragment, type ReactNode, useState } from "react";
-import { Link, type LinkProps, NavLink, useLocation, useNavigation, useRouteLoaderData } from "react-router";
+import { Link, type LinkProps, NavLink, useLocation, useNavigation } from "react-router";
 
-import { usercontentFrom } from "../../lib/addresses";
+import { cn } from "../../lib/cn";
 import { isWaitingMessage, linkPaths } from "../../lib/compute";
 import { type Submission, isPending } from "../../lib/pending";
-import { Mark } from "../logo";
+import { Button, type ButtonSize, type ButtonVariant, buttonVariants } from "./button";
 
 export function Field({
   label,
@@ -112,29 +112,6 @@ export function SoonPill() {
   );
 }
 
-type Variant = "primary" | "accent" | "quiet" | "danger";
-
-const BUTTON_BASE =
-  "inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-50";
-
-const BUTTON_VARIANTS: Record<Variant, string> = {
-  primary: "bg-fg text-bg hover:bg-fg-hover",
-  accent: "bg-accent text-bg hover:bg-accent-hover",
-  quiet:
-    "border border-line text-fg/80 hover:border-line-strong hover:bg-surface hover:text-fg",
-  // For what cannot be undone: transferring, deleting.
-  danger: "border border-danger/40 text-danger hover:border-danger hover:bg-danger/10",
-};
-
-export function Button({
-  variant = "primary",
-  ...props
-}: ComponentProps<"button"> & { variant?: Variant }) {
-  return (
-    <button {...props} className={`${BUTTON_BASE} ${BUTTON_VARIANTS[variant]}`} />
-  );
-}
-
 /**
  * Whether the submission `fields` names is still working (lib/pending.ts):
  * the page's own navigation, or `fetcher`'s when the form is a fetcher's.
@@ -150,12 +127,14 @@ export function usePending(fields?: Record<string, string | null | undefined>, f
  * it is pressed until the page has loaded what it changed. Its own
  * `name`/`value` say which submission is its; `match` names it otherwise,
  * such as the form's hidden `intent`. `fetcher` when the form is a
- * fetcher's. `className` replaces the button look, for icon buttons, and
- * `icon` says the spinner takes the place of everything inside it. Words
- * with a leading icon should pass `pending`, so the spinner replaces both.
+ * fetcher's. It is drawn as the Button in ./button, with its `variant` and
+ * `size`; `icon` says the spinner takes the place of everything inside
+ * it. Words with a leading icon should pass `pending`, so the spinner
+ * replaces both.
  */
 export function SubmitButton({
-  variant = "primary",
+  variant,
+  size,
   pending,
   match,
   fetcher,
@@ -166,7 +145,8 @@ export function SubmitButton({
   children,
   ...props
 }: Omit<ComponentProps<"button">, "type"> & {
-  variant?: Variant;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   /** The words while it works, such as "Saving…"; its own words when absent. */
   pending?: ReactNode;
   match?: Record<string, string | null | undefined>;
@@ -185,7 +165,8 @@ export function SubmitButton({
       type="submit"
       disabled={disabled || working}
       aria-busy={working || undefined}
-      className={className ?? `${BUTTON_BASE} ${BUTTON_VARIANTS[variant]}`}
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size }), className)}
     >
       {working ? (
         <>
@@ -199,20 +180,9 @@ export function SubmitButton({
   );
 }
 
-/** A link that looks like a button. */
-export function ButtonLink({
-  variant = "primary",
-  large,
-  ...props
-}: LinkProps & { variant?: Variant; large?: boolean }) {
-  return (
-    <Link
-      {...props}
-      className={`${BUTTON_BASE} ${BUTTON_VARIANTS[variant]} ${
-        large ? "rounded-full px-5 py-2.5" : ""
-      }`}
-    />
-  );
+/** A link that looks like the Button in ./button, with its `variant` and `size`. */
+export function ButtonLink({ variant, size, className, ...props }: LinkProps & { variant?: ButtonVariant; size?: ButtonSize }) {
+  return <Link data-slot="button" {...props} className={cn(buttonVariants({ variant, size }), className)} />;
 }
 
 /**
@@ -257,119 +227,6 @@ export function ComputeNote({ note }: { note: string | null | undefined }) {
       <Linked text={note} />
     </p>
   ) : null;
-}
-
-/** A small outlined label. */
-export function Pill({ children }: { children: ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-line px-2 py-0.5 text-xs text-muted">
-      {children}
-    </span>
-  );
-}
-
-const AVATAR_HUES = [82, 200, 262, 28, 330, 160];
-
-/**
- * g1t itself: its agent, as reviewer, assignee and commit author, and the
- * system, as the author of security updates, the issues it opens and merges
- * from the queue. One name, `g1t`.
- */
-export function isSystemName(name: string | null | undefined): boolean {
-  return name === "g1t";
-}
-
-/**
- * Where an uploaded avatar is served, from the hash it is stored by: the
- * usercontent origin, or the site's own address (which redirects there)
- * when it is not known.
- */
-export function avatarUrl(avatar: string, usercontent = ""): string {
-  return `${usercontent}/avatars/${avatar}`;
-}
-
-/**
- * An uploaded avatar if there is one, else a letter avatar whose colour is
- * stable for a given name. People are round; a workspace is `square`. An
- * image that fails to load falls back to the letter.
- */
-export function Avatar({
-  name,
-  size = 20,
-  square,
-  image,
-  system,
-}: {
-  name: string;
-  size?: number;
-  square?: boolean;
-  /** The uploaded avatar's hash, as identity returns it. */
-  image?: string | null;
-  /** g1t itself (a user of kind `system`), whatever the name. */
-  system?: boolean;
-}) {
-  const [failed, setFailed] = useState<string | null>(null);
-  const usercontent = usercontentFrom(useRouteLoaderData("root"));
-  // g1t itself wears its own mark: the pixel 1 on a dark square.
-  if (system || isSystemName(name)) {
-    return (
-      <span
-        aria-hidden="true"
-        className="inline-flex shrink-0 items-center justify-center bg-[#0b0b0d] text-fg ring-1 ring-line-strong ring-inset scheme-dark"
-        style={{ width: size, height: size, borderRadius: size * 0.24 }}
-      >
-        <Mark className="size-full" />
-      </span>
-    );
-  }
-  // ghost stands in for deleted accounts: a plain silhouette, as for
-  // anyone on a commit who has no account.
-  if (name === "ghost" && !image) {
-    return (
-      <span
-        aria-hidden="true"
-        className="inline-flex shrink-0 items-center justify-center rounded-full bg-line text-faint"
-        style={{ width: size, height: size }}
-      >
-        <User size={Math.round(size * 0.62)} strokeWidth={2.25} />
-      </span>
-    );
-  }
-  if (image && failed !== image) {
-    return (
-      <img
-        src={avatarUrl(image, usercontent)}
-        alt=""
-        aria-hidden="true"
-        width={size}
-        height={size}
-        loading="lazy"
-        decoding="async"
-        onError={() => setFailed(image)}
-        className="inline-block shrink-0 bg-raised object-cover"
-        style={{ width: size, height: size, borderRadius: square ? size * 0.24 : size }}
-      />
-    );
-  }
-  let hash = 0;
-  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) | 0;
-  const hue = AVATAR_HUES[Math.abs(hash) % AVATAR_HUES.length];
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-flex shrink-0 items-center justify-center font-mono font-semibold uppercase"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: square ? size * 0.24 : size,
-        fontSize: size * 0.5,
-        background: `oklch(0.4 0.09 ${hue})`,
-        color: `oklch(0.93 0.08 ${hue})`,
-      }}
-    >
-      {name[0]}
-    </span>
-  );
 }
 
 /** A line of text (usually a command) with a copy button. */
@@ -423,11 +280,13 @@ export function CopyLine({
           ),
         )}
       </code>
-      <button
+      <Button
         type="button"
         aria-label="Copy"
         disabled={disabled}
-        className="shrink-0 rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-fg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-faint"
+        variant="ghost"
+        size="inline"
+        className="p-1.5 text-faint"
         onClick={() => {
           void navigator.clipboard.writeText(text);
           setCopied(true);
@@ -435,7 +294,7 @@ export function CopyLine({
         }}
       >
         {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-      </button>
+      </Button>
     </div>
   );
 }

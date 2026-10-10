@@ -8,6 +8,7 @@ import { page } from "../../lib/meta";
 import { SecretsList, StateFilter } from "../../components/security";
 import { ActivationPrompt, CARD, FilterSelect, SectionHeader } from "../../components/security-suite";
 import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 import { security, securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
@@ -134,9 +135,11 @@ export default function SecretScanning({ loaderData, params }: Route.ComponentPr
         {!patterns.entitled ? (
           <ActivationPrompt workspace={params.owner} feature="Custom patterns" monthlyCents={price} isOwner={owner} />
         ) : own.length + inherited.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">
-            No custom patterns yet. Add one for your own tokens' format, try it on test strings and a dry run, then publish it.
-          </p>
+          <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
+            <p>
+              No custom patterns yet. Add one for your own tokens' format, try it on test strings and a dry run, then publish it.
+            </p>
+          </Card>
         ) : (
           <ul className={`${CARD} divide-y divide-line`}>
             {[...own, ...inherited].map((pattern) => (

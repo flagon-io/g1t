@@ -10,6 +10,7 @@ import { type ReactNode, useState } from "react";
 import { Link, useNavigate, useRevalidator } from "react-router";
 
 import { canDo } from "../../lib/folios";
+import { Button } from "../ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { foliosRequest, useFoliosData } from "./actions";
 import { MoveDialog, RenameDialog, TemplateDialog } from "./dialogs";
@@ -52,9 +53,9 @@ export function FolioMenu({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           {trigger ?? (
-            <button type="button" aria-label={`More for ${folio.title || "Untitled"}`} className="flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg max-md:size-10">
+            <Button type="button" aria-label={`More for ${folio.title || "Untitled"}`} variant="ghost" size="icon-sm" className="text-faint max-md:size-10">
               <Ellipsis size={16} />
-            </button>
+            </Button>
           )}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">

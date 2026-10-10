@@ -6,6 +6,7 @@ import { decodeOAuthClient, isRegisteredRedirect } from "@g1t/contracts";
 import type { Route } from "./+types/oauth-authorize";
 import { page } from "../lib/meta";
 import { ErrorText, SubmitButton, usePending } from "../components/ui";
+import { Card } from "../components/ui/card";
 import { ScopeChecklist } from "../components/token-scopes";
 import { identity } from "../lib/services.server";
 import { addresses } from "../lib/addresses.server";
@@ -164,14 +165,16 @@ export default function Authorize({ loaderData, actionData }: Route.ComponentPro
             <ScopeChecklist initial={requested} only={requested} allowFull={false} />
           </div>
         </section>
-        <dl className="rounded-xl border border-line bg-surface p-4 text-sm">
-          <dt className="text-xs text-faint">You will be sent back to</dt>
-          <dd className="mt-0.5 font-mono text-[0.8125rem] break-all">
-            {destination.protocol === "https:" || destination.protocol === "http:"
-              ? destination.host + destination.pathname
-              : request.redirectUri}
-          </dd>
-        </dl>
+        <Card asChild className="p-4 text-sm">
+          <dl>
+            <dt className="text-xs text-faint">You will be sent back to</dt>
+            <dd className="mt-0.5 font-mono text-[0.8125rem] break-all">
+              {destination.protocol === "https:" || destination.protocol === "http:"
+                ? destination.host + destination.pathname
+                : request.redirectUri}
+            </dd>
+          </dl>
+        </Card>
         <div>
           <p className="text-xs text-faint">
             Approve only if you started this from {request.clientName} yourself. You can change
@@ -182,7 +185,7 @@ export default function Authorize({ loaderData, actionData }: Route.ComponentPro
             <SubmitButton variant="accent" name="decision" value="approve" pending="Approving…" disabled={deciding}>
               Approve
             </SubmitButton>
-            <SubmitButton variant="quiet" name="decision" value="deny" pending="Denying…" disabled={deciding}>
+            <SubmitButton variant="outline" name="decision" value="deny" pending="Denying…" disabled={deciding}>
               Deny
             </SubmitButton>
           </div>

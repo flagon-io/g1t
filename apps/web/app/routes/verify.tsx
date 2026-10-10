@@ -89,7 +89,7 @@ export default function Verify({ loaderData }: Route.ComponentProps) {
               : " Sign in to enter the code from the email, or to send a new one."}
           </p>
           <div className="mt-8">
-            <ButtonLink to={loaderData.signedIn ? CONFIRM_PATH : `/login?next=${encodeURIComponent(CONFIRM_PATH)}`} variant="quiet">
+            <ButtonLink to={loaderData.signedIn ? CONFIRM_PATH : `/login?next=${encodeURIComponent(CONFIRM_PATH)}`} variant="outline">
               {loaderData.signedIn ? "Enter a code" : "Sign in"}
             </ButtonLink>
           </div>

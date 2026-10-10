@@ -46,6 +46,7 @@ import { isStaff } from "../../lib/usage";
 import { page } from "../../lib/meta";
 import { billing } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesBilling, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { Card } from "../../components/ui/card";
 
 /** The trial and pools as published, when the price book cannot be read. */
 const DEFAULT_TRIAL_MICROS = 5_000_000;
@@ -393,54 +394,56 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
       </div>
 
       <aside className="space-y-5 text-sm">
-        <section className="rounded-xl border border-line bg-surface p-5">
-          <h3 className="font-medium">How it is charged</h3>
-          <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
-            <li>
-              The plan is {wholeDollars((plan?.plan.monthlyCents ?? 2000) * 10_000)} a month for the workspace, with $10 of usage
-              included. Usage is charged at what it costs g1t plus {account.marginPercent}%, from the first second, after what is
-              included.
-            </li>
-            <li>
-              Agent runs: the model at the provider's price{ai && ai.modelMarkupPercent ? ` plus ${ai.modelMarkupPercent}%` : ", with no markup"}, plus
-              g1t's agent rate per million tokens{ai && ai.agentRateMicros > 0 ? ` (${dollars(ai.agentRateMicros)})` : ""}. AI Gateway: the
-              provider's price, free of markup while in beta.
-            </li>
-            <li>AI usage draws on prepaid AI credit first; at $0, new runs on g1t's models wait for more credit or auto-reload.</li>
-            <li>Credit from g1t comes off what you owe, the soonest-expiring first.</li>
-            <li>
-              With your own model provider, connected under{" "}
-              <Link to={`/${slug}/-/integrations`} className="text-fg hover:underline">
-                Integrations
+        <Card asChild className="p-5">
+          <section>
+            <h3 className="font-medium">How it is charged</h3>
+            <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
+              <li>
+                The plan is {wholeDollars((plan?.plan.monthlyCents ?? 2000) * 10_000)} a month for the workspace, with $10 of usage
+                included. Usage is charged at what it costs g1t plus {account.marginPercent}%, from the first second, after what is
+                included.
+              </li>
+              <li>
+                Agent runs: the model at the provider's price{ai && ai.modelMarkupPercent ? ` plus ${ai.modelMarkupPercent}%` : ", with no markup"}, plus
+                g1t's agent rate per million tokens{ai && ai.agentRateMicros > 0 ? ` (${dollars(ai.agentRateMicros)})` : ""}. AI Gateway: the
+                provider's price, free of markup while in beta.
+              </li>
+              <li>AI usage draws on prepaid AI credit first; at $0, new runs on g1t's models wait for more credit or auto-reload.</li>
+              <li>Credit from g1t comes off what you owe, the soonest-expiring first.</li>
+              <li>
+                With your own model provider, connected under{" "}
+                <Link to={`/${slug}/-/integrations`} className="text-fg hover:underline">
+                  Integrations
+                </Link>
+                , the provider bills you for the model, and a run here is charged only its sandbox time.
+              </li>
+              <li>
+                Each month closes with an itemised invoice. No card is charged less than{" "}
+                {dollars(entitlements?.minChargeMicros ?? 5 * MICROS_PER_DOLLAR, 0)}; less carries over.
+              </li>
+              <li>
+                Prices exclude tax. Stripe adds tax where it applies, worked out from the billing address under Invoice details, and it
+                is its own line on every receipt and invoice.
+              </li>
+              <li>
+                Card payments carry Stripe's card processing fee as their own line, shown before you pay. Bank transfers and invoiced
+                billing have none.
+              </li>
+              <li>No seats: add as many people and agents as you like, once the workspace is on the plan.</li>
+            </ul>
+            <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
+              <Link to={`/${slug}/-/usage`} className="flex items-center gap-2 text-muted hover:text-fg">
+                <FileText size={14} /> Usage, by product and project
               </Link>
-              , the provider bills you for the model, and a run here is charged only its sandbox time.
-            </li>
-            <li>
-              Each month closes with an itemised invoice. No card is charged less than{" "}
-              {dollars(entitlements?.minChargeMicros ?? 5 * MICROS_PER_DOLLAR, 0)}; less carries over.
-            </li>
-            <li>
-              Prices exclude tax. Stripe adds tax where it applies, worked out from the billing address under Invoice details, and it
-              is its own line on every receipt and invoice.
-            </li>
-            <li>
-              Card payments carry Stripe's card processing fee as their own line, shown before you pay. Bank transfers and invoiced
-              billing have none.
-            </li>
-            <li>No seats: add as many people and agents as you like, once the workspace is on the plan.</li>
-          </ul>
-          <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
-            <Link to={`/${slug}/-/usage`} className="flex items-center gap-2 text-muted hover:text-fg">
-              <FileText size={14} /> Usage, by product and project
-            </Link>
-            <Link to="/pricing" className="flex items-center gap-2 text-muted hover:text-fg">
-              <CreditCard size={14} /> Pricing and today's prices
-            </Link>
-            <a href="https://docs.g1t.sh/guides/usage-and-billing/" className="flex items-center gap-2 text-muted hover:text-fg">
-              <ArrowUpRight size={14} /> How usage and billing work
-            </a>
-          </div>
-        </section>
+              <Link to="/pricing" className="flex items-center gap-2 text-muted hover:text-fg">
+                <CreditCard size={14} /> Pricing and today's prices
+              </Link>
+              <a href="https://docs.g1t.sh/guides/usage-and-billing/" className="flex items-center gap-2 text-muted hover:text-fg">
+                <ArrowUpRight size={14} /> How usage and billing work
+              </a>
+            </div>
+          </section>
+        </Card>
       </aside>
     </div>
   );
@@ -455,55 +458,57 @@ function InvoiceList({ invoices }: { invoices: WorkspaceInvoice[] }) {
         One when each month closes, and one each time g1t charges the card near your limit. Amounts are for usage; the card fee
         and tax are their own lines.
       </p>
-      <ul className="mt-4 divide-y divide-line overflow-hidden rounded-xl border border-line">
-        {invoices.map((invoice) => (
-          <li key={invoice.invoiceId} className="px-4 py-3 text-sm">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="font-medium">
-                {invoice.reason === "month" ? `Usage for ${invoice.period}` : `Charged near the limit, ${invoice.period}`}
-              </span>
-              <span
-                className={`rounded-full border px-2 py-0.5 text-xs ${
-                  invoice.status === "paid" ? "border-success/40 text-success" : "border-danger/40 text-danger"
-                }`}
-              >
-                {invoice.status === "paid" ? "Paid" : invoice.status === "failed" ? "Payment failed" : invoice.status}
-              </span>
-              <span className="ml-auto font-mono tabular-nums">{dollars(invoice.amountMicros)}</span>
-              {invoice.hostedUrl && (
-                <a href={invoice.hostedUrl} className="text-xs text-muted hover:text-fg">
-                  View
-                </a>
-              )}
-              {invoice.pdfUrl && (
-                <a href={invoice.pdfUrl} className="text-xs text-muted hover:text-fg">
-                  PDF
-                </a>
-              )}
-            </div>
-            <ul className="mt-1.5 space-y-0.5 text-xs text-faint">
-              {invoice.lines.map((line) => (
-                <li key={line.description} className="flex justify-between gap-4">
-                  <span>{line.description}</span>
-                  <span className="font-mono tabular-nums">{dollars(line.amountMicros)}</span>
-                </li>
-              ))}
-              {(invoice.feeMicros ?? 0) > 0 && (
-                <li className="flex justify-between gap-4">
-                  <span>Card processing fee</span>
-                  <span className="font-mono tabular-nums">{dollars(invoice.feeMicros ?? 0)}</span>
-                </li>
-              )}
-              {(invoice.taxMicros ?? 0) > 0 && (
-                <li className="flex justify-between gap-4">
-                  <span>Tax</span>
-                  <span className="font-mono tabular-nums">{dollars(invoice.taxMicros ?? 0)}</span>
-                </li>
-              )}
-            </ul>
-          </li>
-        ))}
-      </ul>
+      <Card asChild tone="plain" divided className="mt-4 overflow-hidden">
+        <ul>
+          {invoices.map((invoice) => (
+            <li key={invoice.invoiceId} className="px-4 py-3 text-sm">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-medium">
+                  {invoice.reason === "month" ? `Usage for ${invoice.period}` : `Charged near the limit, ${invoice.period}`}
+                </span>
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-xs ${
+                    invoice.status === "paid" ? "border-success/40 text-success" : "border-danger/40 text-danger"
+                  }`}
+                >
+                  {invoice.status === "paid" ? "Paid" : invoice.status === "failed" ? "Payment failed" : invoice.status}
+                </span>
+                <span className="ml-auto font-mono tabular-nums">{dollars(invoice.amountMicros)}</span>
+                {invoice.hostedUrl && (
+                  <a href={invoice.hostedUrl} className="text-xs text-muted hover:text-fg">
+                    View
+                  </a>
+                )}
+                {invoice.pdfUrl && (
+                  <a href={invoice.pdfUrl} className="text-xs text-muted hover:text-fg">
+                    PDF
+                  </a>
+                )}
+              </div>
+              <ul className="mt-1.5 space-y-0.5 text-xs text-faint">
+                {invoice.lines.map((line) => (
+                  <li key={line.description} className="flex justify-between gap-4">
+                    <span>{line.description}</span>
+                    <span className="font-mono tabular-nums">{dollars(line.amountMicros)}</span>
+                  </li>
+                ))}
+                {(invoice.feeMicros ?? 0) > 0 && (
+                  <li className="flex justify-between gap-4">
+                    <span>Card processing fee</span>
+                    <span className="font-mono tabular-nums">{dollars(invoice.feeMicros ?? 0)}</span>
+                  </li>
+                )}
+                {(invoice.taxMicros ?? 0) > 0 && (
+                  <li className="flex justify-between gap-4">
+                    <span>Tax</span>
+                    <span className="font-mono tabular-nums">{dollars(invoice.taxMicros ?? 0)}</span>
+                  </li>
+                )}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      </Card>
     </section>
   );
 }

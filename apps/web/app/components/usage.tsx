@@ -30,6 +30,8 @@ import {
   usageCsv,
 } from "../lib/usage";
 import { cn } from "../lib/cn";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Checkbox } from "./ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Hint } from "./ui/hint";
@@ -63,7 +65,7 @@ function MultiSelect({ name, label, options, chosen }: { name: string; label: st
         <span className="max-w-[10rem] truncate">{summary}</span>
         <ChevronDown size={13} className="text-muted transition-transform group-open:rotate-180" />
       </summary>
-      <div className="absolute left-0 z-20 mt-1 w-64 rounded-lg border border-line bg-raised p-2 shadow-xl">
+      <Card tone="plain" radius="lg" className="absolute left-0 z-20 mt-1 w-64 bg-raised p-2 shadow-xl">
         {options.length === 0 ? (
           <p className="px-2 py-1.5 text-sm text-faint">None in this range.</p>
         ) : (
@@ -78,10 +80,10 @@ function MultiSelect({ name, label, options, chosen }: { name: string; label: st
             ))}
           </ul>
         )}
-        <button type="submit" className="mt-2 w-full rounded-md bg-fg px-2 py-1.5 text-sm font-medium text-bg hover:bg-fg-hover">
+        <Button type="submit" size="sm" className="mt-2 w-full px-2 text-sm">
           Apply
-        </button>
-      </div>
+        </Button>
+      </Card>
     </details>
   );
 }
@@ -158,9 +160,9 @@ export function UsageFilterBar({
       <input type="hidden" name="grain" value={filters.grain} />
       {filters.cumulative && <input type="hidden" name="cumulative" value="1" />}
       <noscript>
-        <button type="submit" className={SELECT}>
+        <Button type="submit" variant="outline" size="sm" className="bg-bg px-2 text-sm font-normal text-fg">
           Apply
-        </button>
+        </Button>
       </noscript>
       <span className="ml-auto" />
       <DropdownMenu>
@@ -204,74 +206,76 @@ export function IncludedAndCredit({ report, billingHref, owner }: { report: Usag
   const free = report.plan === "free";
   const fullDiscount = (report.discountPercent ?? 0) >= 100;
   return (
-    <section className="grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-3">
-      <div className="bg-surface p-4">
-        <p className="text-sm text-muted">{report.included ? "Included usage this month" : free ? "Trial credit" : "Plan"}</p>
-        {report.included ? (
-          <>
-            <p className="mt-1 text-lg font-semibold tabular-nums">
-              {money(report.included.used)} <span className="text-sm font-normal text-faint">/ {money(report.included.of)}</span>
-            </p>
-            <Bar used={report.included.used} of={report.included.of} />
-          </>
-        ) : free ? (
-          <>
-            <p className="mt-1 text-lg font-semibold tabular-nums">{report.trialMicros != null ? `${money(report.trialMicros)} left` : "None"}</p>
-            <p className="mt-1 text-xs text-faint">
-              The forge is free. Compute needs the plan or the trial.{" "}
-              <Link to={billingHref} className="text-fg-soft underline-offset-2 hover:underline">
-                See plans
-              </Link>
-            </p>
-          </>
-        ) : (
-          <p className="mt-1 text-sm">{fullDiscount ? `${report.discountPercent}% discount from g1t` : report.plan === "enterprise" ? "Paid by an enterprise" : "On the g1t plan"}</p>
-        )}
-      </div>
-      <div className="bg-surface p-4">
-        <p className="text-sm text-muted">Credit</p>
-        {fullDiscount ? (
-          <p className="mt-1 text-sm">AI usage is free under the {report.discountPercent}% discount: nothing to buy.</p>
-        ) : (
-          <dl className="mt-1 space-y-1 text-sm">
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted">AI credit</dt>
-              <dd className="font-medium tabular-nums">{money(report.aiCreditMicros)}</dd>
-            </div>
-            {report.creditMicros > 0 && (
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">Credit from g1t</dt>
-                <dd className="tabular-nums">{money(report.creditMicros)}</dd>
-              </div>
-            )}
-            {owner && report.plan === "paid" && (
-              <dd>
-                <Link to={`${billingHref}#ai-credit`} className="text-xs text-fg-soft underline-offset-2 hover:underline">
-                  Buy AI credit or turn on auto-reload
+    <Card asChild tone="plain" className="grid gap-px overflow-hidden bg-line sm:grid-cols-3">
+      <section>
+        <div className="bg-surface p-4">
+          <p className="text-sm text-muted">{report.included ? "Included usage this month" : free ? "Trial credit" : "Plan"}</p>
+          {report.included ? (
+            <>
+              <p className="mt-1 text-lg font-semibold tabular-nums">
+                {money(report.included.used)} <span className="text-sm font-normal text-faint">/ {money(report.included.of)}</span>
+              </p>
+              <Bar used={report.included.used} of={report.included.of} />
+            </>
+          ) : free ? (
+            <>
+              <p className="mt-1 text-lg font-semibold tabular-nums">{report.trialMicros != null ? `${money(report.trialMicros)} left` : "None"}</p>
+              <p className="mt-1 text-xs text-faint">
+                The forge is free. Compute needs the plan or the trial.{" "}
+                <Link to={billingHref} className="text-fg-soft underline-offset-2 hover:underline">
+                  See plans
                 </Link>
-              </dd>
-            )}
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-sm">{fullDiscount ? `${report.discountPercent}% discount from g1t` : report.plan === "enterprise" ? "Paid by an enterprise" : "On the g1t plan"}</p>
+          )}
+        </div>
+        <div className="bg-surface p-4">
+          <p className="text-sm text-muted">Credit</p>
+          {fullDiscount ? (
+            <p className="mt-1 text-sm">AI usage is free under the {report.discountPercent}% discount: nothing to buy.</p>
+          ) : (
+            <dl className="mt-1 space-y-1 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">AI credit</dt>
+                <dd className="font-medium tabular-nums">{money(report.aiCreditMicros)}</dd>
+              </div>
+              {report.creditMicros > 0 && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Credit from g1t</dt>
+                  <dd className="tabular-nums">{money(report.creditMicros)}</dd>
+                </div>
+              )}
+              {owner && report.plan === "paid" && (
+                <dd>
+                  <Link to={`${billingHref}#ai-credit`} className="text-xs text-fg-soft underline-offset-2 hover:underline">
+                    Buy AI credit or turn on auto-reload
+                  </Link>
+                </dd>
+              )}
+            </dl>
+          )}
+        </div>
+        <div className="bg-surface p-4">
+          <p className="text-sm text-muted">This range</p>
+          <dl className="mt-1 space-y-1 text-sm">
+            {lines.map((line, i) => (
+              <div key={line.label} className={cn("flex justify-between gap-3", i === lines.length - 1 && "border-t border-line pt-1 font-medium")}>
+                <dt className={i === lines.length - 1 ? "" : "text-muted"}>{line.label}</dt>
+                <dd className="tabular-nums">
+                  {line.minus ? "−" : ""}
+                  {money(line.micros)}
+                </dd>
+              </div>
+            ))}
           </dl>
-        )}
-      </div>
-      <div className="bg-surface p-4">
-        <p className="text-sm text-muted">This range</p>
-        <dl className="mt-1 space-y-1 text-sm">
-          {lines.map((line, i) => (
-            <div key={line.label} className={cn("flex justify-between gap-3", i === lines.length - 1 && "border-t border-line pt-1 font-medium")}>
-              <dt className={i === lines.length - 1 ? "" : "text-muted"}>{line.label}</dt>
-              <dd className="tabular-nums">
-                {line.minus ? "−" : ""}
-                {money(line.micros)}
-              </dd>
-            </div>
-          ))}
-        </dl>
-        {report.totals.pendingMicros > 0 && (
-          <p className="mt-1 text-xs text-faint">{money(report.totals.pendingMicros)} of it is metered this month and charged when it closes.</p>
-        )}
-      </div>
-    </section>
+          {report.totals.pendingMicros > 0 && (
+            <p className="mt-1 text-xs text-faint">{money(report.totals.pendingMicros)} of it is metered this month and charged when it closes.</p>
+          )}
+        </div>
+      </section>
+    </Card>
   );
 }
 
@@ -306,145 +310,147 @@ export function UsageChart({
   const id = useId();
   const labelEvery = Math.max(1, Math.ceil(columns.length / 6));
   return (
-    <section className="rounded-xl border border-line bg-surface p-4 sm:p-5" aria-labelledby={`${id}-title`}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id={`${id}-title`} className="font-medium">
-          Consumption
-        </h2>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <nav className="flex rounded-md border border-line p-0.5" aria-label="Columns">
-            {(["day", "week", "month"] as Grain[]).map((g) => (
-              <Link
-                key={g}
-                to={grainHref(g)}
-                preventScrollReset
-                aria-current={g === grain ? "true" : undefined}
-                className={cn("rounded px-2 py-0.5 capitalize", g === grain ? "bg-raised text-fg" : "text-muted hover:text-fg")}
-              >
-                {g === "day" ? "Daily" : g === "week" ? "Weekly" : "Monthly"}
-              </Link>
-            ))}
-          </nav>
-          <Link to={cumulativeHref} preventScrollReset className="flex items-center gap-1.5 text-muted hover:text-fg" role="checkbox" aria-checked={cumulative}>
-            <span className={cn("grid size-3.5 place-items-center rounded-sm border", cumulative ? "border-accent bg-accent text-bg" : "border-line-strong")}>
-              {cumulative && <span className="text-[0.6rem] leading-none">✓</span>}
-            </span>
-            Cumulative
-          </Link>
-        </div>
-      </div>
-      {used.length > 0 && (
-        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted" aria-label="Legend">
-          {used.map((p) => (
-            <li key={p.key} className="flex items-center gap-1.5">
-              <span className="size-2.5 rounded-sm" style={{ background: productStyle(p.key).color }} />
-              {p.label}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="mt-4 flex gap-2">
-        {/* The one money axis: clean ticks, every label different. */}
-        <div className="relative w-12 shrink-0 text-right text-[0.6875rem] text-faint tabular-nums" style={{ height: CHART_HEIGHT }} aria-hidden="true">
-          {scale.map((t) => (
-            <span key={t} className="absolute right-0 -translate-y-1/2" style={{ top: `${100 - (t / top) * 100}%` }}>
-              {axisMoney(t)}
-            </span>
-          ))}
-        </div>
-        <div className="relative min-w-0 flex-1" style={{ height: CHART_HEIGHT }}>
-          {scale.map((t) => (
-            <div key={t} className="absolute inset-x-0 border-t border-line" style={{ top: `${100 - (t / top) * 100}%` }} aria-hidden="true" />
-          ))}
-          <div className="absolute inset-0 flex items-end" role="list" aria-label="Usage per column">
-            {columns.map((column, i) => (
-              <div
-                key={column.key}
-                role="listitem"
-                tabIndex={0}
-                aria-label={`${column.label}: ${money(column.total)}`}
-                className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end outline-none"
-              >
-                <div className="flex w-full max-w-6 flex-col-reverse gap-[2px] px-[1px]" style={{ height: `${(column.total / top) * 100}%` }}>
-                  {used
-                    .filter((p) => (column.parts[p.key] ?? 0) > 0)
-                    .map((p, at, all) => (
-                      <div
-                        key={p.key}
-                        className={cn("w-full min-h-[2px]", at === all.length - 1 && "rounded-t")}
-                        style={{ flexGrow: column.parts[p.key] ?? 0, flexBasis: 0, background: productStyle(p.key).color }}
-                      />
-                    ))}
-                </div>
-                <div className="absolute inset-y-0 left-1/2 -z-0 w-full -translate-x-1/2 rounded group-hover:bg-fg/[0.04] group-focus-visible:bg-fg/[0.06]" aria-hidden="true" />
-                <div
-                  className={cn(
-                    "pointer-events-none absolute bottom-full z-10 mb-2 hidden w-52 rounded-lg border border-line-strong bg-raised p-2.5 text-xs shadow-xl group-hover:block group-focus-visible:block",
-                    i < columns.length / 2 ? "left-0" : "right-0",
-                  )}
-                  role="tooltip"
+    <Card asChild className="p-4 sm:p-5">
+      <section aria-labelledby={`${id}-title`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id={`${id}-title`} className="font-medium">
+            Consumption
+          </h2>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <nav className="flex rounded-md border border-line p-0.5" aria-label="Columns">
+              {(["day", "week", "month"] as Grain[]).map((g) => (
+                <Link
+                  key={g}
+                  to={grainHref(g)}
+                  preventScrollReset
+                  aria-current={g === grain ? "true" : undefined}
+                  className={cn("rounded px-2 py-0.5 capitalize", g === grain ? "bg-raised text-fg" : "text-muted hover:text-fg")}
                 >
-                  <p className="flex justify-between font-medium">
-                    <span>{column.label}</span>
-                    <span className="tabular-nums">{money(column.total)}</span>
-                  </p>
-                  <ul className="mt-1.5 space-y-1">
-                    {used.map((p) => (
-                      <li key={p.key} className="flex items-center justify-between gap-2 text-muted">
-                        <span className="flex items-center gap-1.5">
-                          <span className="size-2 rounded-sm" style={{ background: productStyle(p.key).color }} />
-                          {p.label}
-                        </span>
-                        <span className="tabular-nums text-fg-soft">{money(column.parts[p.key] ?? 0)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            ))}
+                  {g === "day" ? "Daily" : g === "week" ? "Weekly" : "Monthly"}
+                </Link>
+              ))}
+            </nav>
+            <Link to={cumulativeHref} preventScrollReset className="flex items-center gap-1.5 text-muted hover:text-fg" role="checkbox" aria-checked={cumulative}>
+              <span className={cn("grid size-3.5 place-items-center rounded-sm border", cumulative ? "border-accent bg-accent text-bg" : "border-line-strong")}>
+                {cumulative && <span className="text-[0.6rem] leading-none">✓</span>}
+              </span>
+              Cumulative
+            </Link>
           </div>
         </div>
-      </div>
-      <div className="ml-14 mt-1.5 flex text-[0.6875rem] text-faint" aria-hidden="true">
-        {columns.map((column, i) => (
-          <span key={column.key} className="min-w-0 flex-1 truncate text-center">
-            {i % labelEvery === 0 ? column.label : ""}
-          </span>
-        ))}
-      </div>
-      {max === 0 && <p className="mt-3 text-center text-sm text-faint">Nothing used in this range.</p>}
-      <details className="mt-3 text-sm">
-        <summary className="cursor-pointer text-xs text-muted hover:text-fg">Show as a table</summary>
-        <div className="mt-2 max-h-72 overflow-auto">
-          <table className="w-full text-left text-xs tabular-nums">
-            <thead className="sticky top-0 bg-surface text-muted">
-              <tr>
-                <th className="py-1 pr-3 font-medium">{grain === "day" ? "Day" : grain === "week" ? "Week of" : "Month"}</th>
-                {used.map((p) => (
-                  <th key={p.key} className="py-1 pr-3 text-right font-medium">
-                    {p.label}
-                  </th>
-                ))}
-                <th className="py-1 text-right font-medium">{cumulative ? "Running total" : "Total"}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {columns.map((column) => (
-                <tr key={column.key}>
-                  <td className="py-1 pr-3">{column.label}</td>
-                  {used.map((p) => (
-                    <td key={p.key} className="py-1 pr-3 text-right">
-                      {money(column.parts[p.key] ?? 0)}
-                    </td>
-                  ))}
-                  <td className="py-1 text-right">{money(column.total)}</td>
-                </tr>
+        {used.length > 0 && (
+          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted" aria-label="Legend">
+            {used.map((p) => (
+              <li key={p.key} className="flex items-center gap-1.5">
+                <span className="size-2.5 rounded-sm" style={{ background: productStyle(p.key).color }} />
+                {p.label}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-4 flex gap-2">
+          {/* The one money axis: clean ticks, every label different. */}
+          <div className="relative w-12 shrink-0 text-right text-[0.6875rem] text-faint tabular-nums" style={{ height: CHART_HEIGHT }} aria-hidden="true">
+            {scale.map((t) => (
+              <span key={t} className="absolute right-0 -translate-y-1/2" style={{ top: `${100 - (t / top) * 100}%` }}>
+                {axisMoney(t)}
+              </span>
+            ))}
+          </div>
+          <div className="relative min-w-0 flex-1" style={{ height: CHART_HEIGHT }}>
+            {scale.map((t) => (
+              <div key={t} className="absolute inset-x-0 border-t border-line" style={{ top: `${100 - (t / top) * 100}%` }} aria-hidden="true" />
+            ))}
+            <div className="absolute inset-0 flex items-end" role="list" aria-label="Usage per column">
+              {columns.map((column, i) => (
+                <div
+                  key={column.key}
+                  role="listitem"
+                  tabIndex={0}
+                  aria-label={`${column.label}: ${money(column.total)}`}
+                  className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end outline-none"
+                >
+                  <div className="flex w-full max-w-6 flex-col-reverse gap-[2px] px-[1px]" style={{ height: `${(column.total / top) * 100}%` }}>
+                    {used
+                      .filter((p) => (column.parts[p.key] ?? 0) > 0)
+                      .map((p, at, all) => (
+                        <div
+                          key={p.key}
+                          className={cn("w-full min-h-[2px]", at === all.length - 1 && "rounded-t")}
+                          style={{ flexGrow: column.parts[p.key] ?? 0, flexBasis: 0, background: productStyle(p.key).color }}
+                        />
+                      ))}
+                  </div>
+                  <div className="absolute inset-y-0 left-1/2 -z-0 w-full -translate-x-1/2 rounded group-hover:bg-fg/[0.04] group-focus-visible:bg-fg/[0.06]" aria-hidden="true" />
+                  <div
+                    className={cn(
+                      "pointer-events-none absolute bottom-full z-10 mb-2 hidden w-52 rounded-lg border border-line-strong bg-raised p-2.5 text-xs shadow-xl group-hover:block group-focus-visible:block",
+                      i < columns.length / 2 ? "left-0" : "right-0",
+                    )}
+                    role="tooltip"
+                  >
+                    <p className="flex justify-between font-medium">
+                      <span>{column.label}</span>
+                      <span className="tabular-nums">{money(column.total)}</span>
+                    </p>
+                    <ul className="mt-1.5 space-y-1">
+                      {used.map((p) => (
+                        <li key={p.key} className="flex items-center justify-between gap-2 text-muted">
+                          <span className="flex items-center gap-1.5">
+                            <span className="size-2 rounded-sm" style={{ background: productStyle(p.key).color }} />
+                            {p.label}
+                          </span>
+                          <span className="tabular-nums text-fg-soft">{money(column.parts[p.key] ?? 0)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
         </div>
-      </details>
-    </section>
+        <div className="ml-14 mt-1.5 flex text-[0.6875rem] text-faint" aria-hidden="true">
+          {columns.map((column, i) => (
+            <span key={column.key} className="min-w-0 flex-1 truncate text-center">
+              {i % labelEvery === 0 ? column.label : ""}
+            </span>
+          ))}
+        </div>
+        {max === 0 && <p className="mt-3 text-center text-sm text-faint">Nothing used in this range.</p>}
+        <details className="mt-3 text-sm">
+          <summary className="cursor-pointer text-xs text-muted hover:text-fg">Show as a table</summary>
+          <div className="mt-2 max-h-72 overflow-auto">
+            <table className="w-full text-left text-xs tabular-nums">
+              <thead className="sticky top-0 bg-surface text-muted">
+                <tr>
+                  <th className="py-1 pr-3 font-medium">{grain === "day" ? "Day" : grain === "week" ? "Week of" : "Month"}</th>
+                  {used.map((p) => (
+                    <th key={p.key} className="py-1 pr-3 text-right font-medium">
+                      {p.label}
+                    </th>
+                  ))}
+                  <th className="py-1 text-right font-medium">{cumulative ? "Running total" : "Total"}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {columns.map((column) => (
+                  <tr key={column.key}>
+                    <td className="py-1 pr-3">{column.label}</td>
+                    {used.map((p) => (
+                      <td key={p.key} className="py-1 pr-3 text-right">
+                        {money(column.parts[p.key] ?? 0)}
+                      </td>
+                    ))}
+                    <td className="py-1 text-right">{money(column.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+    </Card>
   );
 }
 
@@ -577,98 +583,104 @@ export function Breakdown({
   if (group === "project") {
     const rows = byProject(report);
     return (
-      <section className="overflow-hidden rounded-xl border border-line bg-surface">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-line px-4 py-2 text-xs text-muted">
-          <span>Project</span>
-          <span>Charge at price</span>
-        </div>
-        {rows.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-faint">Nothing used in this range.</p>
-        ) : (
-          <ul className="divide-y divide-line">
-            {rows.map((row) => (
-              <li key={row.project || "none"} className="px-4 py-2.5 text-sm">
-                <div className="flex justify-between gap-3">
-                  <span className="truncate font-medium">
-                    {row.project ? projectHref ? <Link to={projectHref(row.project)} className="hover:underline">{row.project}</Link> : row.project : "Not tied to a project"}
-                  </span>
-                  <span className="tabular-nums">{money(row.micros)}</span>
-                </div>
-                <p className="mt-0.5 text-xs text-faint">{row.meters.map((m) => `${m.label} ${money(m.micros)}`).join(" · ")}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <Card asChild className="overflow-hidden">
+        <section>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-line px-4 py-2 text-xs text-muted">
+            <span>Project</span>
+            <span>Charge at price</span>
+          </div>
+          {rows.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-faint">Nothing used in this range.</p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {rows.map((row) => (
+                <li key={row.project || "none"} className="px-4 py-2.5 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <span className="truncate font-medium">
+                      {row.project ? projectHref ? <Link to={projectHref(row.project)} className="hover:underline">{row.project}</Link> : row.project : "Not tied to a project"}
+                    </span>
+                    <span className="tabular-nums">{money(row.micros)}</span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-faint">{row.meters.map((m) => `${m.label} ${money(m.micros)}`).join(" · ")}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </Card>
     );
   }
   if (group === "day") {
     const days = columns.filter((c) => c.total !== 0).reverse();
     return (
-      <section className="overflow-hidden rounded-xl border border-line bg-surface">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-line px-4 py-2 text-xs text-muted">
-          <span>Day</span>
-          <span>Charge at price</span>
-        </div>
-        {days.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-faint">Nothing used in this range.</p>
-        ) : (
-          <ul className="divide-y divide-line">
-            {days.map((column) => (
-              <li key={column.key} className="px-4 py-2.5 text-sm">
-                <div className="flex justify-between gap-3">
-                  <span className="font-medium">{column.label}</span>
-                  <span className="tabular-nums">{money(column.total)}</span>
-                </div>
-                <p className="mt-0.5 text-xs text-faint">
-                  {Object.entries(column.parts)
-                    .filter(([, micros]) => micros !== 0)
-                    .map(([product, micros]) => `${productStyle(product).label} ${money(micros)}`)
-                    .join(" · ")}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <Card asChild className="overflow-hidden">
+        <section>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-line px-4 py-2 text-xs text-muted">
+            <span>Day</span>
+            <span>Charge at price</span>
+          </div>
+          {days.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-faint">Nothing used in this range.</p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {days.map((column) => (
+                <li key={column.key} className="px-4 py-2.5 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <span className="font-medium">{column.label}</span>
+                    <span className="tabular-nums">{money(column.total)}</span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-faint">
+                    {Object.entries(column.parts)
+                      .filter(([, micros]) => micros !== 0)
+                      .map(([product, micros]) => `${productStyle(product).label} ${money(micros)}`)
+                      .join(" · ")}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </Card>
     );
   }
   const products = report.products.filter((p) => shownLines(p.meters).length > 0);
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-surface">
-      {header("Product")}
-      {products.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-faint">Nothing used in this range.</p>
-      ) : (
-        products.map((product) => {
-          const color = productStyle(product.key).color;
-          return (
-            <div key={product.key} className="border-b border-line last:border-b-0">
-              <div className="flex items-baseline justify-between gap-3 bg-raised/40 px-4 py-2">
-                <h3 className="text-sm font-medium">{product.label}</h3>
-                <span className="text-sm font-medium tabular-nums">{money(product.micros)}</span>
+    <Card asChild className="overflow-hidden">
+      <section>
+        {header("Product")}
+        {products.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-faint">Nothing used in this range.</p>
+        ) : (
+          products.map((product) => {
+            const color = productStyle(product.key).color;
+            return (
+              <div key={product.key} className="border-b border-line last:border-b-0">
+                <div className="flex items-baseline justify-between gap-3 bg-raised/40 px-4 py-2">
+                  <h3 className="text-sm font-medium">{product.label}</h3>
+                  <span className="text-sm font-medium tabular-nums">{money(product.micros)}</span>
+                </div>
+                {product.features && product.features.length > 0 && (
+                  <p className="px-4 pt-2 text-xs text-faint">
+                    {product.features.map((f) => `${f.label}${f.count ? ` (${f.count})` : ""} ${money(f.micros)}`).join(" · ")}
+                  </p>
+                )}
+                {product.key === "agent" && report.models && report.models.length > 0 && (
+                  <p className="px-4 pt-1 text-xs text-faint">
+                    Tokens by model:{" "}
+                    {report.models.map((m) => `${m.model} ${quantity(m.input + m.output + m.cacheRead + m.cacheWrite, "tokens")}`).join(" · ")}
+                  </p>
+                )}
+                <ul className="divide-y divide-line/60">
+                  {shownLines(product.meters).map((meter) => (
+                    <MeterRow key={meter.key} meter={meter} color={color} projectHref={projectHref} />
+                  ))}
+                </ul>
               </div>
-              {product.features && product.features.length > 0 && (
-                <p className="px-4 pt-2 text-xs text-faint">
-                  {product.features.map((f) => `${f.label}${f.count ? ` (${f.count})` : ""} ${money(f.micros)}`).join(" · ")}
-                </p>
-              )}
-              {product.key === "agent" && report.models && report.models.length > 0 && (
-                <p className="px-4 pt-1 text-xs text-faint">
-                  Tokens by model:{" "}
-                  {report.models.map((m) => `${m.model} ${quantity(m.input + m.output + m.cacheRead + m.cacheWrite, "tokens")}`).join(" · ")}
-                </p>
-              )}
-              <ul className="divide-y divide-line/60">
-                {shownLines(product.meters).map((meter) => (
-                  <MeterRow key={meter.key} meter={meter} color={color} projectHref={projectHref} />
-                ))}
-              </ul>
-            </div>
-          );
-        })
-      )}
-    </section>
+            );
+          })
+        )}
+      </section>
+    </Card>
   );
 }
 
@@ -682,7 +694,7 @@ export function UsageSkeleton({ children }: { children?: ReactNode }) {
         Loading usage…
       </span>
       {children}
-      <div className="grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-3" aria-hidden="true">
+      <Card tone="plain" className="grid gap-px overflow-hidden bg-line sm:grid-cols-3" aria-hidden="true">
         {[0, 1, 2].map((i) => (
           <div key={i} className="h-[7.5rem] bg-surface p-4">
             <Skeleton className="h-3 w-28" />
@@ -690,23 +702,23 @@ export function UsageSkeleton({ children }: { children?: ReactNode }) {
             <Skeleton className="mt-3 h-1.5 w-full" />
           </div>
         ))}
-      </div>
-      <div className="rounded-xl border border-line bg-surface p-5" aria-hidden="true">
+      </Card>
+      <Card className="p-5" aria-hidden="true">
         <Skeleton className="h-4 w-28" />
         <div className="mt-6 flex h-[200px] items-end gap-1">
           {Array.from({ length: 24 }, (_, i) => (
             <Skeleton key={i} className="flex-1 rounded-t" style={{ height: `${20 + ((i * 37) % 60)}%` }} />
           ))}
         </div>
-      </div>
-      <div className="rounded-xl border border-line bg-surface" aria-hidden="true">
+      </Card>
+      <Card aria-hidden="true">
         {[0, 1, 2, 3, 4].map((i) => (
           <div key={i} className="flex items-center justify-between border-b border-line px-4 py-3 last:border-b-0">
             <Skeleton className="h-3 w-40" />
             <Skeleton className="h-3 w-16" />
           </div>
         ))}
-      </div>
+      </Card>
     </div>
   );
 }

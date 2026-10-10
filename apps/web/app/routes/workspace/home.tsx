@@ -22,6 +22,7 @@ import {
   WindowSwitch,
 } from "../../components/home";
 import { G1tMark, isOrchestrator } from "../../components/orchestrator";
+import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { channelPath } from "../../lib/chat";
 import { sidebarOrNull } from "../../lib/chat.server";
@@ -223,14 +224,16 @@ function AskG1t({ slug, available, error }: { slug: string; available: boolean; 
           placeholder={available ? "Ask g1t for anything…" : "g1t isn't reachable right now."}
           className="field-sizing-content block max-h-40 min-h-7 w-full grow resize-none bg-transparent py-1 text-[0.9375rem] leading-relaxed text-fg outline-none placeholder:text-faint disabled:cursor-not-allowed"
         />
-        <button
+        <Button
           type="submit"
           disabled={!available || busy || !text.trim()}
-          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-bg transition-colors hover:bg-accent-hover disabled:bg-line disabled:text-faint"
+          variant="accent"
+          size="sm"
+          className="rounded-lg px-3 text-sm disabled:bg-line disabled:text-faint disabled:opacity-100"
         >
           {busy ? "Sending…" : "Ask"}
           <ArrowRight size={14} />
-        </button>
+        </Button>
       </div>
       {error && <p className="px-4 pb-2.5 text-sm text-danger">{error}</p>}
     </Form>

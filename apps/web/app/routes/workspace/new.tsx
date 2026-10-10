@@ -4,6 +4,7 @@ import type { Route } from "./+types/new";
 import { page } from "../../lib/meta";
 import { planHref } from "../../components/start-plan";
 import { ButtonLink, ErrorText, Field, Input, SubmitButton } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { billing, identity } from "../../lib/services.server";
 import { InvitationList } from "../../components/invitation-list";
 import { answerInvitation, loadInvitations } from "../../lib/invitations.server";
@@ -127,41 +128,43 @@ export default function NewWorkspace({
 function OneFreeWorkspace({ free }: { free: string[] }) {
   const [first] = free;
   return (
-    <section className="mt-8 rounded-xl border border-line bg-surface p-5">
-      <h2 className="font-medium">You already own a free workspace</h2>
-      <p className="mt-2 text-sm text-muted">
-        Each person can own one workspace that is not on the g1t plan.{" "}
-        {free.length === 1 ? (
-          <>
-            Yours is <span className="font-mono text-fg">{first}</span>.
-          </>
-        ) : (
-          <>
-            You own {free.length} from before (
-            {free.map((slug, i) => (
-              <span key={slug}>
-                {i > 0 && ", "}
-                <span className="font-mono text-fg">{slug}</span>
-              </span>
-            ))}
-            ), and keep them all.
-          </>
-        )}{" "}
-        A new workspace starts free, so to make one, start the plan on {free.length === 1 ? "it" : "each of them"}, or delete{" "}
-        {free.length === 1 ? "it" : "the ones"} you no longer use.
-      </p>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <ButtonLink to={planHref(first)}>Start the plan on {first}</ButtonLink>
-        <Link to={`/${first}/-/settings`} className="text-sm text-muted hover:text-fg">
-          Workspace settings
-        </Link>
-      </div>
-      <p className="mt-4 text-xs text-faint">
-        The plan is one price for everyone in the workspace, never per person.{" "}
-        <Link to="/pricing" className="underline underline-offset-2 hover:text-fg">
-          Pricing
-        </Link>
-      </p>
-    </section>
+    <Card asChild className="mt-8 p-5">
+      <section>
+        <h2 className="font-medium">You already own a free workspace</h2>
+        <p className="mt-2 text-sm text-muted">
+          Each person can own one workspace that is not on the g1t plan.{" "}
+          {free.length === 1 ? (
+            <>
+              Yours is <span className="font-mono text-fg">{first}</span>.
+            </>
+          ) : (
+            <>
+              You own {free.length} from before (
+              {free.map((slug, i) => (
+                <span key={slug}>
+                  {i > 0 && ", "}
+                  <span className="font-mono text-fg">{slug}</span>
+                </span>
+              ))}
+              ), and keep them all.
+            </>
+          )}{" "}
+          A new workspace starts free, so to make one, start the plan on {free.length === 1 ? "it" : "each of them"}, or delete{" "}
+          {free.length === 1 ? "it" : "the ones"} you no longer use.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <ButtonLink to={planHref(first)}>Start the plan on {first}</ButtonLink>
+          <Link to={`/${first}/-/settings`} className="text-sm text-muted hover:text-fg">
+            Workspace settings
+          </Link>
+        </div>
+        <p className="mt-4 text-xs text-faint">
+          The plan is one price for everyone in the workspace, never per person.{" "}
+          <Link to="/pricing" className="underline underline-offset-2 hover:text-fg">
+            Pricing
+          </Link>
+        </p>
+      </section>
+    </Card>
   );
 }

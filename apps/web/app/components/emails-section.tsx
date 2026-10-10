@@ -5,7 +5,8 @@ import { type AccountEmails, type SecurityEvent, securityEventLabel } from "@g1t
 
 import { addressActions, backupChoices } from "../lib/emails";
 import type { EmailActionData } from "../lib/emails.server";
-import { ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "./ui";
+import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
+import { Badge } from "./ui/badge";
 import { SelectField } from "./ui/select";
 import { SwitchCard } from "./ui/switch";
 
@@ -15,7 +16,7 @@ function AddressButton({ intent, email, label, pending }: { intent: string; emai
     <Form method="post">
       <input type="hidden" name="intent" value={intent} />
       <input type="hidden" name="email" value={email} />
-      <SubmitButton variant="quiet" pending={pending} match={{ intent, email }}>
+      <SubmitButton variant="outline" pending={pending} match={{ intent, email }}>
         {label}
       </SubmitButton>
     </Form>
@@ -134,8 +135,8 @@ export function EmailsSection({
                 <div className="min-w-0">
                   <p className="truncate text-sm">{email.email}</p>
                   <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-faint">
-                    {email.primary && <Pill>Primary</Pill>}
-                    {email.backup && <Pill>Backup</Pill>}
+                    {email.primary && <Badge size="md">Primary</Badge>}
+                    {email.backup && <Badge size="md">Backup</Badge>}
                     {email.verified ? (
                       <span>
                         Confirmed {email.verifiedAt ? <TimeAgo at={email.verifiedAt} /> : null}
@@ -192,7 +193,7 @@ export function EmailsSection({
               options={[{ value: "", label: "Primary address only" }, ...backups.map((email) => ({ value: email.email, label: email.email }))]}
             />
           </div>
-          <SubmitButton variant="quiet" pending="Saving…" match={{ intent: "backup-email" }} disabled={backups.length === 0}>
+          <SubmitButton variant="outline" pending="Saving…" match={{ intent: "backup-email" }} disabled={backups.length === 0}>
             Save
           </SubmitButton>
         </Form>
@@ -218,7 +219,7 @@ export function EmailsSection({
             <p className="text-xs text-faint">
               Commits g1t makes for you now carry <span className="font-mono [overflow-wrap:anywhere]">{data.commitEmail}</span>.
             </p>
-            <SubmitButton variant="quiet" pending="Saving…" match={{ intent: "email-privacy" }}>
+            <SubmitButton variant="outline" pending="Saving…" match={{ intent: "email-privacy" }}>
               Save
             </SubmitButton>
           </div>

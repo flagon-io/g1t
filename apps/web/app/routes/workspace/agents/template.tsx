@@ -15,6 +15,7 @@ import { routingWords, templateListings, templatesPath } from "../../../lib/agen
 import { loadTemplates } from "../../../lib/agent-templates.server";
 import { page } from "../../../lib/meta";
 import { requireUser, roleIn } from "../../../lib/session.server";
+import { Card } from "../../../components/ui/card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   const template = args.loaderData?.templates?.find((t) => t.id === params.template);
@@ -86,14 +87,16 @@ export default function AgentTemplate({ loaderData, params }: Route.ComponentPro
                 Helpers it works with
               </h2>
               <p className="mt-1 text-sm text-muted">Smaller agents it starts for one piece of its work, paid from its own budget.</p>
-              <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-                {template.subagents.map((helper) => (
-                  <li key={helper.name} className="px-4 py-3">
-                    <p className="font-mono text-[0.8125rem]">{helper.name}</p>
-                    <p className="mt-0.5 text-sm text-muted">{helper.description}</p>
-                  </li>
-                ))}
-              </ul>
+              <Card asChild divided className="mt-3 overflow-hidden">
+                <ul>
+                  {template.subagents.map((helper) => (
+                    <li key={helper.name} className="px-4 py-3">
+                      <p className="font-mono text-[0.8125rem]">{helper.name}</p>
+                      <p className="mt-0.5 text-sm text-muted">{helper.description}</p>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
             </section>
           )}
 
@@ -102,58 +105,64 @@ export default function AgentTemplate({ loaderData, params }: Route.ComponentPro
               The instructions it starts from
             </h2>
             <p className="mt-1 text-sm text-muted">Yours to edit when you start the agent, and on its profile after.</p>
-            <pre className="mt-3 max-h-96 overflow-auto rounded-xl border border-line bg-surface p-4 font-sans text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-fg-soft">{template.instructions}</pre>
+            <Card asChild className="mt-3 max-h-96 overflow-auto p-4 font-sans text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-fg-soft">
+              <pre>{template.instructions}</pre>
+            </Card>
           </section>
         </div>
 
         <aside className="space-y-6 text-sm">
-          <section aria-labelledby="configure" className="rounded-xl border border-line bg-surface p-4">
-            <h2 id="configure" className="text-xs text-faint">
-              What you configure
-            </h2>
-            <dl className="mt-3 space-y-4">
-              <div>
-                <dt className="text-xs text-faint">Name</dt>
-                <dd className="mt-0.5">{names.slice(0, 4).join(", ")}, or your own</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-faint">Voice</dt>
-                <dd className="mt-0.5">{voice ? voice.label : template.personality_preset}</dd>
-                {voice && <dd className="text-xs text-muted">{voice.about}</dd>}
-              </div>
-              <div>
-                <dt className="text-xs text-faint">Models</dt>
-                <dd className="mt-0.5">{routingWords(template.routing)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-faint">Budget</dt>
-                <dd className="mt-0.5">The workspace's default for a new agent, billed at what it costs</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-faint">Team and access</dt>
-                <dd className="mt-0.5">A team you pick. It works with the access of the person asking, never more.</dd>
-              </div>
-            </dl>
-          </section>
-          <section aria-labelledby="here" className="rounded-xl border border-line bg-surface p-4">
-            <h2 id="here" className="text-xs text-faint">
-              In this workspace
-            </h2>
-            {agents.length === 0 ? (
-              <p className="mt-1 text-muted">No agent has started from it yet.</p>
-            ) : (
-              <ul className="mt-2 space-y-1.5">
-                {agents.map((agent) => (
-                  <li key={agent.id} className="flex items-center gap-2">
-                    <PixelCreature seed={agent.handle} size={20} />
-                    <Link to={`/${slug}/-/agents/${agent.handle}`} className="truncate hover:underline">
-                      {agent.display_name} <span className="text-faint">@{agent.handle}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <Card asChild className="p-4">
+            <section aria-labelledby="configure">
+              <h2 id="configure" className="text-xs text-faint">
+                What you configure
+              </h2>
+              <dl className="mt-3 space-y-4">
+                <div>
+                  <dt className="text-xs text-faint">Name</dt>
+                  <dd className="mt-0.5">{names.slice(0, 4).join(", ")}, or your own</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-faint">Voice</dt>
+                  <dd className="mt-0.5">{voice ? voice.label : template.personality_preset}</dd>
+                  {voice && <dd className="text-xs text-muted">{voice.about}</dd>}
+                </div>
+                <div>
+                  <dt className="text-xs text-faint">Models</dt>
+                  <dd className="mt-0.5">{routingWords(template.routing)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-faint">Budget</dt>
+                  <dd className="mt-0.5">The workspace's default for a new agent, billed at what it costs</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-faint">Team and access</dt>
+                  <dd className="mt-0.5">A team you pick. It works with the access of the person asking, never more.</dd>
+                </div>
+              </dl>
+            </section>
+          </Card>
+          <Card asChild className="p-4">
+            <section aria-labelledby="here">
+              <h2 id="here" className="text-xs text-faint">
+                In this workspace
+              </h2>
+              {agents.length === 0 ? (
+                <p className="mt-1 text-muted">No agent has started from it yet.</p>
+              ) : (
+                <ul className="mt-2 space-y-1.5">
+                  {agents.map((agent) => (
+                    <li key={agent.id} className="flex items-center gap-2">
+                      <PixelCreature seed={agent.handle} size={20} />
+                      <Link to={`/${slug}/-/agents/${agent.handle}`} className="truncate hover:underline">
+                        {agent.display_name} <span className="text-faint">@{agent.handle}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </Card>
         </aside>
       </div>
     </div>

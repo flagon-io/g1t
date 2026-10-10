@@ -8,6 +8,9 @@ import { page } from "../../lib/meta";
 import { StateFilter } from "../../components/security";
 import { ActivationPrompt, CARD, CodeAlertItem, FilterSelect, LIST, SectionHeader } from "../../components/security-suite";
 import { TimeAgo } from "../../components/ui";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { securitySuite } from "../../lib/services.server";
 import { getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
 import { requireInsider } from "../../lib/access.server";
@@ -59,9 +62,9 @@ export default function CodeScanning({ loaderData, params }: Route.ComponentProp
         actions={
           scanning.entitled && can.manage_settings && !scanning.configured ? (
             <Form method="post" action={`${base}/security/code-scanning/setup`}>
-              <button type="submit" disabled={settingUp} className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover disabled:opacity-50">
+              <Button type="submit" disabled={settingUp}>
                 {settingUp ? "Opening a pull request…" : "Set up code scanning"}
-              </button>
+              </Button>
             </Form>
           ) : null
         }
@@ -88,7 +91,9 @@ export default function CodeScanning({ loaderData, params }: Route.ComponentProp
             </div>
           </div>
           {shown.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">No {filters.state} alerts match.</p>
+            <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
+              <p>No {filters.state} alerts match.</p>
+            </Card>
           ) : (
             <ul className={LIST}>
               {shown.map((alert) => (
@@ -101,24 +106,24 @@ export default function CodeScanning({ loaderData, params }: Route.ComponentProp
       {scanning.analyses.length > 0 && (
         <section>
           <h3 className="text-base font-semibold tracking-tight">Recent analyses</h3>
-          <div className={`${CARD} mt-2 overflow-x-auto`}>
-            <table className="w-full min-w-[36rem] text-sm">
-              <thead className="text-left text-xs text-muted">
-                <tr className="border-b border-line">
-                  <th className="px-4 py-2 font-medium">Tool</th>
-                  <th className="px-3 py-2 font-medium">Ref</th>
-                  <th className="px-3 py-2 font-medium">Commit</th>
-                  <th className="px-3 py-2 text-right font-medium">Results</th>
-                  <th className="px-3 py-2 text-right font-medium">New</th>
-                  <th className="px-3 py-2 text-right font-medium">Fixed</th>
-                  <th className="px-3 py-2 font-medium">When</th>
-                </tr>
-              </thead>
-              <tbody className="tabular-nums">
+          <div className={`${CARD} mt-2`}>
+            <Table className="min-w-[36rem]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="px-4">Tool</TableHead>
+                  <TableHead>Ref</TableHead>
+                  <TableHead>Commit</TableHead>
+                  <TableHead className="text-right">Results</TableHead>
+                  <TableHead className="text-right">New</TableHead>
+                  <TableHead className="text-right">Fixed</TableHead>
+                  <TableHead>When</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="tabular-nums">
                 {scanning.analyses.slice(0, 15).map((analysis) => (
-                  <tr key={analysis.id} className="border-b border-line last:border-0">
-                    <td className="px-4 py-2">{analysis.tool}</td>
-                    <td className="px-3 py-2 font-mono text-xs">
+                  <TableRow key={analysis.id}>
+                    <TableCell className="px-4">{analysis.tool}</TableCell>
+                    <TableCell className="font-mono text-xs">
                       {analysis.pull != null ? (
                         <a href={`${base}/security/pulls/${analysis.pull}`} className="hover:underline">
                           #{analysis.pull}
@@ -126,18 +131,18 @@ export default function CodeScanning({ loaderData, params }: Route.ComponentProp
                       ) : (
                         analysis.gitRef.replace("refs/heads/", "")
                       )}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-xs">{analysis.commitSha.slice(0, 7)}</td>
-                    <td className="px-3 py-2 text-right">{analysis.results}</td>
-                    <td className="px-3 py-2 text-right">{analysis.newAlerts}</td>
-                    <td className="px-3 py-2 text-right">{analysis.fixedAlerts}</td>
-                    <td className="px-3 py-2 text-xs text-muted">
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{analysis.commitSha.slice(0, 7)}</TableCell>
+                    <TableCell className="text-right">{analysis.results}</TableCell>
+                    <TableCell className="text-right">{analysis.newAlerts}</TableCell>
+                    <TableCell className="text-right">{analysis.fixedAlerts}</TableCell>
+                    <TableCell className="text-xs text-muted">
                       <TimeAgo at={analysis.createdAt} />
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </section>
       )}

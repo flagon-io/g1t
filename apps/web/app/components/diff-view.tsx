@@ -22,7 +22,10 @@ import type {
   HighlightedLine,
 } from "../lib/diff";
 import { Markdown } from "./markdown";
-import { Avatar, Button, EmptyState, SubmitButton, Textarea, TimeAgo } from "./ui";
+import { EmptyState, SubmitButton, Textarea, TimeAgo } from "./ui";
+import { Avatar } from "./ui/avatar";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Checkbox } from "./ui/checkbox";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
 
@@ -113,7 +116,7 @@ function fileTone(status: HighlightedFile["status"]) {
 /** One comment made on a line, shown under that line. */
 function LineComment({ comment }: { comment: Comment }) {
   return (
-    <div className="rounded-lg border border-line bg-bg font-sans">
+    <Card tone="bg" radius="lg" className="font-sans">
       <p className="flex items-center gap-2 border-b border-line px-3 py-1.5 text-xs text-muted">
         <Avatar name={comment.author.username} size={16} />
         <span className="font-medium text-fg">{comment.author.username}</span>
@@ -122,7 +125,7 @@ function LineComment({ comment }: { comment: Comment }) {
       <div className="px-3 py-2 text-sm">
         <Markdown source={comment.body} />
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -171,7 +174,7 @@ function Thread({
             <SubmitButton match={{ action: "comment", path, line: String(line) }} pending="Commenting…">
               Comment
             </SubmitButton>
-            <Button variant="quiet" type="button" onClick={onClose}>
+            <Button variant="outline" type="button" onClick={onClose}>
               Cancel
             </Button>
           </div>
@@ -183,14 +186,15 @@ function Thread({
 
 function CommentButton({ line, onClick }: { line: number; onClick: (event: React.MouseEvent) => void }) {
   return (
-    <button
+    <Button
       type="button"
       aria-label={`Comment on line ${line}`}
       onClick={onClick}
-      className="absolute top-0 -right-2.5 z-10 hidden size-5 items-center justify-center rounded bg-accent text-bg group-hover:flex focus-visible:flex pointer-coarse:-right-1 pointer-coarse:flex pointer-coarse:size-7"
+      variant="accent" size="icon"
+      className="absolute top-0 -right-2.5 z-10 hidden size-5 rounded group-hover:flex focus-visible:flex pointer-coarse:-right-1 pointer-coarse:flex pointer-coarse:size-7"
     >
       <MessageSquarePlus size={12} />
-    </button>
+    </Button>
   );
 }
 
@@ -424,93 +428,96 @@ function FileSection({
   }, [file, collapsed]);
   const props = { file: highlighted ?? file, comments, canComment: review?.canComment ?? false };
   return (
-    <section
-      ref={section}
-      id={`file-${file.path}`}
-      data-diff-file={file.path}
-      // Lands below the site bar and the change's toolbar, whatever their height.
-      className="scroll-mt-[calc(4rem+var(--diff-toolbar,3rem))] rounded-xl border border-line"
-    >
-      <header
-        // Sticks under the change's toolbar (its height is --diff-toolbar), not behind it.
-        className={`sticky top-[calc(var(--topbar-h)+var(--diff-toolbar,0px))] z-20 flex items-center gap-2 border-line bg-surface/95 px-2 py-2 backdrop-blur sm:gap-2.5 sm:px-3 ${
-          collapsed ? "rounded-xl" : "rounded-t-xl border-b"
-        }`}
+    <Card asChild tone="plain" className="scroll-mt-[calc(4rem+var(--diff-toolbar,3rem))]">
+      <section
+        ref={section}
+        id={`file-${file.path}`}
+        data-diff-file={file.path}
+        // Lands below the site bar and the change's toolbar, whatever their height.
+       
       >
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label={collapsed ? `Show ${file.path}` : `Hide ${file.path}`}
-          aria-expanded={!collapsed}
-          className="-m-1.5 shrink-0 rounded p-2 text-faint hover:bg-raised hover:text-fg sm:m-0 sm:p-0.5"
-        >
-          {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
-        </button>
-        <Icon size={15} className={`hidden shrink-0 sm:block ${fileTone(file.status)}`} />
-        {/* A long path is cut at its start, so the file's own name shows. */}
-        <button
-          type="button"
-          onClick={onToggle}
-          dir="rtl"
-          className={`min-w-0 grow truncate text-left font-mono text-[0.8125rem] ${viewed ? "text-muted" : ""}`}
-        >
-          <bdi>{file.path}</bdi>
-        </button>
-        {comments.length > 0 && (
-          <span className="flex items-center gap-1 text-xs text-muted">
-            <MessageSquarePlus size={12} />
-            {comments.length}
-          </span>
-        )}
-        <Stat additions={file.additions} deletions={file.deletions} />
-        {fileBase && file.status !== "deleted" && (
-          <span className="hidden items-center gap-0.5 text-xs sm:flex">
-            <Link to={`${fileBase}/${file.path}`} className="rounded px-1.5 py-0.5 text-muted hover:bg-raised hover:text-fg">
-              View
-            </Link>
-            <Link
-              to={`${fileBase}/${file.path}?blame=1`}
-              className="rounded px-1.5 py-0.5 text-muted hover:bg-raised hover:text-fg"
-            >
-              Blame
-            </Link>
-          </span>
-        )}
-        <label
-          className={`ml-1 flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs transition-colors select-none sm:py-0.5 ${
-            viewed ? "border-accent/40 bg-accent/10 text-accent" : "border-line text-muted hover:text-fg"
-          }`}
-        >
-          <Checkbox
-            checked={viewed}
-            onCheckedChange={(checked) => onViewed(checked === true)}
-            className="size-3.5 rounded-[4px] [&_svg]:size-2.5"
-          />
-          <span className="sr-only sm:not-sr-only">Viewed</span>
-        </label>
-      </header>
-      {!collapsed && (
-        <div className="overflow-hidden rounded-b-xl">
-          {outdated.length > 0 && (
-            <div className="space-y-2 border-b border-line bg-surface/50 p-3">
-              <p className="text-xs text-faint">On lines that have since changed</p>
-              {outdated.map((comment) => (
-                <LineComment key={comment.id} comment={comment} />
-              ))}
-            </div>
+        <header
+          // Sticks under the change's toolbar (its height is --diff-toolbar), not behind it.
+          className={`sticky top-[calc(var(--topbar-h)+var(--diff-toolbar,0px))] z-20 flex items-center gap-2 border-line bg-surface/95 px-2 py-2 backdrop-blur sm:gap-2.5 sm:px-3 ${
+            collapsed ? "rounded-xl" : "rounded-t-xl border-b"
+          }`}>
+          <Button
+            type="button"
+            onClick={onToggle}
+            aria-label={collapsed ? `Show ${file.path}` : `Hide ${file.path}`}
+            aria-expanded={!collapsed}
+            variant="ghost"
+            size="inline"
+            className="-m-1.5 rounded p-2 text-faint sm:m-0 sm:p-0.5"
+          >
+            {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+          </Button>
+          <Icon size={15} className={`hidden shrink-0 sm:block ${fileTone(file.status)}`} />
+          {/* A long path is cut at its start, so the file's own name shows. */}
+          <button
+            type="button"
+            onClick={onToggle}
+            dir="rtl"
+            className={`min-w-0 grow truncate text-left font-mono text-[0.8125rem] ${viewed ? "text-muted" : ""}`}
+          >
+            <bdi>{file.path}</bdi>
+          </button>
+          {comments.length > 0 && (
+            <span className="flex items-center gap-1 text-xs text-muted">
+              <MessageSquarePlus size={12} />
+              {comments.length}
+            </span>
           )}
-          {file.binary ? (
-            <p className="px-4 py-6 text-sm text-muted">Binary or large file; its contents are not shown.</p>
-          ) : file.hunks.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted">No line changes{file.status === "added" ? ": an empty file" : ""}.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              {layout === "split" ? <SplitRows {...props} /> : <UnifiedRows {...props} />}
-            </div>
+          <Stat additions={file.additions} deletions={file.deletions} />
+          {fileBase && file.status !== "deleted" && (
+            <span className="hidden items-center gap-0.5 text-xs sm:flex">
+              <Link to={`${fileBase}/${file.path}`} className="rounded px-1.5 py-0.5 text-muted hover:bg-raised hover:text-fg">
+                View
+              </Link>
+              <Link
+                to={`${fileBase}/${file.path}?blame=1`}
+                className="rounded px-1.5 py-0.5 text-muted hover:bg-raised hover:text-fg"
+              >
+                Blame
+              </Link>
+            </span>
           )}
-        </div>
-      )}
-    </section>
+          <label
+            className={`ml-1 flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs transition-colors select-none sm:py-0.5 ${
+              viewed ? "border-accent/40 bg-accent/10 text-accent" : "border-line text-muted hover:text-fg"
+            }`}
+          >
+            <Checkbox
+              checked={viewed}
+              onCheckedChange={(checked) => onViewed(checked === true)}
+              className="size-3.5 rounded-[4px] [&_svg]:size-2.5"
+            />
+            <span className="sr-only sm:not-sr-only">Viewed</span>
+          </label>
+        </header>
+        {!collapsed && (
+          <div className="overflow-hidden rounded-b-xl">
+            {outdated.length > 0 && (
+              <div className="space-y-2 border-b border-line bg-surface/50 p-3">
+                <p className="text-xs text-faint">On lines that have since changed</p>
+                {outdated.map((comment) => (
+                  <LineComment key={comment.id} comment={comment} />
+                ))}
+              </div>
+            )}
+            {file.binary ? (
+              <p className="px-4 py-6 text-sm text-muted">Binary or large file; its contents are not shown.</p>
+            ) : file.hunks.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-muted">No line changes{file.status === "added" ? ": an empty file" : ""}.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                {layout === "split" ? <SplitRows {...props} /> : <UnifiedRows {...props} />}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+    </Card>
   );
 }
 
@@ -784,22 +791,26 @@ export function DiffView({
         <div className="ml-auto flex items-center gap-2">
           {files.length > 1 && (
             // Below xl the tree is not beside the diffs: it opens as a sheet.
-            <button
+            <Button
               type="button"
               onClick={() => setPicking(true)}
-              className="flex min-h-9 items-center gap-1.5 rounded-md border border-line px-2.5 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg xl:hidden"
+              variant="outline"
+              size="inline"
+              className="flex min-h-9 px-2.5 text-xs text-muted xl:hidden font-normal"
             >
               <Files size={13} />
               Files
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             type="button"
             onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(files.map((file) => file.path)))}
-            className="rounded-md px-2 py-1 text-xs text-muted hover:bg-raised hover:text-fg"
+            variant="ghost"
+            size="inline"
+            className="px-2 py-1 text-xs font-normal"
           >
             {allCollapsed ? "Expand all" : "Collapse all"}
-          </button>
+          </Button>
           <div className="hidden rounded-md border border-line p-0.5 sm:flex" role="radiogroup" aria-label="Layout">
             {(
               [

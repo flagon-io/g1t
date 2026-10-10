@@ -8,6 +8,8 @@ import { useFoliosAction } from "../../../components/folios/actions";
 import { KindIcon } from "../../../components/folios/kinds";
 import { EmptyState, ErrorText, TimeAgo } from "../../../components/ui";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../../components/ui/alert-dialog";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { canDo } from "../../../lib/folios";
 import { page } from "../../../lib/meta";
 import { folios } from "../../../lib/services.server";
@@ -45,27 +47,29 @@ export default function FoliosTrash({ loaderData, params }: Route.ComponentProps
         ) : items.length === 0 ? (
           <EmptyState title="The trash is empty" />
         ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {items.map((f) => (
-              <li key={f.id} className="flex items-center gap-3 px-3 py-2.5 sm:px-4">
-                <KindIcon kind={f.kind} />
-                <span className="min-w-0 grow">
-                  <span className="block truncate text-sm">{f.title || "Untitled"}</span>
-                  <span className="block truncate text-xs text-faint">
-                    {f.space?.name ?? "Private"} · trashed {f.trashed_at ? <TimeAgo at={f.trashed_at} /> : null}
+          <Card asChild divided className="overflow-hidden">
+            <ul>
+              {items.map((f) => (
+                <li key={f.id} className="flex items-center gap-3 px-3 py-2.5 sm:px-4">
+                  <KindIcon kind={f.kind} />
+                  <span className="min-w-0 grow">
+                    <span className="block truncate text-sm">{f.title || "Untitled"}</span>
+                    <span className="block truncate text-xs text-faint">
+                      {f.space?.name ?? "Private"} · trashed {f.trashed_at ? <TimeAgo at={f.trashed_at} /> : null}
+                    </span>
                   </span>
-                </span>
-                <button type="button" onClick={() => send("restore", { folio_id: f.id })} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-line px-2.5 text-xs text-fg hover:bg-raised">
-                  <RotateCcw size={13} /> Restore
-                </button>
-                {canDo(f.viewer_role, "manage") && (
-                  <button type="button" onClick={() => setForever(f)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-danger/40 px-2.5 text-xs text-danger hover:bg-danger/10">
-                    <Trash2 size={13} /> <span className="max-sm:hidden">Delete</span>
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
+                  <Button type="button" onClick={() => send("restore", { folio_id: f.id })} variant="outline" size="sm" className="text-xs text-fg hover:bg-raised font-normal">
+                    <RotateCcw size={13} /> Restore
+                  </Button>
+                  {canDo(f.viewer_role, "manage") && (
+                    <Button type="button" onClick={() => setForever(f)} variant="destructive" size="sm" className="text-xs font-normal">
+                      <Trash2 size={13} /> <span className="max-sm:hidden">Delete</span>
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
       </div>
       <AlertDialog open={!!forever} onOpenChange={(open) => !open && setForever(null)}>

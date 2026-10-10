@@ -25,6 +25,7 @@ import {
 import { Meter } from "../../components/agents/parts";
 import { Savings } from "../../components/effort";
 import { readOrNull } from "../../components/agents/actions.server";
+import { Card } from "../../components/ui/card";
 import { Skeleton } from "../../components/ui/skeleton";
 import { microsFromDollars } from "../../lib/agent-form";
 import { cn } from "../../lib/cn";
@@ -145,7 +146,7 @@ export default function SpendPage({ loaderData }: Route.ComponentProps) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {mayWorkspace && (
-            <div role="group" aria-label="Whose spend" className="inline-flex rounded-lg border border-line bg-surface p-0.5">
+            <Card role="group" aria-label="Whose spend" radius="lg" className="inline-flex p-0.5">
               {(["workspace", "me"] as const).map((key) => (
                 <Link
                   key={key}
@@ -156,24 +157,26 @@ export default function SpendPage({ loaderData }: Route.ComponentProps) {
                   {key === "workspace" ? "Workspace" : "You"}
                 </Link>
               ))}
-            </div>
+            </Card>
           )}
-          <nav aria-label="Period" className="inline-flex rounded-lg border border-line bg-surface p-0.5">
-            {SPEND_PERIODS.map((p) => (
-              <Link
-                key={p.key}
-                to={href({ period: p.key })}
-                preventScrollReset
-                aria-current={period === p.key ? "page" : undefined}
-                className={cn(
-                  "inline-flex h-7 items-center rounded-md px-2.5 text-[0.8125rem] whitespace-nowrap transition-colors",
-                  period === p.key ? "bg-raised text-fg ring-1 ring-line-strong" : "text-muted hover:text-fg",
-                )}
-              >
-                {p.short}
-              </Link>
-            ))}
-          </nav>
+          <Card asChild radius="lg" className="inline-flex p-0.5">
+            <nav aria-label="Period">
+              {SPEND_PERIODS.map((p) => (
+                <Link
+                  key={p.key}
+                  to={href({ period: p.key })}
+                  preventScrollReset
+                  aria-current={period === p.key ? "page" : undefined}
+                  className={cn(
+                    "inline-flex h-7 items-center rounded-md px-2.5 text-[0.8125rem] whitespace-nowrap transition-colors",
+                    period === p.key ? "bg-raised text-fg ring-1 ring-line-strong" : "text-muted hover:text-fg",
+                  )}
+                >
+                  {p.short}
+                </Link>
+              ))}
+            </nav>
+          </Card>
         </div>
       </header>
 
@@ -214,7 +217,7 @@ export default function SpendPage({ loaderData }: Route.ComponentProps) {
 
       {/* Spend by day. */}
       <Section id="by-day" title="By day" aside={`${periodLabel(period)}, UTC`}>
-        <div className="rounded-xl border border-line bg-surface px-4 pt-4 pb-3">
+        <Card className="px-4 pt-4 pb-3">
           <Suspense fallback={<Skeleton className="h-32 w-full" />}>
             <Await resolve={Promise.all([breakdown, usage])}>
               {([spent, used]) => {
@@ -223,7 +226,7 @@ export default function SpendPage({ loaderData }: Route.ComponentProps) {
               }}
             </Await>
           </Suspense>
-        </div>
+        </Card>
       </Section>
 
       {/* Where it went. */}

@@ -3,6 +3,8 @@ import { useState } from "react";
 
 import type { AgentRouting, ModelTier, SubagentDef } from "@g1t/contracts";
 
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -158,28 +160,32 @@ export function RoleFields({
               />
               {!locked && (
                 <Hint label="Remove">
-                  <button
+                  <Button
                     type="button"
                     aria-label={`Remove responsibility ${index + 1}`}
                     onClick={() => setItems((now) => (now.length > 1 ? now.filter((_, i) => i !== index) : [""]))}
-                    className="flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-faint"
                   >
                     <X size={14} />
-                  </button>
+                  </Button>
                 </Hint>
               )}
             </li>
           ))}
         </ul>
         {!locked && items.length < MAX_RESPONSIBILITIES && (
-          <button
+          <Button
             type="button"
             onClick={() => setItems((now) => [...now, ""])}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[0.8125rem] text-muted hover:bg-raised hover:text-fg"
+            variant="ghost"
+            size="xs"
+            className="mt-2 gap-1.5 text-[0.8125rem] font-normal"
           >
             <Plus size={14} />
             Add a responsibility
-          </button>
+          </Button>
         )}
       </div>
     </>
@@ -211,56 +217,66 @@ export function SubagentsField({ initial, routing }: { initial: SubagentDef[]; r
       <input type="hidden" name="subagents" value={JSON.stringify(list)} />
       <p className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-0.5 text-xs text-muted">Used inside tasks: coming soon</p>
       {list.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-line px-4 py-5 text-sm text-muted">None yet. A subagent is help it calls on for one kind of work, such as finding flaky tests.</p>
+        <Card asChild tone="plain" radius="lg" className="border-dashed px-4 py-5 text-sm text-muted">
+          <p>None yet. A subagent is help it calls on for one kind of work, such as finding flaky tests.</p>
+        </Card>
       ) : (
-        <ul className="divide-y divide-line rounded-lg border border-line">
-          {list.map((sub, index) => (
-            <li key={sub.name} className="flex items-center gap-3 px-3.5 py-2.5">
-              <span className="min-w-0 grow">
-                <span className="block font-mono text-sm text-fg">{sub.name}</span>
-                <span className="block truncate text-xs text-muted">{sub.description || "No description"}</span>
-              </span>
-              <span className="hidden text-xs text-faint sm:inline">
-                {sub.routing.floor ?? "any"} to {sub.routing.ceiling ?? "any"} · {sub.max_parallel} at once
-              </span>
-              <Hint label="Edit">
-                <button
-                  type="button"
-                  aria-label={`Edit ${sub.name}`}
-                  onClick={() => {
-                    setError(null);
-                    setEditing({ index, draft: sub });
-                  }}
-                  className="flex size-8 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg"
-                >
-                  <Pencil size={14} />
-                </button>
-              </Hint>
-              <Hint label="Remove">
-                <button
-                  type="button"
-                  aria-label={`Remove ${sub.name}`}
-                  onClick={() => setList((now) => now.filter((_, i) => i !== index))}
-                  className="flex size-8 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-danger"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </Hint>
-            </li>
-          ))}
-        </ul>
+        <Card asChild tone="plain" radius="lg" divided>
+          <ul>
+            {list.map((sub, index) => (
+              <li key={sub.name} className="flex items-center gap-3 px-3.5 py-2.5">
+                <span className="min-w-0 grow">
+                  <span className="block font-mono text-sm text-fg">{sub.name}</span>
+                  <span className="block truncate text-xs text-muted">{sub.description || "No description"}</span>
+                </span>
+                <span className="hidden text-xs text-faint sm:inline">
+                  {sub.routing.floor ?? "any"} to {sub.routing.ceiling ?? "any"} · {sub.max_parallel} at once
+                </span>
+                <Hint label="Edit">
+                  <Button
+                    type="button"
+                    aria-label={`Edit ${sub.name}`}
+                    onClick={() => {
+                      setError(null);
+                      setEditing({ index, draft: sub });
+                    }}
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-faint"
+                  >
+                    <Pencil size={14} />
+                  </Button>
+                </Hint>
+                <Hint label="Remove">
+                  <Button
+                    type="button"
+                    aria-label={`Remove ${sub.name}`}
+                    onClick={() => setList((now) => now.filter((_, i) => i !== index))}
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-faint hover:text-danger"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </Hint>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
-      <button
+      <Button
         type="button"
         onClick={() => {
           setError(null);
           setEditing({ index: null, draft: { ...BLANK_SUBAGENT, routing: clampRouting(BLANK_SUBAGENT.routing, routing) } });
         }}
-        className="mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[0.8125rem] text-muted hover:bg-raised hover:text-fg"
+        variant="ghost"
+        size="xs"
+        className="mt-2 gap-1.5 text-[0.8125rem] font-normal"
       >
         <Plus size={14} />
         Add a subagent
-      </button>
+      </Button>
       <Sheet open={editing != null} onOpenChange={(open) => !open && setEditing(null)}>
         <SheetContent side="right" className="w-[28rem] max-w-[100vw]">
           {editing && (
@@ -342,16 +358,17 @@ export function SubagentsField({ initial, routing }: { initial: SubagentDef[]; r
               </div>
               <div className="flex items-center gap-3 border-t border-line px-5 py-3">
                 {error && <p className="text-sm text-danger">{error}</p>}
-                <button
+                <Button
                   type="button"
                   onClick={() => setEditing(null)}
-                  className="ml-auto h-9 rounded-md border border-line px-3.5 text-sm font-medium text-fg/90 hover:border-line-strong hover:bg-surface"
+                  variant="outline"
+                  className="ml-auto text-fg/90"
                 >
                   Cancel
-                </button>
-                <button type="button" onClick={save} className="h-9 rounded-md bg-accent px-3.5 text-sm font-medium text-bg hover:bg-accent-hover">
+                </Button>
+                <Button type="button" onClick={save} variant="accent">
                   {editing.index == null ? "Add" : "Done"}
-                </button>
+                </Button>
               </div>
             </div>
           )}

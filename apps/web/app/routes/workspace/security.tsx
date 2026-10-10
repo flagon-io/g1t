@@ -10,6 +10,7 @@ import { ActivationPrompt, CARD, CoverageTable, TrendChart, countsLine } from ".
 import { WorkspaceSecurityTabs } from "../../components/workspace-security-tabs";
 import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 import { repos, security, securitySuite } from "../../lib/services.server";
 import { getViewer, managesSecurity, roleIn, unwrap } from "../../lib/session.server";
 import { planPrice } from "../../lib/security-suite.server";
@@ -110,40 +111,44 @@ export default function WorkspaceSecurity({ loaderData, params }: Route.Componen
             </p>
           </div>
           {projects.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">
-              No project has been scanned yet. Each one is scanned on its next push to its default branch, or when its Security
-              page is first opened.
-            </p>
+            <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
+              <p>
+                No project has been scanned yet. Each one is scanned on its next push to its default branch, or when its Security
+                page is first opened.
+              </p>
+            </Card>
           ) : (
-            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-              {projects.map((project) => (
-                <li key={project.repoId}>
-                  <Link
-                    to={`/${params.owner}/${project.name}/security`}
-                    className="group flex flex-col gap-2 px-4 py-3 transition-colors hover:bg-raised/50 sm:flex-row sm:items-center"
-                  >
-                    <span className="min-w-0 grow">
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-sm font-medium">{project.name}</span>
-                        {!project.upkeep && <Badge>security updates off</Badge>}
+            <Card asChild divided className="overflow-hidden">
+              <ul>
+                {projects.map((project) => (
+                  <li key={project.repoId}>
+                    <Link
+                      to={`/${params.owner}/${project.name}/security`}
+                      className="group flex flex-col gap-2 px-4 py-3 transition-colors hover:bg-raised/50 sm:flex-row sm:items-center"
+                    >
+                      <span className="min-w-0 grow">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-sm font-medium">{project.name}</span>
+                          {!project.upkeep && <Badge>security updates off</Badge>}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-faint">
+                          {project.secrets} {project.secrets === 1 ? "secret" : "secrets"} · {project.vulnerabilities}{" "}
+                          {project.vulnerabilities === 1 ? "vulnerability" : "vulnerabilities"}
+                          {project.dependenciesScannedAt && (
+                            <>
+                              {" "}
+                              · read <TimeAgo at={project.dependenciesScannedAt} />
+                            </>
+                          )}
+                        </span>
                       </span>
-                      <span className="mt-0.5 block text-xs text-faint">
-                        {project.secrets} {project.secrets === 1 ? "secret" : "secrets"} · {project.vulnerabilities}{" "}
-                        {project.vulnerabilities === 1 ? "vulnerability" : "vulnerabilities"}
-                        {project.dependenciesScannedAt && (
-                          <>
-                            {" "}
-                            · read <TimeAgo at={project.dependenciesScannedAt} />
-                          </>
-                        )}
-                      </span>
-                    </span>
-                    <SeverityCountsInline counts={project.counts} />
-                    <ChevronRight size={15} className="hidden shrink-0 text-faint group-hover:text-fg sm:block" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                      <SeverityCountsInline counts={project.counts} />
+                      <ChevronRight size={15} className="hidden shrink-0 text-faint group-hover:text-fg sm:block" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           )}
         </>
       )}

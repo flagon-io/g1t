@@ -56,7 +56,7 @@ export default function GithubSettings({ loaderData, actionData }: Route.Compone
             <Form method="post">
               <input type="hidden" name="intent" value="unlink-github" />
               <Hint label={github.hasPassword ? undefined : "GitHub is how you sign in. Set a password first."} disabled={!github.hasPassword}>
-                <SubmitButton variant="quiet" pending="Unlinking…" match={{ intent: "unlink-github" }} disabled={!github.hasPassword}>
+                <SubmitButton variant="outline" pending="Unlinking…" match={{ intent: "unlink-github" }} disabled={!github.hasPassword}>
                   Unlink
                 </SubmitButton>
               </Hint>

@@ -13,6 +13,8 @@ import {
   type UpgradeFix,
   VulnerabilityList,
 } from "../../components/security";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { Switch } from "../../components/ui/switch";
 import { security, work } from "../../lib/services.server";
@@ -150,14 +152,16 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
         {can.run && (
           <rescan.Form method="post" action={action}>
             <input type="hidden" name="intent" value="rescan" />
-            <button
+            <Button
               type="submit"
               disabled={rescan.state !== "idle"}
-              className="inline-flex items-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm text-fg/80 transition-colors hover:border-line-strong hover:bg-surface hover:text-fg disabled:opacity-50"
+              variant="outline"
+              size="sm"
+              className="gap-2 px-3 text-sm font-normal"
             >
               <RefreshCw size={14} className={rescan.state !== "idle" ? "animate-spin" : ""} />
               {rescan.state !== "idle" ? "Scanning…" : "Re-scan now"}
-            </button>
+            </Button>
             {rescan.data?.error && <p className="mt-1.5 text-xs text-danger">{rescan.data.error}</p>}
           </rescan.Form>
         )}
@@ -197,24 +201,26 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
           Settings
         </h3>
         <div className="mt-3 space-y-3">
-          <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong">
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">Security updates</span>
-              <span className="mt-1 block text-sm text-muted">
-                Open a pull request to upgrade each vulnerable dependency that has a fix. It lands through your branch's
-                required checks.
+          <Card asChild className="flex cursor-pointer items-start justify-between gap-4 p-4 transition-colors hover:border-line-strong">
+            <label>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">Security updates</span>
+                <span className="mt-1 block text-sm text-muted">
+                  Open a pull request to upgrade each vulnerable dependency that has a fix. It lands through your branch's
+                  required checks.
+                </span>
+                {upkeep.data?.error && <span className="mt-1 block text-xs text-danger">{upkeep.data.error}</span>}
               </span>
-              {upkeep.data?.error && <span className="mt-1 block text-xs text-danger">{upkeep.data.error}</span>}
-            </span>
-            <Hint label={whyNot(can, "manage_settings")} disabled={!can.manage_settings}>
-              <Switch
-                className="mt-0.5"
-                checked={upkeepOn}
-                disabled={upkeep.state !== "idle" || !can.manage_settings}
-                onCheckedChange={(checked) => upkeep.submit({ intent: "upkeep", enabled: String(checked) }, { method: "post", action })}
-              />
-            </Hint>
-          </label>
+              <Hint label={whyNot(can, "manage_settings")} disabled={!can.manage_settings}>
+                <Switch
+                  className="mt-0.5"
+                  checked={upkeepOn}
+                  disabled={upkeep.state !== "idle" || !can.manage_settings}
+                  onCheckedChange={(checked) => upkeep.submit({ intent: "upkeep", enabled: String(checked) }, { method: "post", action })}
+                />
+              </Hint>
+            </label>
+          </Card>
         </div>
       </section>
     </div>

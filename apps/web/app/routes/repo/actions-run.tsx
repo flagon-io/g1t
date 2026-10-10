@@ -38,7 +38,10 @@ import { Duration, LogText, Notes, StatusIcon, shortRef, standingWord, useJobLog
 import { Markdown } from "../../components/markdown";
 import { RunGraph } from "../../components/run-graph";
 import { DetailsDisclosure } from "../../components/details-disclosure";
-import { Button, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
+import { ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
@@ -215,7 +218,7 @@ function RerunDialog({
               description="Sets RUNNER_DEBUG=1 and ACTIONS_STEP_DEBUG: ::debug:: lines are shown, and how each step's if: read."
             />
             <DialogFooter>
-              <Button type="button" variant="quiet" onClick={() => setOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
               <SubmitButton name="intent" value={intent} variant="accent" disabled={busy} pending="Re-running…">
@@ -231,20 +234,17 @@ function RerunDialog({
 }
 
 /** A link or menu button that sits beside the run's quiet buttons, at their size. */
-const QUIET_LINK =
-  "inline-flex items-center gap-2 rounded-md border border-line px-3.5 py-2 text-sm font-medium text-fg/80 transition-colors hover:border-line-strong hover:bg-surface hover:text-fg";
-
 /** The run's attempts, newest first, each a link to how it went. */
 function AttemptPicker({ attempts, shown }: { attempts: RunAttempt[]; shown: number }) {
   const latest = attempts[attempts.length - 1]?.attempt ?? shown;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className={QUIET_LINK}>
+        <Button type="button" variant="outline">
           <History size={13} />
           Attempt #{shown}
           <ChevronDown size={13} />
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-64">
         {[...attempts].reverse().map((attempt) => (
@@ -283,20 +283,22 @@ function Summaries({
   return (
     <section aria-label="Job summaries" className="space-y-4">
       {summaries.map((summary) => (
-        <article key={summary.jobId} className="overflow-hidden rounded-xl border border-line bg-surface">
-          <header className="flex min-w-0 items-center gap-2 border-b border-line px-4 py-2.5 text-sm">
-            <FileText size={14} className="shrink-0 text-muted" />
-            <Link to={jobHref({ id: summary.jobId })} preventScrollReset className="min-w-0 truncate font-medium hover:underline">
-              {summary.name}
-            </Link>
-            <span className="shrink-0 text-faint">summary</span>
-          </header>
-          <div className="space-y-4 px-5 py-4">
-            {summary.steps.map((step) => (
-              <Markdown key={step.step} source={step.markdown} repo={repo} />
-            ))}
-          </div>
-        </article>
+        <Card asChild key={summary.jobId} className="overflow-hidden">
+          <article>
+            <header className="flex min-w-0 items-center gap-2 border-b border-line px-4 py-2.5 text-sm">
+              <FileText size={14} className="shrink-0 text-muted" />
+              <Link to={jobHref({ id: summary.jobId })} preventScrollReset className="min-w-0 truncate font-medium hover:underline">
+                {summary.name}
+              </Link>
+              <span className="shrink-0 text-faint">summary</span>
+            </header>
+            <div className="space-y-4 px-5 py-4">
+              {summary.steps.map((step) => (
+                <Markdown key={step.step} source={step.markdown} repo={repo} />
+              ))}
+            </div>
+          </article>
+        </Card>
       ))}
     </section>
   );
@@ -348,10 +350,10 @@ function RanOn({ job, workspace }: { job: Job; workspace: string }) {
   }
   if (!job.startedAt) return null;
   return (
-    <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-0.5 text-xs text-muted">
+    <Badge size="md" className="ml-auto gap-1.5 px-2.5">
       <Cloud size={13} />
       g1t
-    </span>
+    </Badge>
   );
 }
 
@@ -407,43 +409,47 @@ function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNod
       </div>
       {job.reason && <Reason text={job.reason} workspace={base.split("/")[1]} />}
       {job.annotations.length > 0 && (
-        <ul className="space-y-2 rounded-xl border border-line bg-surface p-4 text-sm">
-          {job.annotations.map((note, index) => (
-            <li key={index} className="flex gap-2">
-              {ANNOTATION_ICON[note.level]}
-              <span className="min-w-0">
-                {note.title && <span className="font-medium">{note.title}: </span>}
-                <span className="whitespace-pre-wrap wrap-break-word">{note.message}</span>
-                {note.file && (
-                  <span className="block font-mono text-xs text-faint">
-                    {note.file}
-                    {note.line != null && `:${note.line}`}
-                  </span>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <Card asChild className="space-y-2 p-4 text-sm">
+          <ul>
+            {job.annotations.map((note, index) => (
+              <li key={index} className="flex gap-2">
+                {ANNOTATION_ICON[note.level]}
+                <span className="min-w-0">
+                  {note.title && <span className="font-medium">{note.title}: </span>}
+                  <span className="whitespace-pre-wrap wrap-break-word">{note.message}</span>
+                  {note.file && (
+                    <span className="block font-mono text-xs text-faint">
+                      {note.file}
+                      {note.line != null && `:${note.line}`}
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
       {job.startedAt && (
-        <label className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm focus-within:border-accent-dim">
-          <Search size={14} className="shrink-0 text-faint" />
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search logs"
-            aria-label={`Search the log of ${job.name}`}
-            className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
-          />
-          {searching && (
-            <span className="shrink-0 text-xs text-muted" aria-live="polite">
-              {total} {total === 1 ? "line" : "lines"}
-            </span>
-          )}
-        </label>
+        <Card asChild radius="lg" className="flex items-center gap-2 px-3 py-1.5 text-sm focus-within:border-accent-dim">
+          <label>
+            <Search size={14} className="shrink-0 text-faint" />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search logs"
+              aria-label={`Search the log of ${job.name}`}
+              className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
+            />
+            {searching && (
+              <span className="shrink-0 text-xs text-muted" aria-live="polite">
+                {total} {total === 1 ? "line" : "lines"}
+              </span>
+            )}
+          </label>
+        </Card>
       )}
-      <div className="overflow-hidden rounded-xl border border-line bg-surface">
+      <Card className="overflow-hidden">
         {searching && steps.length === 0 && <p className="px-4 py-3 text-sm text-muted">No line of this job's log holds “{query.trim()}”.</p>}
         {steps.map(({ step, matches }) => (
           <StepRow
@@ -456,7 +462,7 @@ function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNod
             matches={matches}
           />
         ))}
-      </div>
+      </Card>
     </section>
   );
 }
@@ -639,7 +645,7 @@ function DeploymentRow({ deployment, busy }: { deployment: PendingDeployment; bu
               <Check size={13} />
               Approve and deploy
             </SubmitButton>
-            <SubmitButton name="intent" value="reject-deployment" variant="danger" disabled={busy} pending="Rejecting…">
+            <SubmitButton name="intent" value="reject-deployment" variant="destructive" disabled={busy} pending="Rejecting…">
               <X size={13} />
               Reject
             </SubmitButton>
@@ -661,23 +667,25 @@ function DeploymentRow({ deployment, busy }: { deployment: PendingDeployment; bu
 function DeploymentsPanel({ deployments, busy }: { deployments: PendingDeployment[]; busy: boolean }) {
   const review = deployments.some((deployment) => deployment.state === "waiting" && deployment.needsReview);
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-surface">
-      <header className="flex items-start gap-2.5 border-b border-line px-4 py-3">
-        <Hourglass size={16} className="mt-0.5 shrink-0 text-warn" />
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium">{review ? "Waiting for review" : "Waiting to deploy"}</h3>
-          <p className="mt-0.5 text-sm text-muted">
-            Jobs that deploy to these environments wait until each environment's protection rules let them through, and
-            only then get its secrets.
-          </p>
-        </div>
-      </header>
-      <ul className="divide-y divide-line">
-        {deployments.map((deployment) => (
-          <DeploymentRow key={deployment.environment} deployment={deployment} busy={busy} />
-        ))}
-      </ul>
-    </section>
+    <Card asChild className="overflow-hidden">
+      <section>
+        <header className="flex items-start gap-2.5 border-b border-line px-4 py-3">
+          <Hourglass size={16} className="mt-0.5 shrink-0 text-warn" />
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium">{review ? "Waiting for review" : "Waiting to deploy"}</h3>
+            <p className="mt-0.5 text-sm text-muted">
+              Jobs that deploy to these environments wait until each environment's protection rules let them through, and
+              only then get its secrets.
+            </p>
+          </div>
+        </header>
+        <ul className="divide-y divide-line">
+          {deployments.map((deployment) => (
+            <DeploymentRow key={deployment.environment} deployment={deployment} busy={busy} />
+          ))}
+        </ul>
+      </section>
+    </Card>
   );
 }
 
@@ -700,63 +708,63 @@ function RunCard({
   const { run } = detail;
   const label = "text-xs text-muted";
   return (
-    <section
-      aria-label="Run"
-      className="grid gap-x-6 gap-y-4 rounded-xl border border-line bg-surface p-4 text-sm sm:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]"
-    >
-      <div className="min-w-0 space-y-1.5">
-        <p className={label}>
-          Triggered via {run.event} <TimeAgo at={run.createdAt} />
-        </p>
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {run.actor && <span className="font-medium">{run.actor}</span>}
-          <Link to={`${base}/commit/${run.sha}`} className="inline-flex items-center gap-1 font-mono text-xs text-muted hover:text-fg">
-            <GitCommitHorizontal size={12} />
-            {run.sha.slice(0, 7)}
-          </Link>
-          {run.pull != null && /^refs\/pull\//.test(run.ref) ? (
-            <Link to={`${base}/pull/${run.pull}`} className="rounded-md bg-accent/10 px-1.5 py-0.5 font-mono text-xs text-accent hover:underline">
-              #{run.pull}
-            </Link>
-          ) : (
-            <span className="inline-flex min-w-0 items-center gap-1 rounded-md bg-accent/10 px-1.5 py-0.5 font-mono text-xs text-accent">
-              <GitBranch size={11} className="shrink-0" />
-              <span className="truncate">{shortRef(run.ref)}</span>
-            </span>
-          )}
-        </p>
-        {detail.approval?.state === "approved" && detail.approval.approvedBy && (
-          <p className="text-xs text-muted">Approved by {detail.approval.approvedBy}</p>
-        )}
-      </div>
-      <div className="grid grid-cols-3 gap-4 sm:contents">
+    <Card asChild className="grid gap-x-6 gap-y-4 p-4 text-sm sm:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
+      <section
+        aria-label="Run">
         <div className="min-w-0 space-y-1.5">
-          <p className={label}>Status</p>
-          <p className="flex items-center gap-1.5 font-medium">
-            <StatusIcon status={run.status} conclusion={run.conclusion} size={14} />
-            <span className="truncate">{standing}</span>
+          <p className={label}>
+            Triggered via {run.event} <TimeAgo at={run.createdAt} />
           </p>
-          {cancelling && <p className="text-xs text-warn">Its jobs are running their cleanup steps</p>}
-        </div>
-        <div className="min-w-0 space-y-1.5">
-          <p className={label}>Total duration</p>
-          <p className="font-medium">{run.startedAt ? <Duration start={run.startedAt} end={run.finishedAt} /> : "—"}</p>
-          {run.attempt > 1 && <p className="text-xs text-muted">Attempt #{run.attempt}</p>}
-        </div>
-        <div className="min-w-0 space-y-1.5">
-          <p className={label}>Artifacts</p>
-          <p className="font-medium">
-            {artifacts.length > 0 ? (
-              <a href="#artifacts" className="text-accent hover:underline">
-                {artifacts.length}
-              </a>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {run.actor && <span className="font-medium">{run.actor}</span>}
+            <Link to={`${base}/commit/${run.sha}`} className="inline-flex items-center gap-1 font-mono text-xs text-muted hover:text-fg">
+              <GitCommitHorizontal size={12} />
+              {run.sha.slice(0, 7)}
+            </Link>
+            {run.pull != null && /^refs\/pull\//.test(run.ref) ? (
+              <Link to={`${base}/pull/${run.pull}`} className="rounded-md bg-accent/10 px-1.5 py-0.5 font-mono text-xs text-accent hover:underline">
+                #{run.pull}
+              </Link>
             ) : (
-              "—"
+              <span className="inline-flex min-w-0 items-center gap-1 rounded-md bg-accent/10 px-1.5 py-0.5 font-mono text-xs text-accent">
+                <GitBranch size={11} className="shrink-0" />
+                <span className="truncate">{shortRef(run.ref)}</span>
+              </span>
             )}
           </p>
+          {detail.approval?.state === "approved" && detail.approval.approvedBy && (
+            <p className="text-xs text-muted">Approved by {detail.approval.approvedBy}</p>
+          )}
         </div>
-      </div>
-    </section>
+        <div className="grid grid-cols-3 gap-4 sm:contents">
+          <div className="min-w-0 space-y-1.5">
+            <p className={label}>Status</p>
+            <p className="flex items-center gap-1.5 font-medium">
+              <StatusIcon status={run.status} conclusion={run.conclusion} size={14} />
+              <span className="truncate">{standing}</span>
+            </p>
+            {cancelling && <p className="text-xs text-warn">Its jobs are running their cleanup steps</p>}
+          </div>
+          <div className="min-w-0 space-y-1.5">
+            <p className={label}>Total duration</p>
+            <p className="font-medium">{run.startedAt ? <Duration start={run.startedAt} end={run.finishedAt} /> : "—"}</p>
+            {run.attempt > 1 && <p className="text-xs text-muted">Attempt #{run.attempt}</p>}
+          </div>
+          <div className="min-w-0 space-y-1.5">
+            <p className={label}>Artifacts</p>
+            <p className="font-medium">
+              {artifacts.length > 0 ? (
+                <a href="#artifacts" className="text-accent hover:underline">
+                  {artifacts.length}
+                </a>
+              ) : (
+                "—"
+              )}
+            </p>
+          </div>
+        </div>
+      </section>
+    </Card>
   );
 }
 
@@ -775,33 +783,35 @@ function AnnotationsPanel({ jobs, jobHref }: { jobs: Job[]; jobHref: (job: { id:
     return count > 0 ? [`${count} ${count === 1 ? one : many}`] : [];
   });
   return (
-    <details open className="group overflow-hidden rounded-xl border border-line bg-surface">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-sm hover:bg-raised/40">
-        <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-open:rotate-90" />
-        <span className="font-medium">Annotations</span>
-        <span className="min-w-0 truncate text-muted">{counts.join(", ")}</span>
-      </summary>
-      <ul className="divide-y divide-line border-t border-line text-sm">
-        {notes.map(({ job, note }, index) => (
-          <li key={index} className="flex gap-2 px-4 py-3">
-            {ANNOTATION_ICON[note.level]}
-            <span className="min-w-0">
-              <Link to={jobHref(job)} preventScrollReset className="block text-xs font-medium text-muted hover:text-fg hover:underline">
-                {job.name}
-              </Link>
-              {note.title && <span className="font-medium">{note.title}: </span>}
-              <span className="whitespace-pre-wrap wrap-break-word">{note.message}</span>
-              {note.file && (
-                <span className="block font-mono text-xs text-faint">
-                  {note.file}
-                  {note.line != null && `:${note.line}`}
-                </span>
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </details>
+    <Card asChild className="group overflow-hidden">
+      <details open>
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-sm hover:bg-raised/40">
+          <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-open:rotate-90" />
+          <span className="font-medium">Annotations</span>
+          <span className="min-w-0 truncate text-muted">{counts.join(", ")}</span>
+        </summary>
+        <ul className="divide-y divide-line border-t border-line text-sm">
+          {notes.map(({ job, note }, index) => (
+            <li key={index} className="flex gap-2 px-4 py-3">
+              {ANNOTATION_ICON[note.level]}
+              <span className="min-w-0">
+                <Link to={jobHref(job)} preventScrollReset className="block text-xs font-medium text-muted hover:text-fg hover:underline">
+                  {job.name}
+                </Link>
+                {note.title && <span className="font-medium">{note.title}: </span>}
+                <span className="whitespace-pre-wrap wrap-break-word">{note.message}</span>
+                {note.file && (
+                  <span className="block font-mono text-xs text-faint">
+                    {note.file}
+                    {note.line != null && `:${note.line}`}
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </Card>
   );
 }
 
@@ -821,52 +831,56 @@ function ArtifactsList({
 }) {
   if (artifacts.length === 0) return null;
   return (
-    <section id="artifacts" className="scroll-mt-20 rounded-xl border border-line bg-surface p-4">
-      <h3 className="flex items-center gap-2 text-sm font-medium">
-        <Package size={14} className="text-muted" />
-        Artifacts
-        <span className="font-normal text-faint">
-          · {artifacts.length} · {formatBytes(artifacts.reduce((sum, a) => sum + a.size, 0))}
-        </span>
-      </h3>
-      <ul className="mt-3 divide-y divide-line text-sm">
-        {artifacts.map((artifact) => (
-          <li key={artifact.name} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-            <span className="min-w-0 grow basis-full truncate font-mono text-[0.8125rem] sm:basis-40">{artifact.name}</span>
-            <span className="flex shrink-0 items-center gap-3 text-xs text-faint">
-              <span>{formatBytes(artifact.size)}</span>
-              {artifact.expiresAt && <span>{expiresIn(artifact.expiresAt)}</span>}
-            </span>
-            <span className="ml-auto flex shrink-0 items-center gap-1.5">
-              <a
-                href={`${base}/actions/runs/${runId}/artifacts/${encodeURIComponent(artifact.name)}`}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted ring-1 ring-line hover:text-fg"
-              >
-                <Download size={12} />
-                Download
-              </a>
-              {member && artifact.id != null && (
-                <Form method="post" preventScrollReset>
-                  <input type="hidden" name="artifact" value={artifact.id} />
-                  <Hint label={`Delete ${artifact.name} now`}>
-                    <SubmitButton
-                      name="intent"
-                      value="delete-artifact"
-                      icon
-                      disabled={busy}
-                      aria-label={`Delete ${artifact.name}`}
-                      className="inline-flex items-center rounded-md p-1.5 text-muted ring-1 ring-line hover:text-danger disabled:opacity-50"
-                    >
-                      <Trash2 size={12} />
-                    </SubmitButton>
-                  </Hint>
-                </Form>
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <Card asChild className="scroll-mt-20 p-4">
+      <section id="artifacts">
+        <h3 className="flex items-center gap-2 text-sm font-medium">
+          <Package size={14} className="text-muted" />
+          Artifacts
+          <span className="font-normal text-faint">
+            · {artifacts.length} · {formatBytes(artifacts.reduce((sum, a) => sum + a.size, 0))}
+          </span>
+        </h3>
+        <ul className="mt-3 divide-y divide-line text-sm">
+          {artifacts.map((artifact) => (
+            <li key={artifact.name} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+              <span className="min-w-0 grow basis-full truncate font-mono text-[0.8125rem] sm:basis-40">{artifact.name}</span>
+              <span className="flex shrink-0 items-center gap-3 text-xs text-faint">
+                <span>{formatBytes(artifact.size)}</span>
+                {artifact.expiresAt && <span>{expiresIn(artifact.expiresAt)}</span>}
+              </span>
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                <a
+                  href={`${base}/actions/runs/${runId}/artifacts/${encodeURIComponent(artifact.name)}`}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted ring-1 ring-line hover:text-fg"
+                >
+                  <Download size={12} />
+                  Download
+                </a>
+                {member && artifact.id != null && (
+                  <Form method="post" preventScrollReset>
+                    <input type="hidden" name="artifact" value={artifact.id} />
+                    <Hint label={`Delete ${artifact.name} now`}>
+                      <SubmitButton
+                        name="intent"
+                        value="delete-artifact"
+                        icon
+                        disabled={busy}
+                        aria-label={`Delete ${artifact.name}`}
+                        variant="ghost"
+                        size="inline"
+                        className="p-1.5 ring-1 ring-line hover:text-danger"
+                      >
+                        <Trash2 size={12} />
+                      </SubmitButton>
+                    </Hint>
+                  </Form>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </Card>
   );
 }
 
@@ -1053,23 +1067,25 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
             {attempts.length > 1 && <AttemptPicker attempts={attempts} shown={run.attempt} />}
             {jobs.some((job) => job.startedAt) && (
               <Hint label={latest ? "Every job's log, as a zip" : `Attempt #${run.attempt}'s logs, as a zip`}>
-                <a href={logsUrl} className={QUIET_LINK}>
+                <Button asChild variant="outline">
+                  <a href={logsUrl}>
                   <Download size={13} />
                   Download logs
                 </a>
+                </Button>
               </Hint>
             )}
             {member && !run.error && live && (
               <Form method="post" className="flex gap-2">
                 {cancelling ? (
                   <Hint label="Stop its jobs now, without waiting for their cleanup steps">
-                    <SubmitButton name="intent" value="force-cancel" variant="danger" disabled={busy} pending="Stopping…">
+                    <SubmitButton name="intent" value="force-cancel" variant="destructive" disabled={busy} pending="Stopping…">
                       <Square size={13} />
                       Force cancel
                     </SubmitButton>
                   </Hint>
                 ) : (
-                  <SubmitButton name="intent" value="cancel" variant="quiet" disabled={busy} pending="Cancelling…">
+                  <SubmitButton name="intent" value="cancel" variant="outline" disabled={busy} pending="Cancelling…">
                     <Square size={13} />
                     Cancel run
                   </SubmitButton>
@@ -1085,7 +1101,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
               >
                 {(open) => (
                   <Hint label={rerunBlocked} disabled={rerunBlocked != null}>
-                    <Button type="button" variant="quiet" disabled={busy || rerunBlocked != null} onClick={open}>
+                    <Button type="button" variant="outline" disabled={busy || rerunBlocked != null} onClick={open}>
                       <RotateCw size={13} />
                       Re-run failed jobs
                     </Button>
@@ -1102,7 +1118,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
               >
                 {(open) => (
                   <Hint label={rerunBlocked} disabled={rerunBlocked != null}>
-                    <Button type="button" variant="quiet" disabled={busy || rerunBlocked != null} onClick={open}>
+                    <Button type="button" variant="outline" disabled={busy || rerunBlocked != null} onClick={open}>
                       <RotateCw size={13} />
                       Re-run all jobs
                     </Button>
@@ -1145,15 +1161,17 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
 
       <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
       {!latest && (
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">
-          <History size={15} className="shrink-0" />
-          <span>
-            This is attempt #{run.attempt} of {attempts.length}, as it ended.
-          </span>
-          <Link to="?" className="text-accent hover:underline">
-            See the latest attempt
-          </Link>
-        </p>
+        <Card asChild className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3 text-sm text-muted">
+          <p>
+            <History size={15} className="shrink-0" />
+            <span>
+              This is attempt #{run.attempt} of {attempts.length}, as it ended.
+            </span>
+            <Link to="?" className="text-accent hover:underline">
+              See the latest attempt
+            </Link>
+          </p>
+        </Card>
       )}
       {detail.approval?.state === "required" && <ApprovalPanel approval={detail.approval} member={member} busy={busy} />}
       {live && held(deployments) && <DeploymentsPanel deployments={deployments} busy={busy} />}
@@ -1199,15 +1217,17 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
                   >
                     {(open) => (
                       <Hint label={rerunBlocked ?? "Re-run this job"} disabled={rerunBlocked != null}>
-                        <button
+                        <Button
                           type="button"
                           aria-label={`Re-run ${selected.name}`}
                           disabled={busy || rerunBlocked != null}
                           onClick={open}
-                          className="inline-flex items-center rounded-md p-1.5 text-muted ring-1 ring-line hover:text-fg disabled:opacity-50"
+                          variant="ghost"
+                          size="inline"
+                          className="p-1.5 ring-1 ring-line"
                         >
                           <RotateCw size={13} />
-                        </button>
+                        </Button>
                       </Hint>
                     )}
                   </RerunDialog>

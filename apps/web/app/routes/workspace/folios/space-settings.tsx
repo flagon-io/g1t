@@ -8,8 +8,10 @@ import { memberKey } from "../../../components/folios/share-dialog";
 import { useFoliosAction, useFoliosData } from "../../../components/folios/actions";
 import { Face, SectionTitle } from "../../../components/folios/parts";
 import { SpaceForm, initialSpace, spaceInput } from "../../../components/folios/space-form";
-import { Button, ErrorText } from "../../../components/ui";
+import { ErrorText } from "../../../components/ui";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../../components/ui/alert-dialog";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { SelectField } from "../../../components/ui/select";
 import { Switch } from "../../../components/ui/switch";
 import { spacePath } from "../../../lib/folios";
@@ -76,19 +78,21 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
 
       <section className="mt-12">
         <SectionTitle>Sharing</SectionTitle>
-        <label className="flex items-start gap-3 rounded-xl border border-line bg-surface px-4 py-3">
-          <Share2 size={16} className="mt-0.5 shrink-0 text-faint" />
-          <span className="min-w-0 grow">
-            <span className="block text-sm text-fg">Editors can share</span>
-            <span className="mt-0.5 block text-xs leading-relaxed text-faint">People who can edit what's in this space can also share it with others, up to Can edit. Off: only people with full access can share.</span>
-          </span>
-          <Switch
-            checked={space.editors_can_share}
-            disabled={sharing.busy}
-            onCheckedChange={(on) => sharing.send("update_space", { space_id: space.id, space_change: { editors_can_share: on } })}
-            aria-label="Editors can share"
-          />
-        </label>
+        <Card asChild className="flex items-start gap-3 px-4 py-3">
+          <label>
+            <Share2 size={16} className="mt-0.5 shrink-0 text-faint" />
+            <span className="min-w-0 grow">
+              <span className="block text-sm text-fg">Editors can share</span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-faint">People who can edit what's in this space can also share it with others, up to Can edit. Off: only people with full access can share.</span>
+            </span>
+            <Switch
+              checked={space.editors_can_share}
+              disabled={sharing.busy}
+              onCheckedChange={(on) => sharing.send("update_space", { space_id: space.id, space_change: { editors_can_share: on } })}
+              aria-label="Editors can share"
+            />
+          </label>
+        </Card>
         {sharing.error && (
           <div className="mt-2">
             <ErrorText>{sharing.error}</ErrorText>
@@ -104,32 +108,34 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
             : "Everyone the space is for already has its base role; add people here to give them more. Workspace owners always have full access."}{" "}
           An agent added here still never does more than the person it works for.
         </p>
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-          {members.map((m) => (
-            <li key={m.key} className="flex items-center gap-3 px-4 py-2.5">
-              {m.kind === "team" ? (
-                <span className="flex size-6 items-center justify-center rounded-full bg-raised text-xs">@</span>
-              ) : (
-                <Face who={{ kind: m.kind, id: m.key.slice(m.key.indexOf(":") + 1), name: m.name, avatar: m.avatar, avatar_seed: m.avatar_seed ?? null }} size={24} />
-              )}
-              <span className="min-w-0 grow">
-                <span className="block truncate text-sm">{m.display_name}</span>
-                <span className="block text-xs text-faint">{m.kind === "team" ? "Team" : m.kind === "agent" ? "Agent" : `@${m.name}`}</span>
-              </span>
-              <SelectField aria-label={`${m.display_name}'s role`} value={m.role} onValueChange={(role) => people.send("set_member", { space_id: space.id, member: m.key, role })} options={ROLE_OPTIONS} className="h-8 w-40" />
-              <button type="button" onClick={() => people.send("set_member", { space_id: space.id, member: m.key, role: null })} className="text-xs text-faint hover:text-danger">
-                Remove
-              </button>
-            </li>
-          ))}
-          {members.length === 0 && <li className="px-4 py-3 text-sm text-muted">Nobody added yet.</li>}
-        </ul>
+        <Card asChild divided className="overflow-hidden">
+          <ul>
+            {members.map((m) => (
+              <li key={m.key} className="flex items-center gap-3 px-4 py-2.5">
+                {m.kind === "team" ? (
+                  <span className="flex size-6 items-center justify-center rounded-full bg-raised text-xs">@</span>
+                ) : (
+                  <Face who={{ kind: m.kind, id: m.key.slice(m.key.indexOf(":") + 1), name: m.name, avatar: m.avatar, avatar_seed: m.avatar_seed ?? null }} size={24} />
+                )}
+                <span className="min-w-0 grow">
+                  <span className="block truncate text-sm">{m.display_name}</span>
+                  <span className="block text-xs text-faint">{m.kind === "team" ? "Team" : m.kind === "agent" ? "Agent" : `@${m.name}`}</span>
+                </span>
+                <SelectField aria-label={`${m.display_name}'s role`} value={m.role} onValueChange={(role) => people.send("set_member", { space_id: space.id, member: m.key, role })} options={ROLE_OPTIONS} className="h-8 w-40" />
+                <Button type="button" onClick={() => people.send("set_member", { space_id: space.id, member: m.key, role: null })} variant="link" size="inline" className="text-xs text-faint hover:text-danger font-normal">
+                  Remove
+                </Button>
+              </li>
+            ))}
+            {members.length === 0 && <li className="px-4 py-3 text-sm text-muted">Nobody added yet.</li>}
+          </ul>
+        </Card>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <SelectField aria-label="Person, agent or team" value={adding} onValueChange={setAdding} placeholder="Add a person, agent or team" options={candidates} className="h-9 min-w-64 grow" />
           <SelectField aria-label="Their role" value={addRole} onValueChange={(r) => setAddRole(r as DocRole)} options={ROLE_OPTIONS} className="h-9 w-40" />
           <Button
             type="button"
-            variant="quiet"
+            variant="outline"
             disabled={!adding || people.busy}
             onClick={async () => {
               // People are named by username here; the service keys them by id.
@@ -153,7 +159,7 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
         <section className="mt-12 rounded-xl border border-danger/30 p-5">
           <h2 className="text-sm font-semibold">Archive this space</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted">It leaves the sidebar and search. What's in it, its history and comments are kept.</p>
-          <Button type="button" variant="danger" onClick={() => setArchiving(true)} className="mt-3">
+          <Button type="button" variant="destructive" onClick={() => setArchiving(true)} className="mt-3">
             <Archive size={14} /> Archive space
           </Button>
         </section>

@@ -15,7 +15,9 @@ import type { QueueEntry, QueueState, RepoPath, Viewer } from "@g1t/contracts";
 
 import type { Route } from "./+types/queue";
 import { page } from "../../lib/meta";
-import { Avatar, ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
+import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
+import { Card } from "../../components/ui/card";
 import { actions, work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { accessFor, repoFor } from "../../lib/access.server";
@@ -160,7 +162,7 @@ function Entry({
                 : "border-line-strong bg-bg"
         }`}
       />
-      <div className="rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong">
+      <Card className="p-4 transition-colors hover:border-line-strong">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           {position != null && <span className="font-mono text-xs text-faint">{position}</span>}
           <Link to={`${base}/pull/${entry.number}`} prefetch="intent" className="min-w-0 grow font-medium hover:text-accent">
@@ -202,7 +204,7 @@ function Entry({
                 <pre className="mt-1.5 max-h-48 overflow-auto rounded-lg bg-bg p-3 text-xs text-muted"><code>{result.output}</code></pre>
               </details>
             ))}
-      </div>
+      </Card>
     </li>
   );
 }

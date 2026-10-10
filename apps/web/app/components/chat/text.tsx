@@ -3,6 +3,7 @@ import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import { MemberCard } from "./profile-card";
+import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { type Block, type Span, blocks, onlyEmoji } from "../../lib/chat";
@@ -252,7 +253,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
       <div className="absolute top-1.5 right-1.5 flex items-center gap-2 opacity-0 transition-opacity group-hover/code:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
         {language && <span className="font-mono text-[0.6875rem] text-faint pointer-coarse:hidden">{language}</span>}
         <Hint label={copied ? "Copied" : "Copy code"}>
-          <button
+          <Button
             type="button"
             aria-label="Copy code"
             onClick={() => {
@@ -261,10 +262,11 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
                 setTimeout(() => setCopied(false), 1500);
               });
             }}
-            className="flex size-6 items-center justify-center rounded-md border border-line bg-raised text-muted hover:text-fg"
+            variant="outline" size="icon"
+            className="size-6 bg-raised text-muted"
           >
             {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
-          </button>
+          </Button>
         </Hint>
       </div>
     </div>

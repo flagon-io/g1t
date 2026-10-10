@@ -6,7 +6,10 @@ import type { ChatSidebar, Result } from "@g1t/contracts";
 
 import { AgentPill } from "./marks";
 import { AgentAvatar } from "../agent-avatar";
-import { Avatar } from "../ui";
+
+import { Avatar } from "../ui/avatar";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Hint } from "../ui/hint";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Switch } from "../ui/switch";
@@ -86,11 +89,6 @@ export function useChatSend(slug: string) {
   );
 }
 
-const QUIET_BUTTON =
-  "inline-flex h-9 items-center gap-2 rounded-md border border-line px-3 text-sm font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-surface hover:text-fg";
-const ICON_BUTTON =
-  "flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent";
-
 /** Why someone may not make a channel: the workspace keeps it to its owners. */
 export const OWNERS_ONLY_CHANNELS = "Only workspace owners can create channels here.";
 
@@ -140,14 +138,14 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
     return (
       <Hint label={OWNERS_ONLY_CHANNELS} disabled>
         {variant === "icon" ? (
-          <button type="button" aria-label="Create a channel" disabled className={`${ICON_BUTTON} opacity-40`}>
+          <Button type="button" aria-label="Create a channel" disabled variant="ghost" size="icon-xs" className="text-faint opacity-40">
             <Plus size={14} />
-          </button>
+          </Button>
         ) : (
-          <button type="button" disabled className={`${QUIET_BUTTON} opacity-50`}>
+          <Button type="button" disabled variant="outline" className="opacity-50">
             <Lock size={14} />
             Create a channel
-          </button>
+          </Button>
         )}
       </Hint>
     );
@@ -156,15 +154,15 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
     <>
       {variant === "icon" ? (
         <Hint label="Create a channel">
-          <button type="button" aria-label="Create a channel" onClick={() => setOpen(true)} className={ICON_BUTTON}>
+          <Button type="button" aria-label="Create a channel" onClick={() => setOpen(true)} variant="ghost" size="icon-xs" className="text-faint">
             <Plus size={14} />
-          </button>
+          </Button>
         </Hint>
       ) : (
-        <button type="button" onClick={() => setOpen(true)} className={QUIET_BUTTON}>
+        <Button type="button" onClick={() => setOpen(true)} variant="outline">
           <Hash size={15} />
           Create a channel
-        </button>
+        </Button>
       )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -210,36 +208,38 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
                 className="h-10 rounded-md border border-line bg-bg px-3 text-sm outline-none placeholder:text-faint focus:border-accent-dim"
               />
             </label>
-            <label className="flex items-start justify-between gap-4 rounded-lg border border-line bg-bg/60 p-3">
-              <span>
-                <span className="flex items-center gap-1.5 text-sm font-medium">
-                  {isPrivate ? <Lock size={13} className="text-muted" /> : <Hash size={13} className="text-muted" />}
-                  {isPrivate ? "Private" : "Public"}
+            <Card asChild tone="plain" radius="lg" className="flex items-start justify-between gap-4 bg-bg/60 p-3">
+              <label>
+                <span>
+                  <span className="flex items-center gap-1.5 text-sm font-medium">
+                    {isPrivate ? <Lock size={13} className="text-muted" /> : <Hash size={13} className="text-muted" />}
+                    {isPrivate ? "Private" : "Public"}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted">
+                    {!may.public
+                      ? "Only workspace owners can create public channels here, so this one is private: only people and agents you invite can find and read it."
+                      : !may.private
+                        ? "Only workspace owners can create private channels here, so this one is public: anyone in the workspace can find, read and join it."
+                        : isPrivate
+                          ? "Only people and agents you invite can find and read it."
+                          : "Anyone in the workspace can find, read and join it. Turn on to keep it to the people and agents you invite."}
+                  </span>
                 </span>
-                <span className="mt-0.5 block text-xs text-muted">
-                  {!may.public
-                    ? "Only workspace owners can create public channels here, so this one is private: only people and agents you invite can find and read it."
-                    : !may.private
-                      ? "Only workspace owners can create private channels here, so this one is public: anyone in the workspace can find, read and join it."
-                      : isPrivate
-                        ? "Only people and agents you invite can find and read it."
-                        : "Anyone in the workspace can find, read and join it. Turn on to keep it to the people and agents you invite."}
-                </span>
-              </span>
-              <Switch checked={isPrivate} onCheckedChange={setSecret} disabled={!may.public || !may.private} aria-label="Private" />
-            </label>
+                <Switch checked={isPrivate} onCheckedChange={setSecret} disabled={!may.public || !may.private} aria-label="Private" />
+              </label>
+            </Card>
             {error && <p className="text-sm text-danger">{error}</p>}
             <DialogFooter>
-              <button type="button" onClick={() => setOpen(false)} className={QUIET_BUTTON}>
+              <Button type="button" onClick={() => setOpen(false)} variant="outline">
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
                 disabled={busy || !clean}
-                className="inline-flex h-9 items-center justify-center rounded-md bg-accent px-3.5 text-sm font-medium text-bg transition-colors hover:bg-accent-hover disabled:opacity-50"
+                variant="accent"
               >
                 {busy ? "Creating…" : "Create channel"}
-              </button>
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -261,25 +261,26 @@ export function NewMessageButton({ slug, variant = "icon", children }: { slug: s
     <>
       {variant === "fab" ? (
         // A phone's list: the round button above the tab bar.
-        <button
+        <Button
           type="button"
           aria-label="New message"
           onClick={() => setOpen(true)}
-          className="flex size-14 items-center justify-center rounded-2xl bg-accent text-bg shadow-lg shadow-black/50 transition-transform active:scale-95"
+          variant="accent" size="icon"
+          className="size-14 rounded-2xl shadow-lg shadow-black/50 transition-transform active:scale-95"
         >
           <SquarePen size={22} />
-        </button>
+        </Button>
       ) : variant === "icon" ? (
         <Hint label="New message">
-          <button type="button" aria-label="New message" onClick={() => setOpen(true)} className={ICON_BUTTON.replace("size-7", "size-8")}>
+          <Button type="button" aria-label="New message" onClick={() => setOpen(true)} variant="ghost" size="icon-sm" className="text-faint">
             <SquarePen size={15} />
-          </button>
+          </Button>
         </Hint>
       ) : (
-        <button type="button" onClick={() => setOpen(true)} className={QUIET_BUTTON}>
+        <Button type="button" onClick={() => setOpen(true)} variant="outline">
           <SquarePen size={15} />
           {children ?? "New message"}
-        </button>
+        </Button>
       )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md gap-0 p-0 max-sm:pb-[env(safe-area-inset-bottom)]" showClose={false}>
@@ -350,14 +351,16 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
             <span key={person.key} className="flex h-6 items-center gap-1.5 rounded-md bg-raised pr-1 pl-1 text-[0.8125rem]">
               {person.kind === "agent" ? <AgentAvatar agent={{ id: person.key.slice(6), handle: person.name, avatar: person.avatar }} size={16} /> : <Avatar name={person.name} image={person.avatar} size={16} />}
               {person.display}
-              <button
+              <Button
                 type="button"
                 aria-label={`Remove ${person.display}`}
                 onClick={() => setChosen((now) => now.filter((p) => p.key !== person.key))}
-                className="rounded p-0.5 text-faint hover:bg-line hover:text-fg"
+                variant="ghost"
+                size="inline"
+                className="rounded p-0.5 text-faint hover:bg-line"
               >
                 <X size={12} />
-              </button>
+              </Button>
             </span>
           ))}
           <input
@@ -424,17 +427,17 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
       <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3">
         <span className="min-w-0 truncate text-sm text-danger">{error}</span>
         <div className="flex shrink-0 gap-2">
-          <button type="button" onClick={onDone} className={QUIET_BUTTON}>
+          <Button type="button" onClick={onDone} variant="outline">
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             disabled={busy || chosen.length === 0}
             onClick={() => void go()}
-            className="inline-flex h-9 items-center justify-center rounded-md bg-accent px-3.5 text-sm font-medium text-bg transition-colors hover:bg-accent-hover disabled:opacity-50"
+            variant="accent"
           >
             {busy ? "Opening…" : "Open conversation"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

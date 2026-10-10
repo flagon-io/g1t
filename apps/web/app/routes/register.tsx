@@ -10,7 +10,9 @@ import { AuthCard } from "../components/auth-card";
 import { ContinueWithGithub, OrDivider } from "../components/github";
 import { Honeypot } from "../components/honeypot";
 import { githubSignInEnabled } from "../lib/github.server";
-import { Avatar, Button, ErrorText, Field, Input, SubmitButton } from "../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../components/ui";
+import { Avatar } from "../components/ui/avatar";
+import { Button } from "../components/ui/button";
 import { identity } from "../lib/services.server";
 import { cleanCode, cleanProof, invitePath, looksAutomated, sharedDomainsHint, sharedInviteLine } from "../lib/invites";
 import { clientKey, registrationMode } from "../lib/registration.server";
@@ -240,7 +242,7 @@ function InviteOnly({
               autoCapitalize="none"
             />
           </div>
-          <Button type="submit" variant="quiet">
+          <Button type="submit" variant="outline">
             Continue
           </Button>
         </Form>

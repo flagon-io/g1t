@@ -122,7 +122,7 @@ export function AgentTeamsEditor({
                   <Form method="post" className="ml-auto">
                     <input type="hidden" name="intent" value="leave-team" />
                     <input type="hidden" name="team" value={team.slug} />
-                    <SubmitButton variant="quiet" match={{ intent: "leave-team", team: team.slug }} pending="Removing…">
+                    <SubmitButton variant="outline" match={{ intent: "leave-team", team: team.slug }} pending="Removing…">
                       Remove
                     </SubmitButton>
                   </Form>
@@ -145,7 +145,7 @@ export function AgentTeamsEditor({
             className="w-full sm:w-56"
             options={teams.addable.map((team) => ({ value: team.slug, label: team.name }))}
           />
-          <SubmitButton variant="quiet" match={{ intent: "join-team" }} pending="Adding…">
+          <SubmitButton variant="outline" match={{ intent: "join-team" }} pending="Adding…">
             Add to team
           </SubmitButton>
         </Form>

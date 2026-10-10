@@ -5,6 +5,7 @@ import type { Route } from "./+types/code-overview";
 import { page } from "../../lib/meta";
 import { loadMissionControl } from "../../lib/mission-control.server";
 import { requireUser, roleIn } from "../../lib/session.server";
+import { Card } from "../../components/ui/card";
 import { Skeleton, SkeletonCard, SkeletonLine, SkeletonStat } from "../../components/ui/skeleton";
 
 export { action } from "../home";
@@ -78,7 +79,7 @@ export function MissionControlSkeleton() {
       </header>
       {/* The Agent box (components/ask-composer.tsx), then the actions under it. */}
       <div className="space-y-3">
-        <div className="rounded-xl border border-line bg-surface">
+        <Card>
           <SkeletonLine className="mx-4 mt-3 w-36 text-sm" />
           <div className="px-4 pt-3.5 pb-2 text-sm">
             <SkeletonLine className="w-[30rem] max-w-full" />
@@ -91,20 +92,20 @@ export function MissionControlSkeleton() {
             <Skeleton className="size-8 rounded-md" />
             <Skeleton className="ml-auto size-8 rounded-md" />
           </div>
-        </div>
+        </Card>
         <div className="flex flex-wrap items-center gap-2">
           <Skeleton className="h-[38px] w-60 rounded-md" />
           <Skeleton className="h-[38px] w-28 rounded-md" />
           <Skeleton className="h-[38px] w-44 rounded-md" />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line lg:grid-cols-5">
+      <Card tone="plain" className="grid grid-cols-2 gap-px overflow-hidden bg-line lg:grid-cols-5">
         {Array.from({ length: 5 }, (_, index) => (
           <SkeletonStat key={index} className={index === 4 ? "col-span-2 lg:col-span-1" : undefined} />
         ))}
-      </div>
+      </Card>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[minmax(0,1fr)_23rem]">
-        <div className="self-start overflow-hidden rounded-xl border border-line bg-surface">
+        <Card className="self-start overflow-hidden">
           <div className="flex items-center gap-4 border-b border-line px-4 py-3 text-sm sm:px-5">
             <SkeletonLine className="w-24" />
             <SkeletonLine className="w-32" />
@@ -131,7 +132,7 @@ export function MissionControlSkeleton() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
         <div className="space-y-6">
           <SkeletonCard lines={0} className="h-80 p-5" />
           <SkeletonCard lines={6} className="p-5" />

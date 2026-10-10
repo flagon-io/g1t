@@ -19,6 +19,8 @@ import {
 import { formatCap, tri, workflowDomainLine } from "../lib/guardrails";
 import { formatCost } from "./agents";
 import { ErrorText, Input, SubmitButton, TimeAgo } from "./ui";
+import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
 import { CheckboxOption } from "./ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Textarea } from "./ui/textarea";
@@ -54,7 +56,7 @@ function TriSelect({
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 sm:flex-row sm:items-start">
+    <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
       <div className="min-w-0 grow">
         <p className="text-sm font-medium">{title}</p>
         <p className="mt-1 text-sm text-muted">{children}</p>
@@ -71,7 +73,7 @@ function TriSelect({
           <SelectItem value="off">{labels[1]}</SelectItem>
         </SelectContent>
       </Select>
-    </div>
+    </Card>
   );
 }
 
@@ -135,13 +137,13 @@ export function GuardrailsForm({
             Restricted, a sandbox reaches g1t, the registries below and the domains you list, over HTTP and
             HTTPS only. Open, it reaches the whole internet.
           </TriSelect>
-          <div className="rounded-xl border border-line bg-surface p-4">
+          <Card className="p-4">
             <p className="text-sm font-medium">Always allowed</p>
             <p className="mt-1 text-sm text-muted">
               g1t's own hosts, for cloning, pushing, reporting and the model: <Hosts hosts={view.g1tHosts} />
             </p>
-          </div>
-          <div className="rounded-xl border border-line bg-surface p-4">
+          </Card>
+          <Card className="p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
               <div className="min-w-0 grow">
                 <p className="text-sm font-medium">Package registries</p>
@@ -169,8 +171,8 @@ export function GuardrailsForm({
                 />
               ))}
             </div>
-          </div>
-          <div className="rounded-xl border border-line bg-surface p-4">
+          </Card>
+          <Card className="p-4">
             <label htmlFor="guardrail-domains" className="text-sm font-medium">
               Allowed domains
             </label>
@@ -192,8 +194,8 @@ export function GuardrailsForm({
                 From the workspace: <Hosts hosts={inheritedDomains} />
               </p>
             )}
-          </div>
-          <div className="rounded-xl border border-line bg-surface p-4">
+          </Card>
+          <Card className="p-4">
             <label htmlFor="guardrail-workflow-domains" className="text-sm font-medium">
               Workflow-only domains
             </label>
@@ -217,7 +219,7 @@ export function GuardrailsForm({
                 <span className="font-mono break-words">{inheritedWorkflowDomains.map(workflowDomainLine).join("; ")}</span>
               </p>
             )}
-          </div>
+          </Card>
         </Section>
 
         <Section
@@ -242,7 +244,7 @@ export function GuardrailsForm({
               {rule.about}
             </TriSelect>
           ))}
-          <div className="rounded-xl border border-line bg-surface p-4">
+          <Card className="p-4">
             <label htmlFor="guardrail-deny" className="text-sm font-medium">
               Also refuse
             </label>
@@ -265,14 +267,14 @@ export function GuardrailsForm({
                 From the workspace: <span className="font-mono">{inheritedDeny.join(", ")}</span>
               </p>
             )}
-          </div>
+          </Card>
         </Section>
 
         <Section
           title="Caps"
           about="How much one run may cost and how long it may take. A run that reaches either is stopped, and its pull request waits for you."
         >
-          <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 sm:flex-row sm:items-start">
+          <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
             <div className="min-w-0 grow">
               <label htmlFor="guardrail-budget" className="text-sm font-medium">
                 Cost per run, in US dollars
@@ -289,8 +291,8 @@ export function GuardrailsForm({
               defaultValue={own.budgetUsd == null ? "" : String(own.budgetUsd)}
               placeholder={base.budgetUsd == null ? "0" : base.budgetUsd.toFixed(2)}
             />
-          </div>
-          <div className="rounded-xl border border-line bg-surface p-4">
+          </Card>
+          <Card className="p-4">
             <p className="text-sm font-medium">Time per run, in minutes</p>
             <p className="mt-1 text-sm text-muted">Empty: as {parent}, shown faded.</p>
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -306,7 +308,7 @@ export function GuardrailsForm({
                 </label>
               ))}
             </div>
-          </div>
+          </Card>
         </Section>
       </fieldset>
 
@@ -366,47 +368,49 @@ export function RunCaps({ run, member }: { run: AgentRun; member: boolean }) {
   const budget = run.budgetUsd ?? null;
   const costShare = budget && run.costUsd != null ? Math.min(1, run.costUsd / budget) : null;
   return (
-    <section className="mt-6 rounded-xl border border-line bg-surface p-4">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <ShieldCheck size={15} className="text-accent" />
-        Guardrails
-        {run.halted && (
-          <span className="ml-auto rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 text-xs font-normal text-warn">
-            {run.halted === "abuse"
-              ? "Stopped: unusual CPU use"
-              : `Stopped at its ${run.halted === "budget" ? "cost" : "time"} cap`}
-          </span>
-        )}
-      </div>
-      <div className="mt-3 grid gap-4 text-sm sm:grid-cols-2">
-        {cap != null && (
-          <div>
-            <p className="flex items-center gap-1.5 text-muted">
-              <Clock size={13} />
-              <span className="tabular-nums text-fg" suppressHydrationWarning>
-                {minutes == null ? "—" : `${Math.floor(minutes)}m`}
-              </span>
-              of {cap}m
-            </p>
-            <Meter share={timeShare} tone={timeShare != null && timeShare > 0.85 ? "bg-warn" : "bg-success"} />
-          </div>
-        )}
-        {member && (
-          <div>
-            <p className="flex items-center gap-1.5 text-muted">
-              <Coins size={13} />
-              {spent ? <span className="tabular-nums text-fg">{spent}</span> : <span>Spend</span>}
-              of {formatCap(budget)}
-            </p>
-            <Meter share={costShare} tone={costShare != null && costShare > 0.85 ? "bg-warn" : "bg-success"} />
-            {active && !spent && budget != null && (
-              <p className="mt-1.5 text-xs text-faint">
-                The agent stops itself at the cap. What it spent is reported when the run ends.
+    <Card asChild className="mt-6 p-4">
+      <section>
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <ShieldCheck size={15} className="text-accent" />
+          Guardrails
+          {run.halted && (
+            <Badge tone="warn" size="md" className="ml-auto">
+              {run.halted === "abuse"
+                ? "Stopped: unusual CPU use"
+                : `Stopped at its ${run.halted === "budget" ? "cost" : "time"} cap`}
+            </Badge>
+          )}
+        </div>
+        <div className="mt-3 grid gap-4 text-sm sm:grid-cols-2">
+          {cap != null && (
+            <div>
+              <p className="flex items-center gap-1.5 text-muted">
+                <Clock size={13} />
+                <span className="tabular-nums text-fg" suppressHydrationWarning>
+                  {minutes == null ? "—" : `${Math.floor(minutes)}m`}
+                </span>
+                of {cap}m
               </p>
-            )}
-          </div>
-        )}
-      </div>
-    </section>
+              <Meter share={timeShare} tone={timeShare != null && timeShare > 0.85 ? "bg-warn" : "bg-success"} />
+            </div>
+          )}
+          {member && (
+            <div>
+              <p className="flex items-center gap-1.5 text-muted">
+                <Coins size={13} />
+                {spent ? <span className="tabular-nums text-fg">{spent}</span> : <span>Spend</span>}
+                of {formatCap(budget)}
+              </p>
+              <Meter share={costShare} tone={costShare != null && costShare > 0.85 ? "bg-warn" : "bg-success"} />
+              {active && !spent && budget != null && (
+                <p className="mt-1.5 text-xs text-faint">
+                  The agent stops itself at the cap. What it spent is reported when the run ends.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+    </Card>
   );
 }

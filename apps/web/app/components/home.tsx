@@ -48,6 +48,7 @@ import {
   whenShort,
 } from "../lib/home";
 import { cn } from "../lib/cn";
+import { ButtonLink } from "./ui";
 import { Skeleton } from "./ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -186,12 +187,9 @@ function NeedItem({ row, now }: { row: AttentionRow; now: number }) {
           </div>
         )}
       </div>
-      <Link
-        to={row.action.to}
-        className="inline-flex h-7 shrink-0 items-center rounded-md border border-line-strong px-2.5 text-xs font-medium whitespace-nowrap text-fg transition-colors hover:border-accent/50 hover:bg-raised"
-      >
+      <ButtonLink to={row.action.to} variant="outline" size="xs" className="border-line-strong px-2.5 text-fg hover:border-accent/50 hover:bg-raised">
         {row.action.label}
-      </Link>
+      </ButtonLink>
     </li>
   );
 }

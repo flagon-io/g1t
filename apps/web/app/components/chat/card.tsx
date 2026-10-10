@@ -40,6 +40,8 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Badge, type BadgeTone } from "../ui/badge";
+import { ButtonLink } from "../ui";
+import { Button, type ButtonVariant } from "../ui/button";
 import { InputAddon, InputGroup } from "../ui/input";
 import { cn } from "../../lib/cn";
 import { type CardChip, actionMode, cardChip, foldsBody, inputValue, moneyInitial, shownActions } from "../../lib/card-actions";
@@ -171,14 +173,15 @@ export function CardToasts() {
             {toast.ok ? <CircleCheck size={16} /> : <CircleAlert size={16} />}
           </span>
           <p className="min-w-0 grow">{toast.message}</p>
-          <button
+          <Button
             type="button"
             aria-label="Dismiss"
             onClick={() => dismissToast(toast.id)}
-            className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
+            variant="ghost" size="icon"
+            className="size-6 text-faint"
           >
             <X size={14} />
-          </button>
+          </Button>
         </div>
       ))}
     </section>
@@ -187,17 +190,11 @@ export function CardToasts() {
 
 // ── The card.
 
-const ACTION_BASE =
-  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-[0.8125rem] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:pointer-events-none disabled:opacity-50 max-md:h-10 max-md:px-3.5";
+/** A card's actions are small buttons, a finger tall on a phone; the action's style names the variant. */
+const ACTION_VARIANT: Record<NonNullable<CardAction["style"]>, ButtonVariant> = { primary: "accent", danger: "destructive", default: "outline" };
 
-const ACTION_STYLES: Record<NonNullable<CardAction["style"]>, string> = {
-  primary: "bg-accent text-bg hover:bg-accent-hover",
-  danger: "border border-danger/40 text-danger hover:border-danger hover:bg-danger/10",
-  default: "border border-line text-fg/85 hover:border-line-strong hover:bg-raised hover:text-fg",
-};
-
-function actionClass(action: CardAction, active = false) {
-  return cn(ACTION_BASE, ACTION_STYLES[action.style ?? "default"], active && "border-accent/60 bg-raised text-fg");
+function actionProps(action: Pick<CardAction, "style">, active = false) {
+  return { variant: ACTION_VARIANT[action.style ?? "default"], size: "sm" as const, className: cn("max-md:h-10 max-md:px-3.5", active && "border-accent/60 bg-raised text-fg") };
 }
 
 /** Sends a card's action; says what happened in a toast; true when it was done. */
@@ -352,16 +349,16 @@ export function CardBox({
             const target = actionMode(action) === "link" ? cardHref(action.href, slug, code) : null;
             if (target) {
               return (
-                <Link key={action.id} to={target} className={actionClass(action)}>
+                <ButtonLink key={action.id} to={target} {...actionProps(action)}>
                   {action.label}
                   <ArrowUpRight size={14} aria-hidden="true" className="-mr-0.5 text-faint" />
-                </Link>
+                </ButtonLink>
               );
             }
             const working = busy === action.id;
             const opens = !!action.input;
             return (
-              <button
+              <Button
                 key={action.id}
                 ref={(element) => {
                   if (element) triggers.current.set(action.id, element);
@@ -374,11 +371,11 @@ export function CardBox({
                 aria-controls={opens && asking === action.id ? panelId : undefined}
                 aria-haspopup={action.confirm && !opens ? "dialog" : undefined}
                 onClick={() => press(action)}
-                className={actionClass(action, opens && asking === action.id)}
+                {...actionProps(action, opens && asking === action.id)}
               >
                 {working && <LoaderCircle size={14} aria-hidden="true" className="-ml-0.5 animate-spin" />}
                 {action.label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -453,15 +450,17 @@ function CardBody({ body, repo }: { body: string; repo?: string }) {
         )}
       </div>
       {(folded || open) && (
-        <button
+        <Button
           type="button"
           aria-expanded={open}
           aria-controls={id}
           onClick={() => setOpen((now) => !now)}
-          className="mt-1 rounded px-1 py-0.5 text-xs font-medium text-accent transition-colors outline-none hover:bg-raised focus-visible:ring-2 focus-visible:ring-accent/50 max-md:min-h-9"
+          variant="ghost"
+          size="inline"
+          className="mt-1 rounded px-1 py-0.5 text-xs text-accent focus-visible:ring-accent/50 max-md:min-h-9"
         >
           {open ? "Show less" : "Show more"}
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -589,13 +588,13 @@ function ActionField({
           />
         )}
         <div className="flex shrink-0 gap-2 max-sm:[&>*]:grow">
-          <button type="button" onClick={onCancel} className={actionClass({ id: "cancel", label: "Cancel" })}>
+          <Button type="button" onClick={onCancel} {...actionProps({})}>
             Cancel
-          </button>
-          <button type="submit" disabled={disabled} aria-busy={busy || undefined} className={actionClass({ ...action, style: action.style === "danger" ? "danger" : "primary" })}>
+          </Button>
+          <Button type="submit" disabled={disabled} aria-busy={busy || undefined} {...actionProps({ style: action.style === "danger" ? "danger" : "primary" })}>
             {busy && <LoaderCircle size={14} aria-hidden="true" className="-ml-0.5 animate-spin" />}
             {action.label}
-          </button>
+          </Button>
         </div>
       </div>
       {invalid ? (

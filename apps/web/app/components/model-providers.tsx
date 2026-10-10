@@ -11,6 +11,7 @@ import { type Connection, MODEL_TASKS, MODEL_TIERS, type ModelRoute, type ModelT
 
 import { integrationsSection } from "../lib/integration-sections";
 import { Field, Input, SubmitButton } from "./ui";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "./ui/select";
 
@@ -439,135 +440,137 @@ export function Routing({
   const set = (task: ModelTask, choice: Partial<Choice>) => setChoices((all) => ({ ...all, [task]: { ...all[task], ...choice } }));
 
   return (
-    <Form method="post" className="rounded-xl border border-line bg-surface">
-      <input type="hidden" name="intent" value="routes" />
-      {connections.map((connection) => (
-        <datalist key={connection.id} id={`models-${connection.id}`}>
-          {connection.models.map((model) => (
-            <option key={model} value={model} />
-          ))}
-        </datalist>
-      ))}
-      <div className="border-b border-line px-4 py-3">
-        <p className="text-sm font-medium">Which model does which work</p>
-        <p className="text-xs text-muted">
-          Each kind of work can go to g1t's models, or to any of your providers on the model you choose. On g1t's models, Auto picks the cheapest model that can do each job and says why on the run.
-        </p>
-      </div>
-      <ul className="divide-y divide-line">
-        {MODEL_TASKS.map((task) => {
-          const choice = choices[task];
-          const connection = connections.find((c) => c.id === choice.target);
-          const speaksAnthropic = connection && PROVIDERS[connection.provider] && (connection.provider === "anthropic" || connection.provider === "anthropic_endpoint");
-          const needsModel = connection && !speaksAnthropic && !choice.model && !connection.config.model;
-          const hosted = choice.target === "g1t";
-          const value = !choice.target
-            ? ""
-            : hosted
-              ? choice.model
-                ? `g1t::${choice.model}`
-                : "g1t"
-              : `${choice.target}::${choice.model}`;
-          return (
-            <li key={task} className="grid items-start gap-2 px-4 py-3 md:grid-cols-[11rem_1fr_1fr]">
-              <div className="pt-1.5">
-                <p className="text-sm font-medium">{TASK_LABELS[task].label}</p>
-                <p className="text-xs text-faint">{TASK_LABELS[task].hint}</p>
-              </div>
-              <input type="hidden" name={`route-${task}`} value={value} />
-              <Select
-                disabled={!owner}
-                value={choice.target || SAME}
-                onValueChange={(target) => set(task, { target: target === SAME ? "" : target, model: "" })}
-              >
-                <SelectTrigger aria-label={`${TASK_LABELS[task].label}: provider`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {task !== "default" && (
-                    <>
-                      <SelectItem value={SAME} description="Follows the choice for everything">
-                        Same as everything
-                      </SelectItem>
-                      <SelectSeparator />
-                    </>
-                  )}
-                  <SelectItem
-                    value="g1t"
-                    disabled={!hostedOpen}
-                    icon={<Sparkles />}
-                    description={hostedOpen ? "The provider's price, plus the agent rate" : "Not open to this workspace yet"}
-                  >
-                    g1t's models
-                  </SelectItem>
-                  {connections.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>Your providers</SelectLabel>
-                      {connections.map((c) => (
-                        <SelectItem key={c.id} value={c.id} icon={<Bot />} description={PROVIDERS[c.provider]?.label}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  )}
-                </SelectContent>
-              </Select>
-              {hosted ? (
+    <Card asChild>
+      <Form method="post">
+        <input type="hidden" name="intent" value="routes" />
+        {connections.map((connection) => (
+          <datalist key={connection.id} id={`models-${connection.id}`}>
+            {connection.models.map((model) => (
+              <option key={model} value={model} />
+            ))}
+          </datalist>
+        ))}
+        <div className="border-b border-line px-4 py-3">
+          <p className="text-sm font-medium">Which model does which work</p>
+          <p className="text-xs text-muted">
+            Each kind of work can go to g1t's models, or to any of your providers on the model you choose. On g1t's models, Auto picks the cheapest model that can do each job and says why on the run.
+          </p>
+        </div>
+        <ul className="divide-y divide-line">
+          {MODEL_TASKS.map((task) => {
+            const choice = choices[task];
+            const connection = connections.find((c) => c.id === choice.target);
+            const speaksAnthropic = connection && PROVIDERS[connection.provider] && (connection.provider === "anthropic" || connection.provider === "anthropic_endpoint");
+            const needsModel = connection && !speaksAnthropic && !choice.model && !connection.config.model;
+            const hosted = choice.target === "g1t";
+            const value = !choice.target
+              ? ""
+              : hosted
+                ? choice.model
+                  ? `g1t::${choice.model}`
+                  : "g1t"
+                : `${choice.target}::${choice.model}`;
+            return (
+              <li key={task} className="grid items-start gap-2 px-4 py-3 md:grid-cols-[11rem_1fr_1fr]">
+                <div className="pt-1.5">
+                  <p className="text-sm font-medium">{TASK_LABELS[task].label}</p>
+                  <p className="text-xs text-faint">{TASK_LABELS[task].hint}</p>
+                </div>
+                <input type="hidden" name={`route-${task}`} value={value} />
                 <Select
                   disabled={!owner}
-                  value={choice.model || AUTO}
-                  onValueChange={(model) => set(task, { model: model === AUTO ? "" : model })}
+                  value={choice.target || SAME}
+                  onValueChange={(target) => set(task, { target: target === SAME ? "" : target, model: "" })}
                 >
-                  <SelectTrigger aria-label={`${TASK_LABELS[task].label}: g1t's model`}>
+                  <SelectTrigger aria-label={`${TASK_LABELS[task].label}: provider`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={AUTO} description="g1t picks per job, and says why">
-                      Auto
+                    {task !== "default" && (
+                      <>
+                        <SelectItem value={SAME} description="Follows the choice for everything">
+                          Same as everything
+                        </SelectItem>
+                        <SelectSeparator />
+                      </>
+                    )}
+                    <SelectItem
+                      value="g1t"
+                      disabled={!hostedOpen}
+                      icon={<Sparkles />}
+                      description={hostedOpen ? "The provider's price, plus the agent rate" : "Not open to this workspace yet"}
+                    >
+                      g1t's models
                     </SelectItem>
-                    <SelectSeparator />
-                    {MODEL_TIERS.map((tier) => (
-                      <SelectItem key={tier} value={tier} description={TIER_CHOICES[tier].hint}>
-                        {TIER_CHOICES[tier].label}
-                      </SelectItem>
-                    ))}
+                    {connections.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel>Your providers</SelectLabel>
+                        {connections.map((c) => (
+                          <SelectItem key={c.id} value={c.id} icon={<Bot />} description={PROVIDERS[c.provider]?.label}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
                   </SelectContent>
                 </Select>
-              ) : (
-              <div>
-                <input
-                  aria-label={`${TASK_LABELS[task].label}: model`}
-                  list={connection ? `models-${connection.id}` : undefined}
-                  disabled={!owner || !connection}
-                  value={connection ? choice.model : ""}
-                  onChange={(event) => set(task, { model: event.target.value })}
-                  placeholder={
-                    !choice.target
-                      ? "Follows everything"
-                      : !connection
-                        ? "Auto"
-                        : speaksAnthropic
-                          ? connection.config.model ?? "g1t's choice of Claude"
-                          : connection.config.model ?? `Search ${connection.models.length} models`
-                  }
-                  className={`${SELECT} font-mono text-[0.8125rem] ${needsModel ? "border-warn/60" : ""}`}
-                  autoComplete="off"
-                />
-                {needsModel && <p className="mt-1 text-xs text-warn">Choose a model.</p>}
-              </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      {owner && (
-        <div className="flex items-center gap-3 border-t border-line px-4 py-3">
-          <SubmitButton variant="quiet" match={{ intent: "routes" }} pending="Saving…">
-            Save routing
-          </SubmitButton>
-          {saved && <span className="text-sm text-success">Saved. The next runs use it.</span>}
-        </div>
-      )}
-    </Form>
+                {hosted ? (
+                  <Select
+                    disabled={!owner}
+                    value={choice.model || AUTO}
+                    onValueChange={(model) => set(task, { model: model === AUTO ? "" : model })}
+                  >
+                    <SelectTrigger aria-label={`${TASK_LABELS[task].label}: g1t's model`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={AUTO} description="g1t picks per job, and says why">
+                        Auto
+                      </SelectItem>
+                      <SelectSeparator />
+                      {MODEL_TIERS.map((tier) => (
+                        <SelectItem key={tier} value={tier} description={TIER_CHOICES[tier].hint}>
+                          {TIER_CHOICES[tier].label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                <div>
+                  <input
+                    aria-label={`${TASK_LABELS[task].label}: model`}
+                    list={connection ? `models-${connection.id}` : undefined}
+                    disabled={!owner || !connection}
+                    value={connection ? choice.model : ""}
+                    onChange={(event) => set(task, { model: event.target.value })}
+                    placeholder={
+                      !choice.target
+                        ? "Follows everything"
+                        : !connection
+                          ? "Auto"
+                          : speaksAnthropic
+                            ? connection.config.model ?? "g1t's choice of Claude"
+                            : connection.config.model ?? `Search ${connection.models.length} models`
+                    }
+                    className={`${SELECT} font-mono text-[0.8125rem] ${needsModel ? "border-warn/60" : ""}`}
+                    autoComplete="off"
+                  />
+                  {needsModel && <p className="mt-1 text-xs text-warn">Choose a model.</p>}
+                </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        {owner && (
+          <div className="flex items-center gap-3 border-t border-line px-4 py-3">
+            <SubmitButton variant="outline" match={{ intent: "routes" }} pending="Saving…">
+              Save routing
+            </SubmitButton>
+            {saved && <span className="text-sm text-success">Saved. The next runs use it.</span>}
+          </div>
+        )}
+      </Form>
+    </Card>
   );
 }

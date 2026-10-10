@@ -11,7 +11,7 @@ import { Link, useFetcher } from "react-router";
 import type { AgentPolicy, AgentSession, PersonBudget } from "@g1t/contracts";
 
 import { AgentAvatar } from "./agent-avatar";
-import { BUTTONS, DollarsInput, useDialogFetcher } from "./agents/dialogs";
+import { DollarsInput, useDialogFetcher } from "./agents/dialogs";
 import { Meter, PrivateTitle, SliceList, stepsLine } from "./agents/parts";
 import { monthName, shortDay } from "./agents/format";
 import { Badge } from "./ui/badge";
@@ -22,7 +22,8 @@ import { Hint } from "./ui/hint";
 import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Skeleton } from "./ui/skeleton";
-import { TimeAgo } from "./ui";
+import { ButtonLink, TimeAgo } from "./ui";
+import { Card } from "./ui/card";
 import { dollarsField } from "../lib/agent-form";
 import { cn } from "../lib/cn";
 import type { AgentBudgetRow, Budgets, PillData } from "../lib/spend.server";
@@ -33,22 +34,22 @@ import { money } from "../lib/usage";
 /** A figure at the top of the page: what it is, the amount, and a line under it. */
 export function Tile({ label, value, sub, children }: { label: ReactNode; value: ReactNode; sub?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="min-w-0 rounded-xl border border-line bg-surface p-4">
+    <Card className="min-w-0 p-4">
       <p className="flex items-center gap-1.5 text-xs text-muted">{label}</p>
       <p className="mt-1.5 truncate text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
       {sub && <p className="mt-0.5 text-xs text-faint">{sub}</p>}
       {children}
-    </div>
+    </Card>
   );
 }
 
 export function TileSkeleton() {
   return (
-    <div className="rounded-xl border border-line bg-surface p-4">
+    <Card className="p-4">
       <Skeleton className="h-3 w-24" />
       <Skeleton className="mt-3 h-7 w-28" />
       <Skeleton className="mt-2 h-3 w-36" />
-    </div>
+    </Card>
   );
 }
 
@@ -148,10 +149,10 @@ export function SliceTabs({ current, scope, href }: { current: SliceKey; scope: 
 /** Spend in a panel, the slices ranked. */
 export function SlicePanel({ children, foot }: { children: ReactNode; foot?: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-surface">
+    <Card className="overflow-hidden">
       {children}
       {foot && <p className="border-t border-line px-4 py-2.5 text-xs text-faint">{foot}</p>}
-    </div>
+    </Card>
   );
 }
 
@@ -221,8 +222,6 @@ function Level({
   );
 }
 
-const EDIT = "inline-flex h-8 items-center rounded-md border border-line px-2.5 text-xs font-medium text-fg/85 transition-colors hover:border-line-strong hover:bg-raised hover:text-fg";
-
 /**
  * The budgets, widest first: the workspace's spend limit, every agent
  * together, each person, each agent, and each task. Owners change the
@@ -234,65 +233,67 @@ export function BudgetLadder({ slug, budgets, owner, me, action, workspaceFigure
   const limitMicros = limit ? (limit.spendLimitMicros ?? limit.ceilingMicros) : null;
   const mine = people?.people.find((p) => p.username === me) ?? null;
   return (
-    <ol className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-      <Level
-        icon={<Building2 size={14} />}
-        title="The workspace"
-        amount={limit ? (limitMicros != null ? `${money(limitMicros)} a month` : "No limit") : <span className="text-faint">Unavailable</span>}
-        spent={limit && workspaceFigures ? (limit.spentMicros ?? null) : null}
-        budget={limitMicros}
-        atLimit={AT_LIMIT.workspace(limit?.pauseAtLimit ?? true)}
-        action={
-          <Link to={`/${slug}/-/billing`} className={EDIT}>
-            {owner ? "Change" : "Billing"}
-          </Link>
-        }
-      >
-        {limit?.defaultSpendLimit && <p className="mt-2 ml-10 text-xs text-faint">Automatic until owners set one: $200, or twice last month&apos;s spend, whichever is more.</p>}
-      </Level>
-      <Level
-        icon={<Sparkles size={14} />}
-        title="All agents together"
-        amount={policy ? (policy.monthly_micros != null ? `${money(policy.monthly_micros)} a month` : "No budget of its own") : <span className="text-faint">Unavailable</span>}
-        spent={workspaceFigures ? budgets.agentsMonthMicros : null}
-        budget={policy?.monthly_micros ?? null}
-        atLimit={AT_LIMIT.agents}
-        action={owner && policy ? <PolicyDialog policy={policy} action={action} trigger={<button type="button" className={EDIT}>Change</button>} /> : null}
-      />
-      <Level
-        icon={<UserRound size={14} />}
-        title="Each person"
-        amount={policy ? (policy.person_monthly_micros != null ? `${money(policy.person_monthly_micros)} a month each` : "No budget per person") : <span className="text-faint">Unavailable</span>}
-        spent={!owner && mine ? mine.spent_micros : null}
-        budget={!owner && mine ? mine.monthly_micros : null}
-        atLimit={AT_LIMIT.person}
-        action={owner && policy ? <PolicyDialog policy={policy} action={action} trigger={<button type="button" className={EDIT}>Change</button>} /> : null}
-      >
-        <p className="mt-2 ml-10 text-xs text-faint">What agents spend on work a person asks for: their chats with agents and the sessions they start.</p>
-        {owner && people && <PeopleBudgets people={people.people} defaultMicros={people.default_micros} action={action} />}
-      </Level>
-      <Level
-        icon={<Sparkles size={14} />}
-        title="Each agent"
-        amount={policy ? (policy.default_agent_monthly_micros != null ? `${money(policy.default_agent_monthly_micros)} a month for a new agent` : "Set on each agent") : <span className="text-faint">Unavailable</span>}
-        atLimit={AT_LIMIT.agent}
-      >
-        {agents && agents.length > 0 && <AgentBudgets slug={slug} agents={agents} />}
-      </Level>
-      <Level
-        icon={<ReceiptText size={14} />}
-        title="Each task"
-        amount={policy ? `${money(policy.default_session_micros)} a session` : <span className="text-faint">Unavailable</span>}
-        atLimit={AT_LIMIT.session}
-        action={owner && policy ? <PolicyDialog policy={policy} action={action} trigger={<button type="button" className={EDIT}>Change</button>} /> : null}
-      >
-        <dl className="mt-3 ml-10 grid grid-cols-1 gap-x-6 gap-y-2 text-xs sm:grid-cols-3">
-          <Fact label="A session" value={policy ? money(policy.default_session_micros) : "—"} hint="Unless its agent's own per-task cap is lower." />
-          <Fact label="One run of the plan" value={caps ? money(caps.runMicros) : "—"} hint="Set under Caps on agents, on Billing." />
-          <Fact label="Agents on one issue" value={caps ? money(caps.issueMicros) : "—"} hint="Every run on the issue together." />
-        </dl>
-      </Level>
-    </ol>
+    <Card asChild divided className="overflow-hidden">
+      <ol>
+        <Level
+          icon={<Building2 size={14} />}
+          title="The workspace"
+          amount={limit ? (limitMicros != null ? `${money(limitMicros)} a month` : "No limit") : <span className="text-faint">Unavailable</span>}
+          spent={limit && workspaceFigures ? (limit.spentMicros ?? null) : null}
+          budget={limitMicros}
+          atLimit={AT_LIMIT.workspace(limit?.pauseAtLimit ?? true)}
+          action={
+            <ButtonLink to={`/${slug}/-/billing`} variant="outline" size="sm">
+              {owner ? "Change" : "Billing"}
+            </ButtonLink>
+          }
+        >
+          {limit?.defaultSpendLimit && <p className="mt-2 ml-10 text-xs text-faint">Automatic until owners set one: $200, or twice last month&apos;s spend, whichever is more.</p>}
+        </Level>
+        <Level
+          icon={<Sparkles size={14} />}
+          title="All agents together"
+          amount={policy ? (policy.monthly_micros != null ? `${money(policy.monthly_micros)} a month` : "No budget of its own") : <span className="text-faint">Unavailable</span>}
+          spent={workspaceFigures ? budgets.agentsMonthMicros : null}
+          budget={policy?.monthly_micros ?? null}
+          atLimit={AT_LIMIT.agents}
+          action={owner && policy ? <PolicyDialog policy={policy} action={action} trigger={<Button type="button" variant="outline" size="sm">Change</Button>} /> : null}
+        />
+        <Level
+          icon={<UserRound size={14} />}
+          title="Each person"
+          amount={policy ? (policy.person_monthly_micros != null ? `${money(policy.person_monthly_micros)} a month each` : "No budget per person") : <span className="text-faint">Unavailable</span>}
+          spent={!owner && mine ? mine.spent_micros : null}
+          budget={!owner && mine ? mine.monthly_micros : null}
+          atLimit={AT_LIMIT.person}
+          action={owner && policy ? <PolicyDialog policy={policy} action={action} trigger={<Button type="button" variant="outline" size="sm">Change</Button>} /> : null}
+        >
+          <p className="mt-2 ml-10 text-xs text-faint">What agents spend on work a person asks for: their chats with agents and the sessions they start.</p>
+          {owner && people && <PeopleBudgets people={people.people} defaultMicros={people.default_micros} action={action} />}
+        </Level>
+        <Level
+          icon={<Sparkles size={14} />}
+          title="Each agent"
+          amount={policy ? (policy.default_agent_monthly_micros != null ? `${money(policy.default_agent_monthly_micros)} a month for a new agent` : "Set on each agent") : <span className="text-faint">Unavailable</span>}
+          atLimit={AT_LIMIT.agent}
+        >
+          {agents && agents.length > 0 && <AgentBudgets slug={slug} agents={agents} />}
+        </Level>
+        <Level
+          icon={<ReceiptText size={14} />}
+          title="Each task"
+          amount={policy ? `${money(policy.default_session_micros)} a session` : <span className="text-faint">Unavailable</span>}
+          atLimit={AT_LIMIT.session}
+          action={owner && policy ? <PolicyDialog policy={policy} action={action} trigger={<Button type="button" variant="outline" size="sm">Change</Button>} /> : null}
+        >
+          <dl className="mt-3 ml-10 grid grid-cols-1 gap-x-6 gap-y-2 text-xs sm:grid-cols-3">
+            <Fact label="A session" value={policy ? money(policy.default_session_micros) : "—"} hint="Unless its agent's own per-task cap is lower." />
+            <Fact label="One run of the plan" value={caps ? money(caps.runMicros) : "—"} hint="Set under Caps on agents, on Billing." />
+            <Fact label="Agents on one issue" value={caps ? money(caps.issueMicros) : "—"} hint="Every run on the issue together." />
+          </dl>
+        </Level>
+      </ol>
+    </Card>
   );
 }
 
@@ -329,9 +330,9 @@ function AgentBudgets({ slug, agents }: { slug: string; agents: AgentBudgetRow[]
       ))}
       {agents.length > 5 && (
         <li>
-          <button type="button" onClick={() => setAll((v) => !v)} className="text-xs text-accent hover:underline">
+          <Button type="button" onClick={() => setAll((v) => !v)} variant="link" size="inline" className="text-xs font-normal">
             {all ? "Show fewer" : `Show all ${agents.length}`}
-          </button>
+          </Button>
         </li>
       )}
     </ul>
@@ -357,13 +358,13 @@ function PeopleBudgets({ people, defaultMicros, action }: { people: PersonBudget
               <span className="hidden w-24 shrink-0 sm:block">
                 {person.monthly_micros != null && <Meter spent={person.spent_micros} cap={person.monthly_micros} label={`@${person.username}: spent of their budget`} size="sm" />}
               </span>
-              <PersonDialog action={action} person={person} defaultMicros={defaultMicros} trigger={<button type="button" className="shrink-0 text-xs text-accent hover:underline">Set</button>} />
+              <PersonDialog action={action} person={person} defaultMicros={defaultMicros} trigger={<Button type="button" variant="link" size="inline" className="text-xs">Set</Button>} />
             </li>
           ))}
         </ul>
       )}
       <div className="mt-2.5">
-        <PersonDialog action={action} person={null} defaultMicros={defaultMicros} trigger={<button type="button" className="text-xs text-accent hover:underline">Give someone their own budget</button>} />
+        <PersonDialog action={action} person={null} defaultMicros={defaultMicros} trigger={<Button type="button" variant="link" size="inline" className="text-xs">Give someone their own budget</Button>} />
       </div>
     </div>
   );
@@ -404,12 +405,12 @@ function PolicyDialog({ policy, action, trigger }: { policy: AgentPolicy; action
           </Field>
           <FieldError>{error}</FieldError>
           <DialogFooter>
-            <button type="button" className={BUTTONS.QUIET} onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
-            </button>
-            <button type="submit" className={BUTTONS.PRIMARY} disabled={busy}>
+            </Button>
+            <Button type="submit" variant="accent" disabled={busy}>
               {busy ? "Saving…" : "Save budgets"}
-            </button>
+            </Button>
           </DialogFooter>
         </fetcher.Form>
       </DialogContent>
@@ -449,12 +450,12 @@ function PersonDialog({ action, person, defaultMicros, trigger }: { action: stri
           </Field>
           <FieldError>{error}</FieldError>
           <DialogFooter>
-            <button type="button" className={BUTTONS.QUIET} onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
-            </button>
-            <button type="submit" className={BUTTONS.PRIMARY} disabled={busy}>
+            </Button>
+            <Button type="submit" variant="accent" disabled={busy}>
               {busy ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </DialogFooter>
         </fetcher.Form>
       </DialogContent>
@@ -528,18 +529,20 @@ export function PricingCard({ pricing }: { pricing: Pricing | null }) {
     { icon: <Users size={15} />, title: "People", value: "No seats", about: "Invite everyone; people chatting costs nothing. Effort and weekly suggestions help agents spend less." },
   ];
   return (
-    <ul className="grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
-      {rows.map((row) => (
-        <li key={row.title} className="bg-surface p-4">
-          <p className="flex items-center gap-2 text-xs text-muted">
-            <span className="text-faint">{row.icon}</span>
-            {row.title}
-          </p>
-          <p className="mt-1 text-sm font-medium">{row.value}</p>
-          <p className="mt-0.5 text-xs text-faint">{row.about}</p>
-        </li>
-      ))}
-    </ul>
+    <Card asChild tone="plain" className="grid gap-px overflow-hidden bg-line sm:grid-cols-2 lg:grid-cols-3">
+      <ul>
+        {rows.map((row) => (
+          <li key={row.title} className="bg-surface p-4">
+            <p className="flex items-center gap-2 text-xs text-muted">
+              <span className="text-faint">{row.icon}</span>
+              {row.title}
+            </p>
+            <p className="mt-1 text-sm font-medium">{row.value}</p>
+            <p className="mt-0.5 text-xs text-faint">{row.about}</p>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

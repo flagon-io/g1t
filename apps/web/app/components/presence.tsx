@@ -15,7 +15,8 @@ import type { PersonStatus, PresenceEntry } from "@g1t/contracts";
 import { EmojiGlyph } from "./emoji/render";
 import { EmojiPickerPopover } from "./emoji/picker";
 import { useEmojiContext } from "./emoji/context";
-import { Button } from "./ui";
+
+import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import {
   DropdownMenuItem,
@@ -392,13 +393,15 @@ export function StatusDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         >
           <div className="flex items-center gap-2">
             <EmojiPickerPopover onPick={(picked) => setEmoji(picked)} side="bottom" align="start">
-              <button
+              <Button
                 type="button"
                 aria-label={emoji ? `Emoji: ${emoji}. Change it` : "Choose an emoji"}
-                className="flex size-9 shrink-0 items-center justify-center rounded-md border border-line bg-bg transition-colors hover:border-line-strong hover:bg-raised"
+                variant="outline"
+                size="icon"
+                className="bg-bg hover:bg-raised"
               >
                 {emoji ? <EmojiGlyph emoji={emoji} byName={byName} usercontent={usercontent} size={18} /> : <Smile size={17} className="text-faint" />}
-              </button>
+              </Button>
             </EmojiPickerPopover>
             <Input
               value={text}
@@ -462,7 +465,7 @@ export function StatusDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           {error && <p className="text-sm text-danger">{error}</p>}
           <DialogFooter>
             {liveStatus(me?.status, Date.now()) && (
-              <Button type="button" variant="quiet" disabled={saving} onClick={() => void clearNow()}>
+              <Button type="button" variant="outline" disabled={saving} onClick={() => void clearNow()}>
                 Clear status
               </Button>
             )}

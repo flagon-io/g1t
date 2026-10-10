@@ -33,7 +33,10 @@ import type { DeployStatus } from "@g1t/contracts";
 
 import { cn } from "../lib/cn";
 import { type ActivityGroup, type Need, type NeedKind, type Verb, isAgent, sparkPoints } from "../lib/mission";
-import { Avatar, TimeAgo } from "./ui";
+import { TimeAgo } from "./ui";
+import { Avatar } from "./ui/avatar";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
@@ -86,20 +89,22 @@ export function Panel({
 /** Says a section could not be loaded, without taking the page down. */
 export function Unavailable({ what }: { what: string }) {
   return (
-    <p className="flex items-center gap-2 rounded-xl border border-dashed border-line px-4 py-5 text-sm text-muted">
-      <TriangleAlert size={14} className="text-warn" />
-      {what} could not be loaded just now. It will be back on the next refresh.
-    </p>
+    <Card asChild tone="plain" className="flex items-center gap-2 border-dashed px-4 py-5 text-sm text-muted">
+      <p>
+        <TriangleAlert size={14} className="text-warn" />
+        {what} could not be loaded just now. It will be back on the next refresh.
+      </p>
+    </Card>
   );
 }
 
 /** A quiet, dashed empty state with an optional call to action. */
 export function Quiet({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-line px-4 py-5 text-sm text-muted">
+    <Card tone="plain" className="flex flex-wrap items-center gap-3 border-dashed px-4 py-5 text-sm text-muted">
       <span className="min-w-0 grow">{children}</span>
       {action}
-    </div>
+    </Card>
   );
 }
 
@@ -124,44 +129,46 @@ export function NeedsList({ needs, limit = 8 }: { needs: Need[]; limit?: number 
   const shown = all ? needs : needs.slice(0, limit);
   return (
     <>
-      <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-        {shown.map((need) => {
-          const look = NEED[need.kind];
-          return (
-            <li key={need.key} className="flex items-start gap-3 px-4 py-3">
-              <Hint label={look.label}>
-                <span className={cn("mt-0.5 shrink-0", look.tone)}>
-                  {look.icon}
-                  <span className="sr-only">{look.label}</span>
+      <Card asChild divided className="overflow-hidden">
+        <ul>
+          {shown.map((need) => {
+            const look = NEED[need.kind];
+            return (
+              <li key={need.key} className="flex items-start gap-3 px-4 py-3">
+                <Hint label={look.label}>
+                  <span className={cn("mt-0.5 shrink-0", look.tone)}>
+                    {look.icon}
+                    <span className="sr-only">{look.label}</span>
+                  </span>
+                </Hint>
+                <span className="min-w-0 grow">
+                  <Link to={need.to} prefetch="intent" className="block truncate text-sm font-medium hover:text-accent">
+                    {need.title}
+                  </Link>
+                  <span className="mt-0.5 block text-xs leading-5 text-muted">
+                    {need.where && <span className="font-mono text-faint">{need.where} · </span>}
+                    {need.detail}
+                  </span>
                 </span>
-              </Hint>
-              <span className="min-w-0 grow">
-                <Link to={need.to} prefetch="intent" className="block truncate text-sm font-medium hover:text-accent">
-                  {need.title}
+                <span className="hidden shrink-0 pt-0.5 text-xs text-faint sm:block">
+                  <TimeAgo at={need.at} />
+                </span>
+                <Link
+                  to={need.to}
+                  prefetch="intent"
+                  className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-fg/85 transition-colors hover:border-line-strong hover:bg-raised hover:text-fg"
+                >
+                  {need.action}
                 </Link>
-                <span className="mt-0.5 block text-xs leading-5 text-muted">
-                  {need.where && <span className="font-mono text-faint">{need.where} · </span>}
-                  {need.detail}
-                </span>
-              </span>
-              <span className="hidden shrink-0 pt-0.5 text-xs text-faint sm:block">
-                <TimeAgo at={need.at} />
-              </span>
-              <Link
-                to={need.to}
-                prefetch="intent"
-                className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-fg/85 transition-colors hover:border-line-strong hover:bg-raised hover:text-fg"
-              >
-                {need.action}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
       {needs.length > limit && (
-        <button type="button" onClick={() => setAll(!all)} className="mt-2 text-xs text-muted hover:text-fg">
+        <Button type="button" onClick={() => setAll(!all)} variant="link" size="inline" className="mt-2 text-xs text-muted hover:text-fg font-normal">
           {all ? "Show fewer" : `Show ${needs.length - limit} more`}
-        </button>
+        </Button>
       )}
     </>
   );
@@ -283,7 +290,7 @@ export function ActivityFeed({
     <div>
       {groups.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg border border-line bg-bg p-0.5 text-xs">
+          <Card tone="bg" radius="lg" className="inline-flex p-0.5 text-xs">
             {(["all", "agents", "people"] as const).map((value) => (
               <button
                 key={value}
@@ -297,7 +304,7 @@ export function ActivityFeed({
                 {value === "all" ? "Everyone" : value}
               </button>
             ))}
-          </div>
+          </Card>
           {showRepo && projects.length > 1 && (
             <Select value={project} onValueChange={setProject}>
               <SelectTrigger size="sm" className="w-auto max-w-56" aria-label="Project">
@@ -376,9 +383,9 @@ export function ActivityFeed({
         </ol>
       )}
       {filtered.length > limit && (
-        <button type="button" onClick={() => setMore(!more)} className="mt-2 text-xs text-muted hover:text-fg">
+        <Button type="button" onClick={() => setMore(!more)} variant="link" size="inline" className="mt-2 text-xs text-muted hover:text-fg font-normal">
           {more ? "Show fewer" : `Show ${filtered.length - limit} more`}
-        </button>
+        </Button>
       )}
     </div>
   );

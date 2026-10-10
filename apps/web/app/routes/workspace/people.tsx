@@ -5,6 +5,8 @@ import type { Route } from "./+types/people";
 import { AgentPersonFace, AgentTag, LocalTime, PersonFace } from "../../components/people";
 import { ButtonLink, notACredential } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { page } from "../../lib/meta";
 import { type DirectoryEntry, type DirectoryKind, agentPath, directoryEntries, directoryKind, peopleAgent, personName, personPath } from "../../lib/people";
 import { identity, workspaceAgents } from "../../lib/services.server";
@@ -75,7 +77,7 @@ export default function PeopleDirectoryPage({ loaderData }: Route.ComponentProps
           />
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <div role="group" aria-label="Show" className="inline-flex rounded-lg border border-line bg-bg p-0.5">
+          <Card role="group" aria-label="Show" tone="bg" radius="lg" className="inline-flex p-0.5">
             {KINDS.map((option) => (
               <button
                 key={option.value}
@@ -89,8 +91,8 @@ export default function PeopleDirectoryPage({ loaderData }: Route.ComponentProps
                 {option.label} <span className="text-faint tabular-nums">{counts[option.value]}</span>
               </button>
             ))}
-          </div>
-          <ButtonLink to={`/${slug}/-/org-chart`} variant="quiet">
+          </Card>
+          <ButtonLink to={`/${slug}/-/org-chart`} variant="outline">
             <Network size={15} />
             Org chart
           </ButtonLink>
@@ -104,18 +106,20 @@ export default function PeopleDirectoryPage({ loaderData }: Route.ComponentProps
       </div>
 
       {entries.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line px-4 py-10 text-center text-sm text-muted">
-          {query ? (
-            <>
-              Nobody matches “{query}”. Try a team, like “sales”, or a job, like “refunds”.{" "}
-              <button type="button" className="text-accent hover:underline" onClick={() => change("q", "")}>
-                Show everyone
-              </button>
-            </>
-          ) : (
-            "No one here yet."
-          )}
-        </p>
+        <Card asChild tone="plain" className="border-dashed px-4 py-10 text-center text-sm text-muted">
+          <p>
+            {query ? (
+              <>
+                Nobody matches “{query}”. Try a team, like “sales”, or a job, like “refunds”.{" "}
+                <Button type="button" variant="link" size="inline" onClick={() => change("q", "")}>
+                  Show everyone
+                </Button>
+              </>
+            ) : (
+              "No one here yet."
+            )}
+          </p>
+        </Card>
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {entries.map((entry) => (

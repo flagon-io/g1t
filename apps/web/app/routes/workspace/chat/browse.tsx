@@ -10,6 +10,8 @@ import { sidebarOrNull } from "../../../lib/chat.server";
 import { page } from "../../../lib/meta";
 import { chat } from "../../../lib/services.server";
 import { requireUser } from "../../../lib/session.server";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Browse channels · ${params.owner} · g1t` });
@@ -66,70 +68,76 @@ export default function Browse({ loaderData }: Route.ComponentProps) {
           {!loaderData.archived && <CreateChannelButton slug={loaderData.slug} variant="button" />}
         </div>
       </div>
-      <label className="mt-6 flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm focus-within:border-accent-dim">
-        <Search size={15} className="text-faint" />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search channels"
-          aria-label="Search channels"
-          className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
-        />
-      </label>
-      <ul className="mt-4 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-        {shown.length === 0 && (
-          <li className="px-4 py-10 text-center text-sm text-muted">
-            {query ? "No channel matches." : loaderData.archived ? "No archived channels." : "No channels yet."}
-          </li>
-        )}
-        {shown.map((channel) => {
-          const isIn = joined.has(channel.id);
-          return (
-            // The whole row opens the channel: its name's link reaches over
-            // it (`after:inset-0`), and Join sits above that, so nothing
-            // interactive nests inside anything else.
-            <li
-              key={channel.id}
-              className="group/card relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised/50 has-[a:focus-visible]:bg-raised/50 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-accent has-[a:focus-visible]:ring-inset"
-            >
-              {channel.private ? (
-                <Lock size={15} className="shrink-0 text-faint" aria-label="Private" />
-              ) : (
-                <Hash size={16} className="shrink-0 text-faint" aria-label="Public" />
-              )}
-              <div className="min-w-0 grow">
-                <Link
-                  to={channelPath(loaderData.slug, channel)}
-                  className="font-medium outline-none group-hover/card:text-accent after:absolute after:inset-0 after:content-['']"
-                >
-                  {channel.name}
-                </Link>
-                {channel.private && <span className="ml-2 text-xs text-faint">Private</span>}
-                {channel.topic && <p className="truncate text-sm text-muted">{channel.topic}</p>}
-              </div>
-              {loaderData.archived ? (
-                <span className="text-xs text-faint">Archived</span>
-              ) : isIn ? (
-                <span className="text-xs text-faint">Joined</span>
-              ) : (
-                <button
-                  type="button"
-                  disabled={joining === channel.id}
-                  onClick={async () => {
-                    setJoining(channel.id);
-                    const done = await send({ intent: "join", channel_id: channel.id });
-                    setJoining(null);
-                    if (done.ok) navigate(channelPath(loaderData.slug, channel));
-                  }}
-                  className="relative z-10 h-8 rounded-md border border-line px-3 text-[0.8125rem] font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-raised disabled:opacity-50"
-                >
-                  {joining === channel.id ? "Joining…" : "Join"}
-                </button>
-              )}
+      <Card asChild radius="lg" className="mt-6 flex h-10 items-center gap-2 px-3 text-sm focus-within:border-accent-dim">
+        <label>
+          <Search size={15} className="text-faint" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search channels"
+            aria-label="Search channels"
+            className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
+          />
+        </label>
+      </Card>
+      <Card asChild divided className="mt-4 overflow-hidden">
+        <ul>
+          {shown.length === 0 && (
+            <li className="px-4 py-10 text-center text-sm text-muted">
+              {query ? "No channel matches." : loaderData.archived ? "No archived channels." : "No channels yet."}
             </li>
-          );
-        })}
-      </ul>
+          )}
+          {shown.map((channel) => {
+            const isIn = joined.has(channel.id);
+            return (
+              // The whole row opens the channel: its name's link reaches over
+              // it (`after:inset-0`), and Join sits above that, so nothing
+              // interactive nests inside anything else.
+              <li
+                key={channel.id}
+                className="group/card relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised/50 has-[a:focus-visible]:bg-raised/50 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-accent has-[a:focus-visible]:ring-inset"
+              >
+                {channel.private ? (
+                  <Lock size={15} className="shrink-0 text-faint" aria-label="Private" />
+                ) : (
+                  <Hash size={16} className="shrink-0 text-faint" aria-label="Public" />
+                )}
+                <div className="min-w-0 grow">
+                  <Link
+                    to={channelPath(loaderData.slug, channel)}
+                    className="font-medium outline-none group-hover/card:text-accent after:absolute after:inset-0 after:content-['']"
+                  >
+                    {channel.name}
+                  </Link>
+                  {channel.private && <span className="ml-2 text-xs text-faint">Private</span>}
+                  {channel.topic && <p className="truncate text-sm text-muted">{channel.topic}</p>}
+                </div>
+                {loaderData.archived ? (
+                  <span className="text-xs text-faint">Archived</span>
+                ) : isIn ? (
+                  <span className="text-xs text-faint">Joined</span>
+                ) : (
+                  <Button
+                    type="button"
+                    disabled={joining === channel.id}
+                    onClick={async () => {
+                      setJoining(channel.id);
+                      const done = await send({ intent: "join", channel_id: channel.id });
+                      setJoining(null);
+                      if (done.ok) navigate(channelPath(loaderData.slug, channel));
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="relative z-10 px-3 text-fg/90 hover:bg-raised"
+                  >
+                    {joining === channel.id ? "Joining…" : "Join"}
+                  </Button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
     </div>
   );
 }

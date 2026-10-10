@@ -11,10 +11,12 @@ import { FOUNDATIONAL_SKILLS, FOUNDATIONAL_SKILLS_VERSION, type LibrarySkill, ty
 
 import type { Route } from "./+types/skill-library";
 import { agentsAction, answer, readOrNull } from "../../../components/agents/actions.server";
-import { type ActionResult, BUTTONS, Confirm } from "../../../components/agents/dialogs";
+import { type ActionResult, Confirm } from "../../../components/agents/dialogs";
 import { AttachmentChip, FromRepository, NeedsComputer, originText, skillsPath } from "../../../components/agents/skills";
-import { EmptyState, TimeAgo } from "../../../components/ui";
+import { ButtonLink, EmptyState, TimeAgo } from "../../../components/ui";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 import { page } from "../../../lib/meta";
 import { skillLibrary } from "../../../lib/services.server";
@@ -66,14 +68,14 @@ export default function SkillLibraryPage({ loaderData }: Route.ComponentProps) {
         </div>
         {library?.can_write && (
           <div className="flex shrink-0 flex-wrap gap-2">
-            <Link to={skillsPath(slug, undefined, "/import")} className={`${BUTTONS.QUIET} h-9 py-0`}>
+            <ButtonLink to={skillsPath(slug, undefined, "/import")} variant="outline">
               <FileUp size={15} />
               Import
-            </Link>
-            <Link to={skillsPath(slug, undefined, "/new")} className={`${BUTTONS.PRIMARY} h-9 py-0`}>
+            </ButtonLink>
+            <ButtonLink to={skillsPath(slug, undefined, "/new")} variant="accent">
               <PenLine size={15} />
               Write a skill
-            </Link>
+            </ButtonLink>
           </div>
         )}
       </header>
@@ -101,20 +103,22 @@ export default function SkillLibraryPage({ loaderData }: Route.ComponentProps) {
               Your workspace&apos;s skills <span className="text-faint">{published.length}</span>
             </h2>
             {published.length === 0 ? (
-              <div className="mt-3 rounded-xl border border-dashed border-line px-6 py-10 text-center">
+              <Card tone="plain" className="mt-3 border-dashed px-6 py-10 text-center">
                 <p className="font-medium">No skills yet</p>
                 <p className="mx-auto mt-1.5 max-w-md text-sm text-muted">
                   {library.can_write
                     ? "Write one, such as how you cut a release or your brand voice, import a SKILL.md or a zip, or save a finished session as a skill."
                     : "Owners and team maintainers write skills. You can save a finished session as a skill for them to review."}
                 </p>
-              </div>
+              </Card>
             ) : (
-              <ul className="mt-3 divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
-                {published.map((skill) => (
-                  <SkillRow key={skill.id} slug={slug} skill={skill} mirror={library.mirror} />
-                ))}
-              </ul>
+              <Card asChild className="mt-3 divide-y divide-line/60 overflow-hidden">
+                <ul>
+                  {published.map((skill) => (
+                    <SkillRow key={skill.id} slug={slug} skill={skill} mirror={library.mirror} />
+                  ))}
+                </ul>
+              </Card>
             )}
           </section>
 
@@ -146,18 +150,20 @@ export default function SkillLibraryPage({ loaderData }: Route.ComponentProps) {
 
           <MirrorPanel slug={slug} mirror={library.mirror} canManage={library.can_manage} canWrite={library.can_write} />
 
-          <section aria-labelledby="marketplace" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <Store size={16} className="mt-0.5 shrink-0 text-muted" aria-hidden />
-              <div className="min-w-0">
-                <h2 id="marketplace" className="text-sm font-medium">
-                  From the Marketplace
-                </h2>
-                <p className="mt-0.5 text-sm text-muted">Skills that extensions bring, added to the library in one step.</p>
+          <Card asChild className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <section aria-labelledby="marketplace">
+              <div className="flex min-w-0 items-start gap-3">
+                <Store size={16} className="mt-0.5 shrink-0 text-muted" aria-hidden />
+                <div className="min-w-0">
+                  <h2 id="marketplace" className="text-sm font-medium">
+                    From the Marketplace
+                  </h2>
+                  <p className="mt-0.5 text-sm text-muted">Skills that extensions bring, added to the library in one step.</p>
+                </div>
               </div>
-            </div>
-            <Badge tone="neutral">Coming</Badge>
-          </section>
+              <Badge tone="neutral">Coming</Badge>
+            </section>
+          </Card>
         </div>
       )}
     </div>
@@ -208,91 +214,93 @@ function MirrorPanel({ slug, mirror, canManage, canWrite }: { slug: string; mirr
   const syncError = sync.state === "idle" && sync.data && !sync.data.ok ? sync.data.error : null;
   const problems = mirror?.error?.split("\n").filter(Boolean) ?? [];
   return (
-    <section aria-labelledby="repository" className="rounded-xl border border-line bg-surface">
-      <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3.5">
-        <div className="flex min-w-0 items-start gap-3">
-          <GitBranch size={16} className="mt-0.5 shrink-0 text-muted" aria-hidden />
-          <div className="min-w-0">
-            <h2 id="repository" className="text-sm font-medium">
-              Keep skills in a repository
-            </h2>
-            {mirror ? (
-              <p className="mt-0.5 text-sm text-muted">
-                Follows{" "}
-                <Link to={`/${mirror.repo}/tree/${mirror.branch}/.g1t/skills`} className="font-mono text-fg hover:underline">
-                  {mirror.repo}
-                </Link>
-                : each folder in <code className="font-mono text-[0.8125rem]">.g1t/skills/</code> on {mirror.branch} is a skill, and a push there publishes a new version.
-                {mirror.synced_at && (
-                  <span className="text-faint">
-                    {" "}
-                    Read <TimeAgo at={mirror.synced_at} />
-                    {mirror.commit ? ` at ${mirror.commit.slice(0, 7)}` : ""}.
-                  </span>
-                )}
-              </p>
-            ) : (
-              <p className="mt-0.5 max-w-2xl text-sm text-muted">
-                Optional. Link a repository and each <code className="font-mono text-[0.8125rem]">.g1t/skills/&lt;name&gt;/</code> folder on its default branch becomes a skill
-                here, updated by every push, so skills go through the same pull requests and reviews as code.
-              </p>
-            )}
+    <Card asChild>
+      <section aria-labelledby="repository">
+        <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3.5">
+          <div className="flex min-w-0 items-start gap-3">
+            <GitBranch size={16} className="mt-0.5 shrink-0 text-muted" aria-hidden />
+            <div className="min-w-0">
+              <h2 id="repository" className="text-sm font-medium">
+                Keep skills in a repository
+              </h2>
+              {mirror ? (
+                <p className="mt-0.5 text-sm text-muted">
+                  Follows{" "}
+                  <Link to={`/${mirror.repo}/tree/${mirror.branch}/.g1t/skills`} className="font-mono text-fg hover:underline">
+                    {mirror.repo}
+                  </Link>
+                  : each folder in <code className="font-mono text-[0.8125rem]">.g1t/skills/</code> on {mirror.branch} is a skill, and a push there publishes a new version.
+                  {mirror.synced_at && (
+                    <span className="text-faint">
+                      {" "}
+                      Read <TimeAgo at={mirror.synced_at} />
+                      {mirror.commit ? ` at ${mirror.commit.slice(0, 7)}` : ""}.
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <p className="mt-0.5 max-w-2xl text-sm text-muted">
+                  Optional. Link a repository and each <code className="font-mono text-[0.8125rem]">.g1t/skills/&lt;name&gt;/</code> folder on its default branch becomes a skill
+                  here, updated by every push, so skills go through the same pull requests and reviews as code.
+                </p>
+              )}
+            </div>
           </div>
+          {mirror && (
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {canWrite && (
+                <sync.Form method="post">
+                  <input type="hidden" name="intent" value="sync" />
+                  <Button type="submit" variant="outline" size="sm" disabled={sync.state !== "idle"}>
+                    <RefreshCw size={13} className={sync.state !== "idle" ? "animate-spin" : undefined} />
+                    {sync.state !== "idle" ? "Reading…" : "Read it again"}
+                  </Button>
+                </sync.Form>
+              )}
+              {canManage && (
+                <Confirm
+                  title="Stop following the repository?"
+                  confirm="Stop following"
+                  fields={{ intent: "unlink" }}
+                  fetcherKey="skills-unlink"
+                  trigger={
+                    <Button type="button" variant="outline" size="sm" className="hover:border-danger/50 hover:text-danger">
+                      Stop following
+                    </Button>
+                  }
+                >
+                  Its skills stay in the library as they are, and can be edited here again. Pushes to {mirror.repo} no longer change them.
+                </Confirm>
+              )}
+            </div>
+          )}
         </div>
-        {mirror && (
-          <div className="flex shrink-0 flex-wrap gap-2">
-            {canWrite && (
-              <sync.Form method="post">
-                <input type="hidden" name="intent" value="sync" />
-                <button type="submit" className={`${BUTTONS.QUIET} h-8 px-3 py-0 text-xs`} disabled={sync.state !== "idle"}>
-                  <RefreshCw size={13} className={sync.state !== "idle" ? "animate-spin" : undefined} />
-                  {sync.state !== "idle" ? "Reading…" : "Read it again"}
-                </button>
-              </sync.Form>
-            )}
-            {canManage && (
-              <Confirm
-                title="Stop following the repository?"
-                confirm="Stop following"
-                fields={{ intent: "unlink" }}
-                fetcherKey="skills-unlink"
-                trigger={
-                  <button type="button" className={`${BUTTONS.QUIET} h-8 px-3 py-0 text-xs hover:border-danger/50 hover:text-danger`}>
-                    Stop following
-                  </button>
-                }
-              >
-                Its skills stay in the library as they are, and can be edited here again. Pushes to {mirror.repo} no longer change them.
-              </Confirm>
-            )}
-          </div>
+        {(problems.length > 0 || syncError) && (
+          <ul className="space-y-1 border-t border-line/60 px-4 py-3 text-sm text-warn" aria-label="What couldn't be read">
+            {syncError && <li>{syncError}</li>}
+            {problems.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
         )}
-      </div>
-      {(problems.length > 0 || syncError) && (
-        <ul className="space-y-1 border-t border-line/60 px-4 py-3 text-sm text-warn" aria-label="What couldn't be read">
-          {syncError && <li>{syncError}</li>}
-          {problems.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ul>
-      )}
-      {!mirror && canManage && (
-        <link.Form method="post" className="flex flex-wrap items-start gap-2 border-t border-line/60 px-4 py-3">
-          <input type="hidden" name="intent" value="link" />
-          <label htmlFor="skills-repo" className="sr-only">
-            Repository
-          </label>
-          <Input id="skills-repo" name="repo" placeholder={`${slug}/agents`} autoComplete="off" spellCheck={false} className="h-9 max-w-xs grow font-mono" />
-          <button type="submit" className={`${BUTTONS.QUIET} h-9 py-0`} disabled={link.state !== "idle"}>
-            {link.state !== "idle" ? "Linking…" : "Link repository"}
-          </button>
-          {linkError && <p className="w-full text-sm text-danger">{linkError}</p>}
-        </link.Form>
-      )}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/60 px-4 py-2.5">
-        <p className="text-xs text-faint">Writing edits made here back to the repository as a commit</p>
-        <Badge tone="neutral">Coming</Badge>
-      </div>
-    </section>
+        {!mirror && canManage && (
+          <link.Form method="post" className="flex flex-wrap items-start gap-2 border-t border-line/60 px-4 py-3">
+            <input type="hidden" name="intent" value="link" />
+            <label htmlFor="skills-repo" className="sr-only">
+              Repository
+            </label>
+            <Input id="skills-repo" name="repo" placeholder={`${slug}/agents`} autoComplete="off" spellCheck={false} className="h-9 max-w-xs grow font-mono" />
+            <Button type="submit" variant="outline" disabled={link.state !== "idle"}>
+              {link.state !== "idle" ? "Linking…" : "Link repository"}
+            </Button>
+            {linkError && <p className="w-full text-sm text-danger">{linkError}</p>}
+          </link.Form>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/60 px-4 py-2.5">
+          <p className="text-xs text-faint">Writing edits made here back to the repository as a commit</p>
+          <Badge tone="neutral">Coming</Badge>
+        </div>
+      </section>
+    </Card>
   );
 }

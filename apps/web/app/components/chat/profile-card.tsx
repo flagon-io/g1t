@@ -10,7 +10,10 @@ import { AgentAvatar } from "../agent-avatar";
 import { BottomSheet } from "../mobile";
 import { PresenceSummary, WithPresence } from "../presence";
 import { isOrchestrator } from "../orchestrator";
-import { Avatar } from "../ui";
+
+import { ButtonLink } from "../ui";
+import { Avatar } from "../ui/avatar";
+import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Skeleton } from "../ui/skeleton";
 import { formatDollars } from "../../lib/agent-form";
@@ -77,8 +80,6 @@ function useMessage(slug: string) {
   };
 }
 
-const PRIMARY = "inline-flex h-9 grow items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-bg transition-colors hover:bg-accent-hover disabled:opacity-60 max-md:h-11";
-const QUIET = "inline-flex h-9 grow items-center justify-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-raised max-md:h-11";
 
 function PersonBody({ username, display, avatar, ctx, open, close }: { username: string; display: string; avatar: string | null; ctx: CardContextValue; open: boolean; close: () => void }) {
   const card = usePersonCard(ctx.slug, username, open);
@@ -133,21 +134,20 @@ function PersonBody({ username, display, avatar, ctx, open, close }: { username:
         )}
       </div>
       <div className="mt-4 flex gap-2">
-        <button type="button" disabled={message.busy} onClick={() => void message.open(`user:${username}`)} className={PRIMARY}>
+        <Button type="button" disabled={message.busy} onClick={() => void message.open(`user:${username}`)} variant="accent" className="grow rounded-lg max-md:h-11">
           <MessageSquare size={15} />
           {message.busy ? "Opening…" : "Message"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={() => {
             close();
             ctx.onViewProfile(username);
           }}
-          className={QUIET}
-        >
+          variant="outline" className="grow rounded-lg max-md:h-11">
           <UserRound size={15} />
           View profile
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -192,13 +192,13 @@ function AgentBody({ agent, ctx }: { agent: WorkspaceAgent; ctx: CardContextValu
         )}
       </div>
       <div className="mt-4 flex gap-2">
-        <button type="button" disabled={message.busy} onClick={() => void message.open(`agent:${agent.id}`)} className={PRIMARY}>
+        <Button type="button" disabled={message.busy} onClick={() => void message.open(`agent:${agent.id}`)} variant="accent" className="grow rounded-lg max-md:h-11">
           <MessageSquare size={15} />
           {message.busy ? "Opening…" : "Message"}
-        </button>
-        <Link to={`/${ctx.slug}/-/agents/${agent.handle}`} className={QUIET}>
+        </Button>
+        <ButtonLink to={`/${ctx.slug}/-/agents/${agent.handle}`} variant="outline" className="grow rounded-lg max-md:h-11">
           Profile
-        </Link>
+        </ButtonLink>
       </div>
     </div>
   );

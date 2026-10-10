@@ -28,7 +28,10 @@ import { useAddresses } from "../lib/addresses";
 import { catchUpPhase, catchUpRun, catchUpTitle, catchUpWhy } from "../lib/catch-up";
 import { duration } from "./actions";
 import { Elapsed, type Live, useRuns } from "./agents";
-import { Button, CopyLine, ErrorText, SubmitButton, TimeAgo } from "./ui";
+import { CopyLine, ErrorText, SubmitButton, TimeAgo } from "./ui";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { SkeletonLine } from "./ui/skeleton";
@@ -130,18 +133,15 @@ export function LogViewer({ text }: { text: string }) {
   return (
     <div className="relative">
       <Hint label="Copy the output">
-        <button
+        <Button
           type="button"
-          aria-label="Copy the output"
-          className="absolute top-1.5 right-3 z-10 rounded-md border border-line bg-surface p-1.5 text-faint transition-colors hover:text-fg"
-          onClick={() => {
+          aria-label="Copy the output" variant="outline" size="inline" className="absolute top-1.5 right-3 z-10 bg-surface p-1.5 text-faint" onClick={() => {
             void navigator.clipboard.writeText(stripAnsi(body));
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
-          }}
-        >
+          }}>
           {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
-        </button>
+        </Button>
       </Hint>
       {cut && (
         <p className="border-b border-line px-3 py-1.5 text-xs text-faint">
@@ -266,9 +266,9 @@ function CommandResult({ result }: { result: CheckResult }) {
         <span className="shrink-0 font-mono text-xs text-faint">{seconds(result.durationMs)}</span>
         <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-open:rotate-90" />
       </summary>
-      <div className="mx-4 mb-3 overflow-hidden rounded-lg border border-line bg-bg">
+      <Card tone="bg" radius="lg" className="mx-4 mb-3 overflow-hidden">
         <LogViewer text={result.output} />
-      </div>
+      </Card>
     </details>
   );
 }
@@ -433,7 +433,7 @@ export function ChecksSection({
                 <input type="hidden" name="run" value={runIdOf(status) ?? ""} />
                 <Hint label={`Re-run the failed jobs of ${status.context}`}>
                   <SubmitButton
-                    variant="quiet"
+                    variant="outline"
                     match={{ action: "rerun-workflow", run: runIdOf(status) ?? "" }}
                     pending="Re-running…"
                   >
@@ -462,7 +462,7 @@ export function ChecksSection({
                 name={
                   <>
                     {check.name}
-                    <span className="ml-1.5 rounded-full border border-line px-1.5 py-px text-[0.625rem] text-faint">Required</span>
+                    <Badge className="ml-1.5 px-1.5 text-[0.625rem] font-normal text-faint">Required</Badge>
                   </>
                 }
                 detail={
@@ -541,7 +541,9 @@ export function ChecksSection({
               </p>
             )}
             {run.error && (
-              <p className="mx-4 my-1.5 rounded-lg border border-line bg-bg px-3 py-2 text-sm text-muted">{run.error}</p>
+              <Card asChild tone="bg" radius="lg" className="mx-4 my-1.5 px-3 py-2 text-sm text-muted">
+                <p>{run.error}</p>
+              </Card>
             )}
             {run.results.map((result, index) => (
               <CommandResult key={`${result.command}-${index}`} result={result} />
@@ -684,7 +686,7 @@ export function ConflictsSection({
             {canResolve && (
               <Form method="post">
                 <input type="hidden" name="action" value="update" />
-                <Button variant="primary" type="submit" disabled={resolving}>
+                <Button type="submit" disabled={resolving}>
                   {resolving ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
                   {resolving ? "Starting g1t…" : "Resolve with g1t"}
                 </Button>
@@ -694,9 +696,9 @@ export function ConflictsSection({
               <TooltipTrigger asChild>
                 {/* A disabled button gets no pointer events; the span carries the tooltip. */}
                 <span tabIndex={0} className="inline-flex">
-                  <Button variant="quiet" type="button" disabled aria-disabled="true">
+                  <Button variant="outline" type="button" disabled aria-disabled="true">
                     Resolve in the browser
-                    <span className="rounded-full border border-line px-1.5 text-[0.625rem] text-faint">Soon</span>
+                    <Badge className="px-1.5 py-0 text-[0.625rem] font-normal text-faint">Soon</Badge>
                   </Button>
                 </span>
               </TooltipTrigger>
@@ -847,7 +849,7 @@ export function CatchUpProgress({
           </p>
           <Form method="post" className="mt-2">
             <input type="hidden" name="action" value="update" />
-            <Button variant="quiet" type="submit" disabled={retrying}>
+            <Button variant="outline" type="submit" disabled={retrying}>
               {retrying ? <LoaderCircle size={14} className="animate-spin" /> : <RotateCw size={14} />}
               {retrying ? "Trying again…" : "Try again"}
             </Button>

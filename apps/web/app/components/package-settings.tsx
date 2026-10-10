@@ -14,8 +14,10 @@ import {
 
 import { ConfirmDialog } from "./repo-lifecycle";
 import { SettingsSection as Section } from "./settings-section";
-import { Button, ErrorText, SubmitButton, TimeAgo } from "./ui";
+import { ErrorText, SubmitButton, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Skeleton, SkeletonLine, SkeletonRows } from "./ui/skeleton";
@@ -102,15 +104,19 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
       >
         {repo && <InheritToggle on={pkg.inherit_access !== false} repo={repo} />}
         {access.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">
-            No one has a role on the package itself.
-          </p>
+          <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
+            <p>
+              No one has a role on the package itself.
+            </p>
+          </Card>
         ) : (
-          <ul className="divide-y divide-line rounded-xl border border-line">
-            {access.map((entry) => (
-              <AccessRow key={`${entry.kind}:${entry.id}`} entry={entry} workspace={pkg.workspace} />
-            ))}
-          </ul>
+          <Card asChild tone="plain" divided>
+            <ul>
+              {access.map((entry) => (
+                <AccessRow key={`${entry.kind}:${entry.id}`} entry={entry} workspace={pkg.workspace} />
+              ))}
+            </ul>
+          </Card>
         )}
         <AddAccessForm />
       </Section>
@@ -119,14 +125,16 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
         title="Manage Actions access"
         about="Which repositories' workflows may use the package with their job token, G1T_TOKEN. A workflow in any other repository is refused."
       >
-        <ul className="divide-y divide-line rounded-xl border border-line">
-          {actions.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted">No repository's workflows may use it yet.</li>
-          )}
-          {actions.map((entry) => (
-            <ActionsRow key={entry.repo_id} entry={entry} />
-          ))}
-        </ul>
+        <Card asChild tone="plain" divided>
+          <ul>
+            {actions.length === 0 && (
+              <li className="px-4 py-6 text-center text-sm text-muted">No repository's workflows may use it yet.</li>
+            )}
+            {actions.map((entry) => (
+              <ActionsRow key={entry.repo_id} entry={entry} />
+            ))}
+          </ul>
+        </Card>
         <AddActionsForm workspace={pkg.workspace} />
       </Section>
 
@@ -135,37 +143,41 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
         about="Who may pull it. Public packages need no sign-in to pull; pushing always needs the Write role."
       >
         {repo ? (
-          <p className="rounded-xl border border-line bg-surface p-4 text-sm text-muted">
-            <span className="inline-flex items-center gap-1.5 font-medium text-fg">
-              {pkg.visibility === "private" && <Lock size={13} />}
-              {pkg.visibility === "private" ? "Private" : "Public"}
-            </span>
-            , as{" "}
-            <Link to={`/${repo}`} className="text-fg-soft hover:text-fg">
-              {repo}
-            </Link>{" "}
-            is. A linked package has its repository's visibility: change the repository's, or unlink the package.
-          </p>
+          <Card asChild className="p-4 text-sm text-muted">
+            <p>
+              <span className="inline-flex items-center gap-1.5 font-medium text-fg">
+                {pkg.visibility === "private" && <Lock size={13} />}
+                {pkg.visibility === "private" ? "Private" : "Public"}
+              </span>
+              , as{" "}
+              <Link to={`/${repo}`} className="text-fg-soft hover:text-fg">
+                {repo}
+              </Link>{" "}
+              is. A linked package has its repository's visibility: change the repository's, or unlink the package.
+            </p>
+          </Card>
         ) : (
-          <Form method="post" className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface p-4">
-            <input type="hidden" name="intent" value="visibility" />
-            <Select name="visibility" defaultValue={pkg.visibility}>
-              <SelectTrigger size="sm" aria-label="Visibility" className="w-full sm:w-64">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="start">
-                <SelectItem value="private" description={`Members of ${pkg.workspace}, by its base permission, and those given a role here.`}>
-                  Private
-                </SelectItem>
-                <SelectItem value="public" description="Anyone can pull it, signed in or not.">
-                  Public
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <SubmitButton variant="quiet" match={{ intent: "visibility" }} pending="Saving…">
-              Save
-            </SubmitButton>
-          </Form>
+          <Card asChild className="flex flex-wrap items-center gap-3 p-4">
+            <Form method="post">
+              <input type="hidden" name="intent" value="visibility" />
+              <Select name="visibility" defaultValue={pkg.visibility}>
+                <SelectTrigger size="sm" aria-label="Visibility" className="w-full sm:w-64">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  <SelectItem value="private" description={`Members of ${pkg.workspace}, by its base permission, and those given a role here.`}>
+                    Private
+                  </SelectItem>
+                  <SelectItem value="public" description="Anyone can pull it, signed in or not.">
+                    Public
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <SubmitButton variant="outline" match={{ intent: "visibility" }} pending="Saving…">
+                Save
+              </SubmitButton>
+            </Form>
+          </Card>
         )}
       </Section>
 
@@ -173,7 +185,7 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
         title="Repository"
         about="A linked package shows on its repository, takes its visibility and, while inheriting access, its roles, and its repository's workflows may publish it."
       >
-        <div className="space-y-3 rounded-xl border border-line bg-surface p-4">
+        <Card className="space-y-3 p-4">
           {repo ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="flex min-w-0 items-center gap-2 text-sm">
@@ -185,7 +197,7 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
               </p>
               <Form method="post">
                 <input type="hidden" name="intent" value="unlink" />
-                <SubmitButton variant="quiet" match={{ intent: "unlink" }} pending="Unlinking…">
+                <SubmitButton variant="outline" match={{ intent: "unlink" }} pending="Unlinking…">
                   Unlink
                 </SubmitButton>
               </Form>
@@ -199,12 +211,12 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
               Repository to link
             </label>
             <input id="link-repo" name="repo" required placeholder="repository" className={`${FIELD} sm:w-56`} />
-            <SubmitButton variant="quiet" match={{ intent: "link" }} pending="Linking…">
+            <SubmitButton variant="outline" match={{ intent: "link" }} pending="Linking…">
               {repo ? "Link to another" : "Link"}
             </SubmitButton>
           </Form>
           <p className="text-xs text-faint">Linking needs the Admin role on the repository too.</p>
-        </div>
+        </Card>
       </Section>
 
       {permissions.delete && (
@@ -213,13 +225,17 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
           about={`Versions deleted in the last ${PACKAGE_RESTORE_DAYS} days, which can still be restored. Their ${npm ? "versions" : "digests"} cannot be published again until they are purged.`}
         >
           {deleted.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">No deleted versions.</p>
+            <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
+              <p>No deleted versions.</p>
+            </Card>
           ) : (
-            <ul className="divide-y divide-line rounded-xl border border-line">
-              {deleted.map((version) => (
-                <DeletedVersionRow key={version.id} version={version} npm={npm} />
-              ))}
-            </ul>
+            <Card asChild tone="plain" divided>
+              <ul>
+                {deleted.map((version) => (
+                  <DeletedVersionRow key={version.id} version={version} npm={npm} />
+                ))}
+              </ul>
+            </Card>
           )}
         </Section>
       )}
@@ -238,7 +254,7 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
               submit="Delete package"
               busy="Deleting…"
               trigger={(open) => (
-                <Button type="button" variant="danger" onClick={open}>
+                <Button type="button" variant="destructive" onClick={open}>
                   <Trash2 size={14} />
                   Delete package
                 </Button>
@@ -312,15 +328,17 @@ function AccessRow({ entry, workspace }: { entry: PackageAccess; workspace: stri
           onValueChange={(role) => fetcher.submit({ intent: "access-role", ...who, role }, { method: "post" })}
         />
         <Hint label={`Take ${entry.name}'s role away`}>
-          <button
+          <Button
             type="button"
             aria-label={`Remove ${entry.name}`}
             disabled={fetcher.state !== "idle"}
             onClick={() => fetcher.submit({ intent: "access-remove", ...who }, { method: "post" })}
-            className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-danger disabled:opacity-50"
+            variant="ghost"
+            size="inline"
+            className="p-1.5 text-faint hover:text-danger"
           >
             <Trash2 size={14} />
-          </button>
+          </Button>
         </Hint>
       </div>
     </li>
@@ -338,44 +356,46 @@ function AddAccessForm() {
     if (fetcher.data && !fetcher.data.error) setKey((k) => k + 1);
   }, [fetcher.data]);
   return (
-    <fetcher.Form method="post" className="space-y-3 rounded-xl border border-line bg-surface p-4">
-      <input type="hidden" name="intent" value="access-add" />
-      <input type="hidden" name="kind" value={kind} />
-      <input type="hidden" name="role" value={role} />
-      <div className="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)_7rem_auto] sm:items-center">
-        <Select value={kind} onValueChange={(value) => setKind(value as "user" | "team")}>
-          <SelectTrigger size="sm" aria-label="Person or team">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent align="start">
-            <SelectItem value="user">Person</SelectItem>
-            <SelectItem value="team">Team</SelectItem>
-          </SelectContent>
-        </Select>
-        <input
-          key={key}
-          name="who"
-          required
-          aria-label={kind === "user" ? "Username" : "Team"}
-          placeholder={kind === "user" ? "username" : "team slug"}
-          className={FIELD}
-        />
-        <RoleSelect value={role} roles={PACKAGE_ROLES} label="Role" onValueChange={(value) => setRole(value as PackageRole)} className="w-full" />
-        <SubmitButton variant="quiet" fetcher={fetcher} match={{ intent: "access-add" }} pending="Adding…">
-          <UserPlus size={14} />
-          Add
-        </SubmitButton>
-      </div>
-      <p className="text-xs text-faint">
-        {PACKAGE_ROLE_LABEL[role]}: {PACKAGE_ROLE_SUMMARY[role].toLowerCase()}
-      </p>
-      {fetcher.data?.error && <ErrorText>{fetcher.data.error}</ErrorText>}
-      {fetcher.data?.message && (
-        <p className="text-sm text-success" role="status">
-          {fetcher.data.message}
+    <Card asChild className="space-y-3 p-4">
+      <fetcher.Form method="post">
+        <input type="hidden" name="intent" value="access-add" />
+        <input type="hidden" name="kind" value={kind} />
+        <input type="hidden" name="role" value={role} />
+        <div className="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)_7rem_auto] sm:items-center">
+          <Select value={kind} onValueChange={(value) => setKind(value as "user" | "team")}>
+            <SelectTrigger size="sm" aria-label="Person or team">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="start">
+              <SelectItem value="user">Person</SelectItem>
+              <SelectItem value="team">Team</SelectItem>
+            </SelectContent>
+          </Select>
+          <input
+            key={key}
+            name="who"
+            required
+            aria-label={kind === "user" ? "Username" : "Team"}
+            placeholder={kind === "user" ? "username" : "team slug"}
+            className={FIELD}
+          />
+          <RoleSelect value={role} roles={PACKAGE_ROLES} label="Role" onValueChange={(value) => setRole(value as PackageRole)} className="w-full" />
+          <SubmitButton variant="outline" fetcher={fetcher} match={{ intent: "access-add" }} pending="Adding…">
+            <UserPlus size={14} />
+            Add
+          </SubmitButton>
+        </div>
+        <p className="text-xs text-faint">
+          {PACKAGE_ROLE_LABEL[role]}: {PACKAGE_ROLE_SUMMARY[role].toLowerCase()}
         </p>
-      )}
-    </fetcher.Form>
+        {fetcher.data?.error && <ErrorText>{fetcher.data.error}</ErrorText>}
+        {fetcher.data?.message && (
+          <p className="text-sm text-success" role="status">
+            {fetcher.data.message}
+          </p>
+        )}
+      </fetcher.Form>
+    </Card>
   );
 }
 
@@ -415,15 +435,17 @@ function ActionsRow({ entry }: { entry: ActionsAccess }) {
         <span className="flex w-[2.125rem] justify-end">
           {!entry.linked && (
             <Hint label={`Stop ${entry.repo}'s workflows using it`}>
-              <button
+              <Button
                 type="button"
                 aria-label={`Remove ${entry.repo}`}
                 disabled={fetcher.state !== "idle"}
                 onClick={() => fetcher.submit({ intent: "actions-remove", repo: entry.repo }, { method: "post" })}
-                className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-danger disabled:opacity-50"
+                variant="ghost"
+                size="inline"
+                className="p-1.5 text-faint hover:text-danger"
               >
                 <Trash2 size={14} />
-              </button>
+              </Button>
             </Hint>
           )}
         </span>
@@ -440,33 +462,35 @@ function AddActionsForm({ workspace }: { workspace: string }) {
     if (fetcher.data && !fetcher.data.error) setKey((k) => k + 1);
   }, [fetcher.data]);
   return (
-    <fetcher.Form method="post" className="space-y-3 rounded-xl border border-line bg-surface p-4">
-      <input type="hidden" name="intent" value="actions-add" />
-      <input type="hidden" name="role" value={role} />
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_7rem_auto] sm:items-center">
-        <div className="flex h-8 min-w-0 items-center rounded-md border border-line bg-bg pl-2.5 font-mono text-sm focus-within:border-line-strong">
-          <span className="shrink-0 text-faint">{workspace}/</span>
-          <input
-            key={key}
-            name="repo"
-            required
-            aria-label="Repository"
-            placeholder="repository"
-            className="h-full min-w-0 grow bg-transparent pr-2.5 placeholder:text-faint focus:outline-none"
-          />
+    <Card asChild className="space-y-3 p-4">
+      <fetcher.Form method="post">
+        <input type="hidden" name="intent" value="actions-add" />
+        <input type="hidden" name="role" value={role} />
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_7rem_auto] sm:items-center">
+          <div className="flex h-8 min-w-0 items-center rounded-md border border-line bg-bg pl-2.5 font-mono text-sm focus-within:border-line-strong">
+            <span className="shrink-0 text-faint">{workspace}/</span>
+            <input
+              key={key}
+              name="repo"
+              required
+              aria-label="Repository"
+              placeholder="repository"
+              className="h-full min-w-0 grow bg-transparent pr-2.5 placeholder:text-faint focus:outline-none"
+            />
+          </div>
+          <RoleSelect value={role} roles={["read", "write"]} label="Role" onValueChange={(value) => setRole(value as "read" | "write")} className="w-full" />
+          <SubmitButton variant="outline" fetcher={fetcher} match={{ intent: "actions-add" }} pending="Adding…">
+            Add repository
+          </SubmitButton>
         </div>
-        <RoleSelect value={role} roles={["read", "write"]} label="Role" onValueChange={(value) => setRole(value as "read" | "write")} className="w-full" />
-        <SubmitButton variant="quiet" fetcher={fetcher} match={{ intent: "actions-add" }} pending="Adding…">
-          Add repository
-        </SubmitButton>
-      </div>
-      {fetcher.data?.error && <ErrorText>{fetcher.data.error}</ErrorText>}
-      {fetcher.data?.message && (
-        <p className="text-sm text-success" role="status">
-          {fetcher.data.message}
-        </p>
-      )}
-    </fetcher.Form>
+        {fetcher.data?.error && <ErrorText>{fetcher.data.error}</ErrorText>}
+        {fetcher.data?.message && (
+          <p className="text-sm text-success" role="status">
+            {fetcher.data.message}
+          </p>
+        )}
+      </fetcher.Form>
+    </Card>
   );
 }
 
@@ -504,7 +528,7 @@ function DeletedVersionRow({ version, npm }: { version: PackageVersion; npm: boo
       <fetcher.Form method="post">
         <input type="hidden" name="intent" value="restore-version" />
         <input type="hidden" name="version" value={version.id} />
-        <SubmitButton variant="quiet" fetcher={fetcher} match={{ intent: "restore-version", version: version.id }} pending="Restoring…">
+        <SubmitButton variant="outline" fetcher={fetcher} match={{ intent: "restore-version", version: version.id }} pending="Restoring…">
           <RotateCcw size={14} />
           Restore
         </SubmitButton>
@@ -524,9 +548,9 @@ export function PackageSettingsSkeleton() {
             <Skeleton className="h-3 w-48" />
             <Skeleton className="h-3 w-40" />
           </div>
-          <div className="rounded-xl border border-line">
+          <Card tone="plain">
             <SkeletonRows rows={rows} rowClassName="h-14" />
-          </div>
+          </Card>
         </div>
       ))}
     </div>

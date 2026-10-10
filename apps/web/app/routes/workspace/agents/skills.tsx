@@ -16,9 +16,13 @@ import {
 
 import type { Route } from "./+types/skills";
 import { agentsAction, answer, readOrNull } from "../../../components/agents/actions.server";
-import { type ActionResult, BUTTONS } from "../../../components/agents/dialogs";
+import { type ActionResult } from "../../../components/agents/dialogs";
 import { AttachToAgentDialog, AttachmentChip, NeedsComputer, skillsPath } from "../../../components/agents/skills";
+import { ButtonLink } from "../../../components/ui";
+import { Alert } from "../../../components/ui/alert";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
 import { Switch } from "../../../components/ui/switch";
 import { cn } from "../../../lib/cn";
@@ -94,9 +98,11 @@ export default function SkillsTab({ loaderData, params }: Route.ComponentProps) 
         use it, and reads the rest when a request matches. Skills never add a tool or a permission, and say plainly what isn&apos;t possible yet.
       </p>
       {error && (
-        <p role="alert" className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {error}
-        </p>
+        <Alert asChild>
+          <p role="alert">
+            {error}
+          </p>
+        </Alert>
       )}
 
       <section aria-labelledby="foundational">
@@ -123,36 +129,42 @@ export default function SkillsTab({ loaderData, params }: Route.ComponentProps) 
             <p className="mt-1 text-xs text-faint">Attached to {agent.display_name}, to a team it is on, or to every agent. Each uses the version pinned where it is attached.</p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            <Link to={skillsPath(slug)} className={`${BUTTONS.QUIET} h-8 px-3 py-0 text-xs`}>
+            <ButtonLink to={skillsPath(slug)} variant="outline" size="sm">
               <Library size={13} />
               Open the library
-            </Link>
+            </ButtonLink>
             {isOwner && (
               <AttachToAgentDialog
                 agentName={agent.display_name}
                 skills={attachable}
                 trigger={
-                  <button type="button" className={`${BUTTONS.QUIET} h-8 px-3 py-0 text-xs`}>
+                  <Button type="button" variant="outline" size="sm">
                     <Plus size={13} />
                     Attach a skill
-                  </button>
+                  </Button>
                 }
               />
             )}
           </div>
         </div>
         {skills == null ? (
-          <p className="mt-3 rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">The library didn&apos;t answer. Reload in a moment.</p>
+          <Card asChild tone="plain" className="mt-3 border-dashed px-4 py-6 text-center text-sm text-muted">
+            <p>The library didn&apos;t answer. Reload in a moment.</p>
+          </Card>
         ) : library.length === 0 ? (
-          <p className="mt-3 rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">
-            None yet. Skills your workspace writes, imports or saves from sessions reach {agent.display_name} once they are attached.
-          </p>
+          <Card asChild tone="plain" className="mt-3 border-dashed px-4 py-6 text-center text-sm text-muted">
+            <p>
+              None yet. Skills your workspace writes, imports or saves from sessions reach {agent.display_name} once they are attached.
+            </p>
+          </Card>
         ) : (
-          <ul className="mt-3 divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
-            {library.map((line) => (
-              <LibraryLine key={line.id} slug={slug} line={line} on={isOn(line.id)} agentName={agent.display_name} isOwner={isOwner} fetcher={fetcher} />
-            ))}
-          </ul>
+          <Card asChild className="mt-3 divide-y divide-line/60 overflow-hidden">
+            <ul>
+              {library.map((line) => (
+                <LibraryLine key={line.id} slug={slug} line={line} on={isOn(line.id)} agentName={agent.display_name} isOwner={isOwner} fetcher={fetcher} />
+              ))}
+            </ul>
+          </Card>
         )}
         {skills && skills.over_limit > 0 && (
           <p className="mt-2 text-sm text-warn">
@@ -162,10 +174,12 @@ export default function SkillsTab({ loaderData, params }: Route.ComponentProps) 
         )}
       </section>
 
-      <section aria-label="Coming" className="divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
-        <ComingRow icon={Globe} title="Web access" body="Searching and reading the open web, set per team: open, approved sites only, or off." />
-        <ComingRow icon={Store} title="Skills from the Marketplace" body="Skills that extensions bring, added in one step." />
-      </section>
+      <Card asChild className="divide-y divide-line/60 overflow-hidden">
+        <section aria-label="Coming">
+          <ComingRow icon={Globe} title="Web access" body="Searching and reading the open web, set per team: open, approved sites only, or off." />
+          <ComingRow icon={Store} title="Skills from the Marketplace" body="Skills that extensions bring, added in one step." />
+        </section>
+      </Card>
     </div>
   );
 }
@@ -225,10 +239,10 @@ function LibraryLine({
                 <input type="hidden" name="name" value={line.name} />
                 <input type="hidden" name="attachment" value={line.attachment_id ?? ""} />
                 <Hint label={line.via === "agent" ? `Move ${agentName} to version ${line.update}` : `Moves it to version ${line.update} for every agent it reaches through ${line.via_label}`}>
-                  <button type="submit" className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-accent hover:bg-accent/10" disabled={fetcher.state !== "idle"}>
+                  <Button type="submit" variant="link" size="xs" className="h-6 px-1.5 hover:bg-accent/10" disabled={fetcher.state !== "idle"}>
                     <ArrowUpCircle size={13} />
                     Update to v{line.update}
-                  </button>
+                  </Button>
                 </Hint>
               </fetcher.Form>
             ) : (

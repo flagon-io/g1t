@@ -14,7 +14,8 @@ import { Link } from "react-router";
 
 import type { AgentMessage, G1tEvent } from "@g1t/contracts";
 
-import { Avatar, TimeAgo } from "./ui";
+import { TimeAgo } from "./ui";
+import { Avatar } from "./ui/avatar";
 
 /** Whether an actor is g1t itself: its agent or its machinery. */
 const isG1t = (actor: string | null): actor is string => actor === "g1t";

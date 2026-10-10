@@ -13,6 +13,7 @@ import { type DragEvent, type ReactNode, useEffect, useMemo, useState } from "re
 import { NavLink, useLocation, useNavigate, useParams, useRevalidator } from "react-router";
 
 import { buildTree, canDo, pathTo, repoFilePath, repoFolders, spacePath, type RepoFolder, type TreeItem } from "../../lib/folios";
+import { Button } from "../ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Hint } from "../ui/hint";
 import { Skeleton } from "../ui/skeleton";
@@ -221,9 +222,9 @@ function SpaceTree({ slug, space, current, drag, setDrag }: { slug: string; spac
           await send("move", { folio_id: id, move: { space_id: space.id, parent_id: null, before_id: null } });
         }}
       >
-        <button type="button" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-label={collapsed ? `Show ${space.name}` : `Hide ${space.name}`} className="flex size-5 shrink-0 items-center justify-center rounded text-faint hover:bg-line hover:text-fg">
+        <Button type="button" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-label={collapsed ? `Show ${space.name}` : `Hide ${space.name}`} variant="ghost" size="icon" className="size-5 rounded text-faint hover:bg-line">
           <ChevronRight size={13} className={`transition-transform ${collapsed ? "" : "rotate-90"}`} />
-        </button>
+        </Button>
         <NavLink to={spacePath(slug, space.slug)} end prefetch="intent" className={({ isActive }) => `flex min-w-0 grow items-center gap-1.5 font-medium ${isActive ? "text-fg" : ""}`}>
           <span className="flex w-4 shrink-0 justify-center">
             <SpaceIcon space={space} size={14} />
@@ -314,9 +315,9 @@ function RepoTree({ slug, space }: { slug: string; space: DocRepoSpace }) {
   return (
     <li className="mt-1">
       <div className={`${ROW} text-fg-soft`}>
-        <button type="button" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-label={collapsed ? `Show ${space.repo}'s docs` : `Hide ${space.repo}'s docs`} className="flex size-5 shrink-0 items-center justify-center rounded text-faint hover:bg-line hover:text-fg">
+        <Button type="button" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-label={collapsed ? `Show ${space.repo}'s docs` : `Hide ${space.repo}'s docs`} variant="ghost" size="icon" className="size-5 rounded text-faint hover:bg-line">
           <ChevronRight size={13} className={`transition-transform ${collapsed ? "" : "rotate-90"}`} />
-        </button>
+        </Button>
         <span className="flex w-4 shrink-0 justify-center">
           <FolderGit2 size={14} className="text-faint" aria-hidden="true" />
         </span>
@@ -366,15 +367,15 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
       <div className="flex h-9 shrink-0 items-center gap-1 pr-1 pl-3">
         <h2 className="min-w-0 grow truncate text-xs font-medium text-faint">Artifacts</h2>
         <NewMenu onMake={make}>
-          <button type="button" aria-label="New" className="flex h-8 items-center gap-0.5 rounded-md px-1.5 text-faint transition-colors hover:bg-raised hover:text-fg">
+          <Button type="button" aria-label="New" variant="ghost" className="h-8 gap-0.5 px-1.5 text-faint">
             <Plus size={16} />
             <ChevronDown size={12} />
-          </button>
+          </Button>
         </NewMenu>
         {onClose && (
-          <button type="button" aria-label="Close menu" onClick={onClose} className="flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg">
+          <Button type="button" aria-label="Close menu" onClick={onClose} variant="ghost" size="icon-sm" className="text-faint">
             <X size={16} />
-          </button>
+          </Button>
         )}
       </div>
       <nav aria-label="Artifacts" className="min-h-0 grow overflow-y-auto px-2.5 pt-3 pb-4 [scrollbar-width:thin]">
@@ -428,9 +429,9 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
                 <DropdownMenu>
                   <Hint label="Browse or make spaces">
                     <DropdownMenuTrigger asChild>
-                      <button type="button" aria-label="Browse or make spaces" className="flex size-6 items-center justify-center rounded text-faint hover:bg-raised hover:text-fg">
+                      <Button type="button" aria-label="Browse or make spaces" variant="ghost" size="icon" className="size-6 rounded text-faint">
                         <Plus size={13} />
-                      </button>
+                      </Button>
                     </DropdownMenuTrigger>
                   </Hint>
                   <DropdownMenuContent align="end" className="w-44">
@@ -456,9 +457,9 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
               title="Private"
               action={
                 <Hint label="New private doc">
-                  <button type="button" onClick={() => make("doc")} aria-label="New private doc" className="flex size-6 items-center justify-center rounded text-faint hover:bg-raised hover:text-fg">
+                  <Button type="button" onClick={() => make("doc")} aria-label="New private doc" variant="ghost" size="icon" className="size-6 rounded text-faint">
                     <Plus size={13} />
-                  </button>
+                  </Button>
                 </Hint>
               }
             >
@@ -501,9 +502,9 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
               open={(sidebar.repos ?? []).length > 0}
               action={
                 <Hint label="Show a project's docs">
-                  <button type="button" onClick={() => setAddingRepo(true)} aria-label="Show a project's docs" className="flex size-6 items-center justify-center rounded text-faint hover:bg-raised hover:text-fg">
+                  <Button type="button" onClick={() => setAddingRepo(true)} aria-label="Show a project's docs" variant="ghost" size="icon" className="size-6 rounded text-faint">
                     <Plus size={13} />
-                  </button>
+                  </Button>
                 </Hint>
               }
             >

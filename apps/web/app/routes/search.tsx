@@ -7,6 +7,7 @@ import { SEARCH_TYPES, type SearchType, searchType } from "@g1t/contracts";
 import type { Route } from "./+types/search";
 import { SearchHitView } from "../components/search";
 import { EmptyState, notACredential } from "../components/ui";
+import { Card } from "../components/ui/card";
 import { TabStrip } from "../components/ui/tab-strip";
 import { Combobox } from "../components/ui/combobox";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
@@ -206,7 +207,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
             </div>
           )}
           {(type === "issues" || type === "pulls") && (
-            <div className="flex items-center gap-1 rounded-lg border border-line bg-bg p-1">
+            <Card tone="bg" radius="lg" className="flex items-center gap-1 p-1">
               {STATES[type].map((state) => (
                 <Pill
                   key={state.label}
@@ -216,7 +217,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
                   {state.label}
                 </Pill>
               ))}
-            </div>
+            </Card>
           )}
           {type === "code" && (
             <p className="text-xs text-faint">
@@ -234,19 +235,21 @@ export default function Search({ loaderData }: Route.ComponentProps) {
       )}
 
       {results?.notes.map((note) => (
-        <p key={note} className="mt-4 rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted">
-          {note}
-        </p>
+        <Card asChild key={note} radius="lg" className="mt-4 px-4 py-3 text-sm text-muted">
+          <p>
+            {note}
+          </p>
+        </Card>
       ))}
       {error && <p className="mt-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm">{error}</p>}
 
       {!q && (
         <div className="mt-8 grid gap-3 sm:grid-cols-2">
           {QUALIFIERS.slice(0, 8).map((item) => (
-            <div key={item.example} className="rounded-lg border border-line bg-surface px-4 py-3">
+            <Card key={item.example} radius="lg" className="px-4 py-3">
               <p className="font-mono text-sm">{item.example}</p>
               <p className="mt-1 text-xs text-muted">{item.means}</p>
-            </div>
+            </Card>
           ))}
         </div>
       )}

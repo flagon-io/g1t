@@ -2,6 +2,8 @@ import type { GithubRepoLink } from "@g1t/contracts";
 import { siGithub } from "simple-icons";
 
 import { TimeAgo } from "./ui";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 
 /** GitHub's mark (from Simple Icons), for the buttons that go there. */
 export function GithubMark({ className = "size-4" }: { className?: string }) {
@@ -18,13 +20,12 @@ export function GithubMark({ className = "size-4" }: { className?: string }) {
  */
 export function ContinueWithGithub({ href, label = "Continue with GitHub" }: { href: string; label?: string }) {
   return (
-    <a
-      href={href}
-      className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-line px-3.5 py-2 text-sm font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-surface hover:text-fg"
-    >
-      <GithubMark />
-      {label}
-    </a>
+    <Button asChild variant="outline" className="w-full">
+      <a href={href}>
+        <GithubMark />
+        {label}
+      </a>
+    </Button>
   );
 }
 
@@ -46,7 +47,7 @@ export function OrDivider() {
  */
 export function GithubLinkStrip({ link }: { link: GithubRepoLink }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line px-4 py-2.5 text-sm">
+    <Card tone="plain" radius="lg" className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
       <span className="flex min-w-0 items-start gap-2 text-muted">
         <GithubMark className="mt-0.5 size-4 shrink-0" />
         <span className="min-w-0">
@@ -62,6 +63,6 @@ export function GithubLinkStrip({ link }: { link: GithubRepoLink }) {
         </span>
       )}
       {link.lastError && <p className="w-full text-xs text-warn">{link.lastError}</p>}
-    </div>
+    </Card>
   );
 }

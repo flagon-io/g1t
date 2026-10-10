@@ -7,6 +7,7 @@ import { wholeDollars } from "../lib/billing";
 import { page } from "../lib/meta";
 import { application, faqPage } from "../lib/structured-data";
 import { TimeAgo } from "../components/ui";
+import { Card } from "../components/ui/card";
 import { billing } from "../lib/services.server";
 
 export function meta(args: Route.MetaArgs) {
@@ -349,21 +350,23 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         are no seats. The numbers on this page are the live price book g1t charges from. Prices exclude tax, which is added
         where it applies.
       </p>
-      <ul className="mt-6 grid gap-px overflow-hidden rounded-xl border border-line bg-line text-sm sm:grid-cols-2 lg:grid-cols-5">
-        {[
-          ["Models", modelMarkup ? `Provider price + ${modelMarkup}%` : "The provider's price", "No markup on tokens"],
-          ["Agent rate", agentRateTile, "Gateway, secrets, routing and pass-through, on your own keys too"],
-          ["Everything else g1t runs", `At cost + ${markup}`, "Sandboxes, builds, hosting, storage, search and scans"],
-          ["Your own runners", "Free", "Agents, checks and workflows on your hardware"],
-          ["People", "No seats", "Everyone in the workspace at one price"],
-        ].map(([what, price, about]) => (
-          <li key={what} className="bg-surface px-4 py-3">
-            <p className="text-xs text-muted">{what}</p>
-            <p className="mt-0.5 font-medium">{price}</p>
-            <p className="mt-0.5 text-xs text-faint">{about}</p>
-          </li>
-        ))}
-      </ul>
+      <Card asChild tone="plain" className="mt-6 grid gap-px overflow-hidden bg-line text-sm sm:grid-cols-2 lg:grid-cols-5">
+        <ul>
+          {[
+            ["Models", modelMarkup ? `Provider price + ${modelMarkup}%` : "The provider's price", "No markup on tokens"],
+            ["Agent rate", agentRateTile, "Gateway, secrets, routing and pass-through, on your own keys too"],
+            ["Everything else g1t runs", `At cost + ${markup}`, "Sandboxes, builds, hosting, storage, search and scans"],
+            ["Your own runners", "Free", "Agents, checks and workflows on your hardware"],
+            ["People", "No seats", "Everyone in the workspace at one price"],
+          ].map(([what, price, about]) => (
+            <li key={what} className="bg-surface px-4 py-3">
+              <p className="text-xs text-muted">{what}</p>
+              <p className="mt-0.5 font-medium">{price}</p>
+              <p className="mt-0.5 text-xs text-faint">{about}</p>
+            </li>
+          ))}
+        </ul>
+      </Card>
       {free && (
         <div className="mt-5 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3 text-sm">
           <span className="font-medium">Free while g1t is being built out.</span>{" "}
@@ -429,7 +432,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           People talking costs g1t very little, so it is included. Agents use models, so they are charged for what they
           use, to the agent that used it.
         </p>
-        <div className="mt-4 overflow-hidden rounded-xl border border-line">
+        <Card tone="plain" className="mt-4 overflow-hidden">
           <dl className="divide-y divide-line text-sm">
             {WORKSPACE_CHARGES.map((row) => (
               <div key={row.what} className="grid gap-1 px-4 py-3 sm:grid-cols-[14rem_1fr] sm:gap-4">
@@ -443,7 +446,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
               </div>
             ))}
           </dl>
-        </div>
+        </Card>
         <p className="mt-3 text-sm text-muted">
           The agent rate today: {agentRateLine}. A chat reply is usually a few thousand tokens on a fast model, so most
           replies cost a fraction of a cent. See{" "}
@@ -458,27 +461,33 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         <h2 className="text-xl font-semibold tracking-tight">Help spending less</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted">Prices near cost are half of it. The other half is not spending more than the work needs.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <section className="rounded-xl border border-line bg-surface p-5">
-            <h3 className="font-medium">Effort per agent</h3>
-            <p className="mt-1.5 text-sm text-muted">
-              Auto, Low, Medium, High or Max: how hard an agent works, from the model tier it starts on to how hard it reasons and how
-              many steps a session takes. Each level shows what a typical task has cost that agent.
-            </p>
-          </section>
-          <section className="rounded-xl border border-line bg-surface p-5">
-            <h3 className="font-medium">Suggestions checked against your work</h3>
-            <p className="mt-1.5 text-sm text-muted">
-              Every week, each agent&apos;s finished sessions are checked. A cheaper level is suggested only when its work was accepted
-              as often, with the numbers it rests on and an Apply button. With too little history, Spend says so instead.
-            </p>
-          </section>
-          <section className="rounded-xl border border-line bg-surface p-5">
-            <h3 className="font-medium">Budgets that hold</h3>
-            <p className="mt-1.5 text-sm text-muted">
-              Workspace, team, person, agent and task budgets are checked before work starts. An agent at its budget stops taking new
-              work and says so.
-            </p>
-          </section>
+          <Card asChild className="p-5">
+            <section>
+              <h3 className="font-medium">Effort per agent</h3>
+              <p className="mt-1.5 text-sm text-muted">
+                Auto, Low, Medium, High or Max: how hard an agent works, from the model tier it starts on to how hard it reasons and how
+                many steps a session takes. Each level shows what a typical task has cost that agent.
+              </p>
+            </section>
+          </Card>
+          <Card asChild className="p-5">
+            <section>
+              <h3 className="font-medium">Suggestions checked against your work</h3>
+              <p className="mt-1.5 text-sm text-muted">
+                Every week, each agent&apos;s finished sessions are checked. A cheaper level is suggested only when its work was accepted
+                as often, with the numbers it rests on and an Apply button. With too little history, Spend says so instead.
+              </p>
+            </section>
+          </Card>
+          <Card asChild className="p-5">
+            <section>
+              <h3 className="font-medium">Budgets that hold</h3>
+              <p className="mt-1.5 text-sm text-muted">
+                Workspace, team, person, agent and task budgets are checked before work starts. An agent at its budget stops taking new
+                work and says so.
+              </p>
+            </section>
+          </Card>
         </div>
       </section>
 
@@ -487,21 +496,23 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         Secret scanning, push protection, vulnerability alerts and security updates are free everywhere, on every plan.
       </p>
       {/* On a phone, one row at a time with both answers under it; a table that wide would scroll. */}
-      <ul className="mt-4 divide-y divide-line rounded-xl border border-line text-sm sm:hidden">
-        {rows(tier).map((row) => (
-          <li key={row.what} className="px-4 py-3">
-            <p className="font-medium">{row.what}</p>
-            {row.note && <p className="text-xs text-faint">{row.note}</p>}
-            <dl className="mt-2 grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1.5">
-              <dt className="text-xs leading-5 text-faint">Free</dt>
-              <dd className="text-muted">{row.free}</dd>
-              <dt className="text-xs leading-5 text-faint">{plan.title}</dt>
-              <dd className="text-muted">{row.plan}</dd>
-            </dl>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-4 hidden overflow-x-auto rounded-xl border border-line sm:block">
+      <Card asChild tone="plain" divided className="mt-4 text-sm sm:hidden">
+        <ul>
+          {rows(tier).map((row) => (
+            <li key={row.what} className="px-4 py-3">
+              <p className="font-medium">{row.what}</p>
+              {row.note && <p className="text-xs text-faint">{row.note}</p>}
+              <dl className="mt-2 grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1.5">
+                <dt className="text-xs leading-5 text-faint">Free</dt>
+                <dd className="text-muted">{row.free}</dd>
+                <dt className="text-xs leading-5 text-faint">{plan.title}</dt>
+                <dd className="text-muted">{row.plan}</dd>
+              </dl>
+            </li>
+          ))}
+        </ul>
+      </Card>
+      <Card tone="plain" className="mt-4 hidden overflow-x-auto sm:block">
         <table className="w-full min-w-[36rem] text-left text-sm">
           <thead className="border-b border-line text-xs text-muted">
             <tr>
@@ -527,7 +538,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             ))}
           </tbody>
         </table>
-      </div>
+      </Card>
       <p className="mt-3 text-sm text-muted">
         Git operations cost g1t money too: Cloudflare charges g1t $0.15 per 1,000. {count(tier.gitOperationsIncluded)} a
         month is far more than an active workspace uses; an agent run takes two to four.
@@ -551,25 +562,29 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
       </div>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <section className="rounded-xl border border-line bg-surface p-5">
-          <h3 className="font-medium">The trial</h3>
-          <p className="mt-1.5 text-sm text-muted">
-            {dollars(tier.trialWorkspaceMicros)} of usage, once per workspace and once per card, after a card check with a credit or
-            debit card. It comes from a{" "}
-            {dollars(tier.trialMonthlyPoolMicros)} pool each month for everyone; when a month's pool is given out, new
-            trials wait until the 1st. The trial does not cover deployments and never turns into a charge. If the last
-            run on a trial goes past it, g1t covers the difference.
-          </p>
-        </section>
-        <section className="rounded-xl border border-line bg-surface p-5">
-          <h3 className="font-medium">The open-source pool</h3>
-          <p className="mt-1.5 text-sm text-muted">
-            Checks, workflows and the merge queue on public repositories, after a card check:{" "}
-            {dollars(tier.ossPoolMicros)} a month in all, up to {dollars(tier.ossRepoMicros)} a month per repository.
-            Agents do not run from the pool. When the pool or a repository's share is used up, the work waits for the
-            month to turn, or the workspace pays as usual.
-          </p>
-        </section>
+        <Card asChild className="p-5">
+          <section>
+            <h3 className="font-medium">The trial</h3>
+            <p className="mt-1.5 text-sm text-muted">
+              {dollars(tier.trialWorkspaceMicros)} of usage, once per workspace and once per card, after a card check with a credit or
+              debit card. It comes from a{" "}
+              {dollars(tier.trialMonthlyPoolMicros)} pool each month for everyone; when a month's pool is given out, new
+              trials wait until the 1st. The trial does not cover deployments and never turns into a charge. If the last
+              run on a trial goes past it, g1t covers the difference.
+            </p>
+          </section>
+        </Card>
+        <Card asChild className="p-5">
+          <section>
+            <h3 className="font-medium">The open-source pool</h3>
+            <p className="mt-1.5 text-sm text-muted">
+              Checks, workflows and the merge queue on public repositories, after a card check:{" "}
+              {dollars(tier.ossPoolMicros)} a month in all, up to {dollars(tier.ossRepoMicros)} a month per repository.
+              Agents do not run from the pool. When the pool or a repository's share is used up, the work waits for the
+              month to turn, or the workspace pays as usual.
+            </p>
+          </section>
+        </Card>
       </div>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Limits, and how to raise them</h2>
@@ -577,65 +592,81 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         g1t lets usage run ahead of payment only so far. Limits keep a mistake small, for you and for g1t.
       </p>
       <ul className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-        <li className="rounded-xl border border-line bg-surface p-4">
-          <p className="font-medium">{dollars(tier.paidStartCeilingMicros)} in the first month</p>
-          <p className="mt-1 text-muted">
-            A workspace on the plan can use up to {dollars(tier.paidStartCeilingMicros)} in its first month. After that,
-            the limit grows with payments that clear.
-          </p>
-        </li>
-        <li className="rounded-xl border border-line bg-surface p-4">
-          <p className="font-medium">Your own spend limit</p>
-          <p className="mt-1 text-muted">
-            Owners set a monthly spend limit anywhere up to the highest limit the workspace has had, with no approval.
-            Once, you can raise it yourself to twice that.
-          </p>
-        </li>
-        <li className="rounded-xl border border-line bg-surface p-4">
-          <p className="font-medium">Prepay to raise it now</p>
-          <p className="mt-1 text-muted">
-            Prepaying from $25 raises what you can use by the same amount, at once. From $1,000 you can also pay by bank
-            transfer.
-          </p>
-        </li>
-        <li className="rounded-xl border border-line bg-surface p-4">
-          <p className="font-medium">Raise my limit</p>
-          <p className="mt-1 text-muted">
-            Need more? Ask from Billing with the amount, why, and what you expect to spend. You get an answer within one
-            business day, in the app and by email.
-          </p>
-        </li>
+        <Card asChild className="p-4">
+          <li>
+            <p className="font-medium">{dollars(tier.paidStartCeilingMicros)} in the first month</p>
+            <p className="mt-1 text-muted">
+              A workspace on the plan can use up to {dollars(tier.paidStartCeilingMicros)} in its first month. After that,
+              the limit grows with payments that clear.
+            </p>
+          </li>
+        </Card>
+        <Card asChild className="p-4">
+          <li>
+            <p className="font-medium">Your own spend limit</p>
+            <p className="mt-1 text-muted">
+              Owners set a monthly spend limit anywhere up to the highest limit the workspace has had, with no approval.
+              Once, you can raise it yourself to twice that.
+            </p>
+          </li>
+        </Card>
+        <Card asChild className="p-4">
+          <li>
+            <p className="font-medium">Prepay to raise it now</p>
+            <p className="mt-1 text-muted">
+              Prepaying from $25 raises what you can use by the same amount, at once. From $1,000 you can also pay by bank
+              transfer.
+            </p>
+          </li>
+        </Card>
+        <Card asChild className="p-4">
+          <li>
+            <p className="font-medium">Raise my limit</p>
+            <p className="mt-1 text-muted">
+              Need more? Ask from Billing with the amount, why, and what you expect to spend. You get an answer within one
+              business day, in the app and by email.
+            </p>
+          </li>
+        </Card>
       </ul>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">When usage runs high</h2>
       <ul className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-        <li className="rounded-xl border border-line bg-surface p-4">
-          <p className="font-medium">A spike pauses new work</p>
-          <p className="mt-1 text-muted">
-            When an hour's spend is five times your usual hour, and at least $5, new compute waits for an owner to choose
-            Keep going or Stop. Runs already going finish.
-          </p>
-        </li>
-        <li className="rounded-xl border border-line bg-surface p-4">
-          <p className="font-medium">Caps per run and per issue</p>
-          <p className="mt-1 text-muted">
-            One agent run stops at $2 and the agents on one issue at $10 in all, so a run stuck in a loop stops on its own.
-            Owners change both on Billing.
-          </p>
-        </li>
-        <li className="rounded-xl border border-line bg-surface p-4">
-          <p className="font-medium">Alerts at 50, 75, 90 and 100%</p>
-          <p className="mt-1 text-muted">
-            Of the plan's included usage, your spend limit and g1t's limit: in the app and by email.
-          </p>
-        </li>
-        <li className="rounded-xl border border-line bg-surface p-4">
-          <p className="font-medium">Spent more than you meant to? Tell us</p>
-          <p className="mt-1 text-muted">
-            Tell us from Billing what happened. Once in 12 months, g1t can credit back usage you did not mean, always
-            including its 20% on it. Larger credits, or a second one within 12 months, are reviewed by a person.
-          </p>
-        </li>
+        <Card asChild className="p-4">
+          <li>
+            <p className="font-medium">A spike pauses new work</p>
+            <p className="mt-1 text-muted">
+              When an hour's spend is five times your usual hour, and at least $5, new compute waits for an owner to choose
+              Keep going or Stop. Runs already going finish.
+            </p>
+          </li>
+        </Card>
+        <Card asChild className="p-4">
+          <li>
+            <p className="font-medium">Caps per run and per issue</p>
+            <p className="mt-1 text-muted">
+              One agent run stops at $2 and the agents on one issue at $10 in all, so a run stuck in a loop stops on its own.
+              Owners change both on Billing.
+            </p>
+          </li>
+        </Card>
+        <Card asChild className="p-4">
+          <li>
+            <p className="font-medium">Alerts at 50, 75, 90 and 100%</p>
+            <p className="mt-1 text-muted">
+              Of the plan's included usage, your spend limit and g1t's limit: in the app and by email.
+            </p>
+          </li>
+        </Card>
+        <Card asChild className="p-4">
+          <li>
+            <p className="font-medium">Spent more than you meant to? Tell us</p>
+            <p className="mt-1 text-muted">
+              Tell us from Billing what happened. Once in 12 months, g1t can credit back usage you did not mean, always
+              including its 20% on it. Larger credits, or a second one within 12 months, are reviewed by a person.
+            </p>
+          </li>
+        </Card>
       </ul>
       <p className="mt-3 text-sm text-muted">
         No card is charged less than {dollars(tier.minChargeMicros)} when a month closes, so a payment's fee is never most
@@ -644,10 +675,12 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
 
       <div className="mt-14 grid gap-4 sm:grid-cols-2">
         {HOW.map((item) => (
-          <section key={item.title} className="rounded-xl border border-line bg-surface p-5">
-            <h2 className="font-medium">{item.title}</h2>
-            <p className="mt-1.5 text-sm text-muted">{item.body}</p>
-          </section>
+          <Card asChild key={item.title} className="p-5">
+            <section>
+              <h2 className="font-medium">{item.title}</h2>
+              <p className="mt-1.5 text-sm text-muted">{item.body}</p>
+            </section>
+          </Card>
         ))}
       </div>
 
@@ -661,7 +694,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           "Starting from Cloudflare's published prices; checked against its bill daily."
         )}
       </p>
-      <div className="mt-4 overflow-x-auto rounded-xl border border-line">
+      <Card tone="plain" className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm sm:min-w-[36rem]">
           <thead className="border-b border-line text-xs text-muted">
             <tr>
@@ -778,95 +811,101 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             ))}
           </tbody>
         </table>
-      </div>
+      </Card>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Enterprise</h2>
       <p className="mt-1 text-sm text-muted">
         For organizations with several workspaces: one invoice and one limit. The prices are the ones on this page.
       </p>
-      <section className="mt-4 rounded-xl border border-line bg-surface p-5">
-        <ul className="grid gap-3 text-sm sm:grid-cols-2">
-          <li>
-            <p className="font-medium">Consolidated invoicing</p>
-            <p className="text-muted">One monthly invoice for every workspace, paid by card or bank transfer.</p>
-          </li>
-          <li>
-            <p className="font-medium">Custom terms</p>
-            <p className="text-muted">One limit across every workspace, invoice terms and a billing contact, set with you.</p>
-          </li>
-          <li>
-            <p className="font-medium">Security on every plan</p>
-            <p className="text-muted">
-              The audit log with export, {tier.planAuditRetentionDays} days or longer by arrangement, and secret push
-              protection, for every workspace.
-            </p>
-          </li>
-          <li>
-            <p className="font-medium">
-              Single sign-on <span className="ml-1 rounded bg-raised px-1.5 py-0.5 text-xs text-muted">Coming</span>
-            </p>
-            <p className="text-muted">Through your identity provider, on every plan once it is built. Not available yet.</p>
-          </li>
-        </ul>
-        <a
-          href={ENTERPRISE_MAIL}
-          className="mt-5 inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm hover:border-line-strong"
-        >
-          Write to us about enterprise
-          <ArrowUpRight size={14} />
-        </a>
-      </section>
+      <Card asChild className="mt-4 p-5">
+        <section>
+          <ul className="grid gap-3 text-sm sm:grid-cols-2">
+            <li>
+              <p className="font-medium">Consolidated invoicing</p>
+              <p className="text-muted">One monthly invoice for every workspace, paid by card or bank transfer.</p>
+            </li>
+            <li>
+              <p className="font-medium">Custom terms</p>
+              <p className="text-muted">One limit across every workspace, invoice terms and a billing contact, set with you.</p>
+            </li>
+            <li>
+              <p className="font-medium">Security on every plan</p>
+              <p className="text-muted">
+                The audit log with export, {tier.planAuditRetentionDays} days or longer by arrangement, and secret push
+                protection, for every workspace.
+              </p>
+            </li>
+            <li>
+              <p className="font-medium">
+                Single sign-on <span className="ml-1 rounded bg-raised px-1.5 py-0.5 text-xs text-muted">Coming</span>
+              </p>
+              <p className="text-muted">Through your identity provider, on every plan once it is built. Not available yet.</p>
+            </li>
+          </ul>
+          <a
+            href={ENTERPRISE_MAIL}
+            className="mt-5 inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm hover:border-line-strong"
+          >
+            Write to us about enterprise
+            <ArrowUpRight size={14} />
+          </a>
+        </section>
+      </Card>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Price changes</h2>
       {book && book.changes.length > 0 ? (
-        <ul className="mt-4 divide-y divide-line rounded-xl border border-line">
-          {book.changes.map((change) => {
-            const title = book.prices.find((p) => p.meter === change.meter)?.title ?? change.meter;
-            // What you pay moved: the cost, the markup, or both.
-            const before = change.oldCostMicros * (100 + (change.oldMarkupPercent ?? change.markupPercent));
-            const after = change.newCostMicros * (100 + change.markupPercent);
-            const up = after > before;
-            const fresh = after === before || before === 0;
-            return (
-              <li key={`${change.meter}-${change.createdAt}`} className="px-4 py-3 text-sm">
-                <p>
-                  <span className="font-medium">{title}</span>{" "}
-                  {fresh ? (
-                    <span className="text-muted">new</span>
-                  ) : (
-                    <span className={up ? "text-warn" : "text-accent"}>
-                      {up ? "up" : "down"} {Math.abs((after / before - 1) * 100).toFixed(1)}%
-                    </span>
-                  )}
-                </p>
-                <p className="mt-0.5 text-xs text-faint">
-                  {change.effectiveAt ? (
-                    <>
-                      {change.reason} · <span className="text-fg-soft">takes effect {change.effectiveAt.slice(0, 10)}</span>
-                    </>
-                  ) : (
-                    <>
-                      {change.reason} · <TimeAgo at={change.createdAt} />
-                    </>
-                  )}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
+        <Card asChild tone="plain" divided className="mt-4">
+          <ul>
+            {book.changes.map((change) => {
+              const title = book.prices.find((p) => p.meter === change.meter)?.title ?? change.meter;
+              // What you pay moved: the cost, the markup, or both.
+              const before = change.oldCostMicros * (100 + (change.oldMarkupPercent ?? change.markupPercent));
+              const after = change.newCostMicros * (100 + change.markupPercent);
+              const up = after > before;
+              const fresh = after === before || before === 0;
+              return (
+                <li key={`${change.meter}-${change.createdAt}`} className="px-4 py-3 text-sm">
+                  <p>
+                    <span className="font-medium">{title}</span>{" "}
+                    {fresh ? (
+                      <span className="text-muted">new</span>
+                    ) : (
+                      <span className={up ? "text-warn" : "text-accent"}>
+                        {up ? "up" : "down"} {Math.abs((after / before - 1) * 100).toFixed(1)}%
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-xs text-faint">
+                    {change.effectiveAt ? (
+                      <>
+                        {change.reason} · <span className="text-fg-soft">takes effect {change.effectiveAt.slice(0, 10)}</span>
+                      </>
+                    ) : (
+                      <>
+                        {change.reason} · <TimeAgo at={change.createdAt} />
+                      </>
+                    )}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
       ) : (
         <p className="mt-2 text-sm text-muted">None yet. When a price moves, it is listed here with why.</p>
       )}
 
       <h2 id="faq" className="mt-14 text-xl font-semibold tracking-tight">Questions</h2>
-      <dl className="mt-4 divide-y divide-line rounded-xl border border-line">
-        {FAQ.map((item) => (
-          <div key={item.q} className="px-4 py-4 text-sm">
-            <dt className="font-medium">{item.q}</dt>
-            <dd className="mt-1.5 text-muted">{item.a}</dd>
-          </div>
-        ))}
-      </dl>
+      <Card asChild tone="plain" divided className="mt-4">
+        <dl>
+          {FAQ.map((item) => (
+            <div key={item.q} className="px-4 py-4 text-sm">
+              <dt className="font-medium">{item.q}</dt>
+              <dd className="mt-1.5 text-muted">{item.a}</dd>
+            </div>
+          ))}
+        </dl>
+      </Card>
 
       <a
         href="https://docs.g1t.sh/guides/usage-and-billing/"

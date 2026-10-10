@@ -5,6 +5,7 @@ import type { Route } from "./+types/policies";
 import { TrustPage } from "../components/trust-page";
 import { CONTACT, POLICIES, POLICIES_UPDATED, POLICY_HISTORY, longDate } from "../lib/legal";
 import { page } from "../lib/meta";
+import { Card } from "../components/ui/card";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, {
@@ -61,16 +62,18 @@ export default function Policies() {
           We'll tell you before material changes take effect: by email to account holders and here, at least 30 days
           ahead, unless the law or a security problem needs a change sooner. Every change is listed below.
         </p>
-        <ol className="mt-5 divide-y divide-line rounded-xl border border-line">
-          {POLICY_HISTORY.map((entry) => (
-            <li key={entry.date + entry.change} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:gap-6">
-              <time dateTime={entry.date} className="shrink-0 font-mono text-xs leading-6 text-faint sm:w-28">
-                {entry.date}
-              </time>
-              <span className="text-fg/90">{entry.change}</span>
-            </li>
-          ))}
-        </ol>
+        <Card asChild tone="plain" divided className="mt-5">
+          <ol>
+            {POLICY_HISTORY.map((entry) => (
+              <li key={entry.date + entry.change} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:gap-6">
+                <time dateTime={entry.date} className="shrink-0 font-mono text-xs leading-6 text-faint sm:w-28">
+                  {entry.date}
+                </time>
+                <span className="text-fg/90">{entry.change}</span>
+              </li>
+            ))}
+          </ol>
+        </Card>
         <p className="mt-6 text-sm text-muted">
           Questions about a policy: <a className="text-accent hover:underline" href={`mailto:${CONTACT.legal}`}>{CONTACT.legal}</a>.
           About your information: <a className="text-accent hover:underline" href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>.

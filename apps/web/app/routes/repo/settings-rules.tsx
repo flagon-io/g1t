@@ -6,6 +6,7 @@ import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { EffectiveRulesView, InsightsView, RulesetList } from "../../components/rules";
 import { ButtonLink } from "../../components/ui";
+import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
@@ -127,9 +128,9 @@ export default function RepoRules({ loaderData, params }: Route.ComponentProps) 
                 <Search size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
                 <Input name={target === "tag" ? "tag" : "branch"} defaultValue={branch} aria-label="Branch" placeholder={defaultBranch} className="pl-8 font-mono text-[0.8125rem]" />
               </div>
-              <button type="submit" className="rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:border-line-strong hover:text-fg">
+              <Button type="submit" variant="outline" size="sm" className="px-3 text-sm text-muted font-normal">
                 Show rules
-              </button>
+              </Button>
             </Form>
             {effective ? (
               <EffectiveRulesView effective={effective} hrefFor={hrefFor} />

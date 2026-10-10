@@ -10,6 +10,7 @@ import { EVENT_TYPES, type Hook, type HookDelivery } from "@g1t/contracts";
 
 import type { WebhooksAction, WebhooksData } from "../lib/webhooks.server";
 import { CopyLine, EmptyState, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
+import { Card } from "./ui/card";
 import { CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
@@ -151,7 +152,7 @@ function DeliveryRow({ delivery, manage }: { delivery: HookDelivery; manage: boo
               <input type="hidden" name="intent" value="redeliver" />
               <input type="hidden" name="delivery" value={delivery.id} />
               <SubmitButton
-                variant="quiet"
+                variant="outline"
                 match={{ intent: "redeliver", delivery: delivery.id }}
                 pending="Redelivering…"
               >
@@ -209,13 +210,13 @@ function HookRow({ hook, open, deliveries, manage }: { hook: Hook; open: boolean
         )}
       </div>
       {open && (
-        <div className="mx-4 mb-4 overflow-hidden rounded-lg border border-line">
+        <Card tone="plain" radius="lg" className="mx-4 mb-4 overflow-hidden">
           {deliveries.length === 0 ? (
             <p className="px-4 py-3 text-sm text-muted">Nothing sent yet.</p>
           ) : (
             deliveries.map((delivery) => <DeliveryRow key={delivery.id} delivery={delivery} manage={manage} />)
           )}
-        </div>
+        </Card>
       )}
     </li>
   );
@@ -231,7 +232,9 @@ function IconButton({ intent, id, label, children }: { intent: string; id: strin
         value={intent}
         match={{ id }}
         aria-label={label}
-        className="rounded-md p-2 text-muted transition-colors hover:bg-raised hover:text-fg disabled:opacity-50"
+        variant="ghost"
+        size="inline"
+        className="p-2"
       >
         {children}
       </SubmitButton>
@@ -242,55 +245,57 @@ function IconButton({ intent, id, label, children }: { intent: string; id: strin
 function AddWebhook() {
   const [which, setWhich] = useState<"all" | "some">("all");
   return (
-    <Form method="post" className="space-y-4 rounded-xl border border-line bg-surface p-5">
-      <input type="hidden" name="intent" value="create" />
-      <p className="font-medium">Add a webhook</p>
-      <Field label="Payload URL" hint="An HTTPS address on the public internet. g1t sends it a ping as soon as you add it.">
-        <Input name="url" type="url" required placeholder="https://example.com/g1t/events" />
-      </Field>
-      <fieldset>
-        <legend className="mb-1.5 text-sm font-medium text-muted">Which events</legend>
-        <RadioGroup
-          name="which"
-          value={which}
-          onValueChange={(value) => setWhich(value as typeof which)}
-          aria-label="Which events"
-          className="flex flex-wrap gap-x-6 gap-y-2"
-        >
-          <RadioOption value="all" label="Everything, including events added later" />
-          <RadioOption value="some" label="Let me choose" />
-        </RadioGroup>
-        {which === "some" && (
-          <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {GROUPS.map((group) => (
-              <div key={group.title}>
-                <p className="mb-1.5 text-xs font-medium text-faint">{group.title}</p>
-                <div className="space-y-1">
-                  {group.events
-                    .filter((event) => (EVENT_TYPES as readonly string[]).includes(event))
-                    .map((event) => (
-                      <CheckboxOption
-                        key={event}
-                        name="event"
-                        value={event}
-                        label={event}
-                        className="items-center"
-                        labelClassName="font-mono text-[0.8125rem]"
-                      />
-                    ))}
+    <Card asChild className="space-y-4 p-5">
+      <Form method="post">
+        <input type="hidden" name="intent" value="create" />
+        <p className="font-medium">Add a webhook</p>
+        <Field label="Payload URL" hint="An HTTPS address on the public internet. g1t sends it a ping as soon as you add it.">
+          <Input name="url" type="url" required placeholder="https://example.com/g1t/events" />
+        </Field>
+        <fieldset>
+          <legend className="mb-1.5 text-sm font-medium text-muted">Which events</legend>
+          <RadioGroup
+            name="which"
+            value={which}
+            onValueChange={(value) => setWhich(value as typeof which)}
+            aria-label="Which events"
+            className="flex flex-wrap gap-x-6 gap-y-2"
+          >
+            <RadioOption value="all" label="Everything, including events added later" />
+            <RadioOption value="some" label="Let me choose" />
+          </RadioGroup>
+          {which === "some" && (
+            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {GROUPS.map((group) => (
+                <div key={group.title}>
+                  <p className="mb-1.5 text-xs font-medium text-faint">{group.title}</p>
+                  <div className="space-y-1">
+                    {group.events
+                      .filter((event) => (EVENT_TYPES as readonly string[]).includes(event))
+                      .map((event) => (
+                        <CheckboxOption
+                          key={event}
+                          name="event"
+                          value={event}
+                          label={event}
+                          className="items-center"
+                          labelClassName="font-mono text-[0.8125rem]"
+                        />
+                      ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </fieldset>
-      <Field label="Secret" hint="Optional. Deliveries are signed with it. Leave it empty and g1t makes one, shown once.">
-        <Input name="secret" type="password" autoComplete="off" />
-      </Field>
-      <SubmitButton match={{ intent: "create" }} pending="Adding…">
-        Add webhook
-      </SubmitButton>
-    </Form>
+              ))}
+            </div>
+          )}
+        </fieldset>
+        <Field label="Secret" hint="Optional. Deliveries are signed with it. Leave it empty and g1t makes one, shown once.">
+          <Input name="secret" type="password" autoComplete="off" />
+        </Field>
+        <SubmitButton match={{ intent: "create" }} pending="Adding…">
+          Add webhook
+        </SubmitButton>
+      </Form>
+    </Card>
   );
 }
 
@@ -342,17 +347,19 @@ export function WebhooksPanel({
           Add one and {scope} sends its events to your address as they happen, signed, and retried until it answers.
         </EmptyState>
       ) : (
-        <ul className="overflow-hidden rounded-xl border border-line bg-surface">
-          {data.hooks.map((hook) => (
-            <HookRow
-              key={hook.id}
-              hook={hook}
-              open={data.open === hook.id}
-              deliveries={data.open === hook.id ? data.deliveries : []}
-              manage={manage}
-            />
-          ))}
-        </ul>
+        <Card asChild className="overflow-hidden">
+          <ul>
+            {data.hooks.map((hook) => (
+              <HookRow
+                key={hook.id}
+                hook={hook}
+                open={data.open === hook.id}
+                deliveries={data.open === hook.id ? data.deliveries : []}
+                manage={manage}
+              />
+            ))}
+          </ul>
+        </Card>
       )}
 
       {/* Keyed to the webhook just added, so the form starts empty for the next. */}

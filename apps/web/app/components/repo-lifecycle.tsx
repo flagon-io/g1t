@@ -113,7 +113,7 @@ export function ConfirmDialog({
             <ErrorText>{error}</ErrorText>
             <AlertDialogFooter>
               <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-              <SubmitButton variant={danger ? "danger" : "primary"} disabled={!ready} match={{ intent, ...fields }} pending={busy}>
+              <SubmitButton variant={danger ? "destructive" : "default"} disabled={!ready} match={{ intent, ...fields }} pending={busy}>
                 {submit}
               </SubmitButton>
             </AlertDialogFooter>

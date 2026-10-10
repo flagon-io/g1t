@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { Card } from "./ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { SwitchCard } from "./ui/switch";
 
@@ -67,7 +68,7 @@ export function SettingChoice({
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-4 rounded-xl border border-line bg-surface p-4">
+    <Card className="flex items-start gap-4 p-4">
       <div className="grow">
         <p className="text-sm font-medium">{title}</p>
         <p className="mt-1 text-sm text-muted">{children}</p>
@@ -84,6 +85,6 @@ export function SettingChoice({
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </Card>
   );
 }

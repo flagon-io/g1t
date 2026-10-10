@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import type { PersonMatch } from "@g1t/contracts";
 
-import { Avatar, Input } from "./ui";
+import { Input } from "./ui";
+import { Avatar } from "./ui/avatar";
 import { UserCard } from "./user-card";
 import { PEOPLE_SEARCH_PATH, peopleQuery } from "../lib/people-search";
 

@@ -16,6 +16,7 @@ import {
   Input,
   Textarea,
 } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { repos, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
 
@@ -104,7 +105,7 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
 
   return (
     <Form method="post" className="max-w-2xl space-y-4">
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
+      <Card className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
         <GitBranch size={15} className="text-faint" />
         <span className="text-muted">Merge</span>
         <Combobox
@@ -131,7 +132,7 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
           }))}
           className="h-8 w-auto max-w-full min-w-32 font-mono"
         />
-      </div>
+      </Card>
       <Field label="Title">
         <Input name="title" required autoFocus maxLength={200} />
       </Field>
@@ -151,7 +152,7 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
             Open pull request
           </SubmitButton>
         </Hint>
-        <SubmitButton name="intent" value="draft" match={{ intent: "draft" }} variant="quiet" pending="Opening…" disabled={mirrorBlocked != null}>
+        <SubmitButton name="intent" value="draft" match={{ intent: "draft" }} variant="outline" pending="Opening…" disabled={mirrorBlocked != null}>
           Open as draft
         </SubmitButton>
         <span className="text-xs text-faint">A draft can't merge, and agents' review routines wait, until you mark it ready.</span>

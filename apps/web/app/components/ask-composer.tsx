@@ -1,6 +1,8 @@
 import { ArrowUp, AtSign, BookMarked, ChevronDown, MessageSquare, Plus, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
@@ -12,11 +14,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 export function AskComposer({ children }: { children?: ReactNode }) {
   return (
     <section aria-label="Agent" className="space-y-3">
-      <div aria-disabled="true" className="rounded-xl border border-line bg-surface opacity-80">
+      <Card aria-disabled="true" className="opacity-80">
         <p className="flex items-center gap-2 px-4 pt-3 text-sm font-medium text-fg">
           <Sparkles size={14} className="text-accent" aria-hidden="true" />
           Agent
-          <span className="rounded-full border border-line px-1.5 text-[0.6875rem] font-normal text-muted">Coming soon</span>
+          <Badge className="px-1.5 py-0 font-normal">Coming soon</Badge>
         </p>
         <label htmlFor="ask-g1t" className="sr-only">
           Ask the agent (coming soon)
@@ -46,7 +48,7 @@ export function AskComposer({ children }: { children?: ReactNode }) {
             <ArrowUp size={15} />
           </Soon>
         </div>
-      </div>
+      </Card>
       {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
     </section>
   );

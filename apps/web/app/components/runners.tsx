@@ -6,7 +6,10 @@ import { type RegistrationToken, RUNNER_DOWNLOADS, RUNNER_FILES, RUNNER_IMAGE, t
 
 import { agentRunHref, workflowRunHref } from "../lib/runners";
 import type { RunnersAction, RunnersData } from "../lib/runners.server";
-import { Button, CopyLine, EmptyState, ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "./ui";
+import { CopyLine, EmptyState, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Checkbox } from "./ui/checkbox";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { SelectField } from "./ui/select";
@@ -53,7 +56,7 @@ export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-medium">{runner.name}</span>
           <span className={`text-xs font-medium ${status.text}`}>{status.label}</span>
-          {runner.ephemeral && <Pill>ephemeral</Pill>}
+          {runner.ephemeral && <Badge size="md">ephemeral</Badge>}
           {runner.group && <span className="text-xs text-faint">in {runner.group}</span>}
         </div>
         <div className="mt-1.5 flex flex-wrap gap-1">
@@ -99,7 +102,9 @@ export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean 
             icon
             match={{ intent: "remove", id: runner.id }}
             aria-label={`Remove ${runner.name}`}
-            className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
+            variant="ghost"
+            size="inline"
+            className="p-1.5 text-faint hover:text-danger"
           >
             <Trash2 size={15} />
           </SubmitButton>
@@ -158,7 +163,7 @@ export function NewRunner({ token, groups, repoScoped }: { token: RegistrationTo
   const [platform, setPlatform] = useState<Platform>("linux");
   const [arch, setArch] = useState<"x64" | "arm64">("x64");
   return (
-    <div className="space-y-4 rounded-xl border border-line bg-surface p-4">
+    <Card className="space-y-4 p-4">
       {!token ? (
         <Form method="post" className="flex flex-wrap items-end gap-3">
           <input type="hidden" name="intent" value="token" />
@@ -234,7 +239,7 @@ export function NewRunner({ token, groups, repoScoped }: { token: RegistrationTo
           Self-hosted runners
         </a>
       </p>
-    </div>
+    </Card>
   );
 }
 
@@ -266,39 +271,41 @@ export function Groups({
   }, [action]);
   return (
     <div className="space-y-3">
-      <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
-        {groups.map((group) => (
-          <li key={group.id} className="px-4 py-3">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="font-medium">{group.name}</span>
-              {group.default && <Pill>default</Pill>}
-              <span className="text-xs text-muted">
-                {group.runners} {group.runners === 1 ? "runner" : "runners"} ·{" "}
-                {group.repositories.length === 0 ? "every repository" : group.repositories.join(", ")}
-              </span>
-              {manage && (
-                <span className="ml-auto flex items-center gap-2">
-                  <Button type="button" variant="quiet" onClick={() => setEditing(editing === group.id ? null : group.id)}>
-                    {editing === group.id ? "Close" : "Edit"}
-                  </Button>
-                  {!group.default && (
-                    <Form method="post" onSubmit={(event) => { if (!confirm(`Delete ${group.name}? Its runners join the default group.`)) event.preventDefault(); }}>
-                      <input type="hidden" name="intent" value="delete-group" />
-                      <input type="hidden" name="id" value={group.id} />
-                      <SubmitButton variant="quiet" match={{ intent: "delete-group", id: group.id }} pending="Deleting…">
-                        Delete
-                      </SubmitButton>
-                    </Form>
-                  )}
+      <Card asChild divided>
+        <ul>
+          {groups.map((group) => (
+            <li key={group.id} className="px-4 py-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-medium">{group.name}</span>
+                {group.default && <Badge size="md">default</Badge>}
+                <span className="text-xs text-muted">
+                  {group.runners} {group.runners === 1 ? "runner" : "runners"} ·{" "}
+                  {group.repositories.length === 0 ? "every repository" : group.repositories.join(", ")}
                 </span>
-              )}
-            </div>
-            {editing === group.id && <GroupForm group={group} repositories={repositories} />}
-          </li>
-        ))}
-      </ul>
+                {manage && (
+                  <span className="ml-auto flex items-center gap-2">
+                    <Button type="button" variant="outline" onClick={() => setEditing(editing === group.id ? null : group.id)}>
+                      {editing === group.id ? "Close" : "Edit"}
+                    </Button>
+                    {!group.default && (
+                      <Form method="post" onSubmit={(event) => { if (!confirm(`Delete ${group.name}? Its runners join the default group.`)) event.preventDefault(); }}>
+                        <input type="hidden" name="intent" value="delete-group" />
+                        <input type="hidden" name="id" value={group.id} />
+                        <SubmitButton variant="outline" match={{ intent: "delete-group", id: group.id }} pending="Deleting…">
+                          Delete
+                        </SubmitButton>
+                      </Form>
+                    )}
+                  </span>
+                )}
+              </div>
+              {editing === group.id && <GroupForm group={group} repositories={repositories} />}
+            </li>
+          ))}
+        </ul>
+      </Card>
       {manage && (editing === "new" ? <GroupForm group={null} repositories={repositories} /> : (
-        <Button type="button" variant="quiet" onClick={() => setEditing("new")}>
+        <Button type="button" variant="outline" onClick={() => setEditing("new")}>
           <Plus size={15} />
           New group
         </Button>
@@ -310,33 +317,35 @@ export function Groups({
 function GroupForm({ group, repositories }: { group: RunnerGroup | null; repositories: string[] }) {
   const [reach, setReach] = useState(group && group.repositories.length > 0 ? "some" : "all");
   return (
-    <Form method="post" className="mt-3 space-y-3 rounded-lg border border-line bg-bg p-3">
-      <input type="hidden" name="intent" value="group" />
-      {group && <input type="hidden" name="id" value={group.id} />}
-      <Field label="Name">
-        <Input name="name" defaultValue={group?.name ?? ""} placeholder="GPU machines" maxLength={64} required={!group} />
-      </Field>
-      <fieldset className="space-y-2 text-sm">
-        <legend className="mb-1 text-xs text-muted">Repositories that may use its runners</legend>
-        <RadioGroup name="reach" value={reach} onValueChange={setReach}>
-          <RadioOption value="all" label="Every repository in the workspace" />
-          <RadioOption value="some" label="Only these" />
-        </RadioGroup>
-        {reach === "some" && (
-          <div className="grid gap-1 pl-6 sm:grid-cols-2">
-            {repositories.map((name) => (
-              <label key={name} className="flex min-h-8 cursor-pointer items-center gap-2 font-mono text-xs">
-                <Checkbox name="repository" value={name} defaultChecked={group?.repositories.includes(name)} />
-                {name}
-              </label>
-            ))}
-          </div>
-        )}
-      </fieldset>
-      <SubmitButton match={{ intent: "group", id: group?.id }} pending="Saving…">
-        Save group
-      </SubmitButton>
-    </Form>
+    <Card asChild tone="bg" radius="lg" className="mt-3 space-y-3 p-3">
+      <Form method="post">
+        <input type="hidden" name="intent" value="group" />
+        {group && <input type="hidden" name="id" value={group.id} />}
+        <Field label="Name">
+          <Input name="name" defaultValue={group?.name ?? ""} placeholder="GPU machines" maxLength={64} required={!group} />
+        </Field>
+        <fieldset className="space-y-2 text-sm">
+          <legend className="mb-1 text-xs text-muted">Repositories that may use its runners</legend>
+          <RadioGroup name="reach" value={reach} onValueChange={setReach}>
+            <RadioOption value="all" label="Every repository in the workspace" />
+            <RadioOption value="some" label="Only these" />
+          </RadioGroup>
+          {reach === "some" && (
+            <div className="grid gap-1 pl-6 sm:grid-cols-2">
+              {repositories.map((name) => (
+                <label key={name} className="flex min-h-8 cursor-pointer items-center gap-2 font-mono text-xs">
+                  <Checkbox name="repository" value={name} defaultChecked={group?.repositories.includes(name)} />
+                  {name}
+                </label>
+              ))}
+            </div>
+          )}
+        </fieldset>
+        <SubmitButton match={{ intent: "group", id: group?.id }} pending="Saving…">
+          Save group
+        </SubmitButton>
+      </Form>
+    </Card>
   );
 }
 
@@ -352,23 +361,25 @@ export function RunnerSettingsForm({ data, manage, scope }: { data: RunnersData;
       {scope === "project" && settings.inherited && (
         <p className="text-sm text-muted">These are the workspace&apos;s settings. Saving here gives this project its own.</p>
       )}
-      <label className="flex items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4">
-        <span className="min-w-0">
-          <span className="flex items-center gap-2 text-sm font-medium">
-            <Bot size={15} className="text-muted" />
-            Run g1t's work on self-hosted runners
+      <Card asChild className="flex items-start justify-between gap-4 p-4">
+        <label>
+          <span className="min-w-0">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <Bot size={15} className="text-muted" />
+              Run g1t's work on self-hosted runners
+            </span>
+            <span className="mt-1 block text-sm text-muted">
+              Agent runs, checks, reviews and the merge queue run on your runners with these labels instead of g1t&apos;s sandboxes. The machine time is
+              free; the model is paid as before, through g1t&apos;s model proxy, or by your own provider if you connected one. Agent work needs Docker, or a
+              Linux runner.
+            </span>
+            <span className="mt-3 block max-w-sm">
+              <Input name="agentLabels" defaultValue={settings.agentLabels.join(", ")} disabled={!manage} aria-label="Labels for agent work" />
+            </span>
           </span>
-          <span className="mt-1 block text-sm text-muted">
-            Agent runs, checks, reviews and the merge queue run on your runners with these labels instead of g1t&apos;s sandboxes. The machine time is
-            free; the model is paid as before, through g1t&apos;s model proxy, or by your own provider if you connected one. Agent work needs Docker, or a
-            Linux runner.
-          </span>
-          <span className="mt-3 block max-w-sm">
-            <Input name="agentLabels" defaultValue={settings.agentLabels.join(", ")} disabled={!manage} aria-label="Labels for agent work" />
-          </span>
-        </span>
-        <Switch name="agents" checked={agents} onCheckedChange={setAgents} disabled={!manage} aria-label="Run g1t's work on self-hosted runners" />
-      </label>
+          <Switch name="agents" checked={agents} onCheckedChange={setAgents} disabled={!manage} aria-label="Run g1t's work on self-hosted runners" />
+        </label>
+      </Card>
       <label className={`flex items-start justify-between gap-4 rounded-xl border p-4 ${forks ? "border-danger/50 bg-danger/5" : "border-line bg-surface"}`}>
         <span className="min-w-0">
           <span className="flex items-center gap-2 text-sm font-medium">
@@ -391,7 +402,7 @@ export function RunnerSettingsForm({ data, manage, scope }: { data: RunnersData;
             Save
           </SubmitButton>
           {scope === "project" && !settings.inherited && (
-            <SubmitButton name="intent" value="inherit" variant="quiet" pending="Following…">
+            <SubmitButton name="intent" value="inherit" variant="outline" pending="Following…">
               Follow the workspace
             </SubmitButton>
           )}
@@ -439,11 +450,13 @@ export function RunnersPanel({
             Add one below. It connects out to g1t; nothing needs to reach the machine.
           </EmptyState>
         ) : (
-          <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
-            {data.runners.map((runner) => (
-              <RunnerRow key={runner.id} runner={runner} manage={manage && (scope === "workspace" || runner.repo !== null)} />
-            ))}
-          </ul>
+          <Card asChild divided>
+            <ul>
+              {data.runners.map((runner) => (
+                <RunnerRow key={runner.id} runner={runner} manage={manage && (scope === "workspace" || runner.repo !== null)} />
+              ))}
+            </ul>
+          </Card>
         )}
       </Section>
       {manage && (

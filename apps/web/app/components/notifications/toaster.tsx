@@ -5,9 +5,11 @@ import type { FeedNotification, NotificationKind } from "@g1t/contracts";
 
 import { NotificationCardActions } from "./card-actions";
 import { MemberAvatar } from "../chat/marks";
-import { Avatar } from "../ui";
+
 import { closeOffer, currentSink, declinePush, dismiss, enablePush, useNotifyState } from "../../lib/notify-client";
 import { TOAST_GUESS, TOAST_MS, canQuickReply, hiddenToFit, notificationActions, quickReplyRequest } from "../../lib/notify-store";
+import { Avatar } from "../ui/avatar";
+import { Button } from "../ui/button";
 
 const KIND: Record<NotificationKind, { label: string; icon: ReactNode }> = {
   dm: { label: "Direct message", icon: <MessageCircle /> },
@@ -93,14 +95,16 @@ function QuickReply({ notification, onSent }: { notification: FeedNotification; 
           data-1p-ignore
           className="h-7 min-w-0 grow bg-transparent text-[0.8125rem] text-fg outline-none placeholder:text-faint"
         />
-        <button
+        <Button
           type="submit"
           disabled={!text.trim() || state === "sending"}
           aria-label="Send reply"
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent text-bg transition-opacity disabled:opacity-30"
+          variant="accent"
+          size="icon-xs"
+          className="transition-opacity disabled:opacity-30"
         >
           <CornerDownLeft size={14} />
-        </button>
+        </Button>
       </div>
       {state === "failed" && <p className="mt-1.5 text-xs text-danger">That didn't send. Open the conversation to try again.</p>}
     </form>
@@ -138,14 +142,15 @@ function ToastCard({ notification, paused }: { notification: FeedNotification; p
           {notification.body && <span className="mt-1 line-clamp-2 block text-[0.8125rem] leading-snug text-muted">{notification.body}</span>}
         </span>
       </button>
-      <button
+      <Button
         type="button"
         aria-label="Dismiss"
         onClick={() => dismiss(notification.id)}
-        className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-md text-faint opacity-0 transition-opacity group-hover/toast:opacity-100 hover:bg-raised hover:text-fg focus-visible:opacity-100 max-sm:opacity-100"
+        variant="ghost" size="icon"
+        className="absolute top-2 right-2 size-6 text-faint opacity-0 transition-opacity group-hover/toast:opacity-100 focus-visible:opacity-100 max-sm:opacity-100"
       >
         <X size={14} />
-      </button>
+      </Button>
       {card && <NotificationCardActions notification={notification} className="px-3 pb-3 sm:pl-14" />}
       {!card && canQuickReply(notification) && <QuickReply notification={notification} onSent={() => dismiss(notification.id)} />}
       <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-line">
@@ -168,7 +173,7 @@ function PushOffer() {
         <BellRing size={16} />
       </span>
       <p className="min-w-0 grow text-[0.8125rem] leading-snug text-fg">Get notified when someone messages you</p>
-      <button
+      <Button
         type="button"
         disabled={busy}
         onClick={async () => {
@@ -177,18 +182,21 @@ function PushOffer() {
           setBusy(false);
           closeOffer();
         }}
-        className="shrink-0 rounded-md bg-accent px-2.5 py-1.5 text-xs font-semibold text-bg transition-opacity hover:opacity-90 disabled:opacity-60"
+        variant="accent"
+        size="xs"
+        className="px-2.5 font-semibold transition-opacity hover:opacity-90 disabled:opacity-60"
       >
         {busy ? "Turning on…" : "Turn on"}
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
         aria-label="No thanks"
         onClick={declinePush}
-        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
+        variant="ghost" size="icon"
+        className="size-6 text-faint"
       >
         <X size={14} />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -256,14 +264,16 @@ export function Toaster() {
       {folded.length > 0 && (
         <div className="pointer-events-auto flex h-[30px] items-center justify-between gap-2 self-center rounded-full bg-surface pr-1 pl-3 text-xs text-muted shadow-[0_0_0_6px_var(--color-bg),0_10px_30px_-10px_rgba(0,0,0,0.9)] ring-1 ring-line-strong">
           <span className="font-medium text-fg tabular-nums">+{folded.length} more</span>
-          <button
+          <Button
             type="button"
             onClick={() => folded.forEach((t) => dismiss(t.notification.id))}
             aria-label={`Clear ${folded.length} older ${folded.length === 1 ? "notification" : "notifications"}`}
-            className="rounded-full px-2 py-0.5 text-faint transition-colors hover:bg-raised hover:text-fg"
+            variant="ghost"
+            size="inline"
+            className="rounded-full px-2 py-0.5 text-faint font-normal"
           >
             Clear
-          </button>
+          </Button>
         </div>
       )}
       {shown.map((toast) => (

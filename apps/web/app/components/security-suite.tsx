@@ -23,11 +23,14 @@ import {
 
 import { total, trendMax } from "../lib/security-suite";
 import { SeverityBadge } from "./security";
-import { TimeAgo } from "./ui";
+import { ButtonLink, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
 type Done = { ok: boolean; error?: string } | undefined;
 
@@ -37,8 +40,6 @@ const INPUT =
   "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim";
 const SMALL_BUTTON =
   "rounded-md border border-line px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-line-strong hover:text-fg disabled:opacity-50";
-const PRIMARY = "rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg transition-colors hover:bg-fg-hover disabled:opacity-50";
-
 /** A section's title, what it is for, and what can be done there. */
 export function SectionHeader({ title, about, actions }: { title: string; about: ReactNode; actions?: ReactNode }) {
   return (
@@ -84,9 +85,9 @@ export function ActivationPrompt({
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
           {isOwner ? (
-            <Link to={`/${workspace}/-/billing`} className={PRIMARY}>
+            <ButtonLink to={`/${workspace}/-/billing`}>
               Start the plan
-            </Link>
+            </ButtonLink>
           ) : (
             <span className="text-muted">An owner of {workspace} can start the plan in Billing.</span>
           )}
@@ -302,40 +303,42 @@ function On({ on, children }: { on: boolean; children?: ReactNode }) {
 export function CoverageTable({ repos, owner }: { repos: RepoCoverage[]; owner: string }) {
   if (repos.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">
-        No repository has been scanned yet. Each one is scanned on its next push to its default branch, or when its Security page
-        is first opened.
-      </p>
+      <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
+        <p>
+          No repository has been scanned yet. Each one is scanned on its next push to its default branch, or when its Security page
+          is first opened.
+        </p>
+      </Card>
     );
   }
   return (
-    <div className={`${CARD} overflow-x-auto`}>
-      <table className="w-full min-w-[46rem] text-sm">
-        <thead className="text-left text-xs text-muted">
-          <tr className="border-b border-line">
-            <th className="px-4 py-2.5 font-medium">Repository</th>
-            <th className="px-3 py-2.5 font-medium">Open</th>
-            <th className="px-3 py-2.5 font-medium">Push protection</th>
-            <th className="px-3 py-2.5 font-medium">Custom patterns</th>
-            <th className="px-3 py-2.5 font-medium">Code scanning</th>
-            <th className="px-3 py-2.5 font-medium">Dependency review</th>
-            <th className="px-3 py-2.5 font-medium">Security updates</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className={CARD}>
+      <Table className="min-w-[46rem]">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="px-4">Repository</TableHead>
+            <TableHead>Open</TableHead>
+            <TableHead>Push protection</TableHead>
+            <TableHead>Custom patterns</TableHead>
+            <TableHead>Code scanning</TableHead>
+            <TableHead>Dependency review</TableHead>
+            <TableHead>Security updates</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {repos.map((repo) => {
             const open = total(repo.secrets) + total(repo.code) + total(repo.vulnerabilities);
             const critical = repo.secrets.critical + repo.code.critical + repo.vulnerabilities.critical;
             const high = repo.secrets.high + repo.code.high + repo.vulnerabilities.high;
             return (
-              <tr key={repo.repoId} className="border-b border-line last:border-0">
-                <td className="px-4 py-2.5">
+              <TableRow key={repo.repoId}>
+                <TableCell className="px-4">
                   <Link to={`/${owner}/${repo.name}/security`} className="font-mono text-sm font-medium hover:underline">
                     {repo.name}
                   </Link>
                   {repo.private && <span className="ml-2 text-xs text-faint">private</span>}
-                </td>
-                <td className="px-3 py-2.5 text-xs whitespace-nowrap">
+                </TableCell>
+                <TableCell className="text-xs whitespace-nowrap">
                   {open === 0 ? (
                     <span className="inline-flex items-center gap-1 text-success">
                       <ShieldCheck size={13} /> None
@@ -347,14 +350,14 @@ export function CoverageTable({ repos, owner }: { repos: RepoCoverage[]; owner: 
                       {open - critical - high > 0 && <Badge>{open - critical - high} other</Badge>}
                     </span>
                   )}
-                </td>
-                <td className="px-3 py-2.5 text-xs">
+                </TableCell>
+                <TableCell className="text-xs">
                   <On on>On</On>
-                </td>
-                <td className="px-3 py-2.5 text-xs tabular-nums">
+                </TableCell>
+                <TableCell className="text-xs tabular-nums">
                   <On on={repo.customPatterns > 0}>{repo.customPatterns > 0 ? `${repo.customPatterns}` : "None"}</On>
-                </td>
-                <td className="px-3 py-2.5 text-xs">
+                </TableCell>
+                <TableCell className="text-xs">
                   {repo.codeScanningAt ? (
                     <span className="text-success">
                       <TimeAgo at={repo.codeScanningAt} />
@@ -362,18 +365,18 @@ export function CoverageTable({ repos, owner }: { repos: RepoCoverage[]; owner: 
                   ) : (
                     <span className="text-faint">Not set up</span>
                   )}
-                </td>
-                <td className="px-3 py-2.5 text-xs">
+                </TableCell>
+                <TableCell className="text-xs">
                   <On on={repo.dependencyReview && repo.lockfiles > 0}>{repo.lockfiles === 0 ? "No lockfiles" : undefined}</On>
-                </td>
-                <td className="px-3 py-2.5 text-xs">
+                </TableCell>
+                <TableCell className="text-xs">
                   <On on={repo.securityUpdates} />
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             );
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -437,9 +440,9 @@ export function BypassForm({ id, action, request }: { id: string; action: string
         <textarea name="comment" rows={2} maxLength={500} className={INPUT} placeholder="What a reviewer should know." />
       </label>
       <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={fetcher.state !== "idle" || !reason} className={PRIMARY}>
+        <Button type="submit" disabled={fetcher.state !== "idle" || !reason}>
           {fetcher.state !== "idle" ? "Sending…" : request ? "Ask to bypass" : "Bypass push protection"}
-        </button>
+        </Button>
         <span className="text-xs text-muted">Recorded with your name and reason, on the alert and in the audit log.</span>
       </div>
       {fetcher.data?.error && <p className="text-sm text-danger">{fetcher.data.error}</p>}
@@ -548,14 +551,12 @@ export function PatternEditor({ draft, action, onDone }: { draft: PatternDraft; 
         </ul>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <button
+        <Button
           type="button"
           disabled={save.state !== "idle" || !form.name.trim() || !form.pattern.trim()}
-          onClick={() => save.submit(fields(true), { method: "post", action })}
-          className={PRIMARY}
-        >
+          onClick={() => save.submit(fields(true), { method: "post", action })}>
           {save.state !== "idle" ? "Saving…" : form.published ? "Save" : "Publish"}
-        </button>
+        </Button>
         <button
           type="button"
           disabled={save.state !== "idle" || !form.name.trim() || !form.pattern.trim()}
@@ -573,16 +574,18 @@ export function PatternEditor({ draft, action, onDone }: { draft: PatternDraft; 
           {dry.state !== "idle" ? "Running…" : "Dry run"}
         </button>
         {form.id && (
-          <button
+          <Button
             type="button"
             disabled={save.state !== "idle"}
             onClick={() => {
               if (confirm(`Delete "${form.name}"? The alerts it found stay.`)) save.submit({ intent: "delete_pattern", id: form.id ?? "" }, { method: "post", action });
             }}
-            className="ml-auto rounded-md border border-danger/40 px-2.5 py-1 text-xs font-medium text-danger hover:bg-danger/10 disabled:opacity-50"
+            variant="destructive"
+            size="inline"
+            className="ml-auto px-2.5 py-1 text-xs"
           >
             Delete
-          </button>
+          </Button>
         )}
       </div>
       {save.data?.error && <p className="text-sm text-danger">{save.data.error}</p>}

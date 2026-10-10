@@ -13,6 +13,9 @@ import { channelPath } from "../../../lib/chat";
 import { page } from "../../../lib/meta";
 import { chat, docs, identity, workspaceAgents } from "../../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.server";
+import { Alert } from "../../../components/ui/alert";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `New agent · ${params.owner} · g1t` });
@@ -184,22 +187,28 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
           <h1 className="text-2xl font-semibold tracking-tight">New agent</h1>
           <p className="mt-1.5 max-w-2xl text-sm text-muted">
             {personal ? "Your personal agent: only you can talk to it, and it spends from your budget. " : ""}Every field, as you'll find it on its profile later.{" "}
-            <button
+            <Button
               type="button"
               onClick={() => {
                 setFull(false);
                 setSearch({}, { preventScrollReset: true, replace: true });
               }}
-              className="text-fg underline-offset-2 hover:underline"
+              variant="link"
+              size="inline"
+              className="text-fg underline-offset-2 font-normal"
             >
               {definition ? "Back to the draft" : "Describe it instead"}
-            </button>
+            </Button>
             .
           </p>
         </header>
         {!full && <TemplateGallery templates={templates} chosen={chosen} onChoose={(id) => setSearch(id ? { template: id } : {}, { preventScrollReset: true, replace: true })} />}
         <div className={full ? "" : "mt-10 border-t border-line pt-10"}>
-          {errors?.form && <p className="mb-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">{errors.form}</p>}
+          {errors?.form && (
+            <Alert asChild className="mb-6 px-4 py-3">
+              <p>{errors.form}</p>
+            </Alert>
+          )}
           <AgentForm
             draft={formFrom}
             errors={errors}
@@ -238,19 +247,29 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
               )}
             </p>
           </div>
-          <button
+          <Button
             type="button"
             onClick={() => {
               setProposal(null);
               setDefinition(null);
             }}
-            className="text-sm text-muted hover:text-fg"
+            variant="link"
+            size="inline"
+            className="text-sm text-muted hover:text-fg font-normal"
           >
             Describe it again
-          </button>
+          </Button>
         </header>
-        {errors?.form && <p className="mb-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">{errors.form}</p>}
-        {errors?.handle && <p className="mb-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">{errors.handle}</p>}
+        {errors?.form && (
+          <Alert asChild className="mb-6 px-4 py-3">
+            <p>{errors.form}</p>
+          </Alert>
+        )}
+        {errors?.handle && (
+          <Alert asChild className="mb-6 px-4 py-3">
+            <p>{errors.handle}</p>
+          </Alert>
+        )}
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
           <div className="min-w-0 space-y-4">
             <ProposalCard
@@ -280,9 +299,11 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">What should this agent do?</h1>
         <p className="mt-2 text-sm text-muted">Describe the job in a sentence or a paragraph. g1t drafts the whole agent for you to change, try and create.</p>
         {!mayCreate && (
-          <p className="mt-5 rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted">
-            This workspace's owners have turned off personal agents, so only owners create agents here. Ask an owner in chat if you'd like one.
-          </p>
+          <Card asChild radius="lg" className="mt-5 px-4 py-3 text-sm text-muted">
+            <p>
+              This workspace's owners have turned off personal agents, so only owners create agents here. Ask an owner in chat if you'd like one.
+            </p>
+          </Card>
         )}
         {loaderData.templates == null && <p className="mt-5 rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted">Roles to start from aren't available right now; the agents service didn't answer.</p>}
         <div className="mt-6">

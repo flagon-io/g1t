@@ -4,7 +4,9 @@ import { Form, Link, data } from "react-router";
 import type { Route } from "./+types/audit";
 import { page } from "../../lib/meta";
 import { AuditTable } from "../../components/audit";
-import { Button, ButtonLink, EmptyState, Field, Input } from "../../components/ui";
+import { ButtonLink, EmptyState, Field, Input } from "../../components/ui";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { SelectField } from "../../components/ui/select";
 import { type AuditFilters, filterHref, parseFilters, toQuery } from "../../lib/audit";
 import { auditPage, auditRetention } from "../../lib/audit.server";
@@ -95,83 +97,85 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
           ` The log goes back ${retention} days, and exports the same; older entries are deleted each day.`}
       </p>
 
-      <Form method="get" className="mt-6 rounded-xl border border-line bg-surface p-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <FilterField label="Actor" name="actor" value={filters.actor} placeholder="A person, or whom an agent worked for" />
-          <FilterField label="Agent" name="agent" value={filters.agent} placeholder="g1t" />
-          <FilterField label="Action" name="action" value={filters.action} placeholder="git.push" list="audit-actions" />
-          <FilterField label="Project" name="project" value={filters.project} placeholder="Any" list="audit-projects" />
-          <Field label="Outcome">
-            <SelectField
-              key={`outcome-${filters.outcome}`}
-              name="outcome"
-              defaultValue={filters.outcome}
-              className={SELECT}
-              options={[
-                { value: "", label: "Any" },
-                { value: "allowed", label: "Allowed" },
-                { value: "denied", label: "Denied" },
-              ]}
-            />
-          </Field>
-          <Field label="Who">
-            <SelectField
-              key={`kind-${filters.kind}`}
-              name="kind"
-              defaultValue={filters.kind}
-              className={SELECT}
-              options={[
-                { value: "", label: "Anyone" },
-                { value: "agent", label: "Agents" },
-                { value: "person", label: "People" },
-                { value: "workspace", label: "Workspace tokens" },
-              ]}
-            />
-          </Field>
-          <Field label="From">
-            <Input type="date" name="from" defaultValue={filters.from} />
-          </Field>
-          <Field label="To">
-            <Input type="date" name="to" defaultValue={filters.to} />
-          </Field>
-        </div>
-        {filters.run && <input type="hidden" name="run" value={filters.run} />}
-        <datalist id="audit-actions">
-          {COMMON_ACTIONS.map((action) => (
-            <option key={action} value={action} />
-          ))}
-        </datalist>
-        <datalist id="audit-projects">
-          {projects.map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button type="submit">
-            <Filter size={14} />
-            Filter
-          </Button>
-          {filtered && (
-            <Link to={base} className="text-sm text-muted hover:text-fg">
-              Clear filters
-            </Link>
-          )}
-          {filters.run && (
-            <span className="font-mono text-xs text-muted">
-              Run {filters.run}
-            </span>
-          )}
-          <span className="grow" />
-          <ButtonLink variant="quiet" to={exportHref("csv")} reloadDocument>
-            <Download size={14} />
-            CSV
-          </ButtonLink>
-          <ButtonLink variant="quiet" to={exportHref("json")} reloadDocument>
-            <Download size={14} />
-            JSON
-          </ButtonLink>
-        </div>
-      </Form>
+      <Card asChild className="mt-6 p-4">
+        <Form method="get">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <FilterField label="Actor" name="actor" value={filters.actor} placeholder="A person, or whom an agent worked for" />
+            <FilterField label="Agent" name="agent" value={filters.agent} placeholder="g1t" />
+            <FilterField label="Action" name="action" value={filters.action} placeholder="git.push" list="audit-actions" />
+            <FilterField label="Project" name="project" value={filters.project} placeholder="Any" list="audit-projects" />
+            <Field label="Outcome">
+              <SelectField
+                key={`outcome-${filters.outcome}`}
+                name="outcome"
+                defaultValue={filters.outcome}
+                className={SELECT}
+                options={[
+                  { value: "", label: "Any" },
+                  { value: "allowed", label: "Allowed" },
+                  { value: "denied", label: "Denied" },
+                ]}
+              />
+            </Field>
+            <Field label="Who">
+              <SelectField
+                key={`kind-${filters.kind}`}
+                name="kind"
+                defaultValue={filters.kind}
+                className={SELECT}
+                options={[
+                  { value: "", label: "Anyone" },
+                  { value: "agent", label: "Agents" },
+                  { value: "person", label: "People" },
+                  { value: "workspace", label: "Workspace tokens" },
+                ]}
+              />
+            </Field>
+            <Field label="From">
+              <Input type="date" name="from" defaultValue={filters.from} />
+            </Field>
+            <Field label="To">
+              <Input type="date" name="to" defaultValue={filters.to} />
+            </Field>
+          </div>
+          {filters.run && <input type="hidden" name="run" value={filters.run} />}
+          <datalist id="audit-actions">
+            {COMMON_ACTIONS.map((action) => (
+              <option key={action} value={action} />
+            ))}
+          </datalist>
+          <datalist id="audit-projects">
+            {projects.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button type="submit">
+              <Filter size={14} />
+              Filter
+            </Button>
+            {filtered && (
+              <Link to={base} className="text-sm text-muted hover:text-fg">
+                Clear filters
+              </Link>
+            )}
+            {filters.run && (
+              <span className="font-mono text-xs text-muted">
+                Run {filters.run}
+              </span>
+            )}
+            <span className="grow" />
+            <ButtonLink variant="outline" to={exportHref("csv")} reloadDocument>
+              <Download size={14} />
+              CSV
+            </ButtonLink>
+            <ButtonLink variant="outline" to={exportHref("json")} reloadDocument>
+              <Download size={14} />
+              JSON
+            </ButtonLink>
+          </div>
+        </Form>
+      </Card>
 
       <div className="mt-6">
         {entries.length === 0 ? (

@@ -7,8 +7,10 @@ import { RESTORE_DAYS } from "@g1t/contracts";
 import type { Route } from "./+types/repositories";
 import { page } from "../../lib/meta";
 import { ConfirmDialog } from "../../components/repo-lifecycle";
-import { Button, EmptyState, ErrorText, TimeAgo, notACredential } from "../../components/ui";
+import { EmptyState, ErrorText, TimeAgo, notACredential } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Checkbox } from "../../components/ui/checkbox";
 import {
   type BulkResult,
@@ -167,41 +169,43 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
         </div>
 
         {owner && shown.length > 0 && (
-          <Form method="post" className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2">
-            {picked.map((repo) => (
-              <input key={repo.name} type="hidden" name="repo" value={repo.name} />
-            ))}
-            <label className="flex items-center gap-2 text-sm text-muted">
-              <Checkbox
-                checked={all ? true : picked.length > 0 ? "indeterminate" : false}
-                onCheckedChange={(on) =>
-                  setSelected(on === true && !all ? new Set(shown.map((r) => r.name)) : new Set())
-                }
-                aria-label="Select every repository shown"
-              />
-              {picked.length > 0 ? `${picked.length} selected` : "Select"}
-            </label>
-            <div className="ml-auto flex gap-2">
-              <Button
-                type="submit"
-                name="intent"
-                value="archive"
-                variant="quiet"
-                disabled={picked.length === 0 || bulk !== ""}
-              >
-                {bulk === "archive" ? "Archiving…" : "Archive"}
-              </Button>
-              <Button
-                type="submit"
-                name="intent"
-                value="unarchive"
-                variant="quiet"
-                disabled={picked.length === 0 || bulk !== ""}
-              >
-                {bulk === "unarchive" ? "Unarchiving…" : "Unarchive"}
-              </Button>
-            </div>
-          </Form>
+          <Card asChild radius="lg" className="flex flex-wrap items-center gap-3 px-3 py-2">
+            <Form method="post">
+              {picked.map((repo) => (
+                <input key={repo.name} type="hidden" name="repo" value={repo.name} />
+              ))}
+              <label className="flex items-center gap-2 text-sm text-muted">
+                <Checkbox
+                  checked={all ? true : picked.length > 0 ? "indeterminate" : false}
+                  onCheckedChange={(on) =>
+                    setSelected(on === true && !all ? new Set(shown.map((r) => r.name)) : new Set())
+                  }
+                  aria-label="Select every repository shown"
+                />
+                {picked.length > 0 ? `${picked.length} selected` : "Select"}
+              </label>
+              <div className="ml-auto flex gap-2">
+                <Button
+                  type="submit"
+                  name="intent"
+                  value="archive"
+                  variant="outline"
+                  disabled={picked.length === 0 || bulk !== ""}
+                >
+                  {bulk === "archive" ? "Archiving…" : "Archive"}
+                </Button>
+                <Button
+                  type="submit"
+                  name="intent"
+                  value="unarchive"
+                  variant="outline"
+                  disabled={picked.length === 0 || bulk !== ""}
+                >
+                  {bulk === "unarchive" ? "Unarchiving…" : "Unarchive"}
+                </Button>
+              </div>
+            </Form>
+          </Card>
         )}
         {bulkResult && (
           <div role="status" className="space-y-1">
@@ -217,67 +221,71 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
             A repository is made with each new project, or the first time you push to a new address in {slug}.
           </EmptyState>
         ) : shown.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
-            No repositories match.{" "}
-            <button type="button" className="text-accent hover:underline" onClick={() => update({ filter: null, q: null })}>
-              Show them all
-            </button>
-          </p>
+          <Card asChild tone="plain" className="border-dashed px-4 py-8 text-center text-sm text-muted">
+            <p>
+              No repositories match.{" "}
+              <Button type="button" variant="link" size="inline" onClick={() => update({ filter: null, q: null })}>
+                Show them all
+              </Button>
+            </p>
+          </Card>
         ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-            {shown.map((repo) => {
-              const base = `/${repo.namespace}/${repo.name}`;
-              return (
-                <li key={repo.id} className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface/60">
-                  {owner && (
-                    <Checkbox
-                      className="mt-1"
-                      checked={selected.has(repo.name)}
-                      onCheckedChange={(on) => toggle(repo.name, on === true)}
-                      aria-label={`Select ${repo.name}`}
-                    />
-                  )}
-                  <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
-                    {repo.isPrivate ? <Lock size={13} /> : <Box size={13} />}
-                  </span>
-                  <div className="min-w-0 grow">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <Link to={base} prefetch="intent" className="truncate font-mono text-sm font-medium hover:underline">
-                        {repo.name}
-                      </Link>
-                      <Badge>{repo.isPrivate ? "private" : "public"}</Badge>
-                      {repo.archivedAt && <Badge tone="warn">archived</Badge>}
-                      {repo.mirror && (
-                        <Badge tone={repo.mirror.state === "takeover" || repo.mirror.state === "handing_back" ? "warn" : "neutral"}>
-                          {repo.mirror.state === "takeover" ? "taken over" : repo.mirror.state === "handing_back" ? "handing back" : "mirror"}
-                        </Badge>
-                      )}
+          <Card asChild tone="plain" divided className="overflow-hidden">
+            <ul>
+              {shown.map((repo) => {
+                const base = `/${repo.namespace}/${repo.name}`;
+                return (
+                  <li key={repo.id} className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface/60">
+                    {owner && (
+                      <Checkbox
+                        className="mt-1"
+                        checked={selected.has(repo.name)}
+                        onCheckedChange={(on) => toggle(repo.name, on === true)}
+                        aria-label={`Select ${repo.name}`}
+                      />
+                    )}
+                    <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
+                      {repo.isPrivate ? <Lock size={13} /> : <Box size={13} />}
+                    </span>
+                    <div className="min-w-0 grow">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <Link to={base} prefetch="intent" className="truncate font-mono text-sm font-medium hover:underline">
+                          {repo.name}
+                        </Link>
+                        <Badge>{repo.isPrivate ? "private" : "public"}</Badge>
+                        {repo.archivedAt && <Badge tone="warn">archived</Badge>}
+                        {repo.mirror && (
+                          <Badge tone={repo.mirror.state === "takeover" || repo.mirror.state === "handing_back" ? "warn" : "neutral"}>
+                            {repo.mirror.state === "takeover" ? "taken over" : repo.mirror.state === "handing_back" ? "handing back" : "mirror"}
+                          </Badge>
+                        )}
+                      </div>
+                      {repo.description && <p className="mt-0.5 line-clamp-2 text-sm text-muted">{repo.description}</p>}
+                      <p className="mt-1 text-xs text-faint">
+                        {repo.archivedAt ? (
+                          <>
+                            Archived <TimeAgo at={repo.archivedAt} />
+                          </>
+                        ) : (
+                          <>
+                            Created <TimeAgo at={repo.createdAt} />
+                          </>
+                        )}
+                      </p>
                     </div>
-                    {repo.description && <p className="mt-0.5 line-clamp-2 text-sm text-muted">{repo.description}</p>}
-                    <p className="mt-1 text-xs text-faint">
-                      {repo.archivedAt ? (
-                        <>
-                          Archived <TimeAgo at={repo.archivedAt} />
-                        </>
-                      ) : (
-                        <>
-                          Created <TimeAgo at={repo.createdAt} />
-                        </>
-                      )}
-                    </p>
-                  </div>
-                  <Link
-                    to={`${base}/settings/repository`}
-                    className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-raised hover:text-fg"
-                    aria-label={`Settings for ${repo.name}`}
-                  >
-                    <Settings size={13} />
-                    <span className="hidden sm:inline">Settings</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+                    <Link
+                      to={`${base}/settings/repository`}
+                      className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-raised hover:text-fg"
+                      aria-label={`Settings for ${repo.name}`}
+                    >
+                      <Settings size={13} />
+                      <span className="hidden sm:inline">Settings</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
         )}
       </section>
 
@@ -293,68 +301,72 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
             </p>
           </div>
           {deleted.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-faint">
-              Nothing has been deleted in the last {RESTORE_DAYS} days.
-            </p>
+            <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-faint">
+              <p>
+                Nothing has been deleted in the last {RESTORE_DAYS} days.
+              </p>
+            </Card>
           ) : (
-            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-              {deleted.map((repo) => {
-                const full = `${repo.namespace}/${repo.name}`;
-                const restoring =
-                  navigation.state !== "idle" &&
-                  navigation.formData?.get("intent") === "restore" &&
-                  navigation.formData?.get("name") === repo.name;
-                const left = daysUntil(repo.purgeAfter);
-                return (
-                  <li key={repo.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
-                    <div className="min-w-0 grow">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="truncate font-mono text-sm font-medium text-muted">
-                          {repo.name}
-                        </span>
-                        <Badge>{repo.isPrivate ? "private" : "public"}</Badge>
+            <Card asChild tone="plain" divided className="overflow-hidden">
+              <ul>
+                {deleted.map((repo) => {
+                  const full = `${repo.namespace}/${repo.name}`;
+                  const restoring =
+                    navigation.state !== "idle" &&
+                    navigation.formData?.get("intent") === "restore" &&
+                    navigation.formData?.get("name") === repo.name;
+                  const left = daysUntil(repo.purgeAfter);
+                  return (
+                    <li key={repo.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
+                      <div className="min-w-0 grow">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="truncate font-mono text-sm font-medium text-muted">
+                            {repo.name}
+                          </span>
+                          <Badge>{repo.isPrivate ? "private" : "public"}</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-faint">
+                          Deleted by <span className="font-mono text-muted">{repo.deletedBy}</span>{" "}
+                          <TimeAgo at={repo.deletedAt} /> · removed for good on {longDate(repo.purgeAfter)}
+                          {left <= 7 && ` (${left === 0 ? "today" : left === 1 ? "in a day" : `in ${left} days`})`}
+                        </p>
+                        {rowResult?.name === repo.name && <ErrorText>{rowResult.error}</ErrorText>}
                       </div>
-                      <p className="mt-1 text-xs text-faint">
-                        Deleted by <span className="font-mono text-muted">{repo.deletedBy}</span>{" "}
-                        <TimeAgo at={repo.deletedAt} /> · removed for good on {longDate(repo.purgeAfter)}
-                        {left <= 7 && ` (${left === 0 ? "today" : left === 1 ? "in a day" : `in ${left} days`})`}
-                      </p>
-                      {rowResult?.name === repo.name && <ErrorText>{rowResult.error}</ErrorText>}
-                    </div>
-                    <div className="flex shrink-0 gap-2">
-                      <Form method="post">
-                        <input type="hidden" name="intent" value="restore" />
-                        <input type="hidden" name="name" value={repo.name} />
-                        <Button type="submit" variant="quiet" disabled={restoring}>
-                          {restoring ? "Restoring…" : "Restore"}
-                        </Button>
-                      </Form>
-                      <ConfirmDialog
-                        intent="purge"
-                        fields={{ name: repo.name }}
-                        title={`Delete ${full} permanently?`}
-                        description="This cannot be undone."
-                        confirm={full}
-                        submit="Delete permanently"
-                        busy="Deleting…"
-                        error={rowResult?.intent === "purge" && rowResult.name === repo.name ? rowResult.error : null}
-                        trigger={(open) => (
-                          <Button type="button" variant="danger" onClick={open}>
-                            Delete permanently
+                      <div className="flex shrink-0 gap-2">
+                        <Form method="post">
+                          <input type="hidden" name="intent" value="restore" />
+                          <input type="hidden" name="name" value={repo.name} />
+                          <Button type="submit" variant="outline" disabled={restoring}>
+                            {restoring ? "Restoring…" : "Restore"}
                           </Button>
-                        )}
-                      >
-                        <li>It is removed for good now, its git data with it. It cannot be restored after this.</li>
-                        <li>
-                          Its name is free at once: a new repository can be made at{" "}
-                          <span className="font-mono text-fg">g1t.sh/{full}</span>.
-                        </li>
-                      </ConfirmDialog>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+                        </Form>
+                        <ConfirmDialog
+                          intent="purge"
+                          fields={{ name: repo.name }}
+                          title={`Delete ${full} permanently?`}
+                          description="This cannot be undone."
+                          confirm={full}
+                          submit="Delete permanently"
+                          busy="Deleting…"
+                          error={rowResult?.intent === "purge" && rowResult.name === repo.name ? rowResult.error : null}
+                          trigger={(open) => (
+                            <Button type="button" variant="destructive" onClick={open}>
+                              Delete permanently
+                            </Button>
+                          )}
+                        >
+                          <li>It is removed for good now, its git data with it. It cannot be restored after this.</li>
+                          <li>
+                            Its name is free at once: a new repository can be made at{" "}
+                            <span className="font-mono text-fg">g1t.sh/{full}</span>.
+                          </li>
+                        </ConfirmDialog>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Card>
           )}
         </section>
       )}

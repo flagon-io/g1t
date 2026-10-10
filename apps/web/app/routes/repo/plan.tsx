@@ -11,6 +11,7 @@ import { Markdown } from "../../components/markdown";
 import { Activity, Exchanges } from "../../components/activity";
 import { Outcome } from "../../components/outcome";
 import { ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { Label } from "../../components/work";
@@ -120,9 +121,9 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
         </Link>
       </p>
       <h2 className="mt-2 text-xl font-semibold tracking-tight">The outcome</h2>
-      <div className="mt-3 rounded-xl border border-line bg-surface p-5 text-sm">
+      <Card className="mt-3 p-5 text-sm">
         <Markdown source={plan.brief} repo={{ namespace: params.owner, name: params.repo }} />
-      </div>
+      </Card>
       <p className="mt-2 text-xs text-faint">
         Asked for by {plan.author.username} <TimeAgo at={plan.createdAt} />
       </p>
@@ -187,85 +188,84 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
             {plan.issues.map((issue, index) => {
               const position = index + 1;
               return (
-                <li
-                  key={position}
-                  className="flex gap-3 rounded-xl border border-line bg-surface p-4"
-                >
-                  {plan.status === "ready" ? (
-                    <Checkbox
-                      name="keep"
-                      value={String(position)}
-                      defaultChecked
-                      aria-label={`Open issue ${position}`}
-                      className="mt-1"
-                    />
-                  ) : (
-                    <span className="mt-0.5 w-5 shrink-0 text-center font-mono text-sm text-faint">
-                      {position}
-                    </span>
-                  )}
-                  <div className="min-w-0 grow">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      {issue.number != null ? (
-                        <Link
-                          to={`${base}/issues/${issue.number}`}
-                          className="font-medium hover:underline"
-                        >
-                          {issue.title}{" "}
-                          <span className="font-normal text-faint">#{issue.number}</span>
-                        </Link>
-                      ) : (
-                        <span className="font-medium">
-                          <span className="mr-1.5 font-mono text-sm font-normal text-faint">
-                            {position}.
+                <Card asChild key={position} className="flex gap-3 p-4">
+                  <li>
+                    {plan.status === "ready" ? (
+                      <Checkbox
+                        name="keep"
+                        value={String(position)}
+                        defaultChecked
+                        aria-label={`Open issue ${position}`}
+                        className="mt-1"
+                      />
+                    ) : (
+                      <span className="mt-0.5 w-5 shrink-0 text-center font-mono text-sm text-faint">
+                        {position}
+                      </span>
+                    )}
+                    <div className="min-w-0 grow">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        {issue.number != null ? (
+                          <Link
+                            to={`${base}/issues/${issue.number}`}
+                            className="font-medium hover:underline"
+                          >
+                            {issue.title}{" "}
+                            <span className="font-normal text-faint">#{issue.number}</span>
+                          </Link>
+                        ) : (
+                          <span className="font-medium">
+                            <span className="mr-1.5 font-mono text-sm font-normal text-faint">
+                              {position}.
+                            </span>
+                            {issue.title}
                           </span>
-                          {issue.title}
-                        </span>
-                      )}
-                      {issue.labels.map((name) => (
-                        <Label key={name} name={name} />
-                      ))}
-                    </div>
-                    <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-                      {issue.dependsOn.length === 0 ? (
-                        <span className="text-success">Starts at once</span>
-                      ) : (
-                        <span className="flex items-center gap-1">
-                          <ArrowRight size={12} />
-                          After{" "}
-                          {issue.dependsOn
-                            .map((earlier) => {
-                              const number = plan.issues[earlier - 1]?.number;
-                              return number != null ? `#${number}` : `${earlier}`;
-                            })
-                            .join(", ")}
-                        </span>
-                      )}
-                      {(issue.done ?? []).map((point) => (
-                        <span key={point} className="flex items-center gap-1">
-                          <CircleCheck size={12} />
-                          {point}
-                        </span>
-                      ))}
-                    </p>
-                    {issue.files.length > 0 && (
-                      <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-faint">
-                        <FileCode2 size={12} />
-                        {issue.files.map((file) => (
-                          <span key={file}>{file}</span>
+                        )}
+                        {issue.labels.map((name) => (
+                          <Label key={name} name={name} />
+                        ))}
+                      </div>
+                      <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+                        {issue.dependsOn.length === 0 ? (
+                          <span className="text-success">Starts at once</span>
+                        ) : (
+                          <span className="flex items-center gap-1">
+                            <ArrowRight size={12} />
+                            After{" "}
+                            {issue.dependsOn
+                              .map((earlier) => {
+                                const number = plan.issues[earlier - 1]?.number;
+                                return number != null ? `#${number}` : `${earlier}`;
+                              })
+                              .join(", ")}
+                          </span>
+                        )}
+                        {(issue.done ?? []).map((point) => (
+                          <span key={point} className="flex items-center gap-1">
+                            <CircleCheck size={12} />
+                            {point}
+                          </span>
                         ))}
                       </p>
-                    )}
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-xs text-faint hover:text-fg">
-                        What the agent will be told
-                      </summary>
-                      <div className="mt-2 border-t border-line pt-3">
-                        <Markdown source={issue.body} repo={{ namespace: params.owner, name: params.repo }} />
-                      </div>
-                    </details>
-                  </div>
-                </li>
+                      {issue.files.length > 0 && (
+                        <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-faint">
+                          <FileCode2 size={12} />
+                          {issue.files.map((file) => (
+                            <span key={file}>{file}</span>
+                          ))}
+                        </p>
+                      )}
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-xs text-faint hover:text-fg">
+                          What the agent will be told
+                        </summary>
+                        <div className="mt-2 border-t border-line pt-3">
+                          <Markdown source={issue.body} repo={{ namespace: params.owner, name: params.repo }} />
+                        </div>
+                      </details>
+                    </div>
+                  </li>
+                </Card>
               );
             })}
           </ol>
@@ -279,7 +279,7 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
                 </SubmitButton>
               </Hint>
               <Hint label={whyNot(loaderData.can, "run")} disabled={!loaderData.can.run}>
-                <SubmitButton variant="quiet" name="action" value="open" pending="Opening issues…" disabled={applying || !loaderData.can.run}>
+                <SubmitButton variant="outline" name="action" value="open" pending="Opening issues…" disabled={applying || !loaderData.can.run}>
                   Only open the issues
                 </SubmitButton>
               </Hint>

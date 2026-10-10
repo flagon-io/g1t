@@ -18,6 +18,7 @@ import { repoAt } from "../lib/markdown-plugins";
 import { CommitAvatars, CommitNames } from "./commit-person";
 import { Markdown } from "./markdown";
 import { TimeAgo } from "./ui";
+import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
 
 /**
@@ -204,14 +205,16 @@ function WhyPanel({
         <span className="grow text-sm font-medium">
           Why line{picked.start === picked.end ? ` ${picked.start}` : `s ${picked.start}–${picked.end}`}
         </span>
-        <button
+        <Button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="rounded p-1 text-faint hover:bg-raised hover:text-fg"
+          variant="ghost"
+          size="inline"
+          className="rounded p-1 text-faint"
         >
           <X size={14} />
-        </button>
+        </Button>
       </header>
       {!current ? (
         <div className="space-y-3 p-4" aria-busy={loading}>

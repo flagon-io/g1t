@@ -5,7 +5,10 @@ import type { PackageSummary, Project, ProjectDeploys, User } from "@g1t/contrac
 
 import type { Route } from "./+types/overview";
 import { DeployLink, host, StatusDot } from "../../components/deploy";
-import { Avatar, ButtonLink, CopyLine, Pill, TimeAgo } from "../../components/ui";
+import { ButtonLink, CopyLine, TimeAgo } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
+import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 import { UsageCard } from "../../components/usage-card";
 import { PullIcon } from "../../components/work-icons";
 import { openedBy } from "../../lib/opened-by";
@@ -106,10 +109,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 function Stat({ value, label }: { value: number; label: string }) {
   return (
-    <div className="rounded-xl border border-line bg-surface px-4 py-3">
+    <Card className="px-4 py-3">
       <p className="text-xl font-semibold tabular-nums tracking-tight">{value}</p>
       <p className="text-xs text-muted">{label}</p>
-    </div>
+    </Card>
   );
 }
 
@@ -205,8 +208,8 @@ function ProjectCard({
         </div>
         {(project.private || project.archived) && (
           <span className="flex shrink-0 gap-1.5">
-            {project.private && <Pill>private</Pill>}
-            {project.archived && <Pill>archived</Pill>}
+            {project.private && <Badge size="md">private</Badge>}
+            {project.archived && <Badge size="md">archived</Badge>}
           </span>
         )}
         {pinned != null && (
@@ -298,10 +301,12 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                 {pinned.length > 0 ? (
                   <ul className="mt-3 grid gap-4 sm:grid-cols-2">{pinned.map((project) => card(project, true))}</ul>
                 ) : (
-                  <p className="mt-3 flex items-center gap-2 rounded-xl border border-dashed border-line px-4 py-3 text-sm text-muted">
-                    <Pin size={14} className="shrink-0 text-faint" />
-                    Pin the projects you use most, from their page or from Projects, to keep them here and in your sidebar.
-                  </p>
+                  <Card asChild tone="plain" className="mt-3 flex items-center gap-2 border-dashed px-4 py-3 text-sm text-muted">
+                    <p>
+                      <Pin size={14} className="shrink-0 text-faint" />
+                      Pin the projects you use most, from their page or from Projects, to keep them here and in your sidebar.
+                    </p>
+                  </Card>
                 )}
               </section>
             )}
@@ -340,32 +345,34 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
             {pulls.length > 0 && (
               <section>
                 <h2 className="text-sm font-medium text-muted">In progress</h2>
-                <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-                  {pulls.map(({ pull, slug: project, name }) => (
-                    <li key={pull.id}>
-                      <Link
-                        prefetch="intent"
-                        to={`/${slug}/${project}/pull/${pull.number}`}
-                        className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised"
-                      >
-                        <PullIcon status={pull.status} />
-                        <span className="min-w-0 grow">
-                          <span className="block truncate font-medium">{pull.title}</span>
-                          <span className="text-xs text-muted">
-                            {name} <span className="font-mono">#{pull.number}</span>
-                            {pull.issue != null && ` · for #${pull.issue}`} · {openedBy(pull).name}
+                <Card asChild divided className="mt-3 overflow-hidden">
+                  <ul>
+                    {pulls.map(({ pull, slug: project, name }) => (
+                      <li key={pull.id}>
+                        <Link
+                          prefetch="intent"
+                          to={`/${slug}/${project}/pull/${pull.number}`}
+                          className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised"
+                        >
+                          <PullIcon status={pull.status} />
+                          <span className="min-w-0 grow">
+                            <span className="block truncate font-medium">{pull.title}</span>
+                            <span className="text-xs text-muted">
+                              {name} <span className="font-mono">#{pull.number}</span>
+                              {pull.issue != null && ` · for #${pull.issue}`} · {openedBy(pull).name}
+                            </span>
                           </span>
-                        </span>
-                        <span className="hidden shrink-0 text-xs text-muted sm:block">
-                          {pull.status === "draft" ? "Being worked on" : "Ready for review"}
-                        </span>
-                        <span className="w-14 shrink-0 text-right text-xs text-faint">
-                          <TimeAgo at={pull.updatedAt} />
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                          <span className="hidden shrink-0 text-xs text-muted sm:block">
+                            {pull.status === "draft" ? "Being worked on" : "Ready for review"}
+                          </span>
+                          <span className="w-14 shrink-0 text-right text-xs text-faint">
+                            <TimeAgo at={pull.updatedAt} />
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
               </section>
             )}
           </>
@@ -388,7 +395,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                 <li key={member.username} className="flex items-center gap-2 text-sm">
                   <Avatar name={member.username} />
                   <span className="grow truncate font-mono">{member.username}</span>
-                  {member.role === "owner" && <Pill>owner</Pill>}
+                  {member.role === "owner" && <Badge size="md">owner</Badge>}
                 </li>
               ))}
             </ul>
@@ -401,43 +408,47 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
         )}
 
         {role && (
-          <section className="rounded-xl border border-line bg-surface p-5">
-            <h2 className="flex items-center gap-2 font-medium">
-              <Rocket size={15} className="text-faint" />
-              Deploy on g1t.page
-            </h2>
-            <p className="mt-1.5 text-sm text-muted">
-              Off until you turn them on for a project, under its Settings. Then production builds from its default
-              branch, with a live preview for every pull request. Apps cost nothing while no one visits.
-            </p>
-            <Link
-              prefetch="intent"
-              to={`/${slug}/-/billing`}
-              className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline"
-            >
-              Billing and plans <ArrowRight size={13} />
-            </Link>
-          </section>
+          <Card asChild className="p-5">
+            <section>
+              <h2 className="flex items-center gap-2 font-medium">
+                <Rocket size={15} className="text-faint" />
+                Deploy on g1t.page
+              </h2>
+              <p className="mt-1.5 text-sm text-muted">
+                Off until you turn them on for a project, under its Settings. Then production builds from its default
+                branch, with a live preview for every pull request. Apps cost nothing while no one visits.
+              </p>
+              <Link
+                prefetch="intent"
+                to={`/${slug}/-/billing`}
+                className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline"
+              >
+                Billing and plans <ArrowRight size={13} />
+              </Link>
+            </section>
+          </Card>
         )}
 
         {role && (
-          <section className="rounded-xl border border-line bg-surface p-5">
-            <h2 className="flex items-center gap-2 font-medium">
-              <KeyRound size={15} className="text-faint" />
-              Automate without a service account
-            </h2>
-            <p className="mt-1.5 text-sm text-muted">
-              A workspace has access tokens of its own for CI, integrations and agents. They act as the workspace,
-              not as a person.
-            </p>
-            <Link
-              prefetch="intent"
-              to={`/${slug}/-/tokens`}
-              className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline"
-            >
-              Access tokens <ArrowRight size={13} />
-            </Link>
-          </section>
+          <Card asChild className="p-5">
+            <section>
+              <h2 className="flex items-center gap-2 font-medium">
+                <KeyRound size={15} className="text-faint" />
+                Automate without a service account
+              </h2>
+              <p className="mt-1.5 text-sm text-muted">
+                A workspace has access tokens of its own for CI, integrations and agents. They act as the workspace,
+                not as a person.
+              </p>
+              <Link
+                prefetch="intent"
+                to={`/${slug}/-/tokens`}
+                className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline"
+              >
+                Access tokens <ArrowRight size={13} />
+              </Link>
+            </section>
+          </Card>
         )}
       </aside>
     </div>

@@ -6,7 +6,7 @@ import type { Label } from "@g1t/contracts";
 
 import type { Route } from "./+types/labels";
 import { LabelChip } from "../../components/labels";
-import { Button, EmptyState, ErrorText, SubmitButton, usePending } from "../../components/ui";
+import { EmptyState, ErrorText, SubmitButton, usePending } from "../../components/ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +18,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "../../components/ui/alert-dialog";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { refusal, requireRepo } from "../../lib/access.server";
 import { matchLabels, tidyColor } from "../../lib/labels";
 import { page } from "../../lib/meta";
@@ -111,50 +113,52 @@ function LabelForm({ label, onDone }: { label?: Label; onDone: () => void }) {
     sent.current = pending;
   }, [mine, result, pending, onDone]);
   return (
-    <Form method="post" className="grid gap-3 rounded-xl border border-line bg-surface p-4 sm:grid-cols-[1fr_1.4fr_auto] sm:items-end">
-      <input type="hidden" name="intent" value={intent} />
-      <input type="hidden" name="name" value={label?.name ?? ""} />
-      <label className="block">
-        <span className="mb-1.5 block text-xs font-medium text-muted">Name</span>
-        <input
-          name="newName"
-          defaultValue={label?.name ?? ""}
-          required
-          maxLength={50}
-          autoFocus
-          autoComplete="off"
-          data-1p-ignore
-          placeholder="area: cli"
-          className="h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none hover:border-line-strong focus:border-accent-dim"
-        />
-      </label>
-      <label className="block">
-        <span className="mb-1.5 block text-xs font-medium text-muted">Description</span>
-        <input
-          name="description"
-          defaultValue={label?.description ?? ""}
-          maxLength={100}
-          autoComplete="off"
-          data-1p-ignore
-          placeholder="What it means (optional)"
-          className="h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none hover:border-line-strong focus:border-accent-dim"
-        />
-      </label>
-      <div className="flex flex-wrap items-center gap-2">
-        <ColorField defaultValue={label?.color ?? ""} />
-        <Button type="button" variant="quiet" onClick={onDone}>
-          Cancel
-        </Button>
-        <SubmitButton match={{ intent, name: label?.name ?? "" }} pending="Saving…">
-          {label ? "Save" : "Create label"}
-        </SubmitButton>
-      </div>
-      {mine && result?.error && (
-        <div className="sm:col-span-3">
-          <ErrorText>{result.error}</ErrorText>
+    <Card asChild className="grid gap-3 p-4 sm:grid-cols-[1fr_1.4fr_auto] sm:items-end">
+      <Form method="post">
+        <input type="hidden" name="intent" value={intent} />
+        <input type="hidden" name="name" value={label?.name ?? ""} />
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-muted">Name</span>
+          <input
+            name="newName"
+            defaultValue={label?.name ?? ""}
+            required
+            maxLength={50}
+            autoFocus
+            autoComplete="off"
+            data-1p-ignore
+            placeholder="area: cli"
+            className="h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none hover:border-line-strong focus:border-accent-dim"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-muted">Description</span>
+          <input
+            name="description"
+            defaultValue={label?.description ?? ""}
+            maxLength={100}
+            autoComplete="off"
+            data-1p-ignore
+            placeholder="What it means (optional)"
+            className="h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none hover:border-line-strong focus:border-accent-dim"
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <ColorField defaultValue={label?.color ?? ""} />
+          <Button type="button" variant="outline" onClick={onDone}>
+            Cancel
+          </Button>
+          <SubmitButton match={{ intent, name: label?.name ?? "" }} pending="Saving…">
+            {label ? "Save" : "Create label"}
+          </SubmitButton>
         </div>
-      )}
-    </Form>
+        {mine && result?.error && (
+          <div className="sm:col-span-3">
+            <ErrorText>{result.error}</ErrorText>
+          </div>
+        )}
+      </Form>
+    </Card>
   );
 }
 
@@ -164,7 +168,7 @@ function DeleteLabel({ label }: { label: Label }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button type="button" variant="quiet" disabled={deleting} aria-label={`Delete ${label.name}`}>
+        <Button type="button" variant="outline" disabled={deleting} aria-label={`Delete ${label.name}`}>
           {deleting ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <Trash2 size={14} />}
           <span className="hidden sm:inline">{deleting ? "Deleting…" : "Delete"}</span>
         </Button>
@@ -218,7 +222,7 @@ export default function Labels({ loaderData, actionData, params }: Route.Compone
           <div className="flex flex-wrap items-center gap-2">
             <Form method="post">
               <input type="hidden" name="intent" value="defaults" />
-              <SubmitButton variant="quiet" match={{ intent: "defaults" }} pending="Adding…">
+              <SubmitButton variant="outline" match={{ intent: "defaults" }} pending="Adding…">
                 Add the default labels
               </SubmitButton>
             </Form>
@@ -234,7 +238,7 @@ export default function Labels({ loaderData, actionData, params }: Route.Compone
       {actionData?.intent === "delete" && actionData.error && <ErrorText>{actionData.error}</ErrorText>}
       {creating && <LabelForm onDone={() => setCreating(false)} />}
 
-      <div className="overflow-hidden rounded-xl border border-line">
+      <Card tone="plain" className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2.5">
           <span className="text-sm font-medium">{count(labels.length, "label", "labels")}</span>
           <label className="ml-auto flex h-8 w-full items-center gap-2 rounded-md border border-line bg-bg px-2.5 sm:w-64">
@@ -290,7 +294,7 @@ export default function Labels({ loaderData, actionData, params }: Route.Compone
                   </span>
                   {canEdit && (
                     <span className="flex shrink-0 items-center gap-2">
-                      <Button type="button" variant="quiet" onClick={() => setEditing(label.name)} aria-label={`Edit ${label.name}`}>
+                      <Button type="button" variant="outline" onClick={() => setEditing(label.name)} aria-label={`Edit ${label.name}`}>
                         <Tag size={14} />
                         <span className="hidden sm:inline">Edit</span>
                       </Button>
@@ -302,7 +306,7 @@ export default function Labels({ loaderData, actionData, params }: Route.Compone
             )}
           </ul>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

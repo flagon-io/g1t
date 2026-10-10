@@ -96,7 +96,7 @@ export default function AgentProfile({ loaderData, actionData }: Route.Component
             <MessageSquare size={15} />
             Message
           </ButtonLink>
-          <ButtonLink to={`/${slug}/-/agents/${agent.handle}`} variant="quiet">
+          <ButtonLink to={`/${slug}/-/agents/${agent.handle}`} variant="outline">
             Sessions and settings
             <ArrowUpRight size={14} />
           </ButtonLink>

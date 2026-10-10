@@ -6,7 +6,7 @@ import type { Milestone } from "@g1t/contracts";
 
 import { dueInWords, isOverdue, percentDone } from "../lib/labels";
 import { cn } from "../lib/cn";
-import { Button, ErrorText, SubmitButton, Textarea, usePending } from "./ui";
+import { ErrorText, SubmitButton, Textarea, usePending } from "./ui";
 import { Input } from "./ui/input";
 import {
   AlertDialog,
@@ -19,6 +19,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "./ui/alert-dialog";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 
 /** What the milestone forms post back. */
 export type MilestoneResult = { intent: string; number?: number; error?: string };
@@ -60,42 +62,44 @@ export function MilestoneForm({ milestone, onDone }: { milestone?: Milestone; on
     sent.current = pending;
   }, [mine, result, pending, onDone]);
   return (
-    <Form method="post" className="grid gap-3 rounded-xl border border-line bg-surface p-4">
-      <input type="hidden" name="intent" value={intent} />
-      {milestone && <input type="hidden" name="number" value={milestone.number} />}
-      <div className="grid gap-3 sm:grid-cols-[1fr_12rem]">
+    <Card asChild className="grid gap-3 p-4">
+      <Form method="post">
+        <input type="hidden" name="intent" value={intent} />
+        {milestone && <input type="hidden" name="number" value={milestone.number} />}
+        <div className="grid gap-3 sm:grid-cols-[1fr_12rem]">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">Title</span>
+            <Input
+              name="title"
+              defaultValue={milestone?.title ?? ""}
+              required
+              maxLength={100}
+              autoFocus
+              autoComplete="off"
+              data-1p-ignore
+              placeholder="Launch"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">Due date (optional)</span>
+            <Input type="date" name="dueOn" defaultValue={milestone?.dueOn ?? ""} />
+          </label>
+        </div>
         <label className="block">
-          <span className="mb-1.5 block text-xs font-medium text-muted">Title</span>
-          <Input
-            name="title"
-            defaultValue={milestone?.title ?? ""}
-            required
-            maxLength={100}
-            autoFocus
-            autoComplete="off"
-            data-1p-ignore
-            placeholder="Launch"
-          />
+          <span className="mb-1.5 block text-xs font-medium text-muted">Description (optional)</span>
+          <Textarea name="description" rows={3} defaultValue={milestone?.description ?? ""} maxLength={4000} />
         </label>
-        <label className="block">
-          <span className="mb-1.5 block text-xs font-medium text-muted">Due date (optional)</span>
-          <Input type="date" name="dueOn" defaultValue={milestone?.dueOn ?? ""} />
-        </label>
-      </div>
-      <label className="block">
-        <span className="mb-1.5 block text-xs font-medium text-muted">Description (optional)</span>
-        <Textarea name="description" rows={3} defaultValue={milestone?.description ?? ""} maxLength={4000} />
-      </label>
-      {mine && result?.error && <ErrorText>{result.error}</ErrorText>}
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button type="button" variant="quiet" onClick={onDone}>
-          Cancel
-        </Button>
-        <SubmitButton match={{ intent }} pending="Saving…">
-          {milestone ? "Save milestone" : "Create milestone"}
-        </SubmitButton>
-      </div>
-    </Form>
+        {mine && result?.error && <ErrorText>{result.error}</ErrorText>}
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onDone}>
+            Cancel
+          </Button>
+          <SubmitButton match={{ intent }} pending="Saving…">
+            {milestone ? "Save milestone" : "Create milestone"}
+          </SubmitButton>
+        </div>
+      </Form>
+    </Card>
   );
 }
 
@@ -107,7 +111,7 @@ export function MilestoneStateButton({ milestone }: { milestone: Milestone }) {
       <input type="hidden" name="intent" value="state" />
       <input type="hidden" name="number" value={milestone.number} />
       <input type="hidden" name="state" value={next} />
-      <SubmitButton variant="quiet" match={{ intent: "state", number: String(milestone.number) }} pending="Saving…">
+      <SubmitButton variant="outline" match={{ intent: "state", number: String(milestone.number) }} pending="Saving…">
         {next === "closed" ? "Close" : "Reopen"}
       </SubmitButton>
     </Form>
@@ -120,7 +124,7 @@ export function DeleteMilestone({ milestone }: { milestone: Milestone }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button type="button" variant="quiet" disabled={deleting} aria-label={`Delete ${milestone.title}`}>
+        <Button type="button" variant="outline" disabled={deleting} aria-label={`Delete ${milestone.title}`}>
           {deleting ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <Trash2 size={14} />}
           <span className="hidden sm:inline">{deleting ? "Deleting…" : "Delete"}</span>
         </Button>

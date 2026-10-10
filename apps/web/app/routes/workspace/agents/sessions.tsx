@@ -13,6 +13,7 @@ import { cn } from "../../../lib/cn";
 import { useRefreshWhile } from "../../../lib/refresh";
 import { workspaceAgents } from "../../../lib/services.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
+import { Card } from "../../../components/ui/card";
 
 type Filter = "all" | "live" | "done";
 
@@ -120,11 +121,13 @@ function SessionGroup({ title, slug, sessions }: { title: string; slug: string; 
       <h2 className="text-sm font-medium">
         {title} <span className="text-faint">{sessions.length}</span>
       </h2>
-      <ul className="mt-3 divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
-        {sessionRows(sessions).map(({ session, depth }) => (
-          <SessionRow key={session.id} slug={slug} session={session} depth={depth} />
-        ))}
-      </ul>
+      <Card asChild className="mt-3 divide-y divide-line/60 overflow-hidden">
+        <ul>
+          {sessionRows(sessions).map(({ session, depth }) => (
+            <SessionRow key={session.id} slug={slug} session={session} depth={depth} />
+          ))}
+        </ul>
+      </Card>
     </section>
   );
 }

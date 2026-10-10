@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 
 import type { Membership, NotifyLevel, NotifyPreferences, NotifyPreferencesChange, NotifyStatus } from "@g1t/contracts";
 
-import { Button } from "../ui";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { RadioGroup, RadioOption } from "../ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
@@ -127,7 +128,9 @@ export function LiveNotificationSettings({ workspaces, initial = null }: { works
         <h2 id="live-heading" className="text-sm font-semibold">
           Pop-ups and browser notifications
         </h2>
-        <p className="mt-3 rounded-lg border border-line px-4 py-6 text-sm text-muted">These settings could not be loaded. Try again in a moment.</p>
+        <Card asChild tone="plain" radius="lg" className="mt-3 px-4 py-6 text-sm text-muted">
+          <p>These settings could not be loaded. Try again in a moment.</p>
+        </Card>
       </section>
     );
   }
@@ -162,31 +165,33 @@ export function LiveNotificationSettings({ workspaces, initial = null }: { works
       {workspaces.length > 1 && prefs && (
         <div>
           <h3 className="text-[0.8125rem] font-medium text-fg">For a workspace</h3>
-          <ul className="mt-3 divide-y divide-line rounded-lg border border-line">
-            {workspaces.map((membership) => (
-              <li key={membership.slug} className="flex items-center gap-3 px-3.5 py-2.5">
-                <span className="min-w-0 grow truncate text-sm">{membership.name || membership.slug}</span>
-                <Select
-                  value={prefs.workspaces[membership.slug] ?? "default"}
-                  onValueChange={(value) => void save({ workspaces: { [membership.slug]: value === "default" ? null : (value as NotifyLevel) } })}
-                >
-                  <SelectTrigger size="sm" className="w-44" aria-label={`Notifications for ${membership.name || membership.slug}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">As above</SelectItem>
-                    <SelectItem value="all">Everything</SelectItem>
-                    <SelectItem value="dms_mentions">DMs and mentions</SelectItem>
-                    <SelectItem value="none">Nothing</SelectItem>
-                  </SelectContent>
-                </Select>
-              </li>
-            ))}
-          </ul>
+          <Card asChild tone="plain" radius="lg" divided className="mt-3">
+            <ul>
+              {workspaces.map((membership) => (
+                <li key={membership.slug} className="flex items-center gap-3 px-3.5 py-2.5">
+                  <span className="min-w-0 grow truncate text-sm">{membership.name || membership.slug}</span>
+                  <Select
+                    value={prefs.workspaces[membership.slug] ?? "default"}
+                    onValueChange={(value) => void save({ workspaces: { [membership.slug]: value === "default" ? null : (value as NotifyLevel) } })}
+                  >
+                    <SelectTrigger size="sm" className="w-44" aria-label={`Notifications for ${membership.name || membership.slug}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">As above</SelectItem>
+                      <SelectItem value="all">Everything</SelectItem>
+                      <SelectItem value="dms_mentions">DMs and mentions</SelectItem>
+                      <SelectItem value="none">Nothing</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </li>
+              ))}
+            </ul>
+          </Card>
         </div>
       )}
 
-      <div className="divide-y divide-line rounded-xl border border-line bg-surface">
+      <Card divided>
         <div className="flex items-start gap-4 p-4">
           <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent">
             <BellRing size={16} />
@@ -219,10 +224,10 @@ export function LiveNotificationSettings({ workspaces, initial = null }: { works
             aria-label="Sound"
           />
         </div>
-      </div>
+      </Card>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" variant="quiet" onClick={() => void test()} disabled={busy === "test" || !status}>
+        <Button type="button" variant="outline" onClick={() => void test()} disabled={busy === "test" || !status}>
           <Send size={14} />
           {busy === "test" ? "Sending…" : "Send a test notification"}
         </Button>

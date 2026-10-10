@@ -11,7 +11,8 @@ import { type DirectoryPerson, type TeamKind, teamKind } from "@g1t/contracts";
 import { AgentFace } from "./agents-mode";
 import { StatusDot } from "./chat/marks";
 import { WithPresence } from "./presence";
-import { Avatar } from "./ui";
+
+import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { Hint } from "./ui/hint";
 import { cn } from "../lib/cn";

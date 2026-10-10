@@ -24,7 +24,8 @@ import { type Abilities, type Membership, type User, hasCodeAccess, shownUsernam
 import { appIcon, pinnedApp } from "./apps";
 import { CountBadge, ShortcutsDialog } from "./dock";
 import { Mark } from "./logo";
-import { Avatar } from "./ui";
+
+import { Avatar } from "./ui/avatar";
 import { TabStrip } from "./ui/tab-strip";
 import { StatusDialog } from "./presence";
 import { ThemeSwitch } from "./theme-switch";

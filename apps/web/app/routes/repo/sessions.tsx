@@ -6,7 +6,9 @@ import { type PullStatus, RUN_KINDS, RUN_KIND_LABEL, type RunKind } from "@g1t/c
 import type { Route } from "./+types/sessions";
 import { page } from "../../lib/meta";
 import { KindLabel, formatCost, useLiveRefresh } from "../../components/agents";
-import { Avatar, EmptyState, TimeAgo } from "../../components/ui";
+import { EmptyState, TimeAgo } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
+import { Card } from "../../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { agents } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
@@ -121,39 +123,41 @@ export default function Sessions({ loaderData, params }: Route.ComponentProps) {
           </EmptyState>
         </div>
       ) : (
-        <ul className="mt-6 divide-y divide-line rounded-xl border border-line bg-surface">
-          {sessions.map((session) => (
-            <li key={session.number} className="px-4 py-3.5">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <Avatar name={session.agent} size={18} />
-                <Link to={`${base}/sessions/${session.number}`} prefetch="intent" className="min-w-0 grow font-medium hover:text-accent">
-                  {session.title} <span className="font-normal text-faint">#{session.number}</span>
-                </Link>
-                {session.active && (
-                  <span className="inline-flex items-center gap-1 text-xs text-accent">
-                    <Loader2 size={11} className="animate-spin" />
-                    at work
+        <Card asChild divided className="mt-6">
+          <ul>
+            {sessions.map((session) => (
+              <li key={session.number} className="px-4 py-3.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <Avatar name={session.agent} size={18} />
+                  <Link to={`${base}/sessions/${session.number}`} prefetch="intent" className="min-w-0 grow font-medium hover:text-accent">
+                    {session.title} <span className="font-normal text-faint">#{session.number}</span>
+                  </Link>
+                  {session.active && (
+                    <span className="inline-flex items-center gap-1 text-xs text-accent">
+                      <Loader2 size={11} className="animate-spin" />
+                      at work
+                    </span>
+                  )}
+                  <span className="text-xs text-muted">{OUTCOMES[session.status]}</span>
+                </div>
+                {session.prompt && <p className="mt-1.5 line-clamp-1 text-sm text-muted">{session.prompt}</p>}
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
+                  {session.kinds.map((kind) => (
+                    <KindLabel key={kind} kind={kind} />
+                  ))}
+                  <span>{session.entries} entries</span>
+                  <span>{session.tools} tool calls</span>
+                  {session.runs > 0 && <span>{session.runs} {session.runs === 1 ? "run" : "runs"}</span>}
+                  {formatCost(session.costUsd) && <span>{formatCost(session.costUsd)}</span>}
+                  <span className="grow" />
+                  <span>
+                    <TimeAgo at={session.lastAt} />
                   </span>
-                )}
-                <span className="text-xs text-muted">{OUTCOMES[session.status]}</span>
-              </div>
-              {session.prompt && <p className="mt-1.5 line-clamp-1 text-sm text-muted">{session.prompt}</p>}
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
-                {session.kinds.map((kind) => (
-                  <KindLabel key={kind} kind={kind} />
-                ))}
-                <span>{session.entries} entries</span>
-                <span>{session.tools} tool calls</span>
-                {session.runs > 0 && <span>{session.runs} {session.runs === 1 ? "run" : "runs"}</span>}
-                {formatCost(session.costUsd) && <span>{formatCost(session.costUsd)}</span>}
-                <span className="grow" />
-                <span>
-                  <TimeAgo at={session.lastAt} />
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </div>
   );

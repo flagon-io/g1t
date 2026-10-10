@@ -16,6 +16,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
+import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { WeightedLru } from "../lib/content-cache";
 import { type AlertKind, G1T_MENTION_HREF, type MarkdownRepo, rehypeAlerts, rehypeReferences } from "../lib/markdown-plugins";
@@ -153,7 +154,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
       </pre>
       <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
         {language && <span className="font-mono text-[0.6875rem] text-faint">{language}</span>}
-        <button
+        <Button
           type="button"
           aria-label="Copy"
           onClick={() => {
@@ -162,10 +163,12 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
               setTimeout(() => setCopied(false), 1500);
             });
           }}
-          className="rounded-md border border-line bg-raised p-1.5 text-muted hover:text-fg"
+          variant="outline"
+          size="inline"
+          className="bg-raised p-1.5 text-muted"
         >
           {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
-        </button>
+        </Button>
       </div>
     </div>
   );

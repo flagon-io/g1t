@@ -11,6 +11,9 @@ import { CommitChecksBadge } from "../../components/commit-checks";
 import { DiffView } from "../../components/diff-view";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
 import { TimeAgo } from "../../components/ui";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Skeleton } from "../../components/ui/skeleton";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { immutable } from "../../lib/immutable.server";
@@ -85,20 +88,17 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 function CopyHash({ hash }: { hash: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
+    <Button
       type="button"
       onClick={() => {
         void navigator.clipboard?.writeText(hash).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         });
-      }}
-      className="flex items-center gap-1.5 rounded-md border border-line bg-bg px-2 py-1 font-mono text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
-      aria-label="Copy the full hash"
-    >
+      }} variant="outline" size="inline" className="bg-bg px-2 py-1 font-mono text-xs text-muted" aria-label="Copy the full hash">
       {hash.slice(0, 12)}
       {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
-    </button>
+    </Button>
   );
 }
 
@@ -115,10 +115,10 @@ function MergedIn({ base, pull }: { base: string; pull: Pull }) {
               </Link>
             </span>
             {byAgent && (
-              <span className="flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs text-accent">
+              <Badge tone="accent" size="md" className="gap-1.5">
                 <Sparkles size={12} />
                 written by {pull.agent}
-              </span>
+              </Badge>
             )}
             <Link
               to={`${base}/pull/${pull.number}?tab=session`}
@@ -137,77 +137,79 @@ export default function CommitPage({ loaderData, params }: Route.ComponentProps)
   const { subject, body, trailers } = parseCommitMessage(commit.message);
   return (
     <div>
-      <section className="overflow-hidden rounded-xl border border-line bg-surface">
-        <div className="p-5">
-          <p className="flex items-center gap-2 text-xs text-faint">
-            <GitCommitHorizontal size={14} />
-            <Link to={`${base}/commits`} className="hover:text-fg">
-              Commit
-            </Link>
-          </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-balance">{subject}</h2>
-          {body && <p className="mt-3 max-w-3xl text-sm whitespace-pre-wrap text-muted">{body}</p>}
-          {trailers.length > 0 && (
-            <dl className="mt-3 space-y-0.5 font-mono text-xs text-faint">
-              {trailers.map((trailer) => (
-                <div key={`${trailer.key}:${trailer.value}`}>
-                  <dt className="inline">{trailer.key}:</dt> <dd className="inline text-muted">{trailer.value}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-line bg-bg/40 px-5 py-3 text-sm">
-          <span className="flex items-center gap-2">
-            <CommitAvatars commit={commit} size={20} />
-            <span className="font-medium">
-              <CommitNames commit={commit} all />
-            </span>
-            <span className="text-muted">
-              committed <TimeAgo at={commit.authoredAt} />
-            </span>
-          </span>
-          <span className="flex items-center gap-2 text-xs text-muted">
-            {commit.parents.length === 0 ? (
-              "The first commit"
-            ) : (
-              <>
-                {commit.parents.length === 1 ? "Parent" : "Parents"}
-                {commit.parents.map((parent) => (
-                  <Link
-                    key={parent}
-                    to={`${base}/commit/${parent}`}
-                    prefetch="intent"
-                    className="font-mono text-fg/80 hover:text-accent hover:underline"
-                  >
-                    {parent.slice(0, 7)}
-                  </Link>
+      <Card asChild className="overflow-hidden">
+        <section>
+          <div className="p-5">
+            <p className="flex items-center gap-2 text-xs text-faint">
+              <GitCommitHorizontal size={14} />
+              <Link to={`${base}/commits`} className="hover:text-fg">
+                Commit
+              </Link>
+            </p>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-balance">{subject}</h2>
+            {body && <p className="mt-3 max-w-3xl text-sm whitespace-pre-wrap text-muted">{body}</p>}
+            {trailers.length > 0 && (
+              <dl className="mt-3 space-y-0.5 font-mono text-xs text-faint">
+                {trailers.map((trailer) => (
+                  <div key={`${trailer.key}:${trailer.value}`}>
+                    <dt className="inline">{trailer.key}:</dt> <dd className="inline text-muted">{trailer.value}</dd>
+                  </div>
                 ))}
-              </>
+              </dl>
             )}
-          </span>
-          <span className="ml-auto flex items-center gap-2">
-            <CommitChecksBadge checks={checks} sha={commit.hash} />
-            <Link
-              to={`${base}/tree/${commit.hash}/`}
-              className="rounded-md px-2 py-1 text-xs text-muted hover:bg-raised hover:text-fg"
-            >
-              Browse files
-            </Link>
-            <CopyHash hash={commit.hash} />
-          </span>
-        </div>
-        <Suspense
-          fallback={
-            <div aria-busy="true" className="flex h-12 items-center gap-3 border-t border-line px-4">
-              <Skeleton className="size-4 rounded-full" />
-              <Skeleton className="h-3 w-64 max-w-[60%]" />
-            </div>
-          }
-        >
-          <Await resolve={pull}>{(pull) => (pull ? <MergedIn base={base} pull={pull} /> : null)}</Await>
-        </Suspense>
-      </section>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-line bg-bg/40 px-5 py-3 text-sm">
+            <span className="flex items-center gap-2">
+              <CommitAvatars commit={commit} size={20} />
+              <span className="font-medium">
+                <CommitNames commit={commit} all />
+              </span>
+              <span className="text-muted">
+                committed <TimeAgo at={commit.authoredAt} />
+              </span>
+            </span>
+            <span className="flex items-center gap-2 text-xs text-muted">
+              {commit.parents.length === 0 ? (
+                "The first commit"
+              ) : (
+                <>
+                  {commit.parents.length === 1 ? "Parent" : "Parents"}
+                  {commit.parents.map((parent) => (
+                    <Link
+                      key={parent}
+                      to={`${base}/commit/${parent}`}
+                      prefetch="intent"
+                      className="font-mono text-fg/80 hover:text-accent hover:underline"
+                    >
+                      {parent.slice(0, 7)}
+                    </Link>
+                  ))}
+                </>
+              )}
+            </span>
+            <span className="ml-auto flex items-center gap-2">
+              <CommitChecksBadge checks={checks} sha={commit.hash} />
+              <Link
+                to={`${base}/tree/${commit.hash}/`}
+                className="rounded-md px-2 py-1 text-xs text-muted hover:bg-raised hover:text-fg"
+              >
+                Browse files
+              </Link>
+              <CopyHash hash={commit.hash} />
+            </span>
+          </div>
+          <Suspense
+            fallback={
+              <div aria-busy="true" className="flex h-12 items-center gap-3 border-t border-line px-4">
+                <Skeleton className="size-4 rounded-full" />
+                <Skeleton className="h-3 w-64 max-w-[60%]" />
+              </div>
+            }
+          >
+            <Await resolve={pull}>{(pull) => (pull ? <MergedIn base={base} pull={pull} /> : null)}</Await>
+          </Suspense>
+        </section>
+      </Card>
       <div className="mt-6">
         <DiffView comparison={comparison} empty="This commit changes no files." fileBase={`${base}/blob/${commit.hash}`} />
       </div>

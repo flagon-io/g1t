@@ -6,7 +6,9 @@ import { type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/c
 
 import { AppsLauncher, appIcon, pinnedApp, useAppPins } from "./apps";
 import { Mark } from "./logo";
-import { Avatar } from "./ui";
+
+import { Avatar } from "./ui/avatar";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import {
@@ -208,16 +210,18 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>Everywhere in g1t, and in Chat.</DialogDescription>
         </DialogHeader>
-        <dl className="divide-y divide-line rounded-lg border border-line">
-          {shortcuts(paletteKeyLabel(platform), sidebarKeyLabel(platform)).map(([key, what]) => (
-            <div key={key} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
-              <dt className="text-fg-soft">{what}</dt>
-              <dd>
-                <kbd className="rounded-md border border-line-strong bg-raised px-1.5 py-0.5 font-sans text-xs whitespace-nowrap text-fg">{key}</kbd>
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <Card asChild tone="plain" radius="lg" divided>
+          <dl>
+            {shortcuts(paletteKeyLabel(platform), sidebarKeyLabel(platform)).map(([key, what]) => (
+              <div key={key} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
+                <dt className="text-fg-soft">{what}</dt>
+                <dd>
+                  <kbd className="rounded-md border border-line-strong bg-raised px-1.5 py-0.5 font-sans text-xs whitespace-nowrap text-fg">{key}</kbd>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
       </DialogContent>
     </Dialog>
   );

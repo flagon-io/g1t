@@ -11,7 +11,9 @@ import {
   MilestoneStateButton,
   ProgressLine,
 } from "../../components/milestones";
-import { Button, EmptyState, ErrorText } from "../../components/ui";
+import { EmptyState, ErrorText } from "../../components/ui";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { plainText } from "../../components/work";
 import { requireRepo } from "../../lib/access.server";
 import { page } from "../../lib/meta";
@@ -63,10 +65,10 @@ export default function Milestones({ loaderData, actionData, params }: Route.Com
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-1 rounded-lg border border-line p-1">
+        <Card tone="plain" radius="lg" className="flex gap-1 p-1">
           {tab("open", "Open", open.length)}
           {tab("closed", "Closed", closed.length)}
-        </div>
+        </Card>
         {canEdit && !creating && (
           <Button type="button" onClick={() => setCreating(true)}>
             <Plus size={15} />
@@ -85,43 +87,45 @@ export default function Milestones({ loaderData, actionData, params }: Route.Com
             : "Milestones that are done show here once they are closed."}
         </EmptyState>
       ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-          {shown.map((milestone) => (
-            <li key={milestone.number} className="grid gap-3 px-4 py-4 sm:grid-cols-[1fr_16rem]">
-              <div className="min-w-0">
-                <Link
-                  to={`${base}/milestones/${milestone.number}`}
-                  className="inline-flex max-w-full items-center gap-2 text-base font-medium hover:text-accent"
-                >
-                  <MilestoneIcon size={16} className="shrink-0 text-faint" />
-                  <span className="truncate">{milestone.title}</span>
-                </Link>
-                <p className="mt-1 text-xs">
-                  {milestone.state === "closed" && milestone.closedAt ? (
-                    <span className="text-muted">Closed {milestone.closedAt.slice(0, 10)}</span>
-                  ) : (
-                    <DueLine milestone={milestone} today={today} />
+        <Card asChild tone="plain" divided className="overflow-hidden">
+          <ul>
+            {shown.map((milestone) => (
+              <li key={milestone.number} className="grid gap-3 px-4 py-4 sm:grid-cols-[1fr_16rem]">
+                <div className="min-w-0">
+                  <Link
+                    to={`${base}/milestones/${milestone.number}`}
+                    className="inline-flex max-w-full items-center gap-2 text-base font-medium hover:text-accent"
+                  >
+                    <MilestoneIcon size={16} className="shrink-0 text-faint" />
+                    <span className="truncate">{milestone.title}</span>
+                  </Link>
+                  <p className="mt-1 text-xs">
+                    {milestone.state === "closed" && milestone.closedAt ? (
+                      <span className="text-muted">Closed {milestone.closedAt.slice(0, 10)}</span>
+                    ) : (
+                      <DueLine milestone={milestone} today={today} />
+                    )}
+                  </p>
+                  {milestone.description && (
+                    <p className="mt-2 line-clamp-2 text-sm text-muted">{plainText(milestone.description)}</p>
                   )}
-                </p>
-                {milestone.description && (
-                  <p className="mt-2 line-clamp-2 text-sm text-muted">{plainText(milestone.description)}</p>
-                )}
-              </div>
-              <div className="min-w-0">
-                <MilestoneBar milestone={milestone} />
-                <p className="mt-1.5">
-                  <ProgressLine milestone={milestone} />
-                </p>
-                {canEdit && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <MilestoneStateButton milestone={milestone} />
-                    <DeleteMilestone milestone={milestone} />
-                  </div>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
+                </div>
+                <div className="min-w-0">
+                  <MilestoneBar milestone={milestone} />
+                  <p className="mt-1.5">
+                    <ProgressLine milestone={milestone} />
+                  </p>
+                  {canEdit && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <MilestoneStateButton milestone={milestone} />
+                      <DeleteMilestone milestone={milestone} />
+                    </div>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import type { RepoInstructions } from "@g1t/contracts";
 
 import { Idle } from "./agents";
 import { TimeAgo } from "./ui";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 
 const ROLE: Record<RepoInstructions["files"][number]["role"], string> = {
@@ -53,35 +54,37 @@ export function AgentInstructions({ instructions, base }: { instructions: RepoIn
       ) : (
         <ul className="mt-3 space-y-3">
           {files.map((file) => (
-            <li key={file.path} className="rounded-xl border border-line bg-surface">
-              <details>
-                <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
-                  <FileText size={14} className="text-muted" />
-                  <span className="font-mono font-medium">{file.path}</span>
-                  <span className="rounded-full bg-raised px-2 py-px text-xs text-muted">{ROLE[file.role]}</span>
-                  {file.truncated && <span className="text-xs text-warn">Longer than agents are given</span>}
-                  <span className="ml-auto flex items-center gap-2 text-xs text-faint">
-                    {file.lastChanged && (
-                      <>
-                        <Hint label={file.lastChanged.message}>
-                          <Link to={`${base}/commit/${file.lastChanged.commit}`} className="font-mono hover:text-fg">
-                            {file.lastChanged.commit.slice(0, 7)}
-                          </Link>
-                        </Hint>
-                        <span>by {file.lastChanged.author}</span>
-                        <TimeAgo at={file.lastChanged.at} />
-                      </>
-                    )}
-                    <Link to={`${base}/blob/${encodeURIComponent(branch)}/${file.path}`} className="text-muted hover:text-fg">
-                      Open in code
-                    </Link>
-                  </span>
-                </summary>
-                <pre className="max-h-96 overflow-auto border-t border-line px-4 py-3 font-mono text-xs whitespace-pre-wrap text-muted">
-                  {file.text || "(empty)"}
-                </pre>
-              </details>
-            </li>
+            <Card asChild key={file.path}>
+              <li>
+                <details>
+                  <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
+                    <FileText size={14} className="text-muted" />
+                    <span className="font-mono font-medium">{file.path}</span>
+                    <span className="rounded-full bg-raised px-2 py-px text-xs text-muted">{ROLE[file.role]}</span>
+                    {file.truncated && <span className="text-xs text-warn">Longer than agents are given</span>}
+                    <span className="ml-auto flex items-center gap-2 text-xs text-faint">
+                      {file.lastChanged && (
+                        <>
+                          <Hint label={file.lastChanged.message}>
+                            <Link to={`${base}/commit/${file.lastChanged.commit}`} className="font-mono hover:text-fg">
+                              {file.lastChanged.commit.slice(0, 7)}
+                            </Link>
+                          </Hint>
+                          <span>by {file.lastChanged.author}</span>
+                          <TimeAgo at={file.lastChanged.at} />
+                        </>
+                      )}
+                      <Link to={`${base}/blob/${encodeURIComponent(branch)}/${file.path}`} className="text-muted hover:text-fg">
+                        Open in code
+                      </Link>
+                    </span>
+                  </summary>
+                  <pre className="max-h-96 overflow-auto border-t border-line px-4 py-3 font-mono text-xs whitespace-pre-wrap text-muted">
+                    {file.text || "(empty)"}
+                  </pre>
+                </details>
+              </li>
+            </Card>
           ))}
         </ul>
       )}

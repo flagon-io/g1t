@@ -5,6 +5,8 @@ import type { Route } from "./+types/branches";
 import { ActiveBranches } from "../../components/branches";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
 import { EmptyState, TimeAgo, notACredential } from "../../components/ui";
+import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { readBranches } from "../../lib/branches.server";
 import { commitChecksFor } from "../../lib/commit-checks.server";
@@ -92,12 +94,12 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
 
       <section>
         <h3 className="mb-2 text-sm font-medium text-muted">Default</h3>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-line bg-surface px-4 py-3">
+        <Card className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
           <GitBranch size={15} className="shrink-0 text-faint" />
           <Link to={`${base}/tree/${encodeURIComponent(main)}`} className="font-mono text-[0.8125rem] font-medium hover:text-accent">
             {main}
           </Link>
-          <span className="rounded-full border border-line px-2 py-px text-xs text-muted">default</span>
+          <Badge size="md" className="py-px">default</Badge>
           {head && (
             <span className="flex min-w-0 grow basis-64 items-center gap-1.5 text-xs text-muted">
               <CommitAvatars commit={head} size={14} max={2} />
@@ -116,7 +118,7 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
               </span>
             </span>
           )}
-        </div>
+        </Card>
       </section>
 
       {query && (

@@ -3,7 +3,9 @@ import { Form } from "react-router";
 
 import type { Route } from "./+types/device";
 import { page } from "../lib/meta";
-import { Button, ErrorText, Field, Input, SubmitButton, usePending } from "../components/ui";
+import { ErrorText, Field, Input, SubmitButton, usePending } from "../components/ui";
+import { Button } from "../components/ui/button";
+import { Card } from "../components/ui/card";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
@@ -78,9 +80,11 @@ export default function Device({ loaderData, actionData }: Route.ComponentProps)
           <p className="mt-6 text-sm text-muted">
             Check that this code matches the one it is showing you:
           </p>
-          <p className="mt-2 rounded-xl border border-line bg-surface py-5 text-center font-mono text-3xl font-semibold tracking-[0.2em]">
-            {pending.userCode}
-          </p>
+          <Card asChild className="mt-2 py-5 text-center font-mono text-3xl font-semibold tracking-[0.2em]">
+            <p>
+              {pending.userCode}
+            </p>
+          </Card>
           <p className="mt-4 text-sm text-muted">
             Approving creates an access token with the full rights of your
             account. You can delete it in settings at any time.
@@ -92,7 +96,7 @@ export default function Device({ loaderData, actionData }: Route.ComponentProps)
                 Approve
               </SubmitButton>
             </div>
-            <SubmitButton variant="quiet" name="decision" value="deny" pending="Denying…" disabled={deciding}>
+            <SubmitButton variant="outline" name="decision" value="deny" pending="Denying…" disabled={deciding}>
               Deny
             </SubmitButton>
           </Form>

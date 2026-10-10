@@ -21,6 +21,7 @@ import { type ChecksSource, CommitChecksBadge } from "./commit-checks";
 import { type AboutData, RepoAboutPanel } from "./repo-about";
 import { Markdown } from "./markdown";
 import { CopyLine, TimeAgo, notACredential } from "./ui";
+import { Card } from "./ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Hint } from "./ui/hint";
@@ -344,7 +345,7 @@ export function TreeView({
 
   if (!head) {
     return (
-      <div className="mx-auto max-w-2xl rounded-xl border border-line bg-surface p-8">
+      <Card className="mx-auto max-w-2xl p-8">
         <h2 className="text-lg font-semibold tracking-tight">
           This repository is empty
         </h2>
@@ -361,7 +362,7 @@ export function TreeView({
           <span className="font-mono text-fg">{repo.name}</span> and push it here.
         </p>
         <AgentSetup className="mt-3" />
-      </div>
+      </Card>
     );
   }
 
@@ -369,7 +370,7 @@ export function TreeView({
     <div className={path ? "" : "grid gap-8 lg:grid-cols-[1fr_17rem]"}>
       <div className="min-w-0">
         <CodeBar base={base} repo={repo} gitRef={ref} path={path} branches={branches} />
-        <div className="overflow-hidden rounded-xl border border-line">
+        <Card tone="plain" className="overflow-hidden">
           <CommitBar commit={head} base={base} checks={checks} />
           {lastCommits ? (
             <Suspense fallback={<FileRows base={base} gitRef={ref} prefix={prefix} entries={entries} last={undefined} />}>
@@ -380,29 +381,31 @@ export function TreeView({
           ) : (
             <FileRows base={base} gitRef={ref} prefix={prefix} entries={entries} last={null} />
           )}
-        </div>
+        </Card>
 
         {readme?.text != null && (
-          <section id="readme" className="mt-6 scroll-mt-20 overflow-hidden rounded-xl border border-line">
-            <h2 className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm font-medium">
-              <BookOpen size={15} className="text-faint" />
-              {readme.name}
-            </h2>
-            <div className="p-4 sm:p-6">
-              {/\.(md|markdown)$/i.test(readme.name) ? (
-                <Markdown
-                  source={readme.text}
-                  repo={{ namespace: repo.namespace, name: repo.name }}
-                  // Relative links in a README point into the repository,
-                  // and its pictures at the files of the commit shown.
-                  base={`/${repo.namespace}/${repo.name}/blob/${ref}${path ? `/${path}` : ""}`}
-                  rawBase={`/${repo.namespace}/${repo.name}/raw/${head.hash}${path ? `/${encodePath(path)}` : ""}`}
-                />
-              ) : (
-                <pre className="whitespace-pre-wrap text-sm"><code>{readme.text}</code></pre>
-              )}
-            </div>
-          </section>
+          <Card asChild tone="plain" className="mt-6 scroll-mt-20 overflow-hidden">
+            <section id="readme">
+              <h2 className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm font-medium">
+                <BookOpen size={15} className="text-faint" />
+                {readme.name}
+              </h2>
+              <div className="p-4 sm:p-6">
+                {/\.(md|markdown)$/i.test(readme.name) ? (
+                  <Markdown
+                    source={readme.text}
+                    repo={{ namespace: repo.namespace, name: repo.name }}
+                    // Relative links in a README point into the repository,
+                    // and its pictures at the files of the commit shown.
+                    base={`/${repo.namespace}/${repo.name}/blob/${ref}${path ? `/${path}` : ""}`}
+                    rawBase={`/${repo.namespace}/${repo.name}/raw/${head.hash}${path ? `/${encodePath(path)}` : ""}`}
+                  />
+                ) : (
+                  <pre className="whitespace-pre-wrap text-sm"><code>{readme.text}</code></pre>
+                )}
+              </div>
+            </section>
+          </Card>
         )}
       </div>
 
@@ -468,7 +471,7 @@ export function BlobView({
         <Breadcrumbs base={base} repo={repo.name} gitRef={ref} path={path} />
       </div>
       {notice}
-      <div className="overflow-hidden rounded-xl border border-line">
+      <Card tone="plain" className="overflow-hidden">
         <div className="flex items-center gap-3 border-b border-line bg-surface px-3 py-2 text-xs text-muted sm:px-4 sm:py-2.5">
           {lines && <span>{lines.length.toLocaleString("en-US")} lines</span>}
           <span className="hidden min-[400px]:inline">{size.toLocaleString("en-US")} bytes</span>
@@ -501,7 +504,7 @@ export function BlobView({
             .
           </p>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { Markdown } from "./markdown";
 import { IssueIcon, PullIcon } from "./work-icons";
 import { MentionTextarea } from "./mention-textarea";
 import { AgentAvatar } from "./agent-avatar";
-import { Avatar, ErrorText, SubmitButton, TimeAgo } from "./ui";
+import { ErrorText, SubmitButton, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
 import {
   AlertDialog,
@@ -24,6 +24,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "./ui/alert-dialog";
+import { Avatar } from "./ui/avatar";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
 import { UserCard } from "./user-card";
@@ -96,11 +99,11 @@ export function AssigneeStack({ people }: { people: string[] }) {
 export function Assignee({ agent }: { agent: string }) {
   return (
     <Hint label={`Assigned to ${agent}`}>
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/35 bg-accent/10 px-2 py-px text-xs font-medium text-accent">
+      <Badge tone="accent" className="text-xs">
         <Bot size={12} />
         <span className="sr-only">Assigned to </span>
         {agent}
-      </span>
+      </Badge>
     </Hint>
   );
 }
@@ -178,10 +181,10 @@ export function StateTabs({
   );
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex gap-1 rounded-lg border border-line p-1">
+      <Card tone="plain" radius="lg" className="flex gap-1 p-1">
         {tab("open", "Open")}
         {tab("closed", "Closed")}
-      </div>
+      </Card>
       {action}
     </div>
   );
@@ -296,41 +299,43 @@ export function TimelineItem({
           </PersonLink>
         )}
       </span>
-      <article className="min-w-0 grow overflow-hidden rounded-xl border border-line bg-surface">
-        <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-raised/40 px-4 py-2 text-sm text-muted">
-          <span className="sm:hidden">{face(18)}</span>
-          {agent ? (
-            <AgentName agent={agent.ref} href={agent.href} />
-          ) : (
-            <PersonLink name={author} className="font-medium text-fg hover:underline" />
-          )}
-          {action}
-          {at && <TimeAgo at={at} />}
-          {agent?.actingFor && (
-            <span className="text-xs text-faint">
-              on behalf of{" "}
-              <PersonLink name={agent.actingFor} className="hover:text-fg hover:underline">
-                @{agent.actingFor}
-              </PersonLink>
-            </span>
-          )}
-          {edited && (
-            <Hint
-              label={
-                <>
-                  Edited <TimeAgo at={edited} />
-                </>
-              }
-            >
-              <span tabIndex={0} className="text-xs text-faint">
-                edited
+      <Card asChild className="min-w-0 grow overflow-hidden">
+        <article>
+          <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-raised/40 px-4 py-2 text-sm text-muted">
+            <span className="sm:hidden">{face(18)}</span>
+            {agent ? (
+              <AgentName agent={agent.ref} href={agent.href} />
+            ) : (
+              <PersonLink name={author} className="font-medium text-fg hover:underline" />
+            )}
+            {action}
+            {at && <TimeAgo at={at} />}
+            {agent?.actingFor && (
+              <span className="text-xs text-faint">
+                on behalf of{" "}
+                <PersonLink name={agent.actingFor} className="hover:text-fg hover:underline">
+                  @{agent.actingFor}
+                </PersonLink>
               </span>
-            </Hint>
-          )}
-          {aside && <span className="ml-auto min-w-0">{aside}</span>}
-        </header>
-        {children && <div className="px-4 py-3">{children}</div>}
-      </article>
+            )}
+            {edited && (
+              <Hint
+                label={
+                  <>
+                    Edited <TimeAgo at={edited} />
+                  </>
+                }
+              >
+                <span tabIndex={0} className="text-xs text-faint">
+                  edited
+                </span>
+              </Hint>
+            )}
+            {aside && <span className="ml-auto min-w-0">{aside}</span>}
+          </header>
+          {children && <div className="px-4 py-3">{children}</div>}
+        </article>
+      </Card>
     </div>
   );
 }
@@ -470,13 +475,15 @@ function CommentActions({
         {can.delete && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <button
+              <Button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-faint hover:text-danger"
+                variant="ghost"
+                size="inline"
+                className="gap-1 px-1.5 py-1 text-xs text-faint hover:text-danger font-normal"
               >
                 <Trash2 size={12} />
                 Delete
-              </button>
+              </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <Form method="post" className="grid gap-4">
@@ -639,12 +646,12 @@ export function CommentForm({
           </SubmitButton>
           {review?.canJudge && (
             <>
-              <SubmitButton variant="quiet" name="verdict" value="approve" match={{ action: "comment" }} pending="Approving…">
+              <SubmitButton variant="outline" name="verdict" value="approve" match={{ action: "comment" }} pending="Approving…">
                 <CircleCheck size={14} className="text-success" />
                 Approve
               </SubmitButton>
               <SubmitButton
-                variant="quiet"
+                variant="outline"
                 name="verdict"
                 value="request_changes"
                 match={{ action: "comment" }}

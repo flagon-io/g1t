@@ -8,7 +8,9 @@ import { AgentFace } from "../../../components/agents-mode";
 import { isOrchestrator } from "../../../components/orchestrator";
 import { AgentPill, StatusDot, statusLabel } from "../../../components/chat/marks";
 import { TabLink } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
 import { Badge } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
 import { channelPath } from "../../../lib/chat";
 import { page } from "../../../lib/meta";
 import { chat, workspaceAgents } from "../../../lib/services.server";
@@ -43,23 +45,17 @@ export async function action({ params, context, request }: Route.ActionArgs) {
 }
 
 /** The button that opens the direct message with an agent. */
-export function MessageAgent({ slug, agent, variant = "quiet" }: { slug: string; agent: WorkspaceAgent; variant?: "quiet" | "accent" }) {
+export function MessageAgent({ slug, agent, variant = "outline" }: { slug: string; agent: WorkspaceAgent; variant?: "outline" | "accent" }) {
   const navigation = useNavigation();
   const busy = navigation.state !== "idle" && navigation.formData?.get("intent") === "message";
   return (
     <Form method="post" action={`/${slug}/-/agents/${agent.handle}`}>
       <input type="hidden" name="intent" value="message" />
       <input type="hidden" name="agent" value={agent.id} />
-      <button
-        type="submit"
-        disabled={busy}
-        className={`inline-flex h-9 items-center gap-2 rounded-md px-3.5 text-sm font-medium transition-colors disabled:opacity-60 ${
-          variant === "accent" ? "bg-accent text-bg hover:bg-accent-hover" : "border border-line text-fg/90 hover:border-line-strong hover:bg-surface"
-        }`}
-      >
+      <Button type="submit" disabled={busy} variant={variant}>
         <MessageSquare size={15} />
         {busy ? "Opening…" : "Message"}
-      </button>
+      </Button>
     </Form>
   );
 }
@@ -69,10 +65,10 @@ export default function AgentPage({ loaderData, params }: Route.ComponentProps) 
   const base = `/${params.owner}/-/agents/${params.handle}`;
   if (!agent) {
     return (
-      <div className="rounded-xl border border-dashed border-line px-6 py-14 text-center">
+      <Card tone="plain" className="border-dashed px-6 py-14 text-center">
         <p className="font-medium">@{params.handle} can't be shown right now</p>
         <p className="mt-1.5 text-sm text-muted">The agents service didn't answer. It's usually back within a minute; reload to try again.</p>
-      </div>
+      </Card>
     );
   }
   return (

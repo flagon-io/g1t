@@ -3,13 +3,14 @@ import type { ReactNode } from "react";
 import { useParams } from "react-router";
 
 import { CreateChannelButton, NewMessageButton } from "./actions";
+import { Card } from "../ui/card";
 
 /** A calm full-height panel for a conversation that cannot be shown. */
 function Panel({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
     <div className="flex h-(--page-h) items-center justify-center px-6">
       <div className="max-w-sm text-center">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-xl border border-line bg-surface text-muted">{icon}</div>
+        <Card className="mx-auto flex size-12 items-center justify-center text-muted">{icon}</Card>
         <h1 className="mt-4 text-base font-semibold">{title}</h1>
         <div className="mt-1.5 text-sm text-muted">{children}</div>
       </div>

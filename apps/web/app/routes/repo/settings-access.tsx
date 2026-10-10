@@ -19,7 +19,7 @@ import { RoleSelect, RolesTable } from "../../components/access";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { StartPlanToInvite } from "../../components/start-plan";
 import { SettingsSection as Section } from "../../components/settings-section";
-import { Avatar, Button, ErrorText, Field, Input, SubmitButton } from "../../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import {
@@ -31,6 +31,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
+import { Avatar } from "../../components/ui/avatar";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { page } from "../../lib/meta";
 import { refusal, requireInsider } from "../../lib/access.server";
 import { billing, identity } from "../../lib/services.server";
@@ -174,7 +177,7 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
           title="Base permission"
           about={`What every member of ${params.owner} gets on its repositories.`}
         >
-          <div className="rounded-xl border border-line bg-surface p-4 text-sm">
+          <Card className="p-4 text-sm">
             <p>
               Members have{" "}
               <span className="font-medium text-fg">
@@ -193,7 +196,7 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
                 "Owners of the workspace choose it."
               )}
             </p>
-          </div>
+          </Card>
         </Section>
 
         {manage && (
@@ -214,19 +217,21 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
               : "Who can see the repository, and what each can do. Changing who has access needs the Admin role."
           }
         >
-          <ul className="divide-y divide-line rounded-xl border border-line">
-            {people.map((person) => (
-              <PersonRow
-                key={person.username}
-                person={person}
-                manage={manage}
-                base={access.base_permission}
-                full={full}
-                workspace={params.owner}
-                onDone={setNotice}
-              />
-            ))}
-          </ul>
+          <Card asChild tone="plain" divided>
+            <ul>
+              {people.map((person) => (
+                <PersonRow
+                  key={person.username}
+                  person={person}
+                  manage={manage}
+                  base={access.base_permission}
+                  full={full}
+                  workspace={params.owner}
+                  onDone={setNotice}
+                />
+              ))}
+            </ul>
+          </Card>
           {notice && (
             <p className="text-sm text-success" role="status">
               {notice}
@@ -243,15 +248,19 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
           }
         >
           {repoTeams.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">
-              No team has a role here.
-            </p>
+            <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
+              <p>
+                No team has a role here.
+              </p>
+            </Card>
           ) : (
-            <ul className="divide-y divide-line rounded-xl border border-line">
-              {repoTeams.map((team) => (
-                <TeamRow key={team.slug} team={team} workspace={params.owner} full={full} manage={manage} onDone={setNotice} />
-              ))}
-            </ul>
+            <Card asChild tone="plain" divided>
+              <ul>
+                {repoTeams.map((team) => (
+                  <TeamRow key={team.slug} team={team} workspace={params.owner} full={full} manage={manage} onDone={setNotice} />
+                ))}
+              </ul>
+            </Card>
           )}
           {manage && <AddTeamForm teams={addable} result={teamResult} workspace={params.owner} />}
         </Section>
@@ -259,15 +268,19 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
         {manage && (
           <Section title="Pending invitations" about="Invitations not yet accepted. Each expires after 7 days.">
             {pending.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">
-                No invitations are waiting.
-              </p>
+              <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
+                <p>
+                  No invitations are waiting.
+                </p>
+              </Card>
             ) : (
-              <ul className="divide-y divide-line rounded-xl border border-line">
-                {pending.map((invitation) => (
-                  <InvitationRow key={invitation.id} invitation={invitation} />
-                ))}
-              </ul>
+              <Card asChild tone="plain" divided>
+                <ul>
+                  {pending.map((invitation) => (
+                    <InvitationRow key={invitation.id} invitation={invitation} />
+                  ))}
+                </ul>
+              </Card>
             )}
           </Section>
         )}
@@ -292,32 +305,34 @@ function AddForm({ result }: { result: Outcome | undefined }) {
     if (result?.ok) setKey((k) => k + 1);
   }, [result]);
   return (
-    <Form method="post" className="space-y-3 rounded-xl border border-line bg-surface p-4">
-      <input type="hidden" name="intent" value="add" />
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem_auto] sm:items-end">
-        <Field label="Username or email address">
-          <Input key={key} name="invitee" required maxLength={254} placeholder="username or name@example.com" />
-        </Field>
-        <div>
-          <span className="mb-1.5 block text-sm font-medium text-muted">Role</span>
-          <RoleSelect name="role" label="Role" value={role} onValueChange={(value) => setRole(value as RepoRole)} />
+    <Card asChild className="space-y-3 p-4">
+      <Form method="post">
+        <input type="hidden" name="intent" value="add" />
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem_auto] sm:items-end">
+          <Field label="Username or email address">
+            <Input key={key} name="invitee" required maxLength={254} placeholder="username or name@example.com" />
+          </Field>
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-muted">Role</span>
+            <RoleSelect name="role" label="Role" value={role} onValueChange={(value) => setRole(value as RepoRole)} />
+          </div>
+          <SubmitButton match={{ intent: "add" }} pending="Adding…">
+            <UserPlus size={15} />
+            Add
+          </SubmitButton>
         </div>
-        <SubmitButton match={{ intent: "add" }} pending="Adding…">
-          <UserPlus size={15} />
-          Add
-        </SubmitButton>
-      </div>
-      <p className="text-xs text-faint">{REPO_ROLE_LABELS[role]}: {roleLine(role)}</p>
-      {result &&
-        (result.ok ? (
-          <p className="flex items-start gap-2 text-sm text-fg" role="status">
-            <Mail size={14} className="mt-0.5 shrink-0 text-accent" />
-            {result.message}
-          </p>
-        ) : (
-          <ErrorText>{result.error}</ErrorText>
-        ))}
-    </Form>
+        <p className="text-xs text-faint">{REPO_ROLE_LABELS[role]}: {roleLine(role)}</p>
+        {result &&
+          (result.ok ? (
+            <p className="flex items-start gap-2 text-sm text-fg" role="status">
+              <Mail size={14} className="mt-0.5 shrink-0 text-accent" />
+              {result.message}
+            </p>
+          ) : (
+            <ErrorText>{result.error}</ErrorText>
+          ))}
+      </Form>
+    </Card>
   );
 }
 
@@ -441,7 +456,7 @@ function RemoveButton({
   }, [fetcher.state, fetcher.data]);
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
-      <Button type="button" variant="quiet" onClick={() => setOpen(true)}>
+      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
         Remove
       </Button>
       <AlertDialogContent>
@@ -461,7 +476,7 @@ function RemoveButton({
           {fetcher.data && !fetcher.data.ok && <ErrorText>{fetcher.data.error}</ErrorText>}
           <AlertDialogFooter>
             <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-            <SubmitButton variant="danger" fetcher={fetcher} pending="Removing…">
+            <SubmitButton variant="destructive" fetcher={fetcher} pending="Removing…">
               Remove
             </SubmitButton>
           </AlertDialogFooter>
@@ -501,7 +516,7 @@ function InvitationRow({ invitation }: { invitation: RepoInvitation }) {
       <fetcher.Form method="post" className="shrink-0">
         <input type="hidden" name="intent" value="revoke" />
         <input type="hidden" name="id" value={invitation.id} />
-        <SubmitButton variant="quiet" fetcher={fetcher} pending="Revoking…">
+        <SubmitButton variant="outline" fetcher={fetcher} pending="Revoking…">
           Revoke
         </SubmitButton>
       </fetcher.Form>
@@ -571,7 +586,7 @@ function TeamRow({
         {manage && (
           <span className="flex w-[5.5rem] justify-end">
             <AlertDialog open={open} onOpenChange={setOpen}>
-              <Button type="button" variant="quiet" onClick={() => setOpen(true)}>
+              <Button type="button" variant="outline" onClick={() => setOpen(true)}>
                 Remove
               </Button>
               <AlertDialogContent>
@@ -589,7 +604,7 @@ function TeamRow({
                   {fetcher.data && !fetcher.data.ok && <ErrorText>{fetcher.data.error}</ErrorText>}
                   <AlertDialogFooter>
                     <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-                    <SubmitButton variant="danger" fetcher={fetcher} pending="Removing…">
+                    <SubmitButton variant="destructive" fetcher={fetcher} pending="Removing…">
                       Remove
                     </SubmitButton>
                   </AlertDialogFooter>
@@ -622,46 +637,48 @@ function AddTeamForm({ teams, result, workspace }: { teams: Team[]; result: Outc
     );
   }
   return (
-    <Form method="post" className="space-y-3 rounded-xl border border-line bg-surface p-4">
-      <input type="hidden" name="intent" value="team-add" />
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem_auto] sm:items-end">
-        <div>
-          <span className="mb-1.5 block text-sm font-medium text-muted">Team</span>
-          <Select name="team" value={team} onValueChange={setTeam} required>
-            <SelectTrigger aria-label="Team">
-              <SelectValue placeholder="Choose a team" />
-            </SelectTrigger>
-            <SelectContent align="start">
-              {teams.map((option) => (
-                <SelectItem
-                  key={option.slug}
-                  value={option.slug}
-                  description={`@${option.workspace}/${option.slug} · ${option.members_count === 1 ? "1 member" : `${option.members_count} members`}`}
-                >
-                  {option.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+    <Card asChild className="space-y-3 p-4">
+      <Form method="post">
+        <input type="hidden" name="intent" value="team-add" />
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem_auto] sm:items-end">
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-muted">Team</span>
+            <Select name="team" value={team} onValueChange={setTeam} required>
+              <SelectTrigger aria-label="Team">
+                <SelectValue placeholder="Choose a team" />
+              </SelectTrigger>
+              <SelectContent align="start">
+                {teams.map((option) => (
+                  <SelectItem
+                    key={option.slug}
+                    value={option.slug}
+                    description={`@${option.workspace}/${option.slug} · ${option.members_count === 1 ? "1 member" : `${option.members_count} members`}`}
+                  >
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-muted">Role</span>
+            <RoleSelect name="role" label="Role" value={role} onValueChange={(value) => setRole(value as RepoRole)} />
+          </div>
+          <SubmitButton match={{ intent: "team-add" }} pending="Adding…" disabled={!team}>
+            <Users size={15} />
+            Add team
+          </SubmitButton>
         </div>
-        <div>
-          <span className="mb-1.5 block text-sm font-medium text-muted">Role</span>
-          <RoleSelect name="role" label="Role" value={role} onValueChange={(value) => setRole(value as RepoRole)} />
-        </div>
-        <SubmitButton match={{ intent: "team-add" }} pending="Adding…" disabled={!team}>
-          <Users size={15} />
-          Add team
-        </SubmitButton>
-      </div>
-      <p className="text-xs text-faint">{REPO_ROLE_LABELS[role]}: everyone on the team {roleLine(role).replace(/^they /, "")}</p>
-      {result &&
-        (result.ok ? (
-          <p className="text-sm text-success" role="status">
-            {result.message}
-          </p>
-        ) : (
-          <ErrorText>{result.error}</ErrorText>
-        ))}
-    </Form>
+        <p className="text-xs text-faint">{REPO_ROLE_LABELS[role]}: everyone on the team {roleLine(role).replace(/^they /, "")}</p>
+        {result &&
+          (result.ok ? (
+            <p className="text-sm text-success" role="status">
+              {result.message}
+            </p>
+          ) : (
+            <ErrorText>{result.error}</ErrorText>
+          ))}
+      </Form>
+    </Card>
   );
 }

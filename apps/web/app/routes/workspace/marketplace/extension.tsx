@@ -10,8 +10,9 @@ import { describeScope, isScope } from "@g1t/contracts/scopes";
 import { dataDisclosure, extensionById } from "@g1t/contracts/marketplace";
 
 import type { Route } from "./+types/extension";
-import { ACTION, ExtensionAction, ExtensionAvailability, ExtensionMark, ListingFacts } from "../../../components/marketplace";
+import { ExtensionAction, ExtensionAvailability, ExtensionMark, ListingFacts } from "../../../components/marketplace";
 import { SubmitButton } from "../../../components/ui";
+import { Card } from "../../../components/ui/card";
 import { TIERS, extensionListings, marketplacePath, runtimeWords } from "../../../lib/marketplace";
 import { page } from "../../../lib/meta";
 import { useMarketplace } from "./layout";
@@ -34,7 +35,7 @@ export default function MarketplaceExtension({ params }: Route.ComponentProps) {
   const fetcher = useFetcher<{ error: string | null }>();
   const action = marketplacePath(slug, "requests");
   const Group = ({ title, items, empty }: { title: string; items: string[]; empty: string }) => (
-    <div className="rounded-xl border border-line bg-surface p-4">
+    <Card className="p-4">
       <h4 className="text-xs text-faint">{title}</h4>
       {items.length === 0 ? (
         <p className="mt-1.5 text-sm text-muted">{empty}</p>
@@ -45,7 +46,7 @@ export default function MarketplaceExtension({ params }: Route.ComponentProps) {
           ))}
         </ul>
       )}
-    </div>
+    </Card>
   );
   return (
     <div>
@@ -85,72 +86,78 @@ export default function MarketplaceExtension({ params }: Route.ComponentProps) {
         </section>
 
         <aside className="space-y-4 text-sm">
-          <section aria-labelledby="may" className="rounded-xl border border-line bg-surface p-4">
-            <h3 id="may" className="flex items-center gap-1.5 text-xs text-faint">
-              <ShieldCheck size={13} />
-              It will be able to
-            </h3>
-            <ul className="mt-2 space-y-1.5">
-              {manifest.permissions.map((permission) => (
-                <li key={permission}>{permission}</li>
-              ))}
-            </ul>
-            <h4 className="mt-4 text-xs text-faint">With access to</h4>
-            <ul className="mt-1.5 space-y-1 text-muted">
-              {manifest.scopes.map((scope) => (
-                <li key={scope}>
-                  <span className="font-mono text-xs text-fg-soft">{scope}</span>
-                  {isScope(scope) && <span className="block text-xs">{describeScope(scope)}</span>}
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section aria-labelledby="where" className="rounded-xl border border-line bg-surface p-4">
-            <h3 id="where" className="flex items-center gap-1.5 text-xs text-faint">
-              <Globe size={13} />
-              Where it runs, and where data goes
-            </h3>
-            <p className="mt-2">{runtimeWords(manifest)}</p>
-            <p className={manifest.domains.length > 0 ? "mt-1 text-warn" : "mt-1 text-muted"}>{dataDisclosure(manifest)}</p>
-          </section>
-          <dl className="space-y-3 rounded-xl border border-line bg-surface p-4">
-            <div>
-              <dt className="text-xs text-faint">Publisher</dt>
-              <dd className="mt-0.5">
-                {manifest.publisher.name} · {TIERS[listing!.tier].label}
-                <span className="block text-xs text-muted">{TIERS[listing!.tier].about}</span>
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-faint">Version</dt>
-              <dd className="mt-0.5">{install ? `${install.version} installed` : (manifest.version ?? "Not published yet")}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-faint">Source</dt>
-              <dd className="mt-0.5">
-                {manifest.source ? (
-                  <Link to={`/${manifest.source.repo}/tree/${manifest.source.tag}`} className="font-mono text-xs hover:underline">
-                    {manifest.source.repo}@{manifest.source.tag}
-                  </Link>
-                ) : (
-                  <span className="text-muted">Published with its first release</span>
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-faint">Price</dt>
-              <dd className="mt-0.5">Free. What its agents do is billed at what it costs, like any agent's work.</dd>
-            </div>
-          </dl>
+          <Card asChild className="p-4">
+            <section aria-labelledby="may">
+              <h3 id="may" className="flex items-center gap-1.5 text-xs text-faint">
+                <ShieldCheck size={13} />
+                It will be able to
+              </h3>
+              <ul className="mt-2 space-y-1.5">
+                {manifest.permissions.map((permission) => (
+                  <li key={permission}>{permission}</li>
+                ))}
+              </ul>
+              <h4 className="mt-4 text-xs text-faint">With access to</h4>
+              <ul className="mt-1.5 space-y-1 text-muted">
+                {manifest.scopes.map((scope) => (
+                  <li key={scope}>
+                    <span className="font-mono text-xs text-fg-soft">{scope}</span>
+                    {isScope(scope) && <span className="block text-xs">{describeScope(scope)}</span>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </Card>
+          <Card asChild className="p-4">
+            <section aria-labelledby="where">
+              <h3 id="where" className="flex items-center gap-1.5 text-xs text-faint">
+                <Globe size={13} />
+                Where it runs, and where data goes
+              </h3>
+              <p className="mt-2">{runtimeWords(manifest)}</p>
+              <p className={manifest.domains.length > 0 ? "mt-1 text-warn" : "mt-1 text-muted"}>{dataDisclosure(manifest)}</p>
+            </section>
+          </Card>
+          <Card asChild className="space-y-3 p-4">
+            <dl>
+              <div>
+                <dt className="text-xs text-faint">Publisher</dt>
+                <dd className="mt-0.5">
+                  {manifest.publisher.name} · {TIERS[listing!.tier].label}
+                  <span className="block text-xs text-muted">{TIERS[listing!.tier].about}</span>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-faint">Version</dt>
+                <dd className="mt-0.5">{install ? `${install.version} installed` : (manifest.version ?? "Not published yet")}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-faint">Source</dt>
+                <dd className="mt-0.5">
+                  {manifest.source ? (
+                    <Link to={`/${manifest.source.repo}/tree/${manifest.source.tag}`} className="font-mono text-xs hover:underline">
+                      {manifest.source.repo}@{manifest.source.tag}
+                    </Link>
+                  ) : (
+                    <span className="text-muted">Published with its first release</span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-faint">Price</dt>
+                <dd className="mt-0.5">Free. What its agents do is billed at what it costs, like any agent's work.</dd>
+              </div>
+            </dl>
+          </Card>
           {install && owner && (
             <fetcher.Form method="post" action={action} className="flex flex-wrap gap-2">
               <input type="hidden" name="listing" value={listing!.ref} />
               <input type="hidden" name="enabled" value={install.enabled ? "off" : "on"} />
-              <SubmitButton fetcher={fetcher} name="intent" value="switch" className={ACTION.quiet} pending="Saving…">
+              <SubmitButton fetcher={fetcher} name="intent" value="switch" variant="outline" size="sm" pending="Saving…">
                 <Power size={14} />
                 {install.enabled ? "Switch off" : "Switch on"}
               </SubmitButton>
-              <SubmitButton fetcher={fetcher} name="intent" value="uninstall" className={ACTION.quiet} pending="Removing…">
+              <SubmitButton fetcher={fetcher} name="intent" value="uninstall" variant="outline" size="sm" pending="Removing…">
                 <Trash2 size={14} />
                 Uninstall
               </SubmitButton>

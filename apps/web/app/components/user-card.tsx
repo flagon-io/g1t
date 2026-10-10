@@ -7,7 +7,8 @@ import { shownUsername } from "@g1t/contracts";
 import { type Card, type UserCard as UserCardData, cardHref, committedLabel } from "../lib/hovercard";
 import { G1T_MENTION_HREF } from "../lib/markdown-plugins";
 import { localTime } from "../lib/time-zone";
-import { Avatar } from "./ui";
+
+import { Avatar } from "./ui/avatar";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 import { Skeleton } from "./ui/skeleton";
 

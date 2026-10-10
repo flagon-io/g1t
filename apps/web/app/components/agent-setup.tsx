@@ -13,6 +13,8 @@ import {
 } from "../lib/agent-setup";
 import { useAddresses } from "../lib/addresses";
 import { cn } from "../lib/cn";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 
 /** The agent this browser chose last; every toggle on the page shares it. */
 export function useAgentChoice(): [AgentId, (id: AgentId) => void] {
@@ -54,7 +56,7 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
 
   return (
     <div className={className}>
-      <div className="@container overflow-hidden rounded-lg border border-line bg-surface">
+      <Card radius="lg" className="@container overflow-hidden">
         <div
           role="tablist"
           aria-label="Coding agent"
@@ -99,16 +101,18 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
                 : agent.code}
             </code>
           </pre>
-          <button
+          <Button
             type="button"
             aria-label={copied ? "Copied" : `Copy the ${agent.label} ${agent.file ? "config" : "command"}`}
             onClick={copy}
-            className="absolute top-1.5 right-1.5 rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-fg"
+            variant="ghost"
+            size="inline"
+            className="absolute top-1.5 right-1.5 p-1.5 text-faint"
           >
             {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
       {hint && (
         <p className="mt-2 text-xs leading-5 text-muted">
           {agent.then.split("`").map((part, index) =>

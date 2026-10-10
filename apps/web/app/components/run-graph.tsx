@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { Duration, StatusIcon } from "./actions";
 import { DeployLink } from "./deploy";
 import { GRAPH, type GraphJob, type EdgeState, type PlacedGroup, type PlacedNode, type Standing, layoutRun, sharedUrl, standingOf, unitStanding } from "../lib/run-graph";
+import { Card } from "./ui/card";
 
 /** A job calling a workflow shows as running while its jobs do. */
 function Icon({ standing, environment, size = 14 }: { standing: Standing; environment?: string | null; size?: number }) {
@@ -185,43 +186,45 @@ export function RunGraph({
     });
   if (jobs.length === 0) return null;
   return (
-    <section aria-label="Jobs graph" className="overflow-hidden rounded-xl border border-line bg-surface">
-      <header className="flex min-w-0 items-center gap-1.5 border-b border-line px-4 py-2.5 text-sm">
-        <span className="truncate font-mono font-medium">{title}</span>
-        <span className="shrink-0 text-faint">· on: {trigger}</span>
-      </header>
-      <div className="overflow-x-auto bg-bg/40">
-        <div className="relative" style={{ width: layout.width, height: layout.height }}>
-          {layout.groups.map((group) => (
-            <GroupBox key={group.unit.key} group={group} href={href} selected={selected} />
-          ))}
-          <svg className="pointer-events-none absolute inset-0" width={layout.width} height={layout.height} aria-hidden="true">
-            {layout.edges.map((edge) => (
-              <path
-                key={`${edge.from}>${edge.to}`}
-                d={edge.path}
-                fill="none"
-                strokeWidth={1.5}
-                strokeDasharray={edge.state === "active" ? "4 4" : undefined}
-                className={EDGE[edge.state]}
-              />
+    <Card asChild className="overflow-hidden">
+      <section aria-label="Jobs graph">
+        <header className="flex min-w-0 items-center gap-1.5 border-b border-line px-4 py-2.5 text-sm">
+          <span className="truncate font-mono font-medium">{title}</span>
+          <span className="shrink-0 text-faint">· on: {trigger}</span>
+        </header>
+        <div className="overflow-x-auto bg-bg/40">
+          <div className="relative" style={{ width: layout.width, height: layout.height }}>
+            {layout.groups.map((group) => (
+              <GroupBox key={group.unit.key} group={group} href={href} selected={selected} />
             ))}
-          </svg>
-          {layout.nodes.map((node) =>
-            node.unit.kind === "job" ? (
-              <JobNode key={node.unit.key} node={node as PlacedNode & { unit: { kind: "job" } }} href={href} selected={selected} />
-            ) : (
-              <MatrixNode
-                key={node.unit.key}
-                node={node as PlacedNode & { unit: { kind: "matrix" } }}
-                href={href}
-                selected={selected}
-                toggle={toggle}
-              />
-            ),
-          )}
+            <svg className="pointer-events-none absolute inset-0" width={layout.width} height={layout.height} aria-hidden="true">
+              {layout.edges.map((edge) => (
+                <path
+                  key={`${edge.from}>${edge.to}`}
+                  d={edge.path}
+                  fill="none"
+                  strokeWidth={1.5}
+                  strokeDasharray={edge.state === "active" ? "4 4" : undefined}
+                  className={EDGE[edge.state]}
+                />
+              ))}
+            </svg>
+            {layout.nodes.map((node) =>
+              node.unit.kind === "job" ? (
+                <JobNode key={node.unit.key} node={node as PlacedNode & { unit: { kind: "job" } }} href={href} selected={selected} />
+              ) : (
+                <MatrixNode
+                  key={node.unit.key}
+                  node={node as PlacedNode & { unit: { kind: "matrix" } }}
+                  href={href}
+                  selected={selected}
+                  toggle={toggle}
+                />
+              ),
+            )}
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </Card>
   );
 }

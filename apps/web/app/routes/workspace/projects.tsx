@@ -5,8 +5,12 @@ import { Form, Link, useLocation, useNavigation, useSubmit } from "react-router"
 import type { Route } from "./+types/projects";
 import { host } from "../../components/deploy";
 import { PinButton } from "../../components/pin-button";
-import { EmptyState, Pill, TimeAgo, notACredential } from "../../components/ui";
+import { EmptyState, TimeAgo, notACredential } from "../../components/ui";
+import { Button } from "../../components/ui/button";
+import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 import { Checkbox } from "../../components/ui/checkbox";
+import { Kbd } from "../../components/ui/kbd";
 import { SelectField } from "../../components/ui/select";
 import { page as pageMeta } from "../../lib/meta";
 import {
@@ -129,8 +133,8 @@ function ProjectRow({ project, slug, pinned, member }: { project: Item; slug: st
             {project.name}
           </Link>
           {project.name.toLowerCase() !== project.slug && <span className="truncate font-mono text-xs text-faint">{project.slug}</span>}
-          {project.private && <Pill>private</Pill>}
-          {project.archived && <Pill>archived</Pill>}
+          {project.private && <Badge size="md">private</Badge>}
+          {project.archived && <Badge size="md">archived</Badge>}
         </div>
         {project.description && <p className="mt-0.5 truncate text-sm text-muted">{project.description}</p>}
         <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
@@ -412,9 +416,9 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
         )}
         {query.view !== "list" && <input type="hidden" name="view" value={query.view} />}
         <noscript>
-          <button type="submit" className={CONTROL}>
+          <Button type="submit" variant="outline" className="bg-surface px-2.5 font-normal text-fg">
             Apply
-          </button>
+          </Button>
         </noscript>
       </Form>
 
@@ -461,28 +465,30 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
             align="end"
             options={SORTS.map((sort) => ({ value: sort.value, label: sort.label }))}
           />
-          <nav aria-label="View" className="flex items-center gap-0.5 rounded-lg border border-line bg-bg p-0.5">
-            {(
-              [
-                ["list", "List", <List key="list" size={14} />],
-                ["grid", "Grid", <LayoutGrid key="grid" size={14} />],
-              ] as const
-            ).map(([view, label, icon]) => (
-              <Link
-                key={view}
-                to={projectQueryString(query, { view, page: query.page })}
-                replace
-                preventScrollReset
-                aria-label={`${label} view`}
-                aria-current={query.view === view ? "true" : undefined}
-                className={`flex size-7 items-center justify-center rounded-md transition-colors ${
-                  query.view === view ? "bg-raised text-fg ring-1 ring-line" : "text-faint hover:text-fg"
-                }`}
-              >
-                {icon}
-              </Link>
-            ))}
-          </nav>
+          <Card asChild tone="bg" radius="lg" className="flex items-center gap-0.5 p-0.5">
+            <nav aria-label="View">
+              {(
+                [
+                  ["list", "List", <List key="list" size={14} />],
+                  ["grid", "Grid", <LayoutGrid key="grid" size={14} />],
+                ] as const
+              ).map(([view, label, icon]) => (
+                <Link
+                  key={view}
+                  to={projectQueryString(query, { view, page: query.page })}
+                  replace
+                  preventScrollReset
+                  aria-label={`${label} view`}
+                  aria-current={query.view === view ? "true" : undefined}
+                  className={`flex size-7 items-center justify-center rounded-md transition-colors ${
+                    query.view === view ? "bg-raised text-fg ring-1 ring-line" : "text-faint hover:text-fg"
+                  }`}
+                >
+                  {icon}
+                </Link>
+              ))}
+            </nav>
+          </Card>
         </div>
       </div>
 
@@ -517,20 +523,22 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
             ))}
           </ul>
         ) : (
-          <ul aria-label="Projects" className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {items.map((project) => (
-              <ProjectRow key={project.id} project={project} slug={slug} pinned={pins.has(project.id)} member={member} />
-            ))}
-          </ul>
+          <Card asChild divided className="overflow-hidden">
+            <ul aria-label="Projects">
+              {items.map((project) => (
+                <ProjectRow key={project.id} project={project} slug={slug} pinned={pins.has(project.id)} member={member} />
+              ))}
+            </ul>
+          </Card>
         )}
       </div>
       <Pages query={query} page={page.page} pages={page.pages} />
       {items.length > 0 && (
         <p className="mt-4 hidden text-center text-xs text-faint sm:block">
-          <kbd className="rounded bg-raised px-1 font-mono ring-1 ring-line">/</kbd> to find,{" "}
-          <kbd className="rounded bg-raised px-1 font-mono ring-1 ring-line">↑</kbd>{" "}
-          <kbd className="rounded bg-raised px-1 font-mono ring-1 ring-line">↓</kbd> to move,{" "}
-          <kbd className="rounded bg-raised px-1 font-mono ring-1 ring-line">Enter</kbd> to open
+          <Kbd>/</Kbd> to find,{" "}
+          <Kbd>↑</Kbd>{" "}
+          <Kbd>↓</Kbd> to move,{" "}
+          <Kbd>Enter</Kbd> to open
         </p>
       )}
     </div>

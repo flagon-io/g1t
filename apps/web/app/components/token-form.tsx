@@ -33,6 +33,7 @@ import { Hint } from "./ui/hint";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { SelectField } from "./ui/select";
 import { Field, Input, Textarea } from "./ui";
+import { Button } from "./ui/button";
 
 // The one form for an access token, a person's or a workspace's: its name,
 // when it expires, where it reaches (the workspaces and repositories it is
@@ -329,22 +330,26 @@ export function TokenForm({
           <h3 className="mr-1 text-sm font-medium text-fg">Permissions</h3>
           {PRESETS.filter((option) => option.id !== "full").map((option) => (
             <Hint key={option.id} label={option.description}>
-              <button
+              <Button
                 type="button"
                 onClick={() => choosePreset(option.id)}
-                className="rounded-full border border-line px-2.5 py-0.5 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
+                variant="outline"
+                size="inline"
+                className="rounded-full px-2.5 py-0.5 text-xs text-muted"
               >
                 {option.label}
-              </button>
+              </Button>
             </Hint>
           ))}
-          <button
+          <Button
             type="button"
             onClick={() => setLevels({})}
-            className="rounded-full border border-line px-2.5 py-0.5 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
+            variant="outline"
+            size="inline"
+            className="rounded-full px-2.5 py-0.5 text-xs text-muted font-normal"
           >
             Clear
-          </button>
+          </Button>
           <span className="ml-auto text-xs text-faint">{given === 1 ? "1 permission" : `${given} permissions`}</span>
         </div>
         {groups.map((group) => (

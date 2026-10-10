@@ -5,6 +5,7 @@ import type { ChatReaction } from "@g1t/contracts";
 import { useEmojiContext } from "./context";
 import { EmojiPickerPopover } from "./picker";
 import { EmojiGlyph } from "./render";
+import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { reactorsLine } from "../../lib/emoji";
 
@@ -66,21 +67,23 @@ export function AddReaction({ messageId, variant = "toolbar" }: { messageId: str
   if (!react) return null;
   const button =
     variant === "pill" ? (
-      <button
+      <Button
         type="button"
         aria-label="Add a reaction"
-        className="flex h-6 items-center rounded-full border border-line bg-surface px-1.5 text-faint transition-colors hover:border-line-strong hover:bg-raised hover:text-fg"
+        variant="outline"
+        className="h-6 rounded-full bg-surface px-1.5 text-faint hover:bg-raised"
       >
         <SmilePlus size={14} />
-      </button>
+      </Button>
     ) : (
-      <button
+      <Button
         type="button"
         aria-label="Add a reaction"
-        className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-fg"
+        variant="ghost"
+        size="icon-xs"
       >
         <SmilePlus size={15} />
-      </button>
+      </Button>
     );
   return (
     <EmojiPickerPopover onPick={(emoji) => react(messageId, emoji, true)} side={variant === "pill" ? "top" : "bottom"} align={variant === "pill" ? "start" : "end"}>
@@ -106,20 +109,22 @@ export function QuickReactions({ messageId, onDone }: { messageId: string; onDon
   return (
     <div className="flex items-center justify-between gap-1 px-2 pb-2" aria-label="React">
       {QUICK.map((emoji) => (
-        <button
+        <Button
           key={emoji}
           type="button"
           aria-label={`React with ${emoji}`}
           onClick={() => pick(emoji)}
-          className="flex size-11 items-center justify-center rounded-full bg-surface text-[1.375rem] active:bg-raised"
+          variant="ghost"
+          size="icon-lg"
+          className="size-11 rounded-full bg-surface text-[1.375rem] active:bg-raised"
         >
           {emoji}
-        </button>
+        </Button>
       ))}
       <EmojiPickerPopover onPick={pick} side="top" align="end">
-        <button type="button" aria-label="More reactions" className="flex size-11 items-center justify-center rounded-full bg-surface text-muted active:bg-raised">
+        <Button type="button" aria-label="More reactions" variant="ghost" size="icon" className="size-11 rounded-full bg-surface active:bg-raised">
           <SmilePlus size={20} />
-        </button>
+        </Button>
       </EmojiPickerPopover>
     </div>
   );

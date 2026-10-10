@@ -8,6 +8,7 @@ import type { Route } from "./+types/deployment";
 import { page } from "../../lib/meta";
 import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { DeployLink, host } from "../../components/deploy";
 import { DeploymentStateBadge, DeploymentStateIcon, STATE_TONE, sourceLabel } from "../../components/deployments-panel";
@@ -103,44 +104,46 @@ function Reported({ deployment, base }: { deployment: DeploymentDetail; base: st
         <p className="mt-4 max-w-3xl text-sm text-fg-soft [overflow-wrap:anywhere]">{deployment.description}</p>
       )}
 
-      <dl className="mt-6 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-line bg-line text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <Fact label="Environment">
-          <Link to={environmentTo} className="hover:text-accent">
-            {environmentLabel(deployment.environment)}
-          </Link>
-          {deployment.production_environment && deployment.environment !== "production" && <Badge tone="accent">Production</Badge>}
-          {deployment.transient_environment && <Badge>Transient</Badge>}
-        </Fact>
-        <Fact label="Commit">
-          <Link to={`${base}/commit/${deployment.sha}`} className="inline-flex items-center gap-1 font-mono hover:text-accent">
-            <GitCommitHorizontal size={13} className="text-faint" />
-            {shortSha(deployment.sha)}
-          </Link>
-          <span className="inline-flex min-w-0 items-center gap-1 font-mono text-muted">
-            <GitBranch size={12} className="shrink-0 text-faint" />
-            <span className="truncate">{deployment.ref}</span>
-          </span>
-        </Fact>
-        <Fact label="Made by">
-          <span className="truncate">{deployment.creator}</span>
-          <span className="text-muted">
-            via{" "}
-            {deployment.source === "actions" && deployment.run_url ? (
-              <Link to={deployment.run_url} className="text-fg-soft hover:text-accent hover:underline">
-                {sourceLabel(deployment.source)}
-              </Link>
-            ) : (
-              sourceLabel(deployment.source)
-            )}
-          </span>
-        </Fact>
-        <Fact label="Updated">
-          <TimeAgo at={deployment.updated_at} />
-          <span className="text-muted">
-            created <TimeAgo at={deployment.created_at} />
-          </span>
-        </Fact>
-      </dl>
+      <Card asChild tone="plain" className="mt-6 grid grid-cols-1 gap-px overflow-hidden bg-line text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <dl>
+          <Fact label="Environment">
+            <Link to={environmentTo} className="hover:text-accent">
+              {environmentLabel(deployment.environment)}
+            </Link>
+            {deployment.production_environment && deployment.environment !== "production" && <Badge tone="accent">Production</Badge>}
+            {deployment.transient_environment && <Badge>Transient</Badge>}
+          </Fact>
+          <Fact label="Commit">
+            <Link to={`${base}/commit/${deployment.sha}`} className="inline-flex items-center gap-1 font-mono hover:text-accent">
+              <GitCommitHorizontal size={13} className="text-faint" />
+              {shortSha(deployment.sha)}
+            </Link>
+            <span className="inline-flex min-w-0 items-center gap-1 font-mono text-muted">
+              <GitBranch size={12} className="shrink-0 text-faint" />
+              <span className="truncate">{deployment.ref}</span>
+            </span>
+          </Fact>
+          <Fact label="Made by">
+            <span className="truncate">{deployment.creator}</span>
+            <span className="text-muted">
+              via{" "}
+              {deployment.source === "actions" && deployment.run_url ? (
+                <Link to={deployment.run_url} className="text-fg-soft hover:text-accent hover:underline">
+                  {sourceLabel(deployment.source)}
+                </Link>
+              ) : (
+                sourceLabel(deployment.source)
+              )}
+            </span>
+          </Fact>
+          <Fact label="Updated">
+            <TimeAgo at={deployment.updated_at} />
+            <span className="text-muted">
+              created <TimeAgo at={deployment.created_at} />
+            </span>
+          </Fact>
+        </dl>
+      </Card>
 
       {(deployment.log_url || deployment.run_url) && (
         <p className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
@@ -181,16 +184,18 @@ function Reported({ deployment, base }: { deployment: DeploymentDetail; base: st
       </section>
 
       {hasPayload(deployment.payload) && (
-        <details className="group mt-8 rounded-xl border border-line bg-surface">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
-            <ChevronRight size={14} className="text-faint transition-transform group-open:rotate-90" />
-            Payload
-            <span className="font-normal text-faint">{Object.keys(deployment.payload).length} keys</span>
-          </summary>
-          <pre className="max-h-[60vh] overflow-auto border-t border-line p-4 font-mono text-xs leading-relaxed text-muted whitespace-pre-wrap [overflow-wrap:anywhere]">
-            {JSON.stringify(deployment.payload, null, 2)}
-          </pre>
-        </details>
+        <Card asChild className="group mt-8">
+          <details>
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+              <ChevronRight size={14} className="text-faint transition-transform group-open:rotate-90" />
+              Payload
+              <span className="font-normal text-faint">{Object.keys(deployment.payload).length} keys</span>
+            </summary>
+            <pre className="max-h-[60vh] overflow-auto border-t border-line p-4 font-mono text-xs leading-relaxed text-muted whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {JSON.stringify(deployment.payload, null, 2)}
+            </pre>
+          </details>
+        </Card>
       )}
     </>
   );
@@ -303,9 +308,11 @@ function BuildDetails({ build }: { build: Deployment & { log: string | null } })
       )}
       <h3 className="mt-5 text-sm font-medium text-muted">Build log</h3>
       {/* Long lines wrap, so a narrow screen shows the whole log without scrolling sideways. */}
-      <pre className="mt-3 max-h-[70vh] overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-bg p-4 font-mono text-xs leading-relaxed text-muted [overflow-wrap:anywhere]">
-        {build.log || (build.status === "queued" || build.status === "building" ? "The log appears when the build finishes." : "No log.")}
-      </pre>
+      <Card asChild tone="bg" className="mt-3 max-h-[70vh] overflow-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-muted [overflow-wrap:anywhere]">
+        <pre>
+          {build.log || (build.status === "queued" || build.status === "building" ? "The log appears when the build finishes." : "No log.")}
+        </pre>
+      </Card>
     </section>
   );
 }

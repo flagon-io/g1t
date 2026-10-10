@@ -20,6 +20,7 @@ import { type IntegrationListing, comingListings, integrationListings, integrati
 import { loadConnected } from "../../../lib/marketplace.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
 import { useMarketplace } from "./layout";
+import { Card } from "../../../components/ui/card";
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
@@ -62,17 +63,19 @@ export default function MarketplaceIntegrations({ loaderData }: Route.ComponentP
     <div className="space-y-10">
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label className="flex h-9 w-full max-w-sm items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-sm focus-within:border-line-strong">
-            <Search size={15} className="shrink-0 text-faint" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Find an integration"
-              aria-label="Find an integration"
-              autoComplete="off"
-              className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
-            />
-          </label>
+          <Card asChild radius="lg" className="flex h-9 w-full max-w-sm items-center gap-2 px-2.5 text-sm focus-within:border-line-strong">
+            <label>
+              <Search size={15} className="shrink-0 text-faint" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Find an integration"
+                aria-label="Find an integration"
+                autoComplete="off"
+                className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
+              />
+            </label>
+          </Card>
           <Link to={`/${slug}/-/integrations`} className="text-[0.8125rem] text-muted hover:text-fg">
             Workspace integrations settings
           </Link>

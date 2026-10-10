@@ -11,6 +11,7 @@ import type { WatchLevel } from "@g1t/contracts";
 
 import type { Route } from "./+types/notifications";
 import { ErrorText, SubmitButton } from "../../components/ui";
+import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
 import { EMAIL_REASONS, WATCH_CHOICES, WATCH_EVENT_LABEL, emailReasonsFromForm } from "../../lib/inbox";
@@ -100,7 +101,7 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
             />
           ))}
           <div className="flex items-center gap-3 pt-2">
-            <SubmitButton variant="quiet" match={{ intent: "email" }} pending="Saving…">
+            <SubmitButton variant="outline" match={{ intent: "email" }} pending="Saving…">
               Save email settings
             </SubmitButton>
             {said("email")?.saved && <p className="text-xs text-success">{said("email")?.saved}</p>}
@@ -123,7 +124,7 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
             ))}
           </RadioGroup>
           <div className="mt-4 flex items-center gap-3">
-            <SubmitButton variant="quiet" match={{ intent: "default_watch" }} pending="Saving…">
+            <SubmitButton variant="outline" match={{ intent: "default_watch" }} pending="Saving…">
               Save
             </SubmitButton>
             {said("default_watch")?.saved && <p className="text-xs text-success">{said("default_watch")?.saved}</p>}
@@ -140,9 +141,11 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
         {watched == null ? (
           <p className="mt-4 text-sm text-muted">This list could not be loaded. Try again in a moment.</p>
         ) : watched.length === 0 ? (
-          <p className="mt-4 rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm text-muted">
-            You watch every repository the default way.
-          </p>
+          <Card asChild tone="plain" radius="lg" className="mt-4 border-dashed px-4 py-6 text-center text-sm text-muted">
+            <p>
+              You watch every repository the default way.
+            </p>
+          </Card>
         ) : (
           <ul className="mt-4 divide-y divide-line rounded-md border border-line">
             {watched.map((watching) => (
@@ -170,7 +173,7 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
                   <input type="hidden" name="repo_id" value={watching.repoId} />
                   <input type="hidden" name="repo" value={watching.repo ?? ""} />
                   <SubmitButton
-                    variant="quiet"
+                    variant="outline"
                     match={{ intent: "unwatch", repo_id: watching.repoId }}
                     pending="…"
                     className="rounded-md border border-line px-2.5 py-1 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg disabled:opacity-60"

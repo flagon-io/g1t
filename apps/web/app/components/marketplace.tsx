@@ -17,7 +17,9 @@ import { ConnectorMark } from "./connectors";
 import { Badge } from "./ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Hint } from "./ui/hint";
-import { ErrorText, SubmitButton, Textarea, TimeAgo } from "./ui";
+import { ButtonLink, ErrorText, SubmitButton, Textarea, TimeAgo } from "./ui";
+import { Button, buttonVariants } from "./ui/button";
+import { Card } from "./ui/card";
 import {
   AVAILABILITIES,
   AVAILABILITY,
@@ -32,12 +34,6 @@ import {
   marketplacePath,
 } from "../lib/marketplace";
 import { cn } from "../lib/cn";
-
-const SMALL = "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-[0.8125rem] font-medium transition-colors";
-export const ACTION = {
-  primary: `${SMALL} bg-fg text-bg hover:bg-fg-hover`,
-  quiet: `${SMALL} border border-line text-fg/85 hover:border-line-strong hover:bg-raised hover:text-fg`,
-};
 
 /** Each tier's colour: Official the accent, Verified green, Community amber, Internal blue. */
 const TIER_TONE: Record<ListingTier, string> = {
@@ -154,10 +150,12 @@ export function ListingLegend({ id = "legend", kind }: { id?: string; kind?: Lis
       <p className="mt-1 max-w-2xl text-sm text-muted">Every listing says who stands behind it, and whether it can be added here. Today, everything listed is g1t's own.</p>
       <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {LISTING_TIERS.map((tier) => (
-          <li key={tier} className="rounded-xl border border-line bg-bg p-4">
-            <TierBadge tier={tier} />
-            <p className="mt-2.5 text-[0.8125rem] leading-snug text-muted">{TIERS[tier].about}</p>
-          </li>
+          <Card asChild key={tier} tone="bg" className="p-4">
+            <li>
+              <TierBadge tier={tier} />
+              <p className="mt-2.5 text-[0.8125rem] leading-snug text-muted">{TIERS[tier].about}</p>
+            </li>
+          </Card>
         ))}
       </ul>
       <h3 className="mt-6 text-sm font-semibold">Whether you can add it</h3>
@@ -188,9 +186,11 @@ export function ListingLegend({ id = "legend", kind }: { id?: string; kind?: Lis
 /** A tier's section while nothing in it is listed: said plainly, so the structure shows. */
 export function TierEmpty({ tier, kind, filtered = false }: { tier: ListingTier; kind: ListingKind; filtered?: boolean }) {
   return (
-    <p className="rounded-xl border border-dashed border-line px-4 py-4 text-sm text-muted">
-      <span>{filtered && tier === "official" ? TIERS.official.none[kind] : filtered ? `None match. ${TIERS[tier].none[kind]}` : TIERS[tier].none[kind]}</span>
-    </p>
+    <Card asChild tone="plain" className="border-dashed px-4 py-4 text-sm text-muted">
+      <p>
+        <span>{filtered && tier === "official" ? TIERS.official.none[kind] : filtered ? `None match. ${TIERS[tier].none[kind]}` : TIERS[tier].none[kind]}</span>
+      </p>
+    </Card>
   );
 }
 
@@ -356,7 +356,7 @@ export function RequestButton({
   if (requested || sent) {
     return (
       <Hint label="The workspace's owners have your request. You'll hear when they answer.">
-        <span tabIndex={0} className={cn(SMALL, "border border-line text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent", className)}>
+        <span tabIndex={0} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "text-muted hover:border-line hover:bg-transparent hover:text-muted", className)}>
           <Clock size={13} />
           Requested
         </span>
@@ -366,10 +366,10 @@ export function RequestButton({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button type="button" className={cn(ACTION.quiet, className)}>
+        <Button variant="outline" size="sm" className={className}>
           <Send size={13} />
           Request
-        </button>
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <fetcher.Form method="post" action={marketplacePath(slug, "requests")} className="grid gap-4">
@@ -378,7 +378,7 @@ export function RequestButton({
             <DialogDescription>Only the workspace's owners add extensions and integrations. Each of them is notified, and you hear back when one answers.</DialogDescription>
           </DialogHeader>
           {about && (
-            <div className="flex items-center gap-3 rounded-lg border border-line bg-bg px-3 py-2.5">
+            <Card tone="bg" radius="lg" className="flex items-center gap-3 px-3 py-2.5">
               {about.mark}
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{name}</p>
@@ -391,7 +391,7 @@ export function RequestButton({
                   <AvailabilityBadge availability="available" kind={about.kind} hint="An owner can add it as soon as they agree." />
                 </p>
               </div>
-            </div>
+            </Card>
           )}
           <input type="hidden" name="intent" value="request" />
           <input type="hidden" name="listing" value={listing} />
@@ -433,24 +433,24 @@ export function IntegrationAction({ listing, slug, owner, className }: { listing
   if (listing.availability === "soon" || listing.availability === "unavailable") return null;
   if (listing.scope === "personal") {
     return listing.href ? (
-      <Link to={listing.href} className={cn(ACTION.quiet, className)}>
+      <ButtonLink to={listing.href} variant="outline" size="sm" className={className}>
         Connect yours
-      </Link>
+      </ButtonLink>
     ) : null;
   }
   if (listing.connected) {
     return listing.href ? (
-      <Link to={listing.href} className={cn(ACTION.quiet, className)}>
+      <ButtonLink to={listing.href} variant="outline" size="sm" className={className}>
         Manage
-      </Link>
+      </ButtonLink>
     ) : null;
   }
   if (owner) {
     return listing.href ? (
-      <Link to={listing.href} className={cn(ACTION.primary, className)}>
+      <ButtonLink to={listing.href} size="sm" className={className}>
         <Plus size={14} />
         Connect
-      </Link>
+      </ButtonLink>
     ) : null;
   }
   return (
@@ -604,7 +604,7 @@ export function ExtensionAction({ listing, slug, owner, className }: { listing: 
     <fetcher.Form method="post" action={marketplacePath(slug, "requests")}>
       <input type="hidden" name="intent" value="install" />
       <input type="hidden" name="extension" value={manifest.id} />
-      <SubmitButton fetcher={fetcher} className={cn(ACTION.primary, className)} pending="Installing…">
+      <SubmitButton fetcher={fetcher} size="sm" className={className} pending="Installing…">
         <Plus size={14} />
         Install
       </SubmitButton>
@@ -721,16 +721,16 @@ export function RequestRow({ request, slug, owner, addTo }: { request: InstallRe
           <input type="hidden" name="intent" value="resolve" />
           <input type="hidden" name="id" value={request.id} />
           {addTo && (
-            <Link to={addTo} className={ACTION.primary}>
+            <ButtonLink to={addTo} size="sm">
               <Plus size={14} />
               {request.kind === "extension" ? "Install" : "Connect"}
-            </Link>
+            </ButtonLink>
           )}
-          <SubmitButton fetcher={fetcher} name="status" value="done" className={ACTION.quiet} pending="Saving…">
+          <SubmitButton fetcher={fetcher} name="status" value="done" variant="outline" size="sm" pending="Saving…">
             <Check size={14} />
             Mark added
           </SubmitButton>
-          <SubmitButton fetcher={fetcher} name="status" value="declined" className={ACTION.quiet} pending="Saving…">
+          <SubmitButton fetcher={fetcher} name="status" value="declined" variant="outline" size="sm" pending="Saving…">
             <X size={14} />
             Turn down
           </SubmitButton>

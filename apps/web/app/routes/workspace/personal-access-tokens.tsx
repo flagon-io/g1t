@@ -5,8 +5,10 @@ import type { MemberToken } from "@g1t/contracts";
 
 import type { Route } from "./+types/personal-access-tokens";
 import { page } from "../../lib/meta";
-import { Avatar, EmptyState, ErrorText, Input, SubmitButton, TimeAgo } from "../../components/ui";
+import { EmptyState, ErrorText, Input, SubmitButton, TimeAgo } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 import { SelectField } from "../../components/ui/select";
 import { SwitchCard } from "../../components/ui/switch";
 import { TokenBadges, TokenFacts, TokenMeta } from "../../components/token-list";
@@ -127,7 +129,7 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
           <SwitchCard name="forbid_no_expiry" defaultChecked={policy.forbidNoExpiry} title="Tokens must expire">
             A token that never expires does not reach {slug}.
           </SwitchCard>
-          <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+          <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <label htmlFor="pat-lifetime" className="min-w-0">
               <span className="block text-sm font-medium text-fg">Longest lifetime</span>
               <span className="mt-1 block text-sm text-muted">A token that lasts longer does not reach {slug}.</span>
@@ -139,7 +141,7 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
               className="h-auto w-full py-2 sm:w-40"
               options={LIFETIMES.map(([value, label]) => ({ value, label }))}
             />
-          </div>
+          </Card>
           <div className="flex items-center gap-3">
             <SubmitButton match={{ intent: "policy" }} pending="Saving…">
               Save rules
@@ -170,27 +172,29 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
         {pending.length === 0 ? (
           <p className="mt-2 text-sm text-muted">No token is waiting for approval.</p>
         ) : (
-          <ul className="mt-3 divide-y divide-line rounded-xl border border-line">
-            {pending.map((member) => (
-              <li key={member.token.id} className="px-4 py-3">
-                <TokenLine member={member} />
-                <Form method="post" className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <input type="hidden" name="id" value={member.token.id} />
-                  <div className="min-w-0 grow">
-                    <Input name="reason" maxLength={500} placeholder="Note for the owner (optional)" aria-label="Note for the token's owner" />
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <SubmitButton name="intent" value="approve" match={{ intent: "approve", id: member.token.id }} pending="Approving…">
-                      <Check size={14} /> Approve
-                    </SubmitButton>
-                    <SubmitButton name="intent" value="deny" variant="quiet" match={{ intent: "deny", id: member.token.id }} pending="Denying…">
-                      <X size={14} /> Deny
-                    </SubmitButton>
-                  </div>
-                </Form>
-              </li>
-            ))}
-          </ul>
+          <Card asChild tone="plain" divided className="mt-3">
+            <ul>
+              {pending.map((member) => (
+                <li key={member.token.id} className="px-4 py-3">
+                  <TokenLine member={member} />
+                  <Form method="post" className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input type="hidden" name="id" value={member.token.id} />
+                    <div className="min-w-0 grow">
+                      <Input name="reason" maxLength={500} placeholder="Note for the owner (optional)" aria-label="Note for the token's owner" />
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <SubmitButton name="intent" value="approve" match={{ intent: "approve", id: member.token.id }} pending="Approving…">
+                        <Check size={14} /> Approve
+                      </SubmitButton>
+                      <SubmitButton name="intent" value="deny" variant="outline" match={{ intent: "deny", id: member.token.id }} pending="Denying…">
+                        <X size={14} /> Deny
+                      </SubmitButton>
+                    </div>
+                  </Form>
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
       </section>
 
@@ -210,24 +214,26 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
             <EmptyState title="No tokens">No member has a personal access token that can reach {slug}.</EmptyState>
           </div>
         ) : (
-          <ul className="mt-3 divide-y divide-line rounded-xl border border-line">
-            {listed.map((member) => (
-              <li key={member.token.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start">
-                <div className="min-w-0 grow">
-                  <TokenLine member={member} />
-                </div>
-                {member.token.status !== "revoked" && member.blockedBy !== "revoked" && (
-                  <Form method="post" className="shrink-0">
-                    <input type="hidden" name="intent" value="revoke" />
-                    <input type="hidden" name="id" value={member.token.id} />
-                    <SubmitButton variant="quiet" match={{ intent: "revoke", id: member.token.id }} pending="Revoking…">
-                      Revoke
-                    </SubmitButton>
-                  </Form>
-                )}
-              </li>
-            ))}
-          </ul>
+          <Card asChild tone="plain" divided className="mt-3">
+            <ul>
+              {listed.map((member) => (
+                <li key={member.token.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start">
+                  <div className="min-w-0 grow">
+                    <TokenLine member={member} />
+                  </div>
+                  {member.token.status !== "revoked" && member.blockedBy !== "revoked" && (
+                    <Form method="post" className="shrink-0">
+                      <input type="hidden" name="intent" value="revoke" />
+                      <input type="hidden" name="id" value={member.token.id} />
+                      <SubmitButton variant="outline" match={{ intent: "revoke", id: member.token.id }} pending="Revoking…">
+                        Revoke
+                      </SubmitButton>
+                    </Form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
       </section>
     </div>

@@ -5,8 +5,9 @@ import { Form, Link, useRouteLoaderData } from "react-router";
 import type { RepoMirror } from "@g1t/contracts";
 
 import { ConfirmDialog } from "./repo-lifecycle";
-import { SubmitButton, TimeAgo } from "./ui";
+import { ButtonLink, SubmitButton, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
 import {
   type MirrorBrief,
@@ -119,8 +120,6 @@ function BannerBox({ tone, icon, title, children, action, className = "" }: {
   );
 }
 
-const BANNER_ACTION = "inline-flex items-center gap-1.5 font-medium hover:underline disabled:opacity-50";
-
 /**
  * Taking over, from anywhere: says what it does and posts to the
  * mirroring settings, which then show it.
@@ -197,9 +196,9 @@ export function MirrorBanner({
                 full={full}
                 mirror={mirror}
                 trigger={(open) => (
-                  <button type="button" onClick={open} className={BANNER_ACTION}>
+                  <Button variant="link" size="inline" onClick={open} className="text-inherit">
                     Take over
-                  </button>
+                  </Button>
                 )}
               />
             ) : undefined
@@ -226,7 +225,7 @@ export function MirrorBanner({
           action={
             admin ? (
               <Form method="post" action={settings}>
-                <SubmitButton name="intent" value="ci-off" pending="Ending…" className={BANNER_ACTION}>
+                <SubmitButton name="intent" value="ci-off" pending="Ending…" variant="link" size="inline" className="text-inherit">
                   End CI failover
                 </SubmitButton>
               </Form>
@@ -246,9 +245,9 @@ export function MirrorBanner({
           title={`g1t is leading ${full} for now.`}
           action={
             admin ? (
-              <Link to={`${settings}?plan=1#hand-back`} className={BANNER_ACTION}>
+              <ButtonLink to={`${settings}?plan=1#hand-back`} variant="link" size="inline" className="text-inherit">
                 Hand back…
-              </Link>
+              </ButtonLink>
             ) : undefined
           }
         >
@@ -264,9 +263,9 @@ export function MirrorBanner({
           title={`Handing back to ${mirror.remote}…`}
           action={
             admin ? (
-              <Link to={settings} className={BANNER_ACTION}>
+              <ButtonLink to={settings} variant="link" size="inline" className="text-inherit">
                 Progress
-              </Link>
+              </ButtonLink>
             ) : undefined
           }
         >

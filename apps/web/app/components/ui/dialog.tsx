@@ -3,6 +3,7 @@ import { Dialog as Primitive } from "radix-ui";
 import type { ComponentProps } from "react";
 
 import { cn } from "../../lib/cn";
+import { Button } from "./button";
 
 // shadcn/ui's dialog, styled with g1t's tokens.
 
@@ -45,11 +46,10 @@ export function DialogContent({
       <Primitive.Content className={cn(DIALOG_PANEL, className)} {...props}>
         {children}
         {showClose && (
-          <Primitive.Close
-            aria-label="Close"
-            className="absolute top-4 right-4 rounded-md p-1 text-faint transition-colors hover:bg-raised hover:text-fg max-sm:top-2.5 max-sm:right-2.5 max-sm:flex max-sm:size-10 max-sm:items-center max-sm:justify-center"
-          >
-            <X size={16} />
+          <Primitive.Close asChild>
+            <Button variant="ghost" size="inline" aria-label="Close" className="absolute top-4 right-4 p-1 text-faint max-sm:top-2.5 max-sm:right-2.5 max-sm:size-10">
+              <X size={16} />
+            </Button>
           </Primitive.Close>
         )}
       </Primitive.Content>

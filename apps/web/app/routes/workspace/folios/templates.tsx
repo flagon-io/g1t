@@ -7,6 +7,7 @@ import { useFoliosAction, useFoliosData } from "../../../components/folios/actio
 import { FOLIO_KIND_UI } from "../../../components/folios/kinds";
 import { SectionTitle, TemplateCard } from "../../../components/folios/parts";
 import { EmptyState, ErrorText } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
 import { SelectField } from "../../../components/ui/select";
 import { canDo } from "../../../lib/folios";
 import { page } from "../../../lib/meta";
@@ -44,9 +45,9 @@ export default function FolioTemplates({ loaderData, params }: Route.ComponentPr
       <Form method="post" action={`/${slug}/-/artifacts/new/${t.kind}`}>
         <input type="hidden" name="template" value={t.id} />
         {space !== "private" && <input type="hidden" name="space" value={space} />}
-        <button type="submit" disabled={starting != null} aria-busy={starting === t.id} className="text-xs font-medium text-accent hover:underline disabled:text-faint disabled:no-underline">
+        <Button type="submit" disabled={starting != null} aria-busy={starting === t.id} variant="link" size="inline" className="text-xs disabled:text-faint disabled:no-underline">
           {starting === t.id ? "Starting…" : "Use template"}
-        </button>
+        </Button>
       </Form>
     ) : (
       <span className="text-xs text-faint">Coming soon</span>
@@ -110,9 +111,9 @@ export default function FolioTemplates({ loaderData, params }: Route.ComponentPr
                     action={
                       <>
                         {startButton(t)}
-                        <button type="button" onClick={() => send("delete_template", { template_id: t.id })} className="ml-auto text-xs text-faint hover:text-danger">
+                        <Button type="button" onClick={() => send("delete_template", { template_id: t.id })} variant="link" size="inline" className="ml-auto text-xs text-faint hover:text-danger font-normal">
                           Delete
-                        </button>
+                        </Button>
                       </>
                     }
                   />

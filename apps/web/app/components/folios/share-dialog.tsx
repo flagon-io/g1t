@@ -12,7 +12,8 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import { spacePath } from "../../lib/folios";
-import { Button, ErrorText } from "../ui";
+import { ErrorText } from "../ui";
+import { Button } from "../ui/button";
 import { Combobox } from "../ui/combobox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Hint } from "../ui/hint";
@@ -274,7 +275,7 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
         <div className="mt-2 flex items-center justify-between gap-2 border-t border-line pt-4">
           <Button
             type="button"
-            variant="quiet"
+            variant="outline"
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(`${window.location.origin}${folio.path}`);

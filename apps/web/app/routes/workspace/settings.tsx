@@ -19,7 +19,7 @@ import { page } from "../../lib/meta";
 import { useAddresses } from "../../lib/addresses";
 import { AvatarField } from "../../components/avatar-field";
 import { DangerAction, DangerZone } from "../../components/danger-zone";
-import { Button, ErrorText, Field, Input, SubmitButton } from "../../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -29,6 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
+import { Button } from "../../components/ui/button";
 import { FieldDescription, FieldLabel, Field as FormField } from "../../components/ui/field";
 import { InputAddon, InputGroup, Input as TextInput } from "../../components/ui/input";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
@@ -536,7 +537,7 @@ function DeleteAction({
     <DangerAction
       title="Delete this workspace"
       action={
-        <Button type="button" variant="danger" disabled={Boolean(refusal)} onClick={() => setOpen(true)}>
+        <Button type="button" variant="destructive" disabled={Boolean(refusal)} onClick={() => setOpen(true)}>
           Delete workspace
         </Button>
       }
@@ -611,7 +612,7 @@ function DeleteAction({
             <ErrorText>{error}</ErrorText>
             <AlertDialogFooter>
               <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-              <Button type="submit" variant="danger" disabled={!confirmsSlug(workspace.slug, confirm) || deleting}>
+              <Button type="submit" variant="destructive" disabled={!confirmsSlug(workspace.slug, confirm) || deleting}>
                 {deleting ? "Deleting…" : "Delete workspace"}
               </Button>
             </AlertDialogFooter>
@@ -720,7 +721,7 @@ function AddressSection({ workspace, error }: { workspace: Workspace; error?: st
             setConfirm("");
           }}
         >
-          <Button type="button" variant="quiet" disabled={!available} onClick={() => setOpen(true)}>
+          <Button type="button" variant="outline" disabled={!available} onClick={() => setOpen(true)}>
             Change address
           </Button>
           <AlertDialogContent>

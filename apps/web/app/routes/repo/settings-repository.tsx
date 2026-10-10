@@ -11,7 +11,7 @@ import { SettingsSection as Section } from "../../components/settings-section";
 import type { Route } from "./+types/settings-repository";
 import { page } from "../../lib/meta";
 import { confirmsName, tidyName } from "../../lib/repo-lifecycle";
-import { Button, ErrorText, Field, Input, SubmitButton } from "../../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import {
   AlertDialog,
@@ -22,6 +22,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { FieldLabel, Field as FormField } from "../../components/ui/field";
 import { Input as TextInput } from "../../components/ui/input";
 import { actions, repos } from "../../lib/services.server";
@@ -315,7 +317,7 @@ function RenameForm({
               onChange={(event) => setName(event.target.value)}
               className="font-mono"
             />
-            <Button type="submit" variant="quiet" disabled={!changed || busy}>
+            <Button type="submit" variant="outline" disabled={!changed || busy}>
               {busy ? "Renaming…" : "Rename"}
             </Button>
           </div>
@@ -359,38 +361,40 @@ function DefaultBranchForm({
   const [branch, setBranch] = useState(repo.defaultBranch);
   const options = branches.includes(repo.defaultBranch) ? branches : [repo.defaultBranch, ...branches];
   return (
-    <Form method="post" className="rounded-xl border border-line bg-surface p-4">
-      <fieldset disabled={archived} className="min-w-0">
-        <input type="hidden" name="intent" value="default-branch" />
-        <p className="text-sm font-medium">Default branch</p>
-        <p className="mt-1 text-sm text-muted">
-          What the repository opens on, what pull requests target, and what branch protection covers.
-        </p>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Select name="branch" value={branch} onValueChange={setBranch} disabled={archived || options.length < 2}>
-            <SelectTrigger aria-label="Default branch" className="font-mono sm:max-w-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((name) => (
-                <SelectItem key={name} value={name} className="font-mono">
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button type="submit" variant="quiet" disabled={busy || branch === repo.defaultBranch}>
-            {busy ? "Changing…" : "Change default branch"}
-          </Button>
-        </div>
-        {options.length < 2 && (
-          <p className="mt-2 text-xs text-faint">Push another branch to make it the default instead.</p>
-        )}
-        <div className="mt-2">
-          <Status intent="default-branch" data={result} />
-        </div>
-      </fieldset>
-    </Form>
+    <Card asChild className="p-4">
+      <Form method="post">
+        <fieldset disabled={archived} className="min-w-0">
+          <input type="hidden" name="intent" value="default-branch" />
+          <p className="text-sm font-medium">Default branch</p>
+          <p className="mt-1 text-sm text-muted">
+            What the repository opens on, what pull requests target, and what branch protection covers.
+          </p>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Select name="branch" value={branch} onValueChange={setBranch} disabled={archived || options.length < 2}>
+              <SelectTrigger aria-label="Default branch" className="font-mono sm:max-w-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {options.map((name) => (
+                  <SelectItem key={name} value={name} className="font-mono">
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="submit" variant="outline" disabled={busy || branch === repo.defaultBranch}>
+              {busy ? "Changing…" : "Change default branch"}
+            </Button>
+          </div>
+          {options.length < 2 && (
+            <p className="mt-2 text-xs text-faint">Push another branch to make it the default instead.</p>
+          )}
+          <div className="mt-2">
+            <Status intent="default-branch" data={result} />
+          </div>
+        </fieldset>
+      </Form>
+    </Card>
   );
 }
 
@@ -416,58 +420,60 @@ function RenameBranchForm({
   const [to, setTo] = useState("");
   const ready = from !== "" && to.trim() !== "" && to.trim() !== from;
   return (
-    <Form method="post" className="rounded-xl border border-line bg-surface p-4" onSubmit={() => setTo(to.trim())}>
-      <fieldset disabled={archived || renamable.length === 0} className="min-w-0">
-        <input type="hidden" name="intent" value="rename-branch" />
-        <p className="text-sm font-medium">Rename a branch</p>
-        <p className="mt-1 text-sm text-muted">
-          Pull requests from it follow it, and addresses that name the old branch redirect to the new one.
-          {owner ? "" : ` Renaming ${repo.defaultBranch} needs the Admin role.`}
-        </p>
-        {renamable.length === 0 ? (
-          <p className="mt-3 text-sm text-faint">There is no branch you can rename yet.</p>
-        ) : (
-          <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
-            <FormField>
-              <FieldLabel htmlFor="rename-from">Branch</FieldLabel>
-              <Select name="from" value={from} onValueChange={setFrom}>
-                <SelectTrigger id="rename-from" aria-label="Branch" className="font-mono">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {renamable.map((name) => (
-                    <SelectItem key={name} value={name} className="font-mono">
-                      {name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormField>
-            <FormField>
-              <FieldLabel htmlFor="rename-to">New name</FieldLabel>
-              <TextInput
-                id="rename-to"
-                name="to"
-                value={to}
-                maxLength={200}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoComplete="off"
-                placeholder={from === repo.defaultBranch ? "main" : "feature/new-name"}
-                onChange={(event) => setTo(event.target.value)}
-                className="font-mono"
-              />
-            </FormField>
-            <Button type="submit" variant="quiet" disabled={!ready || busy}>
-              {busy ? "Renaming…" : "Rename branch"}
-            </Button>
+    <Card asChild className="p-4">
+      <Form method="post" onSubmit={() => setTo(to.trim())}>
+        <fieldset disabled={archived || renamable.length === 0} className="min-w-0">
+          <input type="hidden" name="intent" value="rename-branch" />
+          <p className="text-sm font-medium">Rename a branch</p>
+          <p className="mt-1 text-sm text-muted">
+            Pull requests from it follow it, and addresses that name the old branch redirect to the new one.
+            {owner ? "" : ` Renaming ${repo.defaultBranch} needs the Admin role.`}
+          </p>
+          {renamable.length === 0 ? (
+            <p className="mt-3 text-sm text-faint">There is no branch you can rename yet.</p>
+          ) : (
+            <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+              <FormField>
+                <FieldLabel htmlFor="rename-from">Branch</FieldLabel>
+                <Select name="from" value={from} onValueChange={setFrom}>
+                  <SelectTrigger id="rename-from" aria-label="Branch" className="font-mono">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {renamable.map((name) => (
+                      <SelectItem key={name} value={name} className="font-mono">
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <FormField>
+                <FieldLabel htmlFor="rename-to">New name</FieldLabel>
+                <TextInput
+                  id="rename-to"
+                  name="to"
+                  value={to}
+                  maxLength={200}
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoComplete="off"
+                  placeholder={from === repo.defaultBranch ? "main" : "feature/new-name"}
+                  onChange={(event) => setTo(event.target.value)}
+                  className="font-mono"
+                />
+              </FormField>
+              <Button type="submit" variant="outline" disabled={!ready || busy}>
+                {busy ? "Renaming…" : "Rename branch"}
+              </Button>
+            </div>
+          )}
+          <div className="mt-2">
+            <Status intent="rename-branch" data={result} saved="Renamed." />
           </div>
-        )}
-        <div className="mt-2">
-          <Status intent="rename-branch" data={result} saved="Renamed." />
-        </div>
-      </fieldset>
-    </Form>
+        </fieldset>
+      </Form>
+    </Card>
   );
 }
 
@@ -487,7 +493,7 @@ function VisibilityAction({ full, isPrivate, error }: { full: string; isPrivate:
         <DangerAction
           title="Change visibility"
           action={
-            <Button type="button" variant="danger" onClick={open}>
+            <Button type="button" variant="destructive" onClick={open}>
               Make {next}
             </Button>
           }
@@ -529,7 +535,7 @@ function ArchiveAction({ full, archived, error }: { full: string; archived: bool
         <DangerAction
           title={archived ? "Unarchive this repository" : "Archive this repository"}
           action={
-            <Button type="button" variant="danger" onClick={open}>
+            <Button type="button" variant="destructive" onClick={open}>
               {archived ? "Unarchive" : "Archive"}
             </Button>
           }
@@ -574,7 +580,7 @@ function DeleteAction({ full, error }: { full: string; error: string | null }) {
         <DangerAction
           title="Delete this repository"
           action={
-            <Button type="button" variant="danger" onClick={open}>
+            <Button type="button" variant="destructive" onClick={open}>
               Delete
             </Button>
           }
@@ -616,7 +622,7 @@ function TransferAction({
     <DangerAction
       title="Transfer this repository"
       action={
-        <Button type="button" variant="danger" disabled={destinations.length === 0} onClick={() => setOpen(true)}>
+        <Button type="button" variant="destructive" disabled={destinations.length === 0} onClick={() => setOpen(true)}>
           Transfer
         </Button>
       }
@@ -689,7 +695,7 @@ function TransferAction({
             <ErrorText>{error}</ErrorText>
             <AlertDialogFooter>
               <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-              <Button type="submit" variant="danger" disabled={!to || !confirmsName(confirm, repo) || moving}>
+              <Button type="submit" variant="destructive" disabled={!to || !confirmsName(confirm, repo) || moving}>
                 {moving ? "Transferring…" : "Transfer"}
               </Button>
             </AlertDialogFooter>

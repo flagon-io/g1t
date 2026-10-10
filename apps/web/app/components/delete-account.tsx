@@ -4,7 +4,7 @@ import { Form, Link, useNavigation } from "react-router";
 import { ACCOUNT_RESTORE_DAYS, type AccountDeletion } from "@g1t/contracts";
 
 import { DangerAction } from "./danger-zone";
-import { Button, ErrorText } from "./ui";
+import { ErrorText } from "./ui";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -14,6 +14,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { FieldDescription, FieldLabel, Field as FormField } from "./ui/field";
 import { Input as TextInput } from "./ui/input";
 import { accountDeletionRefusal, confirmsUsername, whatAccountDeletionTakes } from "../lib/account-deletion";
@@ -56,7 +58,7 @@ export function DeleteAccountAction({
     <DangerAction
       title="Delete your account"
       action={
-        <Button type="button" variant="danger" disabled={Boolean(refusal)} onClick={() => setOpen(true)}>
+        <Button type="button" variant="destructive" disabled={Boolean(refusal)} onClick={() => setOpen(true)}>
           Delete account
         </Button>
       }
@@ -66,23 +68,25 @@ export function DeleteAccountAction({
           <span role="status">{refusal}</span>
           <ul className="mt-3 space-y-2">
             {deletion?.sole_owner_of.map((workspace) => (
-              <li key={workspace.slug} className="rounded-lg border border-line bg-surface px-3 py-2">
-                <p className="text-fg">
-                  <span className="font-medium">{workspace.name}</span>{" "}
-                  <span className="font-mono text-xs text-faint">{workspace.slug}</span>
-                </p>
-                <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-                  {workspace.members > 1 ? (
-                    <Link to={`/${workspace.slug}/-/members`} className="text-accent underline-offset-4 hover:underline">
-                      Make someone else an owner
+              <Card asChild key={workspace.slug} radius="lg" className="px-3 py-2">
+                <li>
+                  <p className="text-fg">
+                    <span className="font-medium">{workspace.name}</span>{" "}
+                    <span className="font-mono text-xs text-faint">{workspace.slug}</span>
+                  </p>
+                  <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                    {workspace.members > 1 ? (
+                      <Link to={`/${workspace.slug}/-/members`} className="text-accent underline-offset-4 hover:underline">
+                        Make someone else an owner
+                      </Link>
+                    ) : null}
+                    <Link to={`/${workspace.slug}/-/settings`} className="text-accent underline-offset-4 hover:underline">
+                      Delete the workspace
                     </Link>
-                  ) : null}
-                  <Link to={`/${workspace.slug}/-/settings`} className="text-accent underline-offset-4 hover:underline">
-                    Delete the workspace
-                  </Link>
-                </p>
-                {workspace.billing ? <p className="mt-1 text-xs text-warn">{workspace.billing}</p> : null}
-              </li>
+                  </p>
+                  {workspace.billing ? <p className="mt-1 text-xs text-warn">{workspace.billing}</p> : null}
+                </li>
+              </Card>
             ))}
           </ul>
         </>
@@ -165,7 +169,7 @@ export function DeleteAccountAction({
             <ErrorText>{error}</ErrorText>
             <AlertDialogFooter>
               <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-              <Button type="submit" variant="danger" disabled={!confirmsUsername(username, confirm) || deleting}>
+              <Button type="submit" variant="destructive" disabled={!confirmsUsername(username, confirm) || deleting}>
                 {deleting ? "Deleting…" : "Delete account"}
               </Button>
             </AlertDialogFooter>

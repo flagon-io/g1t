@@ -8,6 +8,7 @@ import { cn } from "../lib/cn";
 import { KIND_CHOICES, type KindChoice, type ShownLink, choiceOf, linksToShow } from "../lib/project-kind";
 import { DeployLink } from "./deploy";
 import { Input, SubmitButton } from "./ui";
+import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Hint } from "./ui/hint";
@@ -103,14 +104,11 @@ export function LinkFields({ links, compact = false }: { links: ProjectLinks; co
                   />
                 </div>
                 <Hint label="Remove this link">
-                  <button
+                  <Button
                     type="button"
-                    onClick={() => setRows((current) => current.filter((one) => one.id !== row.id))}
-                    className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-fg"
-                    aria-label={`Remove link ${index + 1}`}
-                  >
+                    onClick={() => setRows((current) => current.filter((one) => one.id !== row.id))} variant="ghost" size="inline" className="p-1.5 text-faint" aria-label={`Remove link ${index + 1}`}>
                     <X size={14} />
-                  </button>
+                  </Button>
                 </Hint>
               </li>
             ))}

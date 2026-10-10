@@ -13,7 +13,10 @@ import { type AgentProposal, type AgentRedraft, type AgentTemplate, type DraftTu
 import { TeamPicker } from "../agent-role";
 import { AgentAvatar, PixelCreature } from "../agent-avatar";
 import { Markdown } from "../markdown";
+import { Alert } from "../ui/alert";
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
 import { Hint } from "../ui/hint";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -24,10 +27,6 @@ import { money } from "../../lib/usage";
 
 const FIELD =
   "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim";
-const PRIMARY = "inline-flex h-9 items-center justify-center gap-2 rounded-md bg-accent px-4 text-sm font-medium text-bg transition-colors hover:bg-accent-hover disabled:opacity-60";
-const QUIET =
-  "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-line px-3.5 text-sm font-medium text-fg/85 transition-colors hover:border-line-strong hover:bg-raised hover:text-fg disabled:opacity-60";
-
 /** What the builder's actions answer. */
 export type BuilderAnswer =
   | { intent: "draft"; ok: true; proposal: AgentProposal }
@@ -130,14 +129,18 @@ export function DescribeBox({
             )}
             <span className="grow" />
             <span className="hidden text-xs text-faint sm:inline">{busy ? "Drafting…" : "Ctrl+Enter"}</span>
-            <button type="submit" disabled={!mayCreate || busy || text.trim().length < 3} className={cn(PRIMARY, "h-8 px-3")}>
+            <Button type="submit" disabled={!mayCreate || busy || text.trim().length < 3} variant="accent" size="sm">
               <Sparkles size={14} className={busy ? "animate-pulse motion-reduce:animate-none" : ""} />
               {busy ? "Drafting…" : "Draft it"}
-            </button>
+            </Button>
           </div>
         </div>
       </fetcher.Form>
-      {error && <p className="mt-3 rounded-lg border border-danger/40 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>}
+      {error && (
+        <Alert asChild className="mt-3 px-4 py-2.5">
+          <p>{error}</p>
+        </Alert>
+      )}
       <p className="mt-3 text-xs leading-relaxed text-muted">
         {scope === "personal"
           ? "Only you can talk to it, in your direct message with it. It spends from your own budget: $20 a month and $2 a session to start."
@@ -264,14 +267,15 @@ export function ProposalCard({
         <div className="relative shrink-0">
           <AgentAvatar agent={{ handle: value.handle, avatar_seed: seed }} size={56} />
           <Hint label="Another face">
-            <button
+            <Button
               type="button"
               aria-label="Another face"
               onClick={() => set({ avatar_seed: `${value.handle || "agent"}-${Math.random().toString(36).slice(2, 7)}` })}
-              className="absolute -right-1.5 -bottom-1.5 flex size-6 items-center justify-center rounded-full border border-line bg-bg text-muted shadow-sm transition-colors hover:text-fg"
+              variant="outline" size="icon"
+              className="absolute -right-1.5 -bottom-1.5 size-6 rounded-full bg-bg text-muted shadow-sm"
             >
               <Dices size={13} />
-            </button>
+            </Button>
           </Hint>
         </div>
         <div className="grid min-w-0 grow gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
@@ -281,7 +285,7 @@ export function ProposalCard({
               <input id="b-name" value={value.display_name} onChange={(e) => rename(e.target.value)} className={FIELD} autoComplete="off" data-1p-ignore required />
               {ideas.length > 1 && (
                 <Hint label="Another name">
-                  <button
+                  <Button
                     type="button"
                     aria-label="Another name"
                     onClick={() => {
@@ -289,10 +293,11 @@ export function ProposalCard({
                       setIdea(next);
                       rename(ideas[next]!);
                     }}
-                    className="flex size-9.5 shrink-0 items-center justify-center rounded-md border border-line text-muted transition-colors hover:border-line-strong hover:bg-raised hover:text-fg"
+                    variant="outline" size="icon"
+                    className="size-9.5 text-muted hover:bg-raised"
                   >
                     <Shuffle size={15} />
-                  </button>
+                  </Button>
                 </Hint>
               )}
             </div>
@@ -377,26 +382,25 @@ export function ProposalCard({
           {FOUNDATIONAL_SKILLS.map((skill) => {
             const on = !off.has(skill.id);
             return (
-              <label
-                key={skill.id}
-                className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-bg px-3 py-2 text-sm has-[[data-state=checked]]:border-accent/50 has-[[data-state=checked]]:bg-accent/5"
-              >
-                <Checkbox
-                  checked={on}
-                  onCheckedChange={() => {
-                    const next = new Set(off);
-                    if (on) next.add(skill.id);
-                    else next.delete(skill.id);
-                    set({ skills_off: FOUNDATIONAL_SKILLS.map((s) => s.id).filter((id) => next.has(id)) });
-                  }}
-                />
-                <span className="min-w-0 grow truncate">{skill.name}</span>
-                {suggested.has(skill.id) && suggested.size < FOUNDATIONAL_SKILLS.length && (
-                  <Badge tone="accent" className="shrink-0">
-                    Suggested
-                  </Badge>
-                )}
-              </label>
+              <Card asChild key={skill.id} tone="bg" radius="lg" className="flex min-h-10 cursor-pointer items-center gap-2.5 px-3 py-2 text-sm has-[[data-state=checked]]:border-accent/50 has-[[data-state=checked]]:bg-accent/5">
+                <label>
+                  <Checkbox
+                    checked={on}
+                    onCheckedChange={() => {
+                      const next = new Set(off);
+                      if (on) next.add(skill.id);
+                      else next.delete(skill.id);
+                      set({ skills_off: FOUNDATIONAL_SKILLS.map((s) => s.id).filter((id) => next.has(id)) });
+                    }}
+                  />
+                  <span className="min-w-0 grow truncate">{skill.name}</span>
+                  {suggested.has(skill.id) && suggested.size < FOUNDATIONAL_SKILLS.length && (
+                    <Badge tone="accent" className="shrink-0">
+                      Suggested
+                    </Badge>
+                  )}
+                </label>
+              </Card>
             );
           })}
         </div>
@@ -404,24 +408,26 @@ export function ProposalCard({
 
       {hints.length > 0 && (
         <Section title="What it needs connected" about="Integrations its job would use. It works without them, and says so when asked for something that needs one.">
-          <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-bg">
-            {hints.map((hint) => (
-              <li key={hint.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5">
-                <Plug size={14} className="shrink-0 text-faint" />
-                <span className="min-w-0 grow basis-40">
-                  <span className="block text-sm font-medium">{hint.name}</span>
-                  {hint.why && <span className="block text-xs text-muted">{hint.why}</span>}
-                </span>
-                {hint.action === "soon" ? (
-                  <Badge>Soon</Badge>
-                ) : (
-                  <Link to={hint.href} target="_blank" rel="noreferrer" className="text-xs font-medium text-accent hover:underline">
-                    {hint.action === "connect" ? "Connect" : "Ask an owner"}
-                  </Link>
-                )}
-              </li>
-            ))}
-          </ul>
+          <Card asChild tone="bg" radius="lg" divided className="overflow-hidden">
+            <ul>
+              {hints.map((hint) => (
+                <li key={hint.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5">
+                  <Plug size={14} className="shrink-0 text-faint" />
+                  <span className="min-w-0 grow basis-40">
+                    <span className="block text-sm font-medium">{hint.name}</span>
+                    {hint.why && <span className="block text-xs text-muted">{hint.why}</span>}
+                  </span>
+                  {hint.action === "soon" ? (
+                    <Badge>Soon</Badge>
+                  ) : (
+                    <Link to={hint.href} target="_blank" rel="noreferrer" className="text-xs font-medium text-accent hover:underline">
+                      {hint.action === "connect" ? "Connect" : "Ask an owner"}
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </Card>
         </Section>
       )}
 
@@ -432,12 +438,14 @@ export function ProposalCard({
         >
           <ul className="space-y-2">
             {proposal.routines.map((routine) => (
-              <li key={routine.name} className="rounded-lg border border-line bg-bg px-3 py-2.5">
-                <p className="text-sm font-medium">
-                  {routine.name} <span className="font-normal text-muted">· {routine.when}</span>
-                </p>
-                {routine.instructions && <p className="mt-0.5 text-xs text-muted">{routine.instructions}</p>}
-              </li>
+              <Card asChild key={routine.name} tone="bg" radius="lg" className="px-3 py-2.5">
+                <li>
+                  <p className="text-sm font-medium">
+                    {routine.name} <span className="font-normal text-muted">· {routine.when}</span>
+                  </p>
+                  {routine.instructions && <p className="mt-0.5 text-xs text-muted">{routine.instructions}</p>}
+                </li>
+              </Card>
             ))}
           </ul>
         </Section>
@@ -549,17 +557,19 @@ export function TryChat({ definition, onReset }: { definition: BuilderDefinition
         </div>
         {turns.length > 0 && (
           <Hint label="Start over">
-            <button
+            <Button
               type="button"
               aria-label="Start over"
               onClick={() => {
                 setTurns([]);
                 onReset?.();
               }}
-              className="flex size-8 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
+              variant="ghost"
+              size="icon-sm"
+              className="text-faint"
             >
               <RotateCcw size={14} />
-            </button>
+            </Button>
           </Hint>
         )}
       </div>
@@ -591,7 +601,11 @@ export function TryChat({ definition, onReset }: { definition: BuilderDefinition
             {name} is typing…
           </div>
         )}
-        {error && <p className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</p>}
+        {error && (
+          <Alert asChild className="text-xs">
+            <p>{error}</p>
+          </Alert>
+        )}
       </div>
       <form
         className="flex items-end gap-2 border-t border-line p-2.5"
@@ -618,9 +632,9 @@ export function TryChat({ definition, onReset }: { definition: BuilderDefinition
           placeholder={`Message ${name}`}
           className="max-h-32 min-h-9 min-w-0 grow resize-none rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none placeholder:text-faint focus:border-accent-dim"
         />
-        <button type="submit" aria-label="Send" disabled={busy || !text.trim()} className={cn(PRIMARY, "size-9 shrink-0 px-0")}>
+        <Button type="submit" aria-label="Send" disabled={busy || !text.trim()} variant="accent" size="icon">
           <ArrowUp size={16} />
-        </button>
+        </Button>
       </form>
       {spent > 0 && <p className="border-t border-line px-4 py-1.5 text-[0.6875rem] text-faint tabular-nums">Trying it has cost you {money(spent)} so far.</p>}
     </div>
@@ -641,13 +655,13 @@ export function CreateDraft({ definition, teams = [], onEditAll }: { definition:
       {teams.map((slug) => (
         <input key={slug} type="hidden" name="teams" value={slug} />
       ))}
-      <button type="button" onClick={onEditAll} className={QUIET}>
+      <Button type="button" onClick={onEditAll} variant="outline">
         Edit all fields
-      </button>
-      <button type="submit" disabled={busy || !ready} className={PRIMARY}>
+      </Button>
+      <Button type="submit" disabled={busy || !ready} variant="accent">
         <Check size={15} />
         {busy ? "Creating…" : `Create ${definition.display_name.trim() || "agent"}`}
-      </button>
+      </Button>
     </Form>
   );
 }
@@ -707,12 +721,16 @@ export function RedraftBox({ agent }: { agent: WorkspaceAgent }) {
             placeholder={`Answer in Spanish, and keep replies under five sentences`}
             className={`${FIELD} grow resize-y`}
           />
-          <button type="submit" disabled={busy || text.trim().length < 3} className={cn(PRIMARY, "shrink-0")}>
+          <Button type="submit" disabled={busy || text.trim().length < 3} variant="accent">
             <Sparkles size={14} className={busy ? "animate-pulse motion-reduce:animate-none" : ""} />
             {busy ? "Drafting…" : "Draft the change"}
-          </button>
+          </Button>
         </div>
-        {error && <p className="mt-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+        {error && (
+          <Alert asChild className="mt-3">
+            <p>{error}</p>
+          </Alert>
+        )}
       </fetcher.Form>
       {shown && (
         <div className="border-t border-line p-4 sm:p-5">
@@ -723,18 +741,22 @@ export function RedraftBox({ agent }: { agent: WorkspaceAgent }) {
             </span>
           </p>
           <ChangeList rows={rows} />
-          {saveError && <p className="mt-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{saveError}</p>}
+          {saveError && (
+            <Alert asChild className="mt-3">
+              <p>{saveError}</p>
+            </Alert>
+          )}
           <save.Form method="post" className="mt-4 flex flex-wrap items-center justify-end gap-2">
             <input type="hidden" name="intent" value="apply" />
             <input type="hidden" name="changes" value={JSON.stringify(shown.changes)} />
             <input type="hidden" name="from_version" value={shown.from_version} />
-            <button type="button" onClick={() => setShown(null)} className={QUIET}>
+            <Button type="button" onClick={() => setShown(null)} variant="outline">
               Discard
-            </button>
-            <button type="submit" disabled={save.state !== "idle"} className={PRIMARY}>
+            </Button>
+            <Button type="submit" disabled={save.state !== "idle"} variant="accent">
               <Check size={15} />
               {save.state !== "idle" ? "Saving…" : `Save as version ${agent.version + 1}`}
-            </button>
+            </Button>
           </save.Form>
         </div>
       )}
@@ -745,43 +767,45 @@ export function RedraftBox({ agent }: { agent: WorkspaceAgent }) {
 /** Each field a change touches, before and after; the job and duties as a line diff. */
 export function ChangeList({ rows }: { rows: ChangeRow[] }) {
   return (
-    <dl className="mt-3 divide-y divide-line overflow-hidden rounded-lg border border-line bg-bg">
-      {rows.map((row) => (
-        <div key={row.field} className="px-3 py-2.5">
-          <dt className="text-xs font-medium text-faint">{row.label}</dt>
-          {row.lines ? (
-            <dd className="mt-1.5 max-h-80 overflow-auto rounded-md border border-line font-mono text-[0.75rem] leading-relaxed">
-              {row.lines.map((line, at) => (
-                <div
-                  key={at}
-                  className={cn(
-                    "flex gap-2 px-2 whitespace-pre-wrap",
-                    line.kind === "added" && "bg-success/10 text-success",
-                    line.kind === "removed" && "bg-danger/10 text-danger line-through decoration-danger/40",
-                    line.kind === "same" && "text-muted",
-                  )}
-                >
-                  <span aria-hidden="true" className="w-3 shrink-0 select-none">
-                    {line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}
-                  </span>
-                  <span className="sr-only">{line.kind === "added" ? "Added: " : line.kind === "removed" ? "Removed: " : ""}</span>
-                  <span className="min-w-0">{line.text || " "}</span>
-                </div>
-              ))}
-            </dd>
-          ) : (
-            <dd className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
-              <span className="text-muted line-through decoration-line-strong">{row.before}</span>
-              <span aria-hidden="true" className="text-faint">
-                →
-              </span>
-              <span className="sr-only">becomes</span>
-              <span className="font-medium text-fg">{row.after}</span>
-            </dd>
-          )}
-        </div>
-      ))}
-    </dl>
+    <Card asChild tone="bg" radius="lg" divided className="mt-3 overflow-hidden">
+      <dl>
+        {rows.map((row) => (
+          <div key={row.field} className="px-3 py-2.5">
+            <dt className="text-xs font-medium text-faint">{row.label}</dt>
+            {row.lines ? (
+              <dd className="mt-1.5 max-h-80 overflow-auto rounded-md border border-line font-mono text-[0.75rem] leading-relaxed">
+                {row.lines.map((line, at) => (
+                  <div
+                    key={at}
+                    className={cn(
+                      "flex gap-2 px-2 whitespace-pre-wrap",
+                      line.kind === "added" && "bg-success/10 text-success",
+                      line.kind === "removed" && "bg-danger/10 text-danger line-through decoration-danger/40",
+                      line.kind === "same" && "text-muted",
+                    )}
+                  >
+                    <span aria-hidden="true" className="w-3 shrink-0 select-none">
+                      {line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}
+                    </span>
+                    <span className="sr-only">{line.kind === "added" ? "Added: " : line.kind === "removed" ? "Removed: " : ""}</span>
+                    <span className="min-w-0">{line.text || " "}</span>
+                  </div>
+                ))}
+              </dd>
+            ) : (
+              <dd className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+                <span className="text-muted line-through decoration-line-strong">{row.before}</span>
+                <span aria-hidden="true" className="text-faint">
+                  →
+                </span>
+                <span className="sr-only">becomes</span>
+                <span className="font-medium text-fg">{row.after}</span>
+              </dd>
+            )}
+          </div>
+        ))}
+      </dl>
+    </Card>
   );
 }
 
@@ -811,20 +835,20 @@ export function PersonalNotice({ agent, owner, mine }: { agent: WorkspaceAgent; 
                 {mine ? "your" : `@${agent.personal_owner}'s`} direct messages stays behind with the personal agent, which is archived.
               </p>
               <div className="flex flex-wrap gap-2">
-                <button type="submit" disabled={busy} className={PRIMARY}>
+                <Button type="submit" disabled={busy} variant="accent">
                   <Users size={14} />
                   {busy ? "Promoting…" : `Promote ${agent.display_name}`}
-                </button>
-                <button type="button" onClick={() => setAsking(false)} className={QUIET}>
+                </Button>
+                <Button type="button" onClick={() => setAsking(false)} variant="outline">
                   Cancel
-                </button>
+                </Button>
               </div>
             </Form>
           ) : (
-            <button type="button" onClick={() => setAsking(true)} className={QUIET}>
+            <Button type="button" onClick={() => setAsking(true)} variant="outline">
               <Users size={14} />
               Promote to a workspace agent…
-            </button>
+            </Button>
           )}
         </div>
       )}

@@ -11,8 +11,11 @@ import type { SkillImport } from "@g1t/contracts";
 
 import type { Route } from "./+types/skill-import";
 import { agentsAction } from "../../../components/agents/actions.server";
-import { type ActionResult, BUTTONS } from "../../../components/agents/dialogs";
+import { type ActionResult } from "../../../components/agents/dialogs";
 import { skillsPath } from "../../../components/agents/skills";
+import { Alert } from "../../../components/ui/alert";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { CheckboxOption } from "../../../components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "../../../components/ui/field";
 import { FileDrop } from "../../../components/ui/file-drop";
@@ -61,9 +64,11 @@ export default function ImportSkill({ loaderData }: Route.ComponentProps) {
   const id = useId();
   const error = (which: string) =>
     result && !result.ok && result.intent === which ? (
-      <p role="alert" className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
-        {result.error}
-      </p>
+      <Alert asChild>
+        <p role="alert">
+          {result.error}
+        </p>
+      </Alert>
     ) : null;
   const replace = (
     <CheckboxOption
@@ -107,52 +112,56 @@ export default function ImportSkill({ loaderData }: Route.ComponentProps) {
       </div>
 
       {tab === "upload" ? (
-        <Form method="post" encType="multipart/form-data" className="grid gap-5 rounded-xl border border-line bg-surface p-4 sm:p-5">
-          <input type="hidden" name="intent" value="upload" />
-          <Field>
-            <FieldLabel htmlFor={`${id}-file`}>SKILL.md or zip</FieldLabel>
-            <FileDrop id={`${id}-file`} name="file" required accept=".md,.zip,text/markdown,application/zip" aria-describedby={`${id}-file-about`} />
-            <FieldDescription id={`${id}-file-about`}>A zip of the skill&apos;s folder, as zipping the folder makes it. At most 1 MB once unpacked and 200 files.</FieldDescription>
-          </Field>
-          {replace}
-          {error("upload")}
-          <div className="flex justify-end">
-            <button type="submit" className={`${BUTTONS.PRIMARY} h-9 py-0`} disabled={busyWith === "upload"}>
-              {busyWith === "upload" ? "Importing…" : "Import"}
-            </button>
-          </div>
-        </Form>
+        <Card asChild className="grid gap-5 p-4 sm:p-5">
+          <Form method="post" encType="multipart/form-data">
+            <input type="hidden" name="intent" value="upload" />
+            <Field>
+              <FieldLabel htmlFor={`${id}-file`}>SKILL.md or zip</FieldLabel>
+              <FileDrop id={`${id}-file`} name="file" required accept=".md,.zip,text/markdown,application/zip" aria-describedby={`${id}-file-about`} />
+              <FieldDescription id={`${id}-file-about`}>A zip of the skill&apos;s folder, as zipping the folder makes it. At most 1 MB once unpacked and 200 files.</FieldDescription>
+            </Field>
+            {replace}
+            {error("upload")}
+            <div className="flex justify-end">
+              <Button type="submit" variant="accent" disabled={busyWith === "upload"}>
+                {busyWith === "upload" ? "Importing…" : "Import"}
+              </Button>
+            </div>
+          </Form>
+        </Card>
       ) : (
-        <Form method="post" className="grid gap-5 rounded-xl border border-line bg-surface p-4 sm:p-5">
-          <input type="hidden" name="intent" value="repository" />
-          <Field>
-            <FieldLabel htmlFor={`${id}-repo`}>Repository</FieldLabel>
-            <Input id={`${id}-repo`} name="repo" required placeholder={`${slug}/handbook`} autoComplete="off" spellCheck={false} className="font-mono" />
-            <FieldDescription>One you can read, as workspace/name.</FieldDescription>
-          </Field>
-          <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_12rem]">
+        <Card asChild className="grid gap-5 p-4 sm:p-5">
+          <Form method="post">
+            <input type="hidden" name="intent" value="repository" />
             <Field>
-              <FieldLabel htmlFor={`${id}-path`}>Folder</FieldLabel>
-              <Input id={`${id}-path`} name="path" placeholder="skills/release-notes" autoComplete="off" spellCheck={false} className="font-mono" />
-              <FieldDescription>The folder holding SKILL.md. Empty for the top of the repository.</FieldDescription>
+              <FieldLabel htmlFor={`${id}-repo`}>Repository</FieldLabel>
+              <Input id={`${id}-repo`} name="repo" required placeholder={`${slug}/handbook`} autoComplete="off" spellCheck={false} className="font-mono" />
+              <FieldDescription>One you can read, as workspace/name.</FieldDescription>
             </Field>
-            <Field>
-              <FieldLabel htmlFor={`${id}-ref`}>Branch, tag or commit</FieldLabel>
-              <Input id={`${id}-ref`} name="ref" placeholder="Default branch" autoComplete="off" spellCheck={false} className="font-mono placeholder:font-sans" />
-            </Field>
-          </div>
-          <p className="text-xs text-faint">
-            It is read once, at the commit the branch or tag points to now, and that commit is kept with the version. To have every push update a skill, link the repository on the
-            Skills page and keep the skill in .g1t/skills/.
-          </p>
-          {replace}
-          {error("repository")}
-          <div className="flex justify-end">
-            <button type="submit" className={`${BUTTONS.PRIMARY} h-9 py-0`} disabled={busyWith === "repository"}>
-              {busyWith === "repository" ? "Reading…" : "Import"}
-            </button>
-          </div>
-        </Form>
+            <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_12rem]">
+              <Field>
+                <FieldLabel htmlFor={`${id}-path`}>Folder</FieldLabel>
+                <Input id={`${id}-path`} name="path" placeholder="skills/release-notes" autoComplete="off" spellCheck={false} className="font-mono" />
+                <FieldDescription>The folder holding SKILL.md. Empty for the top of the repository.</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`${id}-ref`}>Branch, tag or commit</FieldLabel>
+                <Input id={`${id}-ref`} name="ref" placeholder="Default branch" autoComplete="off" spellCheck={false} className="font-mono placeholder:font-sans" />
+              </Field>
+            </div>
+            <p className="text-xs text-faint">
+              It is read once, at the commit the branch or tag points to now, and that commit is kept with the version. To have every push update a skill, link the repository on the
+              Skills page and keep the skill in .g1t/skills/.
+            </p>
+            {replace}
+            {error("repository")}
+            <div className="flex justify-end">
+              <Button type="submit" variant="accent" disabled={busyWith === "repository"}>
+                {busyWith === "repository" ? "Reading…" : "Import"}
+              </Button>
+            </div>
+          </Form>
+        </Card>
       )}
     </div>
   );

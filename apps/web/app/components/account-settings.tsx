@@ -22,7 +22,7 @@ export function DeleteButton({
     <Form method="post" className="ml-auto">
       <input type="hidden" name="intent" value={intent} />
       <input type="hidden" name="id" value={id} />
-      <SubmitButton variant="quiet" pending={pending} match={{ intent, id }}>
+      <SubmitButton variant="outline" pending={pending} match={{ intent, id }}>
         {label}
       </SubmitButton>
     </Form>

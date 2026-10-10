@@ -9,7 +9,8 @@ import type { Route } from "./+types/layout";
 import { Topics } from "../../components/topics";
 import { page } from "../../lib/meta";
 import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
-import { Pill, SoonPill } from "../../components/ui";
+import { SoonPill } from "../../components/ui";
+import { Badge } from "../../components/ui/badge";
 import { Hint } from "../../components/ui/hint";
 import { TabStrip } from "../../components/ui/tab-strip";
 import { ProjectStrip } from "../../components/mobile";
@@ -141,8 +142,8 @@ function Header({ project, isPrivate, archived, namespace, name, description, la
           {project?.name ?? name}
         </Link>
       </h1>
-      <Pill>{isPrivate ? "private" : "public"}</Pill>
-      {archived && <Pill>archived</Pill>}
+      <Badge size="md">{isPrivate ? "private" : "public"}</Badge>
+      {archived && <Badge size="md">archived</Badge>}
       {mirror}
       {/* On a phone, on its own line under the name and the Watch menu. */}
       {description && <p className="order-last min-w-0 basis-full truncate text-sm text-muted sm:order-none sm:basis-0 sm:flex-1">{description}</p>}

@@ -4,6 +4,7 @@ import type { Route } from "./+types/security-settings";
 import { page } from "../../lib/meta";
 import { ActivationPrompt, CARD } from "../../components/security-suite";
 import { WorkspaceSecurityHeading, WorkspaceSecurityTabs } from "../../components/workspace-security-tabs";
+import { Button } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
 import { securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesSecurity, requireUser, roleIn, unwrap } from "../../lib/session.server";
@@ -73,9 +74,9 @@ export default function WorkspaceSecuritySettings({ loaderData, params }: Route.
           disabled={disabled}
         />
         <div className="flex items-center gap-3 pt-1">
-          <button type="submit" disabled={disabled || fetcher.state !== "idle"} className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover disabled:opacity-50">
+          <Button type="submit" disabled={disabled || fetcher.state !== "idle"}>
             {fetcher.state !== "idle" ? "Saving…" : "Save"}
-          </button>
+          </Button>
           {!owner && <span className="text-sm text-muted">Only an owner can change these.</span>}
           {fetcher.data?.ok && <span className="text-sm text-success">Saved.</span>}
           {fetcher.data?.error && <span className="text-sm text-danger">{fetcher.data.error}</span>}

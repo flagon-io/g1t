@@ -6,6 +6,7 @@ import type { Route } from "./+types/spaces";
 import { useFoliosAction, useFoliosData } from "../../../components/folios/actions";
 import { SpaceIcon, spaceKindLabel } from "../../../components/folios/parts";
 import { EmptyState, ErrorText } from "../../../components/ui";
+import { Card } from "../../../components/ui/card";
 import { spacePath } from "../../../lib/folios";
 import { page } from "../../../lib/meta";
 import { docs } from "../../../lib/services.server";
@@ -55,42 +56,44 @@ export default function BrowseSpaces({ loaderData, params }: Route.ComponentProp
         ) : spaces.length === 0 ? (
           <EmptyState title="No spaces yet">Make one for a team, a project or a topic.</EmptyState>
         ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {spaces.map((s) => {
-              const joined = shown.has(s.id);
-              const joinable = s.kind === "workspace" && !s.is_default;
-              return (
-                <li key={s.id} className="flex items-center gap-3 px-4 py-3">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-raised text-base">
-                    <SpaceIcon space={s} size={16} />
-                  </span>
-                  <span className="min-w-0 grow">
-                    <Link to={spacePath(slug, s.slug)} className="block truncate text-sm font-medium text-fg hover:text-accent">
-                      {s.name}
-                    </Link>
-                    <span className="block truncate text-xs text-faint">
-                      {spaceKindLabel(s.kind)}
-                      {s.description ? ` · ${s.description}` : ""}
+          <Card asChild divided className="overflow-hidden">
+            <ul>
+              {spaces.map((s) => {
+                const joined = shown.has(s.id);
+                const joinable = s.kind === "workspace" && !s.is_default;
+                return (
+                  <li key={s.id} className="flex items-center gap-3 px-4 py-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-raised text-base">
+                      <SpaceIcon space={s} size={16} />
                     </span>
-                  </span>
-                  {joinable ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => send(joined ? "leave_space" : "join_space", { space_id: s.id })}
-                      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium disabled:opacity-60 ${joined ? "border border-line text-muted hover:border-danger/40 hover:text-danger" : "bg-accent text-bg hover:bg-accent-hover"}`}
-                    >
-                      {joined ? "Leave" : "Join"}
-                    </button>
-                  ) : (
-                    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-faint">
-                      <Check size={13} /> In your sidebar
+                    <span className="min-w-0 grow">
+                      <Link to={spacePath(slug, s.slug)} className="block truncate text-sm font-medium text-fg hover:text-accent">
+                        {s.name}
+                      </Link>
+                      <span className="block truncate text-xs text-faint">
+                        {spaceKindLabel(s.kind)}
+                        {s.description ? ` · ${s.description}` : ""}
+                      </span>
                     </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                    {joinable ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => send(joined ? "leave_space" : "join_space", { space_id: s.id })}
+                        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium disabled:opacity-60 ${joined ? "border border-line text-muted hover:border-danger/40 hover:text-danger" : "bg-accent text-bg hover:bg-accent-hover"}`}
+                      >
+                        {joined ? "Leave" : "Join"}
+                      </button>
+                    ) : (
+                      <span className="inline-flex shrink-0 items-center gap-1 text-xs text-faint">
+                        <Check size={13} /> In your sidebar
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
         )}
       </div>
     </div>

@@ -16,7 +16,9 @@ import { useTeam, useTeamAgents } from "../../../components/teams";
 import { Coming } from "../../../components/people";
 import { SelectField } from "../../../components/ui/select";
 import { budgetFromText } from "../../../lib/people";
-import { Button, ErrorText, Field, Input, SubmitButton } from "../../../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Input as NumberInput } from "../../../components/ui/input";
 import { Textarea } from "../../../components/ui/textarea";
 import { CheckboxOption } from "../../../components/ui/checkbox";
@@ -240,7 +242,7 @@ export default function TeamSettings({ loaderData, actionData }: Route.Component
             Never the pull request's author, and people from the team already asked count.
           </SwitchCard>
           {assigning && (
-            <div className="space-y-5 rounded-xl border border-line p-4">
+            <Card tone="plain" className="space-y-5 p-4">
               <Field label="How many people" hint={`1 to ${MAX_ASSIGNED}.`}>
                 <NumberInput name="count" type="number" min={1} max={MAX_ASSIGNED} defaultValue={review.count} className="max-w-24" />
               </Field>
@@ -281,7 +283,7 @@ export default function TeamSettings({ loaderData, actionData }: Route.Component
               <Field label="Never pick" hint="Usernames, separated by spaces or commas.">
                 <Input name="excluded" defaultValue={review.excluded.join(" ")} placeholder="ana bo" />
               </Field>
-            </div>
+            </Card>
           )}
           {!assigning && (
             <>
@@ -323,7 +325,7 @@ export default function TeamSettings({ loaderData, actionData }: Route.Component
             busy="Deleting…"
             error={said("delete")?.error ?? null}
             trigger={(open) => (
-              <Button type="button" variant="danger" onClick={open}>
+              <Button type="button" variant="destructive" onClick={open}>
                 Delete team
               </Button>
             )}

@@ -15,6 +15,7 @@ import { usercontentFrom } from "../../../lib/addresses";
 import { canDo, readingTime } from "../../../lib/folios";
 import { Markdown } from "../../markdown";
 import { TimeAgo } from "../../ui";
+import { Button } from "../../ui/button";
 import { foliosRequest, useFoliosData } from "../actions";
 import { FolioGlyph, type FolioBodyProps } from "../kinds";
 import { Face } from "../parts";
@@ -156,18 +157,18 @@ export default function DocBody({ slug, page, folio, role, showComments, onPrese
           <div className="group">
             {folio.icon && (
               <IconPicker value={folio.icon} onChange={(icon) => editable && send("update", { change: { icon } })}>
-                <button type="button" disabled={!editable} aria-label="Change the icon" className="-ml-1 mb-2 rounded-lg p-1 text-5xl leading-none hover:bg-raised disabled:hover:bg-transparent">
+                <Button type="button" disabled={!editable} aria-label="Change the icon" variant="ghost" size="inline" className="-ml-1 mb-2 rounded-lg p-1 text-5xl leading-none disabled:hover:bg-transparent">
                   {folio.icon}
-                </button>
+                </Button>
               </IconPicker>
             )}
             {editable && !trashed && (
               <div className="mb-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
                 {!folio.icon && (
                   <IconPicker value={null} onChange={(icon) => send("update", { change: { icon } })}>
-                    <button type="button" className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-faint hover:bg-raised hover:text-fg">
+                    <Button type="button" variant="ghost" size="xs" className="text-faint font-normal">
                       <SmilePlus size={13} /> Add icon
-                    </button>
+                    </Button>
                   </IconPicker>
                 )}
               </div>
@@ -219,9 +220,9 @@ export default function DocBody({ slug, page, folio, role, showComments, onPrese
               <AlertTriangle size={15} className="shrink-0 text-warn" />
               <span className="min-w-0 grow text-fg-soft">Possibly out of date: code this doc cites changed since it was last brought up to date.</span>
               {editable && (
-                <button type="button" onClick={() => send("mark_current", {})} className="text-xs font-medium text-warn hover:underline">
+                <Button type="button" onClick={() => send("mark_current", {})} variant="link" size="inline" className="text-xs text-warn">
                   It&apos;s current
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -235,9 +236,9 @@ export default function DocBody({ slug, page, folio, role, showComments, onPrese
                   {suggestions.length} {suggestions.length === 1 ? "suggestion" : "suggestions"} waiting
                 </span>
                 {editable && suggestions.length > 1 && (
-                  <button type="button" onClick={acceptAll} className="text-xs font-medium text-accent hover:underline">
+                  <Button type="button" onClick={acceptAll} variant="link" size="inline" className="text-xs">
                     Accept all
-                  </button>
+                  </Button>
                 )}
               </div>
               <div className="space-y-2">
@@ -249,9 +250,9 @@ export default function DocBody({ slug, page, folio, role, showComments, onPrese
           )}
           {suggestions.length > 1 && editable && (
             <div className="mt-4 hidden justify-end 2xl:flex">
-              <button type="button" onClick={acceptAll} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-accent/15 px-3 text-xs font-medium text-accent hover:bg-accent/25">
+              <Button type="button" onClick={acceptAll} variant="link" size="sm" className="bg-accent/15 px-3 text-xs hover:bg-accent/25">
                 <Check size={13} /> Accept all {suggestions.length} suggestions
-              </button>
+              </Button>
             </div>
           )}
         </div>

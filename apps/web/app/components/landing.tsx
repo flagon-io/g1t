@@ -369,11 +369,11 @@ export function Landing() {
             forge to stitch together.
           </p>
           <div className="mt-9 flex animate-fade-up flex-wrap items-center justify-center gap-3">
-            <ButtonLink to="/register" variant="primary" large>
+            <ButtonLink to="/register" size="lg" className="rounded-full">
               Start for free
               <ArrowRight size={15} />
             </ButtonLink>
-            <ButtonLink to="#how" variant="quiet" large>
+            <ButtonLink to="#how" variant="outline" size="lg" className="rounded-full">
               See how it works
             </ButtonLink>
           </div>
@@ -885,11 +885,11 @@ export function Landing() {
               event.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <ButtonLink to={`${DOCS}/guides/bring-your-own-agent/`} variant="quiet">
+              <ButtonLink to={`${DOCS}/guides/bring-your-own-agent/`} variant="outline">
                 Connect an agent
                 <ArrowRight size={14} />
               </ButtonLink>
-              <ButtonLink to={`${DOCS}/reference/api/`} variant="quiet">
+              <ButtonLink to={`${DOCS}/reference/api/`} variant="outline">
                 API reference
               </ButtonLink>
             </div>
@@ -944,10 +944,10 @@ export function Landing() {
               only on g1t.sh.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
-              <ButtonLink to="/flagon-io/g1t" variant="quiet">
+              <ButtonLink to="/flagon-io/g1t" variant="outline">
                 Browse the source
               </ButtonLink>
-              <ButtonLink to={`${DOCS}/guides/self-hosting/`} variant="quiet">
+              <ButtonLink to={`${DOCS}/guides/self-hosting/`} variant="outline">
                 Run g1t yourself
               </ButtonLink>
             </div>
@@ -981,11 +981,11 @@ export function Landing() {
             credit when you want agents to work.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <ButtonLink to="/register" variant="primary" large>
+            <ButtonLink to="/register" size="lg" className="rounded-full">
               Create your workspace
               <ArrowRight size={15} />
             </ButtonLink>
-            <ButtonLink to={`${DOCS}/quickstart/`} variant="quiet" large>
+            <ButtonLink to={`${DOCS}/quickstart/`} variant="outline" size="lg" className="rounded-full">
               Read the quickstart
             </ButtonLink>
           </div>

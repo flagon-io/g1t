@@ -57,7 +57,7 @@ export default function ReleasePage({ loaderData, actionData, params }: Route.Co
                 Publish release
               </SubmitButton>
             )}
-            <SubmitButton variant="danger" name="intent" value="delete" pending="Deleting…">
+            <SubmitButton variant="destructive" name="intent" value="delete" pending="Deleting…">
               <Trash2 size={14} />
               Delete release
             </SubmitButton>

@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { useEmojiContext } from "./context";
 import { readRecent, readTone, rememberRecent, rememberTone, useEmojiData } from "./data";
 import { EmojiGlyph } from "./render";
+import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { type EmojiPick, SKIN_TONES, customPick, searchEmoji, skinned, unicodePick } from "../../lib/emoji";
@@ -121,15 +122,17 @@ export function EmojiPicker({ onPick, autoFocus = true }: { onPick: (emoji: stri
         </label>
         <div className="relative">
           <Hint label="Skin tone">
-            <button
+            <Button
               type="button"
               aria-label="Skin tone"
               aria-expanded={toning}
               onClick={() => setToning((open) => !open)}
-              className="flex size-8 items-center justify-center rounded-md text-lg hover:bg-raised"
+              variant="ghost"
+              size="icon-sm"
+              className="text-lg"
             >
               {SKIN_TONES[tone]}
-            </button>
+            </Button>
           </Hint>
           {toning && (
             <div role="radiogroup" aria-label="Skin tone" className="absolute top-full right-0 z-10 mt-1 flex gap-0.5 rounded-lg border border-line-strong bg-raised p-1 shadow-xl shadow-black/40">
@@ -158,14 +161,16 @@ export function EmojiPicker({ onPick, autoFocus = true }: { onPick: (emoji: stri
         <nav aria-label="Emoji groups" className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line px-1.5 py-1 [scrollbar-width:none]">
           {sections.map((section) => (
             <Hint key={section.key} label={section.title}>
-              <button
+              <Button
                 type="button"
                 aria-label={section.title}
                 onClick={() => jump(section.key)}
-                className="flex size-7 shrink-0 items-center justify-center rounded-md text-[0.95rem] text-faint grayscale-[0.6] transition hover:bg-raised hover:text-fg hover:grayscale-0"
+                variant="ghost"
+                size="icon-xs"
+                className="text-[0.95rem] text-faint grayscale-[0.6] transition hover:grayscale-0"
               >
                 {section.icon}
-              </button>
+              </Button>
             </Hint>
           ))}
         </nav>

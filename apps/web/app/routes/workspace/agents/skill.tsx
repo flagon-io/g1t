@@ -20,11 +20,14 @@ import {
 
 import type { Route } from "./+types/skill";
 import { agentsAction, answer, readOrNull } from "../../../components/agents/actions.server";
-import { type ActionResult, BUTTONS, Confirm } from "../../../components/agents/dialogs";
+import { type ActionResult, Confirm } from "../../../components/agents/dialogs";
 import { AttachDialog, AttachmentChip, FromRepository, NeedsComputer, originText, skillsPath } from "../../../components/agents/skills";
 import { Markdown } from "../../../components/markdown";
-import { TimeAgo } from "../../../components/ui";
+import { ButtonLink, TimeAgo } from "../../../components/ui";
+import { Alert } from "../../../components/ui/alert";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
 import { cn } from "../../../lib/cn";
 import { page } from "../../../lib/meta";
@@ -91,10 +94,10 @@ export default function SkillPage({ loaderData, params }: Route.ComponentProps) 
     return (
       <div className="space-y-4">
         {back}
-        <div className="rounded-xl border border-dashed border-line px-6 py-14 text-center">
+        <Card tone="plain" className="border-dashed px-6 py-14 text-center">
           <p className="font-medium">{params.name} can&apos;t be shown right now</p>
           <p className="mt-1.5 text-sm text-muted">The agents service didn&apos;t answer. Reload in a moment.</p>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -105,18 +108,22 @@ export default function SkillPage({ loaderData, params }: Route.ComponentProps) 
     <div className="space-y-8 pb-4">
       {back}
       {!latest && (
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-info/40 bg-info/10 px-3 py-2 text-sm text-fg">
-          <History size={15} className="shrink-0 text-info" aria-hidden />
-          You&apos;re reading version {detail.shown} of {skill.version}.
-          <Link to={skillsPath(slug, skill.name)} className="font-medium text-info hover:underline">
-            Read the newest
-          </Link>
-        </p>
+        <Alert asChild tone="info" className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <p>
+            <History size={15} className="shrink-0 text-info" aria-hidden />
+            You&apos;re reading version {detail.shown} of {skill.version}.
+            <Link to={skillsPath(slug, skill.name)} className="font-medium text-info hover:underline">
+              Read the newest
+            </Link>
+          </p>
+        </Alert>
       )}
       {draft && (
-        <p className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-fg">
-          {originText(skill.origin)}, as a draft. No agent uses it until {skill.can_edit ? "you review and publish it" : "an owner or team maintainer publishes it"}.
-        </p>
+        <Alert asChild tone="warn">
+          <p>
+            {originText(skill.origin)}, as a draft. No agent uses it until {skill.can_edit ? "you review and publish it" : "an owner or team maintainer publishes it"}.
+          </p>
+        </Alert>
       )}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 grow basis-md">
@@ -133,10 +140,10 @@ export default function SkillPage({ loaderData, params }: Route.ComponentProps) 
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           {skill.can_edit && (
-            <Link to={skillsPath(slug, skill.name, "/edit")} className={`${draft ? BUTTONS.PRIMARY : BUTTONS.QUIET} h-9 py-0`}>
+            <ButtonLink to={skillsPath(slug, skill.name, "/edit")} variant={draft ? "accent" : "outline"}>
               <PenLine size={15} />
               {draft ? "Review and publish" : "Edit"}
-            </Link>
+            </ButtonLink>
           )}
           {skill.can_delete && (
             <Confirm
@@ -145,10 +152,10 @@ export default function SkillPage({ loaderData, params }: Route.ComponentProps) 
               fields={{ intent: "delete" }}
               fetcherKey={`delete-${skill.id}`}
               trigger={
-                <button type="button" className={`${BUTTONS.QUIET} h-9 py-0 hover:border-danger/50 hover:text-danger`}>
+                <Button type="button" variant="outline" className="hover:border-danger/50 hover:text-danger">
                   <Trash2 size={14} />
                   {draft ? "Discard" : "Delete"}
-                </button>
+                </Button>
               }
             >
               {draft
@@ -161,50 +168,56 @@ export default function SkillPage({ loaderData, params }: Route.ComponentProps) 
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="min-w-0 space-y-6">
-          <section aria-labelledby="instructions" className="rounded-xl border border-line bg-surface">
-            <h2 id="instructions" className="border-b border-line/60 px-4 py-2.5 text-xs font-medium text-muted">
-              Instructions
-            </h2>
-            <div className="px-4 py-4 sm:px-5">
-              <Markdown source={detail.instructions} />
-            </div>
-          </section>
+          <Card asChild>
+            <section aria-labelledby="instructions">
+              <h2 id="instructions" className="border-b border-line/60 px-4 py-2.5 text-xs font-medium text-muted">
+                Instructions
+              </h2>
+              <div className="px-4 py-4 sm:px-5">
+                <Markdown source={detail.instructions} />
+              </div>
+            </section>
+          </Card>
           {detail.files.length > 0 && (
             <section aria-labelledby="files">
               <h2 id="files" className="text-sm font-medium">
                 Files <span className="text-faint">{detail.files.length}</span>
               </h2>
-              <ul className="mt-3 divide-y divide-line/60 overflow-hidden rounded-xl border border-line bg-surface">
-                {detail.files.map((file) => (
-                  <li key={file.path}>
-                    <details className="group">
-                      <summary className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-2.5 text-sm select-none hover:bg-raised/40 [&::-webkit-details-marker]:hidden">
-                        {file.script ? <FileCode size={14} className="shrink-0 text-faint" aria-hidden /> : <FileText size={14} className="shrink-0 text-faint" aria-hidden />}
-                        <span className="min-w-0 grow truncate font-mono text-[0.8125rem]">{file.path}</span>
-                        {file.script && <Badge tone="warn">Script · not run</Badge>}
-                        <span className="shrink-0 text-xs text-faint">{skillSize(file.bytes)}</span>
-                      </summary>
-                      <div className="border-t border-line/60 bg-bg/40 px-4 py-3">
-                        {file.content != null ? (
-                          <pre className="max-h-96 overflow-auto text-xs leading-relaxed whitespace-pre-wrap text-fg-soft">{file.content}</pre>
-                        ) : (
-                          <p className="text-xs text-faint">{file.encoding === "base64" ? "Not text, so it isn't shown here." : "Too large to show here."}</p>
-                        )}
-                      </div>
-                    </details>
-                  </li>
-                ))}
-              </ul>
+              <Card asChild className="mt-3 divide-y divide-line/60 overflow-hidden">
+                <ul>
+                  {detail.files.map((file) => (
+                    <li key={file.path}>
+                      <details className="group">
+                        <summary className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-2.5 text-sm select-none hover:bg-raised/40 [&::-webkit-details-marker]:hidden">
+                          {file.script ? <FileCode size={14} className="shrink-0 text-faint" aria-hidden /> : <FileText size={14} className="shrink-0 text-faint" aria-hidden />}
+                          <span className="min-w-0 grow truncate font-mono text-[0.8125rem]">{file.path}</span>
+                          {file.script && <Badge tone="warn">Script · not run</Badge>}
+                          <span className="shrink-0 text-xs text-faint">{skillSize(file.bytes)}</span>
+                        </summary>
+                        <div className="border-t border-line/60 bg-bg/40 px-4 py-3">
+                          {file.content != null ? (
+                            <pre className="max-h-96 overflow-auto text-xs leading-relaxed whitespace-pre-wrap text-fg-soft">{file.content}</pre>
+                          ) : (
+                            <p className="text-xs text-faint">{file.encoding === "base64" ? "Not text, so it isn't shown here." : "Too large to show here."}</p>
+                          )}
+                        </div>
+                      </details>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
             </section>
           )}
-          <details className="group rounded-xl border border-line bg-surface">
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-xs font-medium text-muted select-none hover:text-fg [&::-webkit-details-marker]:hidden">
-              <FileText size={13} aria-hidden />
-              <span className="group-open:hidden">Show SKILL.md as written</span>
-              <span className="hidden group-open:inline">Hide SKILL.md</span>
-            </summary>
-            <pre className="overflow-x-auto border-t border-line/60 px-4 py-3 text-xs leading-relaxed whitespace-pre-wrap text-fg-soft">{detail.skill_md}</pre>
-          </details>
+          <Card asChild className="group">
+            <details>
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-xs font-medium text-muted select-none hover:text-fg [&::-webkit-details-marker]:hidden">
+                <FileText size={13} aria-hidden />
+                <span className="group-open:hidden">Show SKILL.md as written</span>
+                <span className="hidden group-open:inline">Hide SKILL.md</span>
+              </summary>
+              <pre className="overflow-x-auto border-t border-line/60 px-4 py-3 text-xs leading-relaxed whitespace-pre-wrap text-fg-soft">{detail.skill_md}</pre>
+            </details>
+          </Card>
         </div>
 
         <aside className="space-y-6">
@@ -250,10 +263,10 @@ function Attached({ detail, library }: { detail: SkillDetail; library: SkillLibr
             skill={skill}
             library={library}
             trigger={
-              <button type="button" className={`${BUTTONS.QUIET} h-8 px-2.5 py-0 text-xs`}>
+              <Button type="button" variant="outline" size="sm">
                 <Plus size={13} />
                 Attach
-              </button>
+              </Button>
             }
           />
         )}
@@ -265,35 +278,37 @@ function Attached({ detail, library }: { detail: SkillDetail; library: SkillLibr
       ) : (
         <ul className="mt-2 space-y-1.5">
           {skill.attachments.map((a) => (
-            <li key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-2">
-              <span className="min-w-0 grow">
-                <AttachmentChip attachment={a} />
-                <span className={cn("ml-2 text-xs", a.version < skill.version ? "text-warn" : "text-faint")}>v{a.version}</span>
-              </span>
-              {a.can_change && a.version < skill.version && (
-                <pin.Form method="post">
-                  <input type="hidden" name="intent" value="pin" />
-                  <input type="hidden" name="attachment" value={a.id} />
-                  <Hint label={`Move ${a.label} to version ${skill.version}`}>
-                    <button type="submit" className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-accent hover:bg-accent/10" disabled={pin.state !== "idle"}>
-                      <ArrowUpCircle size={13} />
-                      Update to v{skill.version}
-                    </button>
-                  </Hint>
-                </pin.Form>
-              )}
-              {a.can_change && (
-                <detach.Form method="post">
-                  <input type="hidden" name="intent" value="detach" />
-                  <input type="hidden" name="attachment" value={a.id} />
-                  <Hint label={`Detach from ${a.label}`}>
-                    <button type="submit" aria-label={`Detach from ${a.label}`} className="flex size-7 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-danger" disabled={detach.state !== "idle"}>
-                      <X size={14} />
-                    </button>
-                  </Hint>
-                </detach.Form>
-              )}
-            </li>
+            <Card asChild key={a.id} radius="lg" className="flex flex-wrap items-center gap-2 px-2.5 py-2">
+              <li>
+                <span className="min-w-0 grow">
+                  <AttachmentChip attachment={a} />
+                  <span className={cn("ml-2 text-xs", a.version < skill.version ? "text-warn" : "text-faint")}>v{a.version}</span>
+                </span>
+                {a.can_change && a.version < skill.version && (
+                  <pin.Form method="post">
+                    <input type="hidden" name="intent" value="pin" />
+                    <input type="hidden" name="attachment" value={a.id} />
+                    <Hint label={`Move ${a.label} to version ${skill.version}`}>
+                      <Button type="submit" variant="link" size="xs" className="hover:bg-accent/10" disabled={pin.state !== "idle"}>
+                        <ArrowUpCircle size={13} />
+                        Update to v{skill.version}
+                      </Button>
+                    </Hint>
+                  </pin.Form>
+                )}
+                {a.can_change && (
+                  <detach.Form method="post">
+                    <input type="hidden" name="intent" value="detach" />
+                    <input type="hidden" name="attachment" value={a.id} />
+                    <Hint label={`Detach from ${a.label}`}>
+                      <Button type="submit" aria-label={`Detach from ${a.label}`} variant="ghost" size="icon-xs" className="text-faint hover:text-danger" disabled={detach.state !== "idle"}>
+                        <X size={14} />
+                      </Button>
+                    </Hint>
+                  </detach.Form>
+                )}
+              </li>
+            </Card>
           ))}
         </ul>
       )}
@@ -357,22 +372,26 @@ function Foundational({ back, skill, skillMd }: { back: ReactNode; skill: AgentS
         <p className="mt-2 max-w-3xl text-sm text-fg-soft">{skill.when}</p>
         <p className="mt-2 text-xs text-faint">Every agent has it, updated with g1t&apos;s releases. Owners turn it off for one agent on that agent&apos;s Skills tab.</p>
       </header>
-      <section aria-labelledby="instructions" className="rounded-xl border border-line bg-surface">
-        <h2 id="instructions" className="border-b border-line/60 px-4 py-2.5 text-xs font-medium text-muted">
-          Instructions
-        </h2>
-        <div className="px-4 py-4 sm:px-5">
-          <Markdown source={split.ok ? split.body : skillMd} />
-        </div>
-      </section>
-      <details className="group rounded-xl border border-line bg-surface">
-        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-xs font-medium text-muted select-none hover:text-fg [&::-webkit-details-marker]:hidden">
-          <FileText size={13} aria-hidden />
-          <span className="group-open:hidden">Show SKILL.md</span>
-          <span className="hidden group-open:inline">Hide SKILL.md</span>
-        </summary>
-        <pre className="overflow-x-auto border-t border-line/60 px-4 py-3 text-xs leading-relaxed whitespace-pre-wrap text-fg-soft">{skillMd}</pre>
-      </details>
+      <Card asChild>
+        <section aria-labelledby="instructions">
+          <h2 id="instructions" className="border-b border-line/60 px-4 py-2.5 text-xs font-medium text-muted">
+            Instructions
+          </h2>
+          <div className="px-4 py-4 sm:px-5">
+            <Markdown source={split.ok ? split.body : skillMd} />
+          </div>
+        </section>
+      </Card>
+      <Card asChild className="group">
+        <details>
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-xs font-medium text-muted select-none hover:text-fg [&::-webkit-details-marker]:hidden">
+            <FileText size={13} aria-hidden />
+            <span className="group-open:hidden">Show SKILL.md</span>
+            <span className="hidden group-open:inline">Hide SKILL.md</span>
+          </summary>
+          <pre className="overflow-x-auto border-t border-line/60 px-4 py-3 text-xs leading-relaxed whitespace-pre-wrap text-fg-soft">{skillMd}</pre>
+        </details>
+      </Card>
     </div>
   );
 }

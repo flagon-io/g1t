@@ -12,6 +12,7 @@ import { Link } from "react-router";
 
 import { linkedArtifacts } from "../../lib/folios";
 import { TimeAgo } from "../ui";
+import { Card } from "../ui/card";
 import { KindIcon } from "./kinds";
 
 /** What the site answers for one link (routes/workspace/folios/api.ts `unfurl`); null: not for this viewer. */
@@ -61,10 +62,10 @@ function Unfurl({ slug, id }: { slug: string; id: string }) {
   if (card === "loading" || card === undefined) return null;
   if (card === null) {
     return (
-      <div className="flex items-center gap-2.5 rounded-lg border border-line bg-surface px-3 py-2 text-xs text-faint">
+      <Card radius="lg" className="flex items-center gap-2.5 px-3 py-2 text-xs text-faint">
         <Lock size={14} className="shrink-0" />
         An artifact you don&apos;t have access to
-      </div>
+      </Card>
     );
   }
   return (

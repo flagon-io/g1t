@@ -5,6 +5,8 @@ import type { Route } from "./+types/pulls";
 import { page } from "../../lib/meta";
 import { openedBy } from "../../lib/opened-by";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
+import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { CheckBadge } from "../../components/checks";
 import { ChangeSize, PullIcon, StateTabs } from "../../components/work";
@@ -161,66 +163,68 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
             yourself.
           </EmptyState>
         ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-            {pulls.map((pull) => (
-              <li key={pull.id}>
-                <Link
-                  prefetch="intent"
-                  to={`${base}/pull/${pull.number}`}
-                  className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface"
-                >
-                  <span className="mt-0.5">
-                    <PullIcon status={pull.status} />
-                  </span>
-                  <span className="min-w-0 grow">
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="min-w-0 truncate font-medium">{pull.title}</span>
-                      {pull.status === "draft" && (
-                        <span className="shrink-0 rounded-full border border-line px-1.5 py-px text-[0.6875rem] text-faint">
-                          draft
-                        </span>
-                      )}
-                      {(pull.labels ?? []).map((name) => (
-                        <LabelChip key={name} name={name} color={colors[name]} />
-                      ))}
-                      <AgentBadge run={working.get(pull.number)} />
+          <Card asChild tone="plain" divided className="overflow-hidden">
+            <ul>
+              {pulls.map((pull) => (
+                <li key={pull.id}>
+                  <Link
+                    prefetch="intent"
+                    to={`${base}/pull/${pull.number}`}
+                    className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface"
+                  >
+                    <span className="mt-0.5">
+                      <PullIcon status={pull.status} />
                     </span>
-                    <span className="mt-0.5 block text-xs text-faint">
-                      #{pull.number} opened <TimeAgo at={pull.createdAt} /> by{" "}
-                      {openedBy(pull).name}
-                      {pull.requestedBy && <> for {pull.requestedBy.username}</>}
-                      {pull.issue != null && <> · for #{pull.issue}</>}
-                      {pull.supersededBy != null && <> · superseded by #{pull.supersededBy}</>}
-                      {pull.milestone && (
-                        <>
-                          {" "}
-                          · <MilestoneIcon size={11} className="inline" /> {pull.milestone.title}
-                        </>
-                      )}
-                      {/* Into a branch other than the default one: said. */}
-                      {pull.base && defaultBranch && pull.base !== defaultBranch && (
-                        <>
-                          {" "}
-                          · <ArrowLeft size={11} className="inline" /> into{" "}
-                          <span className="font-mono">{pull.base}</span>
-                        </>
-                      )}
+                    <span className="min-w-0 grow">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="min-w-0 truncate font-medium">{pull.title}</span>
+                        {pull.status === "draft" && (
+                          <Badge className="px-1.5 font-normal text-faint">
+                            draft
+                          </Badge>
+                        )}
+                        {(pull.labels ?? []).map((name) => (
+                          <LabelChip key={name} name={name} color={colors[name]} />
+                        ))}
+                        <AgentBadge run={working.get(pull.number)} />
+                      </span>
+                      <span className="mt-0.5 block text-xs text-faint">
+                        #{pull.number} opened <TimeAgo at={pull.createdAt} /> by{" "}
+                        {openedBy(pull).name}
+                        {pull.requestedBy && <> for {pull.requestedBy.username}</>}
+                        {pull.issue != null && <> · for #{pull.issue}</>}
+                        {pull.supersededBy != null && <> · superseded by #{pull.supersededBy}</>}
+                        {pull.milestone && (
+                          <>
+                            {" "}
+                            · <MilestoneIcon size={11} className="inline" /> {pull.milestone.title}
+                          </>
+                        )}
+                        {/* Into a branch other than the default one: said. */}
+                        {pull.base && defaultBranch && pull.base !== defaultBranch && (
+                          <>
+                            {" "}
+                            · <ArrowLeft size={11} className="inline" /> into{" "}
+                            <span className="font-mono">{pull.base}</span>
+                          </>
+                        )}
+                      </span>
                     </span>
-                  </span>
-                  <span className="mt-0.5 hidden sm:block">
-                    <ChangeSize files={pull.files} />
-                  </span>
-                  <span className="mt-0.5">
-                    <CheckBadge status={pull.checkStatus} />
-                  </span>
-                  <span className="mt-0.5 flex shrink-0 items-center gap-1 font-mono text-xs text-muted">
-                    {pull.branch ? <GitBranch size={13} /> : <Bot size={13} />}
-                    {pull.branch ?? pull.agent}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+                    <span className="mt-0.5 hidden sm:block">
+                      <ChangeSize files={pull.files} />
+                    </span>
+                    <span className="mt-0.5">
+                      <CheckBadge status={pull.checkStatus} />
+                    </span>
+                    <span className="mt-0.5 flex shrink-0 items-center gap-1 font-mono text-xs text-muted">
+                      {pull.branch ? <GitBranch size={13} /> : <Bot size={13} />}
+                      {pull.branch ?? pull.agent}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
       </div>
     </div>

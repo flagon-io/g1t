@@ -10,6 +10,7 @@ import { Link, data, useNavigate } from "react-router";
 
 import type { Route } from "./+types/notifications";
 import { InboxCard, InboxEmpty, InboxTabs, MarkAllRead } from "../components/inbox";
+import { Card } from "../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { cn } from "../lib/cn";
 import { REASON_FILTERS, inboxReason, inboxTab, inboxView, markFromForm, severityOf, tabCount } from "../lib/inbox";
@@ -115,7 +116,9 @@ export default function NotificationsPage({ loaderData }: Route.ComponentProps) 
 
       <div className="mt-4">
         {items == null ? (
-          <p className="rounded-lg border border-line px-4 py-6 text-sm text-muted">Notifications could not be loaded. Try again in a moment.</p>
+          <Card asChild tone="plain" radius="lg" className="px-4 py-6 text-sm text-muted">
+            <p>Notifications could not be loaded. Try again in a moment.</p>
+          </Card>
         ) : items.length === 0 ? (
           <InboxEmpty tab={tab} view={view} />
         ) : (

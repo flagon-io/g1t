@@ -7,6 +7,8 @@ import type { AgentEffortCosts, AgentTemplate, ModelTier, WorkspaceAgent } from 
 import { type AgentLike, AgentAvatar, PixelCreature } from "./agent-avatar";
 import { StatusDot, statusLabel } from "./chat/marks";
 import { isOrchestrator } from "./orchestrator";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Skeleton } from "./ui/skeleton";
 import { AUTONOMY, type AgentDraft, PRESETS, TIER_LABELS, cleanHandle, dollarsField } from "../lib/agent-form";
@@ -529,14 +531,15 @@ export function AgentForm({
               />
               {!locked && (
                 <Hint label="Another name">
-                  <button
+                  <Button
                     type="button"
                     aria-label="Another name"
                     onClick={shuffle}
-                    className="flex size-[38px] shrink-0 items-center justify-center rounded-md border border-line text-muted transition-colors hover:border-line-strong hover:bg-raised hover:text-fg active:rotate-12"
+                    variant="outline" size="icon"
+                    className="size-[38px] text-muted hover:bg-raised active:rotate-12"
                   >
                     <Dices size={17} />
-                  </button>
+                  </Button>
                 </Hint>
               )}
             </div>
@@ -616,14 +619,13 @@ export function AgentForm({
         {spaces.length ? (
           <div className="grid gap-1.5 sm:grid-cols-2">
             {spaces.map((space) => (
-              <label
-                key={space.id}
-                className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm has-[[data-state=checked]]:border-accent/50 has-[[data-state=checked]]:bg-accent/5"
-              >
-                <Checkbox name="reading" value={space.id} defaultChecked={(draft.reading ?? []).includes(space.id)} />
-                <span className="min-w-0 grow truncate">{space.name}</span>
-                <span className="shrink-0 text-xs text-faint capitalize">{space.kind}</span>
-              </label>
+              <Card asChild key={space.id} radius="lg" className="flex min-h-10 cursor-pointer items-center gap-2.5 px-3 py-2 text-sm has-[[data-state=checked]]:border-accent/50 has-[[data-state=checked]]:bg-accent/5">
+                <label>
+                  <Checkbox name="reading" value={space.id} defaultChecked={(draft.reading ?? []).includes(space.id)} />
+                  <span className="min-w-0 grow truncate">{space.name}</span>
+                  <span className="shrink-0 text-xs text-faint capitalize">{space.kind}</span>
+                </label>
+              </Card>
             ))}
           </div>
         ) : (
@@ -728,7 +730,7 @@ export function AgentForm({
             </Select>
           </div>
         </div>
-        <div className="rounded-lg border border-line">
+        <Card tone="plain" radius="lg">
           <button
             type="button"
             onClick={() => setAdvanced(!advanced)}
@@ -745,7 +747,7 @@ export function AgentForm({
             </Label>
             <input id="pinned" name="pinned" defaultValue={draft.routing.pinned ?? ""} placeholder="provider/model" className={`${FIELD} font-mono`} autoComplete="off" data-1p-ignore />
           </div>
-        </div>
+        </Card>
       </FormSection>
 
       <FormSection title="Budget" about="Checked before work starts and enforced while it runs. At 80% of the month it tells you; at 100% it takes no new tasks.">
@@ -789,14 +791,15 @@ export function AgentForm({
 
       <div className="sticky bottom-(--tabbar-h) in-data-[keyboard=open]:bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t border-line bg-bg/90 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
         {Object.keys(e).length > 0 && <p className="mr-auto text-sm text-danger">Check the fields marked above.</p>}
-        <button
+        <Button
           type="submit"
           disabled={busy}
-          className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-4 text-sm font-medium text-bg transition-colors hover:bg-accent-hover disabled:opacity-60"
+          variant="accent"
+          className="px-4 disabled:opacity-60"
         >
           <Sparkles size={15} />
           {busy ? "Saving…" : submit}
-        </button>
+        </Button>
       </div>
     </Form>
   );

@@ -8,6 +8,7 @@ import type { Route } from "./+types/repositories";
 import { useTeam } from "../../../components/teams";
 import { ErrorText, SubmitButton } from "../../../components/ui";
 import { Badge } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import { teamPath } from "../../../lib/teams";
 import { identity, repos } from "../../../lib/services.server";
@@ -73,38 +74,42 @@ export default function TeamRepositories({ loaderData, actionData }: Route.Compo
         highest one counts. Giving a team a role on a repository needs the Admin role there.
       </p>
       {granted.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-line px-6 py-10 text-center">
+        <Card tone="plain" className="border-dashed px-6 py-10 text-center">
           <Box size={18} className="mx-auto text-faint" />
           <p className="mt-2 text-sm font-medium">{team.name} has no roles on repositories yet</p>
-        </div>
+        </Card>
       ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-          {granted.map((repo) => (
-            <RepoRow key={repo.repo_id} repo={repo} manage={team.can_manage} error={actionData?.repo === repo.repo.split("/")[1] && actionData.intent !== "add" ? actionData.error : null} />
-          ))}
-        </ul>
+        <Card asChild tone="plain" divided className="overflow-hidden">
+          <ul>
+            {granted.map((repo) => (
+              <RepoRow key={repo.repo_id} repo={repo} manage={team.can_manage} error={actionData?.repo === repo.repo.split("/")[1] && actionData.intent !== "add" ? actionData.error : null} />
+            ))}
+          </ul>
+        </Card>
       )}
 
       {addable.length > 0 && (
-        <Form method="post" key={granted.length} className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 sm:flex-row sm:items-center">
-          <input type="hidden" name="intent" value="add" />
-          <Select name="repo">
-            <SelectTrigger aria-label="Repository" className="sm:max-w-64">
-              <SelectValue placeholder="Choose a repository" />
-            </SelectTrigger>
-            <SelectContent>
-              {addable.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <RoleSelect name="role" value={role} onValueChange={setRole} />
-          <SubmitButton variant="quiet" match={{ intent: "add" }} pending="Adding…">
-            Add repository
-          </SubmitButton>
-        </Form>
+        <Card asChild key={granted.length} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+          <Form method="post">
+            <input type="hidden" name="intent" value="add" />
+            <Select name="repo">
+              <SelectTrigger aria-label="Repository" className="sm:max-w-64">
+                <SelectValue placeholder="Choose a repository" />
+              </SelectTrigger>
+              <SelectContent>
+                {addable.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <RoleSelect name="role" value={role} onValueChange={setRole} />
+            <SubmitButton variant="outline" match={{ intent: "add" }} pending="Adding…">
+              Add repository
+            </SubmitButton>
+          </Form>
+        </Card>
       )}
       {actionData?.intent === "add" && <ErrorText>{actionData.error}</ErrorText>}
     </div>
@@ -146,7 +151,7 @@ function RepoRow({ repo, manage, error }: { repo: TeamRepo; manage: boolean; err
             <Form method="post">
               <input type="hidden" name="intent" value="remove" />
               <input type="hidden" name="repo" value={name} />
-              <SubmitButton variant="quiet" match={{ intent: "remove", repo: name }} pending="Removing…">
+              <SubmitButton variant="outline" match={{ intent: "remove", repo: name }} pending="Removing…">
                 Remove
               </SubmitButton>
             </Form>

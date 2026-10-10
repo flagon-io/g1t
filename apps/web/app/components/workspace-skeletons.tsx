@@ -3,6 +3,7 @@
  * the real thing, so nothing moves when it arrives (components/ui/skeleton.tsx).
  */
 import type { WorkspacePageKey } from "../lib/workspace-nav";
+import { Card } from "./ui/card";
 import { Skeleton, SkeletonRows, SkeletonText } from "./ui/skeleton";
 
 /** A project card, as the Overview and the Projects grid show them. */
@@ -28,7 +29,7 @@ export function ProjectCardSkeleton() {
 /** The Projects page's rows. */
 export function ProjectRowsSkeleton({ rows = 8 }: { rows?: number }) {
   return (
-    <div aria-hidden="true" className="overflow-hidden rounded-xl border border-line bg-surface">
+    <Card aria-hidden="true" className="overflow-hidden">
       {Array.from({ length: rows }, (_, index) => (
         <div key={index} className="flex items-center gap-3 border-b border-line px-4 py-3.5 last:border-b-0">
           <Skeleton className="size-8 shrink-0 rounded-md" />
@@ -40,7 +41,7 @@ export function ProjectRowsSkeleton({ rows = 8 }: { rows?: number }) {
           <Skeleton className="size-8 shrink-0 rounded-md" />
         </div>
       ))}
-    </div>
+    </Card>
   );
 }
 

@@ -19,6 +19,7 @@ import { loadConnected } from "../../../lib/marketplace.server";
 import { page } from "../../../lib/meta";
 import { requireUser, roleIn } from "../../../lib/session.server";
 import { useMarketplace } from "./layout";
+import { Card } from "../../../components/ui/card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   const connector = connectorById(params.integration);
@@ -95,7 +96,9 @@ export default function MarketplaceIntegration({ params, loaderData }: Route.Com
                 {listing.availability === "unavailable" ? "Once it can be connected here" : "Today"}
               </h4>
               {uses.today.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-line px-4 py-4 text-sm text-muted">Nothing yet. It can't be connected until it is built.</p>
+                <Card asChild tone="plain" className="border-dashed px-4 py-4 text-sm text-muted">
+                  <p>Nothing yet. It can't be connected until it is built.</p>
+                </Card>
               ) : (
                 <div className="space-y-3">
                   {uses.today.map((use) => (
@@ -110,7 +113,9 @@ export default function MarketplaceIntegration({ params, loaderData }: Route.Com
                 Soon
               </h4>
               {uses.soon.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-line px-4 py-4 text-sm text-muted">Nothing more is planned for it yet.</p>
+                <Card asChild tone="plain" className="border-dashed px-4 py-4 text-sm text-muted">
+                  <p>Nothing more is planned for it yet.</p>
+                </Card>
               ) : (
                 <div className="space-y-3">
                   {uses.soon.map((use) => (
@@ -123,35 +128,37 @@ export default function MarketplaceIntegration({ params, loaderData }: Route.Com
         </section>
 
         <aside className="text-sm">
-          <dl className="space-y-3 rounded-xl border border-line bg-surface p-4">
-            <div>
-              <dt className="text-xs text-faint">Publisher</dt>
-              <dd className="mt-0.5">
-                {listing.publisher} · {tier.label}
-                <span className="block text-xs text-muted">{tier.about}</span>
-              </dd>
-            </div>
-            <div>
-              <dt className="flex items-center gap-1.5 text-xs text-faint">
-                <Users size={12} />
-                Who connects it
-              </dt>
-              <dd className="mt-0.5">
-                {connector.scopes.includes("workspace") && connector.scopes.includes("personal")
-                  ? "An owner, once for the whole workspace; and each person, for their own account."
-                  : connector.scopes.includes("workspace")
-                    ? "An owner, once for the whole workspace."
-                    : "Each person, for their own account. Agents use it only when that person asks."}
-              </dd>
-            </div>
-            {listing.connected && (
+          <Card asChild className="space-y-3 p-4">
+            <dl>
               <div>
-                <dt className="text-xs text-faint">Connected</dt>
-                <dd className="mt-0.5 break-words">{listing.connected.detail}</dd>
-                {listing.connected.problem && <dd className="mt-1 text-warn">{listing.connected.problem}</dd>}
+                <dt className="text-xs text-faint">Publisher</dt>
+                <dd className="mt-0.5">
+                  {listing.publisher} · {tier.label}
+                  <span className="block text-xs text-muted">{tier.about}</span>
+                </dd>
               </div>
-            )}
-          </dl>
+              <div>
+                <dt className="flex items-center gap-1.5 text-xs text-faint">
+                  <Users size={12} />
+                  Who connects it
+                </dt>
+                <dd className="mt-0.5">
+                  {connector.scopes.includes("workspace") && connector.scopes.includes("personal")
+                    ? "An owner, once for the whole workspace; and each person, for their own account."
+                    : connector.scopes.includes("workspace")
+                      ? "An owner, once for the whole workspace."
+                      : "Each person, for their own account. Agents use it only when that person asks."}
+                </dd>
+              </div>
+              {listing.connected && (
+                <div>
+                  <dt className="text-xs text-faint">Connected</dt>
+                  <dd className="mt-0.5 break-words">{listing.connected.detail}</dd>
+                  {listing.connected.problem && <dd className="mt-1 text-warn">{listing.connected.problem}</dd>}
+                </div>
+              )}
+            </dl>
+          </Card>
         </aside>
       </div>
     </div>

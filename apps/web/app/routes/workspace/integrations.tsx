@@ -30,7 +30,9 @@ import { trialClosed } from "../../lib/trial";
 import { GatewayModelsField, MODEL_CATALOG, ModelCatalog, ModelProviderFields, ProviderMark, ProviderTiles, Routing } from "../../components/model-providers";
 import { parseGatewayModels } from "../../lib/gateway";
 import { integrationsSection, sectionKind } from "../../lib/integration-sections";
-import { Avatar, CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
+import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
+import { Avatar } from "../../components/ui/avatar";
+import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Combobox } from "../../components/ui/combobox";
 import { billing, integrations, repos } from "../../lib/services.server";
@@ -241,16 +243,18 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
         )}
         <Connections list={modelConnections} owner={owner} tested={tested} updated={updated} deliveries={deliveries} />
         {modelConnections.length === 0 && hostedOpen && (
-          <p className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">
-            <CheckCircle2 size={15} className="shrink-0 text-accent" />
-            {trial?.open
-              ? trial.granted
-                ? `All work runs on g1t's models, paid by ${slug}'s trial credit first: ${dollars(Math.max(0, trial.limitMicros - trial.usedMicros))} of ${dollars(trial.limitMicros)} left. Connect a provider of your own for more, or to choose models.`
-                : `All work runs on g1t's models. ${slug} gets ${dollars(trial.limitMicros)} of trial credit the first time its agents work. Connect a provider of your own for more, or to choose models.`
-              : free
-                ? "All work runs on g1t's models, free while g1t is being built out. Connect a provider of your own to choose models and pay for them there."
-                : "All work runs on g1t's models, charged to your AI credit at the provider's price plus the agent rate. Auto picks the model for each job; choose one per kind of work below, or connect a provider of your own and pay for its models there."}
-          </p>
+          <Card asChild className="flex items-center gap-2 px-4 py-3 text-sm text-muted">
+            <p>
+              <CheckCircle2 size={15} className="shrink-0 text-accent" />
+              {trial?.open
+                ? trial.granted
+                  ? `All work runs on g1t's models, paid by ${slug}'s trial credit first: ${dollars(Math.max(0, trial.limitMicros - trial.usedMicros))} of ${dollars(trial.limitMicros)} left. Connect a provider of your own for more, or to choose models.`
+                  : `All work runs on g1t's models. ${slug} gets ${dollars(trial.limitMicros)} of trial credit the first time its agents work. Connect a provider of your own for more, or to choose models.`
+                : free
+                  ? "All work runs on g1t's models, free while g1t is being built out. Connect a provider of your own to choose models and pay for them there."
+                  : "All work runs on g1t's models, charged to your AI credit at the provider's price plus the agent rate. Auto picks the model for each job; choose one per kind of work below, or connect a provider of your own and pay for its models there."}
+            </p>
+          </Card>
         )}
         {(modelConnections.length > 0 || hostedOpen) && (
         <Routing
@@ -363,19 +367,21 @@ function Connections({
 }) {
   if (list.length === 0) return null;
   return (
-    <ul className="mb-4 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-      {list.map((connection) => (
-        <li key={connection.id} className="p-4">
-          <ConnectionRow
-            connection={connection}
-            owner={owner}
-            tested={tested}
-            updated={updated === connection.id}
-            deliveries={deliveries[connection.id] ?? []}
-          />
-        </li>
-      ))}
-    </ul>
+    <Card asChild divided className="mb-4 overflow-hidden">
+      <ul>
+        {list.map((connection) => (
+          <li key={connection.id} className="p-4">
+            <ConnectionRow
+              connection={connection}
+              owner={owner}
+              tested={tested}
+              updated={updated === connection.id}
+              deliveries={deliveries[connection.id] ?? []}
+            />
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -433,10 +439,10 @@ function ConnectionRow({
         {owner && (
           <Form method="post" className="flex shrink-0 gap-2">
             <input type="hidden" name="id" value={connection.id} />
-            <SubmitButton variant="quiet" name="intent" value="test" match={{ id: connection.id }} pending="Testing…">
+            <SubmitButton variant="outline" name="intent" value="test" match={{ id: connection.id }} pending="Testing…">
               Test
             </SubmitButton>
-            <SubmitButton variant="quiet" name="intent" value="disconnect" match={{ id: connection.id }} pending="Disconnecting…" aria-label="Disconnect">
+            <SubmitButton variant="outline" name="intent" value="disconnect" match={{ id: connection.id }} pending="Disconnecting…" aria-label="Disconnect">
               <X size={14} />
             </SubmitButton>
           </Form>
@@ -479,7 +485,7 @@ function ConnectionRow({
               <Input name="secret" type="password" placeholder={connection.secretHint ? `Now ${connection.secretHint}` : "Paste a key"} autoComplete="new-password" className="max-w-sm" />
             </Field>
             <div className="flex items-center gap-3">
-              <SubmitButton variant="quiet" match={{ intent: "gateway", id: connection.id }} pending="Saving…">
+              <SubmitButton variant="outline" match={{ intent: "gateway", id: connection.id }} pending="Saving…">
                 Save
               </SubmitButton>
               {updated && <span className="text-sm text-success">Saved.</span>}
@@ -502,7 +508,7 @@ function ConnectionRow({
               <Input name="signingSecret" type="password" placeholder="Paste to replace" />
             </Field>
           </div>
-          <SubmitButton variant="quiet" match={{ intent: "update", id: connection.id }} pending="Saving…">
+          <SubmitButton variant="outline" match={{ intent: "update", id: connection.id }} pending="Saving…">
             Save
           </SubmitButton>
           {updated && <span className="pb-2 text-sm text-muted">Saved.</span>}
@@ -658,34 +664,36 @@ function AddForm({
     ),
   };
   return (
-    <section id="add" className="mt-4 scroll-mt-20 rounded-xl border border-line bg-surface p-5">
-      <div className="flex items-center gap-3">
-        <ProviderMark provider={provider} />
-        <div className="grow">
-          <h3 className="font-medium">
-            Connect {provider.endsWith("_endpoint") ? `an ${PROVIDERS[provider].label}` : PROVIDERS[provider].label}
-          </h3>
-          <p className="text-xs text-muted">{blurb(provider)}</p>
+    <Card asChild className="mt-4 scroll-mt-20 p-5">
+      <section id="add">
+        <div className="flex items-center gap-3">
+          <ProviderMark provider={provider} />
+          <div className="grow">
+            <h3 className="font-medium">
+              Connect {provider.endsWith("_endpoint") ? `an ${PROVIDERS[provider].label}` : PROVIDERS[provider].label}
+            </h3>
+            <p className="text-xs text-muted">{blurb(provider)}</p>
+          </div>
+          <Link
+            to={`/${slug}/-/integrations/${integrationsSection(PROVIDERS[provider].kind)}`}
+            className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg"
+            aria-label="Close"
+          >
+            <X size={16} />
+          </Link>
         </div>
-        <Link
-          to={`/${slug}/-/integrations/${integrationsSection(PROVIDERS[provider].kind)}`}
-          className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg"
-          aria-label="Close"
-        >
-          <X size={16} />
-        </Link>
-      </div>
-      <Form method="post" className="mt-5 grid max-w-xl gap-4">
-        <input type="hidden" name="provider" value={provider} />
-        {fields[provider] ?? <ModelProviderFields provider={provider} />}
-        <ErrorText>{error}</ErrorText>
-        <div>
-          <SubmitButton match={{ provider }} pending="Connecting…">
-            Connect
-          </SubmitButton>
-        </div>
-      </Form>
-    </section>
+        <Form method="post" className="mt-5 grid max-w-xl gap-4">
+          <input type="hidden" name="provider" value={provider} />
+          {fields[provider] ?? <ModelProviderFields provider={provider} />}
+          <ErrorText>{error}</ErrorText>
+          <div>
+            <SubmitButton match={{ provider }} pending="Connecting…">
+              Connect
+            </SubmitButton>
+          </div>
+        </Form>
+      </section>
+    </Card>
   );
 }
 

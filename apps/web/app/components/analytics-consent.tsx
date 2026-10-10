@@ -8,6 +8,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Link } from "react-router";
 
 import { analyticsHere, choice, choose, consentRequired, onChoice } from "../lib/analytics-consent";
+import { Button } from "./ui/button";
 
 /** Whether this visitor is asked at all, known only once the page is in the browser. */
 export function useAsksFirst(): boolean {
@@ -33,20 +34,23 @@ export function AnalyticsConsent() {
         </Link>
       </p>
       <div className="mt-3 flex gap-2">
-        <button
+        <Button
           type="button"
           onClick={() => choose("yes")}
-          className="flex-1 rounded-lg bg-fg px-3 py-2 font-medium text-bg transition-colors hover:bg-fg-hover"
+          size="inline"
+          className="flex-1 rounded-lg px-3 py-2"
         >
           Allow
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={() => choose("no")}
-          className="flex-1 rounded-lg px-3 py-2 font-medium text-fg ring-1 ring-line-strong transition-colors hover:bg-raised"
+          variant="ghost"
+          size="inline"
+          className="flex-1 rounded-lg px-3 py-2 text-fg ring-1 ring-line-strong"
         >
           No thanks
-        </button>
+        </Button>
       </div>
     </section>
   );
