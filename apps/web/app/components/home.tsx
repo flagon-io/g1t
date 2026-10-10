@@ -1,8 +1,8 @@
 /**
  * Home's parts (routes/workspace/home.tsx): Where you're needed, Start
- * here, what happened in the span (the agents' work, what landed, builds,
- * decisions, spend) and Running now. Each takes what lib/home.ts worked
- * out and only draws it.
+ * here, what happened in the span (what people and agents did, what
+ * landed, builds, decisions, spend) and Running now. Each takes what
+ * lib/home.ts worked out and only draws it.
  */
 import {
   AlertTriangle,
@@ -11,17 +11,22 @@ import {
   Bell,
   Bot,
   CircleDollarSign,
+  GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
   Hourglass,
   Lightbulb,
   Loader,
   Mail,
+  Package,
   Rocket,
   Server,
   Sparkles,
   Store,
+  Tag,
   User,
+  Users,
+  Workflow,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
@@ -32,6 +37,9 @@ import {
   type AttentionRow,
   type DecisionRow,
   type DeployRow,
+  type Digest,
+  type DigestActor,
+  type DigestColumn,
   type LandedChange,
   type RunningRow,
   type Span,
@@ -42,13 +50,17 @@ import {
   OUTCOME_LABEL,
   SOURCE_LABEL,
   WINDOWS,
+  listOf,
   trendLabel,
   waited,
   whenShort,
 } from "../lib/home";
 import { cn } from "../lib/cn";
 import { money } from "../lib/money";
+import { type AgentLike, AgentAvatar } from "./agent-avatar";
 import { ButtonLink } from "./ui";
+import { Avatar } from "./ui/avatar";
+import { Badge } from "./ui/badge";
 import { Skeleton } from "./ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -88,8 +100,6 @@ export function Card({
 export function Quiet({ children }: { children: ReactNode }) {
   return <p className="px-5 pb-5 text-sm text-muted">{children}</p>;
 }
-
-const listOf = (names: string[]) => (names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
 function Missing({ names, what }: { names: string[]; what: string }) {
   if (names.length === 0) return null;
@@ -341,138 +351,237 @@ function inSpan(span: Pick<Span, "key" | "note" | "words">): string {
   return span.key === "last" && span.note == null ? "since you were last here" : span.words.charAt(0).toLowerCase() + span.words.slice(1);
 }
 
-export function SpanCard({ work, span }: { work: SpanWork | null; span: Pick<Span, "key" | "note" | "words"> }) {
-  if (!work) {
-    return (
-      <section className="rounded-2xl border border-line bg-surface p-5">
-        <p className="text-sm text-muted">The agents&apos; work couldn&apos;t be read right now. It shows here once Agents answers.</p>
-      </section>
-    );
+/** The faces of a column's most active, with a tooltip naming each, and how many more there were. */
+const FACES = 5;
+
+/** An agent's face by its member key, from the workspace's agents; g1t wears its mark. */
+function faceOf(actor: DigestActor, faces: AgentLike[]): ReactNode {
+  if (actor.kind === "agent") {
+    const agent = faces.find((face) => `agent:${face.id}` === actor.key);
+    return <AgentAvatar agent={agent ?? { handle: actor.name, builtin: actor.name === "g1t" }} size={22} />;
   }
+  return <Avatar name={actor.name} size={22} />;
+}
+
+function Faces({ actors, faces }: { actors: DigestActor[]; faces: AgentLike[] }) {
+  if (actors.length === 0) return null;
+  const shown = actors.slice(0, FACES);
+  const more = actors.length - shown.length;
+  return (
+    <div className="flex items-center gap-1.5">
+      <ul className="flex -space-x-1.5" aria-label="Most active">
+        {shown.map((actor) => (
+          <li key={actor.key} className="rounded-full ring-2 ring-surface">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="block">{faceOf(actor, faces)}</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {actor.kind === "agent" ? `@${actor.name}` : actor.name} · {actor.count.toLocaleString("en-US")} {actor.count === 1 ? "thing" : "things"}
+              </TooltipContent>
+            </Tooltip>
+          </li>
+        ))}
+      </ul>
+      {more > 0 && <span className="text-xs text-muted">+{more.toLocaleString("en-US")}</span>}
+    </div>
+  );
+}
+
+/** One column's lines: each what was done, with its count in the words, linked to where it is listed. */
+function Lines({ column }: { column: DigestColumn }) {
+  return (
+    <ul className="mt-3 space-y-1.5">
+      {column.lines.map((line) => (
+        <li key={line.key} className="flex items-start gap-2 text-sm text-fg">
+          <span className="mt-1.75 size-1.5 shrink-0 rounded-full bg-fg-soft/60" aria-hidden />
+          {line.to ? (
+            <Link to={line.to} className="hover:underline">
+              {line.text}
+            </Link>
+          ) : (
+            <span>{line.text}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The agents' acceptance, in a compact row: the counts, the share accepted first time and its trend, and a mark per task. */
+function Acceptance({ work, span }: { work: SpanWork; span: Pick<Span, "key" | "note" | "words"> }) {
   const { counts, rate, before, tasks } = work;
   const trend = trendLabel(rate, before);
   const up = rate && before ? Math.round(rate.value * 100) - Math.round(before.value * 100) : 0;
   // Without Code, nothing is reviewed: no accepted or fixed to count.
   const reviewed = work.code === "read";
   const shown = (Object.keys(MARK) as TaskOutcome[]).filter((o) => counts[o] > 0 || (reviewed && (o === "accepted" || o === "fixed")));
-  const when = inSpan(span);
   return (
-    <section className="grid overflow-hidden rounded-2xl border border-line bg-surface md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
-      <div className="border-b border-line p-5 md:border-r md:border-b-0">
-        {work.code === "no_access" ? (
+    <div className="mt-4 border-t border-line pt-4">
+      <div className="grid grid-cols-3 gap-3">
+        {reviewed ? (
           <>
-            <h3 className="text-sm font-semibold text-fg">Finished</h3>
-            <div className="mt-2 text-5xl font-semibold tracking-tight text-fg tabular-nums">{(counts.accepted + counts.fixed + counts.finished).toLocaleString("en-US")}</div>
-            <p className="mt-2 text-xs leading-relaxed text-muted">How much was accepted the first time is measured on pull requests, which are part of Code.</p>
+            <Stat label="Accepted first time" value={counts.accepted} mark={MARK.accepted} />
+            <Stat label="Fixed after review" value={counts.fixed} mark={MARK.fixed} />
           </>
         ) : (
           <>
-            <h3 className="text-sm font-semibold text-fg">Accepted first time</h3>
-            {rate ? (
-              <>
-                <div className="mt-2 text-5xl font-semibold tracking-tight text-fg tabular-nums">{percent(rate.value)}</div>
-                <p className="mt-2 text-xs text-muted">
-                  of {rate.of.toLocaleString("en-US")} agent {rate.of === 1 ? "pull request" : "pull requests"} merged or closed {when}
-                </p>
-                <p className={`mt-1.5 text-xs font-medium ${up > 0 ? "text-success" : up < 0 ? "text-warn" : "text-muted"}`}>
-                  {trend ?? (work.code === "read" ? "Nothing settled in the 7 days before to compare." : "")}
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="mt-2 text-5xl font-semibold tracking-tight text-faint">—</div>
-                <p className="mt-2 text-xs leading-relaxed text-muted">
-                  {work.code === "unavailable" ? "Code didn't answer, so pull requests aren't counted." : `No agent pull request merged or closed ${when}.`}
-                  {before ? ` The 7 days before: ${percent(before.value)} of ${before.of}.` : ""}
-                </p>
-              </>
-            )}
+            <Stat label="Sessions finished" value={counts.finished} mark={MARK.finished} />
+            <Stat label="Tasks settled" value={tasks.length} />
           </>
         )}
+        <Stat label="Didn't finish" value={counts.dropped} mark={MARK.dropped} />
       </div>
-      <div className="min-w-0 p-5">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Stat label="Tasks settled" value={tasks.length} />
-          {reviewed ? (
+      {reviewed && (
+        <p className="mt-2 text-xs text-muted">
+          {rate ? (
             <>
-              <Stat label="Accepted first time" value={counts.accepted} mark={MARK.accepted} />
-              <Stat label="Fixed after review" value={counts.fixed} mark={MARK.fixed} />
+              <span className="font-medium text-fg">{percent(rate.value)}</span> of {rate.of.toLocaleString("en-US")} agent {rate.of === 1 ? "pull request" : "pull requests"} accepted first time
+              {trend && <span className={cn("ml-1.5 font-medium", up > 0 ? "text-success" : up < 0 ? "text-warn" : "text-muted")}>{trend}</span>}
             </>
           ) : (
-            <Stat label="Sessions finished" value={counts.finished} mark={MARK.finished} />
+            <>
+              No agent pull request merged or closed {inSpan(span)}.{before ? ` The 7 days before: ${percent(before.value)} of ${before.of}.` : ""}
+            </>
           )}
-          <Stat label="Didn't finish" value={counts.dropped} mark={MARK.dropped} />
+        </p>
+      )}
+      {tasks.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-0.75" aria-label="Agent work that settled, one mark per task, in the order they settled">
+          {tasks.map((task) => (
+            <li key={task.key}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {task.to ? (
+                    <Link to={task.to} aria-label={`${task.title ?? "A session"}: ${OUTCOME_LABEL[task.outcome]}`} className={`block h-4 w-2 rounded-xs ${MARK[task.outcome]} transition-opacity hover:opacity-70`} />
+                  ) : (
+                    <span className={`block h-4 w-2 rounded-xs ${MARK[task.outcome]}`} />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  <span className="block font-medium">{task.title ?? "A session in a conversation you're not in"}</span>
+                  <span className="text-muted">
+                    {OUTCOME_LABEL[task.outcome]} · {SOURCE_LABEL[task.source]}
+                  </span>
+                </TooltipContent>
+              </Tooltip>
+            </li>
+          ))}
+        </ul>
+      )}
+      {tasks.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.6875rem] text-muted">
+          {shown.map((outcome) => (
+            <span key={outcome} className="inline-flex items-center gap-1">
+              <span className={`size-1.5 rounded-xs ${MARK[outcome]}`} aria-hidden />
+              {OUTCOME_LABEL[outcome]} <span className="text-fg-soft tabular-nums">{counts[outcome]}</span>
+            </span>
+          ))}
         </div>
-        {tasks.length === 0 ? (
-          <p className="mt-5 text-sm text-muted">No agent work settled {when}.</p>
-        ) : (
-          <div className="mt-5">
-            <ul className="flex flex-wrap gap-[3px]" aria-label="Agent work that settled">
-              {tasks.map((task) => (
-                <li key={task.key}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      {task.to ? (
-                        <Link to={task.to} aria-label={`${task.title ?? "A session"}: ${OUTCOME_LABEL[task.outcome]}`} className={`block h-6 w-2.5 rounded-[3px] ${MARK[task.outcome]} transition-opacity hover:opacity-70`} />
-                      ) : (
-                        <span className={`block h-6 w-2.5 rounded-[3px] ${MARK[task.outcome]}`} />
-                      )}
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <span className="block font-medium">{task.title ?? "A session in a conversation you're not in"}</span>
-                      <span className="text-muted">
-                        {OUTCOME_LABEL[task.outcome]} · {SOURCE_LABEL[task.source]}
-                      </span>
-                    </TooltipContent>
-                  </Tooltip>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
-              <span className="text-faint">One mark per task, in the order they settled</span>
-              {shown.map((outcome) => (
-                <span key={outcome} className="inline-flex items-center gap-1.5">
-                  <span className={`size-2 rounded-[2px] ${MARK[outcome]}`} aria-hidden />
-                  {OUTCOME_LABEL[outcome]} <span className="text-fg-soft tabular-nums">{counts[outcome]}</span>
-                </span>
-              ))}
-            </div>
-          </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What people did and what agents did in the span, side by side: lines
+ * with counts linked to where each thing is listed, the most active faces,
+ * and in the Agents column how their work was received. Each column says
+ * when it is empty, and which part didn't answer.
+ */
+export function PeopleAgentsCard({
+  digest,
+  work,
+  span,
+  faces,
+  code,
+}: {
+  digest: Digest | null;
+  work: SpanWork | null;
+  span: Pick<Span, "key" | "note" | "words">;
+  faces: AgentLike[];
+  code: boolean;
+}) {
+  const when = inSpan(span);
+  if (!digest) {
+    return (
+      <section className="rounded-2xl border border-line bg-surface p-5">
+        <p className="text-sm text-muted">What happened couldn&apos;t be read right now. It shows here once Code, Chat and Agents answer.</p>
+      </section>
+    );
+  }
+  const missing = (names: string[]) => names.filter((name) => digest.missing.includes(name));
+  const peopleMissing = missing(["Code", "Chat"]);
+  const agentsMissing = missing(["Code", "Chat", "Agents"]);
+  const column = (title: string, icon: ReactNode, col: DigestColumn, silent: string[], empty: string, children?: ReactNode) => (
+    <div className="min-w-0 p-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold text-fg">
+          {icon}
+          {title}
+        </h3>
+        {col.actors.length > 0 && (
+          <Badge tone="neutral" size="md" className="tabular-nums">
+            {col.actors.length.toLocaleString("en-US")} active
+          </Badge>
         )}
-        {(work.partial || work.sessions === "unavailable" || work.code === "unavailable") && (
-          <p className="mt-3 text-xs text-faint">
-            {work.sessions === "unavailable"
-              ? "Agent sessions couldn't be read, so only pull requests are counted. "
-              : work.code === "unavailable"
-                ? "Code didn't answer, so only agent sessions are counted. "
-                : ""}
-            {work.partial ? "A list was cut short, so some work may be missing." : ""}
-          </p>
+        <span className="ml-auto">
+          <Faces actors={col.actors} faces={faces} />
+        </span>
+      </div>
+      {col.lines.length > 0 ? <Lines column={col} /> : <p className="mt-3 text-sm text-muted">{silent.length > 0 ? `Nothing from what could be read ${when}.` : empty}</p>}
+      {silent.length > 0 && (
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-faint">
+          <AlertTriangle size={12} className="shrink-0" />
+          {listOf(silent)} didn&apos;t answer, so {silent.length === 1 ? "its part" : "their parts"} {silent.length === 1 ? "isn't" : "aren't"} counted.
+        </p>
+      )}
+      {children}
+    </div>
+  );
+  return (
+    <section className="grid overflow-hidden rounded-2xl border border-line bg-surface md:grid-cols-2 md:divide-x md:divide-line" aria-label="What people and agents did">
+      <div className="border-b border-line md:border-b-0">
+        {column(
+          "People",
+          <Users size={15} className="text-muted" />,
+          digest.people,
+          peopleMissing,
+          code ? `Nobody pushed, opened, merged, reviewed, edited a doc or said anything ${when}.` : `Nobody edited a doc or said anything ${when}.`,
         )}
       </div>
+      <div>
+        {column(
+          "Agents",
+          <Bot size={15} className="text-accent" />,
+          digest.agents,
+          agentsMissing,
+          `No agent settled a task, pushed, opened a pull request or replied ${when}.`,
+          <>
+            {work && (work.tasks.length > 0 || work.code === "read") && <Acceptance work={work} span={span} />}
+            {work?.partial && <p className="mt-3 text-xs text-faint">A list was cut short, so some agent work may be missing.</p>}
+          </>,
+        )}
+      </div>
+      {digest.partial && !work?.partial && <p className="border-t border-line px-5 py-2.5 text-xs text-faint md:col-span-2">More happened than Home reads at once, so some counts are low.</p>}
     </section>
   );
 }
 
 export function SpanSkeleton() {
   return (
-    <section className="grid rounded-2xl border border-line bg-surface md:grid-cols-[15rem_1fr]" aria-busy="true">
-      <div className="space-y-3 border-b border-line p-5 md:border-r md:border-b-0">
-        <Skeleton className="h-3.5 w-32" />
-        <Skeleton className="h-12 w-24" />
-        <Skeleton className="h-3 w-40" />
-      </div>
-      <div className="space-y-5 p-5">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="space-y-2">
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="h-5 w-8" />
-            </div>
-          ))}
+    <section className="grid rounded-2xl border border-line bg-surface md:grid-cols-2 md:divide-x md:divide-line" aria-busy="true">
+      {[0, 1].map((column) => (
+        <div key={column} className={cn("space-y-3 p-5", column === 0 && "border-b border-line md:border-b-0")}>
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-3.5 w-20" />
+            <Skeleton className="h-5 w-24 rounded-full" />
+          </div>
+          <Skeleton className="h-3.5 w-3/4" />
+          <Skeleton className="h-3.5 w-1/2" />
+          <Skeleton className="h-3.5 w-2/3" />
         </div>
-        <Skeleton className="h-6 w-3/4" />
-      </div>
+      ))}
     </section>
   );
 }
@@ -525,35 +634,62 @@ function Folded<T>({ items, render }: { items: T[]; render: (item: T) => ReactNo
 
 const rowClass = "flex items-center gap-3 border-t border-line px-5 py-2.5 first:border-t-0";
 
-export function LandedCard({ landed, code, now, tz }: { landed: LandedChange[] | null; code: boolean; now: number; tz: string | null }) {
+const LANDED_ICON: Record<LandedChange["kind"], (agent: boolean) => ReactNode> = {
+  merge: (agent) => <GitMerge size={15} className={cn("shrink-0", agent ? "text-accent" : "text-success")} />,
+  push: (agent) => <GitCommitHorizontal size={15} className={cn("shrink-0", agent ? "text-accent" : "text-success")} />,
+  deploy: () => <Rocket size={15} className="shrink-0 text-success" />,
+  release: () => <Tag size={15} className="shrink-0 text-info" />,
+  package: () => <Package size={15} className="shrink-0 text-info" />,
+};
+
+/** A few words on the card's line: how many of each kind landed. */
+function landedHint(landed: LandedChange[]): string {
+  const count = (kind: LandedChange["kind"]) => landed.filter((change) => change.kind === kind).length;
+  const parts: string[] = [];
+  const merged = count("merge");
+  const pushes = count("push");
+  const deploys = count("deploy");
+  const published = count("release") + count("package");
+  if (merged > 0) parts.push(`${merged.toLocaleString("en-US")} merged`);
+  if (pushes > 0) parts.push(`${pushes.toLocaleString("en-US")} pushed direct`);
+  if (deploys > 0) parts.push(`${deploys.toLocaleString("en-US")} ${deploys === 1 ? "deploy" : "deploys"}`);
+  if (published > 0) parts.push(`${published.toLocaleString("en-US")} published`);
+  const agents = landed.filter((change) => change.agent).length;
+  parts.push(`${agents.toLocaleString("en-US")} by agents`);
+  return parts.join(" · ");
+}
+
+/**
+ * Everything that landed in the span, newest first: pull requests merged,
+ * commits pushed straight to a default branch, production builds that went
+ * live, releases and package versions published.
+ */
+export function LandedCard({ landed, missing, code, now, tz }: { landed: LandedChange[] | null; missing: string[]; code: boolean; now: number; tz: string | null }) {
   if (!code) return null;
-  const agents = landed?.filter((change) => change.agent).length ?? 0;
   return (
-    <Card title="Landed" hint={landed && landed.length > 0 ? `${landed.length.toLocaleString("en-US")} merged · ${agents.toLocaleString("en-US")} by agents` : undefined}>
+    <Card title="Landed" hint={landed && landed.length > 0 ? landedHint(landed) : undefined}>
       {!landed ? (
         <Quiet>Code didn&apos;t answer, so what landed can&apos;t be listed right now.</Quiet>
       ) : landed.length === 0 ? (
-        <Quiet>Nothing merged in this span.</Quiet>
+        <Quiet>{missing.length > 0 ? "Nothing landed in what could be read." : "Nothing merged, pushed to a default branch, deployed to production or published in this span."}</Quiet>
       ) : (
         <Folded
           items={landed}
           render={(change) => (
             <li key={change.key} className={rowClass}>
-              <GitMerge size={15} className={cn("shrink-0", change.agent ? "text-accent" : "text-success")} />
+              {LANDED_ICON[change.kind](change.agent)}
               <div className="min-w-0 grow">
                 <Link to={change.to} className="block truncate text-sm text-fg hover:underline">
                   {change.title}
                 </Link>
-                <p className="truncate text-xs text-muted">
-                  {change.repo.name}#{change.number} · {change.agent ? `by @${change.author}` : `by ${change.author}`}
-                  {change.mergedBy && change.mergedBy !== change.author ? `, merged by ${change.mergedBy}` : ""}
-                </p>
+                <p className="truncate text-xs text-muted">{change.detail}</p>
               </div>
               <When at={change.at} now={now} tz={tz} />
             </li>
           )}
         />
       )}
+      {landed && <Missing names={missing} what="everything that landed" />}
     </Card>
   );
 }
@@ -701,6 +837,7 @@ export function SpendSkeleton() {
 const RUNNING_ICON: Record<RunningRow["kind"], ReactNode> = {
   session: <Sparkles size={15} className="text-accent" />,
   change: <GitPullRequest size={15} className="text-info" />,
+  workflow: <Workflow size={15} className="text-info" />,
   deploy: <Rocket size={15} className="text-info" />,
 };
 
@@ -708,7 +845,7 @@ export function RunningList({ rows, missing, now }: { rows: RunningRow[]; missin
   return (
     <>
       {rows.length === 0 ? (
-        <Quiet>{missing.length > 0 ? "Nothing is running in what could be read." : "Nothing is running. Agent sessions, agents' changes and builds show here while they go."}</Quiet>
+        <Quiet>{missing.length > 0 ? "Nothing is running in what could be read." : "Nothing is running. Agent sessions, agents' changes, workflow runs and builds show here while they go."}</Quiet>
       ) : (
         <Folded
           items={rows}

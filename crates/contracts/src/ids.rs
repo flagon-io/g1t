@@ -39,7 +39,22 @@ pub fn new_id(prefix: &str, now_ms: u64) -> String {
     bytes[6] = 0x70 | (counter >> 8) as u8; // version 7
     bytes[7] = counter as u8;
     bytes[8] = 0x80 | (bytes[8] & 0x3f); // RFC 9562 variant
+    encode(prefix, bytes)
+}
 
+/// The smallest id with `prefix` that could have been made at or after
+/// `now_ms`: its time, and every other bit zero. Ids sort by time, so
+/// `id >= id_floor(p, from) AND id < id_floor(p, until)` picks the ids made
+/// in `[from, until)` as a range of any index that ends in the id, without
+/// a time column. No real id ever equals one: a real id's version bits are
+/// set.
+pub fn id_floor(prefix: &str, now_ms: u64) -> String {
+    let mut bytes = [0u8; 16];
+    bytes[..6].copy_from_slice(&now_ms.to_be_bytes()[2..]);
+    encode(prefix, bytes)
+}
+
+fn encode(prefix: &str, bytes: [u8; 16]) -> String {
     let value = u128::from_be_bytes(bytes);
     let mut id = String::with_capacity(prefix.len() + 27);
     id.push_str(prefix);
@@ -75,5 +90,20 @@ mod tests {
 
         let same_ms: Vec<String> = (0..100).map(|_| new_id("evt", 1_790_000_000_002)).collect();
         assert!(same_ms.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[test]
+    fn a_floor_bounds_the_ids_of_a_span() {
+        let from = 1_790_000_000_000;
+        let before = new_id("evt", from - 1);
+        let at = new_id("evt", from);
+        let later = new_id("evt", from + 60_000);
+        let floor = id_floor("evt", from);
+        let ceiling = id_floor("evt", from + 60_000);
+        assert_eq!(floor.len(), at.len());
+        assert!(before < floor);
+        assert!(floor < at && at < ceiling);
+        // An id made at the very millisecond of the ceiling is past it.
+        assert!(later >= ceiling);
     }
 }

@@ -13,9 +13,11 @@
 //!
 //! Other services reach it over `POST /rpc/<method>`; see
 //! `g1t_contracts::events`, `audit` and `inbox` for the methods and their
-//! arguments.
+//! arguments. `activity_digest` (digest.rs) counts a span of the log for
+//! Home.
 
 mod audit;
+mod digest;
 mod fanout;
 mod inbox;
 mod subscriptions;
@@ -49,8 +51,9 @@ const SUBSCRIBER_PREFIX: &str = "SUBSCRIBER_";
 /// How long a record of which queues a batch reached is kept for its retries.
 const FANOUT_KEEP_MS: u64 = 24 * 60 * 60 * 1000;
 
+/// An event as the log's table holds it.
 #[derive(Deserialize)]
-struct EventRow {
+pub(crate) struct EventRow {
     id: String,
     #[serde(rename = "type")]
     kind: String,
@@ -300,6 +303,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     match method.as_str() {
         "publish" => reply(&events.publish(args(body)?).await?),
         "list" => reply(&events.list(args(body)?).await?),
+        // Home's digest of a span: counted, by who did it (digest.rs).
+        "activity_digest" => reply(&digest::activity_digest(&events.db, args(body)?).await?),
         "audit_record" => reply(&audit::record(&events.db, args(body)?).await?),
         "audit_list" => reply(&audit::list(&events.db, args(body)?).await?),
         "inbox_list" => {

@@ -757,6 +757,7 @@ export function eventsClient(service: ServiceBinding): EventsApi {
   return {
     publish: (events) => call("publish", { events }),
     list: (query) => call("list", query),
+    activityDigest: (args) => call("activity_digest", args),
   };
 }
 

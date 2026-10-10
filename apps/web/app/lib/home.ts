@@ -8,16 +8,21 @@
  * Home guide (apps/docs/.../guides/home.md). Imports only types.
  */
 import type {
+  ActivityDigest,
+  ActorCount,
   AgentSession,
   AgentSessionKind,
+  ChatActivity,
   Deployment,
   InboxItem,
   InstallRequest,
   Memory,
   ProjectDeploys,
   Pull,
+  RepoDigest,
   RepoPath,
   Statement,
+  WorkflowRun,
 } from "@g1t/contracts";
 
 import { money } from "./money.ts";
@@ -360,38 +365,452 @@ export function trendLabel(rate: { value: number } | null, before: { value: numb
   return `${points > 0 ? "+" : "−"}${Math.abs(points)} pts vs the 7 days before`;
 }
 
-// --- What else happened in the span -------------------------------------------
+// --- People and agents in the span -----------------------------------------------
 
-/** A change that landed: a pull request merged, by a person or an agent. */
+/**
+ * Who an actor is. Actors are member keys, as the events and chat services
+ * return them: `user:<id>` for an account, `agent:<id>` for one of the
+ * workspace's agents acting as itself, `""` for nobody (a push a mirror
+ * copied in). An agent is one of the workspace's agents, or g1t itself;
+ * everyone else is a person. `agents` names more keys that are agents'
+ * (accounts of kind `agent`), when known.
+ */
+export type ActorKind = "person" | "agent";
+
+/** g1t's own account, as events name it (identity's `AGENT_ID`). */
+export const G1T_ACTOR = "user:usr_g1t_agent";
+
+export function actorKind(key: string, agents?: ReadonlySet<string>): ActorKind {
+  return key.startsWith("agent:") || key === G1T_ACTOR || agents?.has(key) ? "agent" : "person";
+}
+
+/** Whether a username is an agent's: g1t, or an agent account. */
+export function isAgentName(name: string | null | undefined): boolean {
+  return name === "g1t" || (name != null && name.endsWith("-agent"));
+}
+
+/** A repository as the digest's links and lines need it. */
+export type RepoRef = RepoPath & { defaultBranch: string };
+
+/** Someone who did something in the span: for the faces beside a column. */
+export type DigestActor = {
+  key: string;
+  kind: ActorKind;
+  /** Their username or handle; `someone` when it could not be read. */
+  name: string;
+  /** How many things they did, over every line: the order of the faces. */
+  count: number;
+};
+
+/** One line of a column: what was done, with its count, and where that is listed. */
+export type DigestLine = {
+  key: string;
+  text: string;
+  to: string | null;
+};
+
+export type DigestColumn = {
+  kind: ActorKind;
+  lines: DigestLine[];
+  /** Most active first. */
+  actors: DigestActor[];
+};
+
+/** What the sentence under the heading needs. */
+export type DigestSummary = {
+  /** Distinct people who did anything. */
+  people: number;
+  /** Commits people pushed. */
+  commits: number;
+  /** Pull requests people merged. */
+  merged: number;
+  /** Agent tasks that settled well, and that did not. */
+  finished: number;
+  dropped: number;
+  /** Messages people sent. */
+  said: number;
+  /** Whether anything at all was counted, in either column. */
+  anything: boolean;
+  /** Whether what people did could be read at all (events and chat both silent: no). */
+  peopleRead: boolean;
+};
+
+export type Digest = {
+  people: DigestColumn;
+  agents: DigestColumn;
+  summary: DigestSummary;
+  /** Sources that did not answer, by name, for the card to say so: Code, Chat, Agents. */
+  missing: string[];
+  /** True when a source was cut short, so some counts are low. */
+  partial: boolean;
+};
+
+export type DigestInput = {
+  slug: string;
+  /** The workspace's repositories by id: for links, and to count projects. */
+  repos: Record<string, RepoRef>;
+  /** Events' digest; null when events did not answer. Without Code access it has no repositories. */
+  activity: ActivityDigest | null;
+  /** Chat's; null when chat did not answer. */
+  chat: ChatActivity | null;
+  /** Names for member keys: a username, or an agent's handle. */
+  names: Record<string, string>;
+  /** Keys of accounts that are agents, beyond g1t and the workspace's agents. */
+  agentKeys?: ReadonlySet<string>;
+  /** The agents' tasks, for their column; null when neither Code nor Agents answered. */
+  work: SpanWork | null;
+  code: boolean;
+};
+
+const people = (n: number) => plural(n, "person", "people");
+
+/** `a, b and c`. */
+export const listOf = (names: string[]) => (names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+
+/** What one kind did, from a tally: how many, and by whom (non-empty keys). */
+function part(counts: ActorCount[], kind: ActorKind, agents?: ReadonlySet<string>): { count: number; actors: Map<string, number> } {
+  const actors = new Map<string, number>();
+  let count = 0;
+  for (const entry of counts) {
+    if (actorKind(entry.actor, agents) !== kind) continue;
+    count += entry.count;
+    if (entry.actor) actors.set(entry.actor, (actors.get(entry.actor) ?? 0) + entry.count);
+  }
+  return { count, actors };
+}
+
+/** Where a line points: the one project's page, or the workspace's projects when several. */
+function placeFor(slug: string, repos: Record<string, RepoRef>, repoIds: Iterable<string>, page: string): string {
+  const ids = [...new Set(repoIds)];
+  const only = ids.length === 1 ? repos[ids[0]!] : null;
+  return only ? `/${only.namespace}/${only.name}/${page}` : `/${slug}/-/repositories`;
+}
+
+/**
+ * One column: what people, or agents, did in the span, as lines with
+ * counts and links, and who did it. Pure: everything comes from the
+ * services' counts and the names looked up for them.
+ */
+export function digestColumn(kind: ActorKind, input: DigestInput): DigestColumn {
+  const { slug, repos, activity, chat, names, agentKeys, work } = input;
+  const lines: DigestLine[] = [];
+  const did = new Map<string, number>();
+  const credit = (actors: Map<string, number>) => {
+    for (const [key, n] of actors) did.set(key, (did.get(key) ?? 0) + n);
+  };
+
+  // The agents' tasks come first in their column: what Home has always counted.
+  if (kind === "agent" && work) {
+    const { accepted, fixed, finished, dropped } = work.counts;
+    const done = accepted + fixed + finished;
+    if (done > 0 || dropped > 0) {
+      const text = done > 0 ? `finished ${plural(done, "task")}${dropped > 0 ? `, ${dropped.toLocaleString("en-US")} didn't finish` : ""}` : `finished none of ${plural(dropped, "task")}`;
+      lines.push({ key: "tasks", text, to: `/${slug}/-/agents` });
+    }
+    const sessions = work.tasks.filter((task) => task.source !== "code").length;
+    if (sessions > 0) lines.push({ key: "sessions", text: `ran ${plural(sessions, "session")}`, to: `/${slug}/-/agents` });
+  }
+
+  if (activity) {
+    // Pushes: commits, projects, and who.
+    const pushers = new Map<string, number>();
+    const pushed = new Set<string>();
+    let commits = 0;
+    let pushes = 0;
+    for (const repo of activity.repos) {
+      let any = false;
+      for (const by of repo.pushes.by) {
+        if (actorKind(by.actor, agentKeys) !== kind) continue;
+        any = true;
+        commits += by.commits;
+        pushes += by.count;
+        if (by.actor) pushers.set(by.actor, (pushers.get(by.actor) ?? 0) + by.count);
+      }
+      if (any) pushed.add(repo.repo_id);
+    }
+    if (pushes > 0) {
+      const where = `to ${plural(pushed.size, "project")}`;
+      const text =
+        kind === "person"
+          ? pushers.size > 0
+            ? `${people(pushers.size)} pushed ${plural(commits, "commit")} ${where}`
+            : `${plural(commits, "commit")} pushed ${where}`
+          : `pushed ${plural(commits, "commit")} ${where}`;
+      lines.push({ key: "pushes", text, to: placeFor(slug, repos, pushed, "activity") });
+      credit(pushers);
+    }
+
+    // Pull requests, reviews, issues, comments, deploys, releases, packages: summed over projects.
+    const sum = (pick: (repo: RepoDigest) => ActorCount[]) => {
+      const total = { count: 0, actors: new Map<string, number>(), repoIds: [] as string[] };
+      for (const repo of activity.repos) {
+        const { count, actors } = part(pick(repo), kind, agentKeys);
+        if (count === 0) continue;
+        total.count += count;
+        total.repoIds.push(repo.repo_id);
+        for (const [key, n] of actors) total.actors.set(key, (total.actors.get(key) ?? 0) + n);
+      }
+      return total;
+    };
+    const opened = sum((repo) => repo.pulls.opened);
+    const merged = sum((repo) => repo.pulls.merged);
+    const closed = sum((repo) => repo.pulls.closed);
+    if (opened.count + merged.count + closed.count > 0) {
+      const parts: string[] = [];
+      if (opened.count > 0) parts.push(`opened ${plural(opened.count, "pull request")}`);
+      if (merged.count > 0) parts.push(`merged ${opened.count > 0 ? merged.count.toLocaleString("en-US") : plural(merged.count, "pull request")}`);
+      if (closed.count > 0) parts.push(`closed ${closed.count.toLocaleString("en-US")} without merging`);
+      lines.push({ key: "pulls", text: parts.join(", "), to: placeFor(slug, repos, [...opened.repoIds, ...merged.repoIds, ...closed.repoIds], "pulls") });
+      credit(opened.actors);
+      credit(merged.actors);
+      credit(closed.actors);
+    }
+    const reviews = sum((repo) => repo.reviews);
+    if (reviews.count > 0) {
+      lines.push({ key: "reviews", text: `reviewed ${plural(reviews.count, "pull request")}`, to: placeFor(slug, repos, reviews.repoIds, "pulls") });
+      credit(reviews.actors);
+    }
+    const issuesOpened = sum((repo) => repo.issues.opened);
+    const issuesClosed = sum((repo) => repo.issues.closed);
+    if (issuesOpened.count + issuesClosed.count > 0) {
+      const parts: string[] = [];
+      if (issuesOpened.count > 0) parts.push(`opened ${plural(issuesOpened.count, "issue")}`);
+      if (issuesClosed.count > 0) parts.push(`closed ${issuesOpened.count > 0 ? issuesClosed.count.toLocaleString("en-US") : plural(issuesClosed.count, "issue")}`);
+      lines.push({ key: "issues", text: parts.join(", "), to: placeFor(slug, repos, [...issuesOpened.repoIds, ...issuesClosed.repoIds], "issues") });
+      credit(issuesOpened.actors);
+      credit(issuesClosed.actors);
+    }
+    const comments = sum((repo) => repo.comments);
+    if (comments.count > 0) {
+      lines.push({ key: "comments", text: `left ${plural(comments.count, "comment")}`, to: placeFor(slug, repos, comments.repoIds, "issues") });
+      credit(comments.actors);
+    }
+    const succeeded = sum((repo) => repo.deployments.succeeded);
+    const failed = sum((repo) => repo.deployments.failed);
+    if (succeeded.count + failed.count > 0) {
+      const text = succeeded.count > 0 ? `${plural(succeeded.count, "deploy")} went out${failed.count > 0 ? `, ${failed.count.toLocaleString("en-US")} failed` : ""}` : `${plural(failed.count, "deploy")} failed`;
+      lines.push({ key: "deploys", text, to: placeFor(slug, repos, [...succeeded.repoIds, ...failed.repoIds], "deployments") });
+      credit(succeeded.actors);
+      credit(failed.actors);
+    }
+    const releases = sum((repo) => tallyOf(repo.releases.map((release) => release.actor)));
+    if (releases.count > 0) {
+      lines.push({ key: "releases", text: `published ${plural(releases.count, "release")}`, to: placeFor(slug, repos, releases.repoIds, "releases") });
+      credit(releases.actors);
+    }
+    const packages = sum((repo) => tallyOf(repo.packages.map((pkg) => pkg.actor)));
+    if (packages.count > 0) {
+      lines.push({ key: "packages", text: `published ${plural(packages.count, "package version")}`, to: `/${slug}/-/packages` });
+      credit(packages.actors);
+    }
+
+    // Artifacts: made, and whose content changed.
+    if (activity.folios) {
+      const made = part(activity.folios.created, kind, agentKeys);
+      const edited = new Set<string>();
+      const editors = new Map<string, number>();
+      let allDocs = true;
+      for (const folio of activity.folios.edited) {
+        const mine = folio.authors.filter((author) => actorKind(author, agentKeys) === kind);
+        if (mine.length === 0) continue;
+        edited.add(folio.folio_id);
+        if (folio.kind !== "doc") allDocs = false;
+        for (const author of mine) editors.set(author, (editors.get(author) ?? 0) + 1);
+      }
+      const what = (n: number) => plural(n, allDocs ? "doc" : "artifact");
+      if (made.count + edited.size > 0) {
+        const parts: string[] = [];
+        if (made.count > 0) parts.push(`created ${what(made.count)}`);
+        if (edited.size > 0) parts.push(`edited ${what(edited.size)}`);
+        lines.push({ key: "docs", text: parts.join(", "), to: `/${slug}/-/artifacts` });
+        credit(made.actors);
+        credit(editors);
+      }
+    }
+  }
+
+  // Chat: what each kind said.
+  if (chat) {
+    const said = part(
+      chat.authors.map((author) => ({ actor: author.key, count: author.messages })),
+      kind,
+      agentKeys,
+    );
+    if (said.count > 0) {
+      const text = kind === "person" ? `sent ${plural(said.count, "message")} in ${plural(chat.channels, "conversation")}` : `replied ${plural(said.count, "time")} in chat`;
+      lines.push({ key: "chat", text, to: `/${slug}/-/chat` });
+      credit(said.actors);
+    }
+  }
+
+  const actors: DigestActor[] = [...did]
+    .map(([key, count]) => ({ key, kind, name: names[key] ?? (key === G1T_ACTOR ? "g1t" : "someone"), count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  return { kind, lines, actors };
+}
+
+/** A tally with one of each actor, for lists that name an actor per item. */
+function tallyOf(actors: string[]): ActorCount[] {
+  const counts = new Map<string, number>();
+  for (const actor of actors) counts.set(actor, (counts.get(actor) ?? 0) + 1);
+  return [...counts].map(([actor, count]) => ({ actor, count }));
+}
+
+/** Both columns, what the sentence needs, and which sources were silent. */
+export function digestOf(input: DigestInput): Digest {
+  const people = digestColumn("person", input);
+  const agents = digestColumn("agent", input);
+  const missing: string[] = [];
+  if (input.code && !input.activity) missing.push("Code");
+  if (!input.chat) missing.push("Chat");
+  if (!input.work) missing.push("Agents");
+  let commits = 0;
+  let merged = 0;
+  for (const repo of input.activity?.repos ?? []) {
+    for (const by of repo.pushes.by) if (actorKind(by.actor, input.agentKeys) === "person") commits += by.commits;
+    merged += part(repo.pulls.merged, "person", input.agentKeys).count;
+  }
+  const said = part(
+    (input.chat?.authors ?? []).map((author) => ({ actor: author.key, count: author.messages })),
+    "person",
+    input.agentKeys,
+  ).count;
+  const counts = input.work?.counts;
+  return {
+    people,
+    agents,
+    summary: {
+      people: people.actors.length,
+      commits,
+      merged,
+      finished: counts ? counts.accepted + counts.fixed + counts.finished : 0,
+      dropped: counts?.dropped ?? 0,
+      said,
+      anything: people.lines.length > 0 || agents.lines.length > 0,
+      peopleRead: input.activity != null || input.chat != null,
+    },
+    missing,
+    partial: (input.activity != null && !input.activity.complete) || (input.work?.partial ?? false),
+  };
+}
+
+// --- What landed in the span -----------------------------------------------------
+
+/**
+ * A change that landed: a pull request merged; commits pushed straight to
+ * a default branch; a production build that went live; a release or a
+ * package version published. By a person or an agent.
+ */
 export type LandedChange = {
   key: string;
+  kind: "merge" | "push" | "deploy" | "release" | "package";
   title: string;
-  repo: RepoPath;
-  number: number;
+  /** One line under it: where, and by whom. */
+  detail: string;
   to: string;
   at: number;
-  /** An agent's change, or a person's. */
+  /** An agent's doing, or a person's. */
   agent: boolean;
-  author: string;
-  mergedBy: string | null;
 };
 
 /** Every pull request that merged in the span, newest first. */
 export function landedIn(pulls: CodePull[], span: Pick<Span, "from" | "now">): LandedChange[] {
   return pulls
     .filter((pull) => pull.status === "merged" && within(pull.mergedAt, span))
-    .map((pull) => ({
-      key: `landed:${pullKey(pull.repo, pull.number)}`,
-      title: pull.title,
-      repo: pull.repo,
-      number: pull.number,
-      to: `/${pull.repo.namespace}/${pull.repo.name}/pull/${pull.number}`,
-      at: Date.parse(pull.mergedAt!),
-      agent: isAgentPull(pull),
-      author: pull.author.username,
-      mergedBy: pull.mergedBy ?? null,
-    }))
+    .map((pull) => {
+      const agent = isAgentPull(pull);
+      const mergedBy = pull.mergedBy && pull.mergedBy !== pull.author.username ? `, merged by ${pull.mergedBy}` : "";
+      return {
+        key: `landed:${pullKey(pull.repo, pull.number)}`,
+        kind: "merge" as const,
+        title: pull.title,
+        detail: `${pull.repo.name}#${pull.number} · by ${agent ? `@${pull.author.username}` : pull.author.username}${mergedBy}`,
+        to: `/${pull.repo.namespace}/${pull.repo.name}/pull/${pull.number}`,
+        at: Date.parse(pull.mergedAt!),
+        agent,
+      };
+    })
     .sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
+}
+
+/** The names behind member keys, for a line: `ana and bo`, `@margo`, `a mirror` for nobody. */
+function namesOf(keys: string[], names: Record<string, string>, agentKeys?: ReadonlySet<string>): string {
+  const shown = keys.map((key) => {
+    if (!key) return "a mirror";
+    const name = names[key] ?? (key === G1T_ACTOR ? "g1t" : "someone");
+    return actorKind(key, agentKeys) === "agent" ? `@${name}` : name;
+  });
+  return listOf([...new Set(shown)]);
+}
+
+/**
+ * Commits pushed straight to a default branch, one row per project with
+ * any: what landed without a pull request. Releases and package versions
+ * published, one row each. Pushes within the span only: the digest was
+ * asked for the span.
+ */
+export function landedFromActivity(activity: ActivityDigest | null, repos: Record<string, RepoRef>, names: Record<string, string>, slug: string, agentKeys?: ReadonlySet<string>): LandedChange[] {
+  const rows: LandedChange[] = [];
+  for (const repo of activity?.repos ?? []) {
+    const path = repos[repo.repo_id];
+    if (!path) continue;
+    const direct = repo.pushes.default_branch;
+    if (direct.count > 0 && direct.last_at) {
+      const by = direct.by.map((entry) => entry.actor);
+      rows.push({
+        key: `push:${repo.repo_id}`,
+        kind: "push",
+        title: `${plural(direct.commits, "commit")} pushed to ${path.defaultBranch}`,
+        detail: `${path.name} · ${plural(direct.count, "push", "pushes")} by ${namesOf(by, names, agentKeys)}`,
+        to: `/${path.namespace}/${path.name}/activity`,
+        at: Date.parse(direct.last_at),
+        agent: by.length > 0 && by.every((key) => key && actorKind(key, agentKeys) === "agent"),
+      });
+    }
+    for (const release of repo.releases) {
+      rows.push({
+        key: `release:${repo.repo_id}:${release.tag}`,
+        kind: "release",
+        title: release.name ? `${release.tag} · ${release.name}` : release.tag,
+        detail: `${path.name} · released by ${namesOf([release.actor], names, agentKeys)}`,
+        to: `/${path.namespace}/${path.name}/releases/tag/${encodeURIComponent(release.tag)}`,
+        at: Date.parse(release.at),
+        agent: actorKind(release.actor, agentKeys) === "agent",
+      });
+    }
+    for (const pkg of repo.packages) {
+      rows.push({
+        key: `package:${repo.repo_id}:${pkg.ecosystem}:${pkg.name}:${pkg.version}`,
+        kind: "package",
+        title: `${pkg.name} ${pkg.version}`,
+        detail: `${pkg.ecosystem} package · published by ${namesOf([pkg.actor], names, agentKeys)}`,
+        to: `/${slug}/-/packages`,
+        at: Date.parse(pkg.at),
+        agent: actorKind(pkg.actor, agentKeys) === "agent",
+      });
+    }
+  }
+  return rows;
+}
+
+/** Production builds that went live in the span, as landed changes; previews stay in Deploys. */
+export function landedDeploys(deploys: DeployRow[]): LandedChange[] {
+  return deploys
+    .filter((row) => row.kind === "production" && row.outcome === "live")
+    .map((row) => ({
+      key: `landed:${row.key}`,
+      kind: "deploy" as const,
+      title: `Production of ${row.project} went live`,
+      detail: `${row.commit} · by ${row.by}`,
+      to: row.to,
+      at: row.at,
+      agent: isAgentName(row.by),
+    }));
+}
+
+/** Everything that landed, newest first. */
+export function landed(parts: LandedChange[][]): LandedChange[] {
+  return parts.flat().sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
 }
 
 /** A build that finished in the span. */
@@ -473,10 +892,10 @@ export function decisionsIn(
 
 // --- Running now ----------------------------------------------------------------
 
-/** Something going right now: a session, an agent's change, a build. */
+/** Something going right now: a session, an agent's change, a workflow run, a build. */
 export type RunningRow = {
   key: string;
-  kind: "session" | "change" | "deploy";
+  kind: "session" | "change" | "workflow" | "deploy";
   title: string;
   /** One line: who and where. */
   detail: string;
@@ -538,9 +957,38 @@ export function runningDeploys(overview: ProjectDeploys[], slug: string): Runnin
   });
 }
 
-/** Everything running, longest-going first within each kind: sessions, then changes, then builds. */
+const RUN_STATUS: Partial<Record<WorkflowRun["status"], string>> = {
+  pending: "Queued",
+  queued: "Queued",
+  action_required: "Needs approval",
+  in_progress: "Running",
+  waiting: "Waiting",
+};
+
+/** Workflow runs not finished, in the projects read: queued, waiting, running, or waiting for approval. */
+export function runningWorkflows(projects: { repo: RepoPath; runs: WorkflowRun[] }[]): RunningRow[] {
+  return projects.flatMap(({ repo, runs }) =>
+    runs.flatMap((run) => {
+      const status = RUN_STATUS[run.status];
+      if (!status) return [];
+      return [
+        {
+          key: `workflow:${repo.namespace}/${repo.name}:${run.id}`.toLowerCase(),
+          kind: "workflow" as const,
+          title: run.title ? `${run.name}: ${run.title}` : run.name,
+          detail: `${repo.namespace}/${repo.name} ${run.ref.replace(/^refs\/heads\//, "")}${run.actor ? ` · by ${run.actor}` : ""}`,
+          status,
+          at: Date.parse(run.startedAt ?? run.createdAt),
+          to: `/${repo.namespace}/${repo.name}/actions/runs/${run.id}`,
+        },
+      ];
+    }),
+  );
+}
+
+/** Everything running, longest-going first within each kind: sessions, then changes, then workflow runs, then builds. */
 export function running(parts: RunningRow[][]): RunningRow[] {
-  const order = { session: 0, change: 1, deploy: 2 } as const;
+  const order = { session: 0, change: 1, workflow: 2, deploy: 3 } as const;
   return parts.flat().sort((a, b) => order[a.kind] - order[b.kind] || a.at - b.at || a.key.localeCompare(b.key));
 }
 
@@ -1038,30 +1486,41 @@ export function spendIn(statements: Pick<Statement, "groups" | "totals">[], span
 // --- The sentence -----------------------------------------------------------
 
 /**
- * The sentence under the heading: "Since Tuesday evening, agents finished
- * 35 tasks and 12 changes landed. 4 needed a fix after review." Finished
- * counts every task that settled well: accepted, fixed, and sessions that
- * finished.
+ * The sentence under the heading, honest about what happened: "Since
+ * Tuesday evening, 3 people pushed 41 commits and merged 5 changes, agents
+ * finished 7 tasks, and 12 changes landed." What people did comes first
+ * (commits and merges; else what they said), then the agents' tasks that
+ * settled well (accepted, fixed, sessions finished), then everything that
+ * landed. When nothing at all was counted: "Quiet since Tuesday evening:
+ * nothing pushed, merged, deployed or said." When what people did could
+ * not be read, it says so.
  */
-export function spanSentence(span: Pick<Span, "words">, work: Pick<SpanWork, "counts" | "tasks"> | null, landed: number | null): string {
+export function spanSentence(span: Pick<Span, "words">, digest: Pick<Digest, "summary"> | null, landed: number | null): string {
   const lead = span.words;
-  if (!work) return `${lead}, agent work couldn't be read.`;
-  const { accepted, fixed, finished, dropped } = work.counts;
-  const done = accepted + fixed + finished;
-  const changes = landed && landed > 0 ? `${plural(landed, "change")} landed` : null;
-  if (work.tasks.length === 0 && !changes) return `${lead}, nothing new has settled.`;
-  const first =
-    done > 0
-      ? `${lead}, agents finished ${plural(done, "task")}${changes ? ` and ${changes}` : ""}.`
-      : changes
-        ? `${lead}, ${changes}${work.tasks.length > 0 ? "; agents finished none of their tasks" : ""}.`
-        : `${lead}, agents finished no tasks.`;
-  const after: string[] = [];
-  if (fixed > 0) after.push(`${fixed.toLocaleString("en-US")} needed a fix after review`);
-  if (dropped > 0) after.push(`${dropped.toLocaleString("en-US")} didn't finish`);
-  if (after.length === 0) return first;
-  const text = after.length > 1 ? `${after[0]}, and ${after[1]}` : after[0]!;
-  return `${first} ${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
+  if (!digest) return `${lead}, what happened couldn't be read.`;
+  const { people: count, commits, merged, finished, dropped, said, anything, peopleRead } = digest.summary;
+  const landedCount = landed ?? 0;
+  if (!anything && landedCount === 0) {
+    if (!peopleRead) return `${lead}, what people did couldn't be read, and no agent task settled.`;
+    return `Quiet ${lead.charAt(0).toLowerCase()}${lead.slice(1)}: nothing pushed, merged, deployed or said.`;
+  }
+  const parts: string[] = [];
+  if (count > 0) {
+    if (commits > 0 || merged > 0) {
+      const did: string[] = [];
+      if (commits > 0) did.push(`pushed ${plural(commits, "commit")}`);
+      if (merged > 0) did.push(`merged ${plural(merged, "change")}`);
+      parts.push(`${people(count)} ${did.join(" and ")}`);
+    } else if (said > 0) parts.push(`${people(count)} sent ${plural(said, "message")}`);
+    else parts.push(`${people(count)} ${count === 1 ? "was" : "were"} active`);
+  }
+  if (finished > 0) parts.push(`agents finished ${plural(finished, "task")}`);
+  else if (dropped > 0) parts.push(`agents finished none of ${plural(dropped, "task")}`);
+  if (landedCount > 0) parts.push(`${plural(landedCount, "change")} landed`);
+  const tail = peopleRead ? "" : "; what people did couldn't be read";
+  if (parts.length === 0) return `${lead}, work went on, but nothing landed and no agent task finished${tail}.`;
+  const joined = parts.length > 2 ? `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}` : parts.join(" and ");
+  return `${lead}, ${joined}${tail}.`;
 }
 
 /** "8 things need you.", or that nothing does. */

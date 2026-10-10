@@ -717,7 +717,7 @@ impl<S: GitStore> Repos<S> {
             if repo.mirror.is_some() {
                 self.publish_mirrored_push(&repo, git_ref, None, head).await?;
             } else {
-                self.publish_push(&repo, git_ref, None, head, None).await?;
+                self.publish_push(&repo, git_ref, None, head, None, None).await?;
             }
         }
         Ok(Outcome::Ok(repo))
@@ -1598,6 +1598,7 @@ impl<S: GitStore> Repos<S> {
             old.as_deref(),
             &new,
             Some(&a.actor),
+            None,
         )
             .await?;
         Ok(Outcome::Ok(Landed {
@@ -1679,6 +1680,8 @@ impl<S: GitStore> Repos<S> {
 
     /// Reports that `git_ref` of `repo` (a full ref) now points to `after`,
     /// moved by `actor` (marked when that was a workflow job's token).
+    /// `commits` is how many the move brought, when the caller knows: one
+    /// for a file committed on the site or a branch brought up to date.
     async fn publish_push(
         &self,
         repo: &Repo,
@@ -1686,16 +1689,17 @@ impl<S: GitStore> Repos<S> {
         before: Option<&str>,
         after: &str,
         actor: Option<&User>,
+        commits: Option<u32>,
     ) -> Result<()> {
         let caused_by_job = actor.and_then(g1t_contracts::events::job_run_of).map(str::to_owned);
-        self.publish_git_push(repo, git_ref, before, after, actor.map(|user| user.id.clone()), false, caused_by_job, false)
+        self.publish_git_push(repo, git_ref, before, after, actor.map(|user| user.id.clone()), false, caused_by_job, false, commits)
             .await
     }
 
     /// A push copied in from the remote a mirror follows (mirror.rs), or
     /// made by filling a new mirror from it.
     async fn publish_mirrored_push(&self, repo: &Repo, git_ref: &str, before: Option<&str>, after: &str) -> Result<()> {
-        self.publish_git_push(repo, git_ref, before, after, None, false, None, true).await
+        self.publish_git_push(repo, git_ref, before, after, None, false, None, true, None).await
     }
 
     /// `publish_push`, saying whether the push reached the store without
@@ -1711,6 +1715,7 @@ impl<S: GitStore> Repos<S> {
         unscanned: bool,
         caused_by_job: Option<String>,
         mirrored: bool,
+        commits: Option<u32>,
     ) -> Result<()> {
         self.publish(NewEvent {
             kind: "git.push",
@@ -1728,6 +1733,7 @@ impl<S: GitStore> Repos<S> {
                 caused_by_job,
                 mirrored,
                 mirror: repo.mirror.clone(),
+                commits,
             },
         })
         .await
@@ -2254,20 +2260,26 @@ impl<S: GitStore> Repos<S> {
                     head.first().is_none_or(|commit| commit.hash == pushed.after)
                 }),
             };
-            // The person's contribution calendar (push_commits.rs). A
-            // failure only leaves the day short.
-            if moved
-                && let (Some(user_id), Some(branch)) = (credit.as_deref(), pushed.branch())
+            // How many commits a branch push brought (push_commits.rs), for
+            // the event and the person's contribution calendar. A log the
+            // store cannot read leaves the event without a count and the
+            // day short.
+            let commits = match (moved, pushed.branch()) {
+                (true, Some(_)) => match stored.log(&pushed.after, push_commits::MOST_PER_PUSH + 1).await {
+                    Ok(log) => Some(push_commits::new_commits(&log, pushed.before.as_deref())),
+                    Err(error) => {
+                        worker::console_error!("commits pushed to {} not counted: {error}", repo.name);
+                        None
+                    }
+                },
+                _ => None,
+            };
+            if let (Some(commits), Some(user_id), Some(branch)) = (commits, credit.as_deref(), pushed.branch())
                 && push_commits::counts(branch, &repo.default_branch)
-            {
-                let credited = async {
-                    let log = stored.log(&pushed.after, push_commits::MOST_PER_PUSH + 1).await?;
-                    let commits = push_commits::new_commits(&log, pushed.before.as_deref());
+                && let Err(error) =
                     push_commits::record(&self.registry.db, user_id, &repo.id, &rfc3339(now_ms())[..10], commits).await
-                };
-                if let Err(error) = credited.await {
-                    worker::console_error!("commits pushed to {} not credited: {error}", repo.name);
-                }
+            {
+                worker::console_error!("commits pushed to {} not credited: {error}", repo.name);
             }
             if moved {
                 self.publish_git_push(
@@ -2279,6 +2291,7 @@ impl<S: GitStore> Repos<S> {
                     unscanned,
                     caused_by_job.clone(),
                     false,
+                    commits,
                 )
                 .await?;
             }

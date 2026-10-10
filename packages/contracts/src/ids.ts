@@ -29,7 +29,27 @@ export function newId(prefix: IdPrefix, now: number = Date.now()): string {
   bytes[6] = 0x70 | (counter >> 8); // version 7
   bytes[7] = counter & 0xff;
   bytes[8] = 0x80 | (bytes[8] & 0x3f); // RFC 9562 variant
+  return encode(prefix, bytes);
+}
 
+/**
+ * The smallest id with `prefix` that could have been made at or after
+ * `now`: its time, and every other bit zero. Ids sort by time, so
+ * `id >= idFloor(p, from) AND id < idFloor(p, until)` picks the ids made in
+ * `[from, until)` as a range of any index that ends in the id, without a
+ * time column. No real id ever equals one: a real id's version bits are
+ * set. The same as `id_floor` in crates/contracts.
+ */
+export function idFloor(prefix: IdPrefix, now: number): string {
+  const bytes = new Uint8Array(16);
+  const time = BigInt(Math.max(0, Math.floor(now)));
+  for (let i = 0; i < 6; i++) {
+    bytes[i] = Number((time >> BigInt(40 - 8 * i)) & 0xffn);
+  }
+  return encode(prefix, bytes);
+}
+
+function encode(prefix: string, bytes: Uint8Array): string {
   let value = 0n;
   for (const byte of bytes) value = (value << 8n) | BigInt(byte);
   let suffix = "";

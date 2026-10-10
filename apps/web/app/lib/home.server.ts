@@ -5,11 +5,27 @@
  */
 import { env } from "cloudflare:workers";
 
-import { type AgentSession, type AgentsOverview, type Deployment, type InstallRequests, type Memory, type ProjectDeploys, type Repo, type User, notifyClient } from "@g1t/contracts";
+import {
+  type ActivityDigest,
+  type AgentSession,
+  type AgentsOverview,
+  type ChatActivity,
+  type Deployment,
+  type InstallRequests,
+  MAX_DIGEST_REPOS,
+  type Memory,
+  type ProjectDeploys,
+  type Repo,
+  type RepoPath,
+  type User,
+  type WorkflowRun,
+  type WorkspaceAgent,
+  notifyClient,
+} from "@g1t/contracts";
 
-import { type CodePull, type CodeWork, type SessionWork, type Span, type Spend, pullKey, spanMonths, spendIn } from "./home";
+import { type CodePull, type CodeWork, G1T_ACTOR, type RepoRef, type SessionWork, type Span, type Spend, pullKey, spanMonths, spendIn } from "./home";
 import { monthSpan, spentMicros } from "./spend";
-import { agents, billing, deployments, repos, work, workspaceAgents } from "./services.server";
+import { actions, agents, billing, chat, deployments, events, identity, repos, work, workspaceAgents } from "./services.server";
 
 /** Pull requests read per project and list: `LIST_PAGE` in services/work. */
 const PULL_PAGE = 100;
@@ -17,9 +33,15 @@ const PULL_PAGE = 100;
 const MAX_PROJECTS = 50;
 /** The most projects whose builds are read for the span. */
 const MAX_DEPLOY_PROJECTS = 20;
+/** The most projects whose workflow runs are read for Running now: those pushed to most in the span. */
+const MAX_WORKFLOW_PROJECTS = 10;
+/** Runs read per project: enough to find the ones not finished. */
+const WORKFLOW_RUNS = 20;
 /** Revise runs and sessions read: the services' most in one list. */
 const RUN_PAGE = 200;
 const SESSION_PAGE = 200;
+/** The most member keys named in one lookup. */
+const MAX_NAMES = 200;
 const DAY = 24 * 60 * 60 * 1000;
 
 const warn = (what: string) => (error: unknown) => {
@@ -47,18 +69,31 @@ export async function markVisit(viewer: User, slug: string, at: number): Promise
 }
 
 /**
+ * The workspace's own repositories the viewer may read (no pull request
+ * working copies), as every Code section reads them. Null when repos did
+ * not answer.
+ */
+export async function loadRepos(viewer: User, slug: string): Promise<Repo[] | null> {
+  const list = await repos.list(viewer, { namespace: slug }).catch(warn("repos"));
+  return list ? list.filter((repo) => !repo.forkOf && repo.namespace.toLowerCase() === slug) : null;
+}
+
+/** The repositories by id, as the digest's lines and links need them. */
+export function repoRefs(list: Repo[] | null): Record<string, RepoRef> {
+  const refs: Record<string, RepoRef> = {};
+  for (const repo of list ?? []) refs[repo.id] = { namespace: repo.namespace, name: repo.name, defaultBranch: repo.defaultBranch };
+  return refs;
+}
+
+/**
  * The workspace's projects' pull requests, open and recently merged or
  * closed, any author's, with how many times each agent's was sent back to
  * revise. `complete` when every list reaches back to `reach`. Null when
  * Code did not answer.
  */
-export async function loadCodeWork(viewer: User, slug: string, reach: number): Promise<CodeWork | null> {
-  const [list, runs] = await Promise.all([
-    repos.list(viewer, { namespace: slug }).catch(warn("repos")),
-    agents.listRuns(viewer, { workspace: slug, kind: "revise", limit: RUN_PAGE }).catch(warn("revise runs")),
-  ]);
-  if (!list || !runs?.ok) return null;
-  const owned = list.filter((repo) => !repo.forkOf && repo.namespace.toLowerCase() === slug);
+export async function loadCodeWork(viewer: User, slug: string, reach: number, owned: Repo[] | null): Promise<CodeWork | null> {
+  const runs = await agents.listRuns(viewer, { workspace: slug, kind: "revise", limit: RUN_PAGE }).catch(warn("revise runs"));
+  if (!owned || !runs?.ok) return null;
   const chosen = owned.slice(0, MAX_PROJECTS);
   const byId = new Map<string, Repo>(chosen.map((repo) => [repo.id, repo]));
   const batch = chosen.length > 0 ? await work.pullsForRepos([...byId.keys()], viewer, PULL_PAGE).catch(warn("pull requests")) : [];
@@ -98,6 +133,105 @@ export async function loadCodeWork(viewer: User, slug: string, reach: number): P
   }
   if (runs.value.length >= RUN_PAGE && Date.parse(runs.value[runs.value.length - 1].createdAt) > reach) complete = false;
   return { pulls, revisions, complete };
+}
+
+/**
+ * What happened in the span, counted by who did it: the events service's
+ * digest of the workspace's repositories (the first MAX_DIGEST_REPOS of
+ * them; none without Code access) and of its artifacts. Null when events
+ * did not answer.
+ */
+export async function loadActivity(slug: string, span: Pick<Span, "from" | "now">, owned: Repo[] | null): Promise<ActivityDigest | null> {
+  const digest = await events
+    .activityDigest({
+      repo_ids: (owned ?? []).slice(0, MAX_DIGEST_REPOS).map((repo) => repo.id),
+      workspace: slug,
+      from: new Date(span.from).toISOString(),
+      until: new Date(span.now + 1).toISOString(),
+    })
+    .catch(warn("activity digest"));
+  if (!digest) return null;
+  // More repositories than the digest reads: it says so.
+  return owned && owned.length > MAX_DIGEST_REPOS ? { ...digest, complete: false } : digest;
+}
+
+/** What was said in the span where the viewer can read, counted. Null when chat did not answer. */
+export async function loadChatActivity(viewer: User, slug: string, span: Pick<Span, "from" | "now">): Promise<ChatActivity | null> {
+  const activity = await chat
+    .activity(slug, viewer, { from: new Date(span.from).toISOString(), until: new Date(span.now + 1).toISOString() })
+    .catch(warn("chat activity"));
+  return activity?.ok ? activity.value : null;
+}
+
+/** Every member key the digest and chat name. */
+export function actorKeys(activity: ActivityDigest | null, chatActivity: ChatActivity | null): string[] {
+  const keys = new Set<string>();
+  for (const repo of activity?.repos ?? []) {
+    for (const by of [...repo.pushes.by, ...repo.pushes.default_branch.by]) keys.add(by.actor);
+    for (const list of [repo.pulls.opened, repo.pulls.merged, repo.pulls.closed, repo.issues.opened, repo.issues.closed, repo.reviews, repo.comments, repo.deployments.succeeded, repo.deployments.failed]) {
+      for (const entry of list) keys.add(entry.actor);
+    }
+    for (const release of repo.releases) keys.add(release.actor);
+    for (const pkg of repo.packages) keys.add(pkg.actor);
+  }
+  for (const entry of activity?.folios?.created ?? []) keys.add(entry.actor);
+  for (const folio of activity?.folios?.edited ?? []) for (const author of folio.authors) keys.add(author);
+  for (const author of chatActivity?.authors ?? []) keys.add(author.key);
+  keys.delete("");
+  return [...keys];
+}
+
+/**
+ * The names behind member keys: people's usernames from identity (one
+ * lookup for them all), agents' handles from the workspace's agents, g1t
+ * as itself. A key identity does not know is left out, and shows as
+ * "someone".
+ */
+export async function loadNames(keys: string[], agentsList: Pick<WorkspaceAgent, "id" | "handle">[] | null): Promise<Record<string, string>> {
+  const names: Record<string, string> = {};
+  const userIds: string[] = [];
+  const byAgentId = new Map((agentsList ?? []).map((agent) => [agent.id, agent.handle]));
+  for (const key of keys.slice(0, MAX_NAMES)) {
+    if (key === G1T_ACTOR) names[key] = "g1t";
+    else if (key.startsWith("agent:")) {
+      const handle = byAgentId.get(key.slice("agent:".length));
+      if (handle) names[key] = handle;
+    } else if (key.startsWith("user:")) userIds.push(key.slice("user:".length));
+  }
+  if (userIds.length > 0) {
+    const found = await identity.usernames(userIds).catch(warn("usernames"));
+    for (const [id, username] of Object.entries(found ?? {})) names[`user:${id}`] = username;
+  }
+  return names;
+}
+
+/**
+ * The newest workflow runs of the projects pushed to most in the span (at
+ * most MAX_WORKFLOW_PROJECTS), for the ones still going. A project whose
+ * runs could not be read is left out; `complete` says whether every one was.
+ */
+export async function loadWorkflowRuns(
+  viewer: User,
+  activity: ActivityDigest | null,
+  owned: Repo[] | null,
+): Promise<{ projects: { repo: RepoPath; runs: WorkflowRun[] }[]; complete: boolean }> {
+  const byId = new Map((owned ?? []).map((repo) => [repo.id, repo]));
+  const active = [...(activity?.repos ?? [])]
+    .filter((repo) => repo.pushes.count > 0 && byId.has(repo.repo_id))
+    .sort((a, b) => b.pushes.count - a.pushes.count || a.repo_id.localeCompare(b.repo_id))
+    .slice(0, MAX_WORKFLOW_PROJECTS);
+  const lists = await Promise.all(
+    active.map((digest) => {
+      const repo = byId.get(digest.repo_id)!;
+      const path = { namespace: repo.namespace, name: repo.name };
+      return actions
+        .runs(path, viewer, { limit: WORKFLOW_RUNS })
+        .then((result) => (result.ok ? { repo: path, runs: result.value } : null))
+        .catch(warn(`workflow runs of ${repo.name}`));
+    }),
+  );
+  const projects = lists.filter((entry) => entry != null);
+  return { projects, complete: projects.length === active.length };
 }
 
 /** The workspace's newest sessions; `complete` when the list reaches back before `from`. */

@@ -498,7 +498,7 @@ impl<S: GitStore> Repos<S> {
                     return Ok(Outcome::fail(FailureCode::Conflict, format!("The tag {tag} could not be made: {reason}")));
                 }
                 self.refs_moved(&repo.id).await;
-                self.publish_push(&repo, &git_ref, None, &commit.hash, Some(&a.actor)).await?;
+                self.publish_push(&repo, &git_ref, None, &commit.hash, Some(&a.actor), None).await?;
                 commit.hash
             }
         };

@@ -288,6 +288,24 @@ export type ChatSidebar = {
   can: ChatPermissions;
 };
 
+/**
+ * `activity`: what was said over a span, in the conversations the viewer
+ * can read (every public channel, and the private channels and direct
+ * messages they are in). Messages are text messages and thread replies
+ * that were not deleted; cards agents post are not messages. Home reads it
+ * for what people and agents said since you were last there.
+ */
+export type ChatActivity = {
+  /** RFC 3339: `[from, until)`. */
+  from: string;
+  until: string;
+  messages: number;
+  /** Conversations with at least one message. */
+  channels: number;
+  /** Who said how much: member keys (`user:<id>`, `agent:<id>`), most first. */
+  authors: { key: string; messages: number }[];
+};
+
 export type MessagePage = {
   messages: ChatMessage[];
   /** Pass as `before` to read further back; null at the beginning. */
@@ -426,6 +444,8 @@ export type ChannelDetail = { channel: Channel; members: ChannelMember[]; can_ma
 
 export type ChatApi = {
   sidebar(workspace: string, viewer: User): Promise<Result<ChatSidebar>>;
+  /** What was said in `[from, until)` (RFC 3339) where the viewer can read, counted. */
+  activity(workspace: string, viewer: User, span: { from: string; until: string }): Promise<Result<ChatActivity>>;
   channel(
     workspace: string,
     channelId: string,
@@ -620,6 +640,7 @@ export function chatClient(service: ServiceBinding): ChatApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
     sidebar: (workspace, viewer) => call("sidebar", { workspace, viewer }),
+    activity: (workspace, viewer, span) => call("activity", { workspace, viewer, from: span.from, until: span.until }),
     channel: (workspace, channelId, viewer) => call("channel", { workspace, channel_id: channelId, viewer }),
     channelByName: (workspace, name, viewer) => call("channel_by_name", { workspace, name, viewer }),
     browse: (workspace, viewer, options) => call("browse", { workspace, viewer, archived: options?.archived ?? false }),

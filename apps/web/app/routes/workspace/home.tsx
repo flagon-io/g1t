@@ -11,10 +11,10 @@ import {
   DeploysCard,
   LandedCard,
   NeedsList,
+  PeopleAgentsCard,
   RowsSkeleton,
   RunningList,
   Sources,
-  SpanCard,
   SpanSkeleton,
   SpendCard,
   SpendSkeleton,
@@ -28,31 +28,44 @@ import { channelPath } from "../../lib/chat";
 import { sidebarOrNull } from "../../lib/chat.server";
 import {
   type Attention,
+  type Digest,
   type SpanWork,
   attention,
   decisionsIn,
   deploysIn,
+  digestOf,
+  landed,
+  landedDeploys,
+  landedFromActivity,
   landedIn,
   parseWindow,
   running,
   runningChanges,
   runningDeploys,
   runningSessions,
+  runningWorkflows,
   spanFor,
   spanSentence,
   spanWork,
   waitingSentence,
 } from "../../lib/home";
 import {
+  actorKeys,
+  loadActivity,
   loadAgentsOverview,
+  loadChatActivity,
   loadCodeWork,
   loadDeploys,
   loadInstallRequests,
   loadLastVisit,
   loadMemories,
+  loadNames,
+  loadRepos,
   loadSessions,
   loadSpend,
+  loadWorkflowRuns,
   reachFor,
+  repoRefs,
 } from "../../lib/home.server";
 import { readCookie } from "../../lib/mission";
 import { loadMissionControl } from "../../lib/mission-control.server";
@@ -71,8 +84,10 @@ const NOTIFICATIONS_READ = 50;
 /**
  * Home: the workspace's front page. Where you're needed now, with no time
  * window; what happened since you were last here (or over the last 24
- * hours or 7 days, `?window=`); what is running; what the span cost; and
- * one place to start. The last visit is kept by notify, per person and
+ * hours or 7 days, `?window=`): what people did and what agents did, from
+ * the events service's digest of the span, chat's, and the agents' tasks,
+ * then what landed; what is running; what the span cost; and one place to
+ * start. The last visit is kept by notify, per person and
  * workspace, and marked by the page once it has been looked at
  * (routes/workspace/home-seen.ts), so a refresh never wipes it. Only the
  * agents list (for Ask g1t) and the last visit (for the span) are waited
@@ -126,32 +141,55 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 
   const span = spanFor(windowKey, now, await lastSeenP, tz);
 
-  // What happened in the span.
-  const codeWorkP = code ? loadCodeWork(viewer, slug, reachFor(span)).catch(() => null) : Promise.resolve("no_access" as const);
+  // What happened in the span: the repositories once, for every section that reads them.
+  const reposP = code ? loadRepos(viewer, slug).catch(() => null) : Promise.resolve(null);
+  const codeWorkP = code ? reposP.then((owned) => loadCodeWork(viewer, slug, reachFor(span), owned)).catch(() => null) : Promise.resolve("no_access" as const);
   const sessionsP = loadSessions(viewer, slug, span.from).catch(() => null);
   const deploysP = code ? loadDeploys(viewer, slug, span.from).catch(() => null) : Promise.resolve(null);
   const memoriesP = code ? loadMemories(viewer, slug).catch(() => null) : Promise.resolve(null);
+  const activityP = reposP.then((owned) => loadActivity(slug, span, owned)).catch(() => null);
+  const chatActivityP = loadChatActivity(viewer, slug, span).catch(() => null);
+  const namesP = Promise.all([activityP, chatActivityP, agentsP])
+    .then(([activity, chatActivity, agents]) => loadNames(actorKeys(activity, chatActivity), agents))
+    .catch(() => ({}) as Record<string, string>);
 
   const work: Promise<SpanWork | null> = Promise.all([codeWorkP, sessionsP])
     .then(([codeWork, sessions]) => (codeWork == null && sessions == null ? null : spanWork({ span, slug, code: codeWork, sessions })))
     .catch(() => null);
-  const happened = Promise.all([codeWorkP, deploysP, memoriesP, requestsP])
-    .then(([codeWork, deploys, memories, requests]) => ({
-      landed: codeWork && codeWork !== "no_access" ? landedIn(codeWork.pulls, span) : null,
-      deploys: deploys ? deploysIn(deploys.projects, slug, span) : null,
-      deploysComplete: deploys?.complete ?? true,
-      decisions: decisionsIn({ memories, requests: requests?.requests ?? null }, slug, span),
-      decisionsRead: { memories: !code || memories != null, requests: requests != null },
-    }))
+  // People and agents: what each did, from events, chat and the agents' tasks.
+  const digest: Promise<Digest | null> = Promise.all([activityP, chatActivityP, namesP, work, reposP])
+    .then(([activity, chatActivity, names, spanWork, owned]) => digestOf({ slug, repos: repoRefs(owned), activity, chat: chatActivity, names, work: spanWork, code }))
     .catch(() => null);
-  const runningNow = Promise.all([sessionsP, missionP, deploysP])
-    .then(([sessions, mission, deploys]) => ({
+  const happened = Promise.all([codeWorkP, deploysP, memoriesP, requestsP, activityP, namesP, reposP])
+    .then(([codeWork, deploys, memories, requests, activity, names, owned]) => {
+      const deployRows = deploys ? deploysIn(deploys.projects, slug, span) : null;
+      const merges = codeWork && codeWork !== "no_access" ? landedIn(codeWork.pulls, span) : null;
+      return {
+        // What landed: merges, direct pushes, releases and packages, production builds; null when nothing of Code could be read.
+        landed: merges == null && activity == null ? null : landed([merges ?? [], landedFromActivity(activity, repoRefs(owned), names, slug), landedDeploys(deployRows ?? [])]),
+        landedMissing: [...(code && merges == null ? ["Pull requests"] : []), ...(code && activity == null ? ["Pushes and releases"] : []), ...(code && deployRows == null ? ["Deployments"] : [])],
+        deploys: deployRows,
+        deploysComplete: deploys?.complete ?? true,
+        decisions: decisionsIn({ memories, requests: requests?.requests ?? null }, slug, span),
+        decisionsRead: { memories: !code || memories != null, requests: requests != null },
+      };
+    })
+    .catch(() => null);
+  const workflowsP = code ? Promise.all([activityP, reposP]).then(([activity, owned]) => loadWorkflowRuns(viewer, activity, owned)).catch(() => null) : Promise.resolve(null);
+  const runningNow = Promise.all([sessionsP, missionP, deploysP, workflowsP])
+    .then(([sessions, mission, deploys, workflows]) => ({
       rows: running([
         runningSessions(sessions?.sessions ?? [], slug),
         runningChanges(mission?.waiting ?? []),
+        runningWorkflows(workflows?.projects ?? []),
         runningDeploys(deploys?.overview ?? [], slug),
       ]),
-      missing: [...(sessions ? [] : ["Agents"]), ...(code && !mission ? ["Code"] : []), ...(code && !deploys ? ["Deployments"] : [])],
+      missing: [
+        ...(sessions ? [] : ["Agents"]),
+        ...(code && !mission ? ["Code"] : []),
+        ...(code && (!workflows || !workflows.complete) ? ["Workflows"] : []),
+        ...(code && !deploys ? ["Deployments"] : []),
+      ],
     }))
     .catch(() => ({ rows: [], missing: ["Agents"] }));
   const spend = loadSpend(viewer, slug, span).catch(() => null);
@@ -164,12 +202,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     tz,
     span,
     orchestrator: agents?.some(isOrchestrator) ?? false,
+    /** The agents' faces, for the Agents column. */
+    faces: (agents ?? []).map(({ id, handle, display_name, avatar, avatar_seed, builtin }) => ({ id, handle, display_name, avatar, avatar_seed, builtin })),
     work,
+    /** The People and Agents card needs both the digest and the agents' tasks. */
+    since: Promise.all([digest, work]),
     happened,
     attention: waiting,
     running: runningNow,
-    /** The sentence under the heading needs the work, what landed and what waits. */
-    head: Promise.all([work, happened, waiting]),
+    /** The sentence under the heading needs the digest, what landed and what waits. */
+    head: Promise.all([digest, happened, waiting]),
     spend,
   };
 }
@@ -276,7 +318,7 @@ function useMarkSeen(slug: string, loadedAt: number) {
 }
 
 export default function Home({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, now, tz, span, orchestrator, work, happened, attention: waiting, running: runningNow, head, spend } = loaderData;
+  const { slug, now, tz, span, orchestrator, faces, work, since, happened, attention: waiting, running: runningNow, head, spend } = loaderData;
   useMarkSeen(slug, now);
   return (
     <div className="mx-auto w-full max-w-[1040px] space-y-5 px-4 py-5 md:px-10 md:py-8">
@@ -286,9 +328,9 @@ export default function Home({ loaderData, actionData }: Route.ComponentProps) {
           <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted">
             <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
               <Await resolve={head}>
-                {([work, happened, att]) => (
+                {([digest, happened, att]) => (
                   <>
-                    <span className="text-fg-soft">{waitingSentence(att.rows.length)}</span> {spanSentence(span, work, happened?.landed?.length ?? null)}
+                    <span className="text-fg-soft">{waitingSentence(att.rows.length)}</span> {spanSentence(span, digest, happened?.landed?.length ?? null)}
                   </>
                 )}
               </Await>
@@ -337,7 +379,7 @@ export default function Home({ loaderData, actionData }: Route.ComponentProps) {
           </p>
         </div>
         <Suspense fallback={<SpanSkeleton />}>
-          <Await resolve={work}>{(value) => <SpanCard work={value} span={span} />}</Await>
+          <Await resolve={since}>{([value, spanWork]) => <PeopleAgentsCard digest={value} work={spanWork} span={span} faces={faces} code={loaderData.code} />}</Await>
         </Suspense>
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <div className="space-y-5">
@@ -348,7 +390,7 @@ export default function Home({ loaderData, actionData }: Route.ComponentProps) {
                 </Card>
               }
             >
-              <Await resolve={happened}>{(value) => <LandedCard landed={value?.landed ?? null} code={loaderData.code} now={now} tz={tz} />}</Await>
+              <Await resolve={happened}>{(value) => <LandedCard landed={value?.landed ?? null} missing={value?.landedMissing ?? []} code={loaderData.code} now={now} tz={tz} />}</Await>
             </Suspense>
             <Suspense fallback={null}>
               <Await resolve={happened}>

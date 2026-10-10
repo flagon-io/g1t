@@ -66,7 +66,7 @@ With these headers:
 
 | Event | When |
 | --- | --- |
-| `git.push` | A branch moved. `data.ref`, `data.after`, `data.default_branch`. A push of more than 3 tags, or more than 1,000 branches, sends fewer; see [pushes of many branches or tags](/guides/git/#pushes-of-many-branches-or-tags). |
+| `git.push` | A branch moved. `data.ref`, `data.after`, `data.default_branch`, and `data.commits` (how many commits the push brought to the branch, at most 50; absent for a tag, a deleted branch or a merge). A push of more than 3 tags, or more than 1,000 branches, sends fewer; see [pushes of many branches or tags](/guides/git/#pushes-of-many-branches-or-tags). |
 | `repo.created`, `repo.forked` | A repository was made, or forked for a pull request. |
 | `repo.updated` | Its description, website, topics, protection or visibility changed. |
 | `repo.visibility_changed` | It was made public or private. |

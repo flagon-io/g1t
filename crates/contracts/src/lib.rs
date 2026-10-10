@@ -49,7 +49,7 @@ pub mod updates;
 pub mod webhooks;
 pub mod work;
 
-pub use ids::new_id;
+pub use ids::{id_floor, new_id};
 pub use names::{
     Username, aliasable_name, claimable_namespace, claimable_username, is_namespace_shaped, is_reserved_name, is_route_name,
     is_valid_namespace, is_valid_repo_name,

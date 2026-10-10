@@ -176,7 +176,7 @@ impl<S: GitStore> Repos<S> {
         }
         entry.result = Some("ok".to_owned());
         self.record_git(entry).await;
-        self.publish_push(&repo, &git_ref, None, &commit_id, Some(&a.actor)).await?;
+        self.publish_push(&repo, &git_ref, None, &commit_id, Some(&a.actor), Some(1)).await?;
         Ok(Outcome::Ok(CommittedFile {
             branch: a.branch,
             commit: commit_id,

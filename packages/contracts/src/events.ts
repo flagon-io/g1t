@@ -193,6 +193,14 @@ export type EventPayloads = {
     mirrored?: boolean;
     /** The repository's mirror state when it landed; absent for one that leads. */
     mirror?: RepoMirror;
+    /**
+     * How many commits the push brought to the branch, along its
+     * first-parent line from `after` back to `before` (a merge commit is
+     * one), at most 50; one for a new branch. Absent when it was not
+     * counted: a tag, a branch deleted, a pull request landed, a push the
+     * store could not read back, or one from before this was recorded.
+     */
+    commits?: number;
   };
   /**
    * `author` is who opened it: g1t, for one its agent filed while at work,
@@ -579,9 +587,93 @@ export type EventQuery = {
   limit?: number;
 };
 
+/**
+ * `activity_digest`: what happened in some repositories, and to a
+ * workspace's artifacts, over `[from, until)`, counted by who did it. Home
+ * reads it for what people and agents did since you were last there.
+ * snake_case, as the Rust service reads it
+ * (`g1t_contracts::events::ActivityDigestArgs`).
+ */
+export type ActivityDigestArgs = {
+  /** By id; the caller has checked the viewer may read each. At most `MAX_DIGEST_REPOS` are read. */
+  repo_ids: string[];
+  /** The workspace's slug, for its `folio.*` events (which carry no repository); null leaves artifacts out. */
+  workspace: string | null;
+  /** RFC 3339, inclusive. */
+  from: string;
+  /** RFC 3339, exclusive. */
+  until: string;
+};
+
+/** The most repositories one digest reads. */
+export const MAX_DIGEST_REPOS = 50;
+
+/**
+ * How many times one actor did something. The actor is a member key:
+ * `user:<id>` for a person (or g1t, `user:usr_g1t_agent`), `agent:<id>` for
+ * one of the workspace's agents acting as itself, or `""` when the event
+ * named nobody (a push copied in by a mirror).
+ */
+export type ActorCount = { actor: string; count: number };
+
+/** Pushes by one actor, with the commits they brought. */
+export type PushesBy = { actor: string; count: number; commits: number };
+
+/** Pushes to a repository's branches (tags are not pushes here). A push whose commits were not counted counts as one commit. */
+export type PushDigest = {
+  count: number;
+  commits: number;
+  /** The branches pushed to, by name, sorted. */
+  branches: string[];
+  /** Most pushes first. */
+  by: PushesBy[];
+  /** Of those, the pushes straight to the default branch: what landed without a pull request. */
+  default_branch: { count: number; commits: number; by: PushesBy[]; last_at: string | null };
+};
+
+export type RepoDigest = {
+  repo_id: string;
+  pushes: PushDigest;
+  /** Pull requests opened, merged and closed without merging, each by who did it. */
+  pulls: { opened: ActorCount[]; merged: ActorCount[]; closed: ActorCount[] };
+  issues: { opened: ActorCount[]; closed: ActorCount[] };
+  /** `review.completed` (g1t's), and a comment with a verdict (a person's). */
+  reviews: ActorCount[];
+  /** Comments without a verdict; one by an agent as itself is the agent's. */
+  comments: ActorCount[];
+  /** Builds that finished, by who set them off; `production` is how many successes were production. */
+  deployments: { succeeded: ActorCount[]; failed: ActorCount[]; production: number };
+  /** Releases published, newest first, at most 50. */
+  releases: { tag: string; name: string | null; actor: string; at: string }[];
+  /** Package versions published, newest first, at most 50. */
+  packages: { ecosystem: string; name: string; version: string; actor: string; at: string }[];
+};
+
+/** A workspace's artifacts over the span. Never a title. */
+export type FolioDigest = {
+  created: ActorCount[];
+  /** Each folio whose content changed, once, with everyone whose changes are in it (member keys); at most 50. */
+  edited: { folio_id: string; kind: "doc" | "slides" | "design" | "dashboard" | string; authors: string[] }[];
+  /** How many folios changed, counting those past the cap. */
+  edited_count: number;
+};
+
+export type ActivityDigest = {
+  from: string;
+  until: string;
+  /** One per repository that had any event counted; none for a quiet one. */
+  repos: RepoDigest[];
+  /** When a workspace was named. */
+  folios: FolioDigest | null;
+  /** False when more events fell in the span than were read, or more repositories were named than are read, so counts are low. */
+  complete: boolean;
+};
+
 /** The event bus and its durable log. */
 export interface EventsApi {
   publish(events: NewEvent[]): Promise<void>;
   /** Newest first. */
   list(query: EventQuery): Promise<G1tEvent[]>;
+  /** A span of some repositories' and a workspace's artifacts' events, counted by who did it. */
+  activityDigest(args: ActivityDigestArgs): Promise<ActivityDigest>;
 }

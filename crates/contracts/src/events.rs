@@ -119,6 +119,14 @@ pub struct GitPush {
     /// a repository that leads.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mirror: Option<crate::mirrors::RepoMirror>,
+    /// How many commits the push brought to the branch, counted along its
+    /// first-parent line from `after` back to `before` (a merge commit is
+    /// one), at most 50; one for a new branch. Absent when it was not
+    /// counted: a tag, a branch deleted, a pull request landed, a push the
+    /// store could not read back, or one from before this was recorded.
+    /// Home's digest (`activity_digest`) sums it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commits: Option<u32>,
 }
 
 /// The payload of `issue.opened`, `issue.updated`, `issue.assigned`,
@@ -1022,6 +1030,185 @@ pub struct DocPageStale {
     pub owners: Vec<String>,
 }
 
+/// `activity_digest`: what happened in some repositories, and to a
+/// workspace's artifacts, over a span, counted. Returns [`ActivityDigest`].
+/// Home reads it for what people and agents did since you were last there.
+/// Fields are snake_case, as every service's arguments are.
+///
+/// The span is `[from, until)` in RFC 3339. Event ids sort by time, so the
+/// service reads each repository's events of each type it counts as one
+/// range of the `(repo_id, type, id)` index, from `id_floor(from)` to
+/// `id_floor(until)`; a workspace's folio events (which carry no
+/// repository) are the same range under a null repository, narrowed to
+/// the workspace. That is indexed range scans per repository and type, and
+/// it suits a workspace of tens of repositories. When a workspace has
+/// hundreds, the next step is a daily rollup per workspace that this
+/// method reads instead of the log; it is not built yet.
+#[derive(Debug, Default, Serialize, serde::Deserialize)]
+pub struct ActivityDigestArgs {
+    /// The repositories to count, by id. The caller has checked the
+    /// viewer may read each. At most `MAX_DIGEST_REPOS` are read.
+    #[serde(default)]
+    pub repo_ids: Vec<String>,
+    /// The workspace's slug, for its `folio.*` events; none leaves
+    /// artifacts out.
+    #[serde(default)]
+    pub workspace: Option<String>,
+    /// The start of the span, inclusive. RFC 3339.
+    pub from: String,
+    /// The end of the span, exclusive. RFC 3339.
+    pub until: String,
+}
+
+/// The most repositories one digest reads.
+pub const MAX_DIGEST_REPOS: usize = 50;
+/// The most events one digest reads of repositories, and of folios; past
+/// either the digest says it is not complete.
+pub const MAX_DIGEST_EVENTS: u32 = 5000;
+/// The most releases, packages and edited folios a digest lists.
+pub const MAX_DIGEST_LISTED: usize = 50;
+
+/// What `activity_digest` returns.
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq)]
+pub struct ActivityDigest {
+    pub from: String,
+    pub until: String,
+    /// One per repository that had any event counted; none for a quiet one.
+    pub repos: Vec<RepoDigest>,
+    /// The workspace's artifacts, when a workspace was named.
+    pub folios: Option<FolioDigest>,
+    /// False when more events fell in the span than were read, or more
+    /// repositories were named than are read, so counts are low.
+    pub complete: bool,
+}
+
+/// How many times one actor did something. The actor is a member key:
+/// `user:<id>` for a person (or g1t, `user:usr_g1t_agent`), `agent:<id>`
+/// for one of the workspace's agents acting as itself, or empty when the
+/// event named nobody (a push copied in by a mirror).
+#[derive(Debug, Clone, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ActorCount {
+    pub actor: String,
+    pub count: u32,
+}
+
+/// Pushes by one actor, with the commits they brought.
+#[derive(Debug, Clone, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct PushesBy {
+    pub actor: String,
+    pub count: u32,
+    pub commits: u32,
+}
+
+/// Pushes to a repository's branches (`git.push` events for `refs/heads/`;
+/// tags are not pushes here). A push whose commits were not counted
+/// counts as one commit.
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct PushDigest {
+    pub count: u32,
+    pub commits: u32,
+    /// The branches pushed to, by name, sorted.
+    pub branches: Vec<String>,
+    /// Most pushes first.
+    pub by: Vec<PushesBy>,
+    /// Of those, the pushes straight to the default branch: what landed
+    /// without a pull request.
+    pub default_branch: DefaultBranchPushes,
+}
+
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct DefaultBranchPushes {
+    pub count: u32,
+    pub commits: u32,
+    pub by: Vec<PushesBy>,
+    /// When the newest of them was. RFC 3339.
+    pub last_at: Option<String>,
+}
+
+/// Pull requests opened, merged and closed without merging, each by who did it.
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct PullDigest {
+    pub opened: Vec<ActorCount>,
+    pub merged: Vec<ActorCount>,
+    pub closed: Vec<ActorCount>,
+}
+
+/// Issues opened and closed, each by who did it.
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct IssueDigest {
+    pub opened: Vec<ActorCount>,
+    pub closed: Vec<ActorCount>,
+}
+
+/// Builds that finished, by who set them off, and how many of the
+/// successes were production.
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct DeploymentDigest {
+    pub succeeded: Vec<ActorCount>,
+    pub failed: Vec<ActorCount>,
+    pub production: u32,
+}
+
+/// A release published in the span.
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ReleaseDigest {
+    pub tag: String,
+    pub name: Option<String>,
+    pub actor: String,
+    /// RFC 3339.
+    pub at: String,
+}
+
+/// A package version published in the span.
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct PackageDigest {
+    pub ecosystem: String,
+    pub name: String,
+    pub version: String,
+    pub actor: String,
+    /// RFC 3339.
+    pub at: String,
+}
+
+/// One repository's span.
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq)]
+pub struct RepoDigest {
+    pub repo_id: String,
+    pub pushes: PushDigest,
+    pub pulls: PullDigest,
+    pub issues: IssueDigest,
+    /// Reviews: `review.completed` (g1t's), and a comment with a verdict (a person's).
+    pub reviews: Vec<ActorCount>,
+    /// Comments without a verdict; one by an agent as itself is the agent's.
+    pub comments: Vec<ActorCount>,
+    pub deployments: DeploymentDigest,
+    /// Newest first, at most `MAX_DIGEST_LISTED`.
+    pub releases: Vec<ReleaseDigest>,
+    /// Newest first, at most `MAX_DIGEST_LISTED`.
+    pub packages: Vec<PackageDigest>,
+}
+
+/// One folio (an artifact: a doc, slides, a design, a dashboard) whose
+/// content changed, with everyone whose changes are in it, as member
+/// keys. Never its title.
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct FolioEdited {
+    pub folio_id: String,
+    pub kind: String,
+    pub authors: Vec<String>,
+}
+
+/// A workspace's artifacts over the span: `folio.created` by who made
+/// them, and the folios whose content changed (`folio.updated`).
+#[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct FolioDigest {
+    pub created: Vec<ActorCount>,
+    /// Each folio once, at most `MAX_DIGEST_LISTED`.
+    pub edited: Vec<FolioEdited>,
+    /// How many folios changed, counting those past the cap.
+    pub edited_count: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1109,6 +1296,7 @@ mod tests {
             caused_by_job: job_run_of(&actor).map(str::to_owned),
             mirrored: false,
             mirror: None,
+            commits: Some(3),
         };
         let push = serde_json::to_value(push).unwrap();
         assert_eq!(caused_by_job(&push), Some("run_9"));
@@ -1128,6 +1316,7 @@ mod tests {
             caused_by_job: None,
             mirrored: false,
             mirror: None,
+            commits: None,
         };
         let quiet = serde_json::to_value(push(false)).unwrap();
         assert!(quiet.get("unscanned").is_none());

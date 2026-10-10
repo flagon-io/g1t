@@ -17,6 +17,7 @@ import {
   CHAT_VIEWER_HEADER,
   fail,
   identityClient,
+  idFloor,
   newId,
   ok,
   openD1,
@@ -42,6 +43,7 @@ import {
   type EmojiUpload,
   type ChatSettings,
   type ChatSettingsView,
+  type ChatActivity,
   type ChatSidebar,
   type ChatSidebarEntry,
   CONVERSATION_PEOPLE_SHOWN,
@@ -63,6 +65,7 @@ import {
   type WorkspaceAgent,
 } from "@g1t/contracts";
 
+import { type ActivityRow, activitySpan, chatActivity } from "./activity.ts";
 import { audienceKind, isShared, likePattern, readableBy } from "./audience.ts";
 import { MAX_HOPS, addsOrchestrator, chainFor, deliveries, delivery, handOffPlace, handOffRefusal, personalAgentRefusal, type Chain, type Wake } from "./delivery.ts";
 import {
@@ -606,6 +609,39 @@ class Chat {
     });
     const settings = await this.settings(workspace);
     return ok({ entries: sidebarOrder(entries), browsable: browsable?.n ?? 0, can: permissionsFor(settings, roleOf(a.viewer, slug)) });
+  }
+
+  /**
+   * What was said in `[from, until)` where the viewer can read: every
+   * public channel of the workspace, and the private channels and direct
+   * messages they are in (as `place` reads). Text messages and thread
+   * replies not deleted; never a card. Message ids sort by time, so each
+   * conversation's span is one range of `messages_by_channel`, read in one
+   * round trip for them all. Counts only, nothing of what was said.
+   */
+  async activity(a: { workspace: string; viewer: Viewer; from: string; until: string }): Promise<Result<ChatActivity>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const workspace = found.value;
+    const span = activitySpan(a.from, a.until);
+    if (!span) return fail("invalid", "from and until must be RFC 3339 times, from before until.");
+    const me = userKey(a.viewer!);
+    const rows = await this.db
+      .prepare(
+        `SELECT msg.channel_id, msg.author, COUNT(*) AS n
+         FROM channels c
+         JOIN messages msg ON msg.channel_id = c.id AND msg.id >= ?3 AND msg.id < ?4
+         WHERE c.workspace_id = ?1 AND c.archived_at IS NULL
+           AND (
+             (c.kind = 'channel' AND c.private = 0)
+             OR EXISTS (SELECT 1 FROM channel_members m WHERE m.channel_id = c.id AND m.principal = ?2)
+           )
+           AND msg.deleted_at IS NULL AND msg.kind = 'text'
+         GROUP BY msg.channel_id, msg.author`,
+      )
+      .bind(workspace.id, me, idFloor("msg", span.fromMs), idFloor("msg", span.untilMs))
+      .all<ActivityRow>();
+    return ok(chatActivity(rows.results, { from: span.from, until: span.until }));
   }
 
   // ── Channels ────────────────────────────────────────────────────────────
@@ -2001,6 +2037,8 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
   switch (method) {
     case "sidebar":
       return Response.json(await service.sidebar(args));
+    case "activity":
+      return Response.json(await service.activity(args));
     case "channel":
       return Response.json(await service.channel(args));
     case "channel_by_name":

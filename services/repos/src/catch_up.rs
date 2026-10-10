@@ -598,7 +598,7 @@ impl<S: GitStore> Repos<S> {
         self.record_git(entry).await;
         // As any push does: the pull request's head moves, its checks run
         // again, and whether it merges cleanly is worked out anew.
-        self.publish_push(&source, &git_ref, Some(&head.hash), &commit_id, Some(&a.actor))
+        self.publish_push(&source, &git_ref, Some(&head.hash), &commit_id, Some(&a.actor), Some(1))
             .await?;
         Ok(Outcome::Ok(PullBranchUpdate::Updated {
             commit: commit_id,
