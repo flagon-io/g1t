@@ -130,9 +130,17 @@ the databases, so start calls together and add no rounds.
   (1,049 KB) in three waves and the editor appeared at 2.8–3.3 s; a doc
   now fetches 71 files (1,026 KB) in one wave, and against the deployed
   services the editor appears at 2.1 s, of which the room's answer is
-  0.65 s and the editor's own start 0.4 s. The room's part (the saved
-  document in the page, one call to the room, the context in one round)
-  is measured after deploy.
+  0.65 s and the editor's own start 0.4 s. With the saved document in the
+  page, measured on g1t.sh signed in (2026-10-10, warm, 1440×900), the
+  editor appears at 1.5 s: first byte 0.53 s, scripts by 0.75 s, the
+  editor's own start the rest. A doc without a saved document (one last
+  saved before documents were kept) waited for its room's first message
+  instead, 0.9 s after the socket opened, and appeared at 2.0–2.5 s; the
+  page now asks the room once and keeps the answer, so only its first
+  open pays. Still to cut: the live socket's four service calls before
+  the room answers, the page and sidebar's 27 database round trips in two
+  calls, the root loader's billing and identity calls (0.7–1.3 s and
+  0.45 s inside), and the 3.4 MB of script a doc page decodes.
 
 ## Rate limits
 

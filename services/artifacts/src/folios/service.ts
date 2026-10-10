@@ -110,7 +110,7 @@ import {
 } from "./access-store.ts";
 import { agentMayFind, agentReach, audienceRule, type AgentReach, type AudienceRule } from "./agents.ts";
 import { publishFolioEvent } from "./events.ts";
-import { MAX_DEPTH, cleanCover, cleanIcon, cleanNote, cleanSource, cleanTarget, cleanTitle, decodeCursor, depthOf, encodeCursor, listLimit, pageState, sharedTops, slugOf, subtreeHeight, treeNodes } from "./list.ts";
+import { MAX_DEPTH, MAX_PAGE_STATE, cleanCover, cleanIcon, cleanNote, cleanSource, cleanTarget, cleanTitle, decodeCursor, depthOf, encodeCursor, listLimit, pageState, sharedTops, slugOf, subtreeHeight, treeNodes } from "./list.ts";
 import { REQUEST_RECIPIENTS, claimAccessRequest } from "./requests.ts";
 import type { FolioRoom } from "./room.ts";
 import { builtinFolioTemplate, builtinFolioTemplates } from "./templates.ts";
@@ -584,17 +584,40 @@ export class Folios {
     ]);
     const parents = above.map((id) => aboveRows.get(id)).filter((r): r is FolioRow => !!r);
     const others = [...parents, ...childRows.results, ...linkRows.results.filter((r) => r.id !== row.id)];
-    const { roles } = await this.roles(ctx, others);
+    const [{ roles }, state] = await Promise.all([this.roles(ctx, others), this.stateFor(ctx.workspace, row)]);
     const readable = (list: FolioRow[]) => list.filter((r) => roles.get(r.id)).map((r) => this.ref(ctx.workspace.slug, r));
     return ok({
       folio: folio!,
       text: row.text,
-      state: pageState(row.state),
+      state,
       breadcrumbs: readable(parents),
       children: readable(childRows.results),
       backlinks: readable(linkRows.results.filter((r) => r.id !== row.id)),
       suggestions,
     });
+  }
+
+  /**
+   * The document the page carries, so the editor opens on it before the
+   * room answers. A folio saved before its state was kept (or whose last
+   * save was too large for a row) has none in D1: its room is asked once,
+   * the state goes out with this page, and it is written back so the next
+   * open reads it from the row like any other. A room that cannot answer
+   * costs the page nothing: the editor waits for the room as before.
+   */
+  private async stateFor(workspace: Workspace, row: FolioRow): Promise<string | null> {
+    const saved = pageState(row.state);
+    if (saved || row.trashed_at) return saved;
+    try {
+      const room = await this.ready(workspace, row);
+      const state = await room.state();
+      if (!state.byteLength || state.byteLength > MAX_PAGE_STATE) return null;
+      this.defer(this.db.prepare("UPDATE folios SET state = ? WHERE id = ? AND state IS NULL").bind(state, row.id).run());
+      return pageState(state);
+    } catch (error) {
+      console.warn("artifacts: a page opens without its state", row.id, error instanceof Error ? error.message : String(error));
+      return null;
+    }
   }
 
   // ── Making and changing ─────────────────────────────────────────────────
