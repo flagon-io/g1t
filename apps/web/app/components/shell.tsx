@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PanelLeft, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Sun, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PanelLeft, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Store, Sun, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -1171,8 +1171,11 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
         <SidebarLink to={`/${slug}/-/spend`} icon={<Coins size={15} />} current={at("spend")}>
           Spend
         </SidebarLink>
-        <SidebarLink to={`/${slug}/-/usage`} icon={<BarChart3 size={15} />} current={at("usage", "gateway")}>
+        <SidebarLink to={`/${slug}/-/usage`} icon={<BarChart3 size={15} />} current={at("usage")}>
           Usage
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/gateway`} icon={<Network size={15} />} current={at("gateway")}>
+          AI Gateway
         </SidebarLink>
         <SidebarLink to={`/${slug}/-/billing`} icon={<CreditCard size={15} />} current={at("billing")}>
           Billing and plans
@@ -1409,6 +1412,7 @@ const SECTIONS: Record<string, string> = {
   artifacts: "Artifacts",
   today: "Today",
   apps: "Apps",
+  marketplace: "Marketplace",
   "code-access": "Code access",
   overview: "Overview",
   workspace: "Workspace",
@@ -1470,7 +1474,13 @@ function Breadcrumbs({
     if (third && SETTINGS_PAGE.test(page)) {
       trail.push({ label: "Settings", to: `/${owner}/-/settings` });
       trail.push({ label: third === "settings" ? "General" : (SECTIONS[third] ?? third), to: page });
-    } else if (third) trail.push({ label: SECTIONS[third] ?? third, to: page });
+    } else if (third) {
+      trail.push({ label: SECTIONS[third] ?? third, to: page });
+      // The Marketplace names its tab: Marketplace / Agents.
+      const tabs: Record<string, string> = { agents: "Agents", integrations: "Integrations", extensions: "Extensions", requests: "Requests" };
+      const tab = third === "marketplace" && fourth ? tabs[fourth] : undefined;
+      if (tab) trail.push({ label: tab, to: `${page}/${fourth}` });
+    }
   } else if (second) {
     const repo = `/${owner}/${second}`;
     trail.push({ label: second, to: repo, mono: true });
@@ -1566,6 +1576,8 @@ function commandsFor(user: User, shell: ShellData): Command[] {
           ...(hasCodeAccess(ws) ? [{ label: "Code overview", to: `/${ws.slug}/-/overview`, icon: <Code2 size={15} /> }] : []),
           { label: "Artifacts", to: `/${ws.slug}/-/artifacts`, icon: <Shapes size={15} /> },
           { label: "Apps", hint: "Everything installed that you can use", to: `/${ws.slug}/-/apps`, icon: <LayoutGrid size={15} /> },
+          { label: "Marketplace", hint: "Agents and integrations to add", to: `/${ws.slug}/-/marketplace`, icon: <Store size={15} /> },
+          { label: "Agent catalog", hint: "Roles to add an agent into", to: `/${ws.slug}/-/marketplace/agents`, icon: <Bot size={15} /> },
           { label: "Workspace", hint: "Billing, policies, settings", to: `/${ws.slug}/-/workspace`, icon: <Building2 size={15} /> },
         ]
       : []),

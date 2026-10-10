@@ -14,6 +14,7 @@ import type { CardActionResult } from "./chat";
 // Model tiers (`ModelTier`, `MODEL_TIERS`) are integrations.ts's, the
 // same ones runs are routed between.
 import type { ModelTier } from "./integrations";
+import type { ExtensionInstall, InstallRequest, InstallRequestStatus, InstallRequests } from "./marketplace";
 
 /** The built-in orchestrator's handle; nobody else's agent may take it. */
 export const BUILTIN_AGENT_HANDLE = "g1t";
@@ -713,6 +714,29 @@ export type WorkspaceAgentsApi = {
   cardAction(input: AgentCardAction): Promise<Result<CardActionResult>>;
   policy(workspace: string, viewer: User): Promise<Result<AgentPolicy>>;
   setPolicy(workspace: string, viewer: User, policy: Partial<AgentPolicy>): Promise<Result<AgentPolicy>>;
+  /**
+   * The Marketplace's install requests (./marketplace.ts): every one in the
+   * workspace for an owner, a member's own for anyone else.
+   */
+  installRequests(workspace: string, viewer: User): Promise<Result<InstallRequests>>;
+  /**
+   * A member asks the workspace's owners to add a listing (`agent:<template>`
+   * or `integration:<connector>`), and every owner is notified. Owners add
+   * things themselves, so they don't ask. Asking again while a request for
+   * the same listing is open is a conflict.
+   */
+  requestInstall(workspace: string, viewer: User, listing: string, note?: string | null): Promise<Result<InstallRequest>>;
+  /** An owner marks a request added (`done`) or turns it down (`declined`); whoever asked is told. */
+  resolveInstallRequest(workspace: string, viewer: User, id: string, status: Exclude<InstallRequestStatus, "open">): Promise<Result<InstallRequest>>;
+  /** The extensions installed in the workspace; any member sees them. */
+  extensionInstalls(workspace: string, viewer: User): Promise<Result<ExtensionInstall[]>>;
+  /** Owners install a published extension at its current version; open requests for it are answered. */
+  installExtension(workspace: string, viewer: User, extension: string): Promise<Result<ExtensionInstall>>;
+  /** Owners switch an install on or off: off is the kill switch. */
+  setExtensionEnabled(workspace: string, viewer: User, listing: string, enabled: boolean): Promise<Result<ExtensionInstall>>;
+  /** Owners cap what an install spends a month; null leaves it to the workspace's limit. */
+  setExtensionBudget(workspace: string, viewer: User, listing: string, monthlyMicros: number | null): Promise<Result<ExtensionInstall>>;
+  uninstallExtension(workspace: string, viewer: User, listing: string): Promise<Result<null>>;
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -763,5 +787,13 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     cardAction: (input) => call("card_action", input),
     policy: (workspace, viewer) => call("policy", { workspace, viewer }),
     setPolicy: (workspace, viewer, policy) => call("set_policy", { workspace, viewer, policy }),
+    installRequests: (workspace, viewer) => call("install_requests", { workspace, viewer }),
+    requestInstall: (workspace, viewer, listing, note) => call("request_install", { workspace, viewer, listing, note: note ?? null }),
+    resolveInstallRequest: (workspace, viewer, id, status) => call("resolve_install_request", { workspace, viewer, id, status }),
+    extensionInstalls: (workspace, viewer) => call("extension_installs", { workspace, viewer }),
+    installExtension: (workspace, viewer, extension) => call("install_extension", { workspace, viewer, extension }),
+    setExtensionEnabled: (workspace, viewer, listing, enabled) => call("set_extension_enabled", { workspace, viewer, listing, enabled }),
+    setExtensionBudget: (workspace, viewer, listing, monthlyMicros) => call("set_extension_budget", { workspace, viewer, listing, monthly_micros: monthlyMicros }),
+    uninstallExtension: (workspace, viewer, listing) => call("uninstall_extension", { workspace, viewer, listing }),
   };
 }

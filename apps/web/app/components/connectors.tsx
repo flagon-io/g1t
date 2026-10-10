@@ -74,7 +74,8 @@ export function ConnectorMark({ view, size = 36 }: { view: Pick<ConnectorView, "
         borderRadius: size * 0.28,
         fontSize: size * (letters.length > 1 ? 0.34 : 0.42),
         background: `color-mix(in srgb, ${color} 16%, transparent)`,
-        color: `color-mix(in srgb, ${color} 72%, white)`,
+        // Toward the text colour, so the letters read in both themes.
+        color: `color-mix(in srgb, ${color} 60%, var(--color-fg))`,
         boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)`,
       }}
     >

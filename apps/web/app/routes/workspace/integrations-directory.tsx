@@ -1,15 +1,13 @@
 import { redirect } from "react-router";
 
 import { type Provider, PROVIDERS } from "@g1t/contracts";
-import { CONNECTORS, connectorsFor } from "@g1t/contracts/connectors";
+import { connectorsFor } from "@g1t/contracts/connectors";
 
 import type { Route } from "./+types/integrations-directory";
 import { ConnectorDirectory, ScopeNote } from "../../components/connectors";
-import type { ConnectedState } from "../../lib/connectors";
-import { githubApp } from "../../lib/github.server";
+import { connectedStates } from "../../lib/connected.server";
 import { integrationsSection } from "../../lib/integration-sections";
 import { page } from "../../lib/meta";
-import { integrations, webhooks } from "../../lib/services.server";
 import { requireUser, roleIn } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -35,45 +33,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     throw redirect(`/${slug}/-/integrations/${integrationsSection(PROVIDERS[add as Provider].kind)}?add=${add}#add`);
   }
 
-  const [connections, github, hooks] = await Promise.all([
-    integrations.list(slug, viewer),
-    githubApp.status(viewer, slug).catch(() => null),
-    webhooks.list(viewer, { workspace: slug }).catch(() => null),
-  ]);
-
-  const connected: Record<string, ConnectedState> = {};
-  if (connections.ok) {
-    for (const connector of CONNECTORS) {
-      if (!connector.provider) continue;
-      const mine = connections.value.filter((connection) => connection.provider === connector.provider);
-      if (mine.length === 0) continue;
-      const broken = mine.find((connection) => connection.lastError);
-      connected[connector.id] = {
-        detail: mine.length === 1 ? mine[0]!.name : `${mine.length} connections: ${mine.map((c) => c.name).join(", ")}`,
-        problem: broken ? `${broken.name}: ${broken.lastError}` : null,
-        manage: `/${slug}/-/integrations/${integrationsSection(PROVIDERS[connector.provider].kind)}`,
-      };
-    }
-  }
-  if (github?.ok && github.value.installations.length > 0) {
-    const suspended = github.value.installations.find((installation) => installation.suspended);
-    connected.github = {
-      detail: `On ${github.value.installations.map((installation) => installation.account).join(", ")}`,
-      problem: suspended ? `The installation on ${suspended.account} is suspended on GitHub.` : null,
-      manage: null,
-    };
-  }
-  const ours = hooks?.ok ? hooks.value.filter((hook) => hook.scope === "workspace") : [];
-  if (ours.length > 0) {
-    const failing = ours.filter((hook) => hook.lastStatus === "failed");
-    connected.webhooks = {
-      detail: ours.length === 1 ? ours[0]!.url : `${ours.length} webhooks`,
-      problem: failing.length > 0 ? `The last delivery to ${failing[0]!.url} failed.` : null,
-      manage: null,
-    };
-  }
-
-  return { slug, owner: role === "owner", connected };
+  return { slug, owner: role === "owner", connected: await connectedStates(slug, viewer) };
 }
 
 export default function WorkspaceIntegrationsDirectory({ loaderData }: Route.ComponentProps) {

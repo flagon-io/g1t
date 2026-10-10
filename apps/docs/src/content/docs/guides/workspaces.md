@@ -596,23 +596,30 @@ of the menu on a phone); on the status page, the three icons at the top.
 
 ### Apps
 
-Every other app in the workspace is a page you can pin to your dock:
-**Projects**, **Packages**, **Security**, **Context** and **Memory** (for
-members with Code access), **Teams**, **Usage**, **AI Gateway**,
-**Integrations** and **Audit log**. A pinned app shows as its icon under
-the built-in ones, in the order you pinned them.
+Apps are what the workspace added from the [Marketplace](/guides/marketplace/)
+that you can use: today, the integrations it connected, such as Sentry or
+GitHub, each opening its own page; installed extensions join them once
+extensions are published. An app you can't use shows **Request access**.
+The built-in apps' own pages are in their sidebars, not in Apps: Code's has
+**Projects**, **Security** and **Packages**; Agents' has **Context** and
+**Memory**; People's has **Teams**; Workspace's has **Usage**,
+**AI Gateway**, **Integrations** and the **Audit log**.
 
-To pin an app:
+A pinned app shows as its mark under the built-in ones, in the order you
+pinned them. To pin one:
 
 1. Select **Apps** near the foot of the dock, or open the Apps page at
    `g1t.sh/<workspace>/-/apps`.
 2. Find the app, by name if you like.
 3. Select the pin on its tile. Select it again to unpin it.
 
+When the workspace hasn't added anything yet, the launcher and the Apps
+page say so and lead to the Marketplace. The launcher's **Marketplace**
+link always does.
+
 Your pins are yours alone and each workspace has its own. They are saved
 to your account, so your dock is the same on every browser and device you
-sign in on, in the order you pinned. There is no marketplace yet: it
-shows as coming.
+sign in on, in the order you pinned.
 
 ### The sidebar
 
@@ -634,8 +641,9 @@ for the roles that can use it. A link straight to any of these pages opens
 the sidebar already there.
 
 Workspace's sidebar lists the workspace's **Overview**; under **Money**,
-[**Spend**](/guides/spend/), **Usage**,
-**Billing and plans**, **Integrations**, its security policies, the
+[**Spend**](/guides/spend/), **Usage**, **AI Gateway**,
+**Billing and plans**; for owners, **Runners** under **Compute**;
+**Integrations**, its security policies, the
 **Audit log** and **Settings**, which slides over to how the workspace is
 set up:
 
@@ -689,7 +697,7 @@ them within reach of your thumb:
 | | What it does |
 | --- | --- |
 | **The bar along the bottom** | **Today**, **Chat**, **Notifications**, **Agents** and **Code** (for members with Code access), each with what is unread, and **More**. It steps aside while the keyboard is up and inside a conversation. |
-| **More** | A panel above the bar with **All apps**, the Marketplace (coming), your pinned apps, **Artifacts**, **People**, **Workspace**, and **You and help**: your status, profile and settings, [appearance](#appearance), the documentation, support, status, the keyboard's shortcuts and signing out. |
+| **More** | A panel above the bar with **All apps**, the [Marketplace](/guides/marketplace/), your pinned apps, **Artifacts**, **People**, **Workspace**, and **You and help**: your status, profile and settings, [appearance](#appearance), the documentation, support, status, the keyboard's shortcuts and signing out. |
 | **The sidebar button**, at the left of the page's header | Opens the sidebar of the app you are in from the left: the same lists and links as on a computer. Tap outside it, or open a page, and it closes. |
 | **The tab you are already on** | Tap it again to open that app's sidebar too. |
 | **The workspace's name** in the page's header | Switches workspace, or opens your profile or settings. |

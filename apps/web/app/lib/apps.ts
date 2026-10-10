@@ -1,12 +1,17 @@
 /**
- * The apps a workspace has, and the ones each person pins to their dock.
+ * The dock's built-in apps, the apps a workspace installed from the
+ * Marketplace, and the ones each person pins to their dock.
  *
  * Built-in apps (Today, Chat, Notifications, Agents, Code, Artifacts,
- * People and Workspace) are always in the dock. Every other app is a page
- * of the workspace that people use on its own: Projects, Packages,
- * Security, Context, Memory, Teams, Usage, the AI Gateway, Integrations
- * and the audit log. Each person pins the ones they want, and nobody sees
- * an app they cannot use: Code's apps are for members with Code access.
+ * People and Workspace) are always in the dock; their own pages (Projects,
+ * Usage, Teams and the rest) are in their sidebars. Apps are what the
+ * workspace added from the Marketplace: today, the integrations it
+ * connected, each opening its page. Each person pins the ones they want.
+ *
+ * An installed app's key says what it is: `int-<connector>` for an
+ * integration (@g1t/contracts/connectors), and later `ext-<extension>`.
+ * A key that names nothing installable (a built-in page pinned before
+ * Apps were the Marketplace's) is dropped wherever pins are read.
  *
  * Pins are each person's own, per workspace, in the order they set, and
  * kept with their account by the identity service (`dock_pins`), so the
@@ -16,77 +21,146 @@
  * with the account carry over from it until the first change.
  * No Workers or React imports, so it can be tested under Node.
  */
+import type { ExtensionInstall } from "@g1t/contracts";
+import { CONNECTORS, type Connector, connectorPath } from "@g1t/contracts/connectors";
+import { extensionById } from "@g1t/contracts/marketplace";
 
 /** The apps that are always in the dock. */
 export type BuiltinApp = "today" | "chat" | "notifications" | "agents" | "code" | "artifacts" | "people" | "workspace";
 
-/** The apps people pin. */
-export type PinnableApp =
-  | "projects"
-  | "packages"
-  | "security"
-  | "context"
-  | "memory"
-  | "teams"
-  | "usage"
-  | "gateway"
-  | "integrations"
-  | "audit";
-
-export type AppKey = BuiltinApp | PinnableApp;
-
-export type AppInfo = {
-  key: AppKey;
+export type BuiltinInfo = {
+  key: BuiltinApp;
   name: string;
-  /** What it is, in a few words, for the Apps page. */
-  about: string;
   /** Its page in the workspace `slug`. */
   path: (slug: string) => string;
-  /** Always in the dock: it cannot be pinned or unpinned. */
-  builtin: boolean;
   /** Part of Code: only for members with Code access. */
   code?: boolean;
 };
 
 const under = (page: string) => (slug: string) => `/${slug}/-/${page}`;
 
-/** Every app, built-in first, in the order the launcher shows them. */
-export const APPS: AppInfo[] = [
-  { key: "today", name: "Today", about: "What needs you, across the workspace", path: under("today"), builtin: true },
-  { key: "chat", name: "Chat", about: "Channels and messages with people and agents", path: under("chat"), builtin: true },
-  { key: "notifications", name: "Notifications", about: "Reviews, mentions and what agents wait on", path: () => "/notifications", builtin: true },
-  { key: "agents", name: "Agents", about: "Your workspace's agents and their sessions", path: under("agents"), builtin: true },
-  { key: "code", name: "Code", about: "Projects, pull requests and checks", path: under("overview"), builtin: true, code: true },
-  { key: "artifacts", name: "Artifacts", about: "Documents, decks and pages", path: under("artifacts"), builtin: true },
-  { key: "people", name: "People", about: "Who belongs to the workspace", path: under("people"), builtin: true },
-  { key: "workspace", name: "Workspace", about: "Billing, policies and settings", path: under("workspace"), builtin: true },
-  { key: "projects", name: "Projects", about: "Every project in the workspace", path: under("projects"), builtin: false, code: true },
-  { key: "packages", name: "Packages", about: "Packages published from its projects", path: under("packages"), builtin: false, code: true },
-  { key: "security", name: "Security", about: "Alerts across its projects", path: under("security"), builtin: false, code: true },
-  { key: "context", name: "Context", about: "What agents can look up", path: under("context"), builtin: false, code: true },
-  { key: "memory", name: "Memory", about: "What agents remember about the workspace", path: under("memory"), builtin: false, code: true },
-  { key: "teams", name: "Teams", about: "Groups of people to mention and grant access", path: under("teams"), builtin: false },
-  { key: "usage", name: "Usage", about: "What the workspace has used this month", path: under("usage"), builtin: false },
-  { key: "gateway", name: "AI Gateway", about: "Every model request, with its cost", path: under("gateway"), builtin: false },
-  { key: "integrations", name: "Integrations", about: "Model providers, alerts and trackers", path: under("integrations"), builtin: false },
-  { key: "audit", name: "Audit log", about: "Who did what, and when", path: under("audit"), builtin: false },
+/** The dock's built-in apps, in its order. */
+export const BUILTINS: BuiltinInfo[] = [
+  { key: "today", name: "Today", path: under("today") },
+  { key: "chat", name: "Chat", path: under("chat") },
+  { key: "notifications", name: "Notifications", path: () => "/notifications" },
+  { key: "agents", name: "Agents", path: under("agents") },
+  { key: "code", name: "Code", path: under("overview"), code: true },
+  { key: "artifacts", name: "Artifacts", path: under("artifacts") },
+  { key: "people", name: "People", path: under("people") },
+  { key: "workspace", name: "Workspace", path: under("workspace") },
 ];
 
-const PINNABLE = new Set<string>(APPS.filter((app) => !app.builtin).map((app) => app.key));
+/** The built-in app `key`. */
+export function appOf(key: BuiltinApp): BuiltinInfo {
+  return BUILTINS.find((app) => app.key === key)!;
+}
 
-/** Whether `key` is an app people pin. */
+/** An installed app's key, as pins and forms carry it: `int-sentry`. */
+export type PinnableApp = string;
+
+/** An app installed from the Marketplace. */
+export type InstalledApp = {
+  key: PinnableApp;
+  name: string;
+  /** What it is, in a few words. */
+  about: string;
+  /** The Marketplace listing it was installed from: `integration:sentry`. */
+  listing: string;
+  /** The connector behind it, for its mark. */
+  connector: Pick<Connector, "id" | "name" | "provider">;
+  /** Its page in the workspace `slug`. */
+  path: (slug: string) => string;
+  /**
+   * Whether the person can open it. Every member can open an integration's
+   * page; an app limited to some people shows Request access to the rest.
+   */
+  usable: boolean;
+};
+
+/** Where an integration is looked after: its setup page, by kind, or its own page. */
+const SECTION_BY_CATEGORY: Partial<Record<Connector["category"], string>> = { ai: "models", monitoring: "alerts", issues: "trackers" };
+
+function integrationPath(connector: Connector): (slug: string) => string {
+  const section = connector.provider ? SECTION_BY_CATEGORY[connector.category] : undefined;
+  if (section) return under(`integrations/${section}`);
+  const href = connector.href?.workspace;
+  return href ? (slug) => connectorPath(href, slug) : under("integrations");
+}
+
+/** Identity keeps keys of at most this many characters (MAX_DOCK_APP_KEY). */
+const MAX_KEY = 32;
+
+/** The installed-app key for an integration: `int-sentry`. */
+export function integrationAppKey(connectorId: string): PinnableApp {
+  return `int-${connectorId}`;
+}
+
+/**
+ * The app a key names, from the catalog alone (no service is asked), or
+ * null when it names nothing that can be installed: a retired key, a
+ * built-in page, or a connector that is not available for a workspace.
+ */
+export function installedAppOf(key: string): InstalledApp | null {
+  if (key.length > MAX_KEY) return null;
+  if (/^ext-[a-z][a-z0-9-]*$/.test(key)) {
+    const extension = extensionById(key.slice(4));
+    if (!extension || extension.status !== "available") return null;
+    return {
+      key,
+      name: extension.name,
+      about: extension.tagline,
+      listing: `extension:${extension.id}`,
+      connector: { id: extension.id, name: extension.name, provider: undefined },
+      // Its own page, in a sandboxed frame, is the extension host's to serve; until then, its listing.
+      path: (slug) => `/${slug}/-/marketplace/extensions/${extension.id}`,
+      usable: true,
+    };
+  }
+  if (!/^int-[a-z0-9][a-z0-9-]*$/.test(key)) return null;
+  const connector = CONNECTORS.find((c) => c.id === key.slice(4));
+  if (!connector || connector.status !== "available" || !connector.scopes.includes("workspace")) return null;
+  return {
+    key,
+    name: connector.name,
+    about: connector.description,
+    listing: `integration:${connector.id}`,
+    connector: { id: connector.id, name: connector.name, provider: connector.provider },
+    path: integrationPath(connector),
+    usable: true,
+  };
+}
+
+/** Whether `key` names an app that can be pinned. */
 export function isPinnable(key: string): key is PinnableApp {
-  return PINNABLE.has(key);
+  return installedAppOf(key) != null;
 }
 
-/** The apps someone can use in a workspace: Code's only with Code access. */
-export function appsFor(code: boolean): AppInfo[] {
-  return APPS.filter((app) => code || !app.code);
+/**
+ * The apps the workspace installed, from what it has connected (by
+ * connector id, lib/connected.server.ts), in catalog order. `manage`, when
+ * a connection has one, is where its app opens.
+ */
+export function installedApps(
+  connected: Record<string, { manage: string | null }>,
+  installs: readonly Pick<ExtensionInstall, "listing" | "enabled">[] = [],
+): InstalledApp[] {
+  const integrations = CONNECTORS.filter((connector) => connected[connector.id]).map((connector) => {
+    const app = installedAppOf(integrationAppKey(connector.id));
+    const manage = connected[connector.id]?.manage;
+    return app && manage ? { ...app, path: () => manage } : app;
+  });
+  // Extensions switched off (the kill switch) aren't apps until they're on again.
+  const extensions = installs.filter((install) => install.enabled).map((install) => installedAppOf(`ext-${install.listing.replace(/^extension:/, "")}`));
+  return [...extensions, ...integrations].filter((app): app is InstalledApp => app != null);
 }
 
-/** The app `key`. */
-export function appOf(key: AppKey): AppInfo {
-  return APPS.find((app) => app.key === key)!;
+/** An app as a loader sends it: everything but its path, which is worked out for the workspace. */
+export type InstalledAppData = Omit<InstalledApp, "path"> & { href: string };
+
+export function appData(app: InstalledApp, slug: string): InstalledAppData {
+  const { path, ...rest } = app;
+  return { ...rest, href: path(slug) };
 }
 
 /** The cookie that keeps this device's copy of each person's pins, per workspace. */

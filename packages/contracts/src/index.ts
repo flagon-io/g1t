@@ -28,6 +28,7 @@ export * from "./guardrails";
 export * from "./identity";
 export * from "./inbox";
 export * from "./instances";
+export * from "./marketplace";
 export * from "./ids";
 export * from "./integrations";
 export * from "./members";

@@ -176,8 +176,8 @@ export function ProviderMark({ provider, size = 32 }: { provider: Provider; size
         borderRadius: size * 0.28,
         fontSize: size * (String(content).length > 1 ? 0.34 : 0.42),
         background: `color-mix(in srgb, ${color} 16%, transparent)`,
-        // Lifted toward white, so the small letters read on the dark tile.
-        color: `color-mix(in srgb, ${color} 72%, white)`,
+        // Toward the text colour, so the letters read on the tile in both themes.
+        color: `color-mix(in srgb, ${color} 60%, var(--color-fg))`,
         boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)`,
       }}
     >

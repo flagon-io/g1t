@@ -146,6 +146,7 @@ const PAGE_MODES: Record<string, ModeKey> = {
   context: "agents",
   memory: "agents",
   apps: "apps",
+  marketplace: "apps",
   people: "people",
   members: "people",
   teams: "people",

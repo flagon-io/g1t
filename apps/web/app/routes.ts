@@ -202,6 +202,17 @@ export default [
     route("-/today", "routes/workspace/home.tsx"),
     route("-/home", "routes/workspace/moved.ts", { id: "routes/workspace/moved-home" }),
     route("-/apps", "routes/workspace/apps.tsx"),
+    // The Marketplace: anyone browses it; owners add agents and integrations,
+    // and everyone else asks (`requests` takes every form it posts).
+    route("-/marketplace", "routes/workspace/marketplace/layout.tsx", [
+      index("routes/workspace/marketplace/discover.tsx"),
+      route("agents", "routes/workspace/marketplace/agents.tsx"),
+      route("agents/:template", "routes/workspace/marketplace/agent.tsx"),
+      route("integrations", "routes/workspace/marketplace/integrations.tsx"),
+      route("extensions", "routes/workspace/marketplace/extensions.tsx"),
+      route("extensions/:extension", "routes/workspace/marketplace/extension.tsx"),
+      route("requests", "routes/workspace/marketplace/requests.tsx"),
+    ]),
     // What Code's pages say to a member without Code.
     route("-/code-access", "routes/workspace/code-access.tsx"),
     route("-/memory", "routes/workspace/memory.tsx"),

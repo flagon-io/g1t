@@ -144,6 +144,7 @@ export default defineConfig({
 				{
 					label: 'Connect your tools',
 					items: [
+						{ label: 'Marketplace', slug: 'guides/marketplace' },
 						{ label: 'Integrations', slug: 'guides/integrations' },
 						{ label: 'Model providers', slug: 'guides/models' },
 						{ label: 'AI Gateway', slug: 'guides/ai-gateway' },

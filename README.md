@@ -55,7 +55,8 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | Spend: where the money went by agent, person, channel, model and product, every budget, a receipt for each task, and your spend in the top bar | Preview |
 | Spend by extension | Coming |
 | Memory, sessions with live steps and cost, routines on a schedule | Live |
-| An agent catalog of specialists, and foundational skills (documents, research, data, code, communication, files) | Coming |
+| An agent catalog in the Marketplace: roles to add an agent into, which members can ask owners for | Live |
+| More catalog specialists, and foundational skills (documents, research, data, code, communication, files) | Coming |
 | Agents on runners anywhere (g1t's, yours, your desktop), with sessions that persist between tasks | Coming |
 | Agents answering in Slack and Teams | Coming |
 
@@ -83,7 +84,8 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | Integrations: the GitHub App, Sentry, Datadog, Jira, Linear, alerts | Live |
 | REST API, OpenAPI, MCP server, webhooks, an event bus | Live |
 | Usage billing with no seats, a public price book, spend limits, itemised invoices | Live |
-| Marketplace of extensions, shared from public repositories; Drive, Gmail, Calendar and Slack integrations; Mail | Coming |
+| The Marketplace: agents from the catalog and integrations, added by owners, with install requests from members | Live |
+| Extensions shared from public repositories (Support, Recruiting, Mail and On-call are listed); Drive, Gmail, Calendar and Slack integrations | Coming |
 | Single sign-on (SAML, OIDC) and SCIM per workspace | Coming |
 | Storage: databases and buckets per team, with copies of production for anything unreviewed | Coming |
 | Self-hosting: the core forge in Docker Compose (agents, deployments and context search off) | Preview |

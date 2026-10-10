@@ -21,14 +21,14 @@ import { Link, useLocation, useNavigate, useSubmit } from "react-router";
 
 import { type Abilities, type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
 
-import { appIcon } from "./apps";
+import { appIcon, pinnedApp } from "./apps";
 import { CountBadge, ShortcutsDialog } from "./dock";
 import { Mark } from "./logo";
 import { Avatar } from "./ui";
 import { TabStrip } from "./ui/tab-strip";
 import { StatusDialog } from "./presence";
 import { ThemeSwitch } from "./theme-switch";
-import { type AppKey, type PinnableApp, appOf } from "../lib/apps";
+import { type BuiltinApp, type PinnableApp, appOf } from "../lib/apps";
 import { setPresence, useOwnPresence } from "../lib/notify-client";
 import { dndOn, liveStatus, pauseUntil, untilLabel } from "../lib/presence";
 import { STATUS_URL } from "../lib/status";
@@ -184,7 +184,7 @@ export function BottomBar({
                 >
                   {current && <TopBar />}
                   <BarIcon current={current}>
-                    {appIcon(tab.key as AppKey, 20)}
+                    {appIcon(tab.key as BuiltinApp, 20)}
                     {tab.badge && <CountBadge count={count} loud={tab.badge.loud} />}
                   </BarIcon>
                   <span className={`w-full truncate text-[0.625rem] leading-tight font-medium max-[380px]:text-[0.5625rem] max-[380px]:tracking-[-0.02em] ${current ? "text-fg" : "text-faint"}`}>{tab.label}</span>
@@ -249,15 +249,14 @@ function MoreTile({ to, icon, label, onClick, disabled, note }: { to?: string; i
 
 /**
  * More, from the bottom bar: a rounded panel just above it, with g1t's
- * mark at its top and a grid of big tiles: all apps, the Marketplace
- * (coming), your pinned apps, Artifacts, People, Workspace, and "You and
+ * mark at its top and a grid of big tiles: all apps, the Marketplace,
+ * your pinned apps, Artifacts, People, Workspace, and "You and
  * help", which opens your account's sheet.
  */
 function MoreSheet({ open, onOpenChange, user, workspace, pins }: { open: boolean; onOpenChange: (open: boolean) => void; user: User; workspace: Membership; pins: PinnableApp[] }) {
   const slug = workspace.slug;
-  const code = hasCodeAccess(workspace);
   const [account, setAccount] = useState(false);
-  const shown = pins.filter((key) => code || !appOf(key).code);
+  const shown = pins.map((key) => pinnedApp(key, slug)).filter((app) => app != null);
   return (
     <>
       <Primitive.Root open={open} onOpenChange={onOpenChange}>
@@ -276,9 +275,9 @@ function MoreSheet({ open, onOpenChange, user, workspace, pins }: { open: boolea
             </div>
             <div className="grid grid-cols-4 gap-1.5">
               <MoreTile to={`/${slug}/-/apps`} icon={<LayoutGrid size={20} />} label="All apps" />
-              <MoreTile icon={<Store size={20} />} label="Marketplace" disabled note="Coming" />
-              {shown.map((key) => (
-                <MoreTile key={key} to={appOf(key).path(slug)} icon={appIcon(key, 20)} label={appOf(key).name} />
+              <MoreTile to={`/${slug}/-/marketplace`} icon={<Store size={20} />} label="Marketplace" />
+              {shown.map((app) => (
+                <MoreTile key={app.key} to={app.to} icon={app.icon(26)} label={app.name} />
               ))}
               <MoreTile to={appOf("artifacts").path(slug)} icon={appIcon("artifacts", 20)} label="Artifacts" />
               <MoreTile to={appOf("people").path(slug)} icon={appIcon("people", 20)} label="People" />

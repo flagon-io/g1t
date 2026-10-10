@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigation } from "react-router";
 
 import { type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
 
-import { AppsLauncher, appIcon, useAppPins } from "./apps";
+import { AppsLauncher, appIcon, pinnedApp, useAppPins } from "./apps";
 import { Mark } from "./logo";
 import { Avatar } from "./ui";
 import { Hint } from "./ui/hint";
@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { type AppKey, type PinnableApp, appOf } from "../lib/apps";
+import { type BuiltinApp, type PinnableApp } from "../lib/apps";
 import { cn } from "../lib/cn";
 import { paletteKeyLabel } from "../lib/shortcut";
 import { type ModeKey, modeHome, modeOf, todayPath } from "../lib/workspace-nav";
@@ -224,7 +224,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
 }
 
 /** The Apps button at the foot of the dock's apps, and the launcher it opens. */
-function AppsButton({ slug, code, pins, onToggle, current }: { slug: string; code: boolean; pins: PinnableApp[]; onToggle: (app: PinnableApp) => void; current: boolean }) {
+function AppsButton({ slug, pins, onToggle, current }: { slug: string; pins: PinnableApp[]; onToggle: (app: PinnableApp) => void; current: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -236,7 +236,7 @@ function AppsButton({ slug, code, pins, onToggle, current }: { slug: string; cod
         <DockLabel current={current || open}>Apps</DockLabel>
       </PopoverTrigger>
       <PopoverContent side="right" align="end" sideOffset={14} aria-label="Apps" className="w-[23rem] bg-dock p-2.5">
-        <AppsLauncher slug={slug} code={code} pins={pins} onToggle={onToggle} onClose={() => setOpen(false)} />
+        <AppsLauncher slug={slug} pins={pins} onToggle={onToggle} onClose={() => setOpen(false)} />
       </PopoverContent>
     </Popover>
   );
@@ -281,7 +281,7 @@ export function Dock({
     ...(code ? [{ key: "code" as const, label: "Code" }] : []),
     { key: "artifacts", label: "Artifacts" },
   ];
-  const shown = pins.filter((key) => code || !appOf(key).code);
+  const shown = pins.map((key) => pinnedApp(key, slug)).filter((app) => app != null);
   // A pinned app is current on its own page and the pages under it.
   const at = (to: string) => path === to || path.startsWith(`${to}/`);
   return (
@@ -302,21 +302,20 @@ export function Dock({
             key={item.key}
             to={modeHome(item.key, slug)}
             label={item.label}
-            icon={appIcon(item.key as AppKey, 19)}
-            current={here === item.key && !shown.some((key) => at(appOf(key).path(slug)))}
+            icon={appIcon(item.key as BuiltinApp, 19)}
+            current={here === item.key && !shown.some((app) => at(app.to))}
             badge={item.badge}
           />
         ))}
       </div>
       {/* Your pinned apps: as many as you like, scrolling under a fade at either end. */}
       <div className="flex min-h-0 w-full grow flex-col items-center gap-1 overflow-y-auto border-t border-line px-1.5 py-2 [mask-image:linear-gradient(to_bottom,transparent,#000_10px,#000_calc(100%-14px),transparent)] [scrollbar-width:none]">
-        {shown.map((key) => {
-          const app = appOf(key);
-          return <DockLink key={key} to={app.path(slug)} label={app.name} icon={appIcon(key, 18)} current={at(app.path(slug))} compact />;
-        })}
+        {shown.map((app) => (
+          <DockLink key={app.key} to={app.to} label={app.name} icon={app.icon(22)} current={at(app.to)} compact />
+        ))}
       </div>
       <div className="flex w-full shrink-0 flex-col items-center px-1.5 pb-1.5">
-        <AppsButton slug={slug} code={code} pins={pins} onToggle={toggle} current={here === "apps"} />
+        <AppsButton slug={slug} pins={pins} onToggle={toggle} current={here === "apps"} />
       </div>
       <div className="flex w-full shrink-0 flex-col items-center gap-1 border-t border-line px-1.5 pt-2 pb-2.5">
         <DockLink to={modeHome("people", slug)} label="People" icon={appIcon("people", 19)} current={here === "people"} />

@@ -14,6 +14,9 @@ import {
   type AgentDelivery,
   type CardActionResult,
   type G1tEvent,
+  type ExtensionInstall,
+  type InstallRequest,
+  type InstallRequests,
   type NewWorkspaceAgent,
   type Result,
   type ServiceBinding,
@@ -23,9 +26,12 @@ import {
   askerAccess,
   awaitsConfirmation,
   chatClient,
+  cleanRequestNote,
+  extensionById,
   fail,
   identityClient,
   newId,
+  notifyClient,
   ok,
   openD1,
 } from "@g1t/contracts";
@@ -45,6 +51,8 @@ import { cardAction } from "./cards.ts";
 import { type SessionEnv, sweep } from "./sessions.ts";
 import * as views from "./views.ts";
 import { monthKey } from "./budget.ts";
+import * as extensions from "./extensions.ts";
+import { type Answered, type Person, answerLine, findListing, listRequests, listingPath, openRequest, requestsPath, resolveListing, resolveRequest } from "./installs.ts";
 
 export { Desk } from "./desk.ts";
 
@@ -213,8 +221,174 @@ class Agents {
     }
     this.audit(a.viewer!, a.workspace, "create_agent", definition.handle, `Created @${definition.handle} (version 1)`);
     this.defer(this.hello(a.workspace, managed.value, id, a.viewer!));
+    // Hiring from a catalog role answers every request for that role.
+    if (definition.template) this.defer(this.answerListing(a.workspace, managed.value, `agent:${definition.template}`, a.viewer!));
     const row = await this.row(managed.value, definition.handle);
     return ok(toAgent(row!, new Date()));
+  }
+
+  // ── The Marketplace's install requests (./installs.ts) ─────────────────
+
+  /** Requests as the viewer sees them: every one for an owner, their own for anyone else. */
+  async installRequests(a: { workspace: string; viewer: User | null }): Promise<Result<InstallRequests>> {
+    if (a?.viewer && awaitsConfirmation(a.viewer)) return UNVERIFIED;
+    const seen = await this.seen(a?.workspace ?? "", a?.viewer ?? null);
+    if (!seen.ok) return seen;
+    const owner = canManage(a.viewer, a.workspace);
+    const requests = await listRequests(this.db, seen.value, a.viewer!, owner);
+    return ok({ requests, can_resolve: owner });
+  }
+
+  /** A member asks the owners to add something; each owner is notified. */
+  async requestInstall(a: { workspace: string; viewer: User | null; listing: unknown; note?: unknown }): Promise<Result<InstallRequest>> {
+    if (a?.viewer && awaitsConfirmation(a.viewer)) return UNVERIFIED;
+    const seen = await this.seen(a?.workspace ?? "", a?.viewer ?? null);
+    if (!seen.ok) return seen;
+    const viewer = a.viewer!;
+    if ((viewer.kind ?? "user") !== "user") return fail("forbidden", "Only people ask the workspace's owners to add things.");
+    if (canManage(viewer, a.workspace)) return fail("invalid", "You're an owner of this workspace: add it yourself.");
+    const listing = findListing(a.listing);
+    if (!listing) return fail("not_found", "That isn't something a workspace can add yet.");
+    const opened = await openRequest(this.db, seen.value, newId("ins"), listing, viewer, cleanRequestNote(a.note));
+    if (!opened.ok) return opened;
+    const slug = a.workspace.toLowerCase();
+    this.audit(viewer, slug, "request_install", listing.ref, `Asked the owners to add ${listing.name}`, "marketplace");
+    this.defer(this.tellOwners(slug, viewer, opened.value));
+    return opened;
+  }
+
+  /** An owner adds or turns down a request; whoever asked is told. */
+  async resolveInstallRequest(a: { workspace: string; viewer: User | null; id: unknown; status: unknown }): Promise<Result<InstallRequest>> {
+    const managed = await this.managed(a?.workspace ?? "", a?.viewer ?? null);
+    if (!managed.ok) {
+      return managed.error.code === "forbidden" ? fail("forbidden", "Only the workspace's owners answer requests.") : managed;
+    }
+    if (a.status !== "done" && a.status !== "declined") return fail("invalid", "Answer a request with done or declined.");
+    const answered = await resolveRequest(this.db, managed.value, String(a.id ?? ""), a.status, a.viewer!);
+    if (!answered.ok) return answered;
+    const slug = a.workspace.toLowerCase();
+    const { request } = answered.value;
+    this.audit(a.viewer!, slug, "answer_install_request", request.listing, `${request.status === "done" ? "Added" : "Turned down"} ${request.name} for @${request.requested_by}`, "marketplace");
+    this.defer(this.tellRequester(slug, a.viewer!, answered.value));
+    return ok(request);
+  }
+
+  // ── Extensions installed in the workspace (./extensions.ts) ──────────────
+
+  /** The workspace's installs; any member sees them. */
+  async extensionInstalls(a: { workspace: string; viewer: User | null }): Promise<Result<ExtensionInstall[]>> {
+    if (a?.viewer && awaitsConfirmation(a.viewer)) return UNVERIFIED;
+    const seen = await this.seen(a?.workspace ?? "", a?.viewer ?? null);
+    if (!seen.ok) return seen;
+    return ok(await extensions.listInstalls(this.db, seen.value));
+  }
+
+  /** Owners install a published extension; whoever asked for it is told. */
+  async installExtension(a: { workspace: string; viewer: User | null; extension: unknown }): Promise<Result<ExtensionInstall>> {
+    const managed = await this.managed(a?.workspace ?? "", a?.viewer ?? null);
+    if (!managed.ok) return managed.error.code === "forbidden" ? fail("forbidden", "Only the workspace's owners install extensions.") : managed;
+    const installed = await extensions.install(this.db, extensionById, managed.value, newId("ins"), String(a.extension ?? ""), a.viewer!.username);
+    if (!installed.ok) return installed;
+    const slug = a.workspace.toLowerCase();
+    this.audit(a.viewer!, slug, "install_extension", installed.value.listing, `Installed ${installed.value.listing} ${installed.value.version}`, "marketplace");
+    this.defer(this.answerListing(slug, managed.value, installed.value.listing, a.viewer!));
+    return installed;
+  }
+
+  /** Owners switch an install on or off. */
+  async setExtensionEnabled(a: { workspace: string; viewer: User | null; listing: unknown; enabled: unknown }): Promise<Result<ExtensionInstall>> {
+    const managed = await this.managed(a?.workspace ?? "", a?.viewer ?? null);
+    if (!managed.ok) return managed;
+    const listing = String(a.listing ?? "");
+    if (!extensions.extensionIdOf(listing)) return fail("invalid", "Name an extension as extension:<id>.");
+    const changed = await extensions.setEnabled(this.db, managed.value, listing, a.enabled === true, a.viewer!.username);
+    if (changed.ok) this.audit(a.viewer!, a.workspace, a.enabled === true ? "enable_extension" : "disable_extension", listing, `${a.enabled === true ? "Switched on" : "Switched off"} ${listing}`, "marketplace");
+    return changed;
+  }
+
+  /** Owners cap what an install spends a month. */
+  async setExtensionBudget(a: { workspace: string; viewer: User | null; listing: unknown; monthly_micros: unknown }): Promise<Result<ExtensionInstall>> {
+    const managed = await this.managed(a?.workspace ?? "", a?.viewer ?? null);
+    if (!managed.ok) return managed;
+    const listing = String(a.listing ?? "");
+    const micros = a.monthly_micros == null ? null : Number(a.monthly_micros);
+    const changed = await extensions.setBudget(this.db, managed.value, listing, micros);
+    if (changed.ok) this.audit(a.viewer!, a.workspace, "set_extension_budget", listing, `Set ${listing}'s monthly budget`, "marketplace");
+    return changed;
+  }
+
+  /** Owners remove an install. */
+  async uninstallExtension(a: { workspace: string; viewer: User | null; listing: unknown }): Promise<Result<null>> {
+    const managed = await this.managed(a?.workspace ?? "", a?.viewer ?? null);
+    if (!managed.ok) return managed;
+    const listing = String(a.listing ?? "");
+    const removed = await extensions.uninstall(this.db, managed.value, listing, a.viewer!.username);
+    if (removed.ok) this.audit(a.viewer!, a.workspace, "uninstall_extension", listing, `Uninstalled ${listing}`, "marketplace");
+    return removed;
+  }
+
+  /** Marks every open request for `listing` added, and tells each person who asked. */
+  private async answerListing(slug: string, workspaceId: string, listing: string, by: User): Promise<void> {
+    try {
+      const answered = await resolveListing(this.db, workspaceId, listing, by as Person);
+      await Promise.all(answered.map((one) => this.tellRequester(slug.toLowerCase(), by, one)));
+    } catch (error) {
+      console.error("agents: requests for a listing were not answered", listing, String(error));
+    }
+  }
+
+  /** Every owner hears of a new request (at most 20 of them). */
+  private async tellOwners(slug: string, asker: User, request: InstallRequest): Promise<void> {
+    if (!this.env.NOTIFY) return;
+    try {
+      const members = await identityClient(this.env.IDENTITY).listMembers(slug, asker);
+      if (!members.ok) throw new Error(members.error.message);
+      const owners = members.value.filter((member) => member.role === "owner").slice(0, 20);
+      const notify = notifyClient(this.env.NOTIFY);
+      await Promise.all(
+        owners.map((owner) =>
+          notify
+            .notify(
+              { username: owner.username },
+              {
+                id: `install-request:${request.id}:${owner.username}`,
+                kind: "approval",
+                workspace: slug,
+                title: `@${asker.username} asks you to add ${request.name}`,
+                body: request.note ?? (request.kind === "agent" ? "An agent from the catalog. Add it, or turn the request down." : request.kind === "extension" ? "An extension. Install it, or turn the request down." : "An integration. Connect it, or turn the request down."),
+                href: requestsPath(slug),
+                actor: { kind: "user", id: asker.id, name: asker.username, avatar: asker.avatar ?? null, avatar_seed: null },
+                created_at: new Date().toISOString(),
+              },
+            )
+            .catch(() => undefined),
+        ),
+      );
+    } catch (error) {
+      console.error("agents: owners were not told of an install request", request.id, String(error));
+    }
+  }
+
+  /** The person who asked hears their request was answered. */
+  private async tellRequester(slug: string, by: User, answered: Answered): Promise<void> {
+    if (!this.env.NOTIFY) return;
+    const { request } = answered;
+    const line = answerLine(request, `@${by.username}`);
+    await notifyClient(this.env.NOTIFY)
+      .notify(
+        { user_id: answered.requested_by_id },
+        {
+          id: `install-answer:${request.id}`,
+          kind: "inbox",
+          workspace: slug,
+          title: line.title,
+          body: line.body,
+          href: request.status === "done" ? listingPath(slug, request.listing) : requestsPath(slug),
+          actor: { kind: "user", id: by.id, name: by.username, avatar: by.avatar ?? null, avatar_seed: null },
+          created_at: new Date().toISOString(),
+        },
+      )
+      .catch((error: unknown) => console.error("agents: a requester was not told", request.id, String(error)));
   }
 
   /**
@@ -354,7 +528,7 @@ class Agents {
    * The events service's audit contract speaks camelCase (Rust's
    * `NewAuditEntry`).
    */
-  private audit(actor: User, workspace: string, action: string, handle: string, message: string): void {
+  private audit(actor: User, workspace: string, action: string, handle: string, message: string, area: "agents" | "marketplace" = "agents"): void {
     const kind = actor.kind === "workspace" ? "workspace" : actor.kind === "agent" ? "agent" : actor.kind === "system" ? "system" : "person";
     const entry = {
       actorKind: kind,
@@ -371,9 +545,9 @@ class Agents {
       repo: null,
       number: null,
       gitRef: null,
-      path: `agents/${handle}`,
+      path: `${area}/${handle}`,
       outcome: "allowed",
-      rule: "owner",
+      rule: area === "marketplace" && action === "request_install" ? "member" : "owner",
       result: "ok",
       message,
       requestId: `req_${crypto.randomUUID()}`,
@@ -455,6 +629,22 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
       return Response.json(await service.cardAction(args));
     case "policy":
       return Response.json(await service.view(args, (ctx) => views.policy(ctx)));
+    case "install_requests":
+      return Response.json(await service.installRequests(args));
+    case "request_install":
+      return Response.json(await service.requestInstall(args));
+    case "resolve_install_request":
+      return Response.json(await service.resolveInstallRequest(args));
+    case "extension_installs":
+      return Response.json(await service.extensionInstalls(args));
+    case "install_extension":
+      return Response.json(await service.installExtension(args));
+    case "set_extension_enabled":
+      return Response.json(await service.setExtensionEnabled(args));
+    case "set_extension_budget":
+      return Response.json(await service.setExtensionBudget(args));
+    case "uninstall_extension":
+      return Response.json(await service.uninstallExtension(args));
     case "set_policy":
       return Response.json(await service.view(args, (ctx) => views.setPolicy(ctx, args.policy)));
     default:
