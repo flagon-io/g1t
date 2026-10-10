@@ -1,13 +1,16 @@
 /**
- * The Marketplace: what a workspace can add, which anyone in it may
- * browse. Owners add agents and integrations; everyone else asks an owner,
- * and the agents service keeps the request (lib/marketplace.ts). It is not
- * in the dock: the Apps page and the launcher lead here, as does ⌘K.
+ * The Marketplace: what adds functionality to a workspace, which anyone in
+ * it may browse. Extensions add pages, data and cards; integrations connect
+ * what the team already uses so agents can work with it. Owners add them;
+ * everyone else asks an owner, and the agents service keeps the request
+ * (lib/marketplace.ts). Agents aren't here: they start from templates in
+ * Agents mode. It is not in the dock: the Apps page and the launcher lead
+ * here, as does ⌘K.
  *
  * This layout holds the heading, the tabs and the viewer's requests, which
  * every tab reads to say what is waiting.
  */
-import { Blocks, Bot, Inbox, Plug, Sparkles } from "lucide-react";
+import { Blocks, Inbox, Plug, Sparkles } from "lucide-react";
 import { Link, NavLink, Outlet, data, useLocation, useRouteLoaderData } from "react-router";
 
 import type { ExtensionInstall, InstallRequests } from "@g1t/contracts";
@@ -64,9 +67,8 @@ export default function MarketplaceLayout({ loaderData }: Route.ComponentProps) 
   const { pathname } = useLocation();
   const tabs = [
     { to: marketplacePath(slug), label: "Discover", icon: <Sparkles size={14} />, end: true },
-    { to: marketplacePath(slug, "agents"), label: "Agents", icon: <Bot size={14} /> },
-    { to: marketplacePath(slug, "integrations"), label: "Integrations", icon: <Plug size={14} /> },
     { to: marketplacePath(slug, "extensions"), label: "Extensions", icon: <Blocks size={14} /> },
+    { to: marketplacePath(slug, "integrations"), label: "Integrations", icon: <Plug size={14} /> },
     { to: marketplacePath(slug, "requests"), label: owner ? "Requests" : "Your requests", icon: <Inbox size={14} />, count: waiting },
   ];
   return (
@@ -75,7 +77,7 @@ export default function MarketplaceLayout({ loaderData }: Route.ComponentProps) 
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Marketplace</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Agents, integrations and extensions {name} can add.{" "}
+            Add what {name} does besides code, and connect the tools you already use so agents can work with your data.{" "}
             {owner ? "As an owner, you add them for everyone." : "Owners add them; ask one for what you need, and they'll hear about it."}
           </p>
         </div>

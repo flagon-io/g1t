@@ -601,8 +601,8 @@ that you can use: today, the integrations it connected, such as Sentry or
 GitHub, each opening its own page; installed extensions join them once
 extensions are published. An app you can't use shows **Request access**.
 The built-in apps' own pages are in their sidebars, not in Apps: Code's has
-**Projects**, **Security** and **Packages**; Agents' has **Context** and
-**Memory**; People's has **Teams**; Workspace's has **Usage**,
+**Projects**, **Security** and **Packages**; Agents' has **Templates**,
+**Context** and **Memory**; People's has **Teams**; Workspace's has **Usage**,
 **AI Gateway**, **Integrations** and the **Audit log**.
 
 A pinned app shows as its mark under the built-in ones, in the order you

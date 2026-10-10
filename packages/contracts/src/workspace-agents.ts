@@ -728,8 +728,9 @@ export type WorkspaceAgentsApi = {
    */
   installRequests(workspace: string, viewer: User): Promise<Result<InstallRequests>>;
   /**
-   * A member asks the workspace's owners to add a listing (`agent:<template>`
-   * or `integration:<connector>`), and every owner is notified. Owners add
+   * A member asks the workspace's owners to add a listing
+   * (`extension:<id>` or `integration:<connector>`), and every owner is
+   * notified. Owners add
    * things themselves, so they don't ask. Asking again while a request for
    * the same listing is open is a conflict.
    */

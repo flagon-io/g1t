@@ -55,9 +55,9 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | Spend: where the money went by agent, person, channel, model and product, every budget, a receipt for each task, and your spend in the top bar | Preview |
 | Spend by extension | Coming |
 | Memory, sessions with live steps and cost, routines on a schedule | Live |
-| An agent catalog in the Marketplace: roles to add an agent into, which members can ask owners for | Live |
+| Agent templates in Agents: starting points for a new agent, configured once started | Live |
 | Foundational skills in every agent: PDFs, Word documents and spreadsheets, reports with sources, charts, code review, thread summaries; owners turn them off per agent | Live |
-| More catalog specialists; web research; skills you write, add from the Marketplace or learn from work | Coming |
+| More specialist templates; web research; skills you write, add from the Marketplace or learn from work | Coming |
 | Agents on runners anywhere (g1t's, yours, your desktop), with sessions that persist between tasks | Coming |
 | Agents answering in Slack and Teams | Coming |
 
@@ -85,8 +85,8 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | Integrations: the GitHub App, Sentry, Datadog, Jira, Linear, alerts | Live |
 | REST API, OpenAPI, MCP server, webhooks, an event bus | Live |
 | Usage billing with no seats, a public price book, spend limits, itemised invoices | Live |
-| The Marketplace: agents from the catalog and integrations, added by owners, with install requests from members | Live |
-| Extensions shared from public repositories (Support, Recruiting, Mail and On-call are listed); Drive, Gmail, Calendar and Slack integrations | Coming |
+| The Marketplace: extensions and integrations, added by owners, with install requests from members | Live |
+| Extensions shared from public repositories (Mail, Support, CRM, Recruiting, On-call and helpdesk, CRM and ERP bridges are listed); Drive, Gmail, Calendar and Slack integrations | Coming |
 | Single sign-on (SAML, OIDC) and SCIM per workspace | Coming |
 | Storage: databases and buckets per team, with copies of production for anything unreviewed | Coming |
 | Self-hosting: the core forge in Docker Compose (agents, deployments and context search off) | Preview |

@@ -221,8 +221,6 @@ class Agents {
     }
     this.audit(a.viewer!, a.workspace, "create_agent", definition.handle, `Created @${definition.handle} (version 1)`);
     this.defer(this.hello(a.workspace, managed.value, id, a.viewer!));
-    // Hiring from a catalog role answers every request for that role.
-    if (definition.template) this.defer(this.answerListing(a.workspace, managed.value, `agent:${definition.template}`, a.viewer!));
     const row = await this.row(managed.value, definition.handle);
     return ok(toAgent(row!, new Date()));
   }
@@ -355,7 +353,7 @@ class Agents {
                 kind: "approval",
                 workspace: slug,
                 title: `@${asker.username} asks you to add ${request.name}`,
-                body: request.note ?? (request.kind === "agent" ? "An agent from the catalog. Add it, or turn the request down." : request.kind === "extension" ? "An extension. Install it, or turn the request down." : "An integration. Connect it, or turn the request down."),
+                body: request.note ?? (request.kind === "extension" ? "An extension. Install it, or turn the request down." : "An integration. Connect it, or turn the request down."),
                 href: requestsPath(slug),
                 actor: { kind: "user", id: asker.id, name: asker.username, avatar: asker.avatar ?? null, avatar_seed: null },
                 created_at: new Date().toISOString(),

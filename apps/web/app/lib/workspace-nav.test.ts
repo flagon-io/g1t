@@ -27,6 +27,11 @@ test("old addresses go to where their pages are now", () => {
   // Code's Overview lives at -/overview now: not an old address.
   assert.equal(workspaceRedirect("/acme/-/overview"), null);
   assert.equal(workspaceRedirect("/acme/-/soon/teams"), "/acme/-/teams");
+  // Agent templates were the Marketplace's Agents tab.
+  assert.equal(workspaceRedirect("/acme/-/marketplace/agents"), "/acme/-/agents/templates");
+  assert.equal(workspaceRedirect("/acme/-/marketplace/agents/qa.data", "?_routes=x"), "/acme/-/agents/templates/qa");
+  assert.equal(workspaceRedirect("/acme/-/marketplace/agentsx"), null);
+  assert.equal(workspaceRedirect("/acme/-/marketplace/extensions"), null);
   assert.equal(workspaceRedirect("/acme/-/soon/insights", "?x=1"), "/acme/-/insights?x=1");
   assert.equal(workspaceRedirect("/acme/-/soon/board"), null);
   assert.equal(workspaceRedirect("/acme/-/people"), null);

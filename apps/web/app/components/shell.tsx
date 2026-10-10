@@ -1476,9 +1476,10 @@ function Breadcrumbs({
       trail.push({ label: third === "settings" ? "General" : (SECTIONS[third] ?? third), to: page });
     } else if (third) {
       trail.push({ label: SECTIONS[third] ?? third, to: page });
-      // The Marketplace names its tab: Marketplace / Agents.
-      const tabs: Record<string, string> = { agents: "Agents", integrations: "Integrations", extensions: "Extensions", requests: "Requests" };
-      const tab = third === "marketplace" && fourth ? tabs[fourth] : undefined;
+      // The Marketplace names its tab (Marketplace / Extensions), and Agents its templates.
+      const tabs: Record<string, string> =
+        third === "marketplace" ? { integrations: "Integrations", extensions: "Extensions", requests: "Requests" } : third === "agents" ? { templates: "Templates" } : {};
+      const tab = fourth ? tabs[fourth] : undefined;
       if (tab) trail.push({ label: tab, to: `${page}/${fourth}` });
     }
   } else if (second) {
@@ -1576,8 +1577,8 @@ function commandsFor(user: User, shell: ShellData): Command[] {
           ...(hasCodeAccess(ws) ? [{ label: "Code overview", to: `/${ws.slug}/-/overview`, icon: <Code2 size={15} /> }] : []),
           { label: "Artifacts", to: `/${ws.slug}/-/artifacts`, icon: <Shapes size={15} /> },
           { label: "Apps", hint: "Everything installed that you can use", to: `/${ws.slug}/-/apps`, icon: <LayoutGrid size={15} /> },
-          { label: "Marketplace", hint: "Agents and integrations to add", to: `/${ws.slug}/-/marketplace`, icon: <Store size={15} /> },
-          { label: "Agent catalog", hint: "Roles to add an agent into", to: `/${ws.slug}/-/marketplace/agents`, icon: <Bot size={15} /> },
+          { label: "Marketplace", hint: "Extensions and integrations to add", to: `/${ws.slug}/-/marketplace`, icon: <Store size={15} /> },
+          { label: "Agent templates", hint: "Starting points for a new agent", to: `/${ws.slug}/-/agents/templates`, icon: <Bot size={15} /> },
           { label: "Workspace", hint: "Billing, policies, settings", to: `/${ws.slug}/-/workspace`, icon: <Building2 size={15} /> },
         ]
       : []),

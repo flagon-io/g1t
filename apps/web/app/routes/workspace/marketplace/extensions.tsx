@@ -1,20 +1,21 @@
 /**
  * Extensions in the Marketplace: every listed extension, from its
  * manifest (@g1t/contracts marketplace.ts), published ones first, with what
- * the workspace installed; then how extensions are published and who
- * stands behind each tier.
+ * the workspace installed; connected systems apart; then how extensions
+ * are published and who stands behind each tier.
  */
 import { FIRST_PARTY_EXTENSIONS, LISTING_TIERS } from "@g1t/contracts/marketplace";
 
 import { ExtensionCard, SectionHead, TierBadge } from "../../../components/marketplace";
-import { TIERS, extensionListings } from "../../../lib/marketplace";
+import { TIERS, extensionListings, isConnectedSystem } from "../../../lib/marketplace";
 import { useMarketplace } from "./layout";
 
 export default function MarketplaceExtensions() {
   const { slug, owner, username, requests, installs } = useMarketplace();
   const listings = extensionListings(FIRST_PARTY_EXTENSIONS, installs, requests?.requests ?? [], username);
   const published = listings.filter((l) => l.manifest.status === "available");
-  const coming = listings.filter((l) => l.manifest.status !== "available");
+  const coming = listings.filter((l) => l.manifest.status !== "available" && !isConnectedSystem(l.manifest));
+  const systems = listings.filter((l) => l.manifest.status !== "available" && isConnectedSystem(l.manifest));
   return (
     <div className="space-y-12">
       {published.length > 0 && (
@@ -28,7 +29,7 @@ export default function MarketplaceExtensions() {
         </section>
       )}
       <section aria-labelledby="soon">
-        <SectionHead id="soon" title={published.length > 0 ? "Coming" : "Coming from g1t"} aside={`${coming.length}`}>
+        <SectionHead id="soon" title={published.length > 0 ? "Soon" : "Soon from g1t"} aside={`${coming.length}`}>
           Extensions add pages, data, cards and agent roles for what your team does besides code. These are g1t's own, listed before their first release; each can be installed once it is published.
         </SectionHead>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -37,6 +38,18 @@ export default function MarketplaceExtensions() {
           ))}
         </div>
       </section>
+      {systems.length > 0 && (
+        <section aria-labelledby="systems">
+          <SectionHead id="systems" title="Connected systems" aside={`${systems.length}`}>
+            Extensions that bridge a system your team already runs, so agents work across it and g1t together. The install screen names where its data goes.
+          </SectionHead>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {systems.map((listing) => (
+              <ExtensionCard key={listing.ref} listing={listing} slug={slug} owner={owner} />
+            ))}
+          </div>
+        </section>
+      )}
       <section aria-labelledby="how" className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
         <h2 id="how" className="text-base font-semibold tracking-tight">
           How extensions are shared

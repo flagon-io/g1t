@@ -54,10 +54,10 @@ export default function MarketplaceRequests() {
   const answered = requests.requests.filter((request) => request.status !== "open");
   if (requests.requests.length === 0) {
     return owner ? (
-      <EmptyState title="No requests">When a member asks for an agent or an integration, it shows here, and you're notified.</EmptyState>
+      <EmptyState title="No requests">When a member asks for an extension or an integration, it shows here, and you're notified.</EmptyState>
     ) : (
       <EmptyState title="You haven't asked for anything">
-        Find an agent or an integration and choose <b>Request</b>. The workspace's owners are notified, and you hear back when one answers.
+        Find an extension or an integration and choose <b>Request</b>. The workspace's owners are notified, and you hear back when one answers.
       </EmptyState>
     );
   }
@@ -66,7 +66,7 @@ export default function MarketplaceRequests() {
       <section aria-labelledby="waiting">
         <SectionHead id="waiting" title={owner ? "Waiting on an owner" : "Waiting"} aside={`${waiting.length}`}>
           {owner
-            ? "Adding an agent from the catalog answers every request for its role. After connecting an integration, mark its requests added."
+            ? "Installing an extension answers every request for it. After connecting an integration, mark its requests added."
             : "Your requests the workspace's owners haven't answered yet."}
         </SectionHead>
         {waiting.length === 0 ? (

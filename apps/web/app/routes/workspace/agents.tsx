@@ -249,8 +249,8 @@ function Roster({ slug, agents, live }: { slug: string; agents: WorkspaceAgent[]
         <h2 id="roster" className="text-sm font-medium">
           Agents <span className="text-faint">{agents.length}</span>
         </h2>
-        <Link to={`/${slug}/-/marketplace/agents`} className="text-xs text-muted hover:text-fg">
-          Add from the agent catalog
+        <Link to={`/${slug}/-/agents/templates`} className="text-xs text-muted hover:text-fg">
+          Start from a template
         </Link>
       </div>
       <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">

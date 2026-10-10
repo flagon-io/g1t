@@ -76,7 +76,8 @@ export default function MarketplaceExtension({ params }: Route.ComponentProps) {
           </h3>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <Group title="Pages, in its sidebar" items={manifest.adds.pages} empty="None" />
-            <Group title="Agent roles you can add" items={manifest.adds.agent_roles} empty="None. Your agents get its tools." />
+            <Group title="Cards, in chat and elsewhere" items={manifest.adds.cards} empty="None" />
+            <Group title="Agent roles it brings" items={manifest.adds.agent_roles} empty="None. Your agents get its tools." />
             <Group title="Tools for agents" items={manifest.adds.tools} empty="None" />
             <Group title="Notifications it sends" items={manifest.adds.notifications} empty="None" />
           </div>

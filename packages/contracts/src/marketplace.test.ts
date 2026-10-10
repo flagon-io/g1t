@@ -42,6 +42,8 @@ test("publishing checks a manifest strictly", () => {
   refused({ pricing: { monthly: 5 } }, /free/);
   refused({ permissions: [] }, /permissions/);
   refused({ ui: { entry: "index.html" } }, /ui.entry/);
+  refused({ bridges: "  " }, /bridges/);
+  refused({ adds: { pages: [], agent_roles: [], tools: [], notifications: [] } }, /cards/);
   // A community extension that runs on its own servers, declaring them, is fine.
   assert.ok(checkManifest({ ...published, runtime: "connected", publisher: { name: "anyone", tier: "community" }, domains: ["api.example.com"] }, isScope).ok);
 });
@@ -49,6 +51,7 @@ test("publishing checks a manifest strictly", () => {
 test("the install screen says where data goes", () => {
   assert.equal(dataDisclosure({ domains: [] }), "Its data stays in g1t.");
   assert.equal(dataDisclosure({ domains: ["api.acme.dev", "eu.acme.dev"] }), "Data leaves g1t to api.acme.dev, eu.acme.dev.");
+  assert.equal(dataDisclosure({ domains: [], bridges: "the CRM you connect" }), "Data leaves g1t to the CRM you connect.");
 });
 
 test("an extension's page loads from the user-content origin, by version", () => {
@@ -66,4 +69,5 @@ test("a tag publishes a version", () => {
 test("listings are referenced by kind and id", () => {
   assert.deepEqual(parseListing("extension:on-call"), { kind: "extension", id: "on-call" });
   assert.equal(parseListing("app:on-call"), null);
+  assert.equal(parseListing("agent:engineering"), null, "agents start from templates in Agents, not the Marketplace");
 });

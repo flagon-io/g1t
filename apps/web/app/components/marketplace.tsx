@@ -1,8 +1,8 @@
 /**
  * The Marketplace's pieces (routes/workspace/marketplace/): listings for
- * agents and integrations with what the workspace has of each, the button
- * that adds one (owners) or asks an owner to (everyone else), and a
- * request as owners and askers see it.
+ * extensions and integrations with what the workspace has of each, the
+ * button that adds one (owners) or asks an owner to (everyone else),
+ * starter kits, and a request as owners and askers see it.
  */
 import { ArrowRight, Check, CircleAlert, Clock, Plus, Send, X } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
@@ -10,13 +10,12 @@ import { Link, useFetcher } from "react-router";
 
 import type { ExtensionManifest, InstallRequest, ListingTier } from "@g1t/contracts";
 
-import { PixelCreature } from "./agent-avatar";
 import { ConnectorMark } from "./connectors";
 import { Badge } from "./ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Hint } from "./ui/hint";
 import { ErrorText, SubmitButton, Textarea, TimeAgo } from "./ui";
-import { type AgentListing, type ExtensionListing, type IntegrationListing, TIERS, catalogAgentPath, extensionPath, hirePath, marketplacePath } from "../lib/marketplace";
+import { type ExtensionListing, type IntegrationListing, type StarterKit, TIERS, extensionPath, marketplacePath } from "../lib/marketplace";
 import { cn } from "../lib/cn";
 
 const SMALL = "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-[0.8125rem] font-medium transition-colors";
@@ -36,9 +35,9 @@ export function TierBadge({ tier }: { tier: ListingTier }) {
   );
 }
 
-/** "Coming", on what is planned and not built. */
+/** "Soon", on what is planned and not built. */
 export function ComingBadge() {
-  return <Badge tone="neutral">Coming</Badge>;
+  return <Badge tone="neutral">Soon</Badge>;
 }
 
 /** A section's heading, with a count or a link at its end. */
@@ -99,7 +98,7 @@ export function RequestButton({ slug, listing, name, requested, className }: { s
         <fetcher.Form method="post" action={marketplacePath(slug, "requests")} className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Ask to add {name}</DialogTitle>
-            <DialogDescription>Only the workspace's owners add agents and integrations. Each of them is notified, and you hear back when one answers.</DialogDescription>
+            <DialogDescription>Only the workspace's owners add extensions and integrations. Each of them is notified, and you hear back when one answers.</DialogDescription>
           </DialogHeader>
           <input type="hidden" name="intent" value="request" />
           <input type="hidden" name="listing" value={listing} />
@@ -129,65 +128,6 @@ function Waiting({ slug, count }: { slug: string; count: number }) {
     <Link to={marketplacePath(slug, "requests")} className="text-xs text-warn hover:underline">
       {count} {count === 1 ? "request" : "requests"}
     </Link>
-  );
-}
-
-/** What an owner or a member can do with a role in the catalog. */
-export function AgentAction({ listing, slug, owner, className }: { listing: AgentListing; slug: string; owner: boolean; className?: string }) {
-  if (owner) {
-    return (
-      <Link to={hirePath(slug, listing.template.id)} className={cn(listing.hired.length > 0 ? ACTION.quiet : ACTION.primary, className)}>
-        <Plus size={14} />
-        {listing.hired.length > 0 ? "Add another" : "Add to workspace"}
-      </Link>
-    );
-  }
-  return <RequestButton slug={slug} listing={listing.ref} name={`${listing.template.display_name}, ${listing.template.title}`} requested={listing.requested} className={className} />;
-}
-
-/** A role in the agent catalog, as a card: its face, the name it suggests, what it does, and what the workspace has of it. */
-export function AgentCard({ listing, slug, owner }: { listing: AgentListing; slug: string; owner: boolean }) {
-  const { template, hired } = listing;
-  return (
-    <article className="group relative flex flex-col rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong">
-      <div className="flex items-start gap-3">
-        <PixelCreature seed={template.handle} size={44} />
-        <div className="min-w-0 grow">
-          <h3 className="truncate text-sm font-semibold">
-            <Link to={catalogAgentPath(slug, template.id)} prefetch="intent" className="outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-accent">
-              {template.display_name}
-            </Link>
-          </h3>
-          <p className="truncate text-xs text-muted">
-            {template.title}
-          </p>
-        </div>
-        <TierBadge tier="official" />
-      </div>
-      <ul className="mt-3 grow space-y-1">
-        {template.responsibilities.slice(0, 3).map((duty) => (
-          <li key={duty} className="flex gap-2 text-[0.8125rem] leading-snug text-muted">
-            <span className="mt-[0.45rem] size-1 shrink-0 rounded-full bg-line-strong" aria-hidden="true" />
-            <span className="line-clamp-1">{duty}</span>
-          </li>
-        ))}
-      </ul>
-      <div className="relative mt-4 flex items-center justify-between gap-3 border-t border-line pt-3">
-        <span className="min-w-0 truncate text-xs text-faint">
-          {/* What waits on an owner says more than what isn't there. */}
-          {owner && listing.waiting > 0 && hired.length === 0 ? (
-            <Waiting slug={slug} count={listing.waiting} />
-          ) : hired.length === 0 ? (
-            "Not added"
-          ) : hired.length === 1 ? (
-            `@${hired[0]!.handle} works here`
-          ) : (
-            `${hired.length} work here`
-          )}
-        </span>
-        <AgentAction listing={listing} slug={slug} owner={owner} />
-      </div>
-    </article>
   );
 }
 
@@ -296,6 +236,13 @@ export function ExtensionAction({ listing, slug, owner, className }: { listing: 
   );
 }
 
+/** Where an extension's data goes, in a few words for a card. */
+function dataLine(manifest: Pick<ExtensionManifest, "domains" | "bridges">): string {
+  // "the CRM you connect" reads, on a card, as "Works with your CRM".
+  if (manifest.bridges) return `Works with ${manifest.bridges.replace(/^the (.+) you connect$/, "your $1")}`;
+  return manifest.domains.length === 0 ? "Data stays in g1t" : `Data goes to ${manifest.domains[0]}`;
+}
+
 /** An extension as a card: its mark, publisher and tier, what it does, and where its data goes. */
 export function ExtensionCard({ listing, slug, owner }: { listing: ExtensionListing; slug: string; owner: boolean }) {
   const { manifest } = listing;
@@ -319,7 +266,7 @@ export function ExtensionCard({ listing, slug, owner }: { listing: ExtensionList
       </div>
       <p className="mt-3 line-clamp-2 grow text-[0.8125rem] leading-snug text-muted">{manifest.tagline}</p>
       <div className="relative mt-4 flex items-center justify-between gap-3 border-t border-line pt-3">
-        <span className="min-w-0 truncate text-xs text-faint">{manifest.domains.length === 0 ? "Data stays in g1t" : `Data goes to ${manifest.domains[0]}`}</span>
+        <span className="min-w-0 truncate text-xs text-faint">{dataLine(manifest)}</span>
         <ExtensionAction listing={listing} slug={slug} owner={owner} />
       </div>
     </article>
@@ -345,7 +292,7 @@ export function RequestRow({ request, slug, owner, addTo }: { request: InstallRe
       <div className="min-w-0 grow">
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-medium">{request.name}</span>
-          <span className="text-xs text-faint">{request.kind === "agent" ? "Agent" : request.kind === "extension" ? "Extension" : "Integration"}</span>
+          <span className="text-xs text-faint">{request.kind === "extension" ? "Extension" : "Integration"}</span>
           <RequestStatus request={request} />
         </p>
         <p className="mt-0.5 text-xs text-muted">
@@ -372,7 +319,7 @@ export function RequestRow({ request, slug, owner, addTo }: { request: InstallRe
           {addTo && (
             <Link to={addTo} className={ACTION.primary}>
               <Plus size={14} />
-              {request.kind === "agent" ? "Add" : request.kind === "extension" ? "Install" : "Connect"}
+              {request.kind === "extension" ? "Install" : "Connect"}
             </Link>
           )}
           <SubmitButton fetcher={fetcher} name="status" value="done" className={ACTION.quiet} pending="Saving…">
@@ -386,5 +333,46 @@ export function RequestRow({ request, slug, owner, addTo }: { request: InstallRe
         </fetcher.Form>
       )}
     </li>
+  );
+}
+
+/**
+ * A starter kit as a card: the extensions it brings, overlapped, its name
+ * and what it is for. Installed together once every one is published;
+ * until then it says Soon.
+ */
+export function StarterKitCard({ kit, extensions, slug }: { kit: StarterKit; extensions: ExtensionManifest[]; slug: string }) {
+  const ready = extensions.length > 0 && extensions.every((extension) => extension.status === "available");
+  return (
+    <article className="flex flex-col rounded-xl border border-line bg-surface p-4">
+      <div className="flex items-center">
+        {extensions.map((extension, index) => (
+          <span key={extension.id} className={cn("rounded-[0.6rem] ring-2 ring-surface", index > 0 && "-ml-2")}>
+            <ExtensionMark manifest={extension} size={30} />
+          </span>
+        ))}
+      </div>
+      <h3 className="mt-3 text-sm font-semibold">{kit.name}</h3>
+      <p className="mt-0.5 grow text-[0.8125rem] leading-snug text-muted">{kit.about}</p>
+      <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3">
+        <p className="min-w-0 truncate text-xs text-faint">
+          {extensions.map((extension, index) => (
+            <span key={extension.id}>
+              {index > 0 && ", "}
+              <Link to={extensionPath(slug, extension.id)} className="hover:text-fg hover:underline">
+                {extension.name}
+              </Link>
+            </span>
+          ))}
+        </p>
+        {!ready && (
+          <Hint label="Its extensions aren't all published yet. The kit installs them together once they are.">
+            <span tabIndex={0} className={cn(SMALL, "border border-dashed border-line-strong text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent")}>
+              Soon
+            </span>
+          </Hint>
+        )}
+      </div>
+    </article>
   );
 }

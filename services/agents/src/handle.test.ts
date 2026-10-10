@@ -28,7 +28,7 @@ test("a handle is read the way people type it", () => {
 });
 
 test("g1t's own names and routes are reserved", () => {
-  for (const name of ["g1t", "G1T", "g1t-agent", "settings", "admin", "inbox", "new", "runs", "fleet"]) {
+  for (const name of ["g1t", "G1T", "g1t-agent", "settings", "admin", "inbox", "new", "templates", "runs", "fleet"]) {
     const checked = checkHandle(name);
     assert.equal(checked.ok, false, name);
     if (!checked.ok) assert.match(checked.message, /reserved/);

@@ -1,33 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { AgentTemplate, InstallRequest } from "@g1t/contracts";
+import type { InstallRequest } from "@g1t/contracts";
 import { connectorsFor } from "@g1t/contracts/connectors";
 
-import { FIRST_PARTY_EXTENSIONS } from "@g1t/contracts/marketplace";
+import { FIRST_PARTY_EXTENSIONS, extensionById } from "@g1t/contracts/marketplace";
 
-import { addPath, agentListings, comingIntegrations, extensionListings, integrationListings, integrationMatches, marketplaceForm, routingWords } from "./marketplace.ts";
+import { STARTER_KITS, addPath, comingIntegrations, extensionListings, integrationListings, integrationMatches, isConnectedSystem, marketplaceForm } from "./marketplace.ts";
 import { modeOf } from "./workspace-nav.ts";
-
-const template = (id: string, title: string): AgentTemplate => ({
-  id,
-  display_name: title.split(" ")[0]!,
-  handle: id,
-  name_ideas: [],
-  role: title,
-  title,
-  department: "Engineering",
-  responsibilities: ["Do the work"],
-  subagents: [],
-  instructions: "",
-  personality_preset: "crisp",
-  routing: { floor: null, ceiling: null, providers: [], pinned: null },
-});
 
 const request = (listing: string, by: string, status: InstallRequest["status"] = "open"): InstallRequest => ({
   id: `ins_${listing}_${by}`,
   listing,
-  kind: listing.startsWith("agent:") ? "agent" : "integration",
+  kind: listing.startsWith("extension:") ? "extension" : "integration",
   name: listing,
   note: null,
   requested_by: by,
@@ -35,29 +20,6 @@ const request = (listing: string, by: string, status: InstallRequest["status"] =
   status,
   resolved_by: null,
   resolved_at: null,
-});
-
-test("a role counts the agents hired into it, not archived ones", () => {
-  const [eng, qa] = agentListings(
-    [template("engineering", "Software Engineer"), template("qa", "QA Engineer")],
-    [
-      { id: "a1", handle: "otto", display_name: "Otto", template: "engineering", archived_at: null },
-      { id: "a2", handle: "bolt", display_name: "Bolt", template: "engineering", archived_at: "2026-10-01T00:00:00Z" },
-      { id: "a3", handle: "g1t", display_name: "g1t", template: null, archived_at: null },
-    ],
-    [request("agent:qa", "ana"), request("agent:qa", "bo"), request("agent:engineering", "ana", "declined")],
-    "Ana",
-  );
-  assert.deepEqual(eng!.hired.map((a) => a.handle), ["otto"]);
-  assert.equal(eng!.requested, false, "a turned-down request isn't waiting");
-  assert.equal(qa!.hired.length, 0);
-  assert.equal(qa!.requested, true, "usernames match whatever their case");
-  assert.equal(qa!.waiting, 2);
-});
-
-test("without the agents service, nobody counts as hired", () => {
-  const [eng] = agentListings([template("engineering", "Software Engineer")], null, [], "ana");
-  assert.deepEqual(eng!.hired, []);
 });
 
 test("only integrations a workspace can connect today are listed, connected first", () => {
@@ -76,7 +38,7 @@ test("only integrations a workspace can connect today are listed, connected firs
 
 test("an owner adds what a request asks for where it is added", () => {
   const views = connectorsFor("workspace");
-  assert.equal(addPath({ listing: "agent:qa" }, "acme", views), "/acme/-/agents/new?template=qa");
+  assert.equal(addPath({ listing: "agent:qa" }, "acme", views), null, "agents aren't added from the Marketplace");
   assert.equal(addPath({ listing: "integration:jira" }, "acme", views), "/acme/-/integrations/trackers?add=jira#add");
   assert.equal(addPath({ listing: "nonsense" }, "acme", views), null);
 });
@@ -87,8 +49,9 @@ test("the Marketplace's forms are read strictly", () => {
     for (const [k, v] of Object.entries(fields)) data.set(k, v);
     return data;
   };
-  assert.deepEqual(marketplaceForm(form({ intent: "request", listing: "agent:qa", note: "  flaky  " })), { intent: "request", listing: "agent:qa", note: "flaky" });
-  assert.deepEqual(marketplaceForm(form({ intent: "request", listing: "agent:qa" })), { intent: "request", listing: "agent:qa", note: null });
+  assert.deepEqual(marketplaceForm(form({ intent: "request", listing: "integration:jira", note: "  flaky  " })), { intent: "request", listing: "integration:jira", note: "flaky" });
+  assert.deepEqual(marketplaceForm(form({ intent: "request", listing: "extension:support" })), { intent: "request", listing: "extension:support", note: null });
+  assert.equal(marketplaceForm(form({ intent: "request", listing: "agent:qa" })), null, "agents start from templates in Agents");
   assert.equal(marketplaceForm(form({ intent: "request", listing: "app:qa" })), null);
   assert.deepEqual(marketplaceForm(form({ intent: "resolve", id: "ins_1", status: "declined" })), { intent: "resolve", id: "ins_1", status: "declined" });
   assert.equal(marketplaceForm(form({ intent: "resolve", id: "ins_1", status: "open" })), null);
@@ -128,13 +91,18 @@ test("installing, switching and removing an extension are read from forms", () =
   assert.equal(addPath({ listing: "extension:mail" }, "acme", []), "/acme/-/marketplace/extensions/mail");
 });
 
-test("routing limits read as words", () => {
-  assert.equal(routingWords({ floor: null, ceiling: null }), "Any model the work needs");
-  assert.equal(routingWords({ floor: "large", ceiling: null }), "Large models or better");
-  assert.equal(routingWords({ floor: null, ceiling: "large" }), "Up to large models");
+test("starter kits name extensions that are listed, and connected systems are told apart", () => {
+  for (const kit of STARTER_KITS) {
+    assert.ok(kit.extensions.length > 0, kit.id);
+    for (const id of kit.extensions) assert.ok(extensionById(id), `${kit.id}: ${id}`);
+  }
+  const systems = FIRST_PARTY_EXTENSIONS.filter(isConnectedSystem).map((m) => m.id);
+  assert.deepEqual(systems, ["helpdesk-bridge", "crm-bridge", "erp-bridge"]);
+  assert.ok(FIRST_PARTY_EXTENSIONS.filter(isConnectedSystem).every((m) => m.bridges), "a connected system says what it bridges");
 });
 
 test("the Marketplace is part of Apps, not a mode of its own", () => {
   assert.equal(modeOf("/acme/-/marketplace", "acme"), "apps");
-  assert.equal(modeOf("/acme/-/marketplace/agents/qa", "acme"), "apps");
+  assert.equal(modeOf("/acme/-/marketplace/extensions/mail", "acme"), "apps");
+  assert.equal(modeOf("/acme/-/agents/templates", "acme"), "agents", "agent templates are Agents'");
 });

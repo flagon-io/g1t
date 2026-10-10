@@ -1,4 +1,4 @@
-import { Activity, Brain, ChevronRight, Dices, Network, Plus, Route as RouteIcon, Sparkles } from "lucide-react";
+import { Activity, Brain, ChevronRight, Dices, LayoutTemplate, Network, Plus, Route as RouteIcon, Sparkles } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Form, NavLink, useLocation, useNavigation, useRouteLoaderData } from "react-router";
 
@@ -138,6 +138,9 @@ export function AgentsSidebar({
               Overview
             </SideLink>
           )}
+          <SideLink to={`/${slug}/-/agents/templates`} icon={<LayoutTemplate size={15} className="text-faint" />}>
+            Templates
+          </SideLink>
           {code && (
             <>
               <SideLink to={`/${slug}/-/context`} icon={<Network size={15} className="text-faint" />}>

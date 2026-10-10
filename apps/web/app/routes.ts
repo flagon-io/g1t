@@ -150,6 +150,9 @@ export default [
     route("-/agents", "routes/workspace/agents/layout.tsx", [
       index("routes/workspace/agents.tsx"),
       route("new", "routes/workspace/agents/new.tsx"),
+      // Templates: starting points for a new agent, each configured once started.
+      route("templates", "routes/workspace/agents/templates.tsx"),
+      route("templates/:template", "routes/workspace/agents/template.tsx"),
       route(":handle", "routes/workspace/agents/agent.tsx", [
         index("routes/workspace/agents/sessions.tsx"),
         route("sessions/:id", "routes/workspace/agents/session.tsx"),
@@ -203,17 +206,18 @@ export default [
     route("-/today", "routes/workspace/home.tsx"),
     route("-/home", "routes/workspace/moved.ts", { id: "routes/workspace/moved-home" }),
     route("-/apps", "routes/workspace/apps.tsx"),
-    // The Marketplace: anyone browses it; owners add agents and integrations,
-    // and everyone else asks (`requests` takes every form it posts).
+    // The Marketplace: anyone browses it; owners add extensions and
+    // integrations, and everyone else asks (`requests` takes every form it
+    // posts). Agent templates were its Agents tab; they are under Agents now.
     route("-/marketplace", "routes/workspace/marketplace/layout.tsx", [
       index("routes/workspace/marketplace/discover.tsx"),
-      route("agents", "routes/workspace/marketplace/agents.tsx"),
-      route("agents/:template", "routes/workspace/marketplace/agent.tsx"),
-      route("integrations", "routes/workspace/marketplace/integrations.tsx"),
       route("extensions", "routes/workspace/marketplace/extensions.tsx"),
       route("extensions/:extension", "routes/workspace/marketplace/extension.tsx"),
+      route("integrations", "routes/workspace/marketplace/integrations.tsx"),
       route("requests", "routes/workspace/marketplace/requests.tsx"),
     ]),
+    route("-/marketplace/agents", "routes/workspace/moved.ts", { id: "routes/workspace/moved-marketplace-agents" }),
+    route("-/marketplace/agents/:template", "routes/workspace/moved.ts", { id: "routes/workspace/moved-marketplace-agent" }),
     // What Code's pages say to a member without Code.
     route("-/code-access", "routes/workspace/code-access.tsx"),
     route("-/memory", "routes/workspace/memory.tsx"),

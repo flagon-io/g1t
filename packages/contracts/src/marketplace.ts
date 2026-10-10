@@ -1,13 +1,14 @@
 /**
- * The Marketplace: what a workspace can add, the installs it has, and
- * members' requests to add things. Anyone in a workspace browses it; only
- * owners add things. A member asks instead, and the request reaches every
- * owner as a notification.
+ * The Marketplace: what adds functionality to a workspace, the installs it
+ * has, and members' requests to add things. Extensions add pages, data and
+ * cards; integrations connect what a team already uses so agents can work
+ * with it. Agents are not listed here: Agents mode has templates to start
+ * one from. Anyone in a workspace browses the Marketplace; only owners add
+ * things. A member asks instead, and the request reaches every owner as a
+ * notification.
  *
  * Every listing has a reference, `<kind>:<id>`:
  *
- * - `agent:<template>`: an agent hired from one of the catalog's roles
- *   (the agents service's templates); the agents service keeps the agent;
  * - `integration:<connector>`: a connector from the catalog
  *   (./connectors.ts); the integrations service keeps the connection;
  * - `extension:<id>`: an extension, described by its manifest
@@ -28,9 +29,9 @@
  */
 
 /** What a listing adds to a workspace. */
-export type ListingKind = "agent" | "integration" | "extension";
+export type ListingKind = "integration" | "extension";
 
-export const LISTING_KINDS: readonly ListingKind[] = ["agent", "integration", "extension"];
+export const LISTING_KINDS: readonly ListingKind[] = ["integration", "extension"];
 
 /** Whether a listing can be added today, or is planned. */
 export type ListingStatus = "available" | "soon";
@@ -46,8 +47,10 @@ export type ExtensionRuntime = "hosted" | "connected";
 export type ExtensionAdds = {
   /** Its pages, in its sidebar, in order. */
   pages: string[];
-  /** Agent roles it brings, hired like any other. */
+  /** Agent roles it brings: templates, configured like any other agent. */
   agent_roles: string[];
+  /** Cards it shows in chat and elsewhere, in words. */
+  cards: string[];
   /** Tools agents can call. */
   tools: string[];
   /** Notification kinds it sends. */
@@ -85,6 +88,12 @@ export type ExtensionManifest = {
    * Empty: its data stays in g1t.
    */
   domains: string[];
+  /**
+   * The system outside g1t it bridges, in words (`the CRM you connect`),
+   * when its data goes wherever the workspace points it rather than to
+   * fixed domains. The install screen says so. Absent or null: none.
+   */
+  bridges?: string | null;
   /**
    * Its page inside g1t: a path served from the user-content domain
    * (g1tusercontent.com, or a self-hosted instance's own), loaded in a
@@ -139,8 +148,9 @@ export function checkManifest(raw: unknown, knownScope: (scope: string) => boole
   if (!Array.isArray(m.permissions) || m.permissions.length === 0) return bad("List what it can do in `permissions`, in plain words.");
   if (!Array.isArray(m.domains) || m.domains.some((domain) => typeof domain !== "string" || !isHost(domain))) return bad("`domains` are host names, such as api.example.com.");
   if (m.runtime === "connected" && m.domains.length === 0) return bad("A connected extension declares the domains it runs on.");
+  if (m.bridges != null && (typeof m.bridges !== "string" || !m.bridges.trim())) return bad("`bridges` names the system it connects to, in words.");
   if (m.ui !== null && (typeof m.ui !== "object" || typeof m.ui?.entry !== "string" || !m.ui.entry.startsWith("/"))) return bad("`ui.entry` is a path, such as /index.html.");
-  if (!m.adds || !["pages", "agent_roles", "tools", "notifications"].every((k) => Array.isArray((m.adds as Record<string, unknown>)[k]))) return bad("`adds` lists pages, agent_roles, tools and notifications.");
+  if (!m.adds || !["pages", "cards", "agent_roles", "tools", "notifications"].every((k) => Array.isArray((m.adds as Record<string, unknown>)[k]))) return bad("`adds` lists pages, cards, agent_roles, tools and notifications.");
   if (m.pricing !== null) return bad("Listings are free for now: `pricing` is null.");
   return { ok: true, value: m as ExtensionManifest };
 }
@@ -150,9 +160,10 @@ function isHost(value: string): boolean {
 }
 
 /** What the install screen says about where an extension's data goes. */
-export function dataDisclosure(manifest: Pick<ExtensionManifest, "domains">): string {
-  if (manifest.domains.length === 0) return "Its data stays in g1t.";
-  return `Data leaves g1t to ${manifest.domains.join(", ")}.`;
+export function dataDisclosure(manifest: Pick<ExtensionManifest, "domains" | "bridges">): string {
+  const to = [...manifest.domains, ...(manifest.bridges ? [manifest.bridges] : [])];
+  if (to.length === 0) return "Its data stays in g1t.";
+  return `Data leaves g1t to ${to.join(", ")}.`;
 }
 
 /** Where an extension's page loads from: its entry on the user-content origin, under its id and version. */
@@ -167,84 +178,141 @@ export function versionOfTag(tag: string): string | null {
   return match ? match[1]! : null;
 }
 
+/** What every first-party listing shares before its first release. */
+const UNRELEASED = {
+  publisher: { name: "g1t", tier: "official" as const },
+  status: "soon" as const,
+  source: null,
+  version: null,
+  runtime: "hosted" as const,
+  ui: { entry: "/index.html" },
+  pricing: null,
+};
+
 /**
  * g1t's own extensions. None is published yet: each is listed so people
- * see what is coming, and can't be installed until its first release.
+ * see what is coming, and can't be installed until its first release. The
+ * last three are connected systems: each bridges a system a team already
+ * runs, so agents work across it and g1t together.
  */
 export const FIRST_PARTY_EXTENSIONS: ExtensionManifest[] = [
   {
-    id: "support",
-    name: "Support",
-    tagline: "Customer conversations an agent answers from your docs, escalating the rest.",
-    description:
-      "Conversations, escalations, macros and a knowledge base. A support agent answers what your docs cover, turns bug reports into issues in Code, and hands anything else to a person. Email to customers waits for approval.",
-    category: "Customers",
-    publisher: { name: "g1t", tier: "official" },
-    status: "soon",
-    source: null,
-    version: null,
-    runtime: "hosted",
-    scopes: ["issues:write", "artifacts:read", "notifications:write"],
-    permissions: ["Read and reply to support email, with your approval", "Store conversations in workspace data", "Open issues from bug reports"],
-    domains: [],
-    ui: { entry: "/index.html" },
-    adds: { pages: ["Conversations", "Escalations", "Macros", "Knowledge"], agent_roles: ["Support Specialist"], tools: ["conversation", "macro"], notifications: ["Escalations"] },
-    pricing: null,
-  },
-  {
-    id: "recruiting",
-    name: "Recruiting",
-    tagline: "Openings, candidates and interview loops. Agents screen, people decide.",
-    description: "A pipeline board, scorecards and scheduling. A recruiting agent screens applicants against your scorecard and books interview loops; offers and decisions stay with people.",
-    category: "People",
-    publisher: { name: "g1t", tier: "official" },
-    status: "soon",
-    source: null,
-    version: null,
-    runtime: "hosted",
-    scopes: ["artifacts:write", "notifications:write"],
-    permissions: ["Store candidates and openings in workspace data", "Read and write interview events on connected calendars", "Email candidates from a shared address, with your approval"],
-    domains: [],
-    ui: { entry: "/index.html" },
-    adds: { pages: ["Pipeline", "Openings", "Candidates", "Interviews", "Offers"], agent_roles: ["Recruiter"], tools: ["candidate", "opening"], notifications: ["Offers to sign"] },
-    pricing: null,
-  },
-  {
+    ...UNRELEASED,
     id: "mail",
     name: "Mail",
     tagline: "Email on your own domain, with shared inboxes agents work in.",
     description:
       "Email that g1t runs on your domain. Shared inboxes such as support@ and sales@ work like channels: agents sort and draft, and sending needs approval or a rule you set. Spam and phishing filtering is included, at what it costs to run. Gmail and Outlook keep working alongside it.",
     category: "Communication",
-    publisher: { name: "g1t", tier: "official" },
-    status: "soon",
-    source: null,
-    version: null,
-    runtime: "hosted",
     scopes: ["notifications:write", "artifacts:read"],
     permissions: ["Host email for your domain", "Let agents read shared inboxes and draft replies", "Send only with approval or a rule you set"],
     domains: [],
-    ui: { entry: "/index.html" },
-    adds: { pages: ["Inbox", "Shared inboxes", "Sent", "Rules for agents"], agent_roles: [], tools: ["mail", "thread"], notifications: ["Drafts to approve"] },
-    pricing: null,
+    adds: { pages: ["Inbox", "Shared inboxes", "Sent", "Rules for agents"], cards: ["Email threads in chat"], agent_roles: [], tools: ["mail", "thread"], notifications: ["Drafts to approve"] },
   },
   {
+    ...UNRELEASED,
+    id: "support",
+    name: "Support",
+    tagline: "Customer conversations an agent answers from your docs, escalating the rest.",
+    description:
+      "Conversations, escalations, macros and a knowledge base. A support agent answers what your docs cover, turns bug reports into issues in Code, and hands anything else to a person. Email to customers waits for approval.",
+    category: "Customers",
+    scopes: ["issues:write", "artifacts:read", "notifications:write"],
+    permissions: ["Read and reply to support email, with your approval", "Store conversations in workspace data", "Open issues from bug reports"],
+    domains: [],
+    adds: {
+      pages: ["Conversations", "Escalations", "Macros", "Knowledge"],
+      cards: ["Customer cards in chat", "Bug reports as issues in Code"],
+      agent_roles: ["Support Specialist"],
+      tools: ["conversation", "macro"],
+      notifications: ["Escalations"],
+    },
+  },
+  {
+    ...UNRELEASED,
+    id: "crm",
+    name: "CRM",
+    tagline: "Accounts, deals and a pipeline, with agents that keep it current.",
+    description:
+      "Accounts and contacts, deals by stage and a weekly forecast, kept as workspace data. Agents log calls and email, draft follow-ups for a person to send, and flag deals that have gone quiet.",
+    category: "Customers",
+    scopes: ["artifacts:write", "notifications:write"],
+    permissions: ["Store accounts, contacts and deals in workspace data", "Read email threads with customers in shared inboxes", "Draft follow-ups that a person sends"],
+    domains: [],
+    adds: { pages: ["Pipeline", "Deals", "Accounts", "Forecast"], cards: ["Account cards in chat"], agent_roles: ["Sales Ops"], tools: ["deal", "account"], notifications: ["Deals gone quiet"] },
+  },
+  {
+    ...UNRELEASED,
+    id: "recruiting",
+    name: "Recruiting",
+    tagline: "Openings, candidates and interview loops. Agents screen, people decide.",
+    description:
+      "A pipeline board, scorecards and scheduling. A recruiting agent screens applicants against your scorecard and books interview loops; offers and decisions stay with people.",
+    category: "People",
+    scopes: ["artifacts:write", "notifications:write"],
+    permissions: ["Store candidates and openings in workspace data", "Read and write interview events on connected calendars", "Email candidates from a shared address, with your approval"],
+    domains: [],
+    adds: {
+      pages: ["Pipeline", "Openings", "Candidates", "Interviews", "Offers"],
+      cards: ["Candidate cards in chat"],
+      agent_roles: ["Recruiter"],
+      tools: ["candidate", "opening"],
+      notifications: ["Offers to sign"],
+    },
+  },
+  {
+    ...UNRELEASED,
     id: "on-call",
     name: "On-call",
     tagline: "Rotations, pages and who is on call now.",
     description: "Rotations and schedules, pages through notifications, and an incident channel an operations agent keeps a timeline in.",
     category: "Engineering",
-    publisher: { name: "g1t", tier: "official" },
-    status: "soon",
-    source: null,
-    version: null,
-    runtime: "hosted",
     scopes: ["notifications:write", "issues:read"],
     permissions: ["Store rotations in workspace data", "Page people through their notifications", "Read issues an incident links to"],
     domains: [],
-    ui: { entry: "/index.html" },
-    adds: { pages: ["Rotations", "Pages", "Incidents"], agent_roles: [], tools: ["rotation", "page"], notifications: ["Pages", "Your shift"] },
-    pricing: null,
+    adds: { pages: ["Rotations", "Pages", "Incidents"], cards: ["Who's on call, in chat"], agent_roles: [], tools: ["rotation", "page"], notifications: ["Pages", "Your shift"] },
+  },
+  {
+    ...UNRELEASED,
+    id: "helpdesk-bridge",
+    name: "Helpdesk bridge",
+    tagline: "Work tickets from the helpdesk you already run, next to your code and chat.",
+    description:
+      "Connects the helpdesk your team already uses. Its tickets show in g1t with the customer and the conversation; agents draft replies there for a person to send, and a bug report becomes an issue in Code that stays linked to its ticket.",
+    category: "Connected systems",
+    scopes: ["issues:write", "notifications:write"],
+    permissions: ["Read tickets and customers in the helpdesk you connect", "Draft replies there, sent by a person or a rule you set", "Open issues in Code linked to a ticket"],
+    domains: [],
+    bridges: "the helpdesk you connect",
+    adds: { pages: ["Tickets", "Linked issues"], cards: ["Ticket cards in chat"], agent_roles: [], tools: ["ticket"], notifications: ["Tickets assigned to you"] },
+  },
+  {
+    ...UNRELEASED,
+    id: "crm-bridge",
+    name: "CRM bridge",
+    tagline: "The accounts and deals in the CRM you already use, in g1t and in chat.",
+    description:
+      "Connects the CRM your team already uses. Accounts and deals show in g1t and in chat, and agents log calls, update stages and draft follow-ups there, each change in the audit log.",
+    category: "Connected systems",
+    scopes: ["notifications:write"],
+    permissions: ["Read accounts, contacts and deals in the CRM you connect", "Log activity and update deal stages there", "Draft follow-ups that a person sends"],
+    domains: [],
+    bridges: "the CRM you connect",
+    adds: { pages: ["Accounts", "Deals"], cards: ["Account cards in chat"], agent_roles: [], tools: ["account", "deal"], notifications: ["Deals gone quiet"] },
+  },
+  {
+    ...UNRELEASED,
+    id: "erp-bridge",
+    name: "ERP bridge",
+    tagline: "Orders, invoices and stock from your ERP, for agents that answer and reconcile.",
+    description:
+      "Connects the ERP your business runs on. Agents look up orders, invoices and stock to answer questions in chat and support, and reconcile what doesn't match. Anything that changes money or stock waits for a person's approval.",
+    category: "Connected systems",
+    scopes: ["notifications:write"],
+    permissions: ["Read orders, invoices and stock in the ERP you connect", "Propose changes there, each approved by a person"],
+    domains: [],
+    bridges: "the ERP you connect",
+    adds: { pages: ["Orders", "Invoices", "Approvals"], cards: ["Order cards in chat"], agent_roles: [], tools: ["order", "invoice"], notifications: ["Changes to approve"] },
   },
 ];
 
@@ -261,7 +329,7 @@ export type ListingTier = "official" | "verified" | "community" | "internal";
 
 export const LISTING_TIERS: readonly ListingTier[] = ["official", "verified", "community", "internal"];
 
-/** A listing's reference, split: `agent:engineering` is `{ kind: "agent", id: "engineering" }`. */
+/** A listing's reference, split: `integration:sentry` is `{ kind: "integration", id: "sentry" }`. */
 export type ListingRef = { kind: ListingKind; id: string };
 
 /** Where a request stands: waiting on an owner, added, or turned down. */
@@ -275,7 +343,7 @@ export type InstallRequest = {
   /** `<kind>:<id>`. */
   listing: string;
   kind: ListingKind;
-  /** The listing's name when it was asked for, such as `Software Engineer` or `Sentry`. */
+  /** The listing's name when it was asked for, such as `Sentry` or `Support`. */
   name: string;
   /** Why they want it, in their words, or null. */
   note: string | null;
@@ -304,7 +372,7 @@ export const MAX_OPEN_REQUESTS = 20;
 /** How long an answered request stays listed. */
 export const ANSWERED_REQUESTS_DAYS = 30;
 
-/** A listing's reference: `agent:engineering`. */
+/** A listing's reference: `integration:sentry`. */
 export function listingRef(kind: ListingKind, id: string): string {
   return `${kind}:${id}`;
 }
@@ -312,7 +380,7 @@ export function listingRef(kind: ListingKind, id: string): string {
 /** A reference split into kind and id; null when it is not one. */
 export function parseListing(value: unknown): ListingRef | null {
   if (typeof value !== "string") return null;
-  const match = /^(agent|integration|extension):([a-z0-9][a-z0-9_-]{0,63})$/.exec(value.trim());
+  const match = /^(integration|extension):([a-z0-9][a-z0-9_-]{0,63})$/.exec(value.trim());
   return match ? { kind: match[1] as ListingKind, id: match[2]! } : null;
 }
 

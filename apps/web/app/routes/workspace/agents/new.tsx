@@ -95,7 +95,11 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
       <header className="mt-4 mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">New agent</h1>
         <p className="mt-1.5 max-w-2xl text-sm text-muted">
-          Hire a colleague into a role: a name, a title, a team and what it is responsible for. Start from one of these roles and make it yours, or from nothing. Once it is hired, you will be in a direct message with it.
+          Hire a colleague into a role: a name, a title, a team and what it is responsible for. Start from a template and configure it (its instructions, voice, models and budget), or from nothing. Once it is hired, you will be in a direct message with it.{" "}
+          <Link to={`/${params.owner}/-/agents/templates`} className="text-fg underline-offset-2 hover:underline">
+            Read each template in full
+          </Link>
+          .
         </p>
       </header>
       {loaderData.templates == null && (

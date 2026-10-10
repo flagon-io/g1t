@@ -1,13 +1,15 @@
 /**
  * The Marketplace's install requests (docs.g1t.sh/guides/marketplace/): a
- * member asks the workspace's owners to add an agent from the catalog or
- * an integration, and an owner adds it or turns it down. Kept in
+ * member asks the workspace's owners to add an extension or an
+ * integration, and an owner adds it or turns it down. Kept in
  * `install_requests`, one open request per person and listing.
  *
- * Only what can be added today can be asked for: a role from the agent
- * catalog (./templates.ts), or a connector the catalog marks available for
- * a workspace (@g1t/contracts/connectors). Who is told, and how, is
- * index.ts's; this file is the rules and the table, tested on SQLite.
+ * Only what can be added today can be asked for: a published extension,
+ * or a connector the catalog marks available for a workspace
+ * (@g1t/contracts/connectors). Agents aren't asked for here: they start
+ * from templates in Agents mode, and owners make them. Who is told, and
+ * how, is index.ts's; this file is the rules and the table, tested on
+ * SQLite.
  */
 import type { FailureCode, InstallRequest, InstallRequestStatus, ListingKind, Result } from "@g1t/contracts";
 import { CONNECTORS } from "@g1t/contracts/connectors";
@@ -17,8 +19,6 @@ import { ANSWERED_REQUESTS_DAYS, MAX_OPEN_REQUESTS, extensionById, listingRef, p
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
 const fail = (code: FailureCode, message: string): Result<never> => ({ ok: false, error: { code, message } });
 
-import { TEMPLATES } from "./templates.ts";
-
 /** Something the workspace can add, as a request names it. */
 export type Listing = { ref: string; kind: ListingKind; id: string; name: string };
 
@@ -26,10 +26,6 @@ export type Listing = { ref: string; kind: ListingKind; id: string; name: string
 export function findListing(value: unknown): Listing | null {
   const parsed = parseListing(value);
   if (!parsed) return null;
-  if (parsed.kind === "agent") {
-    const template = TEMPLATES.find((t) => t.id === parsed.id);
-    return template ? { ref: listingRef("agent", template.id), kind: "agent", id: template.id, name: template.title } : null;
-  }
   if (parsed.kind === "extension") {
     const extension = extensionById(parsed.id);
     return extension?.status === "available" ? { ref: listingRef("extension", extension.id), kind: "extension", id: extension.id, name: extension.name } : null;
@@ -54,11 +50,14 @@ type Row = {
 
 const COLUMNS = "id, listing, name, note, requested_by, requested_by_id, requested_at, status, resolved_by, resolved_at";
 
-export function toRequest(row: Row): InstallRequest {
+/** A row as a request; null for one whose listing is no longer a kind the Marketplace has. */
+export function toRequest(row: Row): InstallRequest | null {
+  const parsed = parseListing(row.listing);
+  if (!parsed) return null;
   return {
     id: row.id,
     listing: row.listing,
-    kind: parseListing(row.listing)?.kind ?? "agent",
+    kind: parsed.kind,
     name: row.name,
     note: row.note,
     requested_by: row.requested_by,
@@ -87,7 +86,7 @@ export async function listRequests(db: D1Database, workspaceId: string, viewer: 
   );
   const bound = owner ? statement.bind(workspaceId, since) : statement.bind(workspaceId, since, viewer.id);
   const { results } = await bound.all<Row>();
-  return results.map(toRequest);
+  return results.map(toRequest).filter((request) => request !== null);
 }
 
 /**
@@ -131,7 +130,7 @@ export async function openRequest(
     .bind(row.id, workspaceId, row.listing, row.name, row.note, row.requested_by, row.requested_by_id, row.requested_at)
     .first<{ id: string }>();
   if (!inserted) return fail("conflict", `You've already asked for ${listing.name}. The workspace's owners have your request.`);
-  return ok(toRequest(row));
+  return ok(toRequest(row)!);
 }
 
 /** A request answered, with who asked, for telling them. */
@@ -154,7 +153,8 @@ export async function resolveRequest(
     )
     .bind(status, by.username, now.toISOString(), id, workspaceId)
     .first<Row>();
-  if (row) return ok({ request: toRequest(row), requested_by_id: row.requested_by_id });
+  const request = row ? toRequest(row) : null;
+  if (row && request) return ok({ request, requested_by_id: row.requested_by_id });
   const exists = await db.prepare("SELECT status FROM install_requests WHERE id = ? AND workspace_id = ?").bind(id, workspaceId).first<{ status: string }>();
   return exists ? fail("conflict", "That request was already answered.") : fail("not_found", "There is no such request.");
 }
@@ -171,7 +171,10 @@ export async function resolveListing(db: D1Database, workspaceId: string, listin
     )
     .bind(by.username, now.toISOString(), workspaceId, listing)
     .all<Row>();
-  return results.map((row) => ({ request: toRequest(row), requested_by_id: row.requested_by_id }));
+  return results.flatMap((row) => {
+    const request = toRequest(row);
+    return request ? [{ request, requested_by_id: row.requested_by_id }] : [];
+  });
 }
 
 /** Where a request is looked at in the workspace `slug`. */
@@ -182,7 +185,6 @@ export function requestsPath(slug: string): string {
 /** Where the thing a request asked for is, once added. */
 export function listingPath(slug: string, listing: string): string {
   const parsed = parseListing(listing);
-  if (parsed?.kind === "agent") return `/${slug}/-/marketplace/agents/${parsed.id}`;
   if (parsed?.kind === "extension") return `/${slug}/-/marketplace/extensions/${parsed.id}`;
   return `/${slug}/-/marketplace/integrations`;
 }
@@ -194,6 +196,6 @@ export function answerLine(request: InstallRequest, by: string): { title: string
   }
   return {
     title: `${request.name} was added to the workspace`,
-    body: request.kind === "agent" ? `${by} added it from the agent catalog.` : request.kind === "extension" ? `${by} installed it.` : `${by} connected it.`,
+    body: request.kind === "extension" ? `${by} installed it.` : `${by} connected it.`,
   };
 }

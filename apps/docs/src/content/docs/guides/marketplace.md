@@ -1,17 +1,20 @@
 ---
 title: Marketplace
-description: Add agents, integrations and extensions to a workspace. Anyone browses the Marketplace; owners add things, and everyone else asks an owner. What each listing may do, where its data goes, and how installs, requests and the kill switch work.
+description: Add functionality to a workspace with extensions, and connect the tools your team already uses so agents can work with that data. Anyone browses the Marketplace; owners add things, and everyone else asks an owner. What each listing may do, where its data goes, and how installs, requests and the kill switch work.
 ---
 
-The Marketplace is where a workspace adds what isn't built in. Code,
-Deployments, Chat, Agents and Artifacts come with every workspace; the
-Marketplace lists what you can add to them:
+The Marketplace is where a workspace adds functionality g1t doesn't have
+built in, and connects the data it already keeps elsewhere so agents can
+use it. Code, Deployments, Chat, Agents and Artifacts come with every
+workspace and aren't listed. Two kinds of listing are:
 
 | Kind | What it adds | Status |
 | --- | --- | --- |
-| **Agents** | An agent hired into a role from the agent catalog. | Live |
+| **Extensions** | Pages, data, cards and agent roles for what your team does besides code, such as email on your domain, support or recruiting. Some bridge a system you already run. | Coming: g1t's own are listed, and install from their first release |
 | **Integrations** | A connection to a tool you already use, which gives agents new abilities without adding pages. | Live for the integrations marked available; the rest are coming |
-| **Extensions** | Pages, data, cards and agent roles for what your team does besides code. | Coming: g1t's own are listed, and install from their first release |
+
+Agents aren't in the Marketplace. To add one, start from a
+[template](/guides/agents/#role-templates) in Agents.
 
 Open it from **Apps** at the foot of the dock (the launcher's
 **Marketplace** link, or **Browse the Marketplace** on the Apps page), from
@@ -22,58 +25,53 @@ Marketplace isn't in the dock itself.
 ## Who can add things
 
 Every member of a workspace can browse the Marketplace. Only its
-**owners** add agents, connect integrations and install extensions,
-because each of them can spend the workspace's money or reach its data.
-Everyone else sees **Request** where an owner sees **Add**, and asks.
+**owners** install extensions and connect integrations, because each of
+them can spend the workspace's money or reach its data. Everyone else sees
+**Request** where an owner sees **Install** or **Connect**, and asks.
 
 ## The Marketplace's pages
 
 | Tab | What it shows |
 | --- | --- |
-| **Discover** | What every workspace has, a few roles from the agent catalog with `@g1t` first, integrations with the connected ones first, and extensions. |
-| **Agents** | The agent catalog: every role, by department, with who in the workspace has the job. |
-| **Integrations** | Connected integrations, the ones you can connect now, and the ones coming. Search by name, by what it does, or by a word such as *tracker*. |
-| **Extensions** | Every extension listed, published ones first, and how extensions are shared. |
+| **Discover** | Featured extensions, integrations with the connected ones first, starter kits, and connected systems. |
+| **Extensions** | Every extension listed: published ones first, then g1t's own that are coming, then connected systems, and how extensions are shared. |
+| **Integrations** | Connected integrations, the ones you can connect now, the ones each person connects for themselves, and the ones coming. Search by name, by what it does, or by a word such as *tracker*. |
 | **Requests** | For owners, every request members made, waiting first; for anyone else, **Your requests**. The tab shows how many are waiting. |
-
-## The agent catalog
-
-Each role in the catalog is a starting point for an agent: a name it
-suggests, a title, responsibilities, a voice, model limits and the helpers
-it works with. [Role templates](/guides/agents/#role-templates) lists them.
-Choose a role to see all of it, including the instructions it starts from
-and who in the workspace was already hired into it.
-
-To add an agent from the catalog as an owner:
-
-1. Open **Marketplace → Agents**, or `g1t.sh/<workspace>/-/marketplace/agents`.
-2. Choose **Add to workspace** on the role (**Add another** when someone
-   already has the job).
-3. Finish the new-agent form, which opens with the role chosen, and choose
-   **Create agent**. See [Hire an agent](/guides/agents/#hire-an-agent).
-
-Adding an agent from a role answers every open request for that role: each
-person who asked hears that it was added.
-
-## Integrations
-
-The Marketplace lists every integration in the
-[integrations directory](/guides/integrations/) that a workspace can
-connect, with whether yours has. **Connect** opens its setup page;
-**Manage** opens it once it is connected. **Needs attention** means a
-connection's last check failed: hover it to see why.
-
-Integrations each person connects for themselves, such as a calendar or a
-mailbox, are listed among the coming ones; they are set up in your own
-[settings](/guides/integrations/#workspace-and-personal) once available.
 
 ## Extensions
 
 An extension adds pages to its own sidebar, data, cards in chat, tools for
 agents and agent roles. g1t's own are listed now, marked **Soon**, so you
-can see what each will add and what it will be able to do: **Support**,
-**Recruiting**, **Mail** and **On-call**. None can be installed before its
-first release.
+can see what each will add and what it will be able to do. None can be
+installed before its first release.
+
+| Extension | What it adds |
+| --- | --- |
+| **Mail** | Email on your own domain, run by g1t. Shared inboxes such as support@ work like channels: agents sort and draft, and sending needs approval or a rule you set. |
+| **Support** | Conversations, escalations, macros and a knowledge base. Customer cards in chat, and bug reports become issues in Code. |
+| **CRM** | Accounts, deals by stage and a forecast. Agents log calls and draft follow-ups for a person to send. |
+| **Recruiting** | Openings, candidates, scorecards and interview loops. Agents screen; people decide. |
+| **On-call** | Rotations, pages and incidents, with who is on call now. |
+
+### Connected systems
+
+A connected system is an extension that bridges a system your team already
+runs, so agents work across it and g1t together. Its page says *Data leaves
+g1t to* the system you connect.
+
+| Extension | What it bridges |
+| --- | --- |
+| **Helpdesk bridge** | Tickets from your helpdesk, with replies drafted for a person to send and bug reports linked to issues in Code. |
+| **CRM bridge** | Accounts and deals from your CRM, in g1t and in chat. |
+| **ERP bridge** | Orders, invoices and stock from your ERP. Anything that changes money or stock waits for a person's approval. |
+
+### Starter kits
+
+A starter kit is a set of extensions for one kind of team, installed
+together once each of them is published: **Customer team** (Mail, Support,
+CRM), **Engineering extras** (On-call, Helpdesk bridge) and **People and
+operations** (Recruiting, ERP bridge). They are on **Discover**, marked
+**Soon** until then.
 
 ### Who stands behind a listing
 
@@ -88,14 +86,14 @@ first release.
 
 Before anything is installed, its page lists:
 
-- **What it adds**: its pages, the agent roles it brings, the tools agents
-  get, and the notifications it sends.
+- **What it adds**: its pages, the cards it shows in chat, the agent roles
+  it brings, the tools agents get, and the notifications it sends.
 - **It will be able to**: what it may do, in plain words, and the scopes
   its token asks for, each described.
 - **Where it runs, and where data goes**: on g1t, or on its publisher's
-  servers, and every domain outside g1t its data goes to, as *Data leaves
-  g1t to api.example.com*. *Its data stays in g1t* means it sends nothing
-  elsewhere.
+  servers, and everywhere outside g1t its data goes, as *Data leaves g1t to
+  api.example.com*, or *to the CRM you connect* for a connected system.
+  *Its data stays in g1t* means it sends nothing elsewhere.
 - **Version** and **Source**: the release it installs, and the repository
   and tag it was published from.
 - **Price**: every listing is free. What its agents do is billed at what
@@ -116,8 +114,9 @@ owners, never forced.
 | `scopes` | The [scopes](/guides/authentication/#scopes) its token asks for. |
 | `permissions` | What it may do, in plain words, for the install screen. |
 | `domains` | Every host outside g1t its data goes to. A connected extension must name the ones it runs on. |
+| `bridges` | Optional. The system it connects to, in words, such as `the CRM you connect`, when its data goes wherever the workspace points it. |
 | `ui.entry` | Its page, loaded in a sandboxed frame from the user-content domain, which reaches g1t only through what it was allowed. |
-| `adds` | Its `pages`, `agent_roles`, `tools` and `notifications`. |
+| `adds` | Its `pages`, `cards`, `agent_roles`, `tools` and `notifications`. |
 | `pricing` | `null`: listings are free. |
 
 ### Installed extensions
@@ -133,9 +132,27 @@ Once installed, an owner can, from the extension's page:
 Installing, switching on or off, setting a budget and uninstalling are in
 the [audit log](/guides/audit-log/).
 
+## Integrations
+
+Integrations are how agents reach your data: each one says, in plain words,
+what it lets agents do, such as *Agents can read* or *Opens issues*. The
+Marketplace lists every integration in the
+[integrations directory](/guides/integrations/) that a workspace can
+connect, with whether yours has. **Connect** opens its setup page;
+**Manage** opens it once it is connected. **Needs attention** means a
+connection's last check failed: hover it to see why.
+
+Some integrations each person connects for themselves, such as a GitHub
+account or an MCP client. They are listed under **Connected by each
+person**, and **Connect yours** opens your own
+[settings](/guides/integrations/#workspace-and-personal) for them. Agents
+use a personal connection only when that person asks. Those that aren't
+available yet, such as a calendar or a mailbox, are listed among the
+coming ones.
+
 ## Ask an owner to add something
 
-1. Choose **Request** on an agent, an integration or an extension.
+1. Choose **Request** on an extension or an integration.
 2. Say why you want it, if you like, and choose **Send request**.
 
 Every owner is notified. The button then reads **Requested**, and **Your
@@ -147,7 +164,7 @@ To answer requests as an owner, open **Marketplace → Requests**:
 
 | | |
 | --- | --- |
-| **Add**, **Connect** or **Install** | Opens where it is added. Adding an agent from its role answers every request for that role by itself. |
+| **Install** or **Connect** | Opens where it is added. Installing an extension answers every request for it by itself. |
 | **Mark added** | After you connected the integration, or added it another way. |
 | **Turn down** | The person who asked is told. They can ask again. |
 

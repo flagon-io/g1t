@@ -66,6 +66,12 @@ const MOVED: Record<string, string> = {
   "soon/insights": "-/insights",
 };
 
+/** Workspace pages that moved with everything under them, by their old name under `-/`: the rest of the path follows. */
+const MOVED_UNDER: Record<string, string> = {
+  // Agent templates were the Marketplace's Agents tab.
+  "marketplace/agents": "-/agents/templates",
+};
+
 /** The page a request is for: a click's data request ends in `.data`. */
 export function pagePath(pathname: string): string {
   return pathname.replace(/\.data$/, "").replace(/\/+$/, "") || "/";
@@ -109,7 +115,9 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
     return `/${slug}${to ? `/${to}` : ""}${rest ? `?${rest}` : ""}`;
   }
   if (parts[1] !== "-") return null;
-  const to = MOVED[parts.slice(2).join("/")];
+  const rest = parts.slice(2).join("/");
+  const under = Object.keys(MOVED_UNDER).find((from) => rest === from || rest.startsWith(`${from}/`));
+  const to = under ? `${MOVED_UNDER[under]}${rest.slice(under.length)}` : MOVED[rest];
   if (to === undefined) return null;
   return `/${slug}${to ? `/${to}` : ""}${search && search !== "?" ? (search.startsWith("?") ? search : `?${search}`) : ""}`;
 }

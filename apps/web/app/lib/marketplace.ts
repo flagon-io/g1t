@@ -1,34 +1,25 @@
 /**
- * The Marketplace (routes/workspace/marketplace/): what a workspace can
- * add today, read against what it has and what its people asked for.
+ * The Marketplace (routes/workspace/marketplace/): what adds functionality
+ * to a workspace, read against what it has and what its people asked for.
  *
- * Two kinds of listing can be added now: an agent from the catalog (the
- * agents service's role templates) and an integration the connector
- * catalog marks available for a workspace. Owners add them; anyone else
- * asks, and the agents service keeps the request (`install_requests`).
- * Extensions have no listings yet: their tiers are described, not filled.
+ * Two kinds of listing: extensions, which add pages, data, cards and agent
+ * roles (g1t's own are listed before their first release), and
+ * integrations, which connect what a team already uses so agents can work
+ * with it. Owners add them; anyone else asks, and the agents service keeps
+ * the request (`install_requests`). Agents aren't listed: they start from
+ * templates in Agents mode (lib/agent-templates.ts).
  *
  * No Workers or React imports, so it can be tested under Node.
  */
-import type { AgentTemplate, ExtensionInstall, ExtensionManifest, InstallRequest, InstallRequestStatus, ListingTier, WorkspaceAgent } from "@g1t/contracts";
+import type { ExtensionInstall, ExtensionManifest, InstallRequest, InstallRequestStatus, ListingTier } from "@g1t/contracts";
 import { type ConnectorView, connectorPath } from "@g1t/contracts/connectors";
 import { listingRef, parseListing } from "@g1t/contracts/marketplace";
 
 import type { ConnectedState } from "./connectors";
 
 /** The Marketplace's pages, under `/<workspace>/-/marketplace`. */
-export function marketplacePath(slug: string, page: "" | "agents" | "integrations" | "extensions" | "requests" = ""): string {
+export function marketplacePath(slug: string, page: "" | "extensions" | "integrations" | "requests" = ""): string {
   return `/${slug}/-/marketplace${page ? `/${page}` : ""}`;
-}
-
-/** One role's page in the agent catalog. */
-export function catalogAgentPath(slug: string, template: string): string {
-  return `/${slug}/-/marketplace/agents/${template}`;
-}
-
-/** Where an owner hires an agent into a role: the new-agent form, with the role chosen. */
-export function hirePath(slug: string, template: string): string {
-  return `/${slug}/-/agents/new?template=${encodeURIComponent(template)}`;
 }
 
 /** Who stands behind a listing, in a word and a sentence. */
@@ -47,43 +38,6 @@ function openFor(request: InstallRequest, ref: string, username: string): boolea
 /** Open requests for `ref`. */
 function openCount(requests: InstallRequest[], ref: string): number {
   return requests.filter((request) => request.status === "open" && request.listing === ref).length;
-}
-
-/** A role in the agent catalog, with what the workspace has of it. */
-export type AgentListing = {
-  ref: string;
-  template: AgentTemplate;
-  /** The workspace's agents hired into this role, not archived. */
-  hired: Pick<WorkspaceAgent, "id" | "handle" | "display_name">[];
-  /** The viewer asked for it, and an owner hasn't answered. */
-  requested: boolean;
-  /** Open requests for it: everyone's for an owner, the viewer's own otherwise. */
-  waiting: number;
-};
-
-/**
- * Every role in the catalog, in the order the agents service gives them,
- * with who has been hired into each. `agents` null: the agents service
- * could not say, so nobody counts as hired.
- */
-export function agentListings(
-  templates: AgentTemplate[],
-  agents: Pick<WorkspaceAgent, "id" | "handle" | "display_name" | "template" | "archived_at">[] | null,
-  requests: InstallRequest[],
-  username: string,
-): AgentListing[] {
-  return templates.map((template) => {
-    const ref = listingRef("agent", template.id);
-    return {
-      ref,
-      template,
-      hired: (agents ?? [])
-        .filter((agent) => agent.template === template.id && !agent.archived_at)
-        .map(({ id, handle, display_name }) => ({ id, handle, display_name })),
-      requested: requests.some((request) => openFor(request, ref, username)),
-      waiting: openCount(requests, ref),
-    };
-  });
 }
 
 /** An integration a workspace can connect, with whether it has. */
@@ -148,6 +102,26 @@ export type ExtensionListing = {
   waiting: number;
 };
 
+/** Where extensions are grouped: connected systems apart from the rest. */
+export const CONNECTED_SYSTEMS = "Connected systems";
+
+/** Whether an extension bridges a system the team already runs. */
+export function isConnectedSystem(manifest: Pick<ExtensionManifest, "category">): boolean {
+  return manifest.category === CONNECTED_SYSTEMS;
+}
+
+/**
+ * A starting set of extensions for one kind of team, installed together
+ * once each is published. Ids are first-party extensions'.
+ */
+export type StarterKit = { id: string; name: string; about: string; extensions: string[] };
+
+export const STARTER_KITS: StarterKit[] = [
+  { id: "customers", name: "Customer team", about: "Mail on your domain, support conversations and a pipeline.", extensions: ["mail", "support", "crm"] },
+  { id: "engineering", name: "Engineering extras", about: "On-call rotations, and the helpdesk your customers already write to.", extensions: ["on-call", "helpdesk-bridge"] },
+  { id: "operations", name: "People and operations", about: "Hiring, and the orders and invoices in your ERP.", extensions: ["recruiting", "erp-bridge"] },
+];
+
 /** Every extension listed, published ones first, each with its install. */
 export function extensionListings(manifests: ExtensionManifest[], installs: ExtensionInstall[], requests: InstallRequest[], username: string): ExtensionListing[] {
   const listings = manifests.map((manifest) => {
@@ -186,11 +160,10 @@ export function openRequests(requests: InstallRequest[]): InstallRequest[] {
   return requests.filter((request) => request.status === "open");
 }
 
-/** Where an owner goes to add what a request asks for: the hire form, or the integration's setup page. */
+/** Where an owner goes to add what a request asks for: the extension's page, or the integration's setup page. */
 export function addPath(request: Pick<InstallRequest, "listing">, slug: string, views: ConnectorView[]): string | null {
   const parsed = parseListing(request.listing);
   if (!parsed) return null;
-  if (parsed.kind === "agent") return hirePath(slug, parsed.id);
   if (parsed.kind === "extension") return extensionPath(slug, parsed.id);
   const view = views.find((v) => v.id === parsed.id);
   return view?.href ? connectorPath(view.href, slug) : null;
@@ -231,18 +204,4 @@ export function marketplaceForm(form: FormData): MarketplaceForm | null {
   }
   if (intent === "uninstall" && extension) return { intent, listing: extension };
   return null;
-}
-
-/** "Software Engineer, Engineering": a role as one line. */
-export function roleLine(template: Pick<AgentTemplate, "title" | "department">): string {
-  return template.department ? `${template.title} · ${template.department}` : template.title;
-}
-
-/** How a routing limit reads: "Any model", "At least large", "Up to large", "Large to frontier". */
-export function routingWords(routing: Pick<AgentTemplate["routing"], "floor" | "ceiling">): string {
-  const name = (tier: string) => tier.charAt(0).toUpperCase() + tier.slice(1);
-  if (routing.floor && routing.ceiling) return `${name(routing.floor)} to ${routing.ceiling} models`;
-  if (routing.floor) return `${name(routing.floor)} models or better`;
-  if (routing.ceiling) return `Up to ${routing.ceiling} models`;
-  return "Any model the work needs";
 }

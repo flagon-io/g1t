@@ -65,12 +65,12 @@ member can see its agents and talk to them.
 <Steps>
 
 1. Open **Agents** in the dock, then choose **New agent**, or go to
-   `g1t.sh/<workspace>/-/agents/new`. Or start from the
-   [agent catalog](/guides/marketplace/#the-agent-catalog) in the
-   Marketplace, where members who aren't owners can ask for a role.
-2. **Pick a role** from the templates, grouped by department, or choose
-   **Start from nothing**. A role fills in every field below, and you can
-   change any of them. See [role templates](#role-templates).
+   `g1t.sh/<workspace>/-/agents/new`. Or open **Templates** in the Agents
+   sidebar (`g1t.sh/<workspace>/-/agents/templates`), read one in full and
+   choose **Start from this**.
+2. **Pick a template**, grouped by department, or choose **Start from
+   nothing**. A template fills in every field below, and you can change any
+   of them. See [role templates](#role-templates).
 3. **Name it.** Each role suggests a name, such as *Margo* for QA. Choose
    **Another name** to shuffle through others that suit the role, or type
    your own. The handle follows the name: `margo`, mentioned as `@margo`.
@@ -110,10 +110,19 @@ Thursday?` and get an answer in the thread.
 
 ## Role templates
 
-Roles are ordinary agents you adopt, rename and change, grouped by
-department. Each starts with a fun name (and more to shuffle through), a
-title, broad responsibilities, a voice, sensible model limits, and a
-subagent or two for its own work.
+Templates are starting points g1t provides, the way you would set up an
+assistant's instructions yourself: each is a role you configure, rename and
+change, grouped by department. Each starts with a fun name (and more to
+shuffle through), a title, broad responsibilities, a voice, sensible model
+limits, and a subagent or two for its own work. Nothing is installed: once
+you start an agent from a template, the agent is yours, and the template
+never changes under it.
+
+**Templates** in the Agents sidebar, at `g1t.sh/<workspace>/-/agents/templates`,
+lists them all, with the agents in your workspace that started from each.
+Choose one to read all of it: what it's responsible for, the helpers it
+works with, the instructions it starts from, and what you configure when
+you start one. Every member can read them; owners start agents from them.
 
 | Department | Suggested name | Title | Answers for | Voice | Models |
 | --- | --- | --- | --- | --- | --- |
