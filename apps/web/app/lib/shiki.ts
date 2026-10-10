@@ -34,7 +34,13 @@ const LANGUAGES: Record<string, string> = {
   dockerfile: "docker",
 };
 
-export const THEME = "vitesse-dark";
+/**
+ * Code is coloured for both themes at once: each token's colour is
+ * `light-dark(light, dark)`, so the page's Appearance (lib/theme.ts)
+ * picks one with no second pass, and highlighted HTML kept in a cache is
+ * right in either.
+ */
+export const THEMES = { light: "vitesse-light", dark: "vitesse-dark" } as const;
 
 /** The language of a file, from its name, if it is one g1t highlights. */
 export function languageOf(path: string): string | null {
@@ -53,7 +59,7 @@ let highlighter: Promise<HighlighterCore> | undefined;
 
 export function getHighlighter(): Promise<HighlighterCore> {
   highlighter ??= createHighlighterCore({
-    themes: [import("shiki/themes/vitesse-dark.mjs")],
+    themes: [import("shiki/themes/vitesse-light.mjs"), import("shiki/themes/vitesse-dark.mjs")],
     langs: [
       import("shiki/langs/rust.mjs"),
       import("shiki/langs/typescript.mjs"),
@@ -82,10 +88,24 @@ function escape(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** A piece of a line and its colour, a `light-dark()` pair, if it has one. */
+export type CodeToken = { content: string; color?: string };
+
+/** Each line of `text` as coloured tokens, for both themes. */
+export function tokenRows(core: HighlighterCore, text: string, lang: string): CodeToken[][] {
+  return core.codeToTokensWithThemes(text, { lang, themes: THEMES }).map((row) =>
+    row.map((token) => {
+      const light = token.variants.light?.color;
+      const dark = token.variants.dark?.color;
+      const color = light && dark ? `light-dark(${light},${dark})` : (light ?? dark);
+      return color ? { content: token.content, color } : { content: token.content };
+    }),
+  );
+}
+
 /** Each line of `text` as HTML, coloured. */
 export function linesToHtml(core: HighlighterCore, text: string, lang: string): string[] {
-  const { tokens } = core.codeToTokens(text, { lang, theme: THEME });
-  return tokens.map((row) =>
+  return tokenRows(core, text, lang).map((row) =>
     row
       .map((token) =>
         token.color ? `<span style="color:${token.color}">${escape(token.content)}</span>` : escape(token.content),

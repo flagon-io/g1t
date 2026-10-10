@@ -124,7 +124,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
           <div className="mt-4">
             <a
               href={`/auth/github?link=1&next=${encodeURIComponent(here)}`}
-              className="inline-flex items-center gap-2 rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-white"
+              className="inline-flex items-center gap-2 rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover"
             >
               <GithubMark /> Connect GitHub
             </a>
@@ -157,7 +157,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                     <div className="mt-4">
                       <a
                         href={`/integrations/github/install?workspace=${workspace}`}
-                        className="inline-flex items-center gap-2 rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-white"
+                        className="inline-flex items-center gap-2 rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover"
                       >
                         <GithubMark /> Install on GitHub
                       </a>

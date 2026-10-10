@@ -27,6 +27,7 @@ import { Mark } from "./logo";
 import { Avatar } from "./ui";
 import { TabStrip } from "./ui/tab-strip";
 import { StatusDialog } from "./presence";
+import { ThemeSwitch } from "./theme-switch";
 import { type AppKey, type PinnableApp, appOf } from "../lib/apps";
 import { setPresence, useOwnPresence } from "../lib/notify-client";
 import { dndOn, liveStatus, pauseUntil, untilLabel } from "../lib/presence";
@@ -463,6 +464,9 @@ export function AccountSheet({ open, onOpenChange, user }: { open: boolean; onOp
           <SheetRow to="/settings" icon={<Settings />}>
             Your settings
           </SheetRow>
+        </SheetGroup>
+        <SheetGroup title="Appearance">
+          <ThemeSwitch size="large" className="mx-3 mt-1 mb-1.5" />
         </SheetGroup>
         <SheetGroup title="Help">
           <SheetRow href="https://docs.g1t.sh/" icon={<BookOpen />}>

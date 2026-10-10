@@ -45,6 +45,7 @@ import { type ShortcutProject, movedPin, recentWith } from "../lib/pins";
 import type { AccountMenuData } from "../routes/settings-menu-json";
 import { useLiveBadges } from "../lib/notify-client";
 import { OwnPresenceDot, OwnPresenceItems, StatusDialog } from "./presence";
+import { THEME_COMMANDS, ThemeMenuSwitch } from "./theme-switch";
 
 /**
  * What the sidebar needs, worked out by the root loader. For a visitor who
@@ -409,6 +410,9 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
           </DropdownMenuItem>
           )}
         </DropdownMenuGroup>
+        <DropdownMenuSeparator className="my-1.5" />
+        {/* Auto, Light or Dark, switched in place (lib/theme.ts). */}
+        <ThemeMenuSwitch />
         <DropdownMenuSeparator className="my-1.5" />
         <DropdownMenuGroup>
           <DropdownMenuItem asChild className={MENU_ROW}>
@@ -1561,6 +1565,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
     ...(Object.keys(ACCOUNT_SETTINGS) as AccountSettingsPage[])
       .filter((page) => page !== "profile")
       .map((page) => ({ label: ACCOUNT_SETTINGS[page].title, hint: "Your settings", to: `/settings/${page}`, icon: <Settings size={15} /> })),
+    ...THEME_COMMANDS,
   ];
   const repo = shell.repo;
   if (repo) {

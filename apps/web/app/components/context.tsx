@@ -199,7 +199,7 @@ function Candidate({ memory, action }: { memory: Memory; action: string }) {
         <button
           type="button"
           onClick={() => fetcher.submit({ intent: "keep", id: memory.id }, { method: "post", action })}
-          className="inline-flex items-center gap-1 rounded-md bg-fg px-2 py-1 text-xs font-medium text-bg hover:bg-white"
+          className="inline-flex items-center gap-1 rounded-md bg-fg px-2 py-1 text-xs font-medium text-bg hover:bg-fg-hover"
         >
           <Check size={12} />
           Keep
@@ -457,7 +457,7 @@ export function SearchView({ result, query, base }: { result: SearchResult | nul
             className="w-full rounded-md border border-line bg-bg py-2 pr-3 pl-9 text-sm outline-none placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
           />
         </label>
-        <button type="submit" className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-white">
+        <button type="submit" className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover">
           {searching ? "Searching…" : "Search"}
         </button>
       </Form>

@@ -54,9 +54,10 @@ export function Label({ name, color }: { name: string; color?: string | null }) 
   const hue = LABEL_HUES[name] ?? hueFor(name);
   const own = chipStyle(color);
   const style: CSSProperties = Object.keys(own).length > 0 ? own : {
-    color: `oklch(0.84 0.11 ${hue})`,
-    borderColor: `oklch(0.84 0.11 ${hue} / 0.35)`,
-    backgroundColor: `oklch(0.84 0.11 ${hue} / 0.1)`,
+    // Light text on a dark page, deep text on a light one (lib/theme.ts).
+    color: `light-dark(oklch(0.46 0.13 ${hue}), oklch(0.84 0.11 ${hue}))`,
+    borderColor: `light-dark(oklch(0.55 0.13 ${hue} / 0.35), oklch(0.84 0.11 ${hue} / 0.35))`,
+    backgroundColor: `light-dark(oklch(0.55 0.13 ${hue} / 0.08), oklch(0.84 0.11 ${hue} / 0.1))`,
   };
   return (
     <span

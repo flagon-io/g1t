@@ -11,32 +11,45 @@
   /* Hanken and Bricolage want less tightening than a text face set close. */
   --tracking-tight: -0.012em;
 
-  --color-bg: var(--g1t-bg);
+  /*
+   * Every colour is a pair: light-dark() picks the light palette or the
+   * dark one by the element's color-scheme, which follows the Appearance
+   * setting (lib/theme.ts, set on <html> below). Something drawn dark on
+   * purpose in either theme, such as a product screenshot, sets
+   * `scheme-dark` and its tokens stay dark.
+   */
+  --color-bg: light-dark(var(--g1t-light-bg), var(--g1t-bg));
   /* Behind the page panel, where the sidebar sits flat (components/shell.tsx). */
-  --color-shell: #0b0b0d;
+  --color-shell: light-dark(#ececea, #0b0b0d);
   /* The dock's own surface: a floating bar a step above the shell. */
-  --color-dock: #15151a;
-  --color-surface: var(--g1t-surface);
-  --color-raised: var(--g1t-raised);
-  --color-line: var(--g1t-line);
-  --color-line-strong: var(--g1t-line-strong);
+  --color-dock: light-dark(#ffffff, #15151a);
+  --color-surface: light-dark(var(--g1t-light-surface), var(--g1t-surface));
+  --color-raised: light-dark(var(--g1t-light-raised), var(--g1t-raised));
+  --color-line: light-dark(var(--g1t-light-line), var(--g1t-line));
+  --color-line-strong: light-dark(var(--g1t-light-line-strong), var(--g1t-line-strong));
 
-  --color-fg: var(--g1t-fg);
-  --color-fg-soft: var(--g1t-fg-soft);
-  --color-muted: var(--g1t-muted);
-  --color-faint: var(--g1t-faint);
+  --color-fg: light-dark(var(--g1t-light-fg), var(--g1t-fg));
+  --color-fg-soft: light-dark(var(--g1t-light-fg-soft), var(--g1t-fg-soft));
+  /* A primary button's hover: brighter than fg on dark, softer on light. */
+  --color-fg-hover: light-dark(#3a3a41, #ffffff);
+  --color-muted: light-dark(var(--g1t-light-muted), var(--g1t-muted));
+  --color-faint: light-dark(var(--g1t-light-faint), var(--g1t-faint));
 
-  --color-accent: var(--g1t-accent);
-  --color-accent-hover: var(--g1t-accent-hover);
-  --color-accent-dim: var(--g1t-accent-dim);
+  --color-accent: light-dark(var(--g1t-light-accent), var(--g1t-accent));
+  --color-accent-hover: light-dark(var(--g1t-light-accent-hover), var(--g1t-accent-hover));
+  --color-accent-dim: light-dark(var(--g1t-light-accent-dim), var(--g1t-accent-dim));
+  --color-accent-low: light-dark(var(--g1t-light-accent-low), var(--g1t-accent-low));
+  /* The accent at its palest on dark, a middle lavender on light: the headline's gradient. */
+  --color-accent-high: light-dark(#8b76e0, #d9d1ff);
 
-  --color-success: var(--g1t-success);
-  --color-success-dim: var(--g1t-success-dim);
+  --color-success: light-dark(var(--g1t-light-success), var(--g1t-success));
+  --color-success-dim: light-dark(var(--g1t-light-success-dim), var(--g1t-success-dim));
+  --color-success-low: light-dark(var(--g1t-light-success-low), var(--g1t-success-low));
 
-  --color-info: var(--g1t-info);
-  --color-merged: var(--g1t-merged);
-  --color-warn: var(--g1t-warn);
-  --color-danger: var(--g1t-danger);
+  --color-info: light-dark(var(--g1t-light-info), var(--g1t-info));
+  --color-merged: light-dark(var(--g1t-light-merged), var(--g1t-merged));
+  --color-warn: light-dark(var(--g1t-light-warn), var(--g1t-warn));
+  --color-danger: light-dark(var(--g1t-light-danger), var(--g1t-danger));
 
   --animate-fade-up: fade-up 0.6s ease-out both;
   --animate-dash: dash 1.2s linear infinite;
@@ -150,14 +163,24 @@
   }
 }
 
+/*
+ * Appearance (lib/theme.ts): with no choice, or Auto, the page follows
+ * the system; a choice of Light or Dark is data-theme on <html>.
+ */
 html {
-  color-scheme: dark;
+  color-scheme: light dark;
   scroll-behavior: smooth;
   /* A tap shows the control's own active state, not the browser's grey flash. */
   -webkit-tap-highlight-color: transparent;
   /* Phones: no text inflation on rotation. */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 /*
@@ -731,35 +754,35 @@ body[data-frame="app"] {
 @source "../../../node_modules/@blocknote/shadcn/dist";
 
 @theme {
-  --color-background: var(--g1t-bg);
-  --color-foreground: var(--g1t-fg);
-  --color-popover: var(--g1t-surface);
-  --color-popover-foreground: var(--g1t-fg);
-  --color-card: var(--g1t-surface);
-  --color-card-foreground: var(--g1t-fg);
-  --color-primary: var(--g1t-accent);
-  --color-primary-foreground: var(--g1t-bg);
-  --color-secondary: var(--g1t-raised);
-  --color-secondary-foreground: var(--g1t-fg);
-  --color-muted-foreground: var(--g1t-muted);
-  --color-accent-foreground: var(--g1t-fg);
-  --color-destructive: var(--g1t-danger);
-  --color-destructive-foreground: var(--g1t-bg);
-  --color-border: var(--g1t-line);
-  --color-input: var(--g1t-line);
-  --color-ring: var(--g1t-accent);
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-fg);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-fg);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-fg);
+  --color-primary: var(--color-accent);
+  --color-primary-foreground: var(--color-bg);
+  --color-secondary: var(--color-raised);
+  --color-secondary-foreground: var(--color-fg);
+  --color-muted-foreground: var(--color-muted);
+  --color-accent-foreground: var(--color-fg);
+  --color-destructive: var(--color-danger);
+  --color-destructive-foreground: var(--color-bg);
+  --color-border: var(--color-line);
+  --color-input: var(--color-line);
+  --color-ring: var(--color-accent);
 }
 
 .bn-shadcn {
-  --color-accent: var(--g1t-raised);
-  --color-muted: var(--g1t-raised);
+  --color-accent: var(--color-raised);
+  --color-muted: var(--color-raised);
   --bn-colors-editor-background: transparent;
-  --bn-colors-editor-text: var(--g1t-fg);
-  --bn-colors-menu-background: var(--g1t-surface);
-  --bn-colors-menu-text: var(--g1t-fg);
-  --bn-colors-hovered-background: var(--g1t-raised);
-  --bn-colors-side-menu: var(--g1t-faint);
-  --bn-colors-border: var(--g1t-line);
+  --bn-colors-editor-text: var(--color-fg);
+  --bn-colors-menu-background: var(--color-surface);
+  --bn-colors-menu-text: var(--color-fg);
+  --bn-colors-hovered-background: var(--color-raised);
+  --bn-colors-side-menu: var(--color-faint);
+  --bn-colors-border: var(--color-line);
   --bn-border-radius: 8px;
 }
 
@@ -768,7 +791,7 @@ body[data-frame="app"] {
   font-size: 1rem;
   line-height: 1.65;
   background: transparent;
-  color: var(--g1t-fg);
+  color: var(--color-fg);
 }
 
 /* The drag handle and + sit in the margin, so the text lines up with the title. */
@@ -790,22 +813,22 @@ body[data-frame="app"] {
   font-size: 0.875em;
   padding: 0.1em 0.35em;
   border-radius: 4px;
-  background: var(--g1t-raised);
+  background: var(--color-raised);
 }
 
 .g1t-editor .bn-block-content[data-content-type="codeBlock"] {
   border-radius: 10px;
-  background: var(--g1t-surface);
-  border: 1px solid var(--g1t-line);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
 }
 
 .g1t-editor .bn-thread-mark {
-  background: color-mix(in srgb, var(--g1t-warn) 22%, transparent);
-  border-bottom: 2px solid color-mix(in srgb, var(--g1t-warn) 60%, transparent);
+  background: color-mix(in srgb, var(--color-warn) 22%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, var(--color-warn) 60%, transparent);
 }
 
 .g1t-editor a {
-  color: var(--g1t-accent);
+  color: var(--color-accent);
 }
 
 /* A page read before the editor loads: the same measure as the editor. */

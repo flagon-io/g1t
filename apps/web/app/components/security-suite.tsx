@@ -37,7 +37,7 @@ const INPUT =
   "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim";
 const SMALL_BUTTON =
   "rounded-md border border-line px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-line-strong hover:text-fg disabled:opacity-50";
-const PRIMARY = "rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg transition-colors hover:bg-white disabled:opacity-50";
+const PRIMARY = "rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg transition-colors hover:bg-fg-hover disabled:opacity-50";
 
 /** A section's title, what it is for, and what can be done there. */
 export function SectionHeader({ title, about, actions }: { title: string; about: ReactNode; actions?: ReactNode }) {

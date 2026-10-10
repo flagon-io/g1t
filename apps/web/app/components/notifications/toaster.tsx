@@ -119,7 +119,7 @@ function ToastCard({ notification, paused }: { notification: FeedNotification; p
   return (
     <div
       role="status"
-      className="g1t-toast group/toast pointer-events-auto relative overflow-hidden rounded-xl bg-[#17171b] shadow-[0_0_0_6px_var(--color-bg),0_20px_48px_-12px_rgba(0,0,0,0.9)] ring-1 ring-line-strong"
+      className="g1t-toast group/toast pointer-events-auto relative overflow-hidden rounded-xl bg-surface shadow-[0_0_0_6px_var(--color-bg),0_20px_48px_-12px_rgba(0,0,0,0.9)] ring-1 ring-line-strong"
     >
       {loud && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px] bg-accent" />}
       <button type="button" onClick={open} className="flex w-full items-start gap-3 p-3 pr-9 text-left outline-none focus-visible:bg-raised/60">
@@ -163,7 +163,7 @@ function ToastCard({ notification, paused }: { notification: FeedNotification; p
 function PushOffer() {
   const [busy, setBusy] = useState(false);
   return (
-    <div className="g1t-toast pointer-events-auto flex items-center gap-3 rounded-xl bg-[#17171b] p-3 shadow-[0_0_0_6px_var(--color-bg),0_20px_48px_-12px_rgba(0,0,0,0.9)] ring-1 ring-accent/35">
+    <div className="g1t-toast pointer-events-auto flex items-center gap-3 rounded-xl bg-surface p-3 shadow-[0_0_0_6px_var(--color-bg),0_20px_48px_-12px_rgba(0,0,0,0.9)] ring-1 ring-accent/35">
       <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
         <BellRing size={16} />
       </span>
@@ -254,7 +254,7 @@ export function Toaster() {
         </div>
       )}
       {folded.length > 0 && (
-        <div className="pointer-events-auto flex h-[30px] items-center justify-between gap-2 self-center rounded-full bg-[#17171b] pr-1 pl-3 text-xs text-muted shadow-[0_0_0_6px_var(--color-bg),0_10px_30px_-10px_rgba(0,0,0,0.9)] ring-1 ring-line-strong">
+        <div className="pointer-events-auto flex h-[30px] items-center justify-between gap-2 self-center rounded-full bg-surface pr-1 pl-3 text-xs text-muted shadow-[0_0_0_6px_var(--color-bg),0_10px_30px_-10px_rgba(0,0,0,0.9)] ring-1 ring-line-strong">
           <span className="font-medium text-fg tabular-nums">+{folded.length} more</span>
           <button
             type="button"

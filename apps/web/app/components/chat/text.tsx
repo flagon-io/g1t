@@ -182,11 +182,10 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
     if (!language || code.length > 20_000) return;
     let cancelled = false;
     void import("../../lib/shiki")
-      .then(async ({ THEME, getHighlighter, languageNamed }) => {
+      .then(async ({ getHighlighter, languageNamed, tokenRows }) => {
         const lang = languageNamed(language);
         if (!lang) return null;
-        const core = await getHighlighter();
-        return core.codeToTokens(code, { lang, theme: THEME }).tokens.map((row) => row.map((token) => ({ content: token.content, color: token.color })));
+        return tokenRows(await getHighlighter(), code, lang);
       })
       .then((tokens) => {
         if (!cancelled && tokens) setRows(tokens);

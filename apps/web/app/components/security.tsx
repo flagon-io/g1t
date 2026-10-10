@@ -217,7 +217,7 @@ export function DismissDialog({
             <button
               type="submit"
               disabled={fetcher.state !== "idle" || !reason}
-              className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-white disabled:opacity-50"
+              className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover disabled:opacity-50"
             >
               {fetcher.state !== "idle" ? "Dismissing…" : "Dismiss alert"}
             </button>

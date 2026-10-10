@@ -16,6 +16,7 @@ import { AlertTriangle, Braces, CheckCircle2, CircleDot, FileCode2, FileText, Gi
 import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { citationHref } from "../../../lib/folios";
+import { useDrawnTheme } from "../../../lib/theme";
 
 /** What an embed shows, from the site (`-/artifacts/api?embed=`). */
 export type EmbedCard = { kind: "issue" | "pull" | "channel" | "project" | "page" | "link"; title: string; subtitle: string | null; state: string | null; href: string };
@@ -65,12 +66,14 @@ function MermaidView({ code }: { code: string }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Drawn again in the other theme's colours when the page switches.
+  const theme = useDrawnTheme();
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
         const mermaid = (await import("mermaid")).default;
-        mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict", fontFamily: "inherit" });
+        mermaid.initialize({ startOnLoad: false, theme: theme === "light" ? "default" : "dark", securityLevel: "strict", fontFamily: "inherit" });
         const { svg } = await mermaid.render(`mermaid-${id}-${Date.now()}`, code || "flowchart LR\n  A --> B");
         if (!cancelled) {
           setSvg(svg);
@@ -84,7 +87,7 @@ function MermaidView({ code }: { code: string }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [code, id]);
+  }, [code, id, theme]);
   if (error) return <p className="text-xs text-danger">{error}</p>;
   if (!svg) return <p className="text-xs text-faint">Drawing…</p>;
   // Mermaid sanitizes what it draws (securityLevel "strict").
@@ -104,7 +107,7 @@ function SourceEditor({ value, onChange, placeholder, mono = true, editable }: {
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft !== value && onChange(draft)}
       onKeyDown={(e) => e.stopPropagation()}
-      className={`w-full resize-y rounded-md border border-line bg-bg px-2.5 py-2 text-[0.8125rem] leading-relaxed text-fg outline-none focus:border-[var(--g1t-accent)] ${mono ? "font-mono" : ""}`}
+      className={`w-full resize-y rounded-md border border-line bg-bg px-2.5 py-2 text-[0.8125rem] leading-relaxed text-fg outline-none focus:border-[var(--color-accent)] ${mono ? "font-mono" : ""}`}
     />
   );
 }
@@ -262,13 +265,13 @@ export const Mention = createReactInlineContentSpec(
       const p = inlineContent.props;
       if (p.kind === "page") {
         return (
-          <a href={p.href || "#"} className="rounded px-0.5 font-medium text-[var(--g1t-accent)] no-underline hover:underline">
+          <a href={p.href || "#"} className="rounded px-0.5 font-medium text-[var(--color-accent)] no-underline hover:underline">
             <FileText size={13} className="mr-0.5 inline -translate-y-px" aria-hidden="true" />
             {p.name || "Untitled"}
           </a>
         );
       }
-      return <span className={`rounded px-1 py-px font-medium ${p.kind === "agent" ? "bg-[color-mix(in_srgb,var(--g1t-accent)_15%,transparent)] text-[var(--g1t-accent)]" : "bg-info/12 text-info"}`}>@{p.name}</span>;
+      return <span className={`rounded px-1 py-px font-medium ${p.kind === "agent" ? "bg-[color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]" : "bg-info/12 text-info"}`}>@{p.name}</span>;
     },
   },
 );

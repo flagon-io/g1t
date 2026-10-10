@@ -52,3 +52,36 @@ test("the dark base reads on an accent or success button", () => {
 test("focus borders in the dim accent stand out from the page", () => {
   assert.ok(contrast(token("accent-dim"), token("bg")) >= 3);
 });
+
+// The light palette (Appearance, lib/theme.ts): the same names after `light-`.
+
+test("the light accent is a deeper lavender, and light success is green", () => {
+  assert.equal(token("light-accent"), "#6b52c8");
+  assert.equal(token("light-success"), "#0d7a52");
+});
+
+test("every dark token has a light one", () => {
+  const dark = [...css.matchAll(/--g1t-(?!light-|font-)([a-z-]+):/g)].map((match) => match[1]);
+  assert.ok(dark.length > 10);
+  for (const name of dark) token(`light-${name}`);
+});
+
+test("light text colours meet WCAG AA on every light surface", () => {
+  for (const surface of ["bg", "surface", "raised"]) {
+    for (const ink of ["fg", "fg-soft", "muted", "faint", "accent", "accent-hover", "success", "merged", "info", "warn", "danger"]) {
+      const ratio = contrast(token(`light-${ink}`), token(`light-${surface}`));
+      assert.ok(ratio >= 4.5, `--g1t-light-${ink} on --g1t-light-${surface} is ${ratio.toFixed(2)}:1`);
+    }
+  }
+});
+
+test("the light page reads on an accent or success button", () => {
+  for (const fill of ["accent", "accent-hover", "success"]) {
+    const ratio = contrast(token("light-bg"), token(`light-${fill}`));
+    assert.ok(ratio >= 4.5, `--g1t-light-bg on --g1t-light-${fill} is ${ratio.toFixed(2)}:1`);
+  }
+});
+
+test("light focus borders in the dim accent stand out from the page", () => {
+  assert.ok(contrast(token("light-accent-dim"), token("light-bg")) >= 3);
+});

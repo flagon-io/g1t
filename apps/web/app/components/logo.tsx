@@ -28,7 +28,7 @@ function Pixels({ of }: { of: Pixel[] }) {
       y={p.y * 10 + 1}
       width="8"
       height="8"
-      fill={p.one ? "var(--g1t-accent)" : "currentColor"}
+      fill={p.one ? "var(--color-accent)" : "currentColor"}
     />
   ));
 }

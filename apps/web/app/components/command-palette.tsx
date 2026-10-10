@@ -10,8 +10,11 @@ import { paletteKeyLabel } from "../lib/shortcut";
  */
 const Dialog = lazy(() => import("./command-palette-dialog"));
 
-/** A page or action the palette can jump to. */
-export type PaletteCommand = { label: string; hint?: string; to: string; icon: ReactNode };
+/**
+ * A page the palette can jump to (`to`), or something it does in place
+ * (`run`, listed under Commands), such as switching the theme.
+ */
+export type PaletteCommand = { label: string; hint?: string; icon: ReactNode } & ({ to: string; run?: undefined } | { run: () => void; to?: undefined });
 
 /** Opens and closes the palette on ⌘K or Ctrl-K, from anywhere on the page. */
 export function usePaletteShortcut(toggle: () => void) {

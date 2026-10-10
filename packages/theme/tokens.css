@@ -47,4 +47,37 @@
 	--g1t-merged: #a678f5;
 	--g1t-warn: #ffbd8c;
 	--g1t-danger: #ff8394;
+
+	/*
+	 * The light palette, for a site that offers one (the app's Appearance
+	 * setting; apps/web/app/app.css picks between the two with
+	 * light-dark()). The same names with `light-` in front. A near-white
+	 * page, white panels, and a deeper lavender so the accent still reads
+	 * as text: every text colour here is at least 4.5:1 on bg, surface
+	 * and raised (apps/web/app/lib/tokens.test.ts).
+	 */
+	--g1t-light-bg: #fbfbfa;
+	--g1t-light-surface: #ffffff;
+	--g1t-light-raised: #f1f1ef;
+	--g1t-light-line: #e4e4e1;
+	--g1t-light-line-strong: #d2d2ce;
+
+	--g1t-light-fg: #18181b;
+	--g1t-light-fg-soft: #2e2e33;
+	--g1t-light-muted: #5c5c66;
+	--g1t-light-faint: #686871;
+
+	--g1t-light-accent: #6b52c8;
+	--g1t-light-accent-hover: #5b42b8;
+	--g1t-light-accent-dim: #9584dc;
+	--g1t-light-accent-low: #ece8fb;
+
+	--g1t-light-success: #0d7a52;
+	--g1t-light-success-dim: #3a9d77;
+	--g1t-light-success-low: #e2f4ec;
+
+	--g1t-light-info: #2160cc;
+	--g1t-light-merged: #7c3fd1;
+	--g1t-light-warn: #a84f00;
+	--g1t-light-danger: #c42a43;
 }

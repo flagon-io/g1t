@@ -200,7 +200,7 @@ export function MessageRun({ run }: { run: AgentRun }) {
             <SubmitButton
               fetcher={fetcher}
               pending="Sending…"
-              className="inline-flex items-center gap-2 rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover disabled:opacity-50"
             >
               Send
             </SubmitButton>

@@ -18,6 +18,7 @@ import { AlertTriangle, AtSign, Calendar, CheckCircle2, FileCode2, FileText, Git
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { canDo, cursorColour } from "../../../lib/folios";
+import { useDrawnTheme } from "../../../lib/theme";
 import { schema, type DocEditorInstance } from "./blocks";
 import { CiteDialog } from "./code";
 import { EditorSkeleton } from "./editor-skeleton";
@@ -114,6 +115,8 @@ export default function DocEditor(props: DocEditorProps) {
 
 function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, suggestions, showComments, onPresence, renderSuggestion, onPageThreads, projects, provider }: DocEditorProps & { provider: FolioProvider }) {
   const editable = canDo(role, "edit");
+  // BlockNote's own parts follow the page's Appearance (lib/theme.ts).
+  const theme = useDrawnTheme();
   const [citing, setCiting] = useState(false);
   const colour = cursorColour(me.name);
   // Below 1280px the comments sit under the page: opening them goes there.
@@ -308,7 +311,7 @@ function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, sugges
       {struck && (
         <style>{`${struck} { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--g1t-danger) 70%, transparent); background: color-mix(in srgb, var(--g1t-danger) 8%, transparent); border-radius: 4px; }`}</style>
       )}
-      <BlockNoteView editor={editor as never} editable={editable} theme="dark" renderEditor={false} slashMenu={false} comments={canDo(role, "view")} className="g1t-bn">
+      <BlockNoteView editor={editor as never} editable={editable} theme={theme} renderEditor={false} slashMenu={false} comments={canDo(role, "view")} className="g1t-bn">
         <div className={`grid gap-8 ${showComments ? "xl:grid-cols-[minmax(0,1fr)_18rem]" : ""}`}>
           <div className="relative min-w-0">
             <BlockNoteViewEditor />

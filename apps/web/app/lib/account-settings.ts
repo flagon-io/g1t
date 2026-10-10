@@ -69,7 +69,7 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
   },
   account: {
     title: "Account",
-    about: "Your username, and deleting your account.",
+    about: "Your username, how g1t looks to you, and deleting your account.",
   },
 };
 

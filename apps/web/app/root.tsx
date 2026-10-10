@@ -50,6 +50,7 @@ import { useNonce } from "./lib/nonce";
 import { isNeedsSignIn } from "./lib/website-token";
 import { setLiveViaToken } from "./lib/live-socket";
 import { LiveNotifications } from "./components/notifications/live-notifications";
+import { THEME_COLOR, THEME_COOKIE, readTheme, themeAttribute, useThemeChoice } from "./lib/theme";
 
 
 export const links: Route.LinksFunction = () => [
@@ -101,6 +102,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     shell,
     // Whether they folded the sidebar away, so the page is drawn that way from the start.
     sidebarClosed: sidebarClosed(readCookie(cookies, SIDEBAR_COOKIE)),
+    // Their Appearance, so the page is drawn in it from the first byte (lib/theme.ts).
+    theme: readTheme(readCookie(cookies, THEME_COOKIE)),
     inviteOnly: mode !== "open",
     addresses: addresses(),
     // Visitors from where the law asks first are asked before analytics runs.
@@ -368,6 +371,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // has not turned it on: they keep their place, and cannot use it yet.
   const held = user?.held && user.held.length > 0 && pathname !== "/settings/two-factor" && <PolicyNotice held={user.held} />;
   const leaving = useLeaving();
+  // Auto, Light or Dark: as the cookie said when the page was drawn, or as just switched.
+  const theme = useThemeChoice(root?.theme);
   // Which frame the page is drawn in (lib/chrome.ts): on its own, the app's, or the public one.
   const frame = frameOf(pathname, {
     signedIn: user != null && !awaitsConfirmation(user),
@@ -382,11 +387,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </>
     ) : null;
   return (
-    <html lang="en">
+    <html lang="en" data-theme={themeAttribute(theme)}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta name="theme-color" content="#0f0f11" />
+        {/* The browser bar matches the page: one colour for a chosen theme, the system's for Auto. */}
+        {theme === "auto" ? (
+          <>
+            <meta name="theme-color" media="(prefers-color-scheme: light)" content={THEME_COLOR.light} />
+            <meta name="theme-color" media="(prefers-color-scheme: dark)" content={THEME_COLOR.dark} />
+          </>
+        ) : (
+          <meta name="theme-color" content={THEME_COLOR[theme]} />
+        )}
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

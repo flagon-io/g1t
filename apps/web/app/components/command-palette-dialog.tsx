@@ -77,12 +77,13 @@ export default function CommandPaletteDialog({
     else navigate(to);
   };
   const words = trimmed.toLowerCase().split(/\s+/).filter(Boolean);
-  const pages = commands
-    .filter((command) => {
-      const text = `${command.label} ${command.hint ?? ""}`.toLowerCase();
-      return words.every((word) => text.includes(word));
-    })
-    .slice(0, trimmed ? 8 : 12);
+  const matching = commands.filter((command) => {
+    const text = `${command.label} ${command.hint ?? ""}`.toLowerCase();
+    return words.every((word) => text.includes(word));
+  });
+  const pages = matching.filter((command) => command.to != null).slice(0, trimmed ? 8 : 12);
+  // Things done in place, such as switching the theme, once something is typed.
+  const actions = trimmed ? matching.filter((command) => command.run != null).slice(0, 6) : [];
   const itemClass = "gap-3 rounded-lg px-3 py-2";
 
   return (
@@ -165,7 +166,26 @@ export default function CommandPaletteDialog({
                     <CommandItem
                       key={`${command.to}-${command.label}`}
                       value={`page:${command.to}:${command.label}`}
-                      onSelect={() => go(command.to)}
+                      onSelect={() => go(command.to!)}
+                      className={itemClass}
+                    >
+                      <span className="shrink-0 text-faint">{command.icon}</span>
+                      <span className="min-w-0 grow truncate">{command.label}</span>
+                      {command.hint && <span className="shrink-0 truncate text-xs text-faint">{command.hint}</span>}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {actions.length > 0 && (
+                <CommandGroup heading="Commands">
+                  {actions.map((command) => (
+                    <CommandItem
+                      key={`run-${command.label}`}
+                      value={`run:${command.label}`}
+                      onSelect={() => {
+                        onOpenChange(false);
+                        command.run!();
+                      }}
                       className={itemClass}
                     >
                       <span className="shrink-0 text-faint">{command.icon}</span>

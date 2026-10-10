@@ -270,7 +270,7 @@ function NeedCard({ row, first }: { row: NeedRow; first: boolean }) {
         <Link
           to={row.to}
           prefetch="intent"
-          className="inline-flex items-center gap-1.5 rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg transition-colors hover:bg-white"
+          className="inline-flex items-center gap-1.5 rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg transition-colors hover:bg-fg-hover"
         >
           Review and respond <ArrowUpRight size={14} />
         </Link>
@@ -654,7 +654,7 @@ function GetStarted({ steps }: { steps: Step[] }) {
             {!step.done && step.to && (
               <Link
                 to={step.to}
-                className="shrink-0 rounded-md bg-fg px-2.5 py-1 text-xs font-medium text-bg transition-colors hover:bg-white"
+                className="shrink-0 rounded-md bg-fg px-2.5 py-1 text-xs font-medium text-bg transition-colors hover:bg-fg-hover"
               >
                 {step.action}
               </Link>
@@ -1031,7 +1031,7 @@ export default function MissionControl({
                   action={
                     <Link
                       to={workspace ? `/new?workspace=${workspace}` : "/new"}
-                      className="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-white"
+                      className="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg-hover"
                     >
                       Create or import a project
                     </Link>

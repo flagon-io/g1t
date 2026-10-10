@@ -15,7 +15,7 @@ export function G1tMark({ size = 20 }: { size?: number }) {
   return (
     <span
       aria-hidden="true"
-      className="inline-flex shrink-0 items-center justify-center bg-[#0b0b0d] ring-1 ring-line-strong ring-inset"
+      className="inline-flex shrink-0 items-center justify-center bg-[#0b0b0d] text-fg ring-1 ring-line-strong ring-inset scheme-dark"
       style={{ width: size, height: size, borderRadius: Math.round(size * 0.26) }}
     >
       <Mark className="size-full" />

@@ -59,7 +59,7 @@ export default function CodeScanning({ loaderData, params }: Route.ComponentProp
         actions={
           scanning.entitled && can.manage_settings && !scanning.configured ? (
             <Form method="post" action={`${base}/security/code-scanning/setup`}>
-              <button type="submit" disabled={settingUp} className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-white disabled:opacity-50">
+              <button type="submit" disabled={settingUp} className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover disabled:opacity-50">
                 {settingUp ? "Opening a pull request…" : "Set up code scanning"}
               </button>
             </Form>

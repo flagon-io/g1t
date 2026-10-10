@@ -135,7 +135,7 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
             <button
               type="submit"
               disabled={disabled || fetcher.state !== "idle"}
-              className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-white disabled:opacity-50"
+              className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover disabled:opacity-50"
             >
               {fetcher.state !== "idle" ? "Saving…" : "Save"}
             </button>

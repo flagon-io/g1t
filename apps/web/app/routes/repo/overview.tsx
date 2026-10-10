@@ -1084,7 +1084,7 @@ function Overview({
           <Quiet
             action={
               member ? (
-                <Link to={`${base}/issues/new`} className="inline-flex items-center gap-1.5 rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg hover:bg-white">
+                <Link to={`${base}/issues/new`} className="inline-flex items-center gap-1.5 rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg hover:bg-fg-hover">
                   <Bot size={12} /> Open an issue for an agent
                 </Link>
               ) : null

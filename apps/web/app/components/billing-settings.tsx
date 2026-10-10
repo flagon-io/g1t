@@ -330,7 +330,7 @@ function AutoReload({ credit, owner }: { credit: AiCredit; owner: boolean }) {
         <Form method="post" className="mt-3 space-y-3 text-sm">
           <input type="hidden" name="intent" value="ai-reload" />
           <label className="flex items-center gap-2">
-            <input type="checkbox" name="enabled" defaultChecked={r.enabled} className="accent-[var(--g1t-accent)]" />
+            <input type="checkbox" name="enabled" defaultChecked={r.enabled} className="accent-[var(--color-accent)]" />
             Reload from the saved card
           </label>
           <div className="flex flex-wrap items-center gap-2 text-muted">
@@ -388,13 +388,13 @@ export function BudgetAlerts({ limit, owner, error }: { limit: Limit; owner: boo
             <legend className="mb-1.5 text-xs text-muted">Alert at</legend>
             {[50, 75, 90, 100].map((level) => (
               <label key={level} className="flex items-center gap-1.5">
-                <input type="checkbox" name="alert" value={String(level)} defaultChecked={levels.includes(level)} className="accent-[var(--g1t-accent)]" />
+                <input type="checkbox" name="alert" value={String(level)} defaultChecked={levels.includes(level)} className="accent-[var(--color-accent)]" />
                 {level}%
               </label>
             ))}
           </fieldset>
           <label className="flex items-center gap-2">
-            <input type="checkbox" name="pause" defaultChecked={pause} className="accent-[var(--g1t-accent)]" />
+            <input type="checkbox" name="pause" defaultChecked={pause} className="accent-[var(--color-accent)]" />
             Pause usage at 100%
             <span className="text-xs text-faint">Off, the budget only alerts; g1t's own limit still applies.</span>
           </label>

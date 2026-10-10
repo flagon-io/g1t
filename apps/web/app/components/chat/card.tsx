@@ -163,7 +163,7 @@ export function CardToasts() {
           key={toast.id}
           role={toast.ok ? "status" : "alert"}
           className={cn(
-            "pointer-events-auto flex w-full animate-pop-in items-start gap-2.5 rounded-xl bg-[#17171b] py-2.5 pr-2 pl-3 text-[0.8125rem] leading-snug text-fg shadow-[0_0_0_6px_var(--color-bg),0_20px_48px_-12px_rgba(0,0,0,0.9)] ring-1 motion-reduce:animate-none",
+            "pointer-events-auto flex w-full animate-pop-in items-start gap-2.5 rounded-xl bg-surface py-2.5 pr-2 pl-3 text-[0.8125rem] leading-snug text-fg shadow-[0_0_0_6px_var(--color-bg),0_20px_48px_-12px_rgba(0,0,0,0.9)] ring-1 motion-reduce:animate-none",
             toast.ok ? "ring-success/35" : "ring-danger/45",
           )}
         >

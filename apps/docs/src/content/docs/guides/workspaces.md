@@ -556,8 +556,37 @@ unread:
 | **Workspace** | Usage, billing, integrations, policies and settings. |
 
 A bar on the dock's edge marks the app you are in. Your account is the
-avatar at the foot: your status, your profile and settings, the
-documentation, support, status, the keyboard's shortcuts, and signing out.
+avatar at the foot: your status, your profile and settings,
+[appearance](#appearance), the documentation, support, status, the
+keyboard's shortcuts, and signing out.
+
+### Appearance
+
+g1t comes in a dark theme and a light one. Until you choose, it is dark.
+
+| Choice | What you see |
+| --- | --- |
+| **Auto** | Follows your system's light or dark setting, and changes when it does. |
+| **Light** | A near-white page with white panels and a deeper lavender accent. |
+| **Dark** | g1t's very dark gray with the lavender accent. |
+
+To change it:
+
+1. Select your avatar at the foot of the dock. On a phone, open **More**,
+   then **You and help**.
+2. Under **Appearance**, select **Auto** (the screen icon), **Light** (the
+   sun) or **Dark** (the moon).
+
+The page changes at once. You can also choose under
+[Settings → Account](https://g1t.sh/settings/account), or press
+<kbd>Ctrl</kbd> <kbd>K</kbd> (<kbd>⌘</kbd> <kbd>K</kbd> on a Mac) and run
+**Use light theme**, **Use dark theme** or **Use auto theme**. Signed out,
+the same commands are in ⌘K, and the phone's menu has the switch.
+
+Your choice is kept in this browser, in a `g1t_theme` cookie, so every page
+is drawn in it from the start; another browser or device starts dark.
+Product screenshots on g1t.sh's home page, and the g1t mark on agents'
+avatars, stay dark in either theme.
 
 ### Apps
 
@@ -653,7 +682,7 @@ them within reach of your thumb:
 | | What it does |
 | --- | --- |
 | **The bar along the bottom** | **Today**, **Chat**, **Notifications**, **Agents** and **Code** (for members with Code access), each with what is unread, and **More**. It steps aside while the keyboard is up and inside a conversation. |
-| **More** | A panel above the bar with **All apps**, the Marketplace (coming), your pinned apps, **Artifacts**, **People**, **Workspace**, and **You and help**: your status, profile and settings, the documentation, support, status, the keyboard's shortcuts and signing out. |
+| **More** | A panel above the bar with **All apps**, the Marketplace (coming), your pinned apps, **Artifacts**, **People**, **Workspace**, and **You and help**: your status, profile and settings, [appearance](#appearance), the documentation, support, status, the keyboard's shortcuts and signing out. |
 | **The sidebar button**, at the left of the page's header | Opens the sidebar of the app you are in from the left: the same lists and links as on a computer. Tap outside it, or open a page, and it closes. |
 | **The tab you are already on** | Tap it again to open that app's sidebar too. |
 | **The workspace's name** in the page's header | Switches workspace, or opens your profile or settings. |

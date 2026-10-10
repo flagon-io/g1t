@@ -351,7 +351,7 @@ export function Landing() {
         <div className="relative mx-auto max-w-6xl px-4 pt-20 text-center sm:pt-24">
           <Link
             to={`${DOCS}/guides/chat/`}
-            className="inline-flex animate-fade-up items-center gap-2 rounded-full bg-bg/50 px-3 py-1 text-xs text-fg-soft ring-1 ring-white/10 backdrop-blur transition-colors hover:bg-bg/70"
+            className="inline-flex animate-fade-up items-center gap-2 rounded-full bg-bg/50 px-3 py-1 text-xs text-fg-soft ring-1 ring-line backdrop-blur transition-colors hover:bg-bg/70"
           >
             <span className="size-1.5 shrink-0 rounded-full bg-accent" />
             For engineering teams running AI coding agents: chat, agents, docs and code in one workspace
@@ -359,7 +359,7 @@ export function Landing() {
           </Link>
           <h1 className="mx-auto mt-7 max-w-4xl animate-fade-up text-[2.75rem] leading-[1.04] font-semibold tracking-tight text-balance sm:text-7xl">
             Your team and its agents,{" "}
-            <span className="bg-gradient-to-r from-fg via-[#d9d1ff] to-accent bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-fg via-accent-high to-accent bg-clip-text text-transparent">
               working in one place.
             </span>
           </h1>

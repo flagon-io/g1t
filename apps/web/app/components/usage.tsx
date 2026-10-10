@@ -69,14 +69,14 @@ function MultiSelect({ name, label, options, chosen }: { name: string; label: st
             {options.map((option) => (
               <li key={option.value}>
                 <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-surface">
-                  <input type="checkbox" name={name} value={option.value} defaultChecked={chosen.includes(option.value)} className="accent-[var(--g1t-accent)]" />
+                  <input type="checkbox" name={name} value={option.value} defaultChecked={chosen.includes(option.value)} className="accent-[var(--color-accent)]" />
                   <span className="truncate">{option.label}</span>
                 </label>
               </li>
             ))}
           </ul>
         )}
-        <button type="submit" className="mt-2 w-full rounded-md bg-fg px-2 py-1.5 text-sm font-medium text-bg hover:bg-white">
+        <button type="submit" className="mt-2 w-full rounded-md bg-fg px-2 py-1.5 text-sm font-medium text-bg hover:bg-fg-hover">
           Apply
         </button>
       </div>
@@ -374,7 +374,7 @@ export function UsageChart({
                       />
                     ))}
                 </div>
-                <div className="absolute inset-y-0 left-1/2 -z-0 w-full -translate-x-1/2 rounded group-hover:bg-white/[0.03] group-focus-visible:bg-white/[0.05]" aria-hidden="true" />
+                <div className="absolute inset-y-0 left-1/2 -z-0 w-full -translate-x-1/2 rounded group-hover:bg-fg/[0.04] group-focus-visible:bg-fg/[0.06]" aria-hidden="true" />
                 <div
                   className={cn(
                     "pointer-events-none absolute bottom-full z-10 mb-2 hidden w-52 rounded-lg border border-line-strong bg-raised p-2.5 text-xs shadow-xl group-hover:block group-focus-visible:block",

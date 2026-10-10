@@ -118,7 +118,7 @@ const BUTTON_BASE =
   "inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-50";
 
 const BUTTON_VARIANTS: Record<Variant, string> = {
-  primary: "bg-fg text-bg hover:bg-white",
+  primary: "bg-fg text-bg hover:bg-fg-hover",
   accent: "bg-accent text-bg hover:bg-accent-hover",
   quiet:
     "border border-line text-fg/80 hover:border-line-strong hover:bg-surface hover:text-fg",
@@ -315,7 +315,7 @@ export function Avatar({
     return (
       <span
         aria-hidden="true"
-        className="inline-flex shrink-0 items-center justify-center bg-[#0b0b0d] text-fg ring-1 ring-line-strong ring-inset"
+        className="inline-flex shrink-0 items-center justify-center bg-[#0b0b0d] text-fg ring-1 ring-line-strong ring-inset scheme-dark"
         style={{ width: size, height: size, borderRadius: size * 0.24 }}
       >
         <Mark className="size-full" />

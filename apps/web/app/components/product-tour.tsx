@@ -1237,7 +1237,7 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
     docs: <DocsMain frame={frame} />,
   };
   return (
-    <div ref={outer} className="relative w-full overflow-hidden rounded-2xl shadow-2xl shadow-black/50 ring-1 ring-line" style={{ aspectRatio: `${W} / ${H}` }}>
+    <div ref={outer} className="relative w-full overflow-hidden rounded-2xl text-fg shadow-2xl shadow-black/50 ring-1 ring-line scheme-dark" style={{ aspectRatio: `${W} / ${H}` }}>
       <div
         ref={canvas}
         className="absolute top-0 left-0 flex origin-top-left bg-bg text-left"
@@ -1296,7 +1296,7 @@ const TABS: { scene: Scene | null; icon: ReactNode; label: string }[] = [
 function Phone({ frame }: { frame: Frame }) {
   const scenes: Scene[] = ["code", "chat", "agents", "docs"];
   return (
-    <div className="relative flex h-[34rem] w-full flex-col overflow-hidden rounded-2xl bg-bg text-left shadow-2xl shadow-black/50 ring-1 ring-line">
+    <div className="relative flex h-[34rem] w-full flex-col overflow-hidden rounded-2xl bg-bg text-left text-fg shadow-2xl shadow-black/50 ring-1 ring-line scheme-dark">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
         <Avatar name="acme" size={26} square />
         <span key={frame.scene} className="tour-fade flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-fg">

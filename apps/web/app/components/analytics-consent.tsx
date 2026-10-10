@@ -36,7 +36,7 @@ export function AnalyticsConsent() {
         <button
           type="button"
           onClick={() => choose("yes")}
-          className="flex-1 rounded-lg bg-fg px-3 py-2 font-medium text-bg transition-colors hover:bg-white"
+          className="flex-1 rounded-lg bg-fg px-3 py-2 font-medium text-bg transition-colors hover:bg-fg-hover"
         >
           Allow
         </button>

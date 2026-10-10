@@ -3,6 +3,7 @@ import { Link, redirect } from "react-router";
 import type { Route } from "./+types/account";
 import { DeleteAccountAction } from "../../components/delete-account";
 import { DangerZone } from "../../components/danger-zone";
+import { ThemeSwitch } from "../../components/theme-switch";
 import { githubSignIn } from "../../lib/github.server";
 import { page } from "../../lib/meta";
 import { accounts } from "../../lib/services.server";
@@ -62,6 +63,15 @@ export default function AccountSettings({ loaderData, actionData }: Route.Compon
           </Link>
           .
         </p>
+      </section>
+      <section aria-labelledby="appearance-heading">
+        <h2 id="appearance-heading" className="font-medium">
+          Appearance
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          Light, dark, or Auto to follow your system. This browser remembers it.
+        </p>
+        <ThemeSwitch className="mt-3 w-full max-w-xs" />
       </section>
       <DangerZone>
         <DeleteAccountAction

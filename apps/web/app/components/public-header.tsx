@@ -12,6 +12,7 @@ import { Form, Link, NavLink, useParams, useSubmit } from "react-router";
 import type { User } from "@g1t/contracts";
 
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
+import { THEME_COMMANDS, ThemeMenuSwitch } from "./theme-switch";
 import { Logo } from "./logo";
 import { Avatar, ButtonLink, notACredential } from "./ui";
 import {
@@ -93,7 +94,10 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
         <CommandPalette
           open={palette}
           onOpenChange={setPalette}
-          commands={user ? PUBLIC_COMMANDS.slice(0, 4) : PUBLIC_COMMANDS.map((command) => (command.to === "/register" ? { ...command, label: signUp.primary } : command))}
+          commands={[
+            ...(user ? PUBLIC_COMMANDS.slice(0, 4) : PUBLIC_COMMANDS.map((command) => (command.to === "/register" ? { ...command, label: signUp.primary } : command))),
+            ...THEME_COMMANDS,
+          ]}
           repo={repo}
         />
         <nav aria-label="Main" className="hidden items-center gap-0.5 sm:flex">
@@ -122,6 +126,8 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
                   Docs
                 </Link>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <ThemeMenuSwitch className="px-2" />
               {!user && (
                 <>
                   <DropdownMenuSeparator />
@@ -165,6 +171,8 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
                       Documentation
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <ThemeMenuSwitch className="px-2" />
                   <DropdownMenuSeparator />
                   {/* Submitted from here: the menu closes on select, and a button
                       that has left the page cannot submit a form. */}

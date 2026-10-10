@@ -23,7 +23,7 @@ const MAX_HIGHLIGHT_CHARS = 200_000;
  * once. Bump `HIGHLIGHT_VERSION` when the theme, the grammars, Shiki or
  * `linesToHtml` change what they make.
  */
-export const HIGHLIGHT_VERSION = "v1";
+export const HIGHLIGHT_VERSION = "v2";
 
 function dataCentre(): SharedCache | null {
   try {

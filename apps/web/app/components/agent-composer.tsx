@@ -135,7 +135,7 @@ export function AgentComposer({
                 {said.notStarted.fix && (
                   <Link
                     to={said.notStarted.fix.to}
-                    className="inline-flex items-center gap-1 rounded-md bg-fg px-2.5 py-1 text-xs font-medium text-bg hover:bg-white"
+                    className="inline-flex items-center gap-1 rounded-md bg-fg px-2.5 py-1 text-xs font-medium text-bg hover:bg-fg-hover"
                   >
                     {said.notStarted.fix.label} <ArrowUpRight size={12} />
                   </Link>

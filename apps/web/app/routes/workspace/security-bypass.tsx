@@ -61,7 +61,7 @@ function Review({ request, mine }: { request: BypassRequest; mine: boolean }) {
           </button>
         ) : (
           <>
-            <button type="submit" name="decision" value="approve" disabled={busy} className="rounded-md bg-fg px-3 py-1 text-xs font-medium text-bg hover:bg-white disabled:opacity-50">
+            <button type="submit" name="decision" value="approve" disabled={busy} className="rounded-md bg-fg px-3 py-1 text-xs font-medium text-bg hover:bg-fg-hover disabled:opacity-50">
               Approve
             </button>
             <button type="submit" name="decision" value="deny" disabled={busy} className="rounded-md border border-danger/40 px-3 py-1 text-xs font-medium text-danger hover:bg-danger/10 disabled:opacity-50">
