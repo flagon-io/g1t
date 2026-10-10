@@ -5,7 +5,7 @@
 // moves the repository's refs version and checks the next clone misses.
 //
 // Runs everything on this machine: the self-hosted git store, and
-// `wrangler dev` with dev/repos.jsonc, dev/artifacts.jsonc and
+// `wrangler dev` with dev/repos.jsonc, dev/gitstore.jsonc and
 // dev/stubs.jsonc, state kept in a temporary folder. Build first:
 //
 //   cd services/repos && node ../../scripts/build-rust-worker.mjs
@@ -45,13 +45,13 @@ const STORE_PORT = process.env.GITSTORE_PORT ?? "8799";
 const REPOS_PORT = process.env.REPOS_PORT ?? "8791";
 const STORE = `http://localhost:${STORE_PORT}`;
 const REPOS = `http://localhost:${REPOS_PORT}`;
-// dev/artifacts.jsonc, pointed at this run's git store.
-const ARTIFACTS_CONFIG = join(work, "artifacts.json");
+// dev/gitstore.jsonc, pointed at this run's git store.
+const GITSTORE_CONFIG = join(work, "gitstore.json");
 writeFileSync(
-  ARTIFACTS_CONFIG,
+  GITSTORE_CONFIG,
   JSON.stringify({
-    name: "g1t-artifacts",
-    main: join(root, "deploy/self-host/workers/artifacts/index.js"),
+    name: "g1t-gitstore",
+    main: join(root, "deploy/self-host/workers/gitstore/index.js"),
     compatibility_date: "2026-09-26",
     vars: { GITSTORE_URL: STORE, GITSTORE_SECRET: SECRET },
   }),
@@ -207,7 +207,7 @@ try {
   }
   start(
     "node",
-    [WRANGLER, "dev", "-c", "dev/repos.jsonc", "-c", ARTIFACTS_CONFIG, "-c", "dev/stubs.jsonc", "--local", "--persist-to", persist, "--port", REPOS_PORT, ...s3Vars],
+    [WRANGLER, "dev", "-c", "dev/repos.jsonc", "-c", GITSTORE_CONFIG, "-c", "dev/stubs.jsonc", "--local", "--persist-to", persist, "--port", REPOS_PORT, ...s3Vars],
     { cwd: service, env: { ...process.env, CI: "1" }, stdio: ["ignore", "inherit", "inherit"] },
   );
   await waitFor(`${REPOS}/acme/rocket.git/info/refs?service=git-upload-pack`, "wrangler dev");

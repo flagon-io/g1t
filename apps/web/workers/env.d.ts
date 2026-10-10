@@ -27,8 +27,8 @@ declare global {
        * socket, forwarded as it is (app/lib/chat-live.server.ts).
        */
       CHAT: ServiceBinding & { fetch(request: Request): Promise<Response> };
-      /** Docs (services/docs): RPC, each page's live socket, and files in pages. */
-      DOCS: ServiceBinding & { fetch(request: Request | string, init?: RequestInit): Promise<Response> };
+      /** Artifacts (services/artifacts): RPC, each artifact's live socket, and files in them. */
+      ARTIFACTS: ServiceBinding & { fetch(request: Request | string, init?: RequestInit): Promise<Response> };
       /** The workspace's own agents: definitions, templates and desks. */
       AGENTS: ServiceBinding;
       /**

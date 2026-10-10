@@ -9,8 +9,8 @@
 // Read-only: one GraphQL query, and SELECTs against the g1t-repos database.
 //
 //   CLOUDFLARE_API_TOKEN=<token with Account Analytics: Read> \
-//     node scripts/ops/artifacts-usage.mjs [--days 31] [--json]
-//     node scripts/ops/artifacts-usage.mjs --hours 2026-10-07
+//     node scripts/ops/gitstore-usage.mjs [--days 31] [--json]
+//     node scripts/ops/gitstore-usage.mjs --hours 2026-10-07
 //
 // --hours DAY shows one UTC day hour by hour (Cloudflare's operations and
 // errors against `git_operations`), and the errors by message and repository:
@@ -26,7 +26,7 @@ import { join } from "node:path";
 
 const WRANGLER = join(ROOT, "node_modules/wrangler/bin/wrangler.js");
 const DATABASE = "g1t-repos";
-const NAMESPACE = process.env.ARTIFACTS_NAMESPACE || null;
+const NAMESPACE = process.env.GITSTORE_NAMESPACE || null;
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);

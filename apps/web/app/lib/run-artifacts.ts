@@ -21,7 +21,7 @@ export function expiresIn(at: string | null, now: number = Date.now()): string {
  * Artifacts older runners kept in Workers KV. None has been made there
  * since artifacts moved to R2 on 2026-10-08, and KV expires each 14 days
  * after it was made: from 2026-10-22T00:00Z every one is gone. Delete the
- * KV artifact code (here, artifacts.server.ts, and apps/api/src/blobs.rs)
+ * KV artifact code (here, run-artifacts.server.ts, and apps/api/src/blobs.rs)
  * after that date.
  */
 export const LEGACY_KV_UNTIL = Date.parse("2026-10-22T00:00:00Z");

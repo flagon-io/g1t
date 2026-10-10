@@ -128,18 +128,20 @@
 			],
 			"self_host": "run"
 		},
-		// Docs mode's service, which also hosts artifacts (folios). Its
-		// Worker is g1t-docs-service: g1t-docs is the documentation site
-		// (apps/docs).
-		"docs-service": {
-			"path": "services/docs",
+		// Artifacts: docs (a doc is one kind of artifact), their spaces,
+		// sharing and live rooms. It was g1t-docs-service (services/docs)
+		// until 2026-10; its resources kept their g1t-docs names. g1t-docs
+		// is the documentation site (apps/docs).
+		"artifacts": {
+			"path": "services/artifacts",
 			"kind": "ts-worker",
-			"worker": "g1t-docs-service",
+			"worker": "g1t-artifacts",
 			"d1": { "database": "g1t-docs", "migrations": "migrations" },
 			"stage": "core",
 			"secrets": [],
 			"setup": [
-				"The D1 database, before the first deploy: npx wrangler d1 create g1t-docs, then put its id in services/docs/wrangler.jsonc",
+				"An installation that ran g1t-docs-service: move to g1t-artifacts as \"Renaming a Worker\" in docs.g1t.sh/guides/deploy-to-cloudflare/ says (its queue consumer first, then this Worker, which takes the old Worker's live rooms)",
+				"The D1 database, before the first deploy: npx wrangler d1 create g1t-docs, then put its id in services/artifacts/wrangler.jsonc",
 				"The R2 bucket for files in pages: npx wrangler r2 bucket create g1t-docs-files",
 				"The queue the events service sends it merges and pushes on (pages whose cited code changed, projects' docs): npx wrangler queues create g1t-events-docs. The service also sends its own backfill jobs to it (JOBS)",
 				"The Vectorize index agents recall Docs from: npx wrangler vectorize create g1t-docs --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id and space_id (npx wrangler vectorize create-metadata-index g1t-docs --property-name=<name> --type=string)",

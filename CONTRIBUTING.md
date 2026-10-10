@@ -113,7 +113,7 @@ For Flagon staff.
   at least every 30 minutes and SEV2 (a core part broken for many) at least
   hourly; both email subscribers and need a blameless postmortem within
   five working days.
-- **An Artifacts outage:** `scripts/ops/artifacts-namespaces.mjs` shows a
+- **An Artifacts outage:** `scripts/ops/gitstore-namespaces.mjs` shows a
   failing namespace. After 15 minutes, serve it read-only from the fallback
   git store (`scripts/ops/restore-to-gitstore.mjs restore`, then the repos
   Worker's secret `GIT_FALLBACK_NAMESPACES`) and open an incident. To

@@ -1,5 +1,5 @@
 /**
- * What the docs service tells the rest of g1t about folios: `folio.*`
+ * What the artifacts service tells the rest of g1t about folios: `folio.*`
  * events on the bus (packages/contracts events.ts, `FolioEventData`).
  * Published with no `repoId`, so a folio never reaches a repository's
  * timeline or webhooks, and with a title only when the whole workspace

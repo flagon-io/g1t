@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 
 import type { RepoPath, Viewer } from "@g1t/contracts";
 
-import { LEGACY_KV_UNTIL } from "./artifacts";
+import { LEGACY_KV_UNTIL } from "./run-artifacts";
 import { actions } from "./services.server";
 
 /**
@@ -10,7 +10,7 @@ import { actions } from "./services.server";
  * bytes are in R2, downloaded through the API's signed links); artifacts an
  * older runner kept in KV (`a/{run}/{name}`, its bytes in chunks `…#0`,
  * `…#1`) are listed too until KV expires them, for runs the caller has
- * already been shown (`legacyArtifactsWorthAsking` in artifacts.ts).
+ * already been shown (`legacyArtifactsWorthAsking` in run-artifacts.ts).
  */
 export type ArtifactRow = {
   /** The artifact's number; null for one kept in KV. */
@@ -62,7 +62,7 @@ export async function withLegacyArtifacts(rows: ArtifactRow[], run: string): Pro
 }
 
 export async function readArtifact(run: string, name: string): Promise<Uint8Array | null> {
-  // Every artifact kept in KV has expired (artifacts.ts).
+  // Every artifact kept in KV has expired (run-artifacts.ts).
   if (Date.now() >= LEGACY_KV_UNTIL) return null;
   const base = `a/${run}/${name}`;
   const meta = await env.BLOBS.get<Meta>(base, "json");

@@ -7,7 +7,7 @@
 // empty repository, whose advertisement is a `capabilities^{}` line.
 //
 // Runs everything on this machine, as clone-check.mjs does: the self-hosted
-// git store, and `wrangler dev` with dev/repos.jsonc, dev/artifacts.jsonc
+// git store, and `wrangler dev` with dev/repos.jsonc, dev/gitstore.jsonc
 // and dev/stubs.jsonc (whose identity stub knows `dev`, the pusher). Build
 // first:
 //
@@ -36,12 +36,12 @@ const STORE = `http://localhost:${STORE_PORT}`;
 const REPOS = `http://localhost:${REPOS_PORT}`;
 // The pusher the identity stub knows (dev/stubs.js).
 const PUSHER = "dev:dev-push-secret";
-const ARTIFACTS_CONFIG = join(work, "artifacts.json");
+const GITSTORE_CONFIG = join(work, "gitstore.json");
 writeFileSync(
-  ARTIFACTS_CONFIG,
+  GITSTORE_CONFIG,
   JSON.stringify({
-    name: "g1t-artifacts",
-    main: join(root, "deploy/self-host/workers/artifacts/index.js"),
+    name: "g1t-gitstore",
+    main: join(root, "deploy/self-host/workers/gitstore/index.js"),
     compatibility_date: "2026-09-26",
     vars: { GITSTORE_URL: STORE, GITSTORE_SECRET: SECRET },
   }),
@@ -160,7 +160,7 @@ try {
   );
   start(
     "node",
-    [WRANGLER, "dev", "-c", "dev/repos.jsonc", "-c", ARTIFACTS_CONFIG, "-c", "dev/stubs.jsonc", "--local", "--persist-to", persist, "--port", REPOS_PORT],
+    [WRANGLER, "dev", "-c", "dev/repos.jsonc", "-c", GITSTORE_CONFIG, "-c", "dev/stubs.jsonc", "--local", "--persist-to", persist, "--port", REPOS_PORT],
     { cwd: service, env: { ...process.env, CI: "1" }, stdio: ["ignore", "inherit", "inherit"] },
   );
   await waitFor(`${REPOS}/acme/rocket.git/info/refs?service=git-upload-pack`, "wrangler dev");

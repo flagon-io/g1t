@@ -9,7 +9,7 @@ import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.serv
 /**
  * A file put in an artifact (an image, a PDF, an attachment):
  * `POST <site>/<workspace>/-/artifacts/upload?folio=<id>&name=<file name>`
- * with the file as the body. The docs service checks the viewer can edit
+ * with the file as the body. The artifacts service checks the viewer can edit
  * the folio, keeps the file, and answers with its address on the usercontent
  * origin, where it is served, never on the site.
  */
@@ -27,7 +27,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   target.searchParams.set("folio", url.searchParams.get("folio") ?? "");
   target.searchParams.set("name", url.searchParams.get("name") ?? "file");
   try {
-    const answer = await env.DOCS.fetch(target.toString(), {
+    const answer = await env.ARTIFACTS.fetch(target.toString(), {
       method: "PUT",
       headers: {
         "content-type": request.headers.get("content-type") ?? "application/octet-stream",

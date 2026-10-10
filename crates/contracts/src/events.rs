@@ -980,7 +980,7 @@ pub struct QueueChanged {
     pub repo_id: String,
 }
 
-/// The `doc.page.*` types the docs service (services/docs, TypeScript)
+/// The `doc.page.*` types the artifacts service (services/artifacts, TypeScript)
 /// publishes, with no `repoId` on the event: a page may be in a private
 /// space, so it never reaches a repository's timeline or webhooks.
 pub const DOC_PAGE_EVENTS: [&str; 4] = ["doc.page.created", "doc.page.updated", "doc.page.archived", "doc.page.stale"];

@@ -177,7 +177,7 @@ export function readingTime(markdown: string): { words: number; minutes: number 
 /**
  * Where a citation links: the file or folder in Code at the commit it was
  * cited at, or the default branch (`HEAD`). A glob links to the folder it
- * starts from. Mirrors `citationHref` in services/docs src/citations.ts.
+ * starts from. Mirrors `citationHref` in services/artifacts src/citations.ts.
  */
 export function citationHref(c: { repo: string; path: string; ref: string | null }): string {
   const parts = c.path.split("/").filter(Boolean);

@@ -61,7 +61,7 @@ import {
 } from "./deploy/image.mjs";
 import { decide, git, planJson, pool, table } from "./deploy/plan.mjs";
 import { reportDeployment } from "./deploy/report.mjs";
-import { ROOT, byStage, codeStages, findWranglerConfigs, npmCiArgs, npmWorkspace, pick, problems, resolvedStack } from "./deploy/stack.mjs";
+import { ROOT, byStage, codeStages, findWranglerConfigs, npmCiArgs, npmWorkspace, pick, problems, resolvedStack, waves } from "./deploy/stack.mjs";
 import { withDeployWindow } from "./deploy/status-window.mjs";
 
 const USAGE = "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--json]";
@@ -429,10 +429,17 @@ async function deploy(stack, opts, { dryRun = false } = {}) {
           for (const unit of units) results.push({ unit: unit.id, stage, ok: false, skipped: true, ms: 0, note: "an earlier stage failed" });
           continue;
         }
-        log(`== ${stage}: ${units.map((u) => u.id).join(", ")}`);
-        const shipped = await pool(units, opts.concurrency, (unit) => ship(unit, deploying.find((d) => d.unit === unit), context));
-        results.push(...shipped);
-        failed = shipped.some((r) => !r.ok);
+        // A Worker that does not exist yet goes before those bound to it.
+        for (const wave of waves(units, (unit) => Boolean(deploying.find((d) => d.unit === unit)?.missing))) {
+          if (failed) {
+            for (const unit of wave) results.push({ unit: unit.id, stage, ok: false, skipped: true, ms: 0, note: "a Worker it binds to failed to deploy" });
+            continue;
+          }
+          log(`== ${stage}: ${wave.map((u) => u.id).join(", ")}`);
+          const shipped = await pool(wave, opts.concurrency, (unit) => ship(unit, deploying.find((d) => d.unit === unit), context));
+          results.push(...shipped);
+          failed = shipped.some((r) => !r.ok);
+        }
       }
     },
     { id: head ?? null, dryRun, log },

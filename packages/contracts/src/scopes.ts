@@ -600,7 +600,7 @@ export const OPERATION_SCOPES = [
   // checked by the model proxy at models.g1t.sh.
   ["list_gateway_requests", "models:read"],
   // Artifacts mode's docs, slides, designs and dashboards (the `artifact`
-  // MCP tool). The docs service then checks the person's role on each.
+  // MCP tool). The artifacts service then checks the person's role on each.
   ["list_workspace_artifacts", "artifacts:read"],
   ["search_workspace_artifacts", "artifacts:read"],
   ["get_workspace_artifact", "artifacts:read"],

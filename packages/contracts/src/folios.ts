@@ -2,7 +2,7 @@
  * Folios: what people call artifacts. Artifacts mode is one mode for docs,
  * slides, designs and dashboards, each private, shared with people and
  * agents, in a space or open to the workspace, and edited live together.
- * Kept by the docs service (`services/docs`).
+ * Kept by the artifacts service (`services/artifacts`).
  *
  * Naming: code says "folio", people see "artifact" (UI text, URLs
  * `/<ws>/-/artifacts/...`, the `artifact` MCP tool, REST paths, the
@@ -605,9 +605,9 @@ export function folioListQueryError(query: FolioListQuery): string | null {
   return null;
 }
 
-// ── The docs service's folio RPC ──────────────────────────────────────
+// ── The artifacts service's folio RPC ──────────────────────────────────────
 
-/** Every method the docs service answers for folios at `/rpc/<method>` (plan section 7). */
+/** Every method the artifacts service answers for folios at `/rpc/<method>` (plan section 7). */
 export const FOLIO_RPC_METHODS = [
   // Lists and navigation.
   "folio_list",

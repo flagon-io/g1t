@@ -57,6 +57,7 @@ import {
   touches,
   touchesBase,
   touchesImage,
+  waves,
 } from "./stack.mjs";
 
 const stack = resolvedStack();
@@ -98,6 +99,24 @@ test("stages follow bindings: nothing binds to a unit that ships after it", () =
       assert.ok(order.indexOf(other.stage) <= order.indexOf(u.stage), `${u.id} -> ${other.id}`);
     }
   }
+});
+
+test("inside a stage, a Worker that does not exist yet goes before those bound to it", () => {
+  const u = (id, worker, bindsTo = []) => ({ id, worker, bindsTo });
+  const artifacts = u("artifacts", "g1t-artifacts", ["g1t-agents", "g1t-identity"]);
+  const agents = u("agents", "g1t-agents", ["g1t-artifacts", "g1t-identity"]);
+  const chat = u("chat", "g1t-chat", ["g1t-agents"]);
+  const ids = (list) => list.map((wave) => wave.map((x) => x.id));
+  // Nothing new: one wave, as before.
+  assert.deepEqual(ids(waves([artifacts, agents, chat], () => false)), [["artifacts", "agents", "chat"]]);
+  // A renamed Worker: it first, then what binds to it.
+  assert.deepEqual(ids(waves([agents, chat, artifacts], (x) => x.id === "artifacts")), [["chat", "artifacts"], ["agents"]]);
+  // New Workers bound to each other: no order helps, so together.
+  assert.deepEqual(ids(waves([artifacts, agents], () => true)), [["artifacts", "agents"]]);
+  // This repository's agents unit binds to the artifacts Worker, in the same stage.
+  const real = (id) => stack.units.find((x) => x.id === id);
+  assert.equal(real("artifacts").stage, real("agents").stage);
+  assert.deepEqual(ids(waves([real("agents"), real("artifacts")], (x) => x.id === "artifacts")), [["artifacts"], ["agents"]]);
 });
 
 test("Rust workers build with the shared script and the same wasm-opt level", () => {

@@ -336,6 +336,28 @@ export function byStage(stack, units) {
     .filter((group) => group.units.length);
 }
 
+/**
+ * A stage's units in the order they can go out. Cloudflare refuses a
+ * Worker bound to a Worker that does not exist, so a unit never deployed
+ * before (`isNew`, a new or renamed Worker) goes out before the units of
+ * its stage that bind to it. Units in one wave go in parallel. Without a
+ * new unit, the stage is one wave.
+ */
+export function waves(units, isNew) {
+  const out = [];
+  let left = [...units];
+  while (left.length) {
+    // Workers that do not exist yet and are still to deploy.
+    const missing = new Set(left.filter(isNew).map((u) => u.worker));
+    const ready = left.filter((u) => !u.bindsTo.some((target) => target !== u.worker && missing.has(target)));
+    // New units that bind to each other: no order helps, so all at once.
+    const wave = ready.length ? ready : left;
+    out.push(wave);
+    left = left.filter((u) => !wave.includes(u));
+  }
+  return out;
+}
+
 /** The most Rust workers one CI job builds; more are split across jobs. */
 export const RUST_PER_JOB = 4;
 

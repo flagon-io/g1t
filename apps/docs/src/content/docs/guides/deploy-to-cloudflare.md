@@ -62,6 +62,10 @@ succeeded, and units inside a stage deploy in parallel:
 A unit binds only to units in its own stage or an earlier one, so new code
 never calls a service that has not shipped. `npm run test:deploy` checks
 this, and that every `wrangler.jsonc` has a unit whose names match it.
+Cloudflare refuses a Worker bound to a Worker that does not exist, so
+inside a stage a unit whose Worker has never been deployed (a new or
+renamed one) goes first, and the units of its stage that bind to it go
+after it succeeds.
 
 ## The tool
 
@@ -205,10 +209,15 @@ namespaces; its `setup` and `secrets` say the rest.
    `node scripts/deploy.mjs doctor` lists what is missing.
 9. For [Deployments](/guides/deployments/), which need the Workers for
    Platforms add-on and a zone for apps: `scripts/setup-deployments.sh`.
-10. `node scripts/deploy.mjs deploy --all`. A Worker bound to a service
-    that does not exist yet may be refused: deploy that service first with
-    `--only`.
-11. Register on your site to make the first account, or run
+10. Durable Objects: the artifacts service's v3 migration
+    (`services/artifacts/wrangler.jsonc`) moves g1t.sh's live rooms from
+    the Worker it was renamed from, which a new account does not have.
+    Replace it with
+    `{ "tag": "v3", "new_sqlite_classes": ["PageRoom", "FolioRoom"] }`.
+11. `node scripts/deploy.mjs deploy --all`. Inside a stage, Workers that do
+    not exist yet go before those bound to them; a Worker bound to one in a
+    later stage, or to one that failed, is refused until it exists.
+12. Register on your site to make the first account, or run
     `node services/identity/scripts/create-user.mjs <username>`.
 
 ### Adding a unit
@@ -223,6 +232,48 @@ namespaces; its `setup` and `secrets` say the rest.
    [How a self-hosted g1t runs](/guides/self-hosting-architecture/#each-part).
 4. `npm run test:deploy` and `node scripts/deploy.mjs manifest --check`
    say what is missing.
+
+### Renaming a Worker
+
+A Worker's name is its identity on Cloudflare, so a renamed Worker is a
+new one. Keep its resources: D1 databases, R2 buckets, Vectorize indexes
+and queues are bound by id or name and keep theirs. Durable Objects
+belong to a Worker, so the new one takes them with a
+[transfer migration](https://developers.cloudflare.com/durable-objects/reference/durable-object-class-migrations-legacy/#transfer-migration)
+(`transferred_classes`, with `from_script` the old name), every object's
+storage with them; until the old Worker is deleted, its own bindings to
+them reach the new one. A queue has one consumer, so the old Worker lets
+go of it first.
+
+The artifacts service was `g1t-docs-service` (`services/docs`) and is
+`g1t-artifacts` (`services/artifacts`). An installation that ran the old
+one moves once, in this order:
+
+1. Let go of the queue. Its messages wait for the new consumer:
+
+   ```sh
+   npx wrangler queues consumer remove g1t-events-docs g1t-docs-service
+   ```
+
+2. Deploy: push to `main`, or `node scripts/deploy.mjs deploy`.
+   `g1t-artifacts` goes first in `core`, takes `PageRoom` and `FolioRoom`
+   and the queue; then `agents`, then `api` (edge) and `web` (front),
+   each bound to it. Until each has gone out it still calls
+   `g1t-docs-service`, which answers from the same database, bucket and
+   (forwarded) rooms.
+3. Check: an artifact opens with its content and edits live, a file
+   uploads, and `npx wrangler queues info g1t-events-docs` names
+   `g1t-artifacts` as the consumer. Cloudflare's
+   `GET /accounts/{account_id}/workers/durable_objects/namespaces` lists
+   `PageRoom` and `FolioRoom` under `g1t-artifacts`.
+4. After a day with no requests to it (`npx wrangler tail g1t-docs-service`
+   shows only its 03:17 UTC cron), delete it by hand:
+   `npx wrangler delete g1t-docs-service`. Never with `--force`: a refusal
+   means something still binds to it.
+
+If step 2 fails before `g1t-artifacts` deploys, nothing moved: put the
+consumer back with `npx wrangler deploy` in `services/docs` at the
+previous commit. Once it has deployed, the rooms are its own: fix forward.
 
 ## The runner's images
 

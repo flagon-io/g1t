@@ -67,7 +67,7 @@ test("list queries are checked", () => {
   assert.equal(folioListQueryError({ tab: "all", kinds: ["sheet" as "doc"] }), "There is no kind of artifact called sheet.");
 });
 
-test("the client calls exactly the docs service's folio methods", async () => {
+test("the client calls exactly the artifacts service's folio methods", async () => {
   const called: string[] = [];
   const bodies: Record<string, unknown>[] = [];
   const binding: ServiceBinding = {

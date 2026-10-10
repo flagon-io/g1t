@@ -2,9 +2,9 @@
 //! dashboards (Artifacts mode), at
 //! `/workspaces/{workspace}/artifacts` and as the `artifact` MCP tool.
 //! Code calls them folios; people, URLs, the tool and the scopes say
-//! "artifact". Workflow runs' artifacts are something else (artifacts.rs).
+//! "artifact". Workflow runs' artifacts are something else (run_artifacts.rs).
 //!
-//! The docs service (`services/docs`, the `DOCS` binding) decides who may
+//! The artifacts service (`services/artifacts`, the `ARTIFACTS` binding) decides who may
 //! do what with each one, from the person's own role on it: this checks
 //! the input, names people for the service (a username becomes
 //! `user:<id>`), and gives each answer its public shape, in snake_case.
@@ -306,7 +306,7 @@ fn kind_of(input: &Value) -> std::result::Result<Option<FolioKind>, String> {
     }
 }
 
-/// A doc edit's target, as the docs service reads it: a string is the
+/// A doc edit's target, as the artifacts service reads it: a string is the
 /// kind, an object passes as given. Left out, append.
 fn edit_target(input: &Value) -> Value {
     match &input["target"] {
@@ -403,7 +403,7 @@ fn parse_role(text: &str) -> Option<FolioRole> {
 
 // --- Answers, as the API shows them -------------------------------------------
 
-/// A person, agent or team, from a docs service profile.
+/// A person, agent or team, from an artifacts service profile.
 pub(crate) fn person_json(profile: &Value) -> Value {
     if !profile.is_object() {
         return Value::Null;
@@ -609,7 +609,7 @@ fn listed(outcome: Outcome<Value>, f: impl Fn(&Value) -> Value) -> Outcome<Value
 // --- Running ------------------------------------------------------------------
 
 async fn call<T: DeserializeOwned>(services: &Services, method: &str, args: &impl Serialize) -> Result<Outcome<T>> {
-    g1t_kit::call(&services.docs, method, args).await
+    g1t_kit::call(&services.artifacts, method, args).await
 }
 
 /// The person acting, or the refusal: nobody, or a workspace's own token.
@@ -649,7 +649,7 @@ async fn space_id(services: &Services, workspace: &str, viewer: &User, given: &s
     })
 }
 
-/// Who a share is for, as the docs service names them.
+/// Who a share is for, as the artifacts service names them.
 async fn principal(services: &Services, input: &Value) -> Result<std::result::Result<Option<String>, Outcome<Value>>> {
     if let Some(principal) = text(input, "principal") {
         return Ok(Ok(Some(principal)));
@@ -943,7 +943,7 @@ mod tests {
         assert_eq!(edit["target"]["heading"], "Risks");
         assert_eq!(agent_edit(&json!({ "markdown": "x", "target": { "kind": "section" } })), Err("A section target names its heading.".to_owned()));
         assert!(agent_edit(&json!({})).unwrap_err().contains("markdown"));
-        // Other kinds carry ops, which the docs service checks (and refuses
+        // Other kinds carry ops, which the artifacts service checks (and refuses
         // until each kind ships).
         let edit = agent_edit(&json!({ "kind": "slides", "ops": [{ "op": "add_slide" }] })).unwrap();
         assert_eq!(edit["kind"], "slides");

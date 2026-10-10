@@ -3,7 +3,7 @@ import { redirect } from "react-router";
 import type { Route } from "./+types/actions-artifact";
 import { addresses } from "../../lib/addresses.server";
 import { contentDisposition } from "../../lib/content-safety";
-import { readArtifact } from "../../lib/artifacts.server";
+import { readArtifact } from "../../lib/run-artifacts.server";
 import { actions } from "../../lib/services.server";
 import { getViewer } from "../../lib/session.server";
 

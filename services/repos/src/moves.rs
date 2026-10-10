@@ -3,7 +3,7 @@
 //! store key changes.
 //!
 //! A move is asked for (`move_repository`, or a row an operator inserts
-//! with `scripts/ops/artifacts-namespaces.mjs move`) and run by the hourly
+//! with `scripts/ops/gitstore-namespaces.mjs move`) and run by the hourly
 //! sweep, one at a time:
 //!
 //! 1. **Paused.** Writes to the repository and its pull requests' working

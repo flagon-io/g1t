@@ -5,7 +5,7 @@
 //! the data. This Worker holds none.
 
 mod about;
-mod artifacts;
+mod run_artifacts;
 mod addresses;
 mod alerts;
 mod audit;
@@ -840,7 +840,7 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     };
     match audit::run(route.op, &services, &viewer, &input).await? {
         // A download is a redirect to its signed link, as GitHub's is.
-        Outcome::Ok(value) if route.op == operations::Op::Artifacts(artifacts::ArtifactsOp::DownloadArtifact) => {
+        Outcome::Ok(value) if route.op == operations::Op::Artifacts(run_artifacts::ArtifactsOp::DownloadArtifact) => {
             match value["url"].as_str().and_then(|url| worker::Url::parse(url).ok()) {
                 Some(url) => Response::redirect_with_status(url, 302),
                 None => reply(&value),

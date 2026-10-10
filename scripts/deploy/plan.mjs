@@ -120,7 +120,8 @@ export function decide(units, { live, head, force = false, rollback = false, git
     });
   return units.map((unit) => {
     const found = live[unit.id] ?? { sha: null, why: "not read" };
-    const decision = { unit, since: found.sha, deploy: false, reason: "", files: [], image: false };
+    // missing: its Worker does not exist yet (new, or renamed).
+    const decision = { unit, since: found.sha, missing: Boolean(found.missing), deploy: false, reason: "", files: [], image: false };
     if (!found.sha) {
       decision.deploy = true;
       decision.reason = found.error ? `could not read what it runs: ${firstLine(found.error)}` : `no known commit (${found.why ?? "unknown"})`;

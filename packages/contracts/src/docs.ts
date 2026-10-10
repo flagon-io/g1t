@@ -1,6 +1,6 @@
 /**
- * Docs: the workspace's written knowledge, kept by the docs service
- * (`services/docs`). Spaces hold trees of pages; each page is a CRDT
+ * Docs: the workspace's written knowledge, kept by the artifacts service
+ * (`services/artifacts`). Spaces hold trees of pages; each page is a CRDT
  * document (Yjs) edited live over a socket, saved with a Markdown
  * rendition that search, agents, export and the read view use.
  *
@@ -544,7 +544,7 @@ export type DocsLiveEvent =
 
 /**
  * Header the site sets on a forwarded live socket and on uploads: the
- * viewer, as JSON. Trusted only because the docs service is reachable
+ * viewer, as JSON. Trusted only because the artifacts service is reachable
  * through service bindings alone.
  */
 export const DOCS_VIEWER_HEADER = "x-g1t-docs-viewer";

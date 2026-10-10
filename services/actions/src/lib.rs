@@ -22,7 +22,7 @@
 //! workspace's that reaches the job's repository only, with the scopes its
 //! `permissions:` give it, revoked when the job ends.
 
-mod artifacts;
+mod run_artifacts;
 mod cache;
 mod mirrored;
 mod payload;

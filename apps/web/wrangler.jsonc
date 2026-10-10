@@ -47,8 +47,8 @@
 		{ "binding": "SEARCH", "service": "g1t-search" },
 		// Chat: channels, direct messages and the live socket (services/chat).
 		{ "binding": "CHAT", "service": "g1t-chat" },
-		// Docs: spaces, pages, each page's live socket, and files in pages (services/docs).
-		{ "binding": "DOCS", "service": "g1t-docs-service" },
+		// Artifacts: spaces, artifacts, each one's live socket, and files in them (services/artifacts).
+		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" },
 		// The workspace's own agents: definitions, templates, desks (services/agents).
 		{ "binding": "AGENTS", "service": "g1t-agents" },
 		// Live notifications, counts and browser push: each tab's feed socket (services/notify).

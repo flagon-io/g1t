@@ -4,7 +4,7 @@
 //!
 //! Artifacts are kept in R2 (ACTIONS_CACHE, under `a/`), uploaded in
 //! parts; the actions service lists them and decides names, sizes and how
-//! long each is kept (services/actions/src/artifacts.rs). Artifacts older
+//! long each is kept (services/actions/src/run_artifacts.rs). Artifacts older
 //! runners kept in Workers KV are still listed and found there until KV
 //! expires them. Cache entries are kept in R2 too, up to 2 GB each,
 //! uploaded in parts; the actions service decides what is found, what
@@ -26,7 +26,7 @@
 //! - `DELETE .../cache/uploads/{id}?upload=`: gives the upload up
 //! - `PUT .../cache?key=`: a whole entry of at most 60 MB at once (older runners)
 //!
-//! People download an artifact through the REST API (artifacts.rs), or by
+//! People download an artifact through the REST API (run_artifacts.rs), or by
 //! name at `/repos/{owner}/{repo}/actions/runs/{run}/artifacts/{name}`.
 
 use serde::{Deserialize, Serialize};
@@ -60,7 +60,7 @@ struct Meta {
 /// and none has been made there since artifacts moved to R2 on 2026-10-08:
 /// from 2026-10-22T00:00Z every one is gone, and KV is not asked (a list is
 /// the dearest thing KV does). Delete the KV artifact code after that date,
-/// with its twin in apps/web/app/lib/artifacts.server.ts.
+/// with its twin in apps/web/app/lib/run-artifacts.server.ts.
 const LEGACY_KV_UNTIL_MS: u64 = 1_792_627_200_000;
 
 /// Whether artifacts kept in KV may still be there at `now`.
@@ -624,7 +624,7 @@ pub async fn download(env: &Env, services: &Services, viewer: &g1t_contracts::Vi
     if let Outcome::Ok(found) = found
         && !found.blob.is_empty()
     {
-        return Response::redirect_with_status(Url::parse(&crate::artifacts::blob_url(&services.addresses.api, &found.blob))?, 302);
+        return Response::redirect_with_status(Url::parse(&crate::run_artifacts::blob_url(&services.addresses.api, &found.blob))?, 302);
     }
     // Kept in KV by an older runner.
     if !legacy_kv(g1t_kit::now_ms()) {

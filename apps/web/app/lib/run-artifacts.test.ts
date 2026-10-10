@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { expiresIn, formatBytes, legacyArtifactsWorthAsking } from "./artifacts.ts";
+import { expiresIn, formatBytes, legacyArtifactsWorthAsking } from "./run-artifacts.ts";
 
 test("sizes read as KB, MB or GB", () => {
   assert.equal(formatBytes(10), "1 KB");

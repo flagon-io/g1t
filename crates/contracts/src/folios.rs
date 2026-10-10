@@ -1,6 +1,6 @@
 //! Folios: what people call artifacts (Artifacts mode).
 //! One mode for docs, slides, designs and dashboards, kept by the docs
-//! service (`services/docs`, TypeScript). Code says "folio"; people see
+//! service (`services/artifacts`, TypeScript). Code says "folio"; people see
 //! "artifact" in the UI, URLs, the `artifact` MCP tool, REST paths and the
 //! `artifacts:*` scopes. The Cloudflare Artifacts git store and workflow run
 //! artifacts ([`crate::actions`]) are something else.
@@ -402,7 +402,7 @@ impl FolioAccessChange {
         }
     }
 
-    /// The docs service method it goes to.
+    /// The artifacts service method it goes to.
     pub fn method(&self) -> &'static str {
         match self {
             FolioAccessChange::Grant { .. } | FolioAccessChange::Revoke { .. } => "set_folio_grant",
@@ -451,7 +451,7 @@ fn js_string(value: Option<&Value>) -> String {
 /// What is wrong with an agent edit's envelope (`FolioAgentEdit` in
 /// folios.ts), in the same words as `folioAgentEditError`: its kind, and a
 /// doc's target and Markdown or the other kinds' list of ops. Returns the
-/// kind when it is well formed. Each op is the docs service's to check.
+/// kind when it is well formed. Each op is the artifacts service's to check.
 pub fn agent_edit_error(edit: &Value) -> Result<FolioKind, String> {
     let Some(edit) = edit.as_object() else { return Err("An edit is an object.".to_owned()) };
     let Some(kind) = edit.get("kind").and_then(Value::as_str).and_then(FolioKind::parse) else {
@@ -495,9 +495,9 @@ pub fn agent_edit_error(edit: &Value) -> Result<FolioKind, String> {
     Ok(kind)
 }
 
-// --- The docs service's folio RPC ---------------------------------------------
+// --- The artifacts service's folio RPC ---------------------------------------------
 
-/// Every method the docs service answers for folios, as `FOLIO_RPC_METHODS`
+/// Every method the artifacts service answers for folios, as `FOLIO_RPC_METHODS`
 /// in folios.ts.
 pub const FOLIO_RPC_METHODS: [&str; 48] = [
     "folio_list",
@@ -666,7 +666,7 @@ pub struct QueryDatasetArgs {
 
 // --- Events -------------------------------------------------------------------
 
-/// The `folio.*` types the docs service publishes, with no `repoId` on
+/// The `folio.*` types the artifacts service publishes, with no `repoId` on
 /// the event: a folio may be private, so it never reaches a repository's
 /// timeline or webhooks. Nothing subscribes to them yet.
 pub const FOLIO_EVENTS: [&str; 6] = ["folio.created", "folio.updated", "folio.trashed", "folio.restored", "folio.shared", "folio.stale"];

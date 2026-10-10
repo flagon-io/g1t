@@ -6,12 +6,12 @@
 // Cloudflare-only things live:
 //
 // - account, routes, placement, observability and builds are dropped;
-// - ARTIFACTS (git storage) becomes a service binding to workers/artifacts,
+// - GITSTORE (git storage, Cloudflare Artifacts) becomes a service binding to workers/gitstore,
 //   which keeps repositories in the git store (gitstore/server.mjs);
 // - EMAIL (Email Sending) becomes a service binding to workers/mail;
 // - the packages service keeps files in S3-compatible storage (RustFS)
 //   instead of R2, the repos service its nightly backups (a bucket of
-//   their own, BACKUP_S3_BUCKET), and the docs service the files in pages
+//   their own, BACKUP_S3_BUCKET), and the artifacts service the files in pages
 //   (DOCS_S3_BUCKET);
 // - services that are off in this phase (agents, the context hub, the
 //   g1t.page dispatcher, model proxy) are bound to workers/off instead, and
@@ -98,13 +98,13 @@ const GITHUB_SECRETS = {
 
 /**
  * Services whose cron triggers scheduler.mjs runs here: sweeps and
- * reminders that need nothing self-hosting lacks (the docs service's is
+ * reminders that need nothing self-hosting lacks (the artifacts service's is
  * emptying artifacts' trash after 30 days). Not run: actions (its
  * minute would start scheduled workflows with no runner to take them),
  * billing (reconciles against Cloudflare and Stripe), deployments (calls
  * Cloudflare's API) and the services that are off.
  */
-const SELF_HOST_CRONS = new Set(["g1t-repos", "g1t-events", "g1t-identity", "g1t-security", "g1t-webhooks", "g1t-packages", "g1t-docs-service"]);
+const SELF_HOST_CRONS = new Set(["g1t-repos", "g1t-events", "g1t-identity", "g1t-security", "g1t-webhooks", "g1t-packages", "g1t-artifacts"]);
 
 /** Queues whose consumers are off: events stops sending to them. */
 const OFF_QUEUES = new Set(["g1t-events-runner", "g1t-events-context"]);
@@ -189,8 +189,8 @@ function selfHosted(service) {
 
   // Cloudflare-only bindings, and what stands in for them.
   if (hosted.artifacts) {
-    for (const artifacts of hosted.artifacts) {
-      config.services.push({ binding: artifacts.binding, service: "g1t-artifacts" });
+    for (const store of hosted.artifacts) {
+      config.services.push({ binding: store.binding, service: "g1t-gitstore" });
     }
   }
   if (hosted.send_email) {
@@ -268,9 +268,9 @@ function selfHosted(service) {
     });
   }
   // Files people put in Docs pages go to a bucket of their own on the same
-  // S3-compatible store, instead of the FILES R2 bucket (services/docs
+  // S3-compatible store, instead of the FILES R2 bucket (services/artifacts
   // src/files.ts, `s3FileStore`).
-  if (hosted.name === "g1t-docs-service") {
+  if (hosted.name === "g1t-artifacts") {
     Object.assign(config.vars, {
       DOCS_FILES: "s3",
       DOCS_S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://rustfs:9000",
@@ -301,9 +301,9 @@ for (const service of RUNNING) files.push(write(service.name, selfHosted(service
 
 const compatibility_date = "2026-09-26";
 files.push(
-  write("g1t-artifacts", {
-    name: "g1t-artifacts",
-    main: rel("deploy/self-host/workers/artifacts/index.js"),
+  write("g1t-gitstore", {
+    name: "g1t-gitstore",
+    main: rel("deploy/self-host/workers/gitstore/index.js"),
     compatibility_date,
     vars: {
       GITSTORE_URL: process.env.GITSTORE_URL ?? "http://gitstore:8080",

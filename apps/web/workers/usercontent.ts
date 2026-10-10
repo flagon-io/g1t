@@ -12,7 +12,7 @@ import { MAX_RAW_BYTES, PDF_POLICY, USERCONTENT_POLICY, isCommit, parseRawPath, 
 export const AVATAR_PATH = /^\/avatars\/([0-9a-f]{64})$/;
 /** A workspace's custom emoji, by the SHA-256 of its bytes: kept by chat under `emoji/<hash>` in the same namespace. */
 export const EMOJI_PATH = /^\/emoji\/([0-9a-f]{64})$/;
-/** A file put in a Docs page, by its random key: kept by the docs service (services/docs). */
+/** A file put in a Docs page, by its random key: kept by the artifacts service (services/artifacts). */
 export const DOCS_FILE_PATH = /^\/docs-files\/([0-9a-f]{64})$/;
 /** The only types identity stores, having checked each image's bytes. */
 const AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -120,7 +120,7 @@ async function serveAvatar(env: Env, ctx: ExecutionContext, method: string, key:
 }
 
 /**
- * A file put in a Docs page. Its key is 256 random bits the docs service
+ * A file put in a Docs page. Its key is 256 random bits the artifacts service
  * made, so the address is the permission, as a shared link is; the docs
  * service serves images, media and PDFs as themselves and everything else
  * as a download, and nothing here can run script.
@@ -128,7 +128,7 @@ async function serveAvatar(env: Env, ctx: ExecutionContext, method: string, key:
 async function serveDocsFile(env: Env, method: string, key: string): Promise<Response> {
   let answer: Response;
   try {
-    answer = await env.DOCS.fetch(`https://docs/files/${key}`, { method });
+    answer = await env.ARTIFACTS.fetch(`https://docs/files/${key}`, { method });
   } catch {
     return plain(503, "Docs didn't answer");
   }

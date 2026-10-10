@@ -307,7 +307,7 @@ const agentRead = (id: string, title: string, content: string, audience_can_read
   audience_can_read,
 });
 
-/** A docs service with one readable doc, one secret one, and whatever is made (readable here unless `hidden` says so). */
+/** An artifacts service with one readable doc, one secret one, and whatever is made (readable here unless `hidden` says so). */
 function folioWorld(log: string[], options: { hidden?: Set<string>; forbidden?: string } = {}): FoliosPorts {
   const hidden = options.hidden ?? new Set<string>();
   return {
@@ -361,7 +361,7 @@ test("someone without Code still gets artifacts; what they can't read is withhel
   assert.equal((await box.run("edit_artifact", { id: FOL, target: "section", markdown: "x" })).outcome, "refused", "a section edit names its heading");
   // The old Docs tools are gone.
   assert.equal((await box.run("search_docs", { query: "refunds" })).outcome, "refused");
-  // Without a docs service, no artifact tools.
+  // Without an artifacts service, no artifact tools.
   assert.ok(!new ToolBox(await dmWithCal(), readPorts, ctx, [], actions([])).definitions().some((t) => t.name === "search_artifacts"));
 });
 

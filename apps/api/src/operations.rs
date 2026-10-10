@@ -28,7 +28,7 @@ use g1t_contracts::security::{
 use crate::alerts::{AlertKind, SecurityAlert};
 use crate::checks::ChecksOp;
 use crate::about::AboutOp;
-use crate::artifacts::ArtifactsOp;
+use crate::run_artifacts::ArtifactsOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
@@ -69,9 +69,9 @@ pub struct Services {
     pub deployments: Fetcher,
     /// Packages: their settings, versions, deleting and restoring them.
     pub packages: Fetcher,
-    /// The docs service: Artifacts mode's docs, slides, designs and
+    /// The artifacts service (services/artifacts): docs, slides, designs and
     /// dashboards (folios), for the artifact routes and tool.
-    pub docs: Fetcher,
+    pub artifacts: Fetcher,
     /// Where the request came in, for its audit entries.
     pub audit: crate::audit::AuditContext,
     /// Set for a request made with an agent's token: all it may do.
@@ -98,7 +98,7 @@ impl Services {
             projects: env.service("PROJECTS")?,
             deployments: env.service("DEPLOYMENTS")?,
             packages: env.service("PACKAGES")?,
-            docs: env.service("DOCS")?,
+            artifacts: env.service("ARTIFACTS")?,
             scope: None,
             audit: crate::audit::AuditContext::default(),
             addresses: crate::addresses::Addresses::from_env(env),
@@ -316,7 +316,7 @@ pub enum Op {
     /// A workspace's rules for personal access tokens, its members'
     /// tokens and approving them: token_policy.rs.
     Tokens(TokenOp),
-    /// Workflow run artifacts, and how long they are kept: artifacts.rs.
+    /// Workflow run artifacts, and how long they are kept: run_artifacts.rs.
     Artifacts(ArtifactsOp),
     /// A repository's deploy keys: deploy_keys.rs.
     DeployKeys(DeployKeysOp),
@@ -327,7 +327,7 @@ pub enum Op {
     /// them, and who may use them: packages.rs.
     Packages(PackagesOp),
     /// Artifacts mode's docs, slides, designs and dashboards, kept by the
-    /// docs service: folios.rs.
+    /// artifacts service: folios.rs.
     Folios(FoliosOp),
 }
 
@@ -5624,7 +5624,7 @@ impl Op {
             Op::Deployments(op) => crate::deployments::run(op, services, viewer, input).await,
             Op::Protection(op) => crate::protection::run(op, services, viewer, input).await,
             Op::Tokens(op) => crate::token_policy::run(op, services, viewer, input).await,
-            Op::Artifacts(op) => crate::artifacts::run(op, services, viewer, input).await,
+            Op::Artifacts(op) => crate::run_artifacts::run(op, services, viewer, input).await,
             Op::DeployKeys(op) => crate::deploy_keys::run(op, services, viewer, input).await,
             Op::Mirrors(op) => crate::mirrors::run(op, services, viewer, input).await,
             Op::Packages(op) => crate::packages::run(op, services, viewer, input).await,

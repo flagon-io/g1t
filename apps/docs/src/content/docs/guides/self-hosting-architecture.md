@@ -30,7 +30,7 @@ place, so no service's code changes:
 
 | Binding | Stands in for | Self-hosted |
 | --- | --- | --- |
-| `ARTIFACTS` | Cloudflare Artifacts, where g1t.sh keeps repositories | `deploy/self-host/workers/artifacts`, in front of the git store: bare repositories on the `g1t-git` volume, served with `git http-backend`. Access tokens are HMAC-signed, scoped and expire. Forks are clones with hard-linked objects. |
+| `GITSTORE` | Cloudflare Artifacts, where g1t.sh keeps repositories (the repos service's git store) | `deploy/self-host/workers/gitstore`, in front of the git store: bare repositories on the `g1t-git` volume, served with `git http-backend`. Access tokens are HMAC-signed, scoped and expire. Forks are clones with hard-linked objects. |
 | `EMAIL` | Cloudflare Email Sending | `deploy/self-host/workers/mail`: logs each message and hands it to Mailpit, which can relay through your SMTP server |
 | The runner, the context hub and the model proxy | Containers, Vectorize, Workers AI and AI Gateway | `deploy/self-host/workers/off`: answers that the feature is off, which every page that uses them shows |
 
@@ -63,7 +63,7 @@ place, so no service's code changes:
 | `services/projects` | Runs |
 | `services/search` | Runs: site search is SQLite full-text search |
 | `services/chat` | Runs, with its Durable Objects; custom emoji are kept with avatars |
-| `services/docs` | Runs: pages and [artifacts](/guides/artifacts/), with their live rooms. Files people add are kept in the `g1t-docs-files` bucket. Search matches words, not meaning, because there is no embedding model. |
+| `services/artifacts` | Runs: [artifacts](/guides/artifacts/) and their spaces, with their live rooms. Files people add are kept in the `g1t-docs-files` bucket. Search matches words, not meaning, because there is no embedding model. |
 | `services/notify` | Runs. Notifications are live in open tabs; browser push needs a VAPID key pair, which an installation does not make. |
 | `services/agents` | Runs, but replies need the model proxy, which is off, so an agent answers with a short apology |
 | `services/billing` | Runs with nothing charged and no usage limit |

@@ -45,8 +45,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Hint } from "../../components/ui/hint";
 import { useWorkflowReason } from "../../components/mirror";
 import { searchLog } from "../../lib/log-lines";
-import { listArtifacts, withLegacyArtifacts } from "../../lib/artifacts.server";
-import { expiresIn, formatBytes, legacyArtifactsWorthAsking } from "../../lib/artifacts";
+import { listArtifacts, withLegacyArtifacts } from "../../lib/run-artifacts.server";
+import { expiresIn, formatBytes, legacyArtifactsWorthAsking } from "../../lib/run-artifacts";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { accessTo, refusal } from "../../lib/access.server";

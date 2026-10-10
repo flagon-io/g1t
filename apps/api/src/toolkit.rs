@@ -26,7 +26,7 @@
 //!   which clients that sign their requests with it need.
 //!
 //! Every call carries the job's runtime token; the actions service checks
-//! it and keeps the entries (cache.rs, artifacts.rs, runtime.rs there).
+//! it and keeps the entries (cache.rs, run_artifacts.rs, runtime.rs there).
 
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
@@ -39,7 +39,7 @@ use g1t_contracts::{Failure, FailureCode, Outcome};
 use serde_json::{Map, Value, json};
 use worker::{Bucket, Env, Request, Response, Result, UploadedPart};
 
-use crate::artifacts::blob_url;
+use crate::run_artifacts::blob_url;
 use crate::operations::Services;
 
 /// The Twirp services, by name.

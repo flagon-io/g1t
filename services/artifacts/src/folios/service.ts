@@ -1,5 +1,5 @@
 /**
- * Folios (Artifacts mode): the docs service's answers to every method in
+ * Folios (Artifacts mode): the artifacts service's answers to every method in
  * FOLIO_RPC_METHODS (packages/contracts folios.ts, `foliosClient`), its
  * live socket (`GET /live?folio=`) and uploads (`PUT /files?folio=`).
  *

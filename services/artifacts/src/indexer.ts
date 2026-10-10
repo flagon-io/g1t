@@ -13,7 +13,7 @@
  * Nothing here throws to its caller.
  *
  * The backfill indexes a workspace's existing pages and files in batches
- * on the queue (`docs.index` jobs, on the docs service's own events queue).
+ * on the queue (`docs.index` jobs, on the artifacts service's own events queue).
  */
 import { chunkId, chunkMarkdown, embedText, repoFileId, textHash } from "./chunks.ts";
 import { scopesOf, type FolioRow, FOLIO_COLUMNS } from "./folios/access-store.ts";

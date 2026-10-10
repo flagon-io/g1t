@@ -61,8 +61,8 @@ export type PortsEnv = {
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
   SEARCH: ServiceBinding;
-  /** The docs service, for agents reading and writing artifacts; absent on an installation without it. */
-  DOCS?: ServiceBinding;
+  /** The artifacts service, for agents reading and writing artifacts; absent on an installation without it. */
+  ARTIFACTS?: ServiceBinding;
   /**
    * Where files kept with artifacts are served (g1tusercontent.com for
    * g1t.sh), for the links to files agents make. Empty: the site's own
@@ -202,7 +202,7 @@ export function toolPorts(
       return `People:\n${people}${teamLines ? `\n\nTeams:\n${teamLines}` : ""}\n\nAgents:\n${agentLines}`;
     },
     consult,
-    ...(env.DOCS && agentId ? { folios: folioPorts(env.DOCS, env.CHAT, workspace, agentId, usercontentBase(env)) } : {}),
+    ...(env.ARTIFACTS && agentId ? { folios: folioPorts(env.ARTIFACTS, env.CHAT, workspace, agentId, usercontentBase(env)) } : {}),
   };
 }
 
@@ -211,8 +211,8 @@ const done = <T>(result: Result<T>): FolioDone<T> => (result.ok ? result : { ok:
 
 /**
  * Artifacts (folios) as an agent reads and writes them: Markdown in,
- * Markdown out, every call checked by the docs service. Spaces still come
- * from the docs service's `spaces_for_agent`: spaces are shared by pages
+ * Markdown out, every call checked by the artifacts service. Spaces still come
+ * from the artifacts service's `spaces_for_agent`: spaces are shared by pages
  * and folios, and have no folio method of their own.
  */
 function folioPorts(docs: ServiceBinding, chatBinding: ServiceBinding, workspace: string, agentId: string, usercontent: string): FoliosPorts {

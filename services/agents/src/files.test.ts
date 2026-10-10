@@ -186,7 +186,7 @@ test("make_file's checks: formats it can't write, missing content, a CSV of two 
   assert.equal(fileName("", "md"), "file.md");
 });
 
-test("a spreadsheet's preview in its doc, and base64 for the trip to the docs service", () => {
+test("a spreadsheet's preview in its doc, and base64 for the trip to the artifacts service", () => {
   const rows = [["Name", "Total"], ...Array.from({ length: 25 }, (_, i) => [`r${i}`, i])];
   const preview = previewTable({ name: "S", rows });
   assert.match(preview, /^\| Name \| Total \|\n\| --- \| --- \|\n\| r0 \| 0 \|/);

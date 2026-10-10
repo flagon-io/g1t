@@ -47,9 +47,9 @@
 		// the workspace's own, and counts what each answer cost. A binding,
 		// not its address: same-zone Worker-to-Worker fetches can be refused.
 		{ "binding": "MODELS", "service": "g1t-models" },
-		// Docs: agents search, read, write and suggest edits to pages, for the
-		// person they act for (src/ports.ts docsPorts).
-		{ "binding": "DOCS", "service": "g1t-docs-service" },
+		// Artifacts (services/artifacts): agents search, read, write and suggest
+		// edits to artifacts, for the person they act for (src/ports.ts folioPorts).
+		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" },
 		// Notifications: a session waiting for an owner to approve more spend.
 		{ "binding": "NOTIFY", "service": "g1t-notify" }
 	],

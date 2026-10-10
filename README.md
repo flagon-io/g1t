@@ -130,7 +130,7 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 | `services/context` | The context hub: catalog, search and scorecards. | TypeScript |
 | `services/chat` | Channels, direct messages, threads and their live sockets. | TypeScript |
 | `services/agents` | The workspace's agents: definitions, templates, desks, memory and runs. | TypeScript |
-| `services/docs` | Artifacts: documents, their spaces, sharing and live editing. | TypeScript |
+| `services/artifacts` | Artifacts: docs and the other kinds to come, their spaces, sharing and live editing. | TypeScript |
 | `services/notify` | Notifications: each person's feed, live counts and browser push. | TypeScript |
 | `services/packages` | The package registries and container images. | Rust |
 | `services/og` | Social cards at `og.g1t.sh`: a PNG per page, showing only what anyone may see. | TypeScript |

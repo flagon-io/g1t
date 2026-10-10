@@ -477,10 +477,10 @@ export type EventPayloads = {
     metrics: Record<string, unknown> | null;
   };
   /**
-   * Docs (services/docs): a page was made. Published with no `repoId`, so
+   * Docs (services/artifacts): a page was made. Published with no `repoId`, so
    * a page (which may be in a private space) never reaches a repository's
    * timeline or webhooks; `actor` is the user's or agent's id. Readers
-   * check access with the docs service before showing anything of it.
+   * check access with the artifacts service before showing anything of it.
    */
   "doc.page.created": DocPageEventData;
   /**
@@ -501,9 +501,9 @@ export type EventPayloads = {
    */
   "doc.page.stale": DocPageEventData & { repoId: string; repo: string; commit: string; pull: number | null; paths: string[]; owners: string[] };
   /**
-   * Artifacts (folios, services/docs): a folio was made. Like `doc.page.*`,
+   * Artifacts (folios, services/artifacts): a folio was made. Like `doc.page.*`,
    * published with no `repoId`, never offered to webhooks, and readers check
-   * access with the docs service before showing anything of it.
+   * access with the artifacts service before showing anything of it.
    */
   "folio.created": FolioEventData;
   /** A folio's content changed: a version (`versionKind`) with everyone whose changes are in it. */

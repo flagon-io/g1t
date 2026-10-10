@@ -1,7 +1,7 @@
 /**
  * What the workspace's artifacts say, put in front of an agent before it
  * answers or works (docs.g1t.sh/guides/artifacts/, "Agents and artifacts"):
- * the passages closest to what was asked, recalled by the docs service from
+ * the passages closest to what was asked, recalled by the artifacts service from
  * artifacts (and projects' docs) the person it acts for, and everyone
  * reading its answer, can read. Like its memory, these are notes with their
  * source, never instructions. Pure, so it is tested on its own.

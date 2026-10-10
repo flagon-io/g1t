@@ -1,7 +1,7 @@
-// The Artifacts binding, for self-hosted g1t.
+// The git store binding (GITSTORE), for self-hosted g1t.
 //
 // The repos service is written against Cloudflare Artifacts' Workers
-// binding (services/repos/src/store.rs). Self-hosted, its ARTIFACTS binding
+// binding (services/repos/src/store.rs). Self-hosted, its GITSTORE binding
 // is a service binding to this Worker instead, which offers the same
 // methods and keeps the repositories in the git store (gitstore/server.mjs):
 // plain bare repositories on disk. Hosted g1t never runs this.
@@ -117,7 +117,7 @@ class Repo extends RpcTarget {
   }
 }
 
-export default class Artifacts extends WorkerEntrypoint {
+export default class GitStore extends WorkerEntrypoint {
   async create(name, opts = {}) {
     const created = await json(
       await store(this.env, "", {
@@ -148,7 +148,7 @@ export default class Artifacts extends WorkerEntrypoint {
   }
 
   async fetch() {
-    return new Response("The Artifacts binding for self-hosted g1t. Bind to it; do not browse it.", {
+    return new Response("The git store binding for self-hosted g1t. Bind to it; do not browse it.", {
       status: 404,
     });
   }

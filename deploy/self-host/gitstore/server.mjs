@@ -6,7 +6,7 @@
 // fetches and pushes, and a small JSON API for the reads the repos service
 // makes (commits, trees, blobs, files) and for creating and forking.
 //
-// It is reached only by the Artifacts-compatible shim (workers/artifacts),
+// It is reached only by the Artifacts-compatible shim (workers/gitstore, the repos service's GITSTORE binding),
 // which the repos service is bound to in place of the Artifacts binding, and
 // by the repos service itself for git's smart HTTP. Nothing else should be
 // able to reach it: the API takes a shared secret, and git requests a

@@ -1230,7 +1230,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Artifacts mode's docs, slides, designs and dashboards (the `artifact`
     // MCP tool). Reading takes artifacts:read, making and changing them
     // artifacts:write, and sharing them or deleting them for good
-    // artifacts:admin. The docs service then checks the person's own role
+    // artifacts:admin. The artifacts service then checks the person's own role
     // on each one.
     ("list_workspace_artifacts", Scope::ArtifactsRead),
     ("search_workspace_artifacts", Scope::ArtifactsRead),

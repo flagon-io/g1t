@@ -1,5 +1,5 @@
 /**
- * What the docs service tells the rest of g1t: `doc.page.*` events on the
+ * What the artifacts service tells the rest of g1t: `doc.page.*` events on the
  * bus (packages/contracts events.ts), through the EVENTS binding when it
  * has one. Published with no `repoId`, so a page never reaches a
  * repository's timeline or webhooks. Never throws: an event that can't be

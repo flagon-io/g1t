@@ -219,7 +219,7 @@ pub(crate) struct Repos<S: GitStore> {
     repo_limit: u64,
     large_pushes: git_http::LargePushes,
     /// Which git store namespace new repositories go in (shards.rs), and
-    /// the most each should hold (`ARTIFACTS_NAMESPACE_LIMITS`).
+    /// the most each should hold (`GITSTORE_NAMESPACE_LIMITS`).
     placement: shards::Placement,
     limits: HashMap<String, u64>,
     /// What isolates share: answers that list refs (refs_cache.rs).
@@ -2391,10 +2391,10 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
             .unwrap_or(pack_limits::DEFAULT_REPO_LIMIT_BYTES),
         large_pushes: git_http::LargePushes::from_var(env.var("LARGE_PUSHES").ok().map(|value| value.to_string()).as_deref()),
         placement: shards::Placement::from_vars(
-            env.var("ARTIFACTS_NEW_REPOS").ok().map(|value| value.to_string()).as_deref(),
-            env.var("ARTIFACTS_EU_NAMESPACE").ok().map(|value| value.to_string()).as_deref(),
+            env.var("GITSTORE_NEW_REPOS").ok().map(|value| value.to_string()).as_deref(),
+            env.var("GITSTORE_EU_NAMESPACE").ok().map(|value| value.to_string()).as_deref(),
         ),
-        limits: shards::limits(env.var("ARTIFACTS_NAMESPACE_LIMITS").ok().map(|value| value.to_string()).as_deref()),
+        limits: shards::limits(env.var("GITSTORE_NAMESPACE_LIMITS").ok().map(|value| value.to_string()).as_deref()),
     })
 }
 
@@ -2639,7 +2639,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
             reply(&IdPage { ids, next })
         }
         // The raw meters of the git store, for reconciling with Cloudflare
-        // (meters.rs, scripts/ops/artifacts-usage.mjs).
+        // (meters.rs, scripts/ops/gitstore-usage.mjs).
         "artifacts_usage" => {
             let a: meters::UsageArgs = args(body)?;
             reply(&meters::usage(&repos.registry.db, &a).await?)

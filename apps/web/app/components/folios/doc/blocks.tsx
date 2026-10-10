@@ -4,8 +4,8 @@
  * request, a channel, a project, another page); and inline mentions of
  * people, agents and pages, dates, and citations of code (a file, folder
  * or pattern in a repository, and the symbol, endpoint or environment
- * variable there the page describes). The docs service reads the same
- * names and attributes when it writes Markdown (services/docs
+ * variable there the page describes). The artifacts service reads the same
+ * names and attributes when it writes Markdown (services/artifacts
  * src/markdown.ts), so keep the two in step. Browser-only: loaded with
  * the editor.
  */
@@ -299,7 +299,7 @@ const CITATION_ICONS: Record<string, ReactNode> = {
  * Code the page cites, inline: what it names (the path, or the symbol,
  * endpoint or variable there), linking to it in Code at the commit it was
  * cited at. When a merge changes it, the page is marked possibly out of
- * date (services/docs src/staleness.ts).
+ * date (services/artifacts src/staleness.ts).
  */
 export const Citation = createReactInlineContentSpec(
   {

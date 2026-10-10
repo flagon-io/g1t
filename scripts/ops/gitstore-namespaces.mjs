@@ -5,11 +5,11 @@
 // whether it takes new repositories, and its limits. Also queues and lists
 // moves of repositories between namespaces (services/repos/src/moves.rs).
 //
-//   node scripts/ops/artifacts-namespaces.mjs                 # the report, as a table
-//   node scripts/ops/artifacts-namespaces.mjs --json          # the same, as JSON
-//   node scripts/ops/artifacts-namespaces.mjs --cloudflare    # with Cloudflare's own event counts per namespace
-//   node scripts/ops/artifacts-namespaces.mjs moves           # moves asked for, newest first
-//   node scripts/ops/artifacts-namespaces.mjs move acme/rocket g1t-us-1   # queue one; the hourly sweep runs it
+//   node scripts/ops/gitstore-namespaces.mjs                 # the report, as a table
+//   node scripts/ops/gitstore-namespaces.mjs --json          # the same, as JSON
+//   node scripts/ops/gitstore-namespaces.mjs --cloudflare    # with Cloudflare's own event counts per namespace
+//   node scripts/ops/gitstore-namespaces.mjs moves           # moves asked for, newest first
+//   node scripts/ops/gitstore-namespaces.mjs move acme/rocket g1t-us-1   # queue one; the hourly sweep runs it
 //
 // The report and `moves` are read-only: SELECTs against the g1t-repos
 // database through Wrangler (as you are logged in, or CLOUDFLARE_D1_TOKEN),
@@ -36,26 +36,26 @@ export function configured(wrangler) {
   const vars = wrangler.vars ?? {};
   let named = {};
   try {
-    named = JSON.parse(vars.ARTIFACTS_NAMESPACES ?? "{}");
+    named = JSON.parse(vars.GITSTORE_NAMESPACES ?? "{}");
   } catch {}
   const bindings = new Map((wrangler.artifacts ?? []).map((one) => [one.binding, one]));
-  if (!named.ARTIFACTS) named.ARTIFACTS = "g1t";
+  if (!named.GITSTORE) named.GITSTORE = "g1t";
   let limits = {};
   try {
-    limits = JSON.parse(vars.ARTIFACTS_NAMESPACE_LIMITS ?? "{}");
+    limits = JSON.parse(vars.GITSTORE_NAMESPACE_LIMITS ?? "{}");
   } catch {}
-  const newRepos = String(vars.ARTIFACTS_NEW_REPOS ?? "")
+  const newRepos = String(vars.GITSTORE_NEW_REPOS ?? "")
     .split(",")
     .map((name) => name.trim())
     .filter(Boolean);
-  const eu = vars.ARTIFACTS_EU_NAMESPACE?.trim() || null;
+  const eu = vars.GITSTORE_EU_NAMESPACE?.trim() || null;
   return Object.entries(named).map(([binding, namespace]) => ({
     namespace,
     binding,
     bound: bindings.has(binding) && bindings.get(binding).namespace === namespace,
     // Set when the namespace is made, not in the binding: known with --cloudflare.
     jurisdiction: null,
-    default: binding === "ARTIFACTS",
+    default: binding === "GITSTORE",
     eu: eu === namespace,
     takes_new_repos: newRepos.includes(namespace),
     max_repos: limits[namespace]?.max_repos ?? null,
@@ -91,11 +91,11 @@ export function standings(config, held, health, events = [], made = null) {
     const repos = sum(holds, "repos");
     const warnings = [];
     if (!set.bound && repos > 0) warnings.push("holds repositories but is not bound");
-    if (set.takes_new_repos && !set.bound) warnings.push("named in ARTIFACTS_NEW_REPOS but not bound: passed over");
+    if (set.takes_new_repos && !set.bound) warnings.push("named in GITSTORE_NEW_REPOS but not bound: passed over");
     if (peak >= LIMIT_PER_MINUTE * HOT_SHARE) warnings.push(`busiest minute at ${Math.round((peak / LIMIT_PER_MINUTE) * 100)}% of the limit`);
     if (set.max_repos && repos >= set.max_repos) warnings.push("at its max_repos: takes no new repositories while another can");
     if (Number(hour.rate_limited ?? 0) > 0) warnings.push(`${hour.rate_limited} calls rate limited in the last hour`);
-    if (made && set.binding && !known) warnings.push("named in ARTIFACTS_NAMESPACES, but Cloudflare has no namespace of this name: make it before deploying");
+    if (made && set.binding && !known) warnings.push("named in GITSTORE_NAMESPACES, but Cloudflare has no namespace of this name: make it before deploying");
     if (set.eu && known && known.jurisdiction !== "eu") warnings.push(`named as the EU namespace, but Cloudflare says its jurisdiction is ${known.jurisdiction ?? "unrestricted"}`);
     if (fallback) warnings.push(`served from the fallback store lately (${fallback.calls} calls in the last hour)`);
     return {
@@ -231,7 +231,7 @@ async function main() {
     if (namespaceOf(repo.store, config.find((one) => one.default)?.namespace) === namespace) throw new Error(`${workspace}/${name} is in ${namespace} already`);
     const id = `mov_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     await d1(`INSERT INTO repo_moves (id, repo_id, to_namespace, status, requested_by, queued_ms)
-      VALUES (${quoted(id)}, ${quoted(repo.id)}, ${quoted(namespace)}, 'queued', 'scripts/ops/artifacts-namespaces.mjs', ${Date.now()})`);
+      VALUES (${quoted(id)}, ${quoted(repo.id)}, ${quoted(namespace)}, 'queued', 'scripts/ops/gitstore-namespaces.mjs', ${Date.now()})`);
     console.log(`queued ${id}: ${workspace}/${name} (${repo.store}) -> ${namespace}. The hourly sweep (:23) moves it; watch with \`moves\`.`);
     return 0;
   }
@@ -250,7 +250,7 @@ async function main() {
   return rows.some((row) => row.warnings.length) ? 1 : 0;
 }
 
-if (process.argv[1]?.replaceAll("\\", "/").endsWith("scripts/ops/artifacts-namespaces.mjs")) {
+if (process.argv[1]?.replaceAll("\\", "/").endsWith("scripts/ops/gitstore-namespaces.mjs")) {
   main().then(
     (code) => process.exit(code),
     (error) => {

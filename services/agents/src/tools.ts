@@ -45,9 +45,9 @@ export interface ToolPorts {
   roster(viewer: User | null): Promise<string>;
   consult(handle: string, question: string): Promise<{ ok: true; colleague: string; answer: string } | { ok: false; message: string }>;
   /**
-   * The workspace's artifacts (Artifacts mode), as the docs service lets
+   * The workspace's artifacts (Artifacts mode), as the artifacts service lets
    * this agent use them for the person it acts for and everyone who will
-   * read the answer. Absent where there is no docs service.
+   * read the answer. Absent where there is no artifacts service.
    */
   folios?: FoliosPorts;
 }
@@ -66,18 +66,18 @@ export type FolioSpaceLine = {
 /** Where a new artifact goes: a space, its asker's Private, or Private shared with the conversation's people. */
 export type FolioWhere = { space_id: string } | "private" | { conversation: string[] };
 
-/** A call's answer: the value, or the docs service's error code and sentence. */
+/** A call's answer: the value, or the artifacts service's error code and sentence. */
 export type FolioDone<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
 
 /**
  * Artifacts, as an agent uses them. Every call names the person it acts
- * for, and the reads also who reads the answer; the docs service checks
+ * for, and the reads also who reads the answer; the artifacts service checks
  * both.
  */
 export interface FoliosPorts {
-  /** Spaces everyone here can read; null when the docs service couldn't answer. */
+  /** Spaces everyone here can read; null when the artifacts service couldn't answer. */
   spaces(viewer: User, audience: FolioAudience): Promise<FolioSpaceLine[] | null>;
-  /** Passages closest in meaning to `query`; `spaces` (required reading) first. Null when the docs service couldn't answer. */
+  /** Passages closest in meaning to `query`; `spaces` (required reading) first. Null when the artifacts service couldn't answer. */
   recall(viewer: User, audience: FolioAudience, query: string, spaces: string[], kinds?: FolioKind[]): Promise<FolioPassage[] | null>;
   /** Artifacts matching `query` (words and meaning), as lines with links. */
   search(viewer: User, audience: FolioAudience, input: { query: string; kind: FolioKind | null; space_id: string | null; project: string | null }): Promise<string | null>;
@@ -542,7 +542,7 @@ export class ToolBox {
     return [
       ...(this.audience.codeAllowed() ? CODE_TOOLS : []),
       ...CHAT_TOOLS,
-      // Artifacts are for everyone, Code or not: the docs service decides what this person and audience can read.
+      // Artifacts are for everyone, Code or not: the artifacts service decides what this person and audience can read.
       ...(this.ports.folios && this.audience.asker ? FOLIO_TOOLS : []),
       ...(this.ports.folios && this.audience.asker && actions ? FOLIO_WRITE_TOOLS : []),
       ...(this.ports.folios?.attach && this.audience.asker && actions ? [MAKE_FILE] : []),
@@ -638,7 +638,7 @@ export class ToolBox {
   /**
    * What the workspace's artifacts say about `query`, for this person and
    * this audience, before the agent answers: no tool call, nothing counted
-   * against its tools. Empty when there is no docs service or nothing
+   * against its tools. Empty when there is no artifacts service or nothing
    * relevant.
    */
   async recall(query: string | null, spaces: string[]): Promise<FolioPassage[]> {
@@ -653,7 +653,7 @@ export class ToolBox {
     }
   }
 
-  /** Who reads what an agent says here, as the docs service takes it. */
+  /** Who reads what an agent says here, as the artifacts service takes it. */
   private folioAudience(): FolioAudience {
     return this.audience.shared ? { kind: "workspace" } : { kind: "people", user_ids: this.audience.members.map((m) => m.id) };
   }
@@ -834,7 +834,7 @@ export class ToolBox {
    * - "conversation": Private, plus `view` for this conversation's people;
    * - nothing: the conversation in a DM or private channel, and in a public
    *   channel the General space if the asker can add there (`fallback`:
-   *   their Private if the docs service says they can't).
+   *   their Private if the artifacts service says they can't).
    */
   private async whereFor(given: unknown, asker: User, folios: FoliosPorts): Promise<{ ok: true; where: FolioWhere; fallback: boolean } | { ok: false; message: string }> {
     const named = typeof given === "object" && given !== null ? (given as { space?: unknown }).space : given;
@@ -853,7 +853,7 @@ export class ToolBox {
     if (typeof given === "string" && lower === "conversation") return byDefault();
     const space = findSpace((await folios.spaces(asker, this.folioAudience())) ?? [], wanted);
     if (space) return { ok: true, where: { space_id: space.id }, fallback: false };
-    // An id the asker gave, for a space not everyone here can read: the docs service checks it.
+    // An id the asker gave, for a space not everyone here can read: the artifacts service checks it.
     if (/^spc_[A-Za-z0-9]+$/.test(wanted)) return { ok: true, where: { space_id: wanted }, fallback: false };
     return { ok: false, message: `There's no space called ${wanted} that everyone here can read. Use list_spaces, or put it in "private" or "conversation".` };
   }
@@ -1062,7 +1062,7 @@ export function folioRef(given: string): string | null {
   return folioIdFrom(last);
 }
 
-/** Where an artifact was written up from: a thread's link, cut to the site path the docs service keeps; null when it isn't one. */
+/** Where an artifact was written up from: a thread's link, cut to the site path the artifacts service keeps; null when it isn't one. */
 export function sourceLink(given: string): { title: string; href: string } | null {
   let href = given.trim();
   if (!href) return null;

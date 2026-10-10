@@ -1,5 +1,5 @@
 /**
- * Who and where, for the docs service's folio code: the workspace by
+ * Who and where, for the artifacts service's folio code: the workspace by
  * slug, its people, agents and teams, how member keys show, and the
  * spaces with a person's role in each. Cached per request (one instance
  * per request). Docs' page code (src/index.ts, `Docs`) keeps its own copy

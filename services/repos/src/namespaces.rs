@@ -4,7 +4,7 @@
 //! Placing a new repository reads this when there is more than one
 //! namespace to choose from (shards.rs `Placement::choose`), kept a minute
 //! per isolate; `namespaces` answers it for operators
-//! (`scripts/ops/artifacts-namespaces.mjs` reads the same tables itself).
+//! (`scripts/ops/gitstore-namespaces.mjs` reads the same tables itself).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -61,11 +61,11 @@ impl Recent {
 #[derive(Debug, Default, Serialize, Clone, PartialEq)]
 pub struct Standing {
     pub namespace: String,
-    /// The namespace bound to `ARTIFACTS`, where keys without one live.
+    /// The namespace bound to `GITSTORE`, where keys without one live.
     pub default: bool,
-    /// `ARTIFACTS_EU_NAMESPACE`: where EU workspaces' repositories go.
+    /// `GITSTORE_EU_NAMESPACE`: where EU workspaces' repositories go.
     pub eu: bool,
-    /// Named in `ARTIFACTS_NEW_REPOS`.
+    /// Named in `GITSTORE_NEW_REPOS`.
     pub takes_new_repos: bool,
     /// Served from the fallback store now (fallback.rs).
     pub on_fallback: bool,

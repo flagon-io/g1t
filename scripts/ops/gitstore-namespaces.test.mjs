@@ -7,19 +7,19 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { parseJsonc } from "../deploy/stack.mjs";
-import { LIMIT_PER_MINUTE, configured, namespaceOf, standings, table } from "./artifacts-namespaces.mjs";
+import { LIMIT_PER_MINUTE, configured, namespaceOf, standings, table } from "./gitstore-namespaces.mjs";
 
 const sharded = {
   artifacts: [
-    { binding: "ARTIFACTS", namespace: "g1t" },
-    { binding: "ARTIFACTS_1", namespace: "g1t-us-1" },
-    { binding: "ARTIFACTS_EU", namespace: "g1t-eu" },
+    { binding: "GITSTORE", namespace: "g1t" },
+    { binding: "GITSTORE_1", namespace: "g1t-us-1" },
+    { binding: "GITSTORE_EU", namespace: "g1t-eu" },
   ],
   vars: {
-    ARTIFACTS_NAMESPACES: JSON.stringify({ ARTIFACTS: "g1t", ARTIFACTS_1: "g1t-us-1", ARTIFACTS_EU: "g1t-eu", ARTIFACTS_2: "g1t-us-2" }),
-    ARTIFACTS_NEW_REPOS: "g1t,g1t-us-1,g1t-us-2",
-    ARTIFACTS_EU_NAMESPACE: "g1t-eu",
-    ARTIFACTS_NAMESPACE_LIMITS: JSON.stringify({ "g1t": { max_repos: 100 } }),
+    GITSTORE_NAMESPACES: JSON.stringify({ GITSTORE: "g1t", GITSTORE_1: "g1t-us-1", GITSTORE_EU: "g1t-eu", GITSTORE_2: "g1t-us-2" }),
+    GITSTORE_NEW_REPOS: "g1t,g1t-us-1,g1t-us-2",
+    GITSTORE_EU_NAMESPACE: "g1t-eu",
+    GITSTORE_NAMESPACE_LIMITS: JSON.stringify({ "g1t": { max_repos: 100 } }),
   },
 };
 

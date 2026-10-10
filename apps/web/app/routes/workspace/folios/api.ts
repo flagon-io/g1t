@@ -137,7 +137,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
         return folios.deleteTemplate(slug, viewer, sent.template_id ?? "");
       case "mark_current":
         return folios.markCurrent(slug, viewer, id);
-      // Spaces are the docs service's own, shared with Artifacts.
+      // Spaces are the artifacts service's own, shared with Artifacts.
       case "create_space":
         return docs.createSpace(slug, viewer, sent.space ?? ({ name: "", kind: "workspace" } as NewDocSpace));
       case "update_space":

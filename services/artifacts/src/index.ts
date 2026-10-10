@@ -1,5 +1,5 @@
 /**
- * The docs service: a workspace's spaces and pages, their live documents,
+ * The artifacts service: a workspace's spaces and pages, their live documents,
  * history, comments, agents' suggestions, templates and search
  * (docs.g1t.sh/guides/artifacts/, "Docs").
  *
@@ -12,7 +12,7 @@
  * document. Everything that changes a page's content goes through the
  * room; this Worker decides who may ask.
  *
- * The docs service also hosts folios (Artifacts mode):
+ * The artifacts service also hosts folios (Artifacts mode):
  * docs, slides, designs and dashboards, in src/folios/ with their own
  * room (FolioRoom). `/rpc/<method>` asks the folio table (src/folios/rpc.ts)
  * first, then Docs' own switch below; `/live?folio=` and
@@ -125,7 +125,7 @@ type Env = FileStoreEnv & {
   AI?: Ai;
   /** The semantic index, Vectorize `g1t-docs` (src/vectors.ts, src/indexer.ts). */
   VECTORS?: Vectorize;
-  /** The docs service's own events queue, also carrying its backfill jobs (`docs.index`, src/indexer.ts) and folio access jobs (`folios.reacl`). */
+  /** The artifacts service's own events queue, also carrying its backfill jobs (`docs.index`, src/indexer.ts) and folio access jobs (`folios.reacl`). */
   JOBS?: Queue<DocsJob>;
   /** One room per folio (Artifacts mode, src/folios/room.ts). */
   FOLIOS: DurableObjectNamespace<FolioRoom>;

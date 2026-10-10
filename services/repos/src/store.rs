@@ -227,7 +227,7 @@ pub trait GitRepo {
 }
 
 thread_local! {
-    /// The namespace bound to `ARTIFACTS`, for keys that name none.
+    /// The namespace bound to `GITSTORE`, for keys that name none.
     static DEFAULT_NS: RefCell<String> = RefCell::new(shards::DEFAULT_NAMESPACE.to_owned());
     /// Where each namespace's remotes start: `https://<account>.artifacts.cloudflare.net/git/<namespace>/`.
     static REMOTE_PREFIX: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
@@ -316,7 +316,7 @@ pub struct ArtifactsStore {
 
 impl ArtifactsStore {
     pub fn new(env: &Env, shared: Option<Rc<crate::shared::Shared>>, deferred: Rc<Deferred>) -> Result<Self> {
-        let config = env.var("ARTIFACTS_NAMESPACES").ok().map(|value| value.to_string());
+        let config = env.var("GITSTORE_NAMESPACES").ok().map(|value| value.to_string());
         let text = |name: &str| env.var(name).ok().map(|value| value.to_string());
         let secret = env.secret("GIT_FALLBACK_SECRET").ok().map(|value| value.to_string());
         let fallback = fallback::Settings::from_vars(
@@ -340,7 +340,7 @@ impl ArtifactsStore {
                 Ok(value) => namespaces.push(Namespace { name, target: Target::Js(value) }),
                 // The default binding is required; the others are optional.
                 Err(error) if binding == shards::DEFAULT_BINDING => return Err(error),
-                Err(_) => worker::console_error!("ARTIFACTS_NAMESPACES names {binding}, which is not bound"),
+                Err(_) => worker::console_error!("GITSTORE_NAMESPACES names {binding}, which is not bound"),
             }
         }
         if let Some(default) = namespaces.first() {
@@ -348,7 +348,7 @@ impl ArtifactsStore {
         }
         // Optional: where remotes start, `https://<account>.artifacts.cloudflare.net/git`,
         // so the first credential an isolate makes needs no `info()` either.
-        if let Ok(base) = env.var("ARTIFACTS_REMOTE_BASE") {
+        if let Ok(base) = env.var("GITSTORE_REMOTE_BASE") {
             let base = base.to_string().trim_end_matches('/').to_owned();
             if base.starts_with("https://") {
                 REMOTE_PREFIX.with(|prefixes| {

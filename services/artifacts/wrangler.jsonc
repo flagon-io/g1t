@@ -1,6 +1,11 @@
 {
 	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-docs-service",
+	// Artifacts: docs (and later slides, designs and dashboards), their
+	// spaces, sharing and live editing. Until 2026-10 this Worker was
+	// g1t-docs-service (services/docs); its database, bucket, indexes and
+	// queue kept their names, and its live rooms moved here with the
+	// transfer migration below.
+	"name": "g1t-artifacts",
 	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
 	"compatibility_date": "2026-09-26",
 	"main": "./src/index.ts",
@@ -78,16 +83,30 @@
 	// One room per page: it holds the page's Yjs document and open sockets,
 	// hibernating while nobody types (src/room.ts). And one per folio
 	// (Artifacts mode, src/folios/room.ts): PageRoom stays until Phase 7
-	// deletes it (`deleted_classes` in a v3 migration).
+	// deletes it (`deleted_classes` in a v4 migration).
 	"durable_objects": {
 		"bindings": [
 			{ "name": "PAGES", "class_name": "PageRoom" },
 			{ "name": "FOLIOS", "class_name": "FolioRoom" }
 		]
 	},
+	// Both classes were made on g1t-docs-service (v1 PageRoom, v2 FolioRoom,
+	// both SQLite). v3 transfers them, every room's storage with them, when
+	// this Worker first deploys; until the old Worker is deleted, its own
+	// bindings to them forward here. Never add new_sqlite_classes for them:
+	// the transfer makes them. A new Cloudflare account has no
+	// g1t-docs-service to transfer from, and `wrangler dev` learns a class
+	// is SQLite only from new_sqlite_classes: both use
+	// { "tag": "v3", "new_sqlite_classes": ["PageRoom", "FolioRoom"] }
+	// instead (docs.g1t.sh/guides/deploy-to-cloudflare/, "A first deploy").
 	"migrations": [
-		{ "tag": "v1", "new_sqlite_classes": ["PageRoom"] },
-		{ "tag": "v2", "new_sqlite_classes": ["FolioRoom"] }
+		{
+			"tag": "v3",
+			"transferred_classes": [
+				{ "from": "PageRoom", "from_script": "g1t-docs-service", "to": "PageRoom" },
+				{ "from": "FolioRoom", "from_script": "g1t-docs-service", "to": "FolioRoom" }
+			]
+		}
 	],
 	// Daily: folios in the trash for over 30 days are deleted for good.
 	"triggers": { "crons": ["17 3 * * *"] },

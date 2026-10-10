@@ -50,7 +50,7 @@ const SEARCH = instrumented("search", env.SEARCH);
 const PACKAGES = instrumented("packages", env.PACKAGES);
 const CHAT = instrumented("chat", env.CHAT);
 const AGENTS = instrumented("agents", env.AGENTS);
-const DOCS = instrumented("docs", env.DOCS);
+const ARTIFACTS = instrumented("artifacts", env.ARTIFACTS);
 
 export const identity = identityClient(IDENTITY);
 /** A person's email addresses and account security: methods of identity. */
@@ -87,7 +87,7 @@ export const memoryReview = memoryReviewClient(WORK);
 export const chat = chatClient(CHAT);
 /** The workspace's own agents: who they are, their limits and their desks. */
 export const workspaceAgents = workspaceAgentsClient(AGENTS);
-/** The docs service's spaces (Artifacts' spaces) and projects' docs. Its old pages are no longer read. */
-export const docs = docsClient(DOCS);
-/** Artifacts (folios): docs, and later slides, designs and dashboards, kept by the docs service. */
-export const folios = foliosClient(DOCS);
+/** The artifacts service's spaces (Artifacts' spaces) and projects' docs. Its old pages are no longer read. */
+export const docs = docsClient(ARTIFACTS);
+/** Artifacts (folios): docs, and later slides, designs and dashboards, kept by the artifacts service. */
+export const folios = foliosClient(ARTIFACTS);

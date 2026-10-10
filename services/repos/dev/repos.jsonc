@@ -1,7 +1,7 @@
 // The repos service as `wrangler dev` runs it on its own, for git over
 // HTTPS against a local git store: local D1 and R2 (the clone pack cache,
-// GIT_PACKS), the Artifacts binding played by the self-hosted shim
-// (deploy/self-host/workers/artifacts) in front of the self-hosted git store
+// GIT_PACKS), the git store binding (GITSTORE; Cloudflare Artifacts, hosted) played by the self-hosted shim
+// (deploy/self-host/workers/gitstore) in front of the self-hosted git store
 // (deploy/self-host/gitstore/server.mjs), and its other services stubbed
 // (stubs.js). `node dev/clone-check.mjs` does all of it and clones twice;
 // by hand, from services/repos:
@@ -11,7 +11,7 @@
 //   GITSTORE_ROOT=/tmp/g1t-git GITSTORE_SECRET=dev-gitstore-secret-0123 \
 //     GITSTORE_PORT=8799 GITSTORE_URL=http://localhost:8799 \
 //     node ../../deploy/self-host/gitstore/server.mjs &
-//   npx wrangler dev -c dev/repos.jsonc -c dev/artifacts.jsonc -c dev/stubs.jsonc --local --port 8791
+//   npx wrangler dev -c dev/repos.jsonc -c dev/gitstore.jsonc -c dev/stubs.jsonc --local --port 8791
 //
 // Then make a repository row and its store (clone-check.mjs shows how) and
 // `git clone http://localhost:8791/acme/rocket.git`.
@@ -24,7 +24,7 @@
 	],
 	"r2_buckets": [{ "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" }],
 	"services": [
-		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" },
+		{ "binding": "GITSTORE", "service": "g1t-gitstore" },
 		{ "binding": "IDENTITY", "service": "g1t-repos-stubs" },
 		{ "binding": "EVENTS", "service": "g1t-repos-stubs" },
 		{ "binding": "SECURITY", "service": "g1t-repos-stubs" },
@@ -37,7 +37,7 @@
 		"REPO_STORAGE_LIMIT_BYTES": "950000000",
 		"LARGE_PUSHES": "unscanned",
 		"FORK_RETENTION_DAYS": "1",
-		"ARTIFACTS_NAMESPACES": "{\"ARTIFACTS\":\"g1t\"}",
-		"ARTIFACTS_NEW_REPOS": ""
+		"GITSTORE_NAMESPACES": "{\"GITSTORE\":\"g1t\"}",
+		"GITSTORE_NEW_REPOS": ""
 	}
 }

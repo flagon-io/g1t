@@ -3,32 +3,32 @@
 //! Cloudflare limits each Artifacts namespace to 2,000 control-plane
 //! requests per 10 seconds, and fixes its jurisdiction (US or EU) when it
 //! is made. So repositories can live in several namespaces, each reached
-//! through its own binding (`ARTIFACTS`, `ARTIFACTS_1`, ..., `ARTIFACTS_EU`),
-//! named in the `ARTIFACTS_NAMESPACES` variable:
+//! through its own binding (`GITSTORE`, `GITSTORE_1`, ..., `GITSTORE_EU`),
+//! named in the `GITSTORE_NAMESPACES` variable:
 //!
 //! ```json
-//! { "ARTIFACTS": "g1t", "ARTIFACTS_1": "g1t-us-1", "ARTIFACTS_EU": "g1t-eu" }
+//! { "GITSTORE": "g1t", "GITSTORE_1": "g1t-us-1", "GITSTORE_EU": "g1t-eu" }
 //! ```
 //!
 //! A repository's namespace is part of its store key in the registry's
 //! `store` column: `g1t-us-1/acme--rocket`. A key with no namespace
 //! (`acme--rocket`, every repository made before this) is in the namespace
-//! bound to `ARTIFACTS`. A pull request's working copy is always in its
+//! bound to `GITSTORE`. A pull request's working copy is always in its
 //! repository's namespace, since Artifacts forks within a namespace.
 //!
-//! New repositories go where `ARTIFACTS_NEW_REPOS` says (a comma-separated
+//! New repositories go where `GITSTORE_NEW_REPOS` says (a comma-separated
 //! list of namespaces): the emptier healthy ones, spread by repository id
 //! ([`Placement::choose`], from namespaces.rs's loads). A workspace that
 //! keeps its data in the EU (identity's `data_residency`, offered once
-//! `ARTIFACTS_EU_NAMESPACE` names a bound namespace) gets that namespace,
-//! or nothing. `ARTIFACTS_NAMESPACE_LIMITS` caps how many repositories a
+//! `GITSTORE_EU_NAMESPACE` names a bound namespace) gets that namespace,
+//! or nothing. `GITSTORE_NAMESPACE_LIMITS` caps how many repositories a
 //! namespace takes. Without any of these, everything stays in
-//! `ARTIFACTS`'s, and nothing extra is read. An existing repository moves
+//! `GITSTORE`'s, and nothing extra is read. An existing repository moves
 //! between namespaces only when an operator asks (moves.rs).
 
 /// The binding every installation has.
-pub const DEFAULT_BINDING: &str = "ARTIFACTS";
-/// Its namespace, unless `ARTIFACTS_NAMESPACES` says otherwise.
+pub const DEFAULT_BINDING: &str = "GITSTORE";
+/// Its namespace, unless `GITSTORE_NAMESPACES` says otherwise.
 pub const DEFAULT_NAMESPACE: &str = "g1t";
 
 /// Each binding and the namespace it reaches, the default first.
@@ -93,7 +93,7 @@ pub const HOT_SHARE: f64 = 0.7;
 const SLACK_REPOS: u64 = 100;
 const SLACK_SHARE: f64 = 0.05;
 
-/// The most each namespace should hold, from `ARTIFACTS_NAMESPACE_LIMITS`
+/// The most each namespace should hold, from `GITSTORE_NAMESPACE_LIMITS`
 /// (JSON, `{"g1t": {"max_repos": 50000}}`); a namespace not named has no
 /// limit but the control-plane one.
 pub fn limits(config: Option<&str>) -> std::collections::HashMap<String, u64> {
@@ -122,7 +122,7 @@ pub struct Load {
     /// Failing now: its breaker open here, or a quarter of its recent
     /// calls failing.
     pub failing: bool,
-    /// `ARTIFACTS_NAMESPACE_LIMITS`'s `max_repos` for it.
+    /// `GITSTORE_NAMESPACE_LIMITS`'s `max_repos` for it.
     pub max_repos: Option<u64>,
 }
 
@@ -197,7 +197,7 @@ impl Placement {
     ///
     /// - EU residency: the EU namespace, if it is bound and takes writes;
     ///   otherwise refused, never placed elsewhere.
-    /// - Anywhere: among the namespaces named in `ARTIFACTS_NEW_REPOS` that
+    /// - Anywhere: among the namespaces named in `GITSTORE_NEW_REPOS` that
     ///   are healthy (bound, writable, not failing, under their limit and
     ///   not hot), those within the slack of the emptiest, spread by id. If
     ///   none is healthy, the usable ones the same way; if none is usable,
@@ -234,14 +234,14 @@ mod tests {
 
     #[test]
     fn the_default_binding_is_always_there_and_first() {
-        assert_eq!(bindings(None), vec![("ARTIFACTS".to_owned(), "g1t".to_owned())]);
-        let configured = bindings(Some(r#"{"ARTIFACTS_EU":"g1t-eu","ARTIFACTS_1":"g1t-us-1","ARTIFACTS":"g1t","ARTIFACTS_2":"bad name!"}"#));
+        assert_eq!(bindings(None), vec![("GITSTORE".to_owned(), "g1t".to_owned())]);
+        let configured = bindings(Some(r#"{"GITSTORE_EU":"g1t-eu","GITSTORE_1":"g1t-us-1","GITSTORE":"g1t","GITSTORE_2":"bad name!"}"#));
         assert_eq!(
             configured,
             vec![
-                ("ARTIFACTS".to_owned(), "g1t".to_owned()),
-                ("ARTIFACTS_1".to_owned(), "g1t-us-1".to_owned()),
-                ("ARTIFACTS_EU".to_owned(), "g1t-eu".to_owned()),
+                ("GITSTORE".to_owned(), "g1t".to_owned()),
+                ("GITSTORE_1".to_owned(), "g1t-us-1".to_owned()),
+                ("GITSTORE_EU".to_owned(), "g1t-eu".to_owned()),
             ]
         );
         assert_eq!(bindings(Some("not json")), bindings(None));

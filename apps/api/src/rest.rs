@@ -3,7 +3,7 @@
 use serde_json::{Map, Value};
 
 use crate::about::AboutOp;
-use crate::artifacts::ArtifactsOp;
+use crate::run_artifacts::ArtifactsOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;

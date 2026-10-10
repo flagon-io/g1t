@@ -1,8 +1,8 @@
-// The Artifacts binding for running repos on its own (repos.jsonc): the
+// The git store binding (GITSTORE) for running repos on its own (repos.jsonc): the
 // self-hosted shim, in front of a git store on this machine.
 {
-	"name": "g1t-artifacts",
-	"main": "../../../deploy/self-host/workers/artifacts/index.js",
+	"name": "g1t-gitstore",
+	"main": "../../../deploy/self-host/workers/gitstore/index.js",
 	"compatibility_date": "2026-09-26",
 	"vars": { "GITSTORE_URL": "http://localhost:8799", "GITSTORE_SECRET": "dev-gitstore-secret-0123" }
 }
