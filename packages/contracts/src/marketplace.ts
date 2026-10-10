@@ -329,6 +329,12 @@ export type ListingTier = "official" | "verified" | "community" | "internal";
 
 export const LISTING_TIERS: readonly ListingTier[] = ["official", "verified", "community", "internal"];
 
+/**
+ * Who stands behind every integration: the connector catalog
+ * (./connectors.ts) is g1t's own, so each connector is Official.
+ */
+export const CONNECTOR_PUBLISHER: { name: string; tier: ListingTier } = { name: "g1t", tier: "official" };
+
 /** A listing's reference, split: `integration:sentry` is `{ kind: "integration", id: "sentry" }`. */
 export type ListingRef = { kind: ListingKind; id: string };
 

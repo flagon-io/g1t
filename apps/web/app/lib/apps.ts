@@ -21,9 +21,9 @@
  * with the account carry over from it until the first change.
  * No Workers or React imports, so it can be tested under Node.
  */
-import type { ExtensionInstall } from "@g1t/contracts";
+import type { ExtensionInstall, ListingTier } from "@g1t/contracts";
 import { CONNECTORS, type Connector, connectorPath } from "@g1t/contracts/connectors";
-import { extensionById } from "@g1t/contracts/marketplace";
+import { CONNECTOR_PUBLISHER, extensionById } from "@g1t/contracts/marketplace";
 
 /** The apps that are always in the dock. */
 export type BuiltinApp = "today" | "chat" | "notifications" | "agents" | "code" | "artifacts" | "people" | "workspace";
@@ -67,6 +67,9 @@ export type InstalledApp = {
   about: string;
   /** The Marketplace listing it was installed from: `integration:sentry`. */
   listing: string;
+  /** Who stands behind it, as its Marketplace listing says: its publisher and tier. */
+  publisher: string;
+  tier: ListingTier;
   /** The connector behind it, for its mark. */
   connector: Pick<Connector, "id" | "name" | "provider">;
   /** Its page in the workspace `slug`. */
@@ -111,6 +114,8 @@ export function installedAppOf(key: string): InstalledApp | null {
       name: extension.name,
       about: extension.tagline,
       listing: `extension:${extension.id}`,
+      publisher: extension.publisher.name,
+      tier: extension.publisher.tier,
       connector: { id: extension.id, name: extension.name, provider: undefined },
       // Its own page, in a sandboxed frame, is the extension host's to serve; until then, its listing.
       path: (slug) => `/${slug}/-/marketplace/extensions/${extension.id}`,
@@ -125,6 +130,8 @@ export function installedAppOf(key: string): InstalledApp | null {
     name: connector.name,
     about: connector.description,
     listing: `integration:${connector.id}`,
+    publisher: CONNECTOR_PUBLISHER.name,
+    tier: CONNECTOR_PUBLISHER.tier,
     connector: { id: connector.id, name: connector.name, provider: connector.provider },
     path: integrationPath(connector),
     usable: true,

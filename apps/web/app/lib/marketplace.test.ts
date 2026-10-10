@@ -2,11 +2,27 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { InstallRequest } from "@g1t/contracts";
-import { connectorsFor } from "@g1t/contracts/connectors";
+import { connectorById, connectorsFor } from "@g1t/contracts/connectors";
 
 import { FIRST_PARTY_EXTENSIONS, extensionById } from "@g1t/contracts/marketplace";
 
-import { STARTER_KITS, addPath, comingIntegrations, extensionListings, integrationListings, integrationMatches, isConnectedSystem, marketplaceForm } from "./marketplace.ts";
+import {
+  STARTER_KITS,
+  TIERS,
+  addPath,
+  categoryTitle,
+  comingIntegrations,
+  comingListings,
+  extensionListings,
+  integrationListings,
+  integrationMatches,
+  integrationUses,
+  isConnectedSystem,
+  marketplaceForm,
+  passes,
+  readFilters,
+  tiersShown,
+} from "./marketplace.ts";
 import { modeOf } from "./workspace-nav.ts";
 
 const request = (listing: string, by: string, status: InstallRequest["status"] = "open"): InstallRequest => ({
@@ -99,6 +115,48 @@ test("starter kits name extensions that are listed, and connected systems are to
   const systems = FIRST_PARTY_EXTENSIONS.filter(isConnectedSystem).map((m) => m.id);
   assert.deepEqual(systems, ["helpdesk-bridge", "crm-bridge", "erp-bridge"]);
   assert.ok(FIRST_PARTY_EXTENSIONS.filter(isConnectedSystem).every((m) => m.bridges), "a connected system says what it bridges");
+});
+
+test("every listing says who builds it and whether it can be added here", () => {
+  const views = connectorsFor("workspace");
+  const connected = { sentry: { detail: "acme", problem: null, manage: "/acme/-/integrations/alerts" } };
+  const listings = integrationListings(views, connected, [], "ana", "acme", { github: "This g1t has no GitHub App set up." });
+  assert.ok(listings.every((l) => l.tier === "official" && l.publisher === "g1t"), "the connector catalog is g1t's own");
+  assert.equal(listings.find((l) => l.view.id === "sentry")!.availability, "added");
+  assert.equal(listings.find((l) => l.view.id === "jira")!.availability, "available");
+  const github = listings.find((l) => l.view.id === "github")!;
+  assert.equal(github.availability, "unavailable");
+  assert.equal(github.why, "This g1t has no GitHub App set up.");
+  assert.equal(github.href, null, "nothing to connect where it can't be connected");
+  assert.equal(listings.find((l) => l.view.id === "linear")!.path, "/acme/-/marketplace/integrations/linear");
+
+  const coming = comingListings(views, connectorsFor("personal").filter((v) => v.id === "gmail"), "acme");
+  assert.ok(coming.every((l) => l.availability === "soon" && l.href === null && l.tier === "official"));
+  assert.equal(coming.find((l) => l.view.id === "gmail")!.scope, "personal");
+
+  const extensions = extensionListings(FIRST_PARTY_EXTENSIONS, [], [], "ana");
+  assert.ok(extensions.every((l) => l.tier === "official" && l.availability === "soon"), "g1t's own, none published yet");
+});
+
+test("an integration's page says what it does today and what is still Soon", () => {
+  const linear = integrationUses(connectorById("linear")!);
+  assert.deepEqual(linear.today.map((u) => u.scope), ["workspace"]);
+  assert.deepEqual(linear.today[0]!.capabilities, ["Agents can read", "Writes back"]);
+  assert.deepEqual(linear.soon.map((u) => u.scope), ["personal"], "each person's Linear inbox is Soon");
+  const slack = integrationUses(connectorById("slack")!);
+  assert.equal(slack.today.length, 0);
+  assert.equal(slack.soon.length, 2);
+  assert.equal(categoryTitle("issues"), "Issues & projects");
+});
+
+test("filters by tier and availability are read from the address, and unknown ones are All", () => {
+  assert.deepEqual(readFilters(new URLSearchParams("tier=verified&availability=soon")), { tier: "verified", availability: "soon" });
+  assert.deepEqual(readFilters(new URLSearchParams("tier=gold&availability=maybe")), { tier: "all", availability: "all" });
+  assert.deepEqual(tiersShown({ tier: "all", availability: "all" }), ["official", "verified", "community", "internal"]);
+  assert.deepEqual(tiersShown({ tier: "community", availability: "all" }), ["community"]);
+  assert.ok(passes({ tier: "official", availability: "soon" }, { tier: "all", availability: "soon" }));
+  assert.ok(!passes({ tier: "official", availability: "soon" }, { tier: "verified", availability: "all" }));
+  for (const tier of ["verified", "community", "internal"] as const) assert.ok(TIERS[tier].none.extension.length > 0, `${tier} says when it is empty`);
 });
 
 test("the Marketplace is part of Apps, not a mode of its own", () => {

@@ -1,20 +1,22 @@
 /**
- * Integrations in the Marketplace: every connector a workspace can connect
- * today, connected ones first; those each person connects for themselves;
- * then the ones the catalog lists as coming. Each workspace one is set up
- * on its own page under Workspace → Integrations; owners connect, anyone
- * else asks.
+ * Integrations in the Marketplace, by who builds them: every connector is
+ * g1t's own (Official), so that section holds the ones connected, the ones
+ * a workspace can connect today, any this g1t can't connect (with why),
+ * those each person connects for themselves, and the ones the catalog
+ * lists as coming; Verified, Community and Internal are sections too,
+ * empty and saying so. Search, and filters by tier and availability, kept
+ * in the address. Each workspace one is set up on its own page under
+ * Workspace → Integrations; owners connect, anyone else asks.
  */
 import { Search } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 
-import { type ConnectorView, connectorView, connectorsFor, CONNECTORS } from "@g1t/contracts/connectors";
+import { CONNECTORS, connectorView, connectorsFor } from "@g1t/contracts/connectors";
 
 import type { Route } from "./+types/integrations";
-import { ConnectorMark } from "../../../components/connectors";
-import { ComingBadge, IntegrationCard, SectionHead } from "../../../components/marketplace";
-import { comingIntegrations, integrationListings, integrationMatches } from "../../../lib/marketplace";
+import { IntegrationCard, IntegrationRow, ListingFilterBar, ListingLegend, SectionHead, TierBadge, TierEmpty, filterCounts } from "../../../components/marketplace";
+import { type IntegrationListing, comingListings, integrationListings, integrationMatches, passes, personalListings, readFilters, tiersShown } from "../../../lib/marketplace";
 import { loadConnected } from "../../../lib/marketplace.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
 import { useMarketplace } from "./layout";
@@ -23,112 +25,129 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   const slug = params.owner.toLowerCase();
   if (!roleIn(viewer, slug)) throw new Response(null, { status: 404 });
-  return { connected: await loadConnected(slug, viewer) };
+  return await loadConnected(slug, viewer);
 }
+
+const HEADINGS = { official: "From g1t", verified: "From verified publishers", community: "From the community", internal: "Built in this workspace" } as const;
 
 export default function MarketplaceIntegrations({ loaderData }: Route.ComponentProps) {
   const { slug, owner, username, requests } = useMarketplace();
   const [query, setQuery] = useState("");
+  const [params] = useSearchParams();
+  const filters = readFilters(params);
   const views = connectorsFor("workspace");
-  const all = integrationListings(views, loaderData.connected, requests?.requests ?? [], username, slug);
-  const shown = all.filter((listing) => integrationMatches(listing, query));
-  const connected = shown.filter((listing) => listing.connected);
-  const available = shown.filter((listing) => !listing.connected);
+  const personalViews = CONNECTORS.map((c) => connectorView(c, "personal")).filter((view) => view != null);
+  const workspace = integrationListings(views, loaderData.connected, requests?.requests ?? [], username, slug, loaderData.unavailable);
+  // What each person connects for themselves, today; and what is coming, for either.
+  const yours = personalListings(personalViews, slug, loaderData.unavailable);
+  const coming = comingListings(
+    views,
+    personalViews.filter((view) => !CONNECTORS.find((c) => c.id === view.id)?.scopes.includes("workspace")),
+    slug,
+  );
+  const everything = [...workspace, ...yours, ...coming];
   const wanted = query.trim().toLowerCase();
-  const personal = CONNECTORS.filter((c) => !c.scopes.includes("workspace")).map((c) => connectorView(c, "personal")).filter((view) => view != null);
-  // What each person connects for themselves, today.
-  const yours = CONNECTORS.map((c) => connectorView(c, "personal")).filter((view): view is ConnectorView & { href: string } => view != null && view.status === "available" && view.href != null && (!wanted || [view.name, view.description, ...view.keywords].some((w) => w.toLowerCase().includes(wanted))));
-  const coming = comingIntegrations(views, personal).filter((view) => !wanted || [view.name, view.description, ...view.keywords].some((w) => w.toLowerCase().includes(wanted)));
+  const keep = (listing: IntegrationListing) => integrationMatches(listing, query) && passes(listing, filters);
+  // A search or an availability filter can empty a tier; the tier filter alone only picks one.
+  const filtered = wanted !== "" || filters.availability !== "all";
+  // A plain function, not a component made each render: that would remount the cards (and close a request's dialog).
+  const grid = (items: IntegrationListing[]) => (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((listing) => (
+        <IntegrationCard key={`${listing.scope}:${listing.ref}`} listing={listing} slug={slug} owner={owner} />
+      ))}
+    </div>
+  );
   return (
     <div className="space-y-10">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="flex h-9 w-full max-w-sm items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-sm focus-within:border-line-strong">
-          <Search size={15} className="shrink-0 text-faint" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Find an integration"
-            aria-label="Find an integration"
-            autoComplete="off"
-            className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
-          />
-        </label>
-        <Link to={`/${slug}/-/integrations`} className="text-[0.8125rem] text-muted hover:text-fg">
-          Workspace integrations settings
-        </Link>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <label className="flex h-9 w-full max-w-sm items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-sm focus-within:border-line-strong">
+            <Search size={15} className="shrink-0 text-faint" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Find an integration"
+              aria-label="Find an integration"
+              autoComplete="off"
+              className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
+            />
+          </label>
+          <Link to={`/${slug}/-/integrations`} className="text-[0.8125rem] text-muted hover:text-fg">
+            Workspace integrations settings
+          </Link>
+        </div>
+        <ListingFilterBar kind="integration" filters={filters} counts={filterCounts(everything)} />
       </div>
 
-      {connected.length > 0 && (
-        <section aria-labelledby="connected">
-          <SectionHead id="connected" title="Connected" aside={`${connected.length}`} />
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {connected.map((listing) => (
-              <IntegrationCard key={listing.ref} listing={listing} slug={slug} owner={owner} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section aria-labelledby="available">
-        <SectionHead id="available" title={connected.length > 0 ? "Available" : "Available to connect"} aside={`${available.length}`}>
-          Connected once for the whole workspace by an owner. Each says what it lets agents do.
-        </SectionHead>
-        {available.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-muted">{wanted ? "No integration you can connect matches." : "Everything available is connected."}</p>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {available.map((listing) => (
-              <IntegrationCard key={listing.ref} listing={listing} slug={slug} owner={owner} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {yours.length > 0 && (
-        <section aria-labelledby="yours">
-          <SectionHead id="yours" title="Connected by each person" aside={`${yours.length}`}>
-            Each person connects these for themselves, and agents use them only when that person asks.
-          </SectionHead>
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {yours.map((view) => (
-              <li key={view.id} className="flex flex-col rounded-xl border border-line bg-surface p-4">
-                <div className="flex grow items-start gap-3">
-                  <ConnectorMark view={view} size={40} />
-                  <div className="min-w-0 grow">
-                    <h3 className="truncate text-sm font-semibold">{view.name}</h3>
-                    <p className="mt-0.5 line-clamp-2 text-[0.8125rem] leading-snug text-muted">{view.description}</p>
-                  </div>
-                </div>
-                <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3">
-                  <span className="truncate text-xs text-faint">Each person's own</span>
-                  <Link to={view.href} className="inline-flex h-8 shrink-0 items-center rounded-md border border-line px-3 text-[0.8125rem] font-medium text-fg/85 hover:border-line-strong hover:bg-raised hover:text-fg">
-                    Connect yours
-                  </Link>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {coming.length > 0 && (
-        <section aria-labelledby="coming">
-          <SectionHead id="coming" title="Coming" aside={<ComingBadge />}>
-            Planned, not built. Nobody can connect these yet.
-          </SectionHead>
-          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {coming.map((view) => (
-              <li key={view.id} className="flex items-center gap-3 rounded-lg border border-dashed border-line px-3 py-2.5">
-                <ConnectorMark view={view} size={28} />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm">{view.name}</span>
-                  <span className="block truncate text-xs text-faint">{view.description}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {tiersShown(filters).map((tier) => {
+        const connected = workspace.filter((l) => l.tier === tier && l.availability === "added" && keep(l));
+        const available = workspace.filter((l) => l.tier === tier && l.availability === "available" && keep(l));
+        const blocked = workspace.filter((l) => l.tier === tier && l.availability === "unavailable" && keep(l));
+        const own = yours.filter((l) => l.tier === tier && keep(l));
+        const soon = coming.filter((l) => l.tier === tier && keep(l));
+        const count = connected.length + available.length + blocked.length + own.length + soon.length;
+        return (
+          <section key={tier} aria-labelledby={`tier-${tier}`} className="space-y-8">
+            <SectionHead
+              id={`tier-${tier}`}
+              title={
+                <>
+                  <TierBadge tier={tier} />
+                  {HEADINGS[tier]}
+                </>
+              }
+              aside={`${count}`}
+            >
+              {tier === "official" && count > 0 ? "Every connector in the catalog is built and supported by g1t. Each says what it lets agents do." : null}
+            </SectionHead>
+            {count === 0 && <TierEmpty tier={tier} kind="integration" filtered={filtered} />}
+            {connected.length > 0 && (
+              <div>
+                <SectionHead sub id={`${tier}-connected`} title="Connected" aside={`${connected.length}`} />
+                {grid(connected)}
+              </div>
+            )}
+            {available.length > 0 && (
+              <div>
+                <SectionHead sub id={`${tier}-available`} title="Available to connect" aside={`${available.length}`}>
+                  Connected once for the whole workspace by an owner.
+                </SectionHead>
+                {grid(available)}
+              </div>
+            )}
+            {blocked.length > 0 && (
+              <div>
+                <SectionHead sub id={`${tier}-unavailable`} title="Not available here" aside={`${blocked.length}`}>
+                  This g1t lacks something these need. Each says what.
+                </SectionHead>
+                {grid(blocked)}
+              </div>
+            )}
+            {own.length > 0 && (
+              <div>
+                <SectionHead sub id={`${tier}-yours`} title="Connected by each person" aside={`${own.length}`}>
+                  Each person connects these for themselves, and agents use them only when that person asks.
+                </SectionHead>
+                {grid(own)}
+              </div>
+            )}
+            {soon.length > 0 && (
+              <div>
+                <SectionHead sub id={`${tier}-soon`} title="Soon" aside={`${soon.length}`}>
+                  Planned, not built. Nobody can connect these yet.
+                </SectionHead>
+                <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {soon.map((listing) => (
+                    <IntegrationRow key={listing.ref} listing={listing} />
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        );
+      })}
+      <ListingLegend kind="integration" />
     </div>
   );
 }

@@ -10,9 +10,9 @@ import { describeScope, isScope } from "@g1t/contracts/scopes";
 import { dataDisclosure, extensionById } from "@g1t/contracts/marketplace";
 
 import type { Route } from "./+types/extension";
-import { ACTION, ComingBadge, ExtensionAction, ExtensionMark, TierBadge } from "../../../components/marketplace";
+import { ACTION, ExtensionAction, ExtensionAvailability, ExtensionMark, ListingFacts } from "../../../components/marketplace";
 import { SubmitButton } from "../../../components/ui";
-import { extensionListings, marketplacePath, runtimeWords } from "../../../lib/marketplace";
+import { TIERS, extensionListings, marketplacePath, runtimeWords } from "../../../lib/marketplace";
 import { page } from "../../../lib/meta";
 import { useMarketplace } from "./layout";
 
@@ -56,17 +56,18 @@ export default function MarketplaceExtension({ params }: Route.ComponentProps) {
       <header className="mt-5 flex flex-wrap items-center gap-4">
         <ExtensionMark manifest={manifest} size={64} />
         <div className="min-w-0 grow basis-60">
-          <h2 className="flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">
-            {manifest.name}
-            <TierBadge tier={manifest.publisher.tier} />
-            {manifest.status !== "available" && <ComingBadge />}
-          </h2>
-          <p className="mt-0.5 text-sm text-muted">
-            {manifest.publisher.name} · {manifest.category} · Free
-          </p>
+          <h2 className="text-xl font-semibold tracking-tight">{manifest.name}</h2>
+          <ListingFacts tier={listing!.tier} publisher={manifest.publisher.name} category={manifest.category}>
+            <ExtensionAvailability listing={listing!} owner={owner} />
+          </ListingFacts>
         </div>
         <ExtensionAction listing={listing!} slug={slug} owner={owner} className="h-9 px-4 text-sm" />
       </header>
+      {listing!.availability === "soon" && (
+        <p className="mt-5 max-w-3xl rounded-lg border border-dashed border-line-strong px-4 py-3 text-sm text-muted">
+          Not published yet: nobody can install it until its first release. This page shows what it will add and what it will be able to do.
+        </p>
+      )}
       <p className="mt-6 max-w-3xl text-[0.9375rem] leading-relaxed text-fg-soft">{manifest.description}</p>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -113,6 +114,13 @@ export default function MarketplaceExtension({ params }: Route.ComponentProps) {
             <p className={manifest.domains.length > 0 ? "mt-1 text-warn" : "mt-1 text-muted"}>{dataDisclosure(manifest)}</p>
           </section>
           <dl className="space-y-3 rounded-xl border border-line bg-surface p-4">
+            <div>
+              <dt className="text-xs text-faint">Publisher</dt>
+              <dd className="mt-0.5">
+                {manifest.publisher.name} · {TIERS[listing!.tier].label}
+                <span className="block text-xs text-muted">{TIERS[listing!.tier].about}</span>
+              </dd>
+            </div>
             <div>
               <dt className="text-xs text-faint">Version</dt>
               <dd className="mt-0.5">{install ? `${install.version} installed` : (manifest.version ?? "Not published yet")}</dd>

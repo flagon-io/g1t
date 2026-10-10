@@ -218,6 +218,7 @@ export default [
       route("extensions", "routes/workspace/marketplace/extensions.tsx"),
       route("extensions/:extension", "routes/workspace/marketplace/extension.tsx"),
       route("integrations", "routes/workspace/marketplace/integrations.tsx"),
+      route("integrations/:integration", "routes/workspace/marketplace/integration.tsx"),
       route("requests", "routes/workspace/marketplace/requests.tsx"),
     ]),
     route("-/marketplace/agents", "routes/workspace/moved.ts", { id: "routes/workspace/moved-marketplace-agents" }),

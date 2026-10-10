@@ -1,12 +1,13 @@
 /**
  * What the Marketplace's pages read besides the layout's: what the
- * workspace has connected (lib/connected.server.ts).
+ * workspace has connected, and what this g1t can't connect, with why
+ * (lib/connected.server.ts).
  */
 import type { User } from "@g1t/contracts";
 
 import type { ConnectedState } from "./connectors";
-import { connectedStates } from "./connected.server";
+import { workspaceConnections } from "./connected.server";
 
-export async function loadConnected(slug: string, viewer: User): Promise<Record<string, ConnectedState>> {
-  return connectedStates(slug, viewer);
+export async function loadConnected(slug: string, viewer: User): Promise<{ connected: Record<string, ConnectedState>; unavailable: Record<string, string> }> {
+  return workspaceConnections(slug, viewer);
 }

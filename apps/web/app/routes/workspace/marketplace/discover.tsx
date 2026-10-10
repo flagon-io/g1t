@@ -1,8 +1,10 @@
 /**
- * The Marketplace's front page: featured extensions, integrations
- * (connected first), starter kits, and connected systems. Every listing is
- * real: integrations a workspace can connect today, with their real state,
- * and g1t's own extensions marked Soon until their first release.
+ * The Marketplace's front page: featured extensions, who builds what (the
+ * tiers, and what each availability means), integrations (connected
+ * first), starter kits, and connected systems. Every listing is real:
+ * integrations a workspace can connect today, with their real state, and
+ * g1t's own extensions marked Soon until their first release. Every one
+ * says its tier and whether it can be added here.
  */
 import { Link } from "react-router";
 
@@ -10,7 +12,7 @@ import { type ExtensionManifest, FIRST_PARTY_EXTENSIONS, extensionById } from "@
 import { connectorsFor } from "@g1t/contracts/connectors";
 
 import type { Route } from "./+types/discover";
-import { ComingBadge, ExtensionCard, ExtensionMark, IntegrationCard, SectionHead, SeeAll, StarterKitCard, TierBadge } from "../../../components/marketplace";
+import { AvailabilityBadge, ExtensionCard, ExtensionMark, IntegrationCard, ListingLegend, SectionHead, SeeAll, StarterKitCard, TierBadge } from "../../../components/marketplace";
 import { STARTER_KITS, extensionListings, extensionPath, integrationListings, isConnectedSystem, marketplacePath } from "../../../lib/marketplace";
 import { loadConnected } from "../../../lib/marketplace.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
@@ -20,7 +22,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   const slug = params.owner.toLowerCase();
   if (!roleIn(viewer, slug)) throw new Response(null, { status: 404 });
-  return { connected: await loadConnected(slug, viewer) };
+  return await loadConnected(slug, viewer);
 }
 
 /** How many integrations the front page shows before "All". */
@@ -31,7 +33,7 @@ const FEATURED = ["mail", "support", "crm"];
 export default function MarketplaceDiscover({ loaderData }: Route.ComponentProps) {
   const { slug, owner, username, requests, installs } = useMarketplace();
   const asked = requests?.requests ?? [];
-  const integrations = integrationListings(connectorsFor("workspace"), loaderData.connected, asked, username, slug);
+  const integrations = integrationListings(connectorsFor("workspace"), loaderData.connected, asked, username, slug, loaderData.unavailable);
   const extensions = extensionListings(FIRST_PARTY_EXTENSIONS, installs, asked, username);
   const featured = FEATURED.map((id) => extensionById(id)).filter((manifest) => manifest != null);
   const bridges = extensions.filter((listing) => isConnectedSystem(listing.manifest));
@@ -50,6 +52,8 @@ export default function MarketplaceDiscover({ loaderData }: Route.ComponentProps
           </div>
         </div>
       </section>
+
+      <ListingLegend />
 
       <section aria-labelledby="integrations">
         <SectionHead id="integrations" title="Integrations" aside={<SeeAll to={marketplacePath(slug, "integrations")}>All integrations</SeeAll>}>
@@ -99,8 +103,9 @@ function Feature({ manifest, slug, large = false }: { manifest: ExtensionManifes
       <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_100%_0%,var(--color-accent)_0%,transparent_55%)] opacity-[0.12]" />
       <div className="relative flex items-center gap-2">
         <ExtensionMark manifest={manifest} size={large ? 36 : 28} />
-        <TierBadge tier={manifest.publisher.tier} />
-        {manifest.status !== "available" && <ComingBadge />}
+        <TierBadge tier={manifest.publisher.tier} focusable={false} />
+        <span className="text-xs text-muted">by {manifest.publisher.name}</span>
+        {manifest.status !== "available" && <AvailabilityBadge availability="soon" kind="extension" hint="Not published yet. It can be installed from its first release." focusable={false} className="ml-auto" />}
       </div>
       <h3 className={`relative mt-3 font-semibold tracking-tight ${large ? "text-2xl" : "text-base"}`}>{manifest.name}</h3>
       <p className={`relative mt-1 max-w-xl text-muted ${large ? "text-[0.9375rem]" : "line-clamp-2 text-[0.8125rem]"}`}>{large ? manifest.description : manifest.tagline}</p>

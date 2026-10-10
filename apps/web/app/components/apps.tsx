@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useFetchers } from "react-router";
 
 import { ConnectorMark } from "./connectors";
+import { TierBadge } from "./marketplace";
 import { Skeleton } from "./ui/skeleton";
 import { type BuiltinApp, type InstalledAppData, type PinnableApp, appPinFromForm, installedAppOf, withPin } from "../lib/apps";
 import { cn } from "../lib/cn";
@@ -95,13 +96,16 @@ export function AppTile({
       </span>
       {card ? (
         <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-fg">{app.name}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-medium text-fg">{app.name}</span>
+            <TierBadge tier={app.tier} focusable={false} />
+          </span>
           <span className="block truncate text-xs text-muted">{app.usable ? app.about : "Request access"}</span>
         </span>
       ) : (
-        <span className="w-full min-w-0">
-          <span className="block truncate text-xs font-medium text-fg-soft">{app.name}</span>
-          {!app.usable && <span className="block truncate text-[0.625rem] text-accent">Request access</span>}
+        <span className="flex w-full min-w-0 flex-col items-center gap-1">
+          <span className="block w-full truncate text-xs font-medium text-fg-soft">{app.name}</span>
+          {app.usable ? <TierBadge tier={app.tier} focusable={false} className="px-1 text-[0.5625rem] leading-3.5" /> : <span className="block truncate text-[0.625rem] text-accent">Request access</span>}
         </span>
       )}
     </>

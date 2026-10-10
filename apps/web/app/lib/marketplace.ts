@@ -11,9 +11,9 @@
  *
  * No Workers or React imports, so it can be tested under Node.
  */
-import type { ExtensionInstall, ExtensionManifest, InstallRequest, InstallRequestStatus, ListingTier } from "@g1t/contracts";
-import { type ConnectorView, connectorPath } from "@g1t/contracts/connectors";
-import { listingRef, parseListing } from "@g1t/contracts/marketplace";
+import type { ExtensionInstall, ExtensionManifest, InstallRequest, InstallRequestStatus, ListingKind, ListingTier } from "@g1t/contracts";
+import { CONNECTOR_CATEGORIES, type Connector, type ConnectorCapability, type ConnectorScope, type ConnectorView, connectorPath, connectorView } from "@g1t/contracts/connectors";
+import { CONNECTOR_PUBLISHER, LISTING_TIERS, listingRef, parseListing } from "@g1t/contracts/marketplace";
 
 import type { ConnectedState } from "./connectors";
 
@@ -22,13 +22,78 @@ export function marketplacePath(slug: string, page: "" | "extensions" | "integra
   return `/${slug}/-/marketplace${page ? `/${page}` : ""}`;
 }
 
-/** Who stands behind a listing, in a word and a sentence. */
-export const TIERS: Record<ListingTier, { label: string; about: string }> = {
-  official: { label: "Official", about: "Built and supported by g1t." },
-  verified: { label: "Verified", about: "From a reviewed publisher, whose code and permissions are checked before it is listed." },
-  community: { label: "Community", about: "From anyone, shared from a public repository. Pages run sandboxed; server code waits for an isolated sandbox." },
-  internal: { label: "Internal", about: "Built by your own people and agents, and seen only by your workspace." },
+/**
+ * Who stands behind a listing: in a word, a sentence, and what a tier's
+ * section says while nothing in it is listed (`none`, by kind).
+ */
+export const TIERS: Record<ListingTier, { label: string; about: string; none: Record<ListingKind, string> }> = {
+  official: {
+    label: "Official",
+    about: "Built and supported by g1t.",
+    none: { extension: "No official extensions match.", integration: "No official integrations match." },
+  },
+  verified: {
+    label: "Verified",
+    about: "From a reviewed publisher. Its code and the scopes it asks for are checked before it is listed.",
+    none: { extension: "No verified publishers yet.", integration: "No verified publishers yet." },
+  },
+  community: {
+    label: "Community",
+    about: "From anyone. Its pages run sandboxed on the user-content domain, and its server code stays off until that sandbox is hardened.",
+    none: { extension: "No community extensions yet.", integration: "No community integrations yet." },
+  },
+  internal: {
+    label: "Internal",
+    about: "Built by your own people and agents, and promoted for this workspace only.",
+    none: { extension: "Nothing built in this workspace yet.", integration: "Nothing built in this workspace yet." },
+  },
 };
+
+/**
+ * Whether a listing can be added here, now: it can (`available`), the
+ * workspace has it (`added`: connected, or installed), it is planned and
+ * can't be added by anyone yet (`soon`), or this workspace or this g1t
+ * lacks something it needs (`unavailable`, with why).
+ */
+export type Availability = "available" | "added" | "soon" | "unavailable";
+
+export const AVAILABILITIES: readonly Availability[] = ["available", "added", "soon", "unavailable"];
+
+/** Each availability in words, and the sentence its hint shows. */
+export const AVAILABILITY: Record<Availability, { label: string; about: string }> = {
+  available: { label: "Available", about: "Can be added now. Owners add it for everyone; anyone else can ask an owner." },
+  added: { label: "Added", about: "This workspace has it." },
+  soon: { label: "Soon", about: "Planned, not built yet. Nobody can add it until it is released." },
+  unavailable: { label: "Not available here", about: "This workspace or this g1t lacks something it needs." },
+};
+
+/** What a workspace that has a listing calls it: an integration is connected, an extension installed. */
+export function addedWord(kind: ListingKind): string {
+  return kind === "integration" ? "Connected" : "Installed";
+}
+
+/** A filter's value: one tier or availability, or every one. */
+export type ListingFilters = { tier: ListingTier | "all"; availability: Availability | "all" };
+
+/** The filters a Marketplace page's address asks for (`?tier=verified&availability=soon`); anything unknown is All. */
+export function readFilters(params: URLSearchParams): ListingFilters {
+  const tier = params.get("tier");
+  const availability = params.get("availability");
+  return {
+    tier: LISTING_TIERS.includes(tier as ListingTier) ? (tier as ListingTier) : "all",
+    availability: AVAILABILITIES.includes(availability as Availability) ? (availability as Availability) : "all",
+  };
+}
+
+/** Whether a listing passes the filters. */
+export function passes(listing: { tier: ListingTier; availability: Availability }, filters: ListingFilters): boolean {
+  return (filters.tier === "all" || listing.tier === filters.tier) && (filters.availability === "all" || listing.availability === filters.availability);
+}
+
+/** The tiers a page shows sections for under `filters`: every one, or the one asked for. */
+export function tiersShown(filters: ListingFilters): readonly ListingTier[] {
+  return filters.tier === "all" ? LISTING_TIERS : [filters.tier];
+}
 
 /** Whether `request` is `username`'s and still waiting. */
 function openFor(request: InstallRequest, ref: string, username: string): boolean {
@@ -40,22 +105,64 @@ function openCount(requests: InstallRequest[], ref: string): number {
   return requests.filter((request) => request.status === "open" && request.listing === ref).length;
 }
 
-/** An integration a workspace can connect, with whether it has. */
+/** An integration in the Marketplace, with who stands behind it and whether the workspace has it. */
 export type IntegrationListing = {
   ref: string;
   view: ConnectorView;
+  /** Who connects it: an owner, once for the workspace, or each person for themselves. */
+  scope: ConnectorScope;
+  /** Every connector is g1t's own (CONNECTOR_PUBLISHER). */
+  tier: ListingTier;
+  publisher: string;
+  availability: Availability;
+  /** Why it can't be connected here, when it can't. */
+  why: string | null;
   /** How it is doing, when it is connected. */
   connected: ConnectedState | null;
   /** Where an owner connects it, or manages it once connected. */
   href: string | null;
+  /** Its page in the Marketplace. */
+  path: string;
   requested: boolean;
   waiting: number;
 };
 
+/** One connector as a listing in the workspace `slug`. */
+function integrationListing(
+  view: ConnectorView,
+  scope: ConnectorScope,
+  slug: string,
+  connected: Record<string, ConnectedState> = {},
+  unavailable: Record<string, string> = {},
+  requests: InstallRequest[] = [],
+  username = "",
+): IntegrationListing {
+  const ref = listingRef("integration", view.id);
+  const state = scope === "workspace" ? (connected[view.id] ?? null) : null;
+  const why = view.status === "available" && !state ? (unavailable[view.id] ?? null) : null;
+  const availability: Availability = state ? "added" : view.status !== "available" ? "soon" : why ? "unavailable" : "available";
+  const setup = view.href && !why ? connectorPath(view.href, slug) : null;
+  return {
+    ref,
+    view,
+    scope,
+    tier: CONNECTOR_PUBLISHER.tier,
+    publisher: CONNECTOR_PUBLISHER.name,
+    availability,
+    why,
+    connected: state,
+    href: state?.manage ?? setup,
+    path: integrationPath(slug, view.id),
+    requested: requests.some((request) => openFor(request, ref, username)),
+    waiting: openCount(requests, ref),
+  };
+}
+
 /**
  * The integrations a workspace can connect today, connected ones first,
  * each in catalog order. `connected` comes from the integrations service
- * and the GitHub App (lib/connected.server.ts).
+ * and the GitHub App (lib/connected.server.ts), as does `unavailable`:
+ * connectors this g1t can't connect, with why.
  */
 export function integrationListings(
   views: ConnectorView[],
@@ -63,23 +170,63 @@ export function integrationListings(
   requests: InstallRequest[],
   username: string,
   slug: string,
+  unavailable: Record<string, string> = {},
 ): IntegrationListing[] {
-  const listings = views
-    .filter((view) => view.status === "available")
-    .map((view) => {
-      const ref = listingRef("integration", view.id);
-      const state = connected[view.id] ?? null;
-      const setup = view.href ? connectorPath(view.href, slug) : null;
-      return {
-        ref,
-        view,
-        connected: state,
-        href: state?.manage ?? setup,
-        requested: requests.some((request) => openFor(request, ref, username)),
-        waiting: openCount(requests, ref),
-      };
-    });
+  const listings = views.filter((view) => view.status === "available").map((view) => integrationListing(view, "workspace", slug, connected, unavailable, requests, username));
   return [...listings.filter((l) => l.connected), ...listings.filter((l) => !l.connected)];
+}
+
+/** What each person connects for themselves, available today, as listings. */
+export function personalListings(views: ConnectorView[], slug: string, unavailable: Record<string, string> = {}): IntegrationListing[] {
+  return views.filter((view) => view.status === "available" && view.href != null).map((view) => integrationListing(view, "personal", slug, {}, unavailable));
+}
+
+/** The coming integrations (comingIntegrations), as listings: Soon, with nothing to press. */
+export function comingListings(views: ConnectorView[], personal: ConnectorView[], slug: string): IntegrationListing[] {
+  const workspace = new Set(views.map((view) => view.id));
+  return comingIntegrations(views, personal).map((view) => integrationListing(view, workspace.has(view.id) ? "workspace" : "personal", slug));
+}
+
+/** One integration's page in the Marketplace. */
+export function integrationPath(slug: string, id: string): string {
+  return `/${slug}/-/marketplace/integrations/${id}`;
+}
+
+/** One way an integration is connected, and what it does there. */
+export type IntegrationUse = {
+  scope: ConnectorScope;
+  /** Who connects it this way, in words. */
+  who: string;
+  description: string;
+  capabilities: ConnectorCapability[];
+};
+
+/**
+ * What an integration does, today and soon: each way it is connected (for
+ * the workspace, for each person) under whether that way is available yet,
+ * from the catalog. Linear, say, works for a workspace today, and for each
+ * person's own inbox soon.
+ */
+export function integrationUses(connector: Connector): { today: IntegrationUse[]; soon: IntegrationUse[] } {
+  const today: IntegrationUse[] = [];
+  const soon: IntegrationUse[] = [];
+  for (const scope of connector.scopes) {
+    const view = connectorView(connector, scope);
+    if (!view) continue;
+    const use = {
+      scope,
+      who: scope === "workspace" ? "For the whole workspace, connected once by an owner" : "For each person, with their own account",
+      description: view.description,
+      capabilities: view.capabilities,
+    };
+    (view.status === "available" ? today : soon).push(use);
+  }
+  return { today, soon };
+}
+
+/** A connector category's title: `issues` is `Issues & projects`. */
+export function categoryTitle(category: Connector["category"]): string {
+  return CONNECTOR_CATEGORIES.find((c) => c.id === category)?.title ?? category;
 }
 
 /**
@@ -93,10 +240,13 @@ export function comingIntegrations(views: ConnectorView[], personal: ConnectorVi
   return [...workspace, ...own];
 }
 
-/** An extension in the Marketplace, with whether the workspace has it. */
+/** An extension in the Marketplace, with who stands behind it and whether the workspace has it. */
 export type ExtensionListing = {
   ref: string;
   manifest: ExtensionManifest;
+  /** Its publisher's tier. */
+  tier: ListingTier;
+  availability: Availability;
   install: ExtensionInstall | null;
   requested: boolean;
   waiting: number;
@@ -126,10 +276,13 @@ export const STARTER_KITS: StarterKit[] = [
 export function extensionListings(manifests: ExtensionManifest[], installs: ExtensionInstall[], requests: InstallRequest[], username: string): ExtensionListing[] {
   const listings = manifests.map((manifest) => {
     const ref = listingRef("extension", manifest.id);
+    const install = installs.find((install) => install.listing === ref) ?? null;
     return {
       ref,
       manifest,
-      install: installs.find((install) => install.listing === ref) ?? null,
+      tier: manifest.publisher.tier,
+      availability: (install ? "added" : manifest.status === "available" ? "available" : "soon") as Availability,
+      install,
       requested: requests.some((request) => openFor(request, ref, username)),
       waiting: openCount(requests, ref),
     };

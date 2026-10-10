@@ -22,6 +22,40 @@ Open it from **Apps** at the foot of the dock (the launcher's
 *Marketplace*. Its address is `g1t.sh/<workspace>/-/marketplace`. The
 Marketplace isn't in the dock itself.
 
+## Who builds what, and whether you can add it
+
+Every listing, on every card, page and request, carries two labels: its
+**tier**, which says who stands behind it, and its **availability**,
+which says whether it can be added here, now. Hover or focus a label to
+read what it means. **Discover** explains both under **Who builds what**.
+
+| Tier | Colour | Who stands behind it |
+| --- | --- | --- |
+| **Official** | Lavender | g1t. Built and supported by g1t. Every integration is Official, as are g1t's own extensions. |
+| **Verified** | Green | A reviewed publisher. Its code and the scopes it asks for are checked before it is listed. |
+| **Community** | Amber | Anyone. Its pages run sandboxed on the user-content domain (g1tusercontent.com on g1t.sh), and its server code stays off until that sandbox is hardened. |
+| **Internal** | Blue | Your own people and agents. Promoted for your workspace only. |
+
+Today everything listed is Official. The **Extensions** and
+**Integrations** tabs still show a section for each tier, so a tier
+with nothing in it says so: *No verified publishers yet*, *No community
+extensions yet*, *Nothing built in this workspace yet*.
+
+| Availability | What it means |
+| --- | --- |
+| **Available** | It can be added now. Owners add it for everyone; anyone else asks an owner with **Request**. |
+| **Connected** or **Installed** | This workspace has it. An installed extension that was switched off says **Switched off**. |
+| **Soon** | Planned, not built yet. Nobody can add it until it is released, so its card is drawn dashed and muted, with nothing to press. Its page still shows what it will do. |
+| **Not available here** | This workspace or this g1t lacks something it needs, and the listing says what. For example, GitHub needs a GitHub App, which a self-hosted g1t adds before anyone can connect it. |
+
+### Filter by tier and availability
+
+The **Extensions** and **Integrations** tabs have two rows of filters,
+**Who builds it** and **Availability**, each option with how many
+listings it has. A filter is kept in the address, such as
+`/<workspace>/-/marketplace/integrations?tier=official&availability=soon`,
+so a filtered list can be shared.
+
 ## Who can add things
 
 Every member of a workspace can browse the Marketplace. Only its
@@ -33,9 +67,9 @@ them can spend the workspace's money or reach its data. Everyone else sees
 
 | Tab | What it shows |
 | --- | --- |
-| **Discover** | Featured extensions, integrations with the connected ones first, starter kits, and connected systems. |
-| **Extensions** | Every extension listed: published ones first, then g1t's own that are coming, then connected systems, and how extensions are shared. |
-| **Integrations** | Connected integrations, the ones you can connect now, the ones each person connects for themselves, and the ones coming. Search by name, by what it does, or by a word such as *tracker*. |
+| **Discover** | Featured extensions, who builds what, integrations with the connected ones first, starter kits, and connected systems. |
+| **Extensions** | Every extension, by tier: g1t's own (connected systems apart), then Verified, Community and Internal. Filters by tier and availability, and how extensions are shared. |
+| **Integrations** | Every integration, by tier. Under Official: connected ones, the ones you can connect now, any not available here, the ones each person connects for themselves, and the ones coming. Search by name, by what it does, or by a word such as *tracker*, and filter by tier and availability. |
 | **Requests** | For owners, every request members made, waiting first; for anyone else, **Your requests**. The tab shows how many are waiting. |
 
 ## Extensions
@@ -73,18 +107,11 @@ CRM), **Engineering extras** (On-call, Helpdesk bridge) and **People and
 operations** (Recruiting, ERP bridge). They are on **Discover**, marked
 **Soon** until then.
 
-### Who stands behind a listing
-
-| Tier | Who | |
-| --- | --- | --- |
-| **Official** | g1t | Built and supported by g1t. |
-| **Verified** | A reviewed publisher | Code and permissions are checked before it is listed. |
-| **Community** | Anyone | Shared from a public repository. Pages run sandboxed; server code runs on the publisher's own servers until hosted code has an isolated sandbox. |
-| **Internal** | Your workspace | Built by your own people and agents, seen only by your workspace. |
-
 ### What an extension's page tells you
 
-Before anything is installed, its page lists:
+Its header says its tier, who publishes it, its availability and its
+category, such as *Official · by g1t · Soon · Customers*. Before anything
+is installed, its page lists:
 
 - **What it adds**: its pages, the cards it shows in chat, the agent roles
   it brings, the tools agents get, and the notifications it sends.
@@ -142,6 +169,15 @@ connect, with whether yours has. **Connect** opens its setup page;
 **Manage** opens it once it is connected. **Needs attention** means a
 connection's last check failed: hover it to see why.
 
+Each integration has its own page,
+`/<workspace>/-/marketplace/integrations/<id>`, opened from its card. Its
+header says its tier, publisher, availability and category, and **What
+it lets agents and people do** sets out, for each way it is connected
+(for the whole workspace, or for each person), what works **Today** and
+what is **Soon**. Linear, for example, lets agents read and write back
+for a workspace today, while each person's Linear inbox is Soon. When an
+integration is not available here, its page says why.
+
 Some integrations each person connects for themselves, such as a GitHub
 account or an MCP client. They are listed under **Connected by each
 person**, and **Connect yours** opens your own
@@ -153,7 +189,9 @@ coming ones.
 ## Ask an owner to add something
 
 1. Choose **Request** on an extension or an integration.
-2. Say why you want it, if you like, and choose **Send request**.
+2. Check what you are asking for: the dialog shows its tier, who
+   publishes it, and that it is available.
+3. Say why you want it, if you like, and choose **Send request**.
 
 Every owner is notified. The button then reads **Requested**, and **Your
 requests** lists it until an owner answers; you are notified when one does.
@@ -173,5 +211,5 @@ Answered requests stay listed for 30 days.
 ## Apps
 
 What the workspace added from the Marketplace that you can use is under
-**Apps**: today, the integrations it connected. Pin the ones you want to
-your dock. See [Apps](/guides/workspaces/#apps).
+**Apps**: today, the integrations it connected. Each shows its tier, as
+in the Marketplace. Pin the ones you want to your dock. See [Apps](/guides/workspaces/#apps).

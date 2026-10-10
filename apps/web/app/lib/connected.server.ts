@@ -16,6 +16,15 @@ import { integrations, webhooks } from "./services.server";
 
 /** What the workspace `slug` has connected, as `viewer` may see it. Each source that does not answer counts as nothing connected. */
 export async function connectedStates(slug: string, viewer: User): Promise<Record<string, ConnectedState>> {
+  return (await workspaceConnections(slug, viewer)).connected;
+}
+
+/**
+ * What the workspace `slug` has connected, and the connectors this g1t
+ * can't connect at all, by id, each with why: GitHub when no GitHub App is
+ * set up (as on a self-hosted g1t that hasn't added one).
+ */
+export async function workspaceConnections(slug: string, viewer: User): Promise<{ connected: Record<string, ConnectedState>; unavailable: Record<string, string> }> {
   const [connections, github, hooks] = await Promise.all([
     integrations.list(slug, viewer).catch(() => null),
     githubApp.status(viewer, slug).catch(() => null),
@@ -47,5 +56,7 @@ export async function connectedStates(slug: string, viewer: User): Promise<Recor
       manage: null,
     };
   }
-  return connected;
+  const unavailable: Record<string, string> = {};
+  if (github?.ok && !github.value.configured) unavailable.github = "This g1t has no GitHub App set up. Whoever runs it adds one first.";
+  return { connected, unavailable };
 }
