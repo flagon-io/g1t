@@ -87,6 +87,13 @@ function blockNodes(list: Block[]): DocNode[] {
         break;
       case "hr":
         break;
+      case "table": {
+        // The composer has no tables: each row comes back as the line it was written as.
+        const row = (cells: Span[][]): Span[] => [{ t: "text", v: "| " }, ...cells.flatMap((cell, at) => [...(at ? [{ t: "text" as const, v: " | " }] : []), ...cell]), { t: "text", v: " |" }];
+        const rule = block.align.map((align) => (align === "center" ? ":-:" : align === "right" ? "--:" : align === "left" ? ":--" : "---"));
+        out.push(paragraph(row(block.head)), paragraph([{ t: "text", v: `| ${rule.join(" | ")} |` }]), ...block.rows.map((cells) => paragraph(row(cells))));
+        break;
+      }
       case "code":
         out.push({ type: "codeBlock", attrs: { language: block.lang }, ...(block.v ? { content: [{ type: "text", text: block.v }] } : {}) });
         break;

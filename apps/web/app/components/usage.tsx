@@ -30,8 +30,10 @@ import {
   usageCsv,
 } from "../lib/usage";
 import { cn } from "../lib/cn";
+import { Checkbox } from "./ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Hint } from "./ui/hint";
+import { Input } from "./ui/input";
 import { SelectField } from "./ui/select";
 import { Skeleton } from "./ui/skeleton";
 
@@ -69,7 +71,7 @@ function MultiSelect({ name, label, options, chosen }: { name: string; label: st
             {options.map((option) => (
               <li key={option.value}>
                 <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-surface">
-                  <input type="checkbox" name={name} value={option.value} defaultChecked={chosen.includes(option.value)} className="accent-[var(--color-accent)]" />
+                  <Checkbox name={name} value={option.value} defaultChecked={chosen.includes(option.value)} />
                   <span className="truncate">{option.label}</span>
                 </label>
               </li>
@@ -130,9 +132,9 @@ export function UsageFilterBar({
       />
       {filters.period === "custom" ? (
         <span className="flex items-center gap-1 text-sm">
-          <input type="date" name="from" defaultValue={filters.from} aria-label="From" className={SELECT} />
+          <Input type="date" name="from" defaultValue={filters.from} aria-label="From" className="h-8 w-auto px-2" />
           <span className="text-faint">to</span>
-          <input type="date" name="until" defaultValue={filters.until} aria-label="Until" className={SELECT} />
+          <Input type="date" name="until" defaultValue={filters.until} aria-label="Until" className="h-8 w-auto px-2" />
         </span>
       ) : (
         <span className="px-1 text-sm text-muted tabular-nums">{rangeLabel(filters.from, filters.until)}</span>

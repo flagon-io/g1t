@@ -1,5 +1,5 @@
 import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PanelLeft, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
 import { type Abilities, type ChatSidebarEntry, type InboxCounts, type WorkspaceAgent, type Membership, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
@@ -12,9 +12,12 @@ import { PinButton } from "./pin-button";
 import { Hint } from "./ui/hint";
 import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
 import { StatusDot, useSiteStatus } from "./footer";
-import { Logo } from "./logo";
+import { Logo, MarkGlyph } from "./logo";
 import { Avatar, SoonPill } from "./ui";
 import { Skeleton } from "./ui/skeleton";
+import { Button } from "./ui/button";
+import { Separator } from "./ui/separator";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "./ui/breadcrumb";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,7 +33,6 @@ import { AgentsSidebar } from "./agents-mode";
 import { ChatSidebar } from "./chat/sidebar";
 import { FoliosSidebar } from "./folios/sidebar";
 import { Dock, ShortcutsDialog, WorkspaceSwitcher, sidebarKeyLabel } from "./dock";
-import { G1tMark } from "./orchestrator";
 import { BottomBar, isConversation, useVisualViewport } from "./mobile";
 import { useChatSidebar } from "./chat/actions";
 import { unreadTotals } from "../lib/chat";
@@ -1451,11 +1453,11 @@ function Breadcrumbs({
   // visible and only something inside it is missing.
   const visibleRepo = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(pathname);
   if (missing && !(visibleRepo && sameRepo(repo ?? null, { namespace: visibleRepo[1]!, name: visibleRepo[2]! }))) {
-    return <span className="text-sm font-medium">Not found</span>;
+    return <Here>Not found</Here>;
   }
   const parts = pathname.split("/").filter(Boolean);
   const reserved = ["settings", "explore", "new", "search", "workspaces", "policies", "security", "support", "status", "invite", "notifications"];
-  if (parts.length === 0) return <span className="text-sm font-medium">Home</span>;
+  if (parts.length === 0) return <Here>Home</Here>;
   // Your settings: Settings / Emails.
   if (parts[0] === "settings") {
     const page = accountSettingsPage(pathname);
@@ -1475,7 +1477,7 @@ function Breadcrumbs({
       invite: "Invite",
       notifications: "Notifications",
     };
-    return <span className="text-sm font-medium">{words[parts[0]!]}</span>;
+    return <Here>{words[parts[0]!]}</Here>;
   }
   // A person's profile, by their handle.
   if (parts[0] === "u" && parts[1]) return <ProfileCrumb username={parts[1]} />;
@@ -1518,10 +1520,31 @@ function ProfileCrumb({ username }: { username: string }) {
   const page = useRouteLoaderData("routes/user") as { profile?: { username: string; displayUsername?: string | null; avatar: string | null } } | undefined;
   const profile = page?.profile?.username.toLowerCase() === username.toLowerCase() ? page.profile : null;
   return (
-    <Link to={`/u/${profile?.username ?? username}`} aria-current="page" className="flex min-w-0 items-center gap-2 rounded px-1 py-0.5 transition-colors hover:bg-raised">
-      <Avatar name={profile?.username ?? username} image={profile?.avatar ?? null} size={20} />
-      <span className="truncate font-mono text-[0.8125rem] font-medium">@{profile ? shownUsername(profile) : username}</span>
-    </Link>
+    <Breadcrumb className="min-w-0">
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <BreadcrumbPage asChild className="flex items-center gap-2 hover:bg-raised">
+            <Link to={`/u/${profile?.username ?? username}`}>
+              <Avatar name={profile?.username ?? username} image={profile?.avatar ?? null} size={20} />
+              <span className="truncate font-mono text-[0.8125rem]">@{profile ? shownUsername(profile) : username}</span>
+            </Link>
+          </BreadcrumbPage>
+        </BreadcrumbItem>
+      </BreadcrumbList>
+    </Breadcrumb>
+  );
+}
+
+/** A page with no trail to it, such as Today or Search: its name alone. */
+function Here({ children }: { children: ReactNode }) {
+  return (
+    <Breadcrumb className="min-w-0">
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <BreadcrumbPage>{children}</BreadcrumbPage>
+        </BreadcrumbItem>
+      </BreadcrumbList>
+    </Breadcrumb>
   );
 }
 
@@ -1536,43 +1559,51 @@ function Trail({ trail }: { trail: Crumb[] }) {
   // Up on a phone, unless up is the workspace itself: its pages are the tabs.
   const up = trail.length > 1 && !/^\/[^/]+$/.test(trail[trail.length - 2]!.to) ? trail[trail.length - 2]! : null;
   return (
-    <nav aria-label="Where you are" className="flex min-w-0 items-center gap-1.5 text-sm">
+    <Breadcrumb className="flex min-w-0 items-center">
       {up && (
-        <Link
-          to={up.to}
-          prefetch="intent"
-          aria-label={`Back to ${up.label}`}
-          className="-ml-1 flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-fg sm:hidden"
-        >
-          <ChevronLeft size={16} />
-        </Link>
+        <Button asChild variant="ghost" size="icon-bar" className="-ml-1 sm:hidden">
+          <Link to={up.to} prefetch="intent" aria-label={`Back to ${up.label}`}>
+            <ChevronLeft size={16} />
+          </Link>
+        </Button>
       )}
-      {trail.map((crumb, index) => {
-        const last = index === trail.length - 1;
-        return (
-          <span key={index} className={`min-w-0 items-center gap-1.5 ${last ? "flex" : "hidden sm:flex"}`}>
-            {index > 0 && <span className="hidden text-line-strong sm:inline">/</span>}
-            <Link
-              to={crumb.to}
-              prefetch="intent"
-              aria-current={last ? "page" : undefined}
-              className={`truncate rounded px-1 py-0.5 transition-colors hover:bg-raised ${
-                last ? "font-medium text-fg" : "text-muted hover:text-fg"
-              } ${crumb.mono ? "font-mono text-[0.8125rem]" : ""}`}
-            >
-              {last && crumb.short ? (
-                <>
-                  <span className="sm:hidden">{crumb.short}</span>
-                  <span className="hidden sm:inline">{crumb.label}</span>
-                </>
-              ) : (
-                crumb.label
-              )}
-            </Link>
-          </span>
-        );
-      })}
-    </nav>
+      <BreadcrumbList>
+        {trail.map((crumb, index) => {
+          const last = index === trail.length - 1;
+          const label =
+            last && crumb.short ? (
+              <>
+                <span className="sm:hidden">{crumb.short}</span>
+                <span className="hidden sm:inline">{crumb.label}</span>
+              </>
+            ) : (
+              crumb.label
+            );
+          const mono = crumb.mono ? "font-mono text-[0.8125rem]" : "";
+          return (
+            <Fragment key={index}>
+              {index > 0 && <BreadcrumbSeparator className="max-sm:hidden" />}
+              <BreadcrumbItem className={last ? "" : "max-sm:hidden"}>
+                {last ? (
+                  // The page you are on is still a link: to its own top, as the trail always was.
+                  <BreadcrumbPage asChild className={`hover:bg-raised ${mono}`}>
+                    <Link to={crumb.to} prefetch="intent">
+                      {label}
+                    </Link>
+                  </BreadcrumbPage>
+                ) : (
+                  <BreadcrumbLink asChild className={mono}>
+                    <Link to={crumb.to} prefetch="intent">
+                      {label}
+                    </Link>
+                  </BreadcrumbLink>
+                )}
+              </BreadcrumbItem>
+            </Fragment>
+          );
+        })}
+      </BreadcrumbList>
+    </Breadcrumb>
   );
 }
 
@@ -1725,18 +1756,20 @@ export function Progress() {
   );
 }
 
-/** The top bar's way to g1t: the direct message with the workspace's orchestrator, opened or made. */
+/**
+ * The top bar's way to g1t: the direct message with the workspace's
+ * orchestrator, opened or made. The one tinted control in the bar: the
+ * lavender pixel 1 bare beside its words, on a wash of the accent.
+ */
 function AskG1tButton({ slug }: { slug: string }) {
   return (
     <Hint label="Ask g1t">
-      <Link
-        to={`/${slug}/-/chat?agent=g1t`}
-        aria-label="Ask g1t"
-        className="flex h-8 items-center gap-1.5 rounded-md border border-line px-1.5 text-sm text-fg/90 transition-colors hover:border-line-strong hover:bg-raised hover:text-fg sm:px-2.5"
-      >
-        <G1tMark size={18} />
-        <span className="hidden lg:inline">Ask g1t</span>
-      </Link>
+      <Button asChild variant="soft" size="bar" className="gap-2 lg:px-3">
+        <Link to={`/${slug}/-/chat?agent=g1t`} aria-label="Ask g1t">
+          <MarkGlyph className="h-3.5" />
+          <span className="max-lg:hidden">Ask g1t</span>
+        </Link>
+      </Button>
     </Hint>
   );
 }
@@ -1788,20 +1821,39 @@ function useSidebarShortcut(toggle: () => void) {
   }, [toggle]);
 }
 
+/**
+ * Search or jump to: the command palette. On a computer it looks like the
+ * field it opens, with its shortcut; on a phone, a magnifier.
+ */
+function SearchButton({ onClick }: { onClick: () => void }) {
+  return (
+    <>
+      <Button variant="ghost" size="icon-bar" aria-label="Search or jump to" onClick={onClick} className="md:hidden">
+        <Search size={18} />
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        aria-label="Search or jump to"
+        onClick={onClick}
+        className="mr-1 w-[min(18rem,26vw)] justify-start bg-surface font-normal text-faint hover:bg-surface hover:text-muted max-md:hidden"
+      >
+        <Search size={15} />
+        <span className="grow truncate text-left">Search or jump to</span>
+        <PaletteKey className="rounded border border-line bg-bg px-1.5 font-mono text-[0.625rem] leading-4 text-muted" />
+      </Button>
+    </>
+  );
+}
+
 /** The button that shows or hides the sidebar. */
 function SidebarToggle({ onClick, open, className = "" }: { onClick: () => void; open: boolean; className?: string }) {
   const key = sidebarKeyLabel(typeof navigator === "undefined" ? null : navigator.platform);
   return (
     <Hint label={`Toggle sidebar (${key})`}>
-      <button
-        type="button"
-        aria-label={open ? "Hide the sidebar" : "Show the sidebar"}
-        aria-expanded={open}
-        onClick={onClick}
-        className={`flex size-8 shrink-0 items-center justify-center rounded-md text-muted outline-none transition-colors hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent ${className}`}
-      >
+      <Button variant="ghost" size="icon-sm" aria-label={open ? "Hide the sidebar" : "Show the sidebar"} aria-expanded={open} onClick={onClick} className={className}>
         <PanelLeft size={17} />
-      </button>
+      </Button>
     </Hint>
   );
 }
@@ -1844,6 +1896,14 @@ export function AppShell({
   usePaletteShortcut(() => setPalette((open) => !open));
   const leaving = useLeaving();
   useVisualViewport();
+  // Whether the page has scrolled under the top bar, which then draws its line (see data-page-head).
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 2);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const going = useNavigation().location?.pathname;
   const ws = shell.workspace;
@@ -1966,12 +2026,16 @@ export function AppShell({
       </SheetContent>
 
       <div className={`min-h-dvh px-1.5 pt-(--frame-top) pb-(--tabbar-h) md:pr-2 ${pad}`}>
-        <div className="flex min-h-[calc(100dvh-var(--frame-top)-var(--tabbar-h))] min-w-0 flex-col rounded-[14px] bg-bg">
+        {/* A page whose own header sits right under this bar (data-page-head: a conversation's, a project's) reads as one
+            block with it: no line between them until the page scrolls under the bar. A sticky one (data-page-head="sticky",
+            an open artifact's) stays under the bar, so the line is always its. */}
+        <div className="flex min-h-[calc(100dvh-var(--frame-top)-var(--tabbar-h))] min-w-0 flex-col rounded-[14px] bg-bg [&:has([data-page-head])>header:not([data-scrolled])]:border-b-transparent [&:has([data-page-head=sticky])>header]:border-b-transparent">
           <header
-            className={`sticky top-(--frame-top) z-30 flex h-14 items-center gap-1.5 rounded-t-[14px] border-b border-line bg-bg pr-2 pl-2 sm:gap-2 sm:pr-3 ${conversation ? "max-md:hidden" : ""}`}
+            data-scrolled={scrolled || undefined}
+            className={`sticky top-(--frame-top) z-30 flex h-14 items-center gap-1 rounded-t-[14px] border-b border-line bg-bg pr-2 pl-2 transition-[border-color] duration-150 sm:pr-3 ${inline ? "lg:pl-3.5" : ""} ${conversation ? "max-md:hidden" : ""}`}
           >
             {panel && (
-              <SidebarToggle open={drawer} onClick={toggleSidebar} className={inline ? "lg:hidden" : ""} />
+              <SidebarToggle open={drawer} onClick={toggleSidebar} className={`max-md:size-11 ${inline ? "lg:hidden" : ""}`} />
             )}
             {ws && (
               <span className={`flex min-w-0 shrink items-center gap-1.5 ${inline ? "lg:hidden" : ""}`}>
@@ -1982,26 +2046,19 @@ export function AppShell({
               </span>
             )}
             <Breadcrumbs pathname={pathname} missing={missing} repo={shell.repo} workspace={ws?.slug ?? null} />
-            <div className="ml-auto flex shrink-0 items-center gap-1.5">
-              <button
-                type="button"
-                aria-label="Search or jump to"
-                onClick={() => setPalette(true)}
-                className="flex h-8 items-center gap-2 rounded-md text-faint transition-colors hover:text-muted max-md:w-8 max-md:justify-center max-md:hover:bg-raised md:w-[min(17rem,26vw)] md:border md:border-line md:bg-surface md:px-2.5 md:hover:border-line-strong"
-              >
-                <Search size={15} className="shrink-0" />
-                <span className="hidden grow truncate text-left text-[0.8125rem] md:inline">Search or jump to</span>
-                <PaletteKey className="hidden rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line md:inline" />
-              </button>
+            {/* Search, then what's yours (spend, Ask g1t), then the bell and Create new: one height, one rhythm. */}
+            <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
+              <SearchButton onClick={() => setPalette(true)} />
               {/* Your spend this month, or the workspace's for owners and billing managers; on a phone it is on Spend. */}
               {ws && (
-                <span className="max-md:hidden">
+                <span className="flex max-md:hidden">
                   <SpendPill slug={ws.slug} mayWorkspace={ws.role === "owner" || !!ws.org_roles?.includes("billing_manager")} />
                 </span>
               )}
               {ws && <AskG1tButton slug={ws.slug} />}
+              <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5 max-md:hidden" />
               {/* On a phone, Notifications is in the bottom bar. */}
-              <span className="max-md:hidden">
+              <span className="flex max-md:hidden">
                 <NotificationsBell counts={shell.inbox ? { ...shell.inbox, unread: notificationsUnread } : null} />
               </span>
               <CreateMenu shell={shell} />
@@ -2015,13 +2072,12 @@ export function AppShell({
           </main>
         </div>
       </div>
-      {/* The panel's edge: a rounded frame over the page, with the background beyond it, so what scrolls stays inside. */}
-      {!conversation && (
-        <div
-          aria-hidden="true"
-          className={`pointer-events-none fixed top-(--frame-top) right-1.5 bottom-(--tabbar-h) left-1.5 z-[35] rounded-[14px] shadow-[0_0_0_1px_var(--color-line),0_0_0_100vmax_var(--color-shell)] md:right-2 ${left}`}
-        />
-      )}
+      {/* The panel's edge: a rounded frame over the page, with the background beyond it, so what scrolls stays inside.
+          Every page has it, a conversation too; only a phone's conversation, full screen over everything, goes without. */}
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none fixed top-(--frame-top) right-1.5 bottom-(--tabbar-h) left-1.5 z-[35] rounded-[14px] shadow-[0_0_0_1px_var(--color-line),0_0_0_100vmax_var(--color-shell)] md:right-2 ${left} ${conversation ? "max-md:hidden" : ""}`}
+      />
       {ws && <BottomBar user={user} workspace={ws} pins={shell.pins ?? []} unread={unread} onReselect={panel ? () => setDrawer(true) : undefined} />}
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} repo={shell.repo ? `${shell.repo.namespace}/${shell.repo.name}` : null} />
     </Sheet>
@@ -2033,12 +2089,11 @@ function CreateMenu({ shell }: { shell: ShellData }) {
   return (
     <DropdownMenu>
       <Hint label="Create new">
-        <DropdownMenuTrigger
-          aria-label="Create new"
-          className="flex h-8 items-center gap-1 rounded-md border border-line px-1.5 text-fg/90 outline-none transition-colors hover:border-line-strong hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised sm:px-2"
-        >
-          <Plus size={16} />
-          <ChevronDown size={13} className="text-muted max-sm:hidden" />
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="bar" aria-label="Create new" className="gap-0.5 px-1.5 text-fg/90">
+            <Plus size={17} className="max-md:size-5" />
+            <ChevronDown size={12} className="text-faint max-md:hidden" />
+          </Button>
         </DropdownMenuTrigger>
       </Hint>
       <DropdownMenuContent align="end" className="min-w-52">

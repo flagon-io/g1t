@@ -298,6 +298,19 @@ Code blocks with a language g1t knows (`ts`, `rust`, `python`, `sh`,
 address on its own becomes a link, and links open in a new tab. Headings
 an agent writes show as a bold line, and a rule as a line across.
 
+A table written in Markdown shows as a table: a header row, a row of
+`---` under it (`:--`, `:-:` or `--:` to line a column up left, centre
+or right), then a row per line. A wide table scrolls sideways inside the
+message. The composer has no table to edit, so editing a message with
+one shows its rows as the lines they were written as.
+
+```md
+| Session | Length | Who |
+| --- | --: | --- |
+| Welcome and tour | 45 min | Ana |
+| Your first issue | 60 min | Margo |
+```
+
 Chat never shows HTML: `<b>` reads as typed. An image written in Markdown
 shows as a link to it, not the image.
 

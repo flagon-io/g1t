@@ -121,11 +121,11 @@ export function WorkspaceSwitcher({ user, workspace, compact = false }: { user: 
         aria-label={`${displayName(workspace)}: switch workspace`}
         className={cn(
           "flex min-w-0 items-center rounded-lg outline-none transition-colors hover:bg-raised focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised",
-          compact ? "h-8 shrink-0 gap-1.5 px-1 max-sm:max-w-40" : "h-9 grow gap-2 px-1.5",
+          compact ? "h-8 shrink-0 gap-1.5 px-1 max-md:h-11 max-sm:gap-1" : "h-9 grow gap-2 px-1.5",
         )}
       >
         <Avatar name={workspace.slug} image={workspace.avatar} size={compact ? 22 : 26} square />
-        <span className={cn("min-w-0 truncate font-semibold", compact ? "text-sm" : "text-[0.875rem]")}>{displayName(workspace)}</span>
+        <span className={cn("min-w-0 truncate font-semibold", compact ? "text-sm max-sm:hidden" : "text-[0.875rem]")}>{displayName(workspace)}</span>
         <ChevronDown size={14} className="shrink-0 text-faint" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-72 p-1.5">

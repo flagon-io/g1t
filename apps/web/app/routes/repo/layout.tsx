@@ -202,8 +202,8 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   // the page shows its name, and the views of the page it is on as tabs.
   return (
     <>
-      <div className="border-b border-line">
-        <div className={`mx-auto max-w-6xl px-4 sm:px-6 ${tabs ? "pt-3" : "py-3"}`}>
+      <div data-page-head className="border-b border-line">
+        <div className={`mx-auto max-w-6xl px-4 sm:px-5 ${tabs ? "pt-3" : "py-3"}`}>
           <Header
             project={project}
             isPrivate={repo.isPrivate}
@@ -238,7 +238,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
           )}
         </div>
       </div>
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-5">
         {welcome && (
           <div className="mb-6">
             <WelcomeBanner title={`You're in ${repo.namespace}/${repo.name}`}>

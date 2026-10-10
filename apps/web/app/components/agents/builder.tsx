@@ -13,6 +13,7 @@ import { type AgentProposal, type AgentRedraft, type AgentTemplate, type DraftTu
 import { AgentAvatar, PixelCreature } from "../agent-avatar";
 import { Markdown } from "../markdown";
 import { Badge } from "../ui/badge";
+import { Checkbox } from "../ui/checkbox";
 import { Hint } from "../ui/hint";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { type BuilderDefinition, type ChangeRow, changeRows, integrationHint } from "../../lib/agent-builder";
@@ -369,18 +370,16 @@ export function ProposalCard({
             return (
               <label
                 key={skill.id}
-                className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-bg px-3 py-2 text-sm has-checked:border-accent/50 has-checked:bg-accent/5"
+                className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-bg px-3 py-2 text-sm has-[[data-state=checked]]:border-accent/50 has-[[data-state=checked]]:bg-accent/5"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={on}
-                  onChange={() => {
+                  onCheckedChange={() => {
                     const next = new Set(off);
                     if (on) next.add(skill.id);
                     else next.delete(skill.id);
                     set({ skills_off: FOUNDATIONAL_SKILLS.map((s) => s.id).filter((id) => next.has(id)) });
                   }}
-                  className="size-4 accent-(--color-accent)"
                 />
                 <span className="min-w-0 grow truncate">{skill.name}</span>
                 {suggested.has(skill.id) && suggested.size < FOUNDATIONAL_SKILLS.length && (

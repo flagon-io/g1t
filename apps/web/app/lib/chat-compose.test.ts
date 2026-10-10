@@ -71,6 +71,7 @@ test("Markdown comes back into the composer as it was written", () => {
     "ask @ana in #web about g1t#12",
     "\\- not a list and 2\\*3 and snake_case",
     "**a _b_ c**",
+    "| Session | Length |\n| --- | --: |\n| **Welcome** | `45` min |",
   ];
   for (const sample of samples) assert.equal(docToMarkdown(markdownToDoc(sample)), sample, sample);
 });

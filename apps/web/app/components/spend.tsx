@@ -15,6 +15,7 @@ import { BUTTONS, DollarsInput, useDialogFetcher } from "./agents/dialogs";
 import { Meter, PrivateTitle, SliceList, stepsLine } from "./agents/parts";
 import { monthName, shortDay } from "./agents/format";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "./ui/field";
 import { Hint } from "./ui/hint";
@@ -589,10 +590,13 @@ export function SpendPill({ slug, mayWorkspace }: { slug: string; mayWorkspace: 
   const label = spent == null ? (data ? "Spend" : "") : money(spent);
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        aria-label={spent == null ? "Spend this month" : `${ws ? "The workspace's" : "Your"} spend this month: ${money(spent)}${budget != null ? ` of ${money(budget)}` : ""}`}
-        className="flex h-8 items-center gap-2 rounded-md border border-line px-2.5 text-[0.8125rem] text-fg/90 tabular-nums transition-colors outline-none hover:border-line-strong hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised"
-      >
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={spent == null ? "Spend this month" : `${ws ? "The workspace's" : "Your"} spend this month: ${money(spent)}${budget != null ? ` of ${money(budget)}` : ""}`}
+          className="gap-2 text-fg-soft tabular-nums"
+        >
         {ws ? <Building2 size={14} className="shrink-0 text-faint" /> : <Coins size={14} className="shrink-0 text-faint" />}
         {data ? <span>{label}</span> : <Skeleton className="h-3 w-10" />}
         {share != null && (
@@ -600,6 +604,7 @@ export function SpendPill({ slug, mayWorkspace }: { slug: string; mayWorkspace: 
             <Meter spent={spent!} cap={budget} label="Spent of the budget" size="sm" />
           </span>
         )}
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
         <SpendPopover slug={slug} data={data ?? null} scope={scope} mayWorkspace={mayWorkspace} onScope={choose} onClose={() => setOpen(false)} />

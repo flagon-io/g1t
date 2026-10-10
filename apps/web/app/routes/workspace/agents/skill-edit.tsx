@@ -18,6 +18,7 @@ import { Markdown } from "../../../components/markdown";
 import { Badge } from "../../../components/ui/badge";
 import { CheckboxOption } from "../../../components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldLabel } from "../../../components/ui/field";
+import { FileDrop } from "../../../components/ui/file-drop";
 import { Input } from "../../../components/ui/input";
 import { SelectField } from "../../../components/ui/select";
 import { Textarea } from "../../../components/ui/textarea";
@@ -219,7 +220,7 @@ export default function SkillEditor({ loaderData, params }: Route.ComponentProps
                 })}
               </ul>
             )}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-start gap-2">
               <input type="hidden" name="folder" value={folder} />
               <SelectField
                 aria-label="Folder"
@@ -231,10 +232,7 @@ export default function SkillEditor({ loaderData, params }: Route.ComponentProps
                 onValueChange={setFolder}
                 className="w-36 font-mono"
               />
-              <label className="flex min-w-0 grow cursor-pointer items-center rounded-md border border-dashed border-line px-3 py-1.5 text-sm text-muted hover:border-line-strong hover:text-fg">
-                <span className="sr-only">Add files</span>
-                <input type="file" name="files" multiple className="w-full min-w-0 text-xs file:mr-3 file:rounded file:border-0 file:bg-raised file:px-2 file:py-1 file:text-xs file:text-fg" />
-              </label>
+              <FileDrop name="files" multiple compact label="Add files" className="min-w-0 grow basis-56" />
             </div>
             <FieldError>{result && !result.ok && result.field === "files" ? result.error : null}</FieldError>
           </fieldset>

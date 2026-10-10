@@ -39,7 +39,7 @@ export function AvatarField({
           <Form method="post" encType="multipart/form-data" ref={form}>
             <input type="hidden" name="intent" value="avatar" />
             <label
-              className={`inline-flex cursor-pointer items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium ring-1 ring-line transition-colors hover:ring-line-strong ${
+              className={`inline-flex cursor-pointer items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium ring-1 ring-line transition-colors hover:ring-line-strong has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent ${
                 busy ? "pointer-events-none opacity-50" : ""
               }`}
             >

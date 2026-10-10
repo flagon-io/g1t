@@ -63,7 +63,8 @@ export function FolioHeader({
     },
   ];
   return (
-    <div className="sticky top-(--topbar-h) z-20 -mx-4 flex h-12 items-center gap-2 border-b border-line bg-bg/85 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+    // Right under the top bar, edge to edge, and one block with it (data-page-head in components/shell.tsx).
+    <div data-page-head="sticky" className="sticky top-(--topbar-h) z-20 -mx-4 flex h-14 items-center gap-2 border-b border-line bg-bg/90 px-4 backdrop-blur sm:-mx-6 sm:px-5 lg:-mx-8">
       <div className="min-w-0 grow">
         <Crumbs items={crumbs} />
       </div>

@@ -5,6 +5,7 @@ import { MAX_RELEASE_BODY_CHARS, MAX_RELEASE_NAME_CHARS } from "@g1t/contracts";
 import type { Route } from "./+types/release-new";
 import { encodeTag } from "../../components/releases";
 import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../components/ui";
+import { CheckboxOption } from "../../components/ui/checkbox";
 import { requireRepo } from "../../lib/access.server";
 import { page } from "../../lib/meta";
 import { repos } from "../../lib/services.server";
@@ -78,10 +79,7 @@ export default function NewRelease({ loaderData, actionData }: Route.ComponentPr
         <Field label="Notes" hint="Markdown: what changed, and anything people need to do.">
           <Textarea name="body" rows={12} maxLength={MAX_RELEASE_BODY_CHARS} placeholder={"## What changed\n\n- "} />
         </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="prerelease" className="size-4" />
-          Set as a pre-release: not ready for everyone, never the latest
-        </label>
+        <CheckboxOption name="prerelease" label="Set as a pre-release: not ready for everyone, never the latest" />
         {actionData?.error && <ErrorText>{actionData.error}</ErrorText>}
         <div className="flex flex-wrap items-center gap-2">
           <SubmitButton name="intent" value="publish" pending="Publishing…">

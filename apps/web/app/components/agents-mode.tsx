@@ -10,7 +10,9 @@ import { isOrchestrator } from "./orchestrator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Skeleton } from "./ui/skeleton";
 import { AUTONOMY, type AgentDraft, PRESETS, TIER_LABELS, cleanHandle, dollarsField } from "../lib/agent-form";
+import { Checkbox } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
+import { Input } from "./ui/input";
 import { EffortPicker } from "./effort";
 import { effortSetting } from "../lib/effort";
 import { DEPARTMENTS, RoleFields, SubagentsField } from "./agent-role";
@@ -633,9 +635,9 @@ export function AgentForm({
             {spaces.map((space) => (
               <label
                 key={space.id}
-                className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm has-[:checked]:border-accent/50 has-[:checked]:bg-accent/5"
+                className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm has-[[data-state=checked]]:border-accent/50 has-[[data-state=checked]]:bg-accent/5"
               >
-                <input type="checkbox" name="reading" value={space.id} defaultChecked={(draft.reading ?? []).includes(space.id)} className="size-4 accent-[var(--color-accent)]" />
+                <Checkbox name="reading" value={space.id} defaultChecked={(draft.reading ?? []).includes(space.id)} />
                 <span className="min-w-0 grow truncate">{space.name}</span>
                 <span className="shrink-0 text-xs text-faint capitalize">{space.kind}</span>
               </label>
@@ -798,7 +800,7 @@ export function AgentForm({
           <Label htmlFor="capacity" error={e.capacity}>
             Sessions at once
           </Label>
-          <input id="capacity" name="capacity" type="number" min={1} max={20} defaultValue={draft.capacity} className={`${FIELD} tabular-nums`} />
+          <Input id="capacity" name="capacity" type="number" min={1} max={20} defaultValue={draft.capacity} />
         </div>
       </FormSection>
 

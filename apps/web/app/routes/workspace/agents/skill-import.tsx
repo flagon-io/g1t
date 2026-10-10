@@ -15,6 +15,7 @@ import { type ActionResult, BUTTONS } from "../../../components/agents/dialogs";
 import { skillsPath } from "../../../components/agents/skills";
 import { CheckboxOption } from "../../../components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "../../../components/ui/field";
+import { FileDrop } from "../../../components/ui/file-drop";
 import { Input } from "../../../components/ui/input";
 import { cn } from "../../../lib/cn";
 import { page } from "../../../lib/meta";
@@ -110,15 +111,8 @@ export default function ImportSkill({ loaderData }: Route.ComponentProps) {
           <input type="hidden" name="intent" value="upload" />
           <Field>
             <FieldLabel htmlFor={`${id}-file`}>SKILL.md or zip</FieldLabel>
-            <input
-              id={`${id}-file`}
-              type="file"
-              name="file"
-              required
-              accept=".md,.zip,text/markdown,application/zip"
-              className="w-full min-w-0 rounded-md border border-dashed border-line bg-bg px-3 py-3 text-sm text-muted file:mr-3 file:rounded file:border-0 file:bg-raised file:px-2.5 file:py-1 file:text-sm file:text-fg hover:border-line-strong"
-            />
-            <FieldDescription>A zip of the skill&apos;s folder, as zipping the folder makes it. At most 1 MB once unpacked and 200 files.</FieldDescription>
+            <FileDrop id={`${id}-file`} name="file" required accept=".md,.zip,text/markdown,application/zip" aria-describedby={`${id}-file-about`} />
+            <FieldDescription id={`${id}-file-about`}>A zip of the skill&apos;s folder, as zipping the folder makes it. At most 1 MB once unpacked and 200 files.</FieldDescription>
           </Field>
           {replace}
           {error("upload")}

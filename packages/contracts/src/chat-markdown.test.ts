@@ -17,6 +17,7 @@ function links(list: Block[]): string[] {
     else if (block.t === "heading") walk(block.c);
     else if (block.t === "quote") block.c.forEach(each);
     else if (block.t === "list") block.items.forEach((item) => item.forEach(each));
+    else if (block.t === "table") [block.head, ...block.rows].forEach((row) => row.forEach(walk));
   };
   list.forEach(each);
   return out;
@@ -172,4 +173,28 @@ test("plain text: the words without the marks, for previews", () => {
   assert.equal(plainText("<b>hi</b>"), "<b>hi</b>");
   assert.equal(plainText("x".repeat(300), 140).length, 140);
   assert.ok(plainText("x".repeat(300), 140).endsWith("…"));
+});
+
+test("tables: a header, a --- row with its alignment, then rows", () => {
+  const [table, after] = blocks("| Session | Length | Notes |\n| --- | ---: | :-: |\n| 1. Welcome | 45 min | `web` \\| `api` |\n| 2. Queue | 30 min |\n\nAfter.");
+  assert.ok(table!.t === "table");
+  assert.deepEqual(table.align, [null, "right", "center"]);
+  assert.deepEqual(table.head, [[{ t: "text", v: "Session" }], [{ t: "text", v: "Length" }], [{ t: "text", v: "Notes" }]]);
+  assert.equal(table.rows.length, 2);
+  // An escaped pipe stays in its cell; a short row is filled to the header's width.
+  assert.deepEqual(table.rows[0]![2], [{ t: "code", v: "web" }, { t: "text", v: " | " }, { t: "code", v: "api" }]);
+  assert.deepEqual(table.rows[1]![2], []);
+  assert.equal(after!.t, "p");
+  // Without outer pipes, and right after a paragraph.
+  assert.deepEqual(blocks("Plan:\na | b\n--|--\n1 | 2").map((b) => b.t), ["p", "table"]);
+  // A pipe inside backticks is not a column.
+  const [code] = blocks("| a |\n| - |\n| `x | y` |");
+  assert.ok(code!.t === "table" && code.rows[0]!.length === 1);
+  // Not tables: a rule under text, columns that don't match, a line with a pipe alone.
+  assert.deepEqual(blocks("a | b\n---").map((b) => b.t), ["p", "hr"]);
+  assert.deepEqual(blocks("| a | b |\n| --- |\n| 1 | 2 |").map((b) => b.t), ["p"]);
+  assert.deepEqual(blocks("either | or").map((b) => b.t), ["p"]);
+  // Links in cells are checked like any other.
+  assert.deepEqual(links(blocks("| x |\n| - |\n| [ok](https://x.example) [no](javascript:alert(1)) |")), ["https://x.example"]);
+  assert.equal(plainText("| a | b |\n|---|---|\n| 1 | 2 |"), "a · b 1 · 2");
 });

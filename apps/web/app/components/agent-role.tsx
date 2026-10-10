@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { AgentRouting, ModelTier, SubagentDef } from "@g1t/contracts";
 
 import { Hint } from "./ui/hint";
+import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./ui/sheet";
 import { MAX_RESPONSIBILITIES, TIER_LABELS, clampRouting, cleanSubagentName } from "../lib/agent-form";
@@ -326,7 +327,7 @@ export function SubagentsField({ initial, routing }: { initial: SubagentDef[]; r
                 </div>
                 <label className="block max-w-40">
                   <span className="mb-1.5 block text-sm font-medium text-fg-soft">At once, in one task</span>
-                  <input
+                  <Input
                     type="number"
                     min={1}
                     max={8}
@@ -334,7 +335,6 @@ export function SubagentsField({ initial, routing }: { initial: SubagentDef[]; r
                     onChange={(event) =>
                       setEditing({ ...editing, draft: { ...editing.draft, max_parallel: Math.max(1, Math.min(8, Number(event.target.value) || 1)) } })
                     }
-                    className={`${FIELD} tabular-nums`}
                   />
                 </label>
               </div>

@@ -7,6 +7,7 @@ import type { Milestone } from "@g1t/contracts";
 import { dueInWords, isOverdue, percentDone } from "../lib/labels";
 import { cn } from "../lib/cn";
 import { Button, ErrorText, SubmitButton, Textarea, usePending } from "./ui";
+import { Input } from "./ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,7 +66,7 @@ export function MilestoneForm({ milestone, onDone }: { milestone?: Milestone; on
       <div className="grid gap-3 sm:grid-cols-[1fr_12rem]">
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium text-muted">Title</span>
-          <input
+          <Input
             name="title"
             defaultValue={milestone?.title ?? ""}
             required
@@ -74,17 +75,11 @@ export function MilestoneForm({ milestone, onDone }: { milestone?: Milestone; on
             autoComplete="off"
             data-1p-ignore
             placeholder="Launch"
-            className="h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none hover:border-line-strong focus:border-accent-dim"
           />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium text-muted">Due date (optional)</span>
-          <input
-            type="date"
-            name="dueOn"
-            defaultValue={milestone?.dueOn ?? ""}
-            className="h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none hover:border-line-strong focus:border-accent-dim"
-          />
+          <Input type="date" name="dueOn" defaultValue={milestone?.dueOn ?? ""} />
         </label>
       </div>
       <label className="block">

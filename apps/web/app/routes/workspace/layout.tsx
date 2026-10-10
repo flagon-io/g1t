@@ -140,6 +140,16 @@ function PageHeader({ title, about }: { title: string; about: string }) {
   );
 }
 
+/** Artifacts' pages that are lists, not one artifact. */
+const ARTIFACT_LISTS = new Set(["new", "templates", "trash", "stale", "spaces"]);
+
+/** Whether the page (its path after `/-/`, in parts) is one artifact or a project's doc file. */
+function isArtifactPage(parts: string[]): boolean {
+  if (parts[0] !== "artifacts" || parts.length < 2) return false;
+  if (parts[1] === "repo") return true;
+  return !ARTIFACT_LISTS.has(parts[1]!) && parts.length === 2;
+}
+
 export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
   const { workspace, role, welcome } = loaderData;
   const { pathname } = useLocation();
@@ -158,6 +168,15 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
   if (parts[0] === "chat" && !next) return <Outlet />;
   // Code's Overview lays itself out, as Mission control did.
   if (parts[0] === "overview" && parts.length === 1 && !next) return <Outlet />;
+  // An open artifact, or a project's doc, fills the panel: its header runs edge to edge right under
+  // the top bar (components/folios/shell.tsx), and its page sets its own width.
+  if (isArtifactPage(parts) && !next) {
+    return (
+      <div className="px-4 pb-10 sm:px-6 lg:px-8">
+        <Outlet />
+      </div>
+    );
+  }
   if (shown !== "overview") {
     const key = shown ?? parts[0] ?? "";
     const heading = PAGES[key];

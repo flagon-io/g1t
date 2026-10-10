@@ -60,6 +60,7 @@ import {
 } from "../ui/alert-dialog";
 import { Badge } from "../ui/badge";
 import { Hint } from "../ui/hint";
+import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { type Mentionable, type ShownMessage, channelPath, mentionNames, mergeMessages, shownHandle, shownName, timeline } from "../../lib/chat";
 import { codeAccessPath } from "../../lib/workspace-nav";
@@ -822,15 +823,10 @@ function ChannelHeader({
   const channel = data.channel;
   const agentDm = channel.kind === "dm" && others.length === 1 && others[0]!.kind === "agent" ? others[0]! : null;
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4 sm:px-5 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] max-md:gap-2 max-md:pt-[env(safe-area-inset-top)] max-md:pl-1.5">
-      <button
-        type="button"
-        onClick={onBack}
-        aria-label="Back to conversations"
-        className="flex size-10 shrink-0 items-center justify-center rounded-full text-muted active:bg-raised md:hidden"
-      >
+    <header data-page-head className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4 sm:px-5 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] max-md:gap-2 max-md:pt-[env(safe-area-inset-top)] max-md:pl-1.5">
+      <Button variant="ghost" size="icon-bar" onClick={onBack} aria-label="Back to conversations" className="rounded-full md:hidden">
         <ChevronLeft size={22} />
-      </button>
+      </Button>
       <div className="flex min-w-0 grow items-center gap-2.5">
         {channel.kind === "channel" ? (
           <>
@@ -899,30 +895,16 @@ function ChannelHeader({
       )}
       {channel.kind === "channel" && (
         <Hint label={info ? "Hide details" : "Members and details"}>
-          <button
-            type="button"
-            onClick={onInfo}
-            aria-pressed={info}
-            aria-label="Members and details"
-            className={`flex h-8 items-center gap-1.5 rounded-md border px-2 text-xs tabular-nums transition-colors ${
-              info ? "border-line-strong bg-raised text-fg" : "border-line text-muted hover:border-line-strong hover:text-fg"
-            }`}
-          >
+          <Button variant="outline" size="sm" onClick={onInfo} aria-pressed={info} aria-label="Members and details" className="px-2 text-xs text-muted tabular-nums aria-pressed:border-line-strong aria-pressed:bg-raised aria-pressed:text-fg max-md:h-11">
             <UsersStack count={memberCount} />
-          </button>
+          </Button>
         </Hint>
       )}
       {channel.kind === "dm" && (
         <Hint label={info ? "Hide details" : "Details"}>
-          <button
-            type="button"
-            onClick={onInfo}
-            aria-pressed={info}
-            aria-label="Details"
-            className={`flex size-8 items-center justify-center rounded-md transition-colors ${info ? "bg-raised text-fg" : "text-muted hover:bg-raised hover:text-fg"}`}
-          >
+          <Button variant="ghost" size="icon-bar" onClick={onInfo} aria-pressed={info} aria-label="Details">
             <PanelRight size={16} />
-          </button>
+          </Button>
         </Hint>
       )}
     </header>
@@ -941,15 +923,16 @@ function UsersStack({ count }: { count: number }) {
 function StarButton({ starred, onClick }: { starred: boolean; onClick: () => void }) {
   return (
     <Hint label={starred ? "Unstar" : "Star: keep it at the top of the sidebar"}>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-sm"
         aria-label={starred ? "Unstar" : "Star"}
         aria-pressed={starred}
         onClick={onClick}
-        className={`flex size-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-raised ${starred ? "text-warn" : "text-faint hover:text-fg"}`}
+        className="text-faint aria-pressed:bg-transparent aria-pressed:text-warn aria-pressed:hover:bg-raised max-md:size-10"
       >
         <Star size={15} fill={starred ? "currentColor" : "none"} />
-      </button>
+      </Button>
     </Hint>
   );
 }

@@ -40,8 +40,8 @@ export default function RepoDocFile({ loaderData, params }: Route.ComponentProps
   const folder = file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/")) : "";
   const encode = (path: string) => path.split("/").map(encodeURIComponent).join("/");
   return (
-    <div className="-mt-6">
-      <div className="sticky top-(--topbar-h) z-20 -mx-4 flex h-12 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+    <div>
+      <div data-page-head="sticky" className="sticky top-(--topbar-h) z-20 -mx-4 flex h-14 items-center gap-3 border-b border-line bg-bg/90 px-4 backdrop-blur sm:-mx-6 sm:px-5 lg:-mx-8">
         <div className="min-w-0 grow">
           <Crumbs items={[{ label: "Artifacts", to: `/${slug}/-/artifacts` }, { label: space.repo }, ...file.path.split("/").map((part) => ({ label: part }))]} />
         </div>

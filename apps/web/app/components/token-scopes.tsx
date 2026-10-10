@@ -1,4 +1,4 @@
-import { ShieldAlert, TriangleAlert } from "lucide-react";
+import { Check, ShieldAlert, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -47,15 +47,23 @@ function ScopeBox({
   return (
     <Hint label={by ? `Included in ${by}` : undefined}>
       <label className={cn("flex min-w-0 items-start gap-2.5 py-1", by ? "cursor-default" : "cursor-pointer")}>
-        <input
-          type="checkbox"
-          name="scope"
-          value={scope}
-          checked={checked}
-          disabled={by !== null}
-          onChange={(event) => onToggle(scope, event.target.checked)}
-          className={cn("mt-0.5 size-4 shrink-0", isDangerous(scope) ? "accent-danger" : "accent-accent")}
-        />
+        {/* The real checkbox, drawn as the ui Checkbox is, so it still posts without script. */}
+        <span className="relative mt-0.5 flex size-4 shrink-0">
+          <input
+            type="checkbox"
+            name="scope"
+            value={scope}
+            checked={checked}
+            disabled={by !== null}
+            onChange={(event) => onToggle(scope, event.target.checked)}
+            className={cn(
+              "peer size-4 cursor-[inherit] appearance-none rounded-[5px] border border-line-strong bg-bg transition-colors hover:border-faint disabled:opacity-50",
+              "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-1 focus-visible:ring-offset-bg focus-visible:outline-none",
+              isDangerous(scope) ? "checked:border-danger checked:bg-danger" : "checked:border-accent checked:bg-accent",
+            )}
+          />
+          <Check size={12} strokeWidth={3} aria-hidden className="pointer-events-none absolute inset-0 m-auto hidden text-bg peer-checked:block peer-disabled:opacity-50" />
+        </span>
         <span className="min-w-0">
           <span className={cn("block font-mono text-[0.8125rem]", isDangerous(scope) ? "text-danger" : "text-fg", by && "opacity-60")}>
             {scope}

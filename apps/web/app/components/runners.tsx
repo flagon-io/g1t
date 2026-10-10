@@ -7,6 +7,8 @@ import { type RegistrationToken, RUNNER_DOWNLOADS, RUNNER_FILES, RUNNER_IMAGE, t
 import { agentRunHref, workflowRunHref } from "../lib/runners";
 import type { RunnersAction, RunnersData } from "../lib/runners.server";
 import { Button, CopyLine, EmptyState, ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "./ui";
+import { Checkbox } from "./ui/checkbox";
+import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { SelectField } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
@@ -316,19 +318,15 @@ function GroupForm({ group, repositories }: { group: RunnerGroup | null; reposit
       </Field>
       <fieldset className="space-y-2 text-sm">
         <legend className="mb-1 text-xs text-muted">Repositories that may use its runners</legend>
-        <label className="flex items-center gap-2">
-          <input type="radio" name="reach" value="all" checked={reach === "all"} onChange={() => setReach("all")} />
-          Every repository in the workspace
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="radio" name="reach" value="some" checked={reach === "some"} onChange={() => setReach("some")} />
-          Only these
-        </label>
+        <RadioGroup name="reach" value={reach} onValueChange={setReach}>
+          <RadioOption value="all" label="Every repository in the workspace" />
+          <RadioOption value="some" label="Only these" />
+        </RadioGroup>
         {reach === "some" && (
           <div className="grid gap-1 pl-6 sm:grid-cols-2">
             {repositories.map((name) => (
-              <label key={name} className="flex items-center gap-2 font-mono text-xs">
-                <input type="checkbox" name="repository" value={name} defaultChecked={group?.repositories.includes(name)} />
+              <label key={name} className="flex min-h-8 cursor-pointer items-center gap-2 font-mono text-xs">
+                <Checkbox name="repository" value={name} defaultChecked={group?.repositories.includes(name)} />
                 {name}
               </label>
             ))}

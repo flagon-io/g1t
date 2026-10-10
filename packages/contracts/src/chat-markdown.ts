@@ -7,7 +7,8 @@
  *
  * The dialect is what people and agents write in chat: bold, italic,
  * strikethrough (`~~x~~` or `~x~`), inline and fenced code, links and bare
- * URLs, lists (nested by indenting), quotes, headings and rules, plus what
+ * URLs, lists (nested by indenting), quotes, headings, rules and tables
+ * (a header row, a `---` row with optional `:` alignment, then rows), plus what
  * g1t adds: `@mentions`, `#channels` and `#123` references. A line break
  * is kept where it was typed.
  */
@@ -29,7 +30,11 @@ export type Block =
   | { t: "code"; lang: string | null; v: string }
   | { t: "list"; ordered: boolean; start: number; items: Block[][] }
   | { t: "quote"; c: Block[] }
-  | { t: "hr" };
+  | { t: "hr" }
+  | { t: "table"; align: Align[]; head: Span[][]; rows: Span[][][] };
+
+/** How a table's column lines up, from its `---` row: `:--`, `:-:` or `--:`. */
+export type Align = "left" | "center" | "right" | null;
 
 /** Where a link may go: the web, mail, or a page on this site. */
 export function safeHref(href: string): string | null {
@@ -152,6 +157,56 @@ const QUOTE = /^ {0,3}>[ \t]?/;
 const HEADED = /^ {0,3}#{1,6}[ \t]+\S/;
 const ITEM = /^([ \t]*)([-*+•]|\d{1,9}[.)])(?:([ \t]+)(.*)|[ \t]*$)/;
 
+/** A table's `---` row: cells of dashes, each with an optional `:` either side. */
+const DELIMITER = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
+
+/**
+ * A table row's cells: split on `|`, but not on `\|` or a `|` inside
+ * backticks, with the pipes at either end optional.
+ */
+function cells(line: string): string[] {
+  let text = line.trim();
+  if (text.startsWith("|")) text = text.slice(1);
+  if (text.endsWith("|") && !text.endsWith("\\|")) text = text.slice(0, -1);
+  const out: string[] = [];
+  let cell = "";
+  let ticks = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i]!;
+    if (char === "\\" && text[i + 1] === "|") {
+      cell += "|";
+      i++;
+    } else if (char === "`") {
+      let run = 1;
+      while (text[i + run] === "`") run++;
+      ticks = ticks === 0 ? run : ticks === run ? 0 : ticks;
+      cell += "`".repeat(run);
+      i += run - 1;
+    } else if (char === "|" && ticks === 0) {
+      out.push(cell.trim());
+      cell = "";
+    } else cell += char;
+  }
+  out.push(cell.trim());
+  return out;
+}
+
+/** Whether `line` and the one after it start a table: a row with a pipe, then a `---` row as wide. */
+function tableAt(lines: string[], i: number): boolean {
+  const head = lines[i]!;
+  const rule = lines[i + 1];
+  if (rule == null || !head.includes("|") || !rule.includes("-") || !DELIMITER.test(rule)) return false;
+  // One column needs its pipes, so a `---` under a line of text stays a paragraph and a rule.
+  if (!rule.includes("|") && !head.trim().startsWith("|")) return false;
+  return cells(head).length === cells(rule).length;
+}
+
+function alignOf(cell: string): Align {
+  const left = cell.startsWith(":");
+  const right = cell.endsWith(":");
+  return left && right ? "center" : right ? "right" : left ? "left" : null;
+}
+
 function indentOf(line: string): number {
   let width = 0;
   for (const char of line) {
@@ -202,6 +257,23 @@ function parse(lines: string[], depth: number): Block[] {
       // A blank line ends a paragraph.
       flush();
       i++;
+      continue;
+    }
+    if (tableAt(lines, i)) {
+      flush();
+      const align = cells(lines[i + 1]!).map(alignOf);
+      const width = align.length;
+      // Every row has the header's columns: cut what is beyond, fill what is missing.
+      const row = (text: string) => {
+        const list = cells(text).slice(0, width);
+        while (list.length < width) list.push("");
+        return list.map((cell) => inline(cell));
+      };
+      const head = row(line);
+      const rows: Span[][][] = [];
+      i += 2;
+      while (i < lines.length && lines[i]!.trim() !== "" && lines[i]!.includes("|") && !startsBlock(lines[i]!)) rows.push(row(lines[i++]!));
+      out.push({ t: "table", align, head, rows });
       continue;
     }
     const fence = FENCE.exec(line);
@@ -278,7 +350,7 @@ function parse(lines: string[], depth: number): Block[] {
       out.push({ t: "list", ordered, start, items });
       continue;
     }
-    if (paragraph.length && startsBlock(line)) flush();
+    if (paragraph.length && (startsBlock(line) || tableAt(lines, i))) flush();
     paragraph.push(inline(lineText(line)));
     i++;
   }
@@ -286,7 +358,7 @@ function parse(lines: string[], depth: number): Block[] {
   return out;
 }
 
-/** A message's whole text as blocks: paragraphs, headings, code, lists, quotes and rules. */
+/** A message's whole text as blocks: paragraphs, headings, code, lists, quotes, rules and tables. */
 export function blocks(text: string): Block[] {
   return parse(text.replace(/\r\n?/g, "\n").split("\n"), 0);
 }
@@ -341,6 +413,9 @@ function blocksText(list: Block[]): string[] {
         out.push(...blocksText(block.c));
         break;
       case "hr":
+        break;
+      case "table":
+        for (const row of [block.head, ...block.rows]) out.push(row.map(spansText).join(" · "));
         break;
     }
   }

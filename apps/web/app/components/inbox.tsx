@@ -7,6 +7,7 @@ import type { InboxCounts, InboxItem, InboxSeverity } from "@g1t/contracts";
 import { WaitingCards } from "./notifications/card-actions";
 import { SubmitButton } from "./ui";
 import { Badge, type BadgeTone } from "./ui/badge";
+import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
@@ -272,10 +273,8 @@ export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | nu
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger
-        aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
-        className="relative flex size-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-fg"
-      >
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"} className="relative">
         <Bell size={17} />
         {shown && (
           // Amber while an agent waits on them, red for a failure, else the accent.
@@ -288,6 +287,7 @@ export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | nu
             {shown}
           </span>
         )}
+        </Button>
       </SheetTrigger>
       <SheetContent
         // Focus starts on the tab being looked at, not on Mark all read.

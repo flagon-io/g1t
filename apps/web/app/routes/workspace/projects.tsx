@@ -1,11 +1,12 @@
 import { ArrowUpRight, Box, ChevronLeft, ChevronRight, LayoutGrid, List, Lock, Rocket, Search } from "lucide-react";
-import { type KeyboardEvent, useEffect, useRef } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Form, Link, useLocation, useNavigation, useSubmit } from "react-router";
 
 import type { Route } from "./+types/projects";
 import { host } from "../../components/deploy";
 import { PinButton } from "../../components/pin-button";
 import { EmptyState, Pill, TimeAgo, notACredential } from "../../components/ui";
+import { Checkbox } from "../../components/ui/checkbox";
 import { SelectField } from "../../components/ui/select";
 import { page as pageMeta } from "../../lib/meta";
 import {
@@ -239,6 +240,8 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
   const form = useRef<HTMLFormElement>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   const typing = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deploysBox = useRef<HTMLButtonElement>(null);
+  const [deploys, setDeploys] = useState(query.deployments);
   const member = role != null;
   const pins = new Set(pinned);
   // A filter or page of this list on its way: the list says it is busy.
@@ -268,8 +271,7 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
       const field = fields.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
       if (field && field !== document.activeElement && "value" in field) field.value = value;
     }
-    const deploys = fields.namedItem("deployments") as HTMLInputElement | null;
-    if (deploys && deploys !== document.activeElement) deploys.checked = query.deployments;
+    if (deploysBox.current !== document.activeElement) setDeploys(query.deployments);
   }, [query]);
 
   // `/` goes to the search, from anywhere on the page that is not a field.
@@ -394,13 +396,15 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
         )}
         {member && (
           <label className={`${CONTROL} flex cursor-pointer items-center gap-2 select-none`}>
-            <input
-              type="checkbox"
+            <Checkbox
+              ref={deploysBox}
               name="deployments"
               value="on"
-              defaultChecked={query.deployments}
-              onChange={() => apply()}
-              className="accent-[var(--color-accent)]"
+              checked={deploys}
+              onCheckedChange={(checked) => {
+                setDeploys(checked === true);
+                apply();
+              }}
             />
             Deploys
             <span className="text-xs tabular-nums text-faint">{facets.deploying}</span>

@@ -46,6 +46,19 @@ export function Mark({ className, tight = false }: { className?: string; tight?:
 }
 
 /**
+ * The 1 set beside type in a control, such as Ask g1t: whole cells, so at
+ * 14px tall each one lands on 2px (4 on a sharp screen) and every square
+ * stays sharp, lavender on its own with nothing around it.
+ */
+export function MarkGlyph({ className = "h-3.5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 50 70" className={`w-auto shrink-0 ${className}`} shapeRendering="crispEdges" aria-hidden="true">
+      <Pixels of={ICON} />
+    </svg>
+  );
+}
+
+/**
  * The wordmark as one picture, sized by its font size: a cell is 0.125em,
  * so the letters stand 0.85em tall on the baseline, about the height of
  * the type around them.

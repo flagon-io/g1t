@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import { MemberCard } from "./profile-card";
 import { Hint } from "../ui/hint";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { type Block, type Span, blocks, onlyEmoji } from "../../lib/chat";
 // The workspace's own emoji, drawn where `:name:` is written (components/emoji).
 import { useEmojiContext } from "../emoji/context";
@@ -142,8 +143,10 @@ function BlockView({ block, context }: { block: Block; context: TextContext }) {
     case "p":
       return <p>{lines(block.lines, context)}</p>;
     case "heading":
-      // Chat, not a document: a heading is a bold line, the top two a touch larger.
-      return <p className={`font-semibold text-fg ${block.level <= 2 ? "text-base" : ""}`}>{spans(block.c, context)}</p>;
+      // Chat, not a document: a heading is a bold line with room above it, the top two a touch larger.
+      return <p className={`pt-1.5 font-semibold tracking-[-0.005em] text-fg first:pt-0 ${block.level <= 2 ? "text-base" : ""}`}>{spans(block.c, context)}</p>;
+    case "table":
+      return <TableView block={block} context={context} />;
     case "hr":
       return <hr className="my-2 border-line" />;
     case "code":
@@ -165,6 +168,40 @@ function BlockView({ block, context }: { block: Block; context: TextContext }) {
         </blockquote>
       );
   }
+}
+
+/**
+ * A table, as the theme draws tables in rendered Markdown: a quiet header
+ * row, lines between rows, and its columns aligned as written. A wide one
+ * scrolls sideways inside the message, never the page, and takes focus so
+ * it can be scrolled from the keyboard.
+ */
+function TableView({ block, context }: { block: Extract<Block, { t: "table" }>; context: TextContext }) {
+  const align = (index: number) => block.align[index] ?? undefined;
+  return (
+    <Table frameProps={{ role: "region", "aria-label": "Table", tabIndex: 0, className: "my-1 rounded-lg border border-line" }} className="min-w-max text-[0.8125rem] leading-snug sm:min-w-full">
+      <TableHeader>
+        <TableRow>
+          {block.head.map((cell, index) => (
+            <TableHead key={index} scope="col" style={{ textAlign: align(index) }}>
+              {spans(cell, context)}
+            </TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {block.rows.map((row, at) => (
+          <TableRow key={at}>
+            {row.map((cell, index) => (
+              <TableCell key={index} style={{ textAlign: align(index) }} className={align(index) === "right" ? "whitespace-nowrap tabular-nums" : "max-w-lg"}>
+                {spans(cell, context)}
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
 }
 
 type Token = { content: string; color?: string };
