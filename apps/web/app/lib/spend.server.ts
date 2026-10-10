@@ -86,16 +86,22 @@ export function loadPricing(): Promise<Pricing | null> {
 export type PillData = {
   month: string;
   me: { spentMicros: number; budgetMicros: number | null; byKind: AgentSpendBreakdown["by_kind"]; byAgent: AgentSpendBreakdown["by_agent"] } | null;
-  workspace: { spentMicros: number | null; limitMicros: number | null; agentsMicros: number | null; byAgent: AgentSpendBreakdown["by_agent"] } | null;
+  /**
+   * The workspace's month: everything it used at price (the figure Home and
+   * Spend show), what it was charged after its plan and credit (the figure
+   * its spend limit governs), its limit, and its agents' share.
+   */
+  workspace: { spentMicros: number | null; chargedMicros: number | null; limitMicros: number | null; agentsMicros: number | null; byAgent: AgentSpendBreakdown["by_agent"] } | null;
 };
 
 export async function loadPill(viewer: User, slug: string, mayWorkspace: boolean): Promise<PillData> {
   const me = viewer.username.toLowerCase();
-  const [mine, people, everyone, limit] = await Promise.all([
+  const [mine, people, everyone, limit, used] = await Promise.all([
     loadBreakdown(viewer, slug, "me", "month"),
     workspaceAgents.personBudgets(slug, viewer).then(value).catch(warn("person budgets")),
     mayWorkspace ? loadBreakdown(viewer, slug, "workspace", "month") : Promise.resolve(null),
     mayWorkspace ? billing.limit(slug, viewer).then(value).catch(warn("limit")) : Promise.resolve(null),
+    mayWorkspace ? loadUsage(viewer, slug, "month", new Date()) : Promise.resolve(null),
   ]);
   const own = people?.people.find((p) => p.username === me);
   const budget = own ? own.monthly_micros : (people?.default_micros ?? null);
@@ -104,7 +110,8 @@ export async function loadPill(viewer: User, slug: string, mayWorkspace: boolean
     me: mine ? { spentMicros: mine.total_micros, budgetMicros: budget, byKind: mine.by_kind, byAgent: mine.by_agent } : null,
     workspace: mayWorkspace
       ? {
-          spentMicros: limit?.spentMicros ?? null,
+          spentMicros: used ? (used.free ? used.totals.costMicros : used.totals.priceMicros) : null,
+          chargedMicros: limit?.spentMicros ?? null,
           limitMicros: limit ? (limit.spendLimitMicros ?? limit.ceilingMicros) : null,
           agentsMicros: everyone?.total_micros ?? null,
           byAgent: everyone?.by_agent ?? [],

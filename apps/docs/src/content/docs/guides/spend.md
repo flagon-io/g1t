@@ -171,12 +171,15 @@ The page's last section reads the [price book](/guides/usage-and-billing/#how-pr
 ## In the top bar
 
 Your spend this month sits in the page's header, beside **Ask g1t**: what
-agents did for you against your budget. Choose it for where it went, by
-kind of work and by agent, and a link to Spend. Owners and billing
-managers can switch it to **Workspace**: what the workspace was charged
-this month against its spend limit, and its agents' spend. The choice is
-remembered on this browser. On a phone, open **Spend** from the Workspace
-sidebar instead.
+agents did for you, at price, against your budget. Choose it for where it
+went, by kind of work and by agent, and a link to Spend. Owners and billing
+managers can switch it to **Workspace**: everything the workspace used
+this month at price, the same figure as Home and Spend, with what it was
+charged after its plan and credit underneath, against its spend limit, and
+its agents' share. Both tabs count at price, so they add up: a comped
+workspace can show $10 used and $0 charged. The choice is remembered on
+this browser. On a phone, open **Spend** from the Workspace sidebar
+instead.
 
 ## Next
 

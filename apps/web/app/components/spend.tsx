@@ -556,10 +556,12 @@ function storedScope(): SpendScope {
 }
 
 /**
- * Your spend this month in the top bar: what agents did for you against
- * your budget, or, for owners and billing managers who switch it, what the
- * workspace was charged against its spend limit. A click opens where it
- * went. Read after the page draws, so it adds nothing to the page's time.
+ * Your spend this month in the top bar: what agents did for you, at price,
+ * against your budget, or, for owners and billing managers who switch it,
+ * everything the workspace used at price, with what it was charged against
+ * its spend limit underneath. Both tabs count the same way, at price, so
+ * the numbers add up across them. A click opens where it went. Read after
+ * the page draws, so it adds nothing to the page's time.
  */
 export function SpendPill({ slug, mayWorkspace }: { slug: string; mayWorkspace: boolean }) {
   const pill = useFetcher<PillData>({ key: `spend-pill:${slug}` });
@@ -585,8 +587,10 @@ export function SpendPill({ slug, mayWorkspace }: { slug: string; mayWorkspace: 
   const data = pill.data;
   const ws = scope === "workspace" ? data?.workspace : null;
   const spent = ws ? ws.spentMicros : (data?.me?.spentMicros ?? null);
+  // The limit governs what is charged, so the meter measures that.
+  const against = ws ? ws.chargedMicros : (data?.me?.spentMicros ?? null);
   const budget = ws ? ws.limitMicros : (data?.me?.budgetMicros ?? null);
-  const share = spent != null ? shareOfBudget(spent, budget) : null;
+  const share = against != null ? shareOfBudget(against, budget) : null;
   const label = spent == null ? (data ? "Spend" : "") : money(spent);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -601,7 +605,7 @@ export function SpendPill({ slug, mayWorkspace }: { slug: string; mayWorkspace: 
         {data ? <span>{label}</span> : <Skeleton className="h-3 w-10" />}
         {share != null && (
           <span className="hidden w-9 lg:block">
-            <Meter spent={spent!} cap={budget} label="Spent of the budget" size="sm" />
+            <Meter spent={against!} cap={budget} label={ws ? "Charged of the spend limit" : "Spent of your budget"} size="sm" />
           </span>
         )}
         </Button>
@@ -661,18 +665,21 @@ function SpendPopover({
         </div>
       ) : ws ? (
         <div className="p-4">
-          <p className="text-xs text-muted">The workspace · {month}, charged</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums">
-            {ws.spentMicros != null ? money(ws.spentMicros) : "—"}
-            {ws.limitMicros != null && <span className="ml-1.5 text-sm font-normal text-muted">of {money(ws.limitMicros)}</span>}
-          </p>
-          {ws.spentMicros != null && ws.limitMicros != null && <Meter spent={ws.spentMicros} cap={ws.limitMicros} label="Charged of the spend limit" size="sm" className="mt-2" />}
-          <p className="mt-3 text-xs text-muted">Agents this month{ws.agentsMicros != null ? `: ${money(ws.agentsMicros)}` : ""}</p>
+          <p className="text-xs text-muted">The workspace · {month}, everything it used, at price</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums">{ws.spentMicros != null ? money(ws.spentMicros) : "—"}</p>
+          {ws.chargedMicros != null && (
+            <p className="mt-1 text-xs text-muted">
+              Charged after its plan and credit: <span className="text-fg tabular-nums">{money(ws.chargedMicros)}</span>
+              {ws.limitMicros != null ? ` of a ${money(ws.limitMicros)} spend limit` : " · no spend limit set"}
+            </p>
+          )}
+          {ws.chargedMicros != null && ws.limitMicros != null && <Meter spent={ws.chargedMicros} cap={ws.limitMicros} label="Charged of the spend limit" size="sm" className="mt-2" />}
+          <p className="mt-3 text-xs text-muted">Of that, agents{ws.agentsMicros != null ? `: ${money(ws.agentsMicros)}` : ""}</p>
           <PopoverSlices slices={ws.byAgent} />
         </div>
       ) : data.me ? (
         <div className="p-4">
-          <p className="text-xs text-muted">You · {month}, agents working for you included</p>
+          <p className="text-xs text-muted">You · {month}, what agents did for you, at price</p>
           <p className="mt-1 text-xl font-semibold tabular-nums">
             {money(data.me.spentMicros)}
             {data.me.budgetMicros != null && <span className="ml-1.5 text-sm font-normal text-muted">of {money(data.me.budgetMicros)}</span>}
