@@ -183,8 +183,8 @@ what runs inside it.
 ### On Cloudflare
 
 You need a Cloudflare account on the Workers Paid plan (Cloudflare
-Artifacts, where repositories are stored, requires it), Node 22.22 or newer (`engines` in `package.json`; g1t is built on
-Node 24), Rust with the `wasm32-unknown-unknown` target, and
+Artifacts, where repositories are stored, requires it), Node 24 (`.nvmrc`, and `engines` in `package.json`), Rust with the
+`wasm32-unknown-unknown` target, and
 Docker to build the sandbox image.
 
 ```sh

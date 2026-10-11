@@ -6,18 +6,22 @@ import type { Route } from "./+types/downloads-runner";
  * Releases: `g1t.sh/downloads/<tool>/<version>/<file>`, served from the
  * g1t-downloads R2 bucket. `runner` is the self-hosted runner
  * (scripts/runner-release.mjs), `cli` the g1t CLI (scripts/cli-release.mjs),
- * `desktop` the desktop app (scripts/desktop-release.mjs). `latest/<file>`
+ * `desktop` the desktop app (scripts/desktop-release.mjs), `mobile` the
+ * phone app's Android APK (scripts/mobile-release.mjs). `latest/<file>`
  * is the newest release's, as its `latest.json` names it; the runner's
  * `latest.json` and `latest.json.sig` are what runners check before
  * updating, and the desktop app's `latest.json` names each platform's
  * installer with its signature, as the app's updater reads it.
  */
-const TOOLS = new Set(["runner", "cli", "desktop"]);
+const TOOLS = new Set(["runner", "cli", "desktop", "mobile"]);
 const TYPES: Record<string, string> = {
   json: "application/json",
   sig: "text/plain; charset=utf-8",
   txt: "text/plain; charset=utf-8",
+  apk: "application/vnd.android.package-archive",
 };
+/** Typed files that are still downloaded, not shown: an APK is installed from the phone's downloads. */
+const SAVED = new Set(["apk"]);
 
 async function object(key: string): Promise<R2ObjectBody | null> {
   const bucket = env.DOWNLOADS;
@@ -48,6 +52,6 @@ export async function loader({ params }: Route.LoaderArgs) {
     // A version's files never change; what `latest` points to does.
     "cache-control": path.startsWith("latest") ? "public, max-age=300" : "public, max-age=31536000, immutable",
   });
-  if (!TYPES[extension]) headers.set("content-disposition", `attachment; filename="${name}"`);
+  if (!TYPES[extension] || SAVED.has(extension)) headers.set("content-disposition", `attachment; filename="${name}"`);
   return new Response(found.body, { headers });
 }

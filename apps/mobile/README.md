@@ -97,7 +97,7 @@ permission.
 
 ## Run it
 
-You need Node 22 (the repository's).
+You need Node 24 (the repository's `.nvmrc`; EAS builds on 24.21.0, `eas.json`).
 
 ### In Expo Go (quickest)
 
@@ -184,6 +184,29 @@ Once, by someone with access to the Expo account and Google Play:
 
 iOS is the same with `--platform ios`, an Apple Developer account and the
 bundle id `sh.g1t.app`; EAS makes the certificates.
+
+### Releasing on g1t.sh/download (until Google Play)
+
+Google Play and the App Store wait on Flagon's D-U-N-S number. Until then
+the `preview` build, `g1t (beta)`, is what people install, from
+g1t.sh/download:
+
+```sh
+# a new native side or version: bump `version` in app.config.ts, then
+git tag mobile-v0.1.0 && git push origin mobile-v0.1.0   # .g1t/workflows/mobile-release.yml
+# or by hand, from the repository's root:
+node scripts/mobile-release.mjs build      # EAS builds the APK
+node scripts/mobile-release.mjs fetch      # the newest finished preview build
+node scripts/mobile-release.mjs manifest
+node scripts/mobile-release.mjs publish    # to g1t.sh/downloads/mobile/, latest.json last
+
+# code alone: over the air to every installed copy of this version
+cd apps/mobile && npx eas-cli update --channel preview --message "What changed"
+```
+
+The workflow needs `EXPO_TOKEN` (expo.dev → Access tokens) beside the
+deploy's Cloudflare secrets. Preview builds count their own versionCode
+(`autoIncrement`), so each installs over the last.
 
 ### Push notifications on Android
 

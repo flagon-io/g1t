@@ -9,7 +9,7 @@ own. To run g1t on one machine without Cloudflare, see
 [Run g1t yourself](/guides/self-hosting/) instead.
 
 You need a Cloudflare account on the Workers Paid plan (Cloudflare
-Artifacts, where repositories are kept, requires it), Node 22.22 or newer,
+Artifacts, where repositories are kept, requires it), Node 24,
 Rust with the `wasm32-unknown-unknown` target, and Docker to build the
 runner's image.
 

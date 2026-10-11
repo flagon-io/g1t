@@ -41,6 +41,28 @@ export type DesktopRelease = {
 
 type Platform = DesktopDownload["platform"];
 
+/** The phone app's newest Android release (scripts/mobile-release.mjs): `mobile/latest.json`. */
+export type MobileRelease = {
+  version: string;
+  build: number | null;
+  pub_date: string;
+  notes?: string;
+  downloads: { platform: "android"; kind: "apk"; name: string; size: number; sha256: string }[];
+};
+
+/** A manifest as read from the bucket, or null when it is not one. */
+async function readJson<T>(bucket: R2Bucket | undefined, key: string, check: (value: Partial<T>) => boolean): Promise<T | null> {
+  try {
+    const found = bucket ? await bucket.get(key) : null;
+    if (!found) return null;
+    const read = (await found.json()) as Partial<T>;
+    return read && check(read) ? (read as T) : null;
+  } catch (error) {
+    console.error(`download: ${key} could not be read`, error);
+    return null;
+  }
+}
+
 /** Which platform a browser says it is on; null when it does not say. */
 export function platformOf(userAgent: string | null): Platform | null {
   if (!userAgent) return null;
@@ -71,8 +93,17 @@ export async function loader({ request }: Route.LoaderArgs) {
   } catch (error) {
     console.error("download: the release could not be read", error);
   }
+  const mobile = await readJson<MobileRelease>(bucket, "mobile/latest.json", (read) => typeof read.version === "string" && Array.isArray(read.downloads));
   const { site } = addresses();
-  return { release, platform: platformOf(request.headers.get("user-agent")), site, hosted: site === HOSTED_ADDRESSES.site };
+  const userAgent = request.headers.get("user-agent") ?? "";
+  return {
+    release,
+    platform: platformOf(userAgent),
+    android: /Android/i.test(userAgent),
+    mobile,
+    site,
+    hosted: site === HOSTED_ADDRESSES.site,
+  };
 }
 
 const PLATFORMS: { id: Platform; name: string; icon: ReactNode; note: string }[] = [
@@ -107,7 +138,7 @@ const WHAT: { icon: ReactNode; title: string; text: string }[] = [
 ];
 
 export default function DownloadPage() {
-  const { release, platform, site, hosted } = useLoaderData<typeof loader>();
+  const { release, platform, site, hosted, mobile, android } = useLoaderData<typeof loader>();
   const ordered = platform ? [...PLATFORMS.filter((p) => p.id === platform), ...PLATFORMS.filter((p) => p.id !== platform)] : PLATFORMS;
   const yours = platform && release ? release.downloads.filter((d) => d.platform === platform) : [];
   const featured = yours.find((d) => d.kind === "installer" || d.kind === "dmg" || d.kind === "appimage") ?? yours[0] ?? null;
@@ -220,7 +251,7 @@ export default function DownloadPage() {
             </p>
           </section>
         )}
-        <PhoneApp site={site} hosted={hosted} />
+        <PhoneApp site={site} hosted={hosted} mobile={mobile} android={android} />
       </div>
     </TrustPage>
   );
@@ -228,12 +259,18 @@ export default function DownloadPage() {
 
 /**
  * The phone app: Chat with people and agents, live, and notifications on
- * the phone. On a g1t of your own, a link and its QR code point the app
- * here, so nobody types the address; on g1t.sh the app starts here anyway.
+ * the phone. Not in Google Play or the App Store yet (both wait on
+ * Flagon's D-U-N-S number), so the Android app is offered here as an APK,
+ * with how to install it and why it is not in a store. On a g1t of your
+ * own, a link and its QR code point the app here, so nobody types the
+ * address; on g1t.sh the app starts here anyway.
  */
-function PhoneApp({ site, hosted }: { site: string; hosted: boolean }) {
+function PhoneApp({ site, hosted, mobile, android }: { site: string; hosted: boolean; mobile: MobileRelease | null; android: boolean }) {
   const link = connectLink(site);
   const host = new URL(site).host;
+  const apk = mobile?.downloads.find((download) => download.kind === "apk") ?? null;
+  // The release's own address on g1t.sh, wherever this page is: the app is g1t's, served from g1t.sh.
+  const apkUrl = apk && mobile ? `${HOSTED_ADDRESSES.site}/downloads/mobile/${mobile.version}/${apk.name}` : null;
   return (
     <section className="mt-14">
       <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
@@ -242,19 +279,64 @@ function PhoneApp({ site, hosted }: { site: string; hosted: boolean }) {
       </h2>
       <p className="mt-1 max-w-2xl text-sm text-muted">
         Chat with your team and its agents, live, with notifications for messages to you, mentions, replies and agents waiting on you;
-        review and approve pull requests on the way. Android comes first; it is in testing now, and the stores are next.
+        review and approve pull requests on the way. Android first, with iOS to follow.
       </p>
-      {hosted ? (
-        <p className="mt-4 text-sm text-muted">
-          How it works, and how to build it yourself meanwhile, is in{" "}
-          <a href="https://docs.g1t.sh/guides/mobile/" className="text-accent hover:underline">
-            the phone app guide
-          </a>
-          .
-        </p>
-      ) : (
+
+      {apk && apkUrl && mobile ? (
         <Card className="mt-4 flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
-          <QrCode value={link} label={`Open the g1t app on ${host}`} size={152} />
+          {!android && (
+            <div className="shrink-0">
+              <QrCode value={apkUrl} label="Download the g1t app for Android" size={152} />
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="font-medium">g1t for Android, beta {mobile.version}</p>
+            <p className="mt-1 text-sm text-muted">
+              {android
+                ? "Download it, open the file, and allow your browser to install apps when Android asks."
+                : "Scan this with your Android phone's camera to download it there, then open the file and allow your browser to install apps when Android asks."}{" "}
+              It installs as <span className="text-fg-soft">g1t (beta)</span>, and takes most updates by itself.
+            </p>
+            <ButtonLink to={apkUrl} reloadDocument className="mt-3">
+              <Download size={16} />
+              Download for Android{apk.size ? ` (${size(apk.size)})` : ""}
+            </ButtonLink>
+            <p className="mt-2 font-mono text-xs break-all text-faint">SHA-256 {apk.sha256}</p>
+          </div>
+        </Card>
+      ) : hosted ? (
+        <Card className="mt-4 p-5">
+          <p className="font-medium">The first Android build is on its way.</p>
+          <p className="mt-1 text-sm text-muted">It will be here to download as soon as it is published.</p>
+        </Card>
+      ) : (
+        <Card className="mt-4 p-5">
+          <p className="font-medium">Get the app from g1t.sh</p>
+          <p className="mt-1 text-sm text-muted">
+            The app is the same for every g1t: download it from{" "}
+            <a href={`${HOSTED_ADDRESSES.site}/download`} className="text-accent hover:underline">
+              g1t.sh/download
+            </a>
+            , then point it here with the code below.
+          </p>
+        </Card>
+      )}
+
+      <div className="mt-4 rounded-xl border border-line bg-surface p-5 text-sm">
+        <p className="font-medium text-fg">Why a download, and not Google Play or the App Store?</p>
+        <p className="mt-1 text-muted">
+          Both stores publish a company's apps only once the company is verified with a D-U-N-S number, and Flagon's is on its way. Until it
+          arrives, the Android app is published {hosted ? "here" : "on g1t.sh"}, signed by us, as the desktop app is. Android asks once to allow installing it from your
+          browser; that is the only difference. It moves into Google Play as soon as it can, and iOS follows through the App Store, which has no
+          other way in.
+        </p>
+      </div>
+
+      {!hosted && (
+        <Card className="mt-4 flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
+          <div className="shrink-0">
+            <QrCode value={link} label={`Open the g1t app on ${host}`} size={152} />
+          </div>
           <div className="min-w-0">
             <p className="font-medium">Use the app with {host}</p>
             <p className="mt-1 text-sm text-muted">
@@ -269,6 +351,14 @@ function PhoneApp({ site, hosted }: { site: string; hosted: boolean }) {
           </div>
         </Card>
       )}
+
+      <p className="mt-4 text-sm text-muted">
+        How it works, and what it does with a g1t of your own, is in{" "}
+        <a href="https://docs.g1t.sh/guides/mobile/" className="text-accent hover:underline">
+          the phone app guide
+        </a>
+        .
+      </p>
     </section>
   );
 }
