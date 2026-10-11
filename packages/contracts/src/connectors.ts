@@ -79,7 +79,14 @@ export type Connector = {
    * the way it asks (`oauth`: the browser; `header`: a key an owner
    * pastes; `none`), lists its tools, and gives them to agents.
    */
-  mcp?: { url: string; auth: "oauth" | "header" | "none"; header?: string };
+  mcp?: {
+    url: string;
+    auth: "oauth" | "header" | "none";
+    /** For `header`: the header the key goes in (Authorization when unset). */
+    header?: string;
+    /** What to know before connecting: where the key comes from, or that signing in needs an app g1t doesn't have yet. */
+    caveat?: string;
+  };
 };
 
 /** A connector as one context (a workspace, or you) shows it. */
@@ -185,7 +192,7 @@ export const CONNECTORS: Connector[] = [
     },
     keywords: ["git", "import", "mirror", "sign in"],
   },
-  mcp("github-mcp", "GitHub (MCP)", "code", "Agents read and act on repositories, issues and pull requests on GitHub, through GitHub's MCP server.", { url: "https://api.githubcopilot.com/mcp/", auth: "oauth" }, ["Agents can read", "Agents can act"], ["issues", "pull requests"]),
+  mcp("github-mcp", "GitHub (MCP)", "code", "Agents read and act on repositories, issues and pull requests on GitHub, through GitHub's MCP server.", { url: "https://api.githubcopilot.com/mcp/", auth: "header", header: "Authorization", caveat: "Paste a GitHub personal access token as Bearer <token>: GitHub's server takes one in place of a sign-in." }, ["Agents can read", "Agents can act"], ["issues", "pull requests"]),
   {
     id: "webhooks",
     name: "Webhooks",
@@ -240,7 +247,7 @@ export const CONNECTORS: Connector[] = [
     provider: "jira",
     keywords: ["atlassian", "tracker", "tickets"],
   },
-  mcp("asana", "Asana", "issues", "Agents read, create and update tasks and projects in Asana, through Asana's MCP server.", { url: "https://mcp.asana.com/v2/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["tasks", "projects"]),
+  mcp("asana", "Asana", "issues", "Agents read, create and update tasks and projects in Asana, through Asana's MCP server.", { url: "https://mcp.asana.com/v2/mcp", auth: "oauth", caveat: "Asana signs in only apps registered with it, and g1t isn't one yet: signing in here fails until it is." }, ["Agents can read", "Agents can act"], ["tasks", "projects"]),
   soon("shortcut", "Shortcut", "issues", W, "Stories agents read when work mentions them, updated when the work lands.", ["Agents can read", "Writes back"]),
   soon("clickup", "ClickUp", "issues", W, "Tasks agents can read and import, kept in step with their pull requests.", ["Agents can read", "Writes back"]),
   soon("trello", "Trello", "issues", W, "Cards become issues, and move along their board as the work does.", ["Opens issues", "Writes back"]),
@@ -274,8 +281,7 @@ export const CONNECTORS: Connector[] = [
     description: "Docs you share in chat open for agents as well as people.",
     capabilities: ["Agents can read"],
   }),
-  mcp("zapier", "Zapier", "data", "Agents run the actions you expose from Zapier, across thousands of apps, through Zapier's MCP server.", { url: "https://mcp.zapier.com/api/mcp/mcp", auth: "header", header: "Authorization" }, ["Agents can act"], ["automation", "apps"]),
-  mcp("webflow", "Webflow", "design", "Agents read and update sites, pages and CMS items in Webflow, through Webflow's MCP server.", { url: "https://mcp.webflow.com/sse", auth: "oauth" }, ["Agents can read", "Agents can act"], ["cms", "sites"]),
+  mcp("zapier", "Zapier", "data", "Agents run the actions you expose from Zapier, across thousands of apps, through Zapier's MCP server.", { url: "https://mcp.zapier.com/api/mcp/mcp", auth: "header", header: "Authorization", caveat: "Paste the token from your Zapier MCP settings as Bearer <token>." }, ["Agents can act"], ["automation", "apps"]),
   soon("coda", "Coda", "docs", W, "Agents read the docs and tables linked from issues and chat.", ["Agents can read"]),
 
   // Monitoring & incidents ------------------------------------------------
@@ -395,7 +401,7 @@ export const CONNECTORS: Connector[] = [
   // CRM & support ---------------------------------------------------------
   soon("zendesk", "Zendesk", "crm", W, "Turn a ticket into an issue, and tell the customer when the fix ships.", ["Opens issues", "Writes back"]),
   mcp("intercom", "Intercom", "crm", "Agents search conversations, contacts and companies in Intercom, through Intercom's MCP server.", { url: "https://mcp.intercom.com/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["support", "conversations", "customers"]),
-  mcp("hubspot", "HubSpot", "crm", "Agents read contacts, companies and deals in HubSpot, through HubSpot's MCP server.", { url: "https://mcp.hubspot.com/anthropic", auth: "oauth" }, ["Agents can read", "Agents can act"], ["crm", "contacts", "deals"]),
+  mcp("hubspot", "HubSpot", "crm", "Agents read contacts, companies and deals in HubSpot, through HubSpot's MCP server.", { url: "https://mcp.hubspot.com/anthropic", auth: "oauth", caveat: "HubSpot signs in only apps registered with it, and g1t isn't one yet: signing in here fails until it is." }, ["Agents can read", "Agents can act"], ["crm", "contacts", "deals"]),
   soon("salesforce", "Salesforce", "crm", W, "Agents read the account and case behind a request.", ["Agents can read"]),
   mcp("stripe", "Stripe", "crm", "Agents read customers, payments and subscriptions, and look things up in Stripe's docs, through Stripe's MCP server.", { url: "https://mcp.stripe.com", auth: "oauth" }, ["Agents can read", "Agents can act"], ["payments", "billing", "customers"]),
   mcp("paypal", "PayPal", "crm", "Agents read and manage orders, invoices and subscriptions, through PayPal's MCP server.", { url: "https://mcp.paypal.com/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["payments", "invoices"]),
