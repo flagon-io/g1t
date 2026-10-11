@@ -23,7 +23,7 @@ export async function agentsAction(
 export async function answer<T>(intent: string, call: Promise<Result<T>>): Promise<ActionResult> {
   const result = await call.catch(() => null);
   if (!result) return { ok: false, intent, error: "The agents service didn't answer. Try again in a moment." };
-  if (!result.ok) return { ok: false, intent, error: result.error.message };
+  if (!result.ok) return { ok: false, intent, error: result.error.message, code: result.error.code };
   return { ok: true, intent };
 }
 

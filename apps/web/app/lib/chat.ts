@@ -7,7 +7,7 @@
  * Message bodies are never HTML: they are parsed here into a small tree
  * that React renders as text, so nothing anyone writes can run.
  */
-import type { ChatMessage, ChatSidebarEntry, MemberProfile, Principal } from "@g1t/contracts";
+import type { ChatMessage, ChatSidebarEntry, MemberProfile, Principal, WorkspaceAgent } from "@g1t/contracts";
 
 /** Two messages from the same author this close together share one header. */
 export const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -171,7 +171,7 @@ export function agentDmOf(entry: ChatSidebarEntry): string | null {
 type Members = Pick<MemberProfile, "kind">[];
 
 /** Whether a direct message is with agents alone (one or several, nobody else). */
-export function agentsOnlyDm(entry: Pick<ChatSidebarEntry, "channel" | "others">): boolean {
+export function agentsOnlyDm(entry: { channel: { kind: "channel" | "dm" }; others: readonly Pick<MemberProfile, "kind">[] }): boolean {
   return entry.channel.kind === "dm" && entry.others.length > 0 && entry.others.every((member) => member.kind === "agent");
 }
 
@@ -252,6 +252,66 @@ export function sections(entries: ChatSidebarEntry[]): {
     people: dms.filter((e) => !agentsOnlyDm(e)).sort(byRecent),
     agents: dms.filter(agentsOnlyDm).sort(byRecent),
   };
+}
+
+/**
+ * The archived (or deleted) agent a direct message is with, when the
+ * conversation is with agents alone and every one of them is archived or
+ * deleted for good (docs.g1t.sh/guides/chat/, "Archived and deleted
+ * agents"): the row is dimmed and says Archived (or Deleted, when the
+ * agent returned is `deleted`), and a conversation with one agent opens
+ * read-only. Null for any other conversation, a mixed one included, since
+ * a person is still there to talk to.
+ */
+export function archivedAgentsDm<M extends Pick<MemberProfile, "kind" | "archived_at" | "deleted">>(entry: { channel: { kind: "channel" | "dm" }; others: readonly M[] }): M | null {
+  if (!agentsOnlyDm(entry)) return null;
+  return entry.others.every((member) => !!member.archived_at || member.deleted === true) ? (entry.others[0] ?? null) : null;
+}
+
+/**
+ * The agents you have not talked to yet, for the sidebar's Agents section:
+ * live ones (an archived agent is never offered, though its old conversation
+ * stays listed), with no direct message yet, g1t first, then by name,
+ * narrowed by what is typed in Jump to (handle, name or role).
+ */
+export function agentsToTalkTo<A extends Pick<WorkspaceAgent, "id" | "handle" | "display_name" | "role" | "builtin" | "archived_at">>(agents: readonly A[], agentDms: ReadonlyMap<string, unknown>, query = ""): A[] {
+  const q = query.trim().toLowerCase().replace(/^@/, "");
+  return agents
+    .filter((agent) => !agent.archived_at && !agentDms.has(agent.id))
+    .sort((a, b) => Number(!!b.builtin) - Number(!!a.builtin) || a.display_name.localeCompare(b.display_name))
+    .filter((agent) => !q || agent.handle.includes(q) || agent.display_name.toLowerCase().includes(q) || agent.role.toLowerCase().includes(q));
+}
+
+/**
+ * What an archived agent's conversation says in place of its composer:
+ * who archived it and when, as far as that is known.
+ */
+export function archivedAgentLine(agent: Pick<MemberProfile, "name" | "display_name" | "display_username" | "archived_at" | "archived_by">, now: Date = new Date()): string {
+  return `${shownName(agent)} was ${archivedAgentWhen(agent, now).replace(/^A/, "a")}. It no longer answers here.`;
+}
+
+/** "Archived 2 days ago by @ana": under an archived agent's name, where its title was. */
+export function archivedAgentWhen(agent: Pick<MemberProfile, "archived_at" | "archived_by">, now: Date = new Date()): string {
+  const when = agent.archived_at ? ` ${timeSince(agent.archived_at, now)}` : "";
+  const by = agent.archived_by ? ` by @${agent.archived_by}` : "";
+  return `Archived${when}${by}`;
+}
+
+/** "3 days ago", "2 hours ago", "just now": for a line of prose. */
+export function timeSince(at: string, now: Date = new Date()): string {
+  const elapsed = Math.max(0, now.getTime() - new Date(at).getTime());
+  const units: [string, number][] = [
+    ["day", 86_400_000],
+    ["hour", 3_600_000],
+    ["minute", 60_000],
+  ];
+  for (const [unit, size] of units) {
+    if (elapsed >= size) {
+      const n = Math.floor(elapsed / size);
+      return `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+    }
+  }
+  return "just now";
 }
 
 /** Where a conversation is, under the workspace. */

@@ -107,7 +107,8 @@ export async function action({ params, context, request }: Route.ActionArgs) {
     const archived = await workspaceAgents.archive(slug, params.handle.toLowerCase(), viewer).catch(() => null);
     if (!archived) return { errors: { form: "The agents service didn't answer. Try again in a moment." }, saved: false };
     if (!archived.ok) return { errors: { form: archived.error.message }, saved: false };
-    throw redirect(`/${slug}/-/agents`);
+    // Back on the Agents page, which says where the agent went: Restore or delete it under Archived.
+    throw redirect(`/${slug}/-/agents?archived=${encodeURIComponent(params.handle.toLowerCase())}`);
   }
   const read = readAgentForm(form, { orchestrator: params.handle.toLowerCase() === "g1t" });
   if (!read.ok) return { errors: read.errors, saved: false };

@@ -836,7 +836,8 @@ It is a persistent home, not an always-on machine:
 - **Reset wipes the home.** The agent's memory and artifacts are kept;
   its files, clones and command history go.
 - **Archiving the agent** puts the computer to sleep and keeps its disk
-  for 30 days, then deletes it.
+  for 30 days, then deletes it. [Restoring](#archive-restore-and-delete)
+  the agent keeps the disk; deleting the agent deletes it at once.
 
 Every command runs as the agent in `bash`, with the output returned when it
 ends and a timeout of 120 seconds unless the agent asks for more (up to 30
@@ -873,9 +874,45 @@ sessions.
 Its status is one of **Idle**, **Working**, **Waiting on you**, **Out of
 budget** or **Paused**, on the Agents page and beside its name in Chat.
 
+## Archive, restore and delete
+
 To retire an agent, an owner **archives** it from its profile; a member can
-archive their own personal agent. It stops answering, leaves the member
-lists, and its history stays.
+archive their own personal agent. Archiving is like deactivating a person's
+account, not deleting it:
+
+- It stops answering, is never woken again, and shows as typing or working
+  nowhere.
+- It leaves the Agents list, the People directory, the sidebar's **Agents**
+  section, **New message** and `@` autocomplete, and its handle is free for
+  a new agent.
+- Its conversations stay. A direct message with it is still in Chat's
+  sidebar, dimmed and marked **Archived**, and opens to read; what it said
+  keeps its name and face. See [archived and deleted
+  agents](/guides/chat/#archived-and-deleted-agents) in the chat guide.
+- Its sessions, replies, memory, routines and spend are kept, and its
+  computer's disk for 30 days.
+
+Archived agents are listed under **Archived** at the foot of the Agents
+page, folded, newest first: owners see the workspace's, a member their own
+archived personal agents. Each row shows who archived it and when, and what
+is kept about it, such as *14 sessions · 231 replies · 3 memories*. Two
+things can happen to it from there:
+
+| Action | What it does | Who may |
+| --- | --- | --- |
+| **Restore** | The agent is live again under its handle, with its definition, versions, memory, routines and conversations as they were; its computer's disk is kept after all. If a live agent has taken the handle meanwhile, you are asked for a new handle to restore it under, or you rename the live one first. A new handle is saved as a new version. | Owners, any agent; a member, their own personal agent |
+| **Delete permanently** | Type its handle back to confirm. Its definition and every version, sessions and their transcripts, replies, memory, routines, drafts, suggestions, budget roll-ups and its computer's disk are deleted, and it leaves every channel and every team. There is no undo. | Owners, any agent; a member, their own personal agent |
+
+Only an archived agent can be deleted: archive it first, so nothing goes
+by accident. `@g1t` can be neither archived nor deleted.
+
+What stays after a delete: its messages in chat, shown under the name it
+had and marked **Deleted agent**, and direct messages with it, readable by
+their people; what it spent, in the month's total
+against the agent budget, on the workspace's statement and on Usage (its
+own lines leave the Agents page's breakdown); and the audit log, where
+archiving, restoring and deleting are `archive_agent`, `restore_agent` and
+`delete_agent`.
 
 ## Coming soon
 

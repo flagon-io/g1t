@@ -23,7 +23,7 @@ import { money } from "../../lib/money";
 import { PrivateTitle, SpendOfCap } from "./parts";
 
 /** What Agents mode's actions answer. */
-export type ActionResult = { ok: true; intent?: string } | { ok: false; error: string; field?: string; intent?: string };
+export type ActionResult = { ok: true; intent?: string } | { ok: false; error: string; field?: string; intent?: string; code?: string };
 
 /** A fetcher whose dialog closes once what it sent has worked. */
 export function useDialogFetcher(key?: string) {

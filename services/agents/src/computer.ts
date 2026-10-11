@@ -145,3 +145,19 @@ export async function forgetComputer(env: ComputerEnv, agentId: string): Promise
     .computerForget(agentId)
     .catch((error: unknown) => console.error("agents: an archived agent's computer was not told", agentId, String(error)));
 }
+
+/** A restored agent's computer: its disk is kept after all (undoes `forgetComputer`). Never fails the restore. */
+export async function keepComputer(env: ComputerEnv, agentId: string): Promise<void> {
+  if (!env.RUNNER) return;
+  await runnerComputerClient(env.RUNNER)
+    .computerKeep(agentId)
+    .catch((error: unknown) => console.error("agents: a restored agent's computer was not told", agentId, String(error)));
+}
+
+/** A deleted agent's computer: stopped, and its saved home, commands and record deleted now. Never fails the delete. */
+export async function eraseComputer(env: ComputerEnv, agentId: string): Promise<void> {
+  if (!env.RUNNER) return;
+  await runnerComputerClient(env.RUNNER)
+    .computerErase(agentId)
+    .catch((error: unknown) => console.error("agents: a deleted agent's computer was not erased", agentId, String(error)));
+}

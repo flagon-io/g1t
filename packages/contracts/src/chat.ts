@@ -54,6 +54,16 @@ export type MemberProfile = Principal & {
   avatar_seed?: string | null;
   /** An agent's chosen face (./agent-look.ts); null for a person, or an agent wearing its seed's face. */
   look?: AgentLook | null;
+  /**
+   * An archived agent (docs.g1t.sh/guides/chat/, "Archived and deleted
+   * agents"): when, and by whom. Its conversations stay readable; it is
+   * never woken and never listed to talk to. Null or absent for a live
+   * agent and for a person.
+   */
+  archived_at?: string | null;
+  archived_by?: string | null;
+  /** An agent deleted for good: its messages stay under the name it had. Absent otherwise. */
+  deleted?: boolean;
 };
 
 /**
@@ -485,6 +495,13 @@ export type ChatApi = {
   openDm(workspace: string, viewer: User, members: Principal[]): Promise<Result<Channel>>;
   join(workspace: string, channelId: string, viewer: User): Promise<Result<null>>;
   leave(workspace: string, channelId: string, viewer: User): Promise<Result<null>>;
+  /**
+   * Internal, from the agents service: an agent was deleted for good. It
+   * leaves every channel of the workspace; its direct messages stay their
+   * people's, readable, and its messages everywhere stay, shown under the
+   * name it had (`former_agents`) and marked deleted.
+   */
+  agentDestroyed(input: { workspace_id: string; agent_id: string; handle: string; display_name: string; avatar_seed: string | null; look: AgentLook | null }): Promise<Result<null>>;
   /** Adds a person or an agent. An invite grants read, never write. */
   invite(workspace: string, channelId: string, viewer: User, member: Principal): Promise<Result<null>>;
   /**
@@ -654,6 +671,7 @@ export function chatClient(service: ServiceBinding): ChatApi {
     openDm: (workspace, viewer, members) => call("open_dm", { workspace, viewer, members }),
     join: (workspace, channelId, viewer) => call("join", { workspace, channel_id: channelId, viewer }),
     leave: (workspace, channelId, viewer) => call("leave", { workspace, channel_id: channelId, viewer }),
+    agentDestroyed: (input) => call("agent_destroyed", input),
     invite: (workspace, channelId, viewer, member) =>
       call("invite", { workspace, channel_id: channelId, viewer, member }),
     messages: (workspace, channelId, viewer, page) =>

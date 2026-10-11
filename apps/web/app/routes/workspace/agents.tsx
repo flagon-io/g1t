@@ -1,13 +1,15 @@
-import { AlertTriangle, CalendarClock, Coins, Hourglass, Lock, Wallet } from "lucide-react";
+import { AlertTriangle, Archive, CalendarClock, Coins, Hourglass, Lock, Wallet } from "lucide-react";
 import { Link, data, useFetcher } from "react-router";
 
-import type { AgentPolicy, AgentsOverview, WorkspaceAgent } from "@g1t/contracts";
+import type { AgentPolicy, AgentsOverview, ArchivedAgent, WorkspaceAgent } from "@g1t/contracts";
 
 import type { Route } from "./+types/agents";
 import { AgentFace, useAgentsData } from "../../components/agents-mode";
 import { SwitchCard } from "../../components/ui/switch";
 import { agentsAction, answer, readOrNull } from "../../components/agents/actions.server";
+import { ArchivedSection } from "../../components/agents/archived";
 import { ApproveDialog, BudgetDialog } from "../../components/agents/dialogs";
+import { Alert } from "../../components/ui/alert";
 import { meterTone, monthName, scheduleInWords, shareOf, untilLabel } from "../../components/agents/format";
 import { DailyBars, Meter, Panel, Quiet, SessionCard, SessionRow, SliceList, SpendOfCap } from "../../components/agents/parts";
 import { StatusDot, statusLabel } from "../../components/chat/marks";
@@ -26,20 +28,37 @@ export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Agents · ${params.owner} · g1t` });
 }
 
-/** Agents mode's front page: the budget, what is waiting and working, the roster, and where the month went. */
-export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ overview: AgentsOverview | null }> {
+/**
+ * Agents mode's front page: the budget, what is waiting and working, the
+ * roster, where the month went, and the archived agents, in the same round
+ * of calls. `?archived=<handle>` is the way back from archiving one: the
+ * page says where it went.
+ */
+export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ overview: AgentsOverview | null; archived: ArchivedAgent[]; justArchived: string | null }> {
   // Signed out, sign in first (as Chat and Docs do), rather than a 404.
   const viewer = requireUser(context, request);
   if (!viewer || !roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  return { overview: await readOrNull(workspaceAgents.overview(params.owner.toLowerCase(), viewer)) };
+  const slug = params.owner.toLowerCase();
+  const [overview, archived] = await Promise.all([readOrNull(workspaceAgents.overview(slug, viewer)), readOrNull(workspaceAgents.listArchived(slug, viewer))]);
+  const justArchived = new URL(request.url).searchParams.get("archived");
+  return { overview, archived: archived ?? [], justArchived: justArchived && /^[a-z0-9-]{1,40}$/.test(justArchived) ? justArchived : null };
 }
 
-/** Owners set the workspace's agent budget. */
+/** Owners set the workspace's agent budget; archived agents are restored or deleted for good from here. */
 export async function action({ params, context, request }: Route.ActionArgs) {
   const { viewer, slug, form } = await agentsAction(request, context, params.owner);
+  const intent = String(form.get("intent") ?? "");
   // Whether members create personal agents: on unless an owner turns it off.
-  if (form.get("intent") === "personal_agents") {
+  if (intent === "personal_agents") {
     return answer("personal_agents", workspaceAgents.setPolicy(slug, viewer, { members_create_agents: form.get("members_create_agents") === "on" }));
+  }
+  // The Archived section (components/agents/archived.tsx): back to life, under its handle or a new one; or gone for good, with its handle typed back.
+  if (intent === "restore") {
+    const newHandle = String(form.get("new_handle") ?? "").trim();
+    return answer("restore", workspaceAgents.restore(slug, String(form.get("handle") ?? ""), viewer, { id: String(form.get("id") ?? "") || null, handle: newHandle || null }));
+  }
+  if (intent === "destroy") {
+    return answer("destroy", workspaceAgents.destroy(slug, String(form.get("handle") ?? ""), viewer, String(form.get("confirm") ?? ""), { id: String(form.get("id") ?? "") || null }));
   }
   if (form.get("intent") !== "policy") return { ok: false as const, error: "Unknown request." };
   const monthly = microsFromDollars(form.get("monthly"));
@@ -52,7 +71,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
 }
 
 export default function AgentsOverviewPage({ loaderData, params }: Route.ComponentProps) {
-  const { overview } = loaderData;
+  const { overview, archived, justArchived } = loaderData;
   const slug = params.owner;
   useRefreshWhile(Boolean(overview && (overview.live.length > 0 || overview.waiting_on_you.length > 0)));
   if (!overview) {
@@ -66,6 +85,19 @@ export default function AgentsOverviewPage({ loaderData, params }: Route.Compone
   const handles = new Map(overview.agents.map((agent) => [agent.id, agent]));
   return (
     <div className="space-y-10">
+      {/* The way back from archiving: the agent is under Archived, below, not gone. */}
+      {justArchived && archived.some((agent) => agent.handle === justArchived) && (
+        <Alert tone="info" role="status" className="flex items-center gap-2.5 px-3.5 py-2.5">
+          <Archive size={15} className="shrink-0 text-muted" />
+          <span>
+            Archived <span className="font-medium">@{justArchived}</span>. It no longer answers; its conversations stay readable.{" "}
+            <Link to={`/${slug}/-/agents#archived`} className="font-medium underline-offset-4 hover:underline">
+              Restore or delete it under Archived
+            </Link>
+            .
+          </span>
+        </Alert>
+      )}
       <BudgetHeader overview={overview} slug={slug} liveCount={liveCount} />
 
       {overview.waiting_on_you.length > 0 && (
@@ -175,6 +207,9 @@ export default function AgentsOverviewPage({ loaderData, params }: Route.Compone
           )}
         </Panel>
       </div>
+
+      {/* Archived agents, folded: owners see the workspace's, a member their own archived personal agents. */}
+      <ArchivedSection slug={slug} agents={archived} owner={overview.can_manage} />
     </div>
   );
 }

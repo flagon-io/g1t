@@ -986,6 +986,8 @@ export function runnerComputerClient(service: ServiceBinding): RunnerComputerApi
     computerSleep: (agentId) => call("computer_sleep", { agent_id: agentId }),
     computerReset: (agentId) => call("computer_reset", { agent_id: agentId }),
     computerForget: (agentId) => call("computer_forget", { agent_id: agentId }),
+    computerKeep: (agentId) => call("computer_keep", { agent_id: agentId }),
+    computerErase: (agentId) => call("computer_erase", { agent_id: agentId }),
     computerCommands: (agentId, sessionId) => call("computer_commands", { agent_id: agentId, session_id: sessionId ?? null }),
   };
 }

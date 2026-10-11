@@ -4,6 +4,10 @@ import { test } from "node:test";
 import type { ChatMessage, ChatSidebarEntry } from "@g1t/contracts";
 
 import {
+  agentsToTalkTo,
+  archivedAgentLine,
+  archivedAgentWhen,
+  archivedAgentsDm,
   backoff,
   blocks,
   channelName,
@@ -172,6 +176,41 @@ test("the sidebar: sections, filters and the rail's count", () => {
   // Jump to finds the agent's own conversation and the mixed one it is in.
   assert.deepEqual(filterEntries(all, "all", "@Review").map((e) => e.title), ["reviewer", "ana, reviewer"]);
   assert.deepEqual(unreadTotals(all), { unread: 3, mentions: 1 });
+});
+
+test("an archived agent's conversation stays listed under Agents, read-only; the agent itself is no longer offered", () => {
+  const archived = { ...bot, id: "a2", name: "scribe", display_name: "Scribe", archived_at: "2026-10-08T09:00:00Z", archived_by: "ana" };
+  const all = [
+    entry("d1", { kind: "dm", title: "reviewer", others: [bot], last: "2026-10-02T00:00:00Z" }),
+    entry("d2", { kind: "dm", title: "scribe", others: [archived], last: "2026-10-05T00:00:00Z" }),
+    // With a person in it, the conversation is theirs to go on with: not an archived one.
+    entry("d3", { kind: "dm", title: "ana, scribe", others: [ana, archived], last: "2026-10-03T00:00:00Z" }),
+    // Two agents, one archived: the live one still answers.
+    entry("d4", { kind: "dm", title: "reviewer, scribe", others: [bot, archived], last: "2026-10-04T00:00:00Z" }),
+    // Deleted for good: the conversation stays readable, under the name it had.
+    entry("d5", { kind: "dm", title: "triage", others: [{ ...bot, id: "a9", name: "triage", display_name: "Triage", deleted: true }], last: "2026-10-01T00:00:00Z" }),
+  ];
+  const { agents, agentDms } = sections(all);
+  assert.deepEqual(agents.map((e) => e.title), ["scribe", "reviewer, scribe", "reviewer", "triage"]);
+  assert.deepEqual(all.map((e) => archivedAgentsDm(e)?.name ?? null), [null, "scribe", null, null, "triage"]);
+  assert.equal(archivedAgentsDm(all[4]!)?.deleted, true);
+  // The agents you haven't talked to yet: live ones without a conversation, g1t first; never an archived one.
+  const roster = [
+    { id: "a1", handle: "reviewer", display_name: "Reviewer", role: "Reviews", builtin: false, archived_at: null },
+    { id: "a2", handle: "scribe", display_name: "Scribe", role: "Writes", builtin: false, archived_at: "2026-10-08T09:00:00Z" },
+    { id: "a3", handle: "zed", display_name: "Zed", role: "Ships", builtin: false, archived_at: null },
+    { id: "a4", handle: "g1t", display_name: "g1t", role: "Orchestrates", builtin: true, archived_at: null },
+    { id: "a5", handle: "old", display_name: "Old", role: "Nothing", builtin: false, archived_at: "2026-09-01T00:00:00Z" },
+  ];
+  assert.deepEqual(agentsToTalkTo(roster, agentDms).map((a) => a.handle), ["g1t", "zed"]);
+  assert.deepEqual(agentsToTalkTo(roster, agentDms, "@ship").map((a) => a.handle), ["zed"]);
+  assert.deepEqual(agentsToTalkTo(roster, new Map()).map((a) => a.handle), ["g1t", "reviewer", "zed"]);
+  const now = new Date("2026-10-10T12:00:00Z");
+  assert.equal(archivedAgentLine(archived, now), "Scribe was archived 2 days ago by @ana. It no longer answers here.");
+  assert.equal(archivedAgentLine({ ...archived, archived_by: null, archived_at: "2026-10-10T11:30:00Z" }, now), "Scribe was archived 30 minutes ago. It no longer answers here.");
+  assert.equal(archivedAgentLine({ ...archived, archived_by: null, archived_at: null }, now), "Scribe was archived. It no longer answers here.");
+  assert.equal(archivedAgentWhen(archived, now), "Archived 2 days ago by @ana");
+  assert.equal(archivedAgentWhen({ archived_at: "2026-10-10T11:00:00Z", archived_by: null }, now), "Archived 1 hour ago");
 });
 
 test("a mixed conversation says who the agents are, in the composer and above its first message", () => {

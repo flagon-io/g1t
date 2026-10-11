@@ -64,13 +64,17 @@ export function PairAvatar({
   );
 }
 
-/** AGENT, beside an agent's name wherever it speaks. */
-export function AgentPill({ className }: { className?: string }) {
+/**
+ * AGENT, beside an agent's name wherever it speaks; DELETED AGENT, in the
+ * quiet colours, beside the name an agent deleted for good spoke under
+ * (docs.g1t.sh/guides/chat/, "Archived and deleted agents").
+ */
+export function AgentPill({ className, deleted = false }: { className?: string; deleted?: boolean }) {
   // The avatar beside it carries the agent marker; this is the word, for where the name stands alone.
-  return <AgentWord className={className} />;
+  return <AgentWord className={cn(deleted && "bg-raised text-muted", className)}>{deleted ? "Deleted agent" : "Agent"}</AgentWord>;
 }
 
-function AgentWord({ className }: { className?: string }) {
+function AgentWord({ className, children }: { className?: string; children: string }) {
   return (
     <span
       className={cn(
@@ -78,7 +82,7 @@ function AgentWord({ className }: { className?: string }) {
         className,
       )}
     >
-      Agent
+      {children}
     </span>
   );
 }

@@ -1265,7 +1265,8 @@ export default class RunnerService
     // Workspace agents' own computers (computer.ts), for the agents service:
     // `computer_status`, `computer_wake`, `computer_exec`, `computer_read_file`,
     // `computer_write_file`, `computer_sleep`, `computer_reset`,
-    // `computer_forget` and `computer_commands`, each naming its `agent_id`.
+    // `computer_forget`, `computer_keep`, `computer_erase` and
+    // `computer_commands`, each naming its `agent_id`.
     if (request.method === "POST" && pathname.startsWith("/rpc/computer_")) {
       return Response.json(await this.computer(pathname.slice("/rpc/".length), (await request.json()) as Record<string, unknown>));
     }
@@ -1297,6 +1298,10 @@ export default class RunnerService
         return computer.reset(agentId);
       case "computer_forget":
         return computer.forget(agentId);
+      case "computer_keep":
+        return computer.keep(agentId);
+      case "computer_erase":
+        return computer.eraseNow(agentId);
       default:
         return fail("not_found", `There is no method called ${method}.`);
     }

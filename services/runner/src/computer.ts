@@ -587,6 +587,25 @@ export class AgentComputer extends Container<RunnerEnv> {
   async purge(): Promise<void> {
     const kept = await this.ctx.storage.get<Kept>("computer");
     if (!kept?.deleteAfter || Date.parse(kept.deleteAfter) > Date.now()) return;
+    await this.erase(kept);
+  }
+
+  /** The agent was restored: its home is kept after all. The purge alarm finds nothing to do. */
+  async keep(agentId: string): Promise<Result<AgentComputerStatus>> {
+    const kept = await this.kept(agentId);
+    kept.deleteAfter = null;
+    await this.save(kept);
+    return ok(statusOf(kept, this.attached));
+  }
+
+  /** The agent was deleted for good: stopped if awake, its saved home and everything kept here gone now. */
+  async eraseNow(agentId: string): Promise<Result<null>> {
+    const kept = await this.ctx.storage.get<Kept>("computer");
+    await this.erase(kept ?? { agentId, state: "asleep" });
+    return ok(null);
+  }
+
+  private async erase(kept: Pick<Kept, "agentId" | "state">): Promise<void> {
     if (kept.state !== "asleep") await this.destroy().catch(() => undefined);
     if (this.env.HOMES) await this.env.HOMES.delete(homeKey(kept.agentId)).catch(() => undefined);
     await this.ctx.storage.deleteAll();

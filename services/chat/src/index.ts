@@ -23,6 +23,7 @@ import {
   openD1,
   parsePrincipalKey,
   principalKey,
+  readLook,
   workspaceAgentsClient,
   type AgentDelivery,
   type AgentFoundMessage,
@@ -77,6 +78,7 @@ import {
   handOffPlace,
   handOffRefusal,
   personalAgentRefusal,
+  wakeable,
   type Chain,
   type RecentMessage,
   type Wake,
@@ -183,6 +185,9 @@ type MessageRow = {
   deleted_at: string | null;
 };
 
+/** An agent deleted for good, as `former_agents` keeps it (migration 0004). */
+type FormerAgentRow = { agent_id: string; workspace_id: string; handle: string; display_name: string; avatar_seed: string | null; look: string | null; deleted_at: string };
+
 /** What a method found out about the channel it was asked about. */
 type Place = { slug: string; workspace: Workspace; channel: ChannelRow; member: MemberRow | null };
 
@@ -239,6 +244,8 @@ class Chat {
   private readonly people = new Map<string, Promise<Map<string, Member>>>();
   private readonly usernames = new Map<string, string>();
   private readonly agents = new Map<string, WorkspaceAgent | null>();
+  /** Agents deleted for good, by id, from `former_agents`; null for one chat never heard of. */
+  private readonly former = new Map<string, FormerAgentRow | null>();
   private readonly settingsRows = new Map<string, Promise<SettingsRow | null>>();
 
   /** `defer` runs work after the answer is sent: the request's waitUntil. */
@@ -308,7 +315,37 @@ class Chat {
     return agent && agent.workspace_id === workspace.id && !agent.archived_at ? agent : null;
   }
 
-  /** How each member key shows, for one workspace. */
+  /**
+   * Agents deleted for good, by id, as `former_agents` remembers them: the
+   * name and face their messages still show under. Asked only for agents
+   * the agents service no longer knows, and once per request.
+   */
+  private async formerAgents(ids: string[]): Promise<Map<string, FormerAgentRow>> {
+    const wanted = [...new Set(ids)].filter((id) => !this.former.has(id));
+    if (wanted.length) {
+      const rows = await this.db
+        .prepare(`SELECT * FROM former_agents WHERE agent_id IN (${wanted.map(() => "?").join(", ")})`)
+        .bind(...wanted)
+        .all<FormerAgentRow>()
+        .catch((error: unknown) => {
+          console.error("chat could not read former agents", error);
+          return { results: [] as FormerAgentRow[] };
+        });
+      for (const id of wanted) this.former.set(id, rows.results.find((row) => row.agent_id === id) ?? null);
+    }
+    const out = new Map<string, FormerAgentRow>();
+    for (const id of ids) {
+      const row = this.former.get(id);
+      if (row) out.set(id, row);
+    }
+    return out;
+  }
+
+  /**
+   * How each member key shows, for one workspace. An archived agent's
+   * profile says so (`archived_at`, `archived_by`); one deleted for good
+   * shows under the name it had, marked `deleted`.
+   */
   private async profiles(slug: string, workspace: Workspace, keys: string[]): Promise<Map<string, MemberProfile>> {
     const principals = [...new Set(keys)].map((key) => parsePrincipalKey(key)).filter((p): p is Principal => !!p);
     const userIds = principals.filter((p) => p.kind === "user").map((p) => p.id);
@@ -320,6 +357,8 @@ class Chat {
       this.agentsById(agentIds),
     ]);
     for (const [id, username] of Object.entries(named)) this.usernames.set(id, username);
+    const gone = agentIds.filter((id) => !agents.get(id));
+    const former = gone.length ? await this.formerAgents(gone) : new Map<string, FormerAgentRow>();
     const out = new Map<string, MemberProfile>();
     for (const p of principals) {
       if (p.kind === "user") {
@@ -339,15 +378,20 @@ class Chat {
         });
       } else {
         const agent = agents.get(p.id) ?? null;
+        const was = agent ? null : (former.get(p.id) ?? null);
         out.set(principalKey(p), {
           ...p,
-          name: agent?.handle ?? p.id,
-          display_name: agent?.display_name ?? "Former agent",
+          name: agent?.handle ?? was?.handle ?? p.id,
+          // Never blank: a deleted agent's messages show under the name it had, else as a deleted agent.
+          display_name: agent?.display_name ?? was?.display_name ?? "A deleted agent",
           avatar: agent?.avatar ?? null,
           role: agent?.role ?? null,
           title: agent?.title || null,
-          avatar_seed: agent?.avatar_seed ?? null,
-          look: agent?.look ?? null,
+          avatar_seed: agent?.avatar_seed ?? was?.avatar_seed ?? null,
+          look: agent?.look ?? (was ? readLook(was.look) : null),
+          archived_at: agent?.archived_at ?? null,
+          archived_by: agent?.archived_by ?? null,
+          ...(agent ? {} : { deleted: true }),
         });
       }
     }
@@ -848,6 +892,30 @@ class Chat {
     return ok(null);
   }
 
+  /**
+   * Internal, from the agents service: an agent was deleted for good. It
+   * comes off every channel of its workspace, and its name and face are
+   * kept (`former_agents`) so its messages, which stay, show under them.
+   * Its direct messages keep their membership rows: a conversation is its
+   * people's, stays in their lists and opens to read, with the agent shown
+   * as deleted (`profiles`); it is never woken, since the agents service no
+   * longer knows it (delivery.ts `wakeable`).
+   */
+  async agentDestroyed(a: { workspace_id: string; agent_id: string; handle: string; display_name: string; avatar_seed?: string | null; look?: unknown }): Promise<Result<null>> {
+    if (typeof a?.workspace_id !== "string" || !a.workspace_id || typeof a?.agent_id !== "string" || !a.agent_id) return fail("invalid", "Name the workspace and the agent by id.");
+    const handle = typeof a.handle === "string" && a.handle ? a.handle : a.agent_id;
+    const key = principalKey({ kind: "agent", id: a.agent_id });
+    await this.db.batch([
+      this.db
+        .prepare("INSERT OR REPLACE INTO former_agents (agent_id, workspace_id, handle, display_name, avatar_seed, look, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(a.agent_id, a.workspace_id, handle, typeof a.display_name === "string" && a.display_name.trim() ? a.display_name : handle, typeof a.avatar_seed === "string" ? a.avatar_seed : null, a.look ? JSON.stringify(a.look) : null, now()),
+      this.db.prepare("DELETE FROM channel_members WHERE principal = ? AND channel_id IN (SELECT id FROM channels WHERE workspace_id = ? AND kind = 'channel')").bind(key, a.workspace_id),
+    ]);
+    this.agents.delete(a.agent_id);
+    this.former.delete(a.agent_id);
+    return ok(null);
+  }
+
   async invite(a: { workspace: string; channel_id: string; viewer: Viewer; member: Principal }): Promise<Result<null>> {
     const found = await this.place(a.workspace, a.channel_id, a.viewer, "member");
     if (!found.ok) return found;
@@ -1204,7 +1272,7 @@ class Chat {
       .all<{ principal: string }>();
     const ids = members.results.map((m) => m.principal.slice("agent:".length));
     let found = await this.agentsById(ids);
-    const orchestratorIsMember = [...found.values()].some((agent) => !!agent?.builtin && agent.workspace_id === workspace.id && !agent.archived_at);
+    const orchestratorIsMember = wakeable(found.values(), workspace.id).some((agent) => !!agent.builtin);
     if (addsOrchestrator({ channelKind: channel.kind, mentioned: handles, orchestratorIsMember })) {
       // Mentioning @g1t brings it in: every workspace has it, nobody invites it.
       const builtin = await workspaceAgentsClient(this.env.AGENTS)
@@ -1221,9 +1289,8 @@ class Chat {
       }
     }
     if (!ids.length) return;
-    const agents = [...found.values()].filter(
-      (agent): agent is WorkspaceAgent => !!agent && agent.workspace_id === workspace.id && !agent.archived_at,
-    );
+    // Archived agents stay members, so their conversations can be read, but are never woken (delivery.ts `wakeable`).
+    const agents = wakeable(found.values(), workspace.id);
     const wakes = deliveries({
       author: row.author,
       hops: chain.hops,
@@ -2091,6 +2158,8 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.join(args));
     case "leave":
       return Response.json(await service.leave(args));
+    case "agent_destroyed":
+      return Response.json(await service.agentDestroyed(args));
     case "invite":
       return Response.json(await service.invite(args));
     case "messages":

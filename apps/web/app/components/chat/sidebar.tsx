@@ -16,7 +16,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { Skeleton } from "../ui/skeleton";
-import { type ChatFilter, agentDmOf, agentsAmong, channelPath, filterEntries, mixedDm, sections } from "../../lib/chat";
+import { type ChatFilter, agentDmOf, agentsAmong, agentsToTalkTo, archivedAgentsDm, channelPath, filterEntries, mixedDm, sections } from "../../lib/chat";
 import { feedConnected } from "../../lib/notify-client";
 import { FALLBACK_REFRESH_MS } from "../../lib/notify-store";
 import { setMutedConversations } from "../../lib/sound-events";
@@ -95,14 +95,8 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
   // The agents you have not talked to yet, g1t first: one click opens a
   // conversation, which then lists under Direct messages like anyone's.
   // Nothing of theirs is unread, so Unread and Mentions leave them out.
-  const q = query.trim().toLowerCase().replace(/^@/, "");
-  const agents =
-    filter !== "all"
-      ? []
-      : [...(data?.agents ?? [])]
-          .filter((agent) => !agentDms.has(agent.id))
-          .sort((a, b) => Number(isOrchestrator(b)) - Number(isOrchestrator(a)) || a.display_name.localeCompare(b.display_name))
-          .filter((agent) => !q || agent.handle.includes(q) || agent.display_name.toLowerCase().includes(q) || agent.role.toLowerCase().includes(q));
+  // An archived agent is never offered (lib/chat.ts `agentsToTalkTo`).
+  const agents = filter !== "all" ? [] : agentsToTalkTo(data?.agents ?? [], agentDms, query);
 
   // Folded sections, remembered per workspace on this device. A folded
   // section still shows what is unread and the conversation open now.
@@ -471,6 +465,8 @@ function ConversationRow({
   const g1t = agent ? isOrchestrator(agent) : false;
   // A person and an agent together: both faces, the agent's marked, and the word.
   const mixed = mixedDm(entry);
+  // With an archived agent (lib/chat.ts): still here to read, dimmed, and said to be archived in place of its title.
+  const archived = archivedAgentsDm(entry);
   const icon = agent ? (
     <AgentFace agent={agent} g1t={g1t} />
   ) : mixed ? (
@@ -491,10 +487,10 @@ function ConversationRow({
           {...prefetch}
           aria-current={current ? "page" : undefined}
           className={`${ROW} ${
-            current ? "bg-sidebar-accent text-fg" : unread ? "text-fg hover:bg-sidebar-accent/60" : entry.muted ? "text-faint hover:bg-sidebar-accent/60 hover:text-muted" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"
+            current ? "bg-sidebar-accent text-fg" : unread ? "text-fg hover:bg-sidebar-accent/60" : entry.muted || archived ? "text-faint hover:bg-sidebar-accent/60 hover:text-muted" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"
           }`}
         >
-          <span className={`flex shrink-0 justify-center ${mixed ? "w-7" : "w-4.5"} ${current || unread ? "text-muted" : "text-faint"}`}>{icon}</span>
+          <span className={`flex shrink-0 justify-center ${mixed ? "w-7" : "w-4.5"} ${current || unread ? "text-muted" : "text-faint"} ${archived ? "opacity-60" : ""}`}>{icon}</span>
           <span className={`min-w-0 grow truncate ${unread ? "font-semibold" : current ? "font-medium" : ""}`}>
             {agent ? agent.display_name : entry.title}
             {agent && <span className="ml-1.5 text-[0.6875rem] font-normal text-faint">{g1t ? "orchestrator" : agent.title}</span>}
@@ -502,6 +498,11 @@ function ConversationRow({
               <PersonStatusEmoji person={{ id: other.id, username: other.name }} size={13} className="ml-1.5 align-[-2px]" inert />
             )}
           </span>
+          {archived && (
+            <Badge tone="neutral" className="shrink-0 px-1.5 font-normal">
+              {archived.deleted ? "Deleted" : "Archived"}
+            </Badge>
+          )}
           {mixed && (
             <Badge tone="accent" className="shrink-0 px-1.5 font-normal">
               with an agent

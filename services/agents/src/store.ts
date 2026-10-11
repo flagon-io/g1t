@@ -55,6 +55,8 @@ export type Row = {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  /** Who archived it, by username; missing before 0013. */
+  archived_by?: string | null;
   /** Joined from agent_spend: this month and today. */
   spent_month?: number | null;
   spent_day?: number | null;
@@ -133,6 +135,7 @@ export function toAgent(row: Row, now: Date): WorkspaceAgent {
     created_at: row.created_at,
     updated_at: row.updated_at,
     archived_at: row.archived_at,
+    archived_by: row.archived_by ?? null,
   };
 }
 

@@ -71,6 +71,9 @@ import {
   type Typer,
   WORKING_AFTER_MS,
   agentsAmong,
+  archivedAgentLine,
+  archivedAgentWhen,
+  archivedAgentsDm,
   channelPath,
   dmPlaceholder,
   isMixed,
@@ -206,8 +209,14 @@ export function ChannelView({ data }: { data: Loaded }) {
     viewingConversation(data.channel.id);
     return () => viewingConversation(null);
   }, [data.channel.id]);
-  const others = members.filter((m) => !(m.member.kind === "user" && m.member.id === me?.id)).map((m) => m.member);
+  const everyoneElse = members.filter((m) => !(m.member.kind === "user" && m.member.id === me?.id)).map((m) => m.member);
+  // An agent deleted for good is no longer in the conversation, unless it was only ever the two of you: then it is who the conversation was with.
+  const stillHere = everyoneElse.filter((m) => m.deleted !== true);
+  const others = stillHere.length > 0 ? stillHere : everyoneElse;
   const isDm = data.channel.kind === "dm";
+  // A direct message with one archived agent opens read-only: a note stands where the composer was (lib/chat.ts).
+  const archivedAgent = isDm && others.length === 1 ? archivedAgentsDm({ channel: data.channel, others }) : null;
+  const owner = chatData?.role === "owner";
 
   // The details panel: open by default on a wide screen, as last left.
   useEffect(() => {
@@ -740,6 +749,36 @@ export function ChannelView({ data }: { data: Loaded }) {
                   </Button>
                 )}
               </Card>
+            ) : archivedAgent ? (
+              <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <p className="flex items-start gap-2 text-sm text-muted">
+                  <Archive size={15} className="mt-0.5 shrink-0 text-faint" />
+                  <span>
+                    {archivedAgent.deleted ? (
+                      <>{shownName(archivedAgent)} was deleted for good. Everything it said here stays to read.</>
+                    ) : (
+                      <>
+                        {archivedAgentLine(archivedAgent)} Everything said here stays to read.{" "}
+                        {owner ? (
+                          <>
+                            Restore it, or delete it for good, under <span className="font-medium text-fg">Archived</span> on the Agents page.
+                          </>
+                        ) : (
+                          "An owner can restore it from the Agents page."
+                        )}
+                      </>
+                    )}
+                  </span>
+                </p>
+                {owner && !archivedAgent.deleted && (
+                  <Button asChild variant="outline" className="px-3 text-fg/90 hover:bg-raised">
+                    <Link to={`/${slug}/-/agents#archived`}>
+                      <ArchiveRestore size={15} />
+                      Restore under Agents
+                    </Link>
+                  </Button>
+                )}
+              </Card>
             ) : joined ? (
               <Composer draftKey={data.channel.id} placeholder={placeholder} people={people} onSend={(body) => void post(body, null)} onTyping={onTyping} autoFocus />
             ) : (
@@ -920,10 +959,19 @@ function ChannelHeader({
             <div className="min-w-0">
               <h1 className="flex min-w-0 items-center gap-1.5 text-[0.9375rem] leading-tight font-semibold">
                 <span className="truncate">{others.map(shownName).join(", ") || "Just you"}</span>
-                {agentDm && <AgentPill />}
+                {agentDm && <AgentPill deleted={agentDm.deleted === true} />}
+                {agentDm?.archived_at && (
+                  <Badge tone="neutral" className="shrink-0">
+                    <Archive size={11} />
+                    Archived
+                  </Badge>
+                )}
               </h1>
-              {agentDm && (titleOf(agentDm) ?? agentDm.role) && (
-                <p className="truncate text-xs leading-tight text-muted">{titleOf(agentDm) ?? agentDm.role}</p>
+              {agentDm?.archived_at ? (
+                <p className="truncate text-xs leading-tight text-muted">{archivedAgentWhen(agentDm)}</p>
+              ) : (
+                agentDm &&
+                (titleOf(agentDm) ?? agentDm.role) && <p className="truncate text-xs leading-tight text-muted">{titleOf(agentDm) ?? agentDm.role}</p>
               )}
               {mixed && <MixedChip agents={agentsAmong(others)} />}
               {/* One person: their status under their name, as their card has it. */}
@@ -1000,7 +1048,7 @@ function ConversationStart({ data, others }: { data: Loaded; others: MemberProfi
         </div>
         <h2 className="mt-3 flex items-center gap-2 text-xl font-semibold tracking-tight">
           {others.map(shownName).join(", ") || "Just you"}
-          {agent && <AgentPill />}
+          {agent && <AgentPill deleted={agent.deleted === true} />}
           {mixed && (
             <Badge tone="accent" size="md" className="font-normal">
               with an agent
@@ -1008,7 +1056,11 @@ function ConversationStart({ data, others }: { data: Loaded; others: MemberProfi
           )}
         </h2>
         <p className="mt-1 max-w-xl text-sm text-muted">
-          {agent
+          {agent?.deleted
+            ? "This agent was deleted. What it said stays here to read."
+            : agent?.archived_at
+              ? archivedAgentLine(agent)
+              : agent
             ? `${agent.role ? `${agent.role}. ` : ""}Ask a question or give it a job: it answers here, and opens a task when the work needs one.`
             : mixed
               ? "A conversation between people and an agent. Everyone here, the agent too, reads every message."
@@ -1382,7 +1434,7 @@ function MessageRow({
               {shownName(author)}
             </MemberCard>
             {author.kind === "user" && <PersonStatusEmoji person={{ id: author.id, username: author.name }} size={14} className="self-center" />}
-            {author.kind === "agent" && <AgentPill className="self-center" />}
+            {author.kind === "agent" && <AgentPill className="self-center" deleted={author.deleted === true} />}
             <time dateTime={message.created_at} suppressHydrationWarning className="shrink-0 text-xs text-faint tabular-nums">
               {time}
             </time>

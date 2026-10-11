@@ -558,7 +558,8 @@ export async function spend(ctx: ViewContext, handle: string | null, options: { 
     by_agent: slices(byAgent.results, (k) => {
       if (k === BUILDER_ID) return BUILDER_LABEL;
       const face = agents.get(k);
-      return face ? `${face.display_name} (@${face.handle})` : "An archived agent";
+      // Archived agents are still in `agents`; one without a face was deleted for good (its spend stays in the month's total).
+      return face ? `${face.display_name} (@${face.handle})` : "A deleted agent";
     }),
     by_team: [...byTeamMap.values()].sort((a, b) => b.micros - a.micros),
     by_channel: channels,

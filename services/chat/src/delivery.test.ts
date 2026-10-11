@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { MAX_HOPS, type RecentMessage, addressedAgents, chainFor, deliveries, delivery, handOffPlace, handOffRefusal, personalAgentRefusal } from "./delivery.ts";
+import { MAX_HOPS, type RecentMessage, addressedAgents, chainFor, deliveries, delivery, handOffPlace, handOffRefusal, personalAgentRefusal, wakeable } from "./delivery.ts";
 
 const ship = { id: "a1", handle: "ship" };
 const docs = { id: "a2", handle: "docs" };
@@ -138,4 +138,24 @@ test("a personal agent is only in the direct message of it and the person it bel
   assert.match(personalAgentRefusal(mine, { kind: "hand_off", members: null }) ?? "", /personal agent/, "never handed work");
   assert.equal(personalAgentRefusal({ id: "a1", handle: "ship", scope: "workspace" }, { kind: "channel", members: null }), null);
   assert.equal(personalAgentRefusal({ id: "a1", handle: "ship" }, { kind: "hand_off", members: null }), null, "agents from before personal ones are the workspace's");
+});
+
+test("an archived agent stays a member but is never woken; one the agents service no longer knows, or of another workspace, neither", () => {
+  const live = { id: "a1", handle: "ship", workspace_id: "wsp_1", archived_at: null };
+  const archived = { id: "a2", handle: "docs", workspace_id: "wsp_1", archived_at: "2026-10-09T10:00:00Z" };
+  const elsewhere = { id: "a3", handle: "ops", workspace_id: "wsp_2", archived_at: null };
+  const found = new Map<string, typeof live | null>([
+    ["a1", live],
+    ["a2", archived],
+    ["a3", elsewhere],
+    // Deleted for good: chat still has its membership row, the agents service has nothing.
+    ["a4", null],
+  ]);
+  assert.deepEqual(wakeable(found.values(), "wsp_1"), [live]);
+  // In a direct message with the two of them, an unaddressed message goes to the live one alone.
+  const agents = wakeable(found.values(), "wsp_1").map((a) => ({ id: a.id, handle: a.handle }));
+  assert.deepEqual(deliveries({ author: "user:u", hops: 0, channelKind: "dm", agents, mentioned: [] }), [{ agent_id: "a1", hops: 0 }]);
+  // Mentioning the archived one by handle wakes nobody: it is not among the wakeable.
+  assert.deepEqual(deliveries({ author: "user:u", hops: 0, channelKind: "channel", agents, mentioned: ["docs"] }), []);
+  assert.deepEqual(wakeable([], "wsp_1"), []);
 });

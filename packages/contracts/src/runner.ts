@@ -161,6 +161,10 @@ export interface RunnerComputerApi {
   computerReset(agentId: string): Promise<Result<AgentComputerStatus>>;
   /** An archived agent's: stopped now, its disk deleted after `COMPUTER_KEEP_DAYS`. */
   computerForget(agentId: string): Promise<Result<AgentComputerStatus>>;
+  /** The agent was restored: its disk is kept after all (undoes `computerForget`). */
+  computerKeep(agentId: string): Promise<Result<AgentComputerStatus>>;
+  /** The agent was deleted for good: stopped, its saved home, commands and record deleted now. */
+  computerErase(agentId: string): Promise<Result<null>>;
   /** The most recent commands, newest first; `session_id` narrows them to one session's. */
   computerCommands(agentId: string, sessionId?: string | null): Promise<Result<AgentComputerCommand[]>>;
 }

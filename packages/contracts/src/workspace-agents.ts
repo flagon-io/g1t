@@ -175,6 +175,30 @@ export type WorkspaceAgent = {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  /** Who archived it, by username; null while it is live, or for one archived before this was kept. */
+  archived_by?: string | null;
+};
+
+/**
+ * An archived agent as the Agents page's Archived section lists it
+ * (docs.g1t.sh/guides/agents/, "Archive, restore and delete"): enough to
+ * draw its row and to say what deleting it for good takes with it.
+ */
+export type ArchivedAgent = {
+  id: string;
+  handle: string;
+  display_name: string;
+  title: string;
+  role: string;
+  avatar: string | null;
+  avatar_seed: string;
+  look: AgentLook | null;
+  scope: WorkspaceAgentScope;
+  personal_owner: string | null;
+  archived_at: string;
+  archived_by: string | null;
+  /** What goes with it when it is deleted. */
+  counts: { sessions: number; replies: number; memories: number; routines: number };
 };
 
 /**
@@ -865,6 +889,26 @@ export type WorkspaceAgentsApi = {
   ): Promise<Result<WorkspaceAgent>>;
   archive(workspace: string, handle: string, viewer: User): Promise<Result<null>>;
   /**
+   * The workspace's archived agents, newest archived first: every one for
+   * an owner, their own archived personal agents for anyone else.
+   */
+  listArchived(workspace: string, viewer: User): Promise<Result<ArchivedAgent[]>>;
+  /**
+   * Brings an archived agent back, under its handle or `options.handle`.
+   * `conflict` when a live agent holds the handle. Owners any agent, a
+   * member their own personal one.
+   */
+  restore(workspace: string, handle: string, viewer: User, options?: { handle?: string | null; id?: string | null }): Promise<Result<WorkspaceAgent>>;
+  /**
+   * Deletes an archived agent for good: its definition and versions,
+   * sessions, replies, memories, routines, drafts and computer, and its
+   * chat memberships. Its messages stay in chat under its last name, and
+   * its spend on the workspace's statement. `confirm` must be the handle.
+   * A live agent is archived first (`invalid`). Owners any agent, a member
+   * their own personal one; a second call is `not_found`.
+   */
+  destroy(workspace: string, handle: string, viewer: User, confirm: string, options?: { id?: string | null }): Promise<Result<null>>;
+  /**
    * Drafts a whole agent from a description, with a fast model call charged
    * to the viewer. Nothing is saved. Whoever may create the agent may draft it.
    */
@@ -1035,6 +1079,9 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     create: (workspace, viewer, input, options) => call("create", { workspace, viewer, input, teams: options?.teams ?? [] }),
     update: (workspace, handle, viewer, changes) => call("update", { workspace, handle, viewer, changes }),
     archive: (workspace, handle, viewer) => call("archive", { workspace, handle, viewer }),
+    listArchived: (workspace, viewer) => call("list_archived", { workspace, viewer }),
+    restore: (workspace, handle, viewer, options) => call("restore", { workspace, handle, viewer, id: options?.id ?? null, new_handle: options?.handle ?? null }),
+    destroy: (workspace, handle, viewer, confirm, options) => call("destroy", { workspace, handle, viewer, confirm, id: options?.id ?? null }),
     draft: (workspace, viewer, input) => call("draft", { workspace, viewer, description: input.description, scope: input.scope ?? null }),
     tryDraft: (workspace, viewer, input) => call("try_draft", { workspace, viewer, definition: input.definition, messages: input.messages }),
     redraft: (workspace, handle, viewer, request) => call("redraft", { workspace, handle, viewer, request }),

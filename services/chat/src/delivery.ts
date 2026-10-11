@@ -131,6 +131,23 @@ export function addressedAgents(agents: AgentMember[], author: string, recent: R
   return agents;
 }
 
+/** An agent as the agents service hands it to chat, as far as waking reads it. */
+export type KnownAgent = { id: string; handle: string; workspace_id: string; archived_at: string | null };
+
+/**
+ * The agents of a channel that may be woken at all: members the agents
+ * service knows, of this workspace, and not archived
+ * (docs.g1t.sh/guides/chat/, "Archived and deleted agents"). An archived
+ * agent stays a member of its conversations, so they can be read, but it
+ * never answers, types or is addressed; one deleted for good is unknown
+ * to the agents service and is left out the same way.
+ */
+export function wakeable<A extends KnownAgent>(found: Iterable<A | null | undefined>, workspaceId: string): A[] {
+  const out: A[] = [];
+  for (const agent of found) if (agent && agent.workspace_id === workspaceId && !agent.archived_at) out.push(agent);
+  return out;
+}
+
 export function deliveries(input: {
   /** Who wrote it: `user:<id>` or `agent:<id>`. */
   author: string;

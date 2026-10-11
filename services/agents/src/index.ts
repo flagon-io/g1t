@@ -23,6 +23,7 @@ import {
   type InstallRequests,
   type McpServer,
   type AgentEffortCosts,
+  type ArchivedAgent,
   type AgentRecommendation,
   type AgentRecommendations,
   type NewWorkspaceAgent,
@@ -66,7 +67,8 @@ import { EFFORT_NAMES, checkDue, effortCostsOf, markResolved, outcomesSince, rea
 import { moveAgentTeams } from "./team-move.ts";
 import { effortOf } from "./routing.ts";
 import * as views from "./views.ts";
-import { computerCommands, computerView, forgetComputer, resetComputer, sleepComputer, wakeComputer } from "./computer.ts";
+import { computerCommands, computerView, eraseComputer, forgetComputer, keepComputer, resetComputer, sleepComputer, wakeComputer } from "./computer.ts";
+import { destroyRefusal, destroyStatements, listArchived, restoreHandle, restoreRefusal } from "./archived.ts";
 import { monthKey } from "./budget.ts";
 import * as extensions from "./extensions.ts";
 import { skillPushes, skillRpc } from "./skill-rpc.ts";
@@ -525,7 +527,7 @@ class Agents {
     try {
       const [archived] = await this.db.batch([
         // Archived first, from the version read, so the handle is free for the new one in the same step.
-        this.db.prepare("UPDATE agents SET archived_at = ?, updated_at = ? WHERE id = ? AND version = ? AND archived_at IS NULL").bind(now, now, row.id, row.version),
+        this.db.prepare("UPDATE agents SET archived_at = ?, archived_by = ?, updated_at = ? WHERE id = ? AND version = ? AND archived_at IS NULL").bind(now, by, now, row.id, row.version),
         insertAgent(this.db, id, managed.value, definition, { version, created_by: row.created_by, created_at: now, updated_at: now }),
         ...versions.results.map((v) =>
           this.db.prepare("INSERT INTO agent_versions (agent_id, version, definition, changed_by, created_at) VALUES (?, ?, ?, ?, ?)").bind(id, v.version, v.definition, v.changed_by, v.created_at),
@@ -826,11 +828,139 @@ class Agents {
     if (!canArchive(a.viewer, a.workspace, row)) return fail("forbidden", MANAGE_REFUSAL);
     if (row.builtin) return fail("invalid", "@g1t is every workspace's orchestrator and can't be archived. You can set its budget to limit it.");
     const now = new Date().toISOString();
-    await this.db.prepare("UPDATE agents SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL").bind(now, now, row.id).run();
+    await this.db.prepare("UPDATE agents SET archived_at = ?, archived_by = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL").bind(now, a.viewer!.username, now, row.id).run();
     this.audit(a.viewer!, a.workspace, "archive_agent", row.handle, `Archived @${row.handle}`);
     // Its computer goes to sleep now; its disk is kept 30 days, then deleted (computer.ts).
     this.defer(forgetComputer(this.env, row.id));
     return ok(null);
+  }
+
+  // ── Archived agents (./archived.ts) ──────────────────────────────────────
+
+  /** The archived agents the viewer may see: every one for an owner, their own archived personal agents for anyone else. */
+  async listArchived(a: { workspace: string; viewer: User | null }): Promise<Result<ArchivedAgent[]>> {
+    if (a?.viewer && awaitsConfirmation(a.viewer)) return UNVERIFIED;
+    const seen = await this.seen(a?.workspace ?? "", a?.viewer ?? null);
+    if (!seen.ok) return seen;
+    const viewer = a.viewer!;
+    return ok(await listArchived(this.db, seen.value, { id: (viewer.kind ?? "user") === "user" ? viewer.id : "", owner: canManage(viewer, a.workspace) }));
+  }
+
+  /**
+   * An archived agent the viewer may see, by id, else the one most recently
+   * archived under `handle` (a handle is unique only among live agents).
+   */
+  private async archivedRow(workspace: string, viewer: User | null, a: { id?: unknown; handle?: unknown }): Promise<Result<{ workspaceId: string; row: Row }>> {
+    if (awaitsConfirmation(viewer)) return UNVERIFIED;
+    const seen = await this.seen(workspace, viewer);
+    if (!seen.ok) return seen;
+    const now = new Date();
+    const handle = typeof a.handle === "string" ? a.handle.trim().replace(/^@/, "").toLowerCase() : "";
+    const row =
+      typeof a.id === "string" && a.id
+        ? await this.db.prepare(selectAgents("a.workspace_id = ?3 AND a.id = ?4 AND a.archived_at IS NOT NULL")).bind(...periods(now), seen.value, a.id).first<Row>()
+        : handle
+          ? await this.db
+              .prepare(`${selectAgents("a.workspace_id = ?3 AND a.handle = ?4 AND a.archived_at IS NOT NULL")} ORDER BY a.archived_at DESC LIMIT 1`)
+              .bind(...periods(now), seen.value, handle)
+              .first<Row>()
+          : null;
+    if (!row || !canSeeAgent(viewer, workspace, row)) return fail("not_found", `There is no archived agent called @${handle || String(a.id ?? "")}.`);
+    return ok({ workspaceId: seen.value, row });
+  }
+
+  /**
+   * Brings an archived agent back, live again under its handle, or under
+   * `new_handle` when a live agent took the old one (`conflict` says so).
+   * Owners any agent, a member their own personal one. A new handle is a
+   * new version, as any rename is. Its computer's disk is kept after all.
+   */
+  async restore(a: { workspace: string; handle?: string; id?: string; viewer: User | null; new_handle?: unknown }): Promise<Result<WorkspaceAgent>> {
+    const found = await this.archivedRow(a?.workspace ?? "", a?.viewer ?? null, a ?? {});
+    if (!found.ok) return found;
+    const { workspaceId, row } = found.value;
+    const refused = restoreRefusal(a.viewer, a.workspace, row);
+    if (refused) return { ok: false, error: refused };
+    const live = await this.db
+      .prepare("SELECT handle FROM agents WHERE workspace_id = ? AND archived_at IS NULL")
+      .bind(workspaceId)
+      .all<{ handle: string }>();
+    const taken = new Set(live.results.map((r) => r.handle));
+    const handle = restoreHandle(row, a.new_handle, (h) => taken.has(h));
+    if (!handle.ok) return handle;
+    const now = new Date().toISOString();
+    const renamed = handle.handle !== row.handle;
+    const version = renamed ? row.version + 1 : row.version;
+    try {
+      const [restored] = await this.db.batch([
+        this.db
+          .prepare("UPDATE agents SET archived_at = NULL, archived_by = NULL, handle = ?, version = ?, updated_at = ? WHERE id = ? AND archived_at IS NOT NULL")
+          .bind(handle.handle, version, now, row.id),
+        ...(renamed ? [this.versionStatement(row.id, version, { ...definitionOf(row), handle: handle.handle }, a.viewer!.username, now)] : []),
+      ]);
+      if (!restored.meta.changes) return fail("not_found", `@${row.handle} was restored or deleted meanwhile.`);
+    } catch (error) {
+      if (String(error).includes("UNIQUE")) return fail("conflict", `A live agent is called @${handle.handle} now. Rename that one first, or restore this one under a new handle.`);
+      throw error;
+    }
+    const was = renamed ? ` (was @${row.handle})` : "";
+    this.audit(a.viewer!, a.workspace, "restore_agent", handle.handle, `Restored @${handle.handle}${was}`, "agents", isPersonal(row) ? "member" : "owner");
+    this.defer(keepComputer(this.env, row.id));
+    const saved = await this.row(workspaceId, handle.handle);
+    return ok(toAgent(saved!, new Date()));
+  }
+
+  /**
+   * Deletes an archived agent for good (archived.ts `DESTROYED`): every row
+   * the service keeps about it, in one batch; then its computer on the
+   * runner, its chat memberships (its messages stay under the name it
+   * had) and its team memberships. Owners any agent, a member their own
+   * personal one; `confirm` is its handle typed back. A live agent is
+   * archived first. A second call finds nothing.
+   */
+  async destroy(a: { workspace: string; handle?: string; id?: string; viewer: User | null; confirm?: unknown }): Promise<Result<null>> {
+    const found = await this.archivedRow(a?.workspace ?? "", a?.viewer ?? null, a ?? {});
+    if (!found.ok) {
+      // A live agent of that handle: say what to do, rather than "no such archived agent".
+      if (found.error.code === "not_found" && typeof a?.handle === "string") {
+        const live = await this.visible(a.workspace, a.viewer, a.handle);
+        if (live.ok) {
+          const refused = destroyRefusal(a.viewer, a.workspace, live.value.row, a.confirm);
+          return { ok: false, error: refused ?? found.error };
+        }
+      }
+      return found;
+    }
+    const { workspaceId, row } = found.value;
+    const refused = destroyRefusal(a.viewer, a.workspace, row, a.confirm);
+    if (refused) return { ok: false, error: refused };
+    const results = await this.db.batch(destroyStatements(this.db, row.id));
+    if (!results[results.length - 1]!.meta.changes) return fail("not_found", `@${row.handle} was restored or deleted meanwhile.`);
+    this.audit(a.viewer!, a.workspace, "delete_agent", row.handle, `Deleted the archived agent @${row.handle} for good`, "agents", isPersonal(row) ? "member" : "owner");
+    const slug = a.workspace.toLowerCase();
+    const definition = definitionOf(row);
+    this.defer(eraseComputer(this.env, row.id));
+    this.defer(
+      chatClient(this.env.CHAT)
+        .agentDestroyed({ workspace_id: workspaceId, agent_id: row.id, handle: row.handle, display_name: row.display_name, avatar_seed: definition.avatar_seed, look: definition.look })
+        .then((told) => (told.ok ? null : console.error("agents: chat was not told of a deleted agent", row.id, told.error.message)))
+        .catch((error: unknown) => console.error("agents: chat was not told of a deleted agent", row.id, String(error))),
+    );
+    this.defer(this.leaveTeams(slug, a.viewer!, row.id));
+    return ok(null);
+  }
+
+  /** A deleted agent comes off every team it was on (memberships live in identity). */
+  private async leaveTeams(slug: string, by: User, agentId: string): Promise<void> {
+    try {
+      const identity = identityClient(this.env.IDENTITY);
+      const teams = await identity.agentTeams(slug, agentId);
+      await Promise.all(
+        teams.map((team) => identity.removeTeamAgent(by, slug, team.slug, agentId).catch((error: unknown) => console.error("agents: a deleted agent was not taken off its team", agentId, team.slug, String(error)))),
+      );
+    } catch (error) {
+      console.error("agents: a deleted agent's teams were not read", agentId, String(error));
+    }
   }
 
   /**
@@ -949,6 +1079,12 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
       return Response.json(await service.update(args));
     case "archive":
       return Response.json(await service.archive(args));
+    case "list_archived":
+      return Response.json(await service.listArchived(args));
+    case "restore":
+      return Response.json(await service.restore(args));
+    case "destroy":
+      return Response.json(await service.destroy(args));
     case "draft":
       return Response.json(await service.draft(args));
     case "try_draft":
