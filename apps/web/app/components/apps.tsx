@@ -206,9 +206,10 @@ export function AppsLauncher({ slug, pins, onToggle, onClose }: { slug: string; 
         <div className="grid grid-cols-4 gap-1 max-sm:grid-cols-3" aria-busy="true" aria-label="Loading apps">
           {Array.from({ length: 4 }, (_, n) => (
             <div key={n} className="flex flex-col items-center gap-2 px-1 pt-3 pb-2.5">
-              <Skeleton className="size-10 rounded-xl" />
-              <Skeleton className="h-2.5 w-12" />
-              <Skeleton className="h-2 w-8" />
+              {/* On the launcher's raised surface the usual raised block would vanish: a line-coloured one shows. */}
+              <Skeleton className="size-10 rounded-xl bg-line" />
+              <Skeleton className="h-2.5 w-12 bg-line" />
+              <Skeleton className="h-2 w-8 bg-line" />
             </div>
           ))}
         </div>

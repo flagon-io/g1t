@@ -200,8 +200,9 @@ function AppsButton({ slug, pins, onToggle, current }: { slug: string; pins: Pin
 /**
  * The rail down the window's left edge: a narrow column of icons, each
  * named by the hint beside it. g1t's mark, which leads to Home; the
- * built-in apps (Home, Chat, Notifications, Agents, Code and Artifacts)
- * with what is unread on them; the apps you pinned; the Apps launcher;
+ * built-in apps (Home, Chat, Agents, Code and Artifacts) with what is
+ * unread on them (Notifications is the bell in the top bar, not a rail
+ * app); the apps you pinned; the Apps launcher;
  * and at its foot People, Workspace and your account. The one you are in
  * sits on a filled square, and which that is follows the address. A
  * member without Code access has no Code. From 768px; a phone has the
@@ -234,7 +235,6 @@ export function Rail({
       label: "Chat",
       badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 },
     },
-    { key: "notifications", label: "Notifications", badge: { count: unread.notifications, loud: true } },
     { key: "agents", label: "Agents" },
     ...(code ? [{ key: "code" as const, label: "Code" }] : []),
     { key: "artifacts", label: "Artifacts" },

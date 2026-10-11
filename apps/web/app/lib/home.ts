@@ -810,16 +810,23 @@ export function landedDeploys(deploys: DeployRow[]): LandedChange[] {
       key: `landed:${row.key}`,
       kind: "deploy" as const,
       title: `Production of ${row.project} went live`,
-      detail: `${row.commit} · by ${row.by}`,
+      detail: `${row.commit} · by ${row.by ?? "someone"}`,
       to: row.to,
       at: row.at,
-      agent: isAgentName(row.by),
+      agent: row.agent,
     }));
 }
 
 /** Everything that landed, newest first. */
 export function landed(parts: LandedChange[][]): LandedChange[] {
   return parts.flat().sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
+}
+
+/** A deployment's maker as a member key: an id becomes `user:<id>`, a key stays as it is. */
+export function deployActorKey(createdBy: string | null | undefined): string | null {
+  const by = (createdBy ?? "").trim();
+  if (!by) return null;
+  return /^(user|agent):/.test(by) ? by : `user:${by}`;
 }
 
 /** A build that finished in the span. */
@@ -833,7 +840,10 @@ export type DeployRow = {
   branch: string | null;
   at: number;
   to: string;
-  by: string;
+  /** Who made it, as a name (`@handle` for an agent); null when the deployment does not say. */
+  by: string | null;
+  /** Whether an agent made it. */
+  agent: boolean;
 };
 
 /**
@@ -841,10 +851,12 @@ export type DeployRow = {
  * and previews too. A build that went live and was replaced since still
  * went live. Skipped builds are left out.
  */
-export function deploysIn(projects: { slug: string; deployments: Deployment[] }[], workspace: string, span: Pick<Span, "from" | "now">): DeployRow[] {
+export function deploysIn(projects: { slug: string; deployments: Deployment[] }[], workspace: string, span: Pick<Span, "from" | "now">, names: Record<string, string> = {}, agentKeys?: ReadonlySet<string>): DeployRow[] {
   const rows: DeployRow[] = [];
   for (const project of projects) {
     for (const deploy of project.deployments) {
+      // Who made it: the deployment names them by id, so it reads as a name, or as someone when identity doesn't know it.
+      const key = deployActorKey(deploy.createdBy);
       const ended = deploy.finishedAt ?? null;
       if (!within(ended, span)) continue;
       const outcome = deploy.status === "failed" ? "failed" : deploy.status === "ready" || deploy.status === "replaced" || deploy.status === "down" ? "live" : null;
@@ -858,7 +870,8 @@ export function deploysIn(projects: { slug: string; deployments: Deployment[] }[
         branch: deploy.branch,
         at: Date.parse(ended!),
         to: `/${workspace}/${project.slug}/deployments/${deploy.id}`,
-        by: deploy.createdBy,
+        by: key ? namesOf([key], names, agentKeys) : null,
+        agent: !!key && actorKind(key, agentKeys) === "agent",
       });
     }
   }

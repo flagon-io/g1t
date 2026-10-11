@@ -23,7 +23,7 @@ import {
   notifyClient,
 } from "@g1t/contracts";
 
-import { type CodePull, type CodeWork, G1T_ACTOR, type RepoRef, type SessionWork, type Span, type Spend, pullKey, spanMonths, spendIn } from "./home";
+import { type CodePull, type CodeWork, G1T_ACTOR, type RepoRef, type SessionWork, type Span, type Spend, deployActorKey, pullKey, spanMonths, spendIn } from "./home";
 import { monthSpan, spentMicros } from "./spend";
 import { actions, agents, billing, chat, deployments, events, identity, repos, work, workspaceAgents } from "./services.server";
 
@@ -164,8 +164,9 @@ export async function loadChatActivity(viewer: User, slug: string, span: Pick<Sp
 }
 
 /** Every member key the digest and chat name. */
-export function actorKeys(activity: ActivityDigest | null, chatActivity: ChatActivity | null): string[] {
+export function actorKeys(activity: ActivityDigest | null, chatActivity: ChatActivity | null, deploys?: { projects: { deployments: { createdBy: string }[] }[] } | null): string[] {
   const keys = new Set<string>();
+  for (const project of deploys?.projects ?? []) for (const deploy of project.deployments) keys.add(deployActorKey(deploy.createdBy) ?? "");
   for (const repo of activity?.repos ?? []) {
     for (const by of [...repo.pushes.by, ...repo.pushes.default_branch.by]) keys.add(by.actor);
     for (const list of [repo.pulls.opened, repo.pulls.merged, repo.pulls.closed, repo.issues.opened, repo.issues.closed, repo.reviews, repo.comments, repo.deployments.succeeded, repo.deployments.failed]) {

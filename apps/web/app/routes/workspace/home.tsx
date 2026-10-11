@@ -149,8 +149,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const memoriesP = code ? loadMemories(viewer, slug).catch(() => null) : Promise.resolve(null);
   const activityP = reposP.then((owned) => loadActivity(slug, span, owned)).catch(() => null);
   const chatActivityP = loadChatActivity(viewer, slug, span).catch(() => null);
-  const namesP = Promise.all([activityP, chatActivityP, agentsP])
-    .then(([activity, chatActivity, agents]) => loadNames(actorKeys(activity, chatActivity), agents))
+  const namesP = Promise.all([activityP, chatActivityP, agentsP, deploysP])
+    .then(([activity, chatActivity, agents, deploys]) => loadNames(actorKeys(activity, chatActivity, deploys), agents))
     .catch(() => ({}) as Record<string, string>);
 
   const work: Promise<SpanWork | null> = Promise.all([codeWorkP, sessionsP])
@@ -162,7 +162,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     .catch(() => null);
   const happened = Promise.all([codeWorkP, deploysP, memoriesP, requestsP, activityP, namesP, reposP])
     .then(([codeWork, deploys, memories, requests, activity, names, owned]) => {
-      const deployRows = deploys ? deploysIn(deploys.projects, slug, span) : null;
+      const deployRows = deploys ? deploysIn(deploys.projects, slug, span, names) : null;
       const merges = codeWork && codeWork !== "no_access" ? landedIn(codeWork.pulls, span) : null;
       return {
         // What landed: merges, direct pushes, releases and packages, production builds; null when nothing of Code could be read.

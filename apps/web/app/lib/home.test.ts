@@ -674,9 +674,9 @@ test("what landed, besides merges: direct pushes, releases, packages and product
     ],
   );
   const builds = landedDeploys([
-    { key: "deploy:site:d1", project: "site", kind: "production", outcome: "live", commit: "abcdef1", branch: null, at: NOW - HOUR, to: "/acme/site/deployments/d1", by: "g1t" },
-    { key: "deploy:site:d2", project: "site", kind: "preview", outcome: "live", commit: "abcdef2", branch: "fix", at: NOW - HOUR, to: "/acme/site/deployments/d2", by: "bo" },
-    { key: "deploy:site:d3", project: "site", kind: "production", outcome: "failed", commit: "abcdef3", branch: null, at: NOW - HOUR, to: "/acme/site/deployments/d3", by: "bo" },
+    { key: "deploy:site:d1", project: "site", kind: "production", outcome: "live", commit: "abcdef1", branch: null, at: NOW - HOUR, to: "/acme/site/deployments/d1", by: "@g1t", agent: true },
+    { key: "deploy:site:d2", project: "site", kind: "preview", outcome: "live", commit: "abcdef2", branch: "fix", at: NOW - HOUR, to: "/acme/site/deployments/d2", by: "bo", agent: false },
+    { key: "deploy:site:d3", project: "site", kind: "production", outcome: "failed", commit: "abcdef3", branch: null, at: NOW - HOUR, to: "/acme/site/deployments/d3", by: "bo", agent: false },
   ]);
   assert.deepEqual(builds.map((change) => [change.kind, change.title, change.agent]), [["deploy", "Production of site went live", true]]);
   const all = landed([fromActivity, builds]);
@@ -720,6 +720,7 @@ test("builds that finished in the span: live or failed, never skipped", () => {
     ],
     "acme",
     SPAN,
+    { "user:bo": "bo" },
   );
   assert.deepEqual(rows.map((row) => [row.key, row.outcome]), [
     ["deploy:site:d1", "live"],
@@ -728,6 +729,13 @@ test("builds that finished in the span: live or failed, never skipped", () => {
   ]);
   assert.equal(rows[0]!.to, "/acme/site/deployments/d1");
   assert.equal(rows[0]!.commit, "abcdef1");
+  // The maker is named, never shown as an id; an agent's by its handle; an id identity doesn't know as someone.
+  assert.equal(rows[0]!.by, "bo");
+  assert.equal(rows[0]!.agent, false);
+  const unknown = deploysIn([{ slug: "site", deployments: [deploy({ createdBy: "usr_zzz" })] }], "acme", SPAN);
+  assert.equal(unknown[0]!.by, "someone");
+  const robot = deploysIn([{ slug: "site", deployments: [deploy({ createdBy: "agt_01x" })] }], "acme", SPAN, { "user:agt_01x": "otto" });
+  assert.deepEqual([robot[0]!.by, robot[0]!.agent], ["@otto", true]);
 });
 
 const request = (over: Partial<InstallRequest>): InstallRequest => ({
