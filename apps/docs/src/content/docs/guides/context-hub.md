@@ -239,6 +239,14 @@ The section holds only what the person the run acts for can read. A run
 for an outside collaborator is told the project's own memory, never the
 workspace's, and names only the projects around it that they can read.
 
+What extends an agent beyond the hub lives in
+[Customize](/guides/customize/): the skills, connectors and plugins a
+workspace adds. A run on a
+[g1t runner](/guides/self-hosted-runners/#plugins-and-skills-on-runners)
+gets them as one bundle beside its Context section: the plugins to fetch at
+their pinned commits, the library's skills as files, and the connectors
+that reach the agent, signed in.
+
 ## Building it for a workspace
 
 The first time anyone opens a workspace's Context page, g1t builds its hub:

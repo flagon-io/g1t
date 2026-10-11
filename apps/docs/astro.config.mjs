@@ -13,6 +13,7 @@ export default defineConfig({
 	redirects: {
 		'/guides/g1t-agents/': '/guides/working-with-g1t/',
 		'/guides/inbox/': '/guides/notifications/',
+		'/guides/marketplace/': '/guides/customize/',
 		'/guides/today/': '/guides/home/',
 	},
 	integrations: [
@@ -149,7 +150,7 @@ export default defineConfig({
 				{
 					label: 'Connect your tools',
 					items: [
-						{ label: 'Marketplace', slug: 'guides/marketplace' },
+						{ label: 'Customize', slug: 'guides/customize' },
 						{ label: 'Integrations', slug: 'guides/integrations' },
 						{ label: 'Model providers', slug: 'guides/models' },
 						{ label: 'AI Gateway', slug: 'guides/ai-gateway' },

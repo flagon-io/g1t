@@ -10,6 +10,8 @@ thing on g1t: `search`, `repository`, `issue`, `pull_request`, `agent`,
 action is the same operation as a route of the [REST API](/reference/api/),
 with the same inputs, permissions and results, so the two always agree.
 
+<!-- TODO(customize): the `customize` tool (marketplaces, Discover, plugins and installs, connectors with sign-ins and grants, and the runner bundle; scopes workspace:read, workspace:admin and agents:run) is documented with the API change that adds it. The guide is /guides/customize/#api. -->
+
 ## Connect
 
 To connect Claude Code, Codex, OpenCode, Cursor or another client, see

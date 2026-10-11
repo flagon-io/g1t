@@ -65,7 +65,7 @@ place, so no service's code changes:
 | `services/chat` | Runs, with its Durable Objects; custom emoji are kept with avatars |
 | `services/artifacts` | Runs: [artifacts](/guides/artifacts/) and their spaces, with their live rooms. Files people add are kept in the `g1t-docs-files` bucket. Search matches words, not meaning, because there is no embedding model. |
 | `services/notify` | Runs. Notifications are live in open tabs; browser push needs a VAPID key pair, which an installation does not make. Push to the phone app goes through Expo and needs nothing set; `PHONE_PUSH=off` sends phones nothing ([the phone app](/guides/self-hosting/#the-phone-app)). |
-| `services/agents` | Runs, but replies need the model proxy, which is off, so an agent answers with a short apology |
+| `services/agents` | Runs, but replies need the model proxy, which is off, so an agent answers with a short apology. [Customize](/guides/customize/) works: marketplaces and plugins are read from GitHub and from repositories here, and connectors' keys and sign-ins are sealed under `CONNECTORS_KEY`, one of the keys `start.sh` makes. `GITHUB_TOKEN` is optional on it, for a higher rate limit when reading GitHub. |
 | `services/billing` | Runs with nothing charged and no usage limit |
 | `services/integrations` | Runs |
 | `services/webhooks` | Runs, retries included |

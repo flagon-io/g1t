@@ -31,7 +31,7 @@ stake, how long it has waited, and has its action beside it.
 | --- | --- |
 | Code | A failed production build; an agent's pull request that stopped and needs a decision, including one whose checks fail; a pull request ready for you to merge; a review asked of you by name; an invitation to a repository; an agent run that stopped reporting; a job waiting for a self-hosted runner |
 | Agents | The workspace's agents at 100% of its monthly agent budget, and an agent out of its own monthly budget, both shown only to those who may raise them; a session stopped at its spend cap that you may approve more for; an agent waiting |
-| Marketplace | A member's open request to add an extension or integration, shown only to owners |
+| Customize | A member's open request to add a plugin, a skill or a connector, shown only to owners; it opens [Customize → Requests](/guides/customize/#requests) |
 | Notifications | An unread notification in this workspace that is a warning (someone or something is waiting) or a failure |
 | Chat | A conversation that mentions you, or a direct message you haven't read. Muted conversations are left out |
 
@@ -220,7 +220,7 @@ build in the span has no Deploys card.
 ### Decisions
 
 Decisions recorded in the workspace's [memory](/guides/agent-memory/) in
-the span, and Marketplace requests an owner answered, with who made each.
+the span, and Customize requests an owner answered, with who made each.
 Memories still waiting to be kept are left out. With none, the card is not
 shown.
 

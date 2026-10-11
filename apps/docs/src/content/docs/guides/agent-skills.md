@@ -151,10 +151,13 @@ in a PDF or Word file, where a chart's source is kept as code.
 
 ## The skill library
 
-Your workspace's own skills are under **Agents → Skills**. The library
-lists drafts waiting for review first, then every skill with its version
-and where it is attached, then g1t's foundational skills, which you can
-open to read as SKILL.md.
+Your workspace's own skills are under **Agents → Skills**, and the same
+library is **Customize → Skills → Yours** (see
+[Customize](/guides/customize/#skills), which also lists every skill the
+workspace's marketplaces publish). The library lists drafts waiting for
+review first, then every skill with its version and where it is attached,
+then the skills installed plugins brought, then g1t's foundational skills,
+which you can open to read as SKILL.md.
 
 A skill does nothing until it is attached. Open it and choose **Attach**:
 
@@ -181,6 +184,20 @@ then its teams', then the workspace's.
 | Link a repository | No | No | Yes |
 
 Every change is in the workspace's audit log under `agents/skills/<name>`.
+
+### Skills from plugins
+
+A [plugin](/guides/customize/#plugins) installed from Customize brings its
+skills into the library, each named `plugin:skill` after the plugin
+(`pdf@anthropic-agent-skills` brings `pdf:pdf`). They are attached like
+any skill, and read-only here: a plugin's skill changes when the plugin is
+reinstalled at a newer commit, and leaves with the plugin. Agents call one
+with `use_skill` by its full name, or by its bare name when only one plugin
+brings a skill called that; a plain name means the workspace's own skill
+first. A plugin's skill may be larger than one written here (1.5 MB and
+1,000 files), keeps its name's case, and may reuse a foundational skill's
+name, since it is always called with its prefix. See
+[skills from plugins](/guides/customize/#skills-from-plugins).
 
 ## The skill format
 
@@ -324,9 +341,11 @@ code:
 1. Open **Agents → Skills**. Under **Keep skills in a repository**, enter
    the repository as `workspace/name` and choose **Link repository**.
    Owners only.
-2. Each folder in `.g1t/skills/<name>/` on its default branch becomes the
-   skill `<name>`. The folder's name and the `name` in its `SKILL.md` must
-   match.
+2. Each folder in `.claude/skills/<name>/` on its default branch becomes
+   the skill `<name>`: the folder Claude Code reads project skills from, so
+   one repository serves both. A repository that keeps them in
+   `.g1t/skills/` is still read, when it has no `.claude/skills/`. The
+   folder's name and the `name` in its `SKILL.md` must match.
 3. Every push to the default branch that changes a folder publishes a new
    version of that skill and moves all its attachments: the repository's
    review is the review. **Read it again** reads it on demand.
@@ -367,6 +386,5 @@ web.
 
 | What | Status |
 | --- | --- |
-| Skills from the [Marketplace](/guides/marketplace/): an extension's skills, added in one step | Coming |
 | Running a skill's scripts on the agent's own computer | Coming |
 | Writing library edits back to the linked repository | Coming |

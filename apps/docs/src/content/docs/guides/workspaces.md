@@ -637,10 +637,9 @@ of the menu on a phone); on the status page, the three icons at the top.
 
 ### Apps
 
-Apps are what the workspace added from the [Marketplace](/guides/marketplace/)
-that you can use: today, the integrations it connected, such as Sentry or
-GitHub, each opening its own page; installed extensions join them once
-extensions are published. An app you can't use shows **Request access**.
+Apps are what the workspace connected in [Customize](/guides/customize/)
+that you can use: the integrations it connected, such as Sentry or GitHub,
+each opening its own page. An app you can't use shows **Request access**.
 The built-in apps' own pages are in their sidebars, not in Apps: Code's has
 **Projects**, **Security** and **Packages**; Agents' has **Templates**,
 **Context** and **Memory**; People's has **Everyone**, **Teams** and **Org
@@ -656,8 +655,8 @@ pinned them. To pin one:
 3. Select the pin on its tile. Select it again to unpin it.
 
 When the workspace hasn't added anything yet, the launcher and the Apps
-page say so and lead to the Marketplace. The launcher's **Marketplace**
-link always does.
+page say so and lead to Customize. The launcher's **Customize** link
+always does, as does <kbd>Ctrl</kbd> <kbd>K</kbd> and *Customize*.
 
 Your pins are yours alone and each workspace has its own. They are saved
 to your account, so your rail is the same on every browser and device you
@@ -767,8 +766,8 @@ them within reach of your thumb:
 
 | | What it does |
 | --- | --- |
-| **The bar along the bottom** | **Home**, **Chat**, **Notifications**, **Agents** and **Code** (for members with Code access), each with what is unread, and **More**. It runs flat along the bottom edge, as the rail stands beside the page on a computer, and the page fills the screen above it. The app you are in is marked as on the rail. It steps aside while the keyboard is up and inside a conversation. |
-| **More** | A panel above the bar with **All apps**, the [Marketplace](/guides/marketplace/), your pinned apps, **Artifacts**, **People**, **Workspace**, and **You and help**: your status, profile and settings, [appearance](#appearance), the documentation, support, status, the keyboard's shortcuts and signing out. |
+| **The bar along the bottom** | **Home**, **Chat**, **Notifications**, **Code** (for members with Code access) and **Agents**, each with what is unread, and **More**. It runs flat along the bottom edge, as the rail stands beside the page on a computer, and the page fills the screen above it. The app you are in is marked as on the rail. It steps aside while the keyboard is up and inside a conversation. |
+| **More** | A panel above the bar with **All apps**, [Customize](/guides/customize/), your pinned apps, **Artifacts**, **People**, **Workspace**, and **You and help**: your status, profile and settings, [appearance](#appearance), the documentation, support, status, the keyboard's shortcuts and signing out. |
 | **The sidebar button**, at the left of the page's header | Opens the sidebar of the app you are in from the left, most of the screen wide: the same lists and links as on a computer. Tap outside it, or open a page, and it closes. |
 | **The tab you are already on** | Tap it again to open that app's sidebar too. |
 | **The workspace's name** in the page's header | Switches workspace, or opens your profile or settings. |

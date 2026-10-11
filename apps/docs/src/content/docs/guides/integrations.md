@@ -6,7 +6,9 @@ description: Connect the tools your team and you already use. Workspace integrat
 g1t connects to the tools your work already lives in: where errors are
 reported, where tickets are tracked, which models your agents think with,
 where code came from. Every integration is listed in one directory, by
-category, whether it works today or is still being built.
+category, whether it works today or is still being built. The directory
+is **Customize → Connectors** (see [Customize](/guides/customize/#connectors)),
+beside the MCP servers a workspace connects there.
 
 ## Workspace and personal
 
@@ -14,7 +16,7 @@ There are two places to connect things, and they are for different people:
 
 | | Workspace integrations | Your integrations |
 | --- | --- | --- |
-| Where | The workspace's **Integrations**, at `g1t.sh/<workspace>/-/integrations` | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
+| Where | **Customize → Connectors**, at `g1t.sh/<workspace>/-/customize/connectors`, with each integration's setup page under `g1t.sh/<workspace>/-/integrations` | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
 | Who it is for | Everyone in that workspace, people and agents | Just you, in every workspace you belong to |
 | Who connects | Workspace owners. Members see what is connected. | You |
 | Examples | Model providers, Sentry, Jira, Linear, GitHub mirroring, webhooks | Signing in with GitHub, agents you connect through MCP, and soon your calendar |
@@ -26,7 +28,8 @@ the other side exists.
 
 ## The directory
 
-Both pages are the same directory:
+Both pages are the same directory, the one **Customize → Connectors →
+Discover** shows for a workspace:
 
 - **Categories** down the side (along the top on a phone): Code & CI,
   Issues & projects, Chat & meetings, Calendar & email, Docs & knowledge,
@@ -43,6 +46,12 @@ Both pages are the same directory:
 - **Available** can be connected now. Choose one to open its setup page.
 - **Soon** is being built. Each says what it will do, and **Ask for this**
   tells g1t you want it (below).
+- **Connect** on a tool that publishes a remote MCP server (Linear, Notion,
+  Sentry, Stripe, Figma, Supabase, Cloudflare and more) connects it as a
+  [connector](/guides/customize/#connectors): an owner signs in with the
+  browser or pastes a key, g1t lists its tools, and they are given to
+  agents with a level each. The integrations below have setup pages of
+  their own.
 
 The tags on a card say what an integration lets g1t do: **Agents can
 read** (agents fetch what work refers to), **Opens issues**, **Writes
@@ -62,6 +71,9 @@ Model providers, alerts and trackers each have a setup page under the
 directory: `-/integrations/models`, `-/integrations/alerts` and
 `-/integrations/trackers`. GitHub, webhooks and the AI Gateway keep their
 own pages; the directory links to them.
+
+Tools that publish a remote MCP server are connected from Customize rather
+than from a setup page; see [connectors](/guides/customize/#connectors).
 
 Secrets are sealed when they are saved and never shown again, to anyone.
 A setup page shows the last four characters of a key, so you can tell keys
@@ -288,6 +300,9 @@ curl -X POST https://api.g1t.sh/workspaces/acme/integrations \
   -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
   -d '{"provider": "jira", "config": {"site": "https://acme.atlassian.net", "email": "dev@acme.com", "keys": ["TECH"]}, "secret": "<api token>"}'
 ```
+
+Connectors (MCP servers) and their grants are the
+[`customize`](/guides/customize/#api) resource's, not the integrations'.
 
 `provider` is one of the [model providers](/guides/models/#from-the-api),
 or `sentry`, `datadog`, `webhook`, `jira` or `linear`. `config` takes `repo`, `assign`, `label`,

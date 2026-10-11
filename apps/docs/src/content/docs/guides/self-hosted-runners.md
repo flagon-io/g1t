@@ -213,6 +213,23 @@ a runner needs to take it (`self-hosted` is always one).
 
 A project can have its own setting, or follow the workspace's.
 
+## Plugins and skills on runners
+
+When g1t's work runs Claude Code on a runner, the job gets what the
+workspace set up in [Customize](/guides/customize/), as the job's agent
+would have it. Before the first step, the runner reads the workspace's
+bundle with the job's short-lived credential, once per job:
+
+| In the bundle | What the runner does |
+| --- | --- |
+| Installed plugins that are switched on, each with where to fetch it and the commit it was installed at | Fetches each at that commit and starts Claude Code with it as a plugin directory, so its skills, agents, commands, hooks, LSP servers and `bin/` are all there |
+| The library's own skills that reach the agent, as files | Writes each skill's folder where Claude Code reads skills. A plugin's skills come with the plugin itself |
+| The connectors that reach the agent and are connected, with the headers that sign them in | Merges them into Claude Code's MCP configuration |
+
+The bundle carries the connectors' sign-ins, so only a job's credential
+reads it: `GET /workspaces/{workspace}/customize/bundle`, scope
+`agents:run`. See [what a run gets](/guides/customize/#what-a-run-gets).
+
 ## Billing
 
 Time on your runners is free. Each job's minutes go on

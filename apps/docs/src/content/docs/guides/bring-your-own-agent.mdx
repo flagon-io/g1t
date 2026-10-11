@@ -31,6 +31,11 @@ Ask it to list the open issues on a repository, or to work on one, and it
 will use g1t's tools. [MCP tools](/reference/mcp/) lists every one. The
 agent sees only the tools and actions its access allows.
 
+When Claude Code runs on a [g1t runner](/guides/self-hosted-runners/#plugins-and-skills-on-runners)
+instead of your machine, it also gets what the workspace set up in
+[Customize](/guides/customize/): its installed plugins at their pinned
+commits, the library's skills, and its connectors, signed in.
+
 ### With a token instead
 
 To skip the browser, for a script or a machine without one, put an
