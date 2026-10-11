@@ -57,7 +57,8 @@ jobs:
   linux:
     name: Linux and Windows
     needs: version
-    runs-on: ubuntu-latest
+    # The larger machine: linking Tauri on the small one dies with a bus error.
+    runs-on: g1t-4core
     environment: production
     timeout-minutes: 90
     steps:
