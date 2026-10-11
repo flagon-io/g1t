@@ -1,16 +1,20 @@
 /**
- * The site's footer: a few links worth having, who makes g1t, and a row of
+ * The site's footer: the logo, what g1t is and its accounts elsewhere as
+ * icons beside a few links worth having, then who makes g1t, and a row of
  * the trust pages with the live status dot, the account, and the legal
  * line. Marketing and signed-out pages show it; the app's account menu
  * has its own rows (components/shell.tsx).
  */
+import { GitBranch } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 
 import type { User } from "@g1t/contracts";
 
 import { useAsksFirst } from "./analytics-consent";
-import { Mark } from "./logo";
+import { Logo, Mark } from "./logo";
+import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { choose } from "../lib/analytics-consent";
 import { COMPANY, MAKER_PRODUCTS, SOCIAL, copyright, listed } from "../lib/legal";
 import { type OverallState, STATUS_JSON_URL, STATUS_URL, STATUS_WORDS, type StatusReport, dotClass } from "../lib/status";
@@ -97,7 +101,6 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
     title: "Company",
     links: [
       ["Flagon, Inc.", COMPANY.url],
-      ...SOCIAL.map((account): [string, string] => [account.label, account.url]),
       ["Support", "/support"],
       ["Security", "/security"],
       ["Status", STATUS_URL],
@@ -112,6 +115,51 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
     ],
   },
 ];
+
+/** What the footer says under the logo. */
+const TAGLINE = "Your team and its agents, working in one place.";
+
+/** The icons under it: g1t's accounts elsewhere (lib/legal), then its source. */
+const ICON_LINKS: { label: string; url: string; icon: React.ReactNode }[] = [
+  ...SOCIAL.map((account) => ({
+    label: `g1t on ${account.label}`,
+    url: account.url,
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" className="size-4">
+        <path d={account.icon.path} />
+      </svg>
+    ),
+  })),
+  { label: "Source on g1t", url: "/flagon-io/g1t", icon: <GitBranch aria-hidden className="size-4" /> },
+];
+
+/** The footer's first column: the logo, the tagline and the icons. */
+function BrandColumn() {
+  return (
+    <div className="col-span-2 sm:col-span-4 lg:col-span-2 lg:pr-8">
+      <Link to="/" aria-label="g1t home" className="inline-flex rounded-sm">
+        <Logo />
+      </Link>
+      <p className="mt-3 max-w-xs text-sm leading-6 text-muted text-balance">{TAGLINE}</p>
+      <ul className="mt-4 -ml-2 flex items-center gap-1">
+        {ICON_LINKS.map((link) => (
+          <li key={link.url}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button asChild variant="ghost" size="icon-sm">
+                  <a href={link.url} aria-label={link.label}>
+                    {link.icon}
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{link.label}</TooltipContent>
+            </Tooltip>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 /** The row's own links, after Status. */
 const ROW_LINKS: [string, string][] = [
@@ -249,22 +297,26 @@ export function LegalRow({ user }: { user: User | null | undefined }) {
 export function SiteFooter({ user }: { user: User | null | undefined }) {
   return (
     <footer className="mt-24 border-t border-line">
-      <nav aria-label="Footer" className="mx-auto grid max-w-6xl grid-cols-2 gap-x-8 gap-y-8 px-4 pt-12 pb-10 sm:grid-cols-4">
-        {FOOTER_LINKS.map((group) => (
-          <div key={group.title}>
-            <p className="text-sm font-medium">{group.title}</p>
-            <ul className="mt-3 space-y-2 text-sm text-muted">
-              {group.links.map(([label, to]) => (
-                <li key={to}>
-                  <a href={to} className="transition-colors hover:text-fg">
-                    {label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </nav>
+      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-x-8 gap-y-10 px-4 pt-12 pb-10 sm:grid-cols-4 lg:grid-cols-6">
+        <BrandColumn />
+        {/* The link columns sit in the same grid as the brand column. */}
+        <nav aria-label="Footer" className="contents">
+          {FOOTER_LINKS.map((group) => (
+            <div key={group.title}>
+              <p className="text-sm font-medium">{group.title}</p>
+              <ul className="mt-3 space-y-2 text-sm text-muted">
+                {group.links.map(([label, to]) => (
+                  <li key={to}>
+                    <a href={to} className="transition-colors hover:text-fg">
+                      {label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      </div>
       <div className="border-t border-line">
         <div className="mx-auto max-w-3xl space-y-4 px-4 py-10 text-center">
           <MakerLine />
