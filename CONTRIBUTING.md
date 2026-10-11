@@ -100,6 +100,15 @@ setup.
   `.g1t/workflows/runner-release.yml` builds, signs and publishes it, and
   runners update themselves to it. `scripts/runner-release.mjs` does the
   same by hand.
+- **The desktop app** is released the same way: bump `version` in
+  `apps/desktop/src-tauri/Cargo.toml`, merge, and push a
+  `desktop-v<version>` tag. `.g1t/workflows/desktop-release.yml` builds
+  the installers (Windows and Linux on Linux; macOS on a Mac runner when
+  one is registered), signs the updater's files and publishes them, and
+  installed apps update themselves. `scripts/desktop-release.mjs` does the
+  same by hand. The app loads the live site, so a change to the site needs
+  no release; only a change under `apps/desktop` does. The guide is
+  [The desktop app](https://docs.g1t.sh/guides/desktop/).
 
 ## Speed
 

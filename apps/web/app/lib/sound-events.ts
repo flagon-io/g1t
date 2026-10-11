@@ -112,6 +112,8 @@ export function messageSent(options: { dnd: boolean }): void {
  */
 export function showDesktopToast(notification: FeedNotification, open: (href: string) => void): void {
   try {
+    // Inside the desktop app the shell shows it (lib/notify-client.ts, desktopSink).
+    if (typeof window !== "undefined" && window.g1tDesktop) return;
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
     const shown = new Notification(notification.title, {
       body: notification.body,

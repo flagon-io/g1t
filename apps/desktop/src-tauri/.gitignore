@@ -1,0 +1,3 @@
+# Built by cargo and the Tauri CLI.
+/target/
+/gen/schemas/

@@ -27,9 +27,11 @@ const SETS: { set: SoundSet; label: string; detail: string }[] = [
   { set: "bright", label: "Bright", detail: "Higher and shorter." },
 ];
 
-type Desktop = "on" | "off" | "blocked" | "unsupported" | "pushed";
+type Desktop = "on" | "off" | "blocked" | "unsupported" | "pushed" | "app";
 
 function desktopState(settings: SoundSettings): Desktop {
+  // The desktop app shows them itself, whatever the switch says.
+  if (typeof window !== "undefined" && window.g1tDesktop) return "app";
   if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
   if (permission() === "denied") return "blocked";
   if (pushChoice() === "on" && permission() === "granted") return "pushed";
@@ -42,6 +44,7 @@ const DESKTOP_LINE: Record<Desktop, string> = {
   blocked: "Blocked by your browser. Allow notifications for this site in its settings, then come back.",
   unsupported: "This browser can't show system notifications.",
   pushed: "Browser notifications above already show a message to you whenever no tab is in front.",
+  app: "On. The desktop app shows a message to you as a notification from your system while its window is behind another.",
 };
 
 /**
@@ -103,7 +106,7 @@ export function SoundSettingsSection({ initial }: { initial: SoundSettings | nul
   };
 
   const off = !settings.sounds_enabled;
-  const desktopLocked = desktop === "blocked" || desktop === "unsupported" || desktop === "pushed";
+  const desktopLocked = desktop === "blocked" || desktop === "unsupported" || desktop === "pushed" || desktop === "app";
 
   return (
     <section aria-labelledby="sounds-heading" className="space-y-4">
@@ -252,7 +255,7 @@ export function SoundSettingsSection({ initial }: { initial: SoundSettings | nul
             </p>
           </div>
           <Switch
-            checked={desktop === "on"}
+            checked={desktop === "on" || desktop === "app"}
             disabled={desktopLocked || busy}
             onCheckedChange={(on) => void toggleDesktop(on)}
             aria-label="Desktop notifications"

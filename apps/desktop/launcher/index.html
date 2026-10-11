@@ -1,0 +1,67 @@
+<!doctype html>
+<!--
+  The launcher: the page bundled with the desktop app, which the window
+  opens first. It asks the app which server to use, checks that it
+  answers, and goes there; while it works, and when it cannot, this is
+  what you see. It is also where another g1t is chosen (?change).
+-->
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="dark" />
+		<title>g1t</title>
+		<link rel="stylesheet" href="launcher.css" />
+	</head>
+	<body>
+		<main>
+			<svg class="mark" viewBox="0 0 256 256" shape-rendering="crispEdges" aria-hidden="true">
+				<rect width="256" height="256" rx="56" shape-rendering="geometricPrecision" fill="#0f0f11" />
+				<rect x="118" y="43" width="20" height="20" fill="#b6a8ff" />
+				<rect x="93" y="68" width="20" height="20" fill="#b6a8ff" />
+				<rect x="118" y="68" width="20" height="20" fill="#b6a8ff" />
+				<rect x="68" y="93" width="20" height="20" fill="#b6a8ff" />
+				<rect x="118" y="93" width="20" height="20" fill="#b6a8ff" />
+				<rect x="118" y="118" width="20" height="20" fill="#b6a8ff" />
+				<rect x="118" y="143" width="20" height="20" fill="#b6a8ff" />
+				<rect x="118" y="168" width="20" height="20" fill="#b6a8ff" />
+				<rect x="68" y="193" width="20" height="20" fill="#b6a8ff" />
+				<rect x="93" y="193" width="20" height="20" fill="#b6a8ff" />
+				<rect x="118" y="193" width="20" height="20" fill="#b6a8ff" />
+				<rect x="143" y="193" width="20" height="20" fill="#b6a8ff" />
+				<rect x="168" y="193" width="20" height="20" fill="#b6a8ff" />
+			</svg>
+
+			<section id="connecting" hidden>
+				<p class="status"><span class="pulse"></span><span id="connecting-text">Connecting to g1t…</span></p>
+			</section>
+
+			<section id="offline" hidden>
+				<h1 id="offline-title">Can't reach g1t.sh</h1>
+				<p class="muted">Check your connection, then try again. If g1t.sh itself is down, its status page says so.</p>
+				<div class="row">
+					<button id="retry" type="button" class="primary">Try again</button>
+					<button id="change" type="button">Use another g1t…</button>
+				</div>
+				<p class="muted small"><a id="status-link" href="https://status.g1t.sh/">status.g1t.sh</a></p>
+			</section>
+
+			<section id="choose" hidden>
+				<h1>Which g1t?</h1>
+				<p class="muted">g1t.sh unless you run g1t yourself. Enter your g1t's address to use it instead; the app keeps it.</p>
+				<form id="server-form">
+					<label for="server">Address</label>
+					<input id="server" name="server" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://g1t.example.com" />
+					<p id="server-error" class="error" hidden></p>
+					<div class="row">
+						<button type="submit" class="primary">Use this g1t</button>
+						<button id="use-default" type="button">Use g1t.sh</button>
+					</div>
+				</form>
+			</section>
+
+			<p class="version muted small" id="version"></p>
+		</main>
+		<script src="launcher.js"></script>
+	</body>
+</html>

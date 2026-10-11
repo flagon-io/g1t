@@ -1,0 +1,7 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "launcher",
+	"description": "The launcher page bundled with the app, which finds the server and goes there. The site's own pages get their capability at run time, for the server that is configured (src/config.rs).",
+	"windows": ["main"],
+	"permissions": ["core:default"]
+}

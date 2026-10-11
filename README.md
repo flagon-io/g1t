@@ -41,7 +41,8 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | Artifacts: documents written together, live, by people and agents | Live |
 | Slides, designs and dashboards as artifacts | Coming |
 | Scratchpads: tools, reports and agents anyone can build on a copy of the data, promoted after review | Coming |
-| Desktop app (Tauri, with a runner inside) and phone app (Expo) | Coming |
+| Desktop app for Windows, macOS and Linux (Tauri): the site in a window of its own, notifications from the system, a badge, g1t:// links, updates that install themselves | Preview |
+| A runner inside the desktop app, and a phone app (Expo) | Coming |
 
 ### Agents
 

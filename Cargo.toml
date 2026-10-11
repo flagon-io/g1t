@@ -1,5 +1,9 @@
 [workspace]
 resolver = "3"
+# The desktop app (Tauri) builds on its own: it needs a toolkit the services
+# never do, and keeps `cargo test --workspace` fast. apps/desktop/src-tauri
+# has its own Cargo.lock.
+exclude = ["apps/desktop/src-tauri"]
 members = ["apps/api", "crates/*", "services/actions", "services/billing", "services/events", "services/identity", "services/integrations", "services/packages", "services/webhooks", "services/repos", "services/search", "services/security", "services/work"]
 
 [workspace.package]

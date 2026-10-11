@@ -1,0 +1,14 @@
+{
+  "name": "@g1t/desktop",
+  "private": true,
+  "type": "module",
+  "description": "The g1t desktop app: the site in a window of its own (Tauri), with native notifications, a badge, a tray, g1t:// links and updates.",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.2"
+  }
+}

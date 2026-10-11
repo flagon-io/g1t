@@ -81,6 +81,7 @@ export default defineConfig({
 						{ label: 'How g1t works', slug: 'concepts/overview' },
 						{ label: 'Home', slug: 'guides/home' },
 						{ label: 'Notifications', slug: 'guides/notifications' },
+						{ label: 'The desktop app', slug: 'guides/desktop' },
 						{ label: 'Search and Explore', slug: 'guides/search' },
 						{ label: 'Status and incidents', slug: 'guides/status' },
 					],

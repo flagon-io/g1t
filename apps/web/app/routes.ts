@@ -87,7 +87,9 @@ export default [
   // For search engines: what may be crawled, and a map of the public pages.
   route("robots.txt", "routes/robots-txt.ts"),
   route("sitemap.xml", "routes/sitemap-xml.ts"),
-  // Releases of the self-hosted runner and the g1t CLI, from R2.
+  // The desktop app: which to install, from its newest release.
+  route("download", "routes/download.tsx"),
+  // Releases of the desktop app, the self-hosted runner and the g1t CLI, from R2.
   route("downloads/:tool/*", "routes/downloads-runner.ts"),
   // A workspace's own pages sit under `-`, which no repository can be named.
   route(":owner", "routes/workspace/layout.tsx", [

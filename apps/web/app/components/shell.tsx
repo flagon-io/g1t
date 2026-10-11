@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -7,6 +7,7 @@ import { type Abilities, type ChatSidebarEntry, type InboxCounts, type Workspace
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
 import { NotificationsBell } from "./inbox";
+import { useDesktopApp } from "../lib/notify-client";
 import { SpendPill } from "./spend";
 import { PinButton } from "./pin-button";
 import { Hint } from "./ui/hint";
@@ -380,6 +381,8 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
   const submit = useSubmit();
   const [open, setOpen] = useState(false);
   const [keys, setKeys] = useState(false);
+  // Inside the desktop app there is nothing to get.
+  const inApp = useDesktopApp();
   // Your status's dialog: outside the menu, so the menu closes behind it.
   const [editing, setEditing] = useState(false);
   // Name, primary address and invites left: asked for once, as soon as the
@@ -501,6 +504,14 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
             Keyboard shortcuts
             <PaletteKey className="ml-auto font-sans text-xs text-faint" />
           </DropdownMenuItem>
+          {!inApp && (
+            <DropdownMenuItem asChild className={MENU_ROW}>
+              <Link to="/download">
+                <MonitorDown />
+                Get the desktop app
+              </Link>
+            </DropdownMenuItem>
+          )}
         </DropdownMenuGroup>
         <DropdownMenuSeparator className="my-1.5" />
         {/* Submitted from here: the menu closes on select, and a button

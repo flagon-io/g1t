@@ -562,7 +562,8 @@ export function Landing() {
               { text: "Agents that look up code, issues and checks as they answer", soon: true },
               { text: "Pull requests, checks and deploys as cards in the channel", soon: true },
               { text: "Mentions and approvals in Notifications", soon: true },
-              { text: "Desktop and mobile apps", soon: true },
+              "A desktop app for Windows, macOS and Linux",
+              { text: "A phone app", soon: true },
             ]}
           />
           <p className="mt-5 flex max-w-xl flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm leading-6 text-muted">

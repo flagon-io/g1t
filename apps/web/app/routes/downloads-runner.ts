@@ -5,12 +5,14 @@ import type { Route } from "./+types/downloads-runner";
 /**
  * Releases: `g1t.sh/downloads/<tool>/<version>/<file>`, served from the
  * g1t-downloads R2 bucket. `runner` is the self-hosted runner
- * (scripts/runner-release.mjs), `cli` the g1t CLI (scripts/cli-release.mjs).
- * `latest/<file>` is the newest release's, as its `latest.json` names it;
- * the runner's `latest.json` and `latest.json.sig` are what runners check
- * before updating.
+ * (scripts/runner-release.mjs), `cli` the g1t CLI (scripts/cli-release.mjs),
+ * `desktop` the desktop app (scripts/desktop-release.mjs). `latest/<file>`
+ * is the newest release's, as its `latest.json` names it; the runner's
+ * `latest.json` and `latest.json.sig` are what runners check before
+ * updating, and the desktop app's `latest.json` names each platform's
+ * installer with its signature, as the app's updater reads it.
  */
-const TOOLS = new Set(["runner", "cli"]);
+const TOOLS = new Set(["runner", "cli", "desktop"]);
 const TYPES: Record<string, string> = {
   json: "application/json",
   sig: "text/plain; charset=utf-8",

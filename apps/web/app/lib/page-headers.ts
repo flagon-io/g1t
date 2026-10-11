@@ -35,7 +35,10 @@ export function pagePolicy(nonce: string, usercontent?: string): string {
     `img-src 'self' https: data: blob:${files}`,
     `media-src 'self' https:${files}`,
     "font-src 'self' data:",
-    "connect-src 'self' https:",
+    // `ipc:` and ipc.localhost are the desktop app's own channel to its
+    // shell, which the page calls through window.g1tDesktop
+    // (lib/notify-client.ts); no browser resolves either.
+    "connect-src 'self' https: ipc: http://ipc.localhost",
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",

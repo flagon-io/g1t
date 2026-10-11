@@ -1,0 +1,139 @@
+# Releases the desktop app, g1t (apps/desktop): builds it for Windows and
+# Linux on a Linux machine, for macOS on a Mac when one is registered, signs
+# every updater file, publishes the release to g1t.sh/downloads/desktop/
+# (the g1t-downloads R2 bucket), and points latest.json at it. Apps already
+# installed update themselves to it; g1t.sh/download offers it.
+#
+# A release is a tag `desktop-v<version>`, where the version is the one in
+# apps/desktop/src-tauri/Cargo.toml; or run it by hand. scripts/
+# desktop-release.mjs does the work, and its header says how to make the
+# signing key the first time; CONTRIBUTING.md ("Deploying") says how a
+# release is made.
+#
+# Needs the repository secret DESKTOP_SIGNING_KEY (the updater's private
+# key; its public half is in tauri.conf.json), CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID as the deploy has them, and, for macOS, a
+# self-hosted runner on a Mac with the labels `self-hosted` and `macos`
+# plus the repository variable DESKTOP_MACOS_RUNNER set to `true`; without
+# it the macOS job is skipped and the release carries Windows and Linux.
+name: Desktop release
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: "A line about the release, shown in the manifest"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  version:
+    name: The tag names this version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: read
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' apps/desktop/src-tauri/Cargo.toml | head -1)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_REF_TYPE}" = tag ] && [ "desktop-v$version" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::The tag is ${GITHUB_REF_NAME}, but apps/desktop is $version"; exit 1
+          fi
+
+  linux:
+    name: Linux and Windows
+    needs: version
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: What Tauri needs on Linux, and to build Windows from here
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev nsis lld llvm
+          cargo install --locked cargo-xwin
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            apps/desktop/src-tauri/target
+          key: desktop-release-linux-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Build and sign
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.DESKTOP_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: node scripts/desktop-release.mjs build --windows-from-linux
+      - name: Collect
+        run: node scripts/desktop-release.mjs collect
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux
+          path: target/desktop-release/${{ needs.version.outputs.version }}/
+
+  macos:
+    name: macOS
+    needs: version
+    if: vars.DESKTOP_MACOS_RUNNER == 'true'
+    runs-on: [self-hosted, macos]
+    environment: production
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Build and sign, for Apple silicon and Intel
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.DESKTOP_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          npx tauri build --ci --target aarch64-apple-darwin
+          npx tauri build --ci --target x86_64-apple-darwin
+        working-directory: apps/desktop
+      - name: Collect
+        run: node scripts/desktop-release.mjs collect
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos
+          path: target/desktop-release/${{ needs.version.outputs.version }}/
+
+  publish:
+    name: Publish to g1t.sh/downloads/desktop
+    needs: [version, linux, macos]
+    # With no Mac registered the macOS job is skipped, and the release still goes out.
+    if: always() && needs.linux.result == 'success' && (needs.macos.result == 'success' || needs.macos.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: target/desktop-release/${{ needs.version.outputs.version }}/
+      - name: Install Wrangler
+        run: npm ci --workspaces=false --no-audit --no-fund
+      - name: The manifest
+        run: node scripts/desktop-release.mjs manifest --notes "${{ inputs.notes }}"
+      - name: Publish
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/desktop-release.mjs publish

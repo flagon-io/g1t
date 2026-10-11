@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router";
 
 import type { SoundSettings } from "@g1t/contracts/sounds";
 
-import { applyAttention, refreshPush, reportInbox, setNavigator, setViewing, startFeed, useLiveBadges } from "../../lib/notify-client";
+import { applyAttention, desktopBridge, refreshPush, reportInbox, setNavigator, setViewing, startFeed, useLiveBadges } from "../../lib/notify-client";
 import { setSoundViewer } from "../../lib/sound-events";
 import { applySoundSettings, startSounds } from "../../lib/sounds";
 import { Toaster } from "./toaster";
@@ -46,6 +46,16 @@ export function LiveNotifications({
   }, [navigate]);
 
   useEffect(() => startFeed(workspace), [workspace]);
+
+  // Inside the desktop app, a g1t:// link names a page here; the app hands
+  // the path over and the page moves without a reload.
+  useEffect(() => {
+    const bridge = desktopBridge();
+    if (!bridge?.onNavigate) return;
+    return bridge.onNavigate((href) => {
+      if (typeof href === "string" && href.startsWith("/")) navigate(href);
+    });
+  }, [navigate]);
 
   useEffect(() => setViewing({ path: pathname + search }), [pathname, search]);
 

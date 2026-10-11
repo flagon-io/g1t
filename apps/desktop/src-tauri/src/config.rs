@@ -1,0 +1,155 @@
+//! What the app keeps between launches, and what it knows while running.
+//!
+//! The one setting is the server: `https://g1t.sh` unless someone runs a
+//! g1t of their own, kept in `desktop.json` in the app's config folder
+//! (`~/.config/g1t` on Linux, `~/Library/Application Support/sh.g1t.desktop`
+//! on macOS, `%APPDATA%\sh.g1t.desktop` on Windows). The server's pages are
+//! the only remote pages allowed to talk to the app (`allow_site`).
+
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+use serde::{Deserialize, Serialize};
+use tauri::ipc::CapabilityBuilder;
+use tauri::{AppHandle, Manager};
+use url::Url;
+
+use crate::WINDOW;
+
+pub const DEFAULT_SERVER: &str = "https://g1t.sh";
+
+/// What the running app knows: the server, where the window is, and what
+/// the updater has ready.
+#[derive(Default)]
+pub struct State {
+    /// The server, as an origin with a trailing slash: `https://g1t.sh/`.
+    pub server: Mutex<Option<Url>>,
+    /// The page the window last started loading.
+    pub at: Mutex<Option<Url>>,
+    /// Origins whose pages may call the app, each given its capability once.
+    pub allowed: Mutex<Vec<String>>,
+    /// An update downloaded and waiting to be installed, and its version.
+    pub update: Mutex<Option<updates::Ready>>,
+    /// What the badge shows.
+    pub waiting: Mutex<i64>,
+}
+
+use crate::updates;
+
+#[derive(Default, Serialize, Deserialize)]
+struct File {
+    #[serde(default)]
+    server: Option<String>,
+}
+
+fn path(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|dir| dir.join("desktop.json"))
+}
+
+/// A server as typed: http or https, with a host; only its origin is kept.
+pub fn parse(text: &str) -> Option<Url> {
+    let text = text.trim();
+    let text = if text.contains("://") { text.to_string() } else { format!("https://{text}") };
+    let mut url = Url::parse(&text).ok()?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return None;
+    }
+    url.set_path("/");
+    url.set_query(None);
+    url.set_fragment(None);
+    Some(url)
+}
+
+/// Reads the saved server, or takes g1t.sh.
+pub fn load(app: &AppHandle) {
+    let file: File = path(app)
+        .and_then(|path| fs::read(path).ok())
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
+    let server = file.server.as_deref().and_then(parse).unwrap_or_else(|| Url::parse(DEFAULT_SERVER).expect("the default server is a URL"));
+    *app.state::<State>().server.lock().unwrap() = Some(server);
+}
+
+pub fn server(app: &AppHandle) -> Url {
+    app.state::<State>()
+        .server
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or_else(|| Url::parse(DEFAULT_SERVER).expect("the default server is a URL"))
+}
+
+/// Saves a new server and lets its pages talk to the app.
+pub fn set_server(app: &AppHandle, text: &str) -> Result<Url, String> {
+    let server = parse(text).ok_or("That is not a web address. It looks like https://g1t.example.com.")?;
+    let file = File { server: Some(server.to_string()) };
+    let path = path(app).ok_or("The app has no folder to keep its settings in.")?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    }
+    fs::write(&path, serde_json::to_vec_pretty(&file).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
+    *app.state::<State>().server.lock().unwrap() = Some(server.clone());
+    allow_site(app).map_err(|error| error.to_string())?;
+    Ok(server)
+}
+
+pub fn origin(url: &Url) -> String {
+    url.origin().ascii_serialization()
+}
+
+/// Whether a page is the server's.
+pub fn is_server(app: &AppHandle, url: &Url) -> bool {
+    matches!(url.scheme(), "http" | "https") && origin(url) == origin(&server(app))
+}
+
+/// Whether a page is the launcher, bundled with the app.
+pub fn is_launcher(url: &Url) -> bool {
+    url.scheme() == "tauri" || (matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost"))
+}
+
+/// Lets the server's pages call the app: a capability for its origin,
+/// added once. Pages from anywhere else get no IPC at all, and bridge.rs
+/// checks the caller again on every command.
+pub fn allow_site(app: &AppHandle) -> tauri::Result<()> {
+    let origin = origin(&server(app));
+    let state = app.state::<State>();
+    let mut allowed = state.allowed.lock().unwrap();
+    if allowed.iter().any(|known| *known == origin) {
+        return Ok(());
+    }
+    app.add_capability(
+        CapabilityBuilder::new(format!("site-{}", allowed.len()))
+            .window(WINDOW)
+            .remote(format!("{origin}/*"))
+            .permission("core:event:allow-listen")
+            .permission("core:event:allow-unlisten"),
+    )?;
+    allowed.push(origin);
+    Ok(())
+}
+
+/// The window started loading a page.
+pub fn at(app: &AppHandle, url: Url) {
+    *app.state::<State>().at.lock().unwrap() = Some(url);
+}
+
+/// Whether the window is on one of the server's pages now.
+pub fn on_site(app: &AppHandle) -> bool {
+    app.state::<State>().at.lock().unwrap().as_ref().is_some_and(|url| is_server(app, url))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse;
+
+    #[test]
+    fn a_server_is_its_origin() {
+        assert_eq!(parse("https://g1t.sh/acme/-/chat?x#y").unwrap().as_str(), "https://g1t.sh/");
+        assert_eq!(parse("  g1t.example.com  ").unwrap().as_str(), "https://g1t.example.com/");
+        assert_eq!(parse("http://localhost:5173/login").unwrap().as_str(), "http://localhost:5173/");
+        assert!(parse("ftp://g1t.sh").is_none());
+        assert!(parse("not a url").is_none());
+        assert!(parse("").is_none());
+    }
+}

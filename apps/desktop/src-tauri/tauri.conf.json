@@ -1,0 +1,53 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "g1t",
+	"identifier": "sh.g1t.desktop",
+	"build": {
+		"frontendDist": "../launcher"
+	},
+	"app": {
+		"withGlobalTauri": true,
+		"windows": [],
+		"security": {
+			"csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": "all",
+		"createUpdaterArtifacts": true,
+		"icon": [
+			"icons/32x32.png",
+			"icons/128x128.png",
+			"icons/128x128@2x.png",
+			"icons/icon.icns",
+			"icons/icon.ico"
+		],
+		"category": "DeveloperTool",
+		"shortDescription": "g1t on your desktop",
+		"longDescription": "g1t in a window of its own: chat, agents, artifacts and code, with notifications from your system, a badge on the icon, g1t:// links and updates that install themselves.",
+		"publisher": "Flagon, Inc.",
+		"copyright": "Flagon, Inc.",
+		"homepage": "https://g1t.sh",
+		"windows": {
+			"webviewInstallMode": { "type": "downloadBootstrapper" },
+			"nsis": {
+				"installMode": "currentUser",
+				"languages": ["English"]
+			}
+		},
+		"macOS": {
+			"minimumSystemVersion": "11.0"
+		}
+	},
+	"plugins": {
+		"updater": {
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdDMEU2MjkxRkU5N0RBRUMKUldUczJwZitrV0lPZkZVckJFeXdhMUMyN2s3a2VoZ2VYRkZESFBhQkY5UnBuS3RhbkNIbEU3bVMK",
+			"endpoints": ["https://g1t.sh/downloads/desktop/latest.json"],
+			"windows": { "installMode": "passive" }
+		},
+		"deep-link": {
+			"desktop": { "schemes": ["g1t"] }
+		}
+	}
+}

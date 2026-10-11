@@ -46,32 +46,39 @@ import {
 // ── The desktop bridge ───────────────────────────────────────────────────
 
 /**
- * What the desktop app (an Electron shell loading this web app) exposes
- * from its preload script with
- * `contextBridge.exposeInMainWorld("g1tDesktop", …)`. When it is there,
- * notifications go to it instead of the browser:
+ * What the desktop app (apps/desktop, a Tauri shell loading this site)
+ * puts at `window.g1tDesktop` from a script it runs at the start of every
+ * page (src/bridge.js there). When it is there, notifications go to it
+ * instead of the browser, the badge to the app's icon, and links to other
+ * sites to the system's browser:
  *
  * ```ts
  * window.g1tDesktop = {
- *   version: "1.0.0",
- *   // A native notification. Clicking it brings the window forward and
- *   // navigates to `href` (calling the `onNavigate` listeners).
+ *   version: "0.1.0",
+ *   platform: "windows" | "macos" | "linux",
+ *   // A notification from the system, for a message to the person while
+ *   // the window is behind another. Clicking it brings the app forward;
+ *   // it does not yet open `href`.
  *   notify({ id, title, body, href, tag, icon }) {},
- *   // The dock or taskbar badge and the tray's count; 0 clears it.
+ *   // What needs the person, on the app's icon and in the tray; 0 clears it.
  *   setBadge(count) {},
  *   // Opens a URL outside the app, in the system browser.
  *   openUrl(url) {},
- *   // g1t:// deep links and notification clicks, as site paths ("/acme/-/chat/dm/chn_1").
+ *   // g1t:// links, as site paths ("/acme/-/chat/dm/chn_1").
  *   onNavigate(listener) { return () => {} },
+ *   // Looks for an update now: "current", "ready:<version>", or rejects with why.
+ *   checkForUpdates() { return Promise.resolve("current") },
  * };
  * ```
  */
 export type DesktopBridge = {
   version?: string;
+  platform?: string;
   notify(notification: { id: string; title: string; body: string; href: string; tag: string; icon?: string | null }): void;
   setBadge(count: number): void;
   openUrl(url: string): void;
   onNavigate?(listener: (href: string) => void): () => void;
+  checkForUpdates?(): Promise<string>;
 };
 
 declare global {
@@ -84,6 +91,13 @@ export function desktopBridge(): DesktopBridge | null {
   if (typeof window === "undefined") return null;
   const bridge = window.g1tDesktop;
   return bridge && typeof bridge.notify === "function" && typeof bridge.setBadge === "function" ? bridge : null;
+}
+
+const never = () => () => {};
+
+/** Whether this page is inside the desktop app: false on the server, and until hydrated. */
+export function useDesktopApp(): boolean {
+  return useSyncExternalStore(never, () => !!desktopBridge(), () => false);
 }
 
 // ── Sinks ────────────────────────────────────────────────────────────────
