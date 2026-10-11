@@ -1,7 +1,7 @@
 import { ArrowRight, ArrowUpRight, Box, CircleDot, GitBranch, GitPullRequest, KeyRound, Lock, Pin, Plus, Rocket } from "lucide-react";
 import { Link, redirect } from "react-router";
 
-import type { PackageSummary, Project, ProjectDeploys, User } from "@g1t/contracts";
+import type { PackageSummary, Project, ProjectDeploys } from "@g1t/contracts";
 
 import type { Route } from "./+types/overview";
 import { DeployLink, host, StatusDot } from "../../components/deploy";

@@ -371,7 +371,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
 
         {paying && <OverageCard requests={requests} owner={owner} error={err("overage")} />}
 
-        <AddOns plan={plan} security={securityPlan} owner={owner} enabled={status.enabled} error={err("security")} />
+        <AddOns plan={plan} security={securityPlan} error={err("security")} />
 
         {status.enabled && (
           <Suspense fallback={<StripeSkeleton />}>

@@ -34,6 +34,8 @@ export function originText(origin: SkillOrigin): string {
       return `Drafted by @${origin.agent} from “${origin.title}”`;
     case "mirror":
       return `From ${origin.repo} at ${origin.commit.slice(0, 7)}`;
+    case "plugin":
+      return `From the ${origin.plugin} plugin${origin.sha ? ` at ${origin.sha.slice(0, 7)}` : ""}`;
   }
 }
 

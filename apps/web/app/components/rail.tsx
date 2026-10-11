@@ -9,7 +9,6 @@ import { Mark } from "./logo";
 
 import { Avatar } from "./ui/avatar";
 import { Card } from "./ui/card";
-import { Hint } from "./ui/hint";
 import { Kbd } from "./ui/kbd";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import {

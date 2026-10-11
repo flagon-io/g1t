@@ -13,7 +13,7 @@
  * (cards.ts). Every refusal names its rule in the transcript, through the
  * tool's result, and in the audit log, through `refused`.
  */
-import { type Ability, type AbilitySection, type AbilitySource, type McpServer, type MessageCard, type ServiceBinding, type User, chatClient, identityClient, integrationsClient, newId, notifyClient } from "@g1t/contracts";
+import { type AbilitySection, type McpServer, type MessageCard, type ServiceBinding, type User, chatClient, identityClient, integrationsClient, newId, notifyClient } from "@g1t/contracts";
 
 import { CONNECTORS, connectorPath, connectorView } from "../../../packages/contracts/src/connectors.ts";
 import { findAbility, resolveAbilities } from "../../../packages/contracts/src/abilities.ts";
@@ -387,7 +387,7 @@ export async function runAllowed(env: AbilityEnv, request: AbilityRequestRow, ag
       default: {
         // An MCP tool: `<server>__<tool>`.
         const [, serverId, ...rest] = request.ability.split(":");
-        const server = (definition.abilities.mcp_servers ?? []).find((s: McpServer) => s.id === serverId);
+        const server = servers.find((s: McpServer) => s.id === serverId);
         const tool = server?.tools.find((t) => t.name === rest.join(":"));
         if (!server || !tool) return { ok: false, message: "That MCP tool is no longer there." };
         const done = await ports.mcp(server, tool, args);

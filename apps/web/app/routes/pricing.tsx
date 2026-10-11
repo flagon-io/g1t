@@ -1,6 +1,6 @@
 import { ArrowUpRight } from "lucide-react";
 
-import { type FeaturePlan, type FreeTier, MICROS_PER_DOLLAR, type Price } from "@g1t/contracts";
+import type { FeaturePlan, FreeTier, Price } from "@g1t/contracts";
 
 import type { Route } from "./+types/pricing";
 import { money as sum, wholeDollars } from "../lib/money";

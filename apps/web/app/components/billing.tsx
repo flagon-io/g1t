@@ -35,10 +35,6 @@ import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 /** An error the action returned, for the section it belongs to. */
 export type SectionError = { section: string; error: string } | null | undefined;
 
-function errorFor(error: SectionError, section: string): string | undefined {
-  return error && error.section === section ? error.error : undefined;
-}
-
 const CONTROL =
   "rounded-md border border-line bg-bg px-2.5 py-1.5 text-sm tabular-nums outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim";
 
