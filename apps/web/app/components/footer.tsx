@@ -76,6 +76,7 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
     links: [
       ["Explore", "/explore"],
       ["Pricing", "/pricing"],
+      ["Download", "/download"],
       ["Chat", "https://docs.g1t.sh/guides/chat/"],
       ["Agents", "https://docs.g1t.sh/guides/agents/"],
       ["Working with g1t", "https://docs.g1t.sh/guides/working-with-g1t/"],

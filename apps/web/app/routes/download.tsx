@@ -6,7 +6,6 @@ import { useLoaderData } from "react-router";
 
 import type { Route } from "./+types/download";
 import { QrCode } from "../components/qr-code";
-import { TrustPage } from "../components/trust-page";
 import { ButtonLink } from "../components/ui";
 import { Card } from "../components/ui/card";
 import { HOSTED_ADDRESSES } from "../lib/addresses";
@@ -144,30 +143,30 @@ export default function DownloadPage() {
   const featured = yours.find((d) => d.kind === "installer" || d.kind === "dmg" || d.kind === "appimage") ?? yours[0] ?? null;
   const href = (download: DesktopDownload) => `/downloads/desktop/${release!.version}/${download.name}`;
 
+  // A marketing page, drawn like Pricing: the site's header and footer,
+  // never the app's rail (lib/chrome.ts, MARKETING).
   return (
-    <TrustPage
-      eyebrow="Desktop app"
-      title="g1t on your desktop"
-      lede={
-        <p>
-          The whole of g1t in a window of its own: chat, agents, artifacts and code, for Windows, macOS and Linux.
-          {release && (
-            <>
-              {" "}
-              Version {release.version}
-              {release.pub_date && (
-                <>
-                  , released{" "}
-                  {new Date(release.pub_date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
-                </>
-              )}
-              .
-            </>
-          )}
-        </p>
-      }
-    >
-      <div className="max-w-3xl">
+    <main className="mx-auto max-w-4xl px-4 py-12">
+      <p className="text-sm font-medium text-accent">Desktop and phone apps</p>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">g1t on your desktop, and in your pocket</h1>
+      <p className="mt-3 max-w-2xl text-muted">
+        The whole of g1t in a window of its own: chat, agents, artifacts and code, for Windows, macOS and Linux, with notifications
+        from your system and updates that install themselves.
+        {release && (
+          <>
+            {" "}
+            Version {release.version}
+            {release.pub_date && (
+              <>
+                , released{" "}
+                {new Date(release.pub_date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+              </>
+            )}
+            .
+          </>
+        )}
+      </p>
+      <div className="mt-8">
         {!release && (
           <Card className="p-5">
             <p className="font-medium">The first release is on its way.</p>
@@ -253,7 +252,7 @@ export default function DownloadPage() {
         )}
         <PhoneApp site={site} hosted={hosted} mobile={mobile} android={android} />
       </div>
-    </TrustPage>
+    </main>
   );
 }
 

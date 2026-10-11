@@ -5,7 +5,7 @@
  * into one menu. Someone still confirming their address gets their
  * account's menu in place of signing in.
  */
-import { BookOpen, ChevronDown, Compass, CreditCard, LogIn, LogOut, Menu, Plus, Search, Settings } from "lucide-react";
+import { BookOpen, ChevronDown, Compass, CreditCard, LogIn, LogOut, Menu, MonitorDown, Plus, Search, Settings } from "lucide-react";
 import { useState } from "react";
 import { Form, Link, NavLink, useParams, useSubmit } from "react-router";
 
@@ -106,6 +106,7 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
         />
         <nav aria-label="Main" className="hidden items-center gap-0.5 sm:flex">
           <HeaderLink to="/explore">Explore</HeaderLink>
+          <HeaderLink to="/download">Download</HeaderLink>
           <HeaderLink to="https://docs.g1t.sh/">Docs</HeaderLink>
         </nav>
         <div className="ml-auto flex items-center gap-2">
@@ -121,6 +122,12 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
                 <Link to="/explore">
                   <Compass />
                   Explore
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild className="min-h-11">
+                <Link to="/download">
+                  <MonitorDown />
+                  Download
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild className="min-h-11">

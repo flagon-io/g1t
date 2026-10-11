@@ -33,6 +33,9 @@ const STANDALONE = new Set([
   "/integrations/github/setup",
 ]);
 
+/** Marketing pages: the public header and footer, even for someone signed in. */
+const MARKETING = new Set(["/download"]);
+
 /** The page's path without a trailing slash or a click's `.data`. */
 function framePath(pathname: string): string {
   const path = pathname.replace(/\.data$/, "");
@@ -47,6 +50,8 @@ function framePath(pathname: string): string {
 export function frameOf(pathname: string, viewer: { signedIn: boolean; workspace: boolean }): Frame {
   const path = framePath(pathname);
   if (STANDALONE.has(path)) return "standalone";
+  // Marketing pages are the site's front, whoever reads them: never inside the app's rail and sidebar.
+  if (MARKETING.has(path)) return "public";
   // An invite link, and signing in with GitHub, are the front door.
   if (path.startsWith("/invite/") || path === "/auth/github" || path.startsWith("/auth/github/")) return "standalone";
   if (path === "/invitations" && viewer.signedIn && !viewer.workspace) return "standalone";

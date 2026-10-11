@@ -99,7 +99,9 @@ jobs:
 
   desktop:
     name: Desktop app
-    runs-on: ubuntu-latest
+    # The larger machine, as the Rust job: linking Tauri on the small one
+    # ran out of room and the linker died with a bus error.
+    runs-on: g1t-4core
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
