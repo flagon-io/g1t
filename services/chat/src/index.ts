@@ -67,7 +67,20 @@ import {
 
 import { type ActivityRow, activitySpan, chatActivity } from "./activity.ts";
 import { audienceKind, isShared, likePattern, readableBy } from "./audience.ts";
-import { MAX_HOPS, addsOrchestrator, chainFor, deliveries, delivery, handOffPlace, handOffRefusal, personalAgentRefusal, type Chain, type Wake } from "./delivery.ts";
+import {
+  ADDRESSING_HISTORY,
+  MAX_HOPS,
+  addsOrchestrator,
+  chainFor,
+  deliveries,
+  delivery,
+  handOffPlace,
+  handOffRefusal,
+  personalAgentRefusal,
+  type Chain,
+  type RecentMessage,
+  type Wake,
+} from "./delivery.ts";
 import {
   MAX_REACTIONS_PER_MESSAGE,
   emojiImage,
@@ -1217,8 +1230,26 @@ class Chat {
       channelKind: channel.kind,
       agents: agents.map((agent) => ({ id: agent.id, handle: agent.handle })),
       mentioned: handles,
+      // With several agents in a direct message, who the person is talking with decides an unaddressed message.
+      recent: channel.kind === "dm" && agents.length > 1 ? await this.recentBefore(row) : [],
     });
     await this.deliverTo(place, row, chain, wakes);
+  }
+
+  /**
+   * The conversation before `row`, oldest first, as addressing reads it
+   * (src/delivery.ts `addressedAgents`): the latest messages of its thread,
+   * or of the conversation's top level, who wrote each and whom it mentions.
+   */
+  private async recentBefore(row: Pick<MessageRow, "id" | "channel_id" | "thread_root">): Promise<RecentMessage[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT author, mentions FROM messages WHERE channel_id = ?1 AND id < ?2 AND deleted_at IS NULL
+           AND ${row.thread_root ? "(thread_root = ?3 OR id = ?3)" : "thread_root IS NULL"} ORDER BY id DESC LIMIT ${ADDRESSING_HISTORY}`,
+      )
+      .bind(...(row.thread_root ? [row.channel_id, row.id, row.thread_root] : [row.channel_id, row.id]))
+      .all<{ author: string; mentions: string | null }>();
+    return rows.results.reverse().map((found) => ({ author: found.author, mentioned: (found.mentions ?? "").split(" ").filter(Boolean) }));
   }
 
   /** Hands a message to these agents (src/delivery.ts `delivery`). */

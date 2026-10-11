@@ -65,7 +65,23 @@ import { Hint } from "../ui/hint";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { type Mentionable, type ShownMessage, agentsAmong, channelPath, dmPlaceholder, isMixed, mentionNames, mergeMessages, mixedNotice, shownHandle, shownName, timeline } from "../../lib/chat";
+import {
+  type Mentionable,
+  type ShownMessage,
+  type Typer,
+  WORKING_AFTER_MS,
+  agentsAmong,
+  channelPath,
+  dmPlaceholder,
+  isMixed,
+  mentionNames,
+  mergeMessages,
+  mixedNotice,
+  shownHandle,
+  shownName,
+  timeline,
+  typingLabel,
+} from "../../lib/chat";
 import { codeAccessPath } from "../../lib/workspace-nav";
 import { conversationCache } from "./conversation-cache";
 import { atBottom, useKeepAtBottom } from "./stick";
@@ -129,7 +145,8 @@ export function ChannelView({ data }: { data: Loaded }) {
   // The message the open thread is under, as its page says, for when it is
   // further back than the conversation has loaded (a long-running session's card).
   const [threadRoot, setThreadRoot] = useState<ShownMessage | null>(null);
-  const [typing, setTyping] = useState<Map<string, { member: MemberProfile; until: number }>>(new Map());
+  // Who is typing, until when, and since when (so an agent still at it after a while is said to be working).
+  const [typing, setTyping] = useState<Map<string, { member: MemberProfile; until: number; since: number }>>(new Map());
   const [joined, setJoined] = useState(data.joined);
   const [members, setMembers] = useState<ChannelMember[]>(data.members);
   // The channel as it is now: renamed, its topic changed, archived, live.
@@ -339,7 +356,11 @@ export function ChannelView({ data }: { data: Loaded }) {
       } else if (event.type === "typing") {
         if (event.channel_id !== data.channel.id) return;
         if (event.member.kind === "user" && event.member.id === me?.id) return;
-        setTyping((now) => new Map(now).set(`${event.member.kind}:${event.member.id}`, { member: event.member, until: new Date(event.until).getTime() }));
+        setTyping((now) => {
+          const key = `${event.member.kind}:${event.member.id}`;
+          // An agent working on a long reply says it is typing again every few seconds: one stretch, from its first.
+          return new Map(now).set(key, { member: event.member, until: new Date(event.until).getTime(), since: now.get(key)?.since ?? Date.now() });
+        });
       } else if (event.type === "channel.updated") {
         // Renamed, a new topic, archived or back: everyone looking sees it at once.
         if (event.channel.id !== data.channel.id) return;
@@ -600,7 +621,7 @@ export function ChannelView({ data }: { data: Loaded }) {
       }}
     />
   );
-  const typers = [...typing.values()].map((t) => t.member);
+  const typers = [...typing.values()];
   const name = channel.name ?? "";
   const archived = channel.kind === "channel" && !!channel.archived_at;
   // A mixed direct message names each member and says which are agents.
@@ -698,7 +719,7 @@ export function ChannelView({ data }: { data: Loaded }) {
         </div>
         <div className="shrink-0 px-2 pb-3 sm:px-4 sm:pb-4 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] in-data-[keyboard=open]:pb-2">
           <div className="mx-auto max-w-[56rem]">
-            <TypingLine members={typers} />
+            <TypingLine typers={typers} />
             {archived ? (
               <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <p className="flex items-center gap-2 text-sm text-muted">
@@ -1490,22 +1511,24 @@ function ThreadMenu({ onCopyLink, onWriteUp }: { onCopyLink: () => void; onWrite
   );
 }
 
-/** "reviewer is typing…", for whoever is. */
-/** What an agent working on a reply says it is doing: one phrase per agent, so each sounds like itself. */
-const AGENT_DOING = ["is reading the thread", "is thinking it through", "is looking into it", "is reading the diff", "is checking the details", "is drafting a reply"];
-
-function agentDoing(id: string): string {
-  let hash = 0;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
-  return AGENT_DOING[Math.abs(hash) % AGENT_DOING.length]!;
-}
-
-function TypingLine({ members }: { members: MemberProfile[] }) {
-  const names = members.map(shownName);
-  const who = names.length === 1 ? names[0] : names.length === 2 ? `${names[0]} and ${names[1]}` : names.length > 2 ? "Several people" : "";
+/**
+ * "reviewer is typing…", for whoever is; "Mike is still working on it…"
+ * for an agent that has been at a reply a while (`typingLabel`). The line
+ * redraws itself the moment the first of them crosses that mark.
+ */
+function TypingLine({ typers }: { typers: Typer[] }) {
+  const [, redraw] = useState(0);
+  const now = Date.now();
+  useEffect(() => {
+    const waits = typers.map((t) => t.since + WORKING_AFTER_MS - now).filter((wait) => wait > 0);
+    if (!waits.length) return;
+    const timer = setTimeout(() => redraw((n) => n + 1), Math.min(...waits));
+    return () => clearTimeout(timer);
+  }, [typers, now]);
+  const label = typingLabel(typers, now);
   return (
     <div aria-live="polite" className="flex h-6 items-center gap-1.5 px-1 text-xs text-muted">
-      {who && (
+      {label && (
         <>
           <span aria-hidden="true" className="flex gap-0.5">
             {[0, 1, 2].map((i) => (
@@ -1513,8 +1536,7 @@ function TypingLine({ members }: { members: MemberProfile[] }) {
             ))}
           </span>
           <span>
-            <span className="font-medium text-fg-soft">{who}</span>{" "}
-            {names.length === 1 ? (members[0]!.kind === "agent" ? agentDoing(members[0]!.id) : "is typing") : "are typing"}…
+            <span className="font-medium text-fg-soft">{label.who}</span> {label.doing}…
           </span>
         </>
       )}

@@ -24,7 +24,7 @@ import { type AbilityEnv, abilitiesFor, abilitiesSection, abilityPorts, saidText
 import { CHAT_MAX_HOPS } from "../../../packages/contracts/src/chat.ts";
 import type { Tokens } from "./budget.ts";
 import { handOffPort } from "./handoff.ts";
-import { HISTORY_LIMIT, systemPrompt, turns } from "./prompt.ts";
+import { HISTORY_LIMIT, lastAddressed, systemPrompt, turns } from "./prompt.ts";
 import { loadShelf, skillsSection, teamSlugs } from "./skills.ts";
 import { readVersion } from "./skill-library.ts";
 import { type Specialist, orchestratorInstructions, orchestratorTier, rosterLines } from "./orchestrator.ts";
@@ -34,7 +34,7 @@ import { recallQuery, recallSection } from "./recall.ts";
 import { REPLY_TIER, allowedProviders, effortOf, effortPlan, replyModel } from "./routing.ts";
 import { type SessionEnv, type SessionRow, actionPorts, sessionRow, startSession, steer } from "./sessions.ts";
 import { type Row, definitionOf, periods, selectAgents, toAgent } from "./store.ts";
-import { type SurfaceMessage, surfaceFor } from "./surface.ts";
+import { type SurfaceMessage, keepTyping, surfaceFor } from "./surface.ts";
 import { Audience } from "./audience.ts";
 import { audiencePorts, loadTeams, teamsOfAgents, toolPorts } from "./ports.ts";
 import { type ToolCall, type ToolPorts, ToolBox } from "./tools.ts";
@@ -273,8 +273,11 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
   // What the tools did, for the audit table, and who the audience was.
   let toolCalls: ToolCall[] = [];
   let audienceHash: string | null = null;
+  // Stops the typing heartbeat (surface.ts `keepTyping`), once the reply reads the conversation.
+  let stopTyping: () => void = () => undefined;
 
   const finish = async (outcome: Outcome) => {
+    stopTyping();
     const statements = [
       db
         .prepare(
@@ -338,11 +341,12 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
       }
     }
 
-    // Read the conversation while showing that the agent is on it.
+    // Read the conversation while showing that the agent is on it, and keep
+    // showing it until the answer is posted or the reply ends another way.
     // And who is here: said every turn, so the agent knows who reads it and who doesn't.
     // And its teams, from their pages: who leads, who owns what, who is around.
-    const [, history, conversationHere, teamsHere] = await Promise.all([
-      surface.typing(),
+    stopTyping = keepTyping(surface);
+    const [history, conversationHere, teamsHere] = await Promise.all([
       surface.history(HISTORY_LIMIT),
       surface.conversation(),
       loadTeams(env, slug, row.workspace_id, { id: row.id }).catch(() => null),
@@ -368,6 +372,8 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
     const chain = delivery.chain ?? [];
     const sender = chain.length ? await db.prepare("SELECT handle FROM agents WHERE id = ?").bind(chain[chain.length - 1]).first<{ handle: string }>() : null;
     const asker = { name: askerName ?? "someone", display_name: author?.display_name ?? null, access: delivery.asker ?? null };
+    // With other agents here: who the person is talking with (prompt.ts `lastAddressed`).
+    const addressed = conversationHere && conversationHere.agents > 1 ? lastAddressed(history, conversationHere, delivery.asked_by) : null;
     let posted: string | null = null;
     let spinOffs = 0;
 
@@ -515,6 +521,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
           colleagues: row.builtin ? null : rosterLines(specialists),
           recentSessions: recent,
           conversation: conversationHere,
+          addressed,
           teams: teamsSection(row.id, teamsHere, now),
           canHandOff: !!toolbox?.definitions().some((tool) => tool.name === "hand_off"),
           abilities: abilitiesText,
@@ -531,6 +538,8 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
       // Post as soon as there is an answer; the bill is settled after.
       // It wakes nobody, @mentions or not: colleagues get work only through hand_off.
       if (answer.text) posted = await surface.post(answer.text);
+      // Posted, or nothing to post: no longer typing.
+      stopTyping();
       return {
         text: answer.text,
         tokens: addTokens(answer.tokens, consulted.tokens),
@@ -553,5 +562,8 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
     await finish({ status: "failed", error: message, reply_id: posted, ...usage }).catch((failure: unknown) =>
       console.error("agents: a failed reply was not recorded", id, String(failure)),
     );
+  } finally {
+    // However it ended, the heartbeat ends with it.
+    stopTyping();
   }
 }

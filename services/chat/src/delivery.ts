@@ -4,8 +4,10 @@
  *
  * The rules (docs.g1t.sh/guides/agents/, "Talk to an agent"):
  * - A person's message in a channel wakes the agent members it @mentions.
- *   In a direct message it wakes the agents in it that it @mentions, or
- *   all of them when it mentions none. That starts a chain at hop 0.
+ *   In a direct message it wakes the agents in it that it @mentions; one
+ *   that mentions none wakes the only agent there, or, with several, the
+ *   agent the person is talking with (`addressedAgents`), or all of them
+ *   when the conversation doesn't say. That starts a chain at hop 0.
  * - An agent's message wakes nobody, @mentions or not. An agent gets a
  *   colleague working only by handing off (`handOffPlace`), which wakes
  *   that one colleague, one hop further along the chain it was answering.
@@ -74,6 +76,61 @@ export function delivery<P extends object, A>(
   };
 }
 
+/** One earlier message of the conversation, as much of it as addressing needs. */
+export type RecentMessage = {
+  /** Who wrote it: `user:<id>` or `agent:<id>`. */
+  author: string;
+  /** Handles it @mentions, lowercased. */
+  mentioned: string[];
+};
+
+/** How many earlier messages decide who an unaddressed message is for. */
+export const ADDRESSING_HISTORY = 30;
+
+/**
+ * In a direct message with several agents, which of them a message from
+ * `author` that mentions none of them is for: the agent the person is
+ * talking with, read from the conversation so far (`recent`, oldest
+ * first, the message itself left out). Walking back from the latest
+ * message:
+ *
+ * 1. The agents whose messages come before any person's are the last
+ *    exchange: whoever answered last. The message is for them.
+ * 2. With no answer yet, the person's own latest message that @mentions
+ *    agents of this conversation says who they addressed: it is for those.
+ *    Their messages that mention none are passed over on the way.
+ *
+ * So "@mike make a PDF", Mike's answer, then "now make a fake one" is for
+ * Mike alone, however many agents are in the conversation, and so is a
+ * second message sent before Mike answers; after a hand-off to a
+ * colleague here, the colleague's answer makes the next message theirs.
+ * Other people's mentions decide nothing, and agents no longer in the
+ * conversation count for nothing. When nothing in `recent` decides, every
+ * agent gets it, as every agent got the first message.
+ */
+export function addressedAgents(agents: AgentMember[], author: string, recent: RecentMessage[]): AgentMember[] {
+  if (agents.length < 2) return agents;
+  const byId = new Map(agents.map((agent) => [`agent:${agent.id}`, agent]));
+  const byHandle = new Map(agents.map((agent) => [agent.handle.toLowerCase(), agent]));
+  const exchange: AgentMember[] = [];
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const message = recent[i];
+    const agent = byId.get(message.author);
+    if (agent) {
+      if (!exchange.includes(agent)) exchange.push(agent);
+      continue;
+    }
+    if (!message.author.startsWith("user:")) continue;
+    // A person's message: the agents that answered since are the exchange.
+    if (exchange.length) break;
+    if (message.author !== author) continue;
+    const named = message.mentioned.map((handle) => byHandle.get(handle.toLowerCase())).filter((found): found is AgentMember => !!found);
+    if (named.length) return agents.filter((agent) => named.includes(agent));
+  }
+  if (exchange.length) return agents.filter((agent) => exchange.includes(agent));
+  return agents;
+}
+
 export function deliveries(input: {
   /** Who wrote it: `user:<id>` or `agent:<id>`. */
   author: string;
@@ -84,12 +141,18 @@ export function deliveries(input: {
   agents: AgentMember[];
   /** Handles the message @mentions, lowercased. */
   mentioned: string[];
+  /**
+   * In a direct message with several agents: the conversation before this
+   * message, oldest first (`addressedAgents`). Absent or empty, an
+   * unaddressed message goes to every agent in it.
+   */
+  recent?: RecentMessage[];
 }): Wake[] {
   // Only a person's message wakes anyone; agents reach each other by hand-off.
   if (!input.author.startsWith("user:")) return [];
   const mentioned = new Set(input.mentioned.map((h) => h.toLowerCase()));
   const named = input.agents.filter((agent) => mentioned.has(agent.handle.toLowerCase()));
-  const woken = input.channelKind === "dm" && !named.length ? input.agents : named;
+  const woken = input.channelKind === "dm" && !named.length ? addressedAgents(input.agents, input.author, input.recent ?? []) : named;
   return woken.map((agent) => ({ agent_id: agent.id, hops: 0 }));
 }
 

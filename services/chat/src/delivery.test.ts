@@ -1,16 +1,64 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { MAX_HOPS, chainFor, deliveries, delivery, handOffPlace, handOffRefusal, personalAgentRefusal } from "./delivery.ts";
+import { MAX_HOPS, type RecentMessage, addressedAgents, chainFor, deliveries, delivery, handOffPlace, handOffRefusal, personalAgentRefusal } from "./delivery.ts";
 
 const ship = { id: "a1", handle: "ship" };
 const docs = { id: "a2", handle: "docs" };
 
-test("a person's direct message wakes every agent in it, at hop 0", () => {
+test("a person's direct message with nothing said yet wakes every agent in it, at hop 0", () => {
   assert.deepEqual(deliveries({ author: "user:u", hops: 3, channelKind: "dm", agents: [ship, docs], mentioned: [] }), [
     { agent_id: "a1", hops: 0 },
     { agent_id: "a2", hops: 0 },
   ]);
+  assert.deepEqual(deliveries({ author: "user:u", hops: 0, channelKind: "dm", agents: [ship, docs], mentioned: [], recent: [] }), [
+    { agent_id: "a1", hops: 0 },
+    { agent_id: "a2", hops: 0 },
+  ]);
+  // With one agent there is nobody else it could be for.
+  assert.deepEqual(deliveries({ author: "user:u", hops: 0, channelKind: "dm", agents: [ship], mentioned: [], recent: [{ author: "user:u", mentioned: ["docs"] }] }), [{ agent_id: "a1", hops: 0 }]);
+});
+
+const mike = { id: "a_mike", handle: "mike" };
+const g1t = { id: "a_g1t", handle: "g1t" };
+const says = (author: string, ...mentioned: string[]): RecentMessage => ({ author, mentioned });
+
+test("in a group DM, an unaddressed message goes to the agent the person is talking with", () => {
+  // The conversation as it happened: Chase, Mike the recruiter and @g1t in one group message.
+  const transcript = [
+    says("user:chase"), // "Are you able to generate PDFs now?"
+    says("agent:a_mike"),
+    says("agent:a_g1t"),
+    says("user:chase", "mike"), // "@Mike Make a PDF of that example resume for me"
+    says("agent:a_mike"),
+  ];
+  // "Let's take that template and make a fake resume for some fake person": Mike was helping.
+  assert.deepEqual(deliveries({ author: "user:chase", hops: 0, channelKind: "dm", agents: [mike, g1t], mentioned: [], recent: transcript }), [{ agent_id: "a_mike", hops: 0 }]);
+  // The first question, with nothing before it, went to both; so does a follow-up to both their answers.
+  assert.deepEqual(addressedAgents([mike, g1t], "user:chase", []), [mike, g1t]);
+  assert.deepEqual(addressedAgents([mike, g1t], "user:chase", transcript.slice(0, 3)), [mike, g1t]);
+  // A mention still goes only to those named, whoever was talking.
+  assert.deepEqual(deliveries({ author: "user:chase", hops: 0, channelKind: "dm", agents: [mike, g1t], mentioned: ["g1t"], recent: transcript }), [{ agent_id: "a_g1t", hops: 0 }]);
+});
+
+test("who is addressed: the last exchange, else the person's last mention, else everyone", () => {
+  // Mentioned but not yet answered: the mention stands, through the person's own follow-ups.
+  assert.deepEqual(addressedAgents([mike, g1t], "user:chase", [says("user:chase", "Mike"), says("user:chase")]), [mike]);
+  // Answered by a colleague after the mention (a hand-off here, say): the colleague has the conversation now.
+  assert.deepEqual(addressedAgents([mike, g1t], "user:chase", [says("user:chase", "mike"), says("agent:a_mike", "g1t"), says("user:chase"), says("agent:a_g1t")]), [g1t]);
+  // Both answered the last message: both are in the exchange, in the conversation's order.
+  assert.deepEqual(addressedAgents([mike, g1t], "user:chase", [says("user:chase", "g1t", "mike"), says("agent:a_g1t"), says("agent:a_mike")]), [mike, g1t]);
+  // A thank-you in between changes nothing: the person's last mention still says who.
+  assert.deepEqual(addressedAgents([mike, g1t], "user:chase", [says("user:chase", "mike"), says("agent:a_mike"), says("user:chase"), says("user:chase")]), [mike]);
+  // Another person's message ends the exchange without deciding it; only this person's mentions do.
+  assert.deepEqual(addressedAgents([mike, g1t], "user:chase", [says("user:chase", "mike"), says("agent:a_mike"), says("user:bo", "g1t")]), [mike]);
+  assert.deepEqual(addressedAgents([mike, g1t], "user:chase", [says("user:bo", "g1t"), says("agent:a_g1t")]), [g1t], "whoever answered last, whoever they answered");
+  // A second message before anyone answers the first goes where the first did.
+  assert.deepEqual(addressedAgents([mike, g1t], "user:chase", [says("user:bo", "g1t"), says("agent:a_g1t"), says("user:chase")]), [g1t]);
+  assert.deepEqual(addressedAgents([mike, g1t], "user:chase", [says("user:chase"), says("agent:a_mike"), says("user:chase")]), [mike], "only Mike answered the first");
+  // Mentions of agents that aren't here, and messages of agents that left, decide nothing.
+  assert.deepEqual(addressedAgents([mike, g1t], "user:chase", [says("user:chase", "sam"), says("agent:a_gone")]), [mike, g1t]);
+  assert.deepEqual(addressedAgents([mike], "user:chase", [says("user:chase", "g1t")]), [mike], "one agent: nothing to decide");
 });
 
 test("in a group direct message, a person who mentions some of its agents wakes only those", () => {

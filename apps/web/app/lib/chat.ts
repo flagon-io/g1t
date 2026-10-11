@@ -319,6 +319,44 @@ export function mentionNames(people: readonly Mentionable[]): Map<string, string
   return names;
 }
 
+/** What an agent working on a reply says it is doing: one phrase per agent, so each sounds like itself. */
+const AGENT_DOING = ["is reading the thread", "is thinking it through", "is looking into it", "is reading the diff", "is checking the details", "is drafting a reply"];
+
+export function agentDoing(id: string): string {
+  let hash = 0;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  return AGENT_DOING[Math.abs(hash) % AGENT_DOING.length]!;
+}
+
+/**
+ * After this long shown as typing, an agent is said to be still working
+ * instead: a reply that reads code, consults a colleague or starts a
+ * session takes a minute or more, and it keeps saying so the whole time.
+ */
+export const WORKING_AFTER_MS = 10_000;
+
+/** Someone shown as typing, and since when (the first typing event for them, kept across the ones that follow). */
+export type Typer = { member: Pick<MemberProfile, "kind" | "id" | "display_name" | "name"> & { display_username?: string | null }; since: number };
+
+/**
+ * The typing line: who, and what they are doing. A person is typing. An
+ * agent is doing what its phrase says, then, past `WORKING_AFTER_MS`,
+ * still working on it; several agents are on it together, and a mix of
+ * people and agents are typing. Null when nobody is.
+ */
+export function typingLabel(typers: readonly Typer[], now: number): { who: string; doing: string } | null {
+  if (!typers.length) return null;
+  const names = typers.map((t) => shownName(t.member));
+  const agents = typers.every((t) => t.member.kind === "agent");
+  const who = names.length === 1 ? names[0]! : names.length === 2 ? `${names[0]} and ${names[1]}` : agents ? "Several agents" : "Several people";
+  const long = typers.some((t) => now - t.since >= WORKING_AFTER_MS);
+  if (typers.length === 1) {
+    const [one] = typers;
+    return { who, doing: one!.member.kind === "agent" ? (long ? "is still working on it" : agentDoing(one!.member.id)) : "is typing" };
+  }
+  return { who, doing: agents ? (long ? "are still working on it" : "are on it") : "are typing" };
+}
+
 /** Reconnect delays for the live socket: doubling from one second to thirty, with jitter. */
 export function backoff(attempt: number, random: () => number = Math.random): number {
   const base = Math.min(30_000, 1000 * 2 ** Math.max(0, attempt));

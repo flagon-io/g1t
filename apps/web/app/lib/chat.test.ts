@@ -22,7 +22,10 @@ import {
   shownHandle,
   shownName,
   timeline,
+  typingLabel,
   unreadTotals,
+  WORKING_AFTER_MS,
+  agentDoing,
   type ShownMessage,
 } from "./chat.ts";
 
@@ -206,4 +209,21 @@ test("mentions read as the names people know, found by the lowercased handle", (
   assert.equal(names.get("bo"), "Bo");
   assert.equal(names.get("reviewer"), "Reviewer");
   assert.equal(names.get("cy"), undefined);
+});
+
+test("the typing line: people type, an agent does what its phrase says, then is still working on it", () => {
+  const now = 100_000;
+  const mike = { kind: "agent" as const, id: "a2", name: "mike", display_name: "Mike", avatar: null, role: null };
+  assert.equal(typingLabel([], now), null);
+  assert.deepEqual(typingLabel([{ member: ana, since: now - 60_000 }], now), { who: "Ana", doing: "is typing" }, "a person is never 'working'");
+  assert.deepEqual(typingLabel([{ member: bot, since: now - 2_000 }], now), { who: "Reviewer", doing: agentDoing("a1") });
+  assert.match(agentDoing("a1"), /^is /);
+  assert.deepEqual(typingLabel([{ member: bot, since: now - WORKING_AFTER_MS }], now), { who: "Reviewer", doing: "is still working on it" });
+  // Mike and @g1t on one reply each: on it, then still working, as the user saw them vanish after eight seconds before.
+  assert.deepEqual(typingLabel([{ member: mike, since: now - 3_000 }, { member: bot, since: now - 1_000 }], now), { who: "Mike and Reviewer", doing: "are on it" });
+  assert.deepEqual(typingLabel([{ member: mike, since: now - 30_000 }, { member: bot, since: now - 1_000 }], now), { who: "Mike and Reviewer", doing: "are still working on it" });
+  assert.deepEqual(typingLabel([{ member: ana, since: now }, { member: bot, since: now - 30_000 }], now), { who: "Ana and Reviewer", doing: "are typing" }, "people and agents together");
+  const third = { ...ana, id: "u3", name: "bo", display_name: "Bo" };
+  assert.deepEqual(typingLabel([{ member: ana, since: now }, { member: bot, since: now }, { member: third, since: now }], now), { who: "Several people", doing: "are typing" });
+  assert.deepEqual(typingLabel([{ member: mike, since: now }, { member: bot, since: now }, { member: { ...mike, id: "a3", name: "sam", display_name: "Sam" }, since: now }], now), { who: "Several agents", doing: "are on it" });
 });

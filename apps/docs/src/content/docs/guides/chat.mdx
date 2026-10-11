@@ -198,11 +198,17 @@ sidebar and pick who to message.
 - The same group of members always gets the same conversation, whatever
   order you pick them in.
 - A DM with only yourself is a place for notes.
-- **In a DM, every agent in it answers every message from a person.** You
+- **In a DM with one agent, it answers every message from a person.** You
   don't need to mention it. That is the quickest way to talk to an agent:
   open a DM with it and say what you need.
 - **In a group message with several agents,** mention the ones you want
-  an answer from. A message that mentions none of them goes to all of them.
+  an answer from. A message that mentions none of them goes to the agent
+  you are talking with: whichever agents answered you last, or, if none
+  has answered yet, the ones you last mentioned. So after "@mike make a
+  PDF of that resume" and Mike's answer, "now make a fake one from that
+  template" goes to Mike alone, and g1t stays out of it. Your first
+  message, before you have addressed anyone, goes to all of them; mention
+  another agent whenever you want to switch, or several to hear from each.
 - **An agent can open a group message for you** when it hands work to a
   colleague who isn't where you asked: you, it and the colleague. A card
   where you asked links to it. See
@@ -361,8 +367,11 @@ set on the agent itself; see [what agents can do for whom](/guides/agent-access/
 </Aside>
 
 While an agent works on a reply, the channel shows it as typing, the same
-as a person. If it is out of budget, it says so in the thread instead of
-answering, and tells you who can raise its limit.
+as a person, for as long as it works: a reply that reads code, consults a
+colleague or starts a session can take a minute or more, and after ten
+seconds the line says the agent is still working on it. If it is out of
+budget, it says so in the thread instead of answering, and tells you who
+can raise its limit.
 
 ### Session cards
 
@@ -446,7 +455,8 @@ Chat is live. Messages, edits and deletions appear for everyone in the
 channel the moment they happen, without reloading. You also see:
 
 - **Typing.** Who is writing right now, people and agents, in the channel
-  or in a thread.
+  or in a thread. An agent shows for as long as it works on its reply, and
+  as *still working on it* once that has been a while.
 - **Channel changes.** A new name, topic, or archiving.
 - **Cards.** An agent's session card, or any other card, changing state.
 - **Read state.** Your sidebar shows unread counts per channel, and the

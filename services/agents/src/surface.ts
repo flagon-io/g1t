@@ -104,6 +104,38 @@ export const SEEN = "👀";
 export const DONE = "✅";
 
 /**
+ * How often an agent still working says so again. Chat shows each call
+ * for `AGENT_TYPING_MS` (8 s, services/chat/src/messages.ts), so this stays
+ * under it and the indicator never flickers off between beats.
+ */
+export const TYPING_HEARTBEAT_MS = 5_000;
+
+/**
+ * Keeps the agent shown as typing while it works: `typing()` now and every
+ * `everyMs` until the function it returns is called. A reply that reads
+ * code, consults a colleague or starts a session takes a minute or more,
+ * and one call alone would fade after seconds while the agent is still on
+ * it. Never throws: a failed beat is simply the next one's turn.
+ */
+export function keepTyping(surface: Pick<Surface, "typing">, everyMs = TYPING_HEARTBEAT_MS): () => void {
+  let on = true;
+  const beat = () => {
+    if (!on) return;
+    try {
+      void surface.typing().catch(() => undefined);
+    } catch {
+      // A courtesy only.
+    }
+  };
+  beat();
+  const timer = setInterval(beat, everyMs);
+  return () => {
+    on = false;
+    clearInterval(timer);
+  };
+}
+
+/**
  * Whether an agent reacts in a conversation: in channels and in direct
  * messages with more than one person. In a DM with one person, the typing
  * indicator says enough.

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { User } from "@g1t/contracts";
 
 import { askerAccess } from "../../../packages/contracts/src/workspace-agents.ts";
-import { audienceFor, systemPrompt, turns } from "./prompt.ts";
+import { audienceFor, lastAddressed, systemPrompt, turns } from "./prompt.ts";
 import type { SurfaceMessage } from "./surface.ts";
 
 const agent = {
@@ -215,4 +215,40 @@ test("without hand_off the prompt says work can't be handed on; a handed-off age
   const handed = systemPrompt({ ...base, handedOffBy: "g1t" });
   assert.match(handed, /## Handed to you\n\n@g1t \(an agent\) handed you this work for @dana/);
   assert.match(handed, /Don't hand it back to @g1t\./);
+});
+
+// ── Who the person is talking with, among several agents ─────────────────
+
+const chase = (body: string, id = "m") => message(id, "user", "usr_syntaqx", "syntaqx", body);
+const mikeSays = (body = "Here it is.", id = "m") => message(id, "agent", "agt_mike", "mike", body);
+const g1tSays = (body = "Done.", id = "m") => message(id, "agent", "agt_g1t", "g1t", body);
+const groupDm = {
+  kind: "group_dm" as const,
+  name: null,
+  people: 1,
+  agents: 2,
+  members: [member("agent", "g1t", "g1t"), member("agent", "mike", "Mike", "Technical Recruiter"), member("user", "syntaqx", "Chase Pierce")],
+};
+
+test("who the person is talking with: the last exchange, else their last mention, else nobody yet", () => {
+  // The conversation as it happened: Mike the recruiter and @g1t in one group message.
+  const transcript = [chase("Are you able to generate PDFs now?"), mikeSays(), g1tSays(), chase("@Mike Make a PDF of that example resume for me"), mikeSays("Made it.")];
+  assert.deepEqual(lastAddressed([...transcript, chase("Let's take that template and make a fake resume for some fake person")], groupDm, "usr_syntaqx"), ["mike"]);
+  assert.deepEqual(lastAddressed(transcript.slice(0, 3), groupDm, "usr_syntaqx"), ["g1t", "mike"], "both answered the first question");
+  assert.deepEqual(lastAddressed([chase("hi")], groupDm, "usr_syntaqx"), [], "nobody yet");
+  assert.deepEqual(lastAddressed([chase("@g1t and @mike, compare notes"), chase("quickly")], groupDm, "usr_syntaqx"), ["g1t", "mike"], "mentioned, not yet answered");
+  assert.deepEqual(lastAddressed([chase("ask @sam"), g1tSays()], groupDm, "usr_syntaqx"), ["g1t"], "a mention of someone not here decides nothing");
+  assert.deepEqual(lastAddressed([message("x", "user", "usr_bo", "bo", "@mike hi"), chase("hello")], groupDm, "usr_syntaqx"), [], "only this person's mentions");
+});
+
+test("with several agents here, the prompt says who the person is talking with, and what that means for an unaddressed message", () => {
+  const prompt = (addressed: string[] | null) => systemPrompt({ ...g1t, channel: { kind: "dm", name: null }, canHandOff: true, conversation: groupDm, addressed });
+  assert.match(prompt(["mike"]), /@syntaqx is talking with @mike, not you: a message that names no agent is theirs, so answer only what is clearly for you, briefly, and don't redo their work\./);
+  assert.match(prompt(["g1t"]), /@syntaqx is talking with you: a message that names no agent is yours to answer\./);
+  assert.match(prompt(["g1t", "mike"]), /@syntaqx is talking with you and @mike: a message that names no agent is yours to answer\./);
+  assert.match(prompt([]), /@syntaqx hasn't addressed one yet\. Answer what fits your role/);
+  assert.doesNotMatch(prompt(null), /Several agents are here/);
+  // Alone with the person, there is nothing to say about it.
+  const alone = systemPrompt({ ...g1t, channel: { kind: "dm", name: null }, addressed: ["g1t"], conversation: { ...groupDm, kind: "dm", agents: 1, members: groupDm.members.filter((m) => m.name !== "mike") } });
+  assert.doesNotMatch(alone, /Several agents are here/);
 });

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 
 import type { AgentDelivery } from "@g1t/contracts";
 
-import { g1tSurface } from "./surface.ts";
+import { TYPING_HEARTBEAT_MS, g1tSurface, keepTyping } from "./surface.ts";
 
 const delivery: AgentDelivery = {
   workspace: "acme",
@@ -175,4 +175,30 @@ test("reacting that fails never throws, and nothing is taken back that never wen
   await s2.acknowledge();
   await s2.settle("done");
   assert.equal(refused.calls.length, 1, "no ✅ or removal after a refused 👀");
+});
+
+test("the typing heartbeat says so at once and every few seconds until stopped, and never throws", () => {
+  mock.timers.enable({ apis: ["setInterval"] });
+  try {
+    let beats = 0;
+    const stop = keepTyping({ typing: async () => void beats++ });
+    assert.equal(beats, 1, "shown as typing the moment the reply starts");
+    mock.timers.tick(TYPING_HEARTBEAT_MS * 3);
+    assert.equal(beats, 4, "and again each heartbeat while it works");
+    stop();
+    mock.timers.tick(TYPING_HEARTBEAT_MS * 10);
+    assert.equal(beats, 4, "nothing after the reply ends");
+    // A surface that fails, rejecting or throwing, stops nothing and throws nothing.
+    const rejecting = keepTyping({ typing: () => Promise.reject(new Error("down")) });
+    const throwing = keepTyping({
+      typing: () => {
+        throw new Error("down");
+      },
+    });
+    mock.timers.tick(TYPING_HEARTBEAT_MS);
+    rejecting();
+    throwing();
+  } finally {
+    mock.timers.reset();
+  }
 });

@@ -544,7 +544,12 @@ Mike, our technical recruiter, owns hiring. I've handed it to him in a group mes
 </Conversation>
 
 In a group message with several agents, a message that mentions some of
-them goes only to those; one that mentions none goes to all of them.
+them goes only to those. One that mentions none goes to the agent you are
+talking with: whichever agents answered you last, or, before any has, the
+ones you last mentioned; your first message, before you have addressed
+anyone, goes to all of them. Every agent there is told who you are
+talking with, so one woken beside that agent, by a message that names
+them both, answers only what is clearly for it.
 
 In a workspace that has hired Sam from **Support Specialist** and Margo
 from **QA Engineer**:
@@ -583,7 +588,9 @@ There are two ways to reach an agent in [Chat](/guides/chat/):
 
 - **DM it.** In a direct message, it answers every message you send. In a
   group message with several agents, mention the ones you want; a message
-  that mentions none of them goes to all of them.
+  that mentions none of them goes to the agent you are talking with (the
+  one that answered you last, or that you last mentioned), and to all of
+  them only before you have addressed any.
 - **Mention it** in a channel it is a member of: `@margo …`. In a channel,
   an agent answers only when it is mentioned, and replies in the thread.
 
@@ -592,8 +599,9 @@ mentioning each other. Each hand-off is a *hop*, and a chain started by
 one person's message stops after six hops, so agents can't keep each other
 busy without a person.
 
-While it writes, the agent shows as typing. Its answer is charged to its
-own budget; see [what an agent costs](#what-an-agent-costs).
+While it works, the agent shows as typing, and as still working on it once
+that has taken more than a few seconds. Its answer is charged to its own
+budget; see [what an agent costs](#what-an-agent-costs).
 
 <Aside type="note" title="What a reply can see">
 A reply reads the conversation it is in: the thread, or the latest 30

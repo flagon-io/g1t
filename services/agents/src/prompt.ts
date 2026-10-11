@@ -72,6 +72,12 @@ export type PromptInput = {
   recentSessions?: string | null;
   /** The conversation and everyone in it, said every turn; absent when it couldn't be read. */
   conversation?: Conversation | null;
+  /**
+   * In a conversation with other agents: the handles of the agents the
+   * person is talking with (`lastAddressed`), empty when they haven't
+   * addressed one yet. Absent when the agent is the only one here.
+   */
+  addressed?: string[] | null;
   /** Whether the agent can hand work to a colleague from here (the hand_off tool). */
   canHandOff?: boolean;
   /** When a colleague handed this work over: that agent's handle. */
@@ -214,6 +220,7 @@ function membersBlock(input: PromptInput): string[] {
   const more = conversation.people - shownPeople;
   if (more > 0) lines.push(`- and ${more} more ${more === 1 ? "person" : "people"}`);
   const open = conversation.kind === "public_channel";
+  const addressed = input.addressed && conversation.agents > 1 ? addressedLine(input) : null;
   return [
     "",
     open
@@ -222,9 +229,64 @@ function membersBlock(input: PromptInput): string[] {
     ...lines,
     "",
     `- ${open ? "Only its members are told" : "Only these members read"} what you say here. Writing the name or @handle of anyone not listed reaches no one: they aren't told${open ? "" : " and can't see it"}.`,
+    ...(addressed ? [addressed] : []),
     delegate,
     honest,
   ];
+}
+
+/**
+ * With other agents here, who the person is talking with, so an agent woken
+ * beside the one they addressed (a message naming both, say) knows whose
+ * question it is. In a direct message the chat service already wakes only
+ * the agent addressed (docs.g1t.sh/guides/chat/, "Direct messages").
+ */
+function addressedLine(input: PromptInput): string {
+  const handles = input.addressed ?? [];
+  const person = `@${input.asker.name}`;
+  if (!handles.length) return `- Several agents are here and ${person} hasn't addressed one yet. Answer what fits your role, and leave what fits a colleague's role to them.`;
+  const me = handles.some((handle) => handle.toLowerCase() === input.agent.handle.toLowerCase());
+  const others = handles.filter((handle) => handle.toLowerCase() !== input.agent.handle.toLowerCase()).map((handle) => `@${handle}`);
+  if (me) return `- Several agents are here. ${person} is talking with you${others.length ? ` and ${listOf(others)}` : ""}: a message that names no agent is yours to answer.`;
+  return `- Several agents are here. ${person} is talking with ${listOf(others)}, not you: a message that names no agent is theirs, so answer only what is clearly for you, briefly, and don't redo their work.`;
+}
+
+/**
+ * The agents the person is talking with, by handle, from the conversation
+ * so far: the same rule as the chat service's `addressedAgents`
+ * (services/chat/src/delivery.ts), which decides who an unaddressed
+ * message wakes. Walking back from the latest message, the agents whose
+ * messages come before any person's are the last exchange; with none, the
+ * person's own latest message that @mentions agents here names them;
+ * otherwise nobody has been addressed yet (empty).
+ */
+export function lastAddressed(history: SurfaceMessage[], conversation: Pick<Conversation, "members">, personId: string): string[] {
+  const agents = conversation.members.filter((m) => m.kind === "agent");
+  const byId = new Map(agents.map((agent) => [agent.id, agent.name]));
+  const byHandle = new Map(agents.map((agent) => [agent.name.toLowerCase(), agent.name]));
+  const exchange: string[] = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const { author, body } = history[i];
+    if (author.kind === "agent") {
+      const handle = byId.get(author.id);
+      if (handle && !exchange.includes(handle)) exchange.push(handle);
+      continue;
+    }
+    if (exchange.length) break;
+    if (author.id !== personId) continue;
+    const named = mentionedIn(body).map((handle) => byHandle.get(handle)).filter((found): found is string => !!found);
+    if (named.length) return named;
+  }
+  return exchange;
+}
+
+/** `@handle` after the start or a character no address or word has (the chat service's rule), lowercased, each once. */
+const MENTION = /(^|[^a-z0-9_.@-])@([a-z0-9](?:[a-z0-9_-]{0,38}[a-z0-9_])?)/gi;
+
+function mentionedIn(body: string): string[] {
+  const found = new Set<string>();
+  for (const match of body.matchAll(MENTION)) found.add(match[2].toLowerCase());
+  return [...found];
 }
 
 /** What the agent can read and do, said honestly: with tools, within the audience rules; without, only this conversation. */
