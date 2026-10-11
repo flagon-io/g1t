@@ -82,6 +82,7 @@ export default defineConfig({
 						{ label: 'Home', slug: 'guides/home' },
 						{ label: 'Notifications', slug: 'guides/notifications' },
 						{ label: 'The desktop app', slug: 'guides/desktop' },
+						{ label: 'The phone app', slug: 'guides/mobile' },
 						{ label: 'Search and Explore', slug: 'guides/search' },
 						{ label: 'Status and incidents', slug: 'guides/status' },
 					],

@@ -42,7 +42,8 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | Slides, designs and dashboards as artifacts | Coming |
 | Scratchpads: tools, reports and agents anyone can build on a copy of the data, promoted after review | Coming |
 | Desktop app for Windows, macOS and Linux (Tauri): the site in a window of its own, notifications from the system, a badge, g1t:// links, updates that install themselves | Preview |
-| A runner inside the desktop app, and a phone app (Expo) | Coming |
+| A runner inside the desktop app | Coming |
+| A phone app for Android and iOS (Expo, in `apps/mobile`): Chat, Code and Customize, signed in with OAuth; Android first | Coming |
 
 ### Agents
 
