@@ -3,6 +3,7 @@
  * one place the footer, the policy pages, /security, /support and
  * security.txt read these from.
  */
+import { type SimpleIcon, siX } from "simple-icons";
 
 /** The company behind g1t. */
 export const COMPANY = {
@@ -14,8 +15,8 @@ export const COMPANY = {
   founder: "Chase Pierce",
 };
 
-/** g1t's own accounts elsewhere. */
-export const SOCIAL: { label: string; url: string }[] = [{ label: "X", url: "https://x.com/g1t_sh" }];
+/** g1t's own accounts elsewhere, drawn as their marks in the footer. */
+export const SOCIAL: { label: string; url: string; icon: SimpleIcon }[] = [{ label: "X", url: "https://x.com/g1t_sh", icon: siX }];
 
 /**
  * Flagon's other launched products, which the footer's maker line names
