@@ -53,7 +53,7 @@
     zoom.value = String(view.zoom);
     if (zoom.value === "") zoom.value = "1";
     byId("version").textContent = "g1t " + view.version;
-    if (view.updateReady) byId("update-status").textContent = "Version " + view.updateReady + " is downloaded. Restart g1t to use it.";
+    if (!checking) updateStatus(view);
     byId("server").textContent = hostOf(view.server);
   }
 
@@ -84,24 +84,77 @@
     });
   });
 
-  byId("check").addEventListener("click", function () {
+  // Updates: where this copy stands, said in the window, so a check from
+  // the menu or the tray is answered here and cannot be missed.
+  var checking = false;
+
+  function when(ms) {
+    var date = new Date(ms);
+    var today = new Date().toDateString() === date.toDateString();
+    var time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return today ? "today at " + time : date.toLocaleDateString([], { month: "short", day: "numeric" }) + " at " + time;
+  }
+
+  function ready(version) {
+    byId("update-status").textContent = "Version " + version + " is downloaded and installs when g1t restarts.";
+    byId("restart").hidden = false;
+  }
+
+  function updateStatus(view) {
+    if (view.updateReady) return ready(view.updateReady);
+    byId("restart").hidden = true;
+    byId("update-status").textContent = view.checkedAt
+      ? "Up to date. Last checked " + when(view.checkedAt) + "."
+      : view.autoUpdate
+        ? "Not checked yet since g1t started; it checks on its own shortly."
+        : "Checking on its own is off.";
+  }
+
+  function check() {
+    if (checking) return;
+    checking = true;
     var button = byId("check");
     var status = byId("update-status");
     button.disabled = true;
-    status.textContent = "Checking…";
+    status.textContent = "Checking, and downloading any new version…";
     invoke("check_for_updates")
       .then(function (answer) {
-        if (answer === "current") status.textContent = "You have the newest version.";
-        else if (answer.indexOf("ready:") === 0) status.textContent = "Version " + answer.slice(6) + " is downloaded. Restart g1t to use it.";
-        else status.textContent = answer;
+        if (answer.indexOf("ready:") === 0) ready(answer.slice(6));
+        else status.textContent = "Up to date. Last checked " + when(Date.now()) + ".";
       })
       .catch(function (error) {
-        status.textContent = "Could not check: " + (typeof error === "string" ? error : "try again later.");
+        var text = typeof error === "string" ? error : "";
+        status.textContent = /sending request|connect|dns|timed out/i.test(text) || !text
+          ? "Could not reach g1t.sh to check. Check your connection and try again."
+          : "Could not check: " + text;
       })
       .then(function () {
+        checking = false;
         button.disabled = false;
       });
+  }
+
+  byId("check").addEventListener("click", check);
+  byId("restart").addEventListener("click", function () {
+    byId("restart").disabled = true;
+    byId("update-status").textContent = "Installing…";
+    invoke("restart_to_update").catch(function (error) {
+      byId("restart").disabled = false;
+      fail(error);
+    });
   });
+
+  // The menu's or tray's "Check for updates…" with this window open, and a
+  // download finishing in the background (src/settings.rs).
+  var events = window.__TAURI__ && window.__TAURI__.event;
+  if (events && typeof events.listen === "function") {
+    events.listen("g1t-check-updates", check).catch(function () {});
+    events
+      .listen("g1t-update-ready", function (event) {
+        if (!checking && typeof event.payload === "string") ready(event.payload);
+      })
+      .catch(function () {});
+  }
 
   byId("change-server").addEventListener("click", function () {
     invoke("change_server").catch(fail);
@@ -119,6 +172,11 @@
     .then(function (view) {
       platform(view.platform);
       render(view);
+      // Opened by "Check for updates…" in a menu.
+      if (new URLSearchParams(location.search).has("check")) {
+        byId("updates-row").scrollIntoView({ block: "center" });
+        check();
+      }
     })
     .catch(fail);
 })();

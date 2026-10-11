@@ -78,9 +78,12 @@
 					<span><strong>Download updates by themselves</strong><span class="muted">Each one installs when you restart or quit g1t, never in the middle of something.</span></span>
 					<input type="checkbox" role="switch" id="autoUpdate" />
 				</label>
-				<div class="setting">
-					<span><strong id="version">g1t</strong><span class="muted" id="update-status">&nbsp;</span></span>
-					<button type="button" id="check">Check for updates</button>
+				<div class="setting" id="updates-row">
+					<span><strong id="version">g1t</strong><span class="muted" id="update-status" aria-live="polite">&nbsp;</span></span>
+					<span class="buttons">
+						<button type="button" id="restart" class="primary" hidden>Restart now</button>
+						<button type="button" id="check">Check for updates</button>
+					</span>
 				</div>
 			</section>
 

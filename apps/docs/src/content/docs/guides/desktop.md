@@ -87,7 +87,7 @@ Windows and Linux, at the top of the screen on macOS.
 | **View** | **Reload** (Ctrl+R), **Actual size** (Ctrl+0), **Zoom in** (Ctrl+=), **Zoom out** (Ctrl+-), full screen |
 | **Go** | **Back** (Alt+Left, or ⌘[), **Forward** (Alt+Right, or ⌘]), **Home**, **Notifications** |
 | **Window** | Minimize and maximize |
-| **Help** | **Desktop app guide** and **g1t.sh status**, in your browser; **Check for updates…**; **About g1t** |
+| **Help** | **Desktop app guide** and **g1t.sh status**, in your browser; **Check for updates…**; **Restart to update**, once one is downloaded; **About g1t** |
 
 On Windows and Linux, **Show the menu bar** in the settings hides it; the
 tray's **Settings…** and your account menu still open the settings to bring
@@ -113,8 +113,8 @@ notify you among them, stay on g1t, in [your settings](/guides/notifications/#se
 | **Zoom** | 100% | How large g1t is drawn, from 67% to 200%. The View menu changes it too. |
 | **Download updates by themselves** | On | Off, the app never checks on its own; **Check for updates** still does. |
 
-The settings window also shows the app's version, with **Check for
-updates**, and the server it opens, with **Change…** to [use another
+The settings window also shows the app's version and whether it is up to
+date, with **Check for updates** (see [Updates](#updates)), and the server it opens, with **Change…** to [use another
 g1t](#your-own-g1t).
 
 ## Links
@@ -138,8 +138,23 @@ The app asks `g1t.sh/downloads/desktop/latest.json` for a newer version
 shortly after it starts and every six hours, and downloads one in the
 background. It never installs under you: a notification and the tray's
 **Restart to update** say it is ready, and the restart, or quitting,
-installs it. **Check for updates…** in the tray or the Help menu asks now
-and tells you the answer. To stop the app checking on its own, turn off
+installs it.
+
+To see where your copy stands, choose **Check for updates…** in the Help
+menu or the tray, or **Check for updates** in [the settings](#settings).
+The menu and the tray open the settings window at its Updates section,
+which checks and says the answer there:
+
+- **Up to date. Last checked today at 10:42.** You have the newest version.
+- **Version 0.2.0 is downloaded and installs when g1t restarts.** A
+  **Restart now** button beside it installs it and opens the new version,
+  as **Restart to update** in the Help menu and the tray do.
+- **Could not reach g1t.sh to check.** Try again once you are online.
+
+A check finds and downloads a new version in one go, so the answer can
+take a moment on a slow connection. The automatic checks and yours are the
+same check: a version the background found is shown as downloaded when
+you look. To stop the app checking on its own, turn off
 **Download updates by themselves** in [the settings](#settings).
 
 Every release is signed with g1t's key, whose public half is built into

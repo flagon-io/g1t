@@ -32,6 +32,8 @@ pub struct State {
     pub allowed: Mutex<Vec<String>>,
     /// An update downloaded and waiting to be installed, and its version.
     pub update: Mutex<Option<updates::Ready>>,
+    /// When the updater last heard back from g1t.sh, in milliseconds since 1970.
+    pub checked_at: Mutex<Option<u64>>,
     /// What the badge shows.
     pub waiting: Mutex<i64>,
     /// The app's own settings, as the settings window last left them.

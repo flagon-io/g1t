@@ -131,10 +131,20 @@ pub fn set_server(app: AppHandle, webview: Webview, url: String) -> Result<Strin
 }
 
 /// Looks for an update now: `current`, `ready:<version>`, or an error.
+/// The settings window shows the answer itself; anyone else asking is also
+/// told with a notification.
 #[tauri::command]
 pub async fn check_for_updates(app: AppHandle, webview: Webview) -> Result<String, String> {
     from_either(&app, &webview)?;
-    updates::check(&app, true).await
+    updates::check(&app, webview.label() != settings::SETTINGS).await
+}
+
+/// The settings window's "Restart now": installs the downloaded update and starts it.
+#[tauri::command]
+pub fn restart_to_update(app: AppHandle, webview: Webview) -> Result<(), String> {
+    from_settings(&webview)?;
+    updates::restart(&app);
+    Ok(())
 }
 
 /// Opens the app's settings window: the site's account menu asks for it.

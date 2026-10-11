@@ -4,7 +4,7 @@
 //! back. Quit is here too. The menu's rows are handled with the app
 //! menu's (menu.rs).
 
-use std::sync::OnceLock;
+use std::sync::Mutex;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -14,13 +14,21 @@ use crate::{WINDOW, config, updates};
 
 pub const TRAY: &str = "g1t";
 
-/// The menu row that restarts into a downloaded update: off until one is.
-static RESTART: OnceLock<MenuItem<Wry>> = OnceLock::new();
+/// The menu rows that restart into a downloaded update, the tray's and
+/// the Help menu's: off until one is.
+static RESTART: Mutex<Vec<MenuItem<Wry>>> = Mutex::new(Vec::new());
+
+/// A row that restarts into the update, kept so `update_ready` can turn it on.
+pub fn restart_item(app: &AppHandle) -> tauri::Result<MenuItem<Wry>> {
+    let item = MenuItem::with_id(app, "restart", "Restart to finish updating", false, None::<&str>)?;
+    RESTART.lock().unwrap().push(item.clone());
+    Ok(item)
+}
 
 pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open g1t", true, None::<&str>)?;
     let check = MenuItem::with_id(app, "check", "Check for updates…", true, None::<&str>)?;
-    let restart = MenuItem::with_id(app, "restart", "Restart to finish updating", false, None::<&str>)?;
+    let restart = restart_item(app)?;
     let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let server = MenuItem::with_id(app, "server", "Use another g1t…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit g1t", true, None::<&str>)?;
@@ -38,7 +46,6 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             &quit,
         ],
     )?;
-    let _ = RESTART.set(restart);
     let mut tray = TrayIconBuilder::with_id(TRAY)
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -55,9 +62,9 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// The update is downloaded: the menu says so, and offers the restart.
+/// The update is downloaded: the menus say so, and offer the restart.
 pub fn update_ready(version: &str) {
-    if let Some(item) = RESTART.get() {
+    for item in RESTART.lock().unwrap().iter() {
         let _ = item.set_text(format!("Restart to update to {version}"));
         let _ = item.set_enabled(true);
     }

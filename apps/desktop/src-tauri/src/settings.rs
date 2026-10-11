@@ -7,7 +7,7 @@
 //! through the autostart plugin, and read back from it.
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::{WINDOW, config};
@@ -69,6 +69,8 @@ pub struct View {
     pub platform: String,
     pub server: String,
     pub update_ready: Option<String>,
+    /// When the app last asked for updates and heard back, in milliseconds since 1970.
+    pub checked_at: Option<u64>,
 }
 
 pub fn view(app: &AppHandle) -> View {
@@ -79,6 +81,7 @@ pub fn view(app: &AppHandle) -> View {
         platform: std::env::consts::OS.into(),
         server: config::server(app).to_string(),
         update_ready: crate::updates::ready(app),
+        checked_at: crate::updates::checked_at(app),
     }
 }
 
@@ -125,15 +128,35 @@ pub fn starts_hidden(app: &AppHandle) -> bool {
     std::env::args().any(|arg| arg == AT_LOGIN) && config::settings(app).start_hidden
 }
 
+/// What the settings window listens for: check for updates now.
+pub const CHECK_EVENT: &str = "g1t-check-updates";
+/// What it listens for: an update is downloaded, with its version.
+pub const READY_EVENT: &str = "g1t-update-ready";
+
 /// Opens the settings window, or brings it forward.
 pub fn open(app: &AppHandle) {
+    show(app, false);
+}
+
+/// "Check for updates…" in a menu: the settings window opens and checks,
+/// and says what it found, the download included, in its Updates section.
+pub fn open_and_check(app: &AppHandle) {
+    show(app, true);
+}
+
+fn show(app: &AppHandle, check: bool) {
     if let Some(window) = app.get_webview_window(SETTINGS) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        if check {
+            let _ = app.emit_to(SETTINGS, CHECK_EVENT, ());
+        }
         return;
     }
-    let built = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("settings.html".into()))
+    // A window still loading has no listener yet: the address asks instead.
+    let page = if check { "settings.html?check" } else { "settings.html" };
+    let built = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App(page.into()))
         .title("g1t settings")
         .inner_size(560.0, 680.0)
         .min_inner_size(440.0, 420.0)

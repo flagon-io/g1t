@@ -141,6 +141,22 @@ button:hover,
 select:hover {
 	border-color: #3a3a44;
 }
+.setting > .buttons {
+	flex-direction: row;
+	flex: none;
+	gap: 0.5rem;
+}
+button.primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--accent-ink);
+}
+button.primary:hover {
+	filter: brightness(1.06);
+}
+button[hidden] {
+	display: none;
+}
 button:disabled {
 	opacity: 0.6;
 }

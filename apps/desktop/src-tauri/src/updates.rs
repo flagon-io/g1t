@@ -8,12 +8,11 @@
 
 use std::time::Duration;
 
-use tauri::AppHandle;
-use tauri::Manager;
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::{Update, UpdaterExt};
 
-use crate::{config, tray};
+use crate::{config, settings, tray};
 
 /// An update downloaded and checked, waiting to be installed.
 pub struct Ready {
@@ -39,6 +38,16 @@ pub fn schedule(app: AppHandle) {
     });
 }
 
+/// When the updater last heard back, in milliseconds since 1970.
+pub fn checked_at(app: &AppHandle) -> Option<u64> {
+    *app.state::<config::State>().checked_at.lock().unwrap()
+}
+
+fn heard_back(app: &AppHandle) {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_millis() as u64).ok();
+    *app.state::<config::State>().checked_at.lock().unwrap() = now;
+}
+
 /// The version downloaded and waiting, if one is.
 pub fn ready(app: &AppHandle) -> Option<String> {
     app.state::<config::State>().update.lock().unwrap().as_ref().map(|ready| ready.version.clone())
@@ -60,8 +69,12 @@ pub async fn check(app: &AppHandle, asked: bool) -> Result<String, String> {
     }
     let updater = app.updater().map_err(|error| error.to_string())?;
     let update = match updater.check().await {
-        Ok(Some(update)) => update,
+        Ok(Some(update)) => {
+            heard_back(app);
+            update
+        }
         Ok(None) => {
+            heard_back(app);
             if asked {
                 tell(app, "g1t is up to date", &format!("You have version {}.", env!("CARGO_PKG_VERSION")));
             }
@@ -79,6 +92,7 @@ pub async fn check(app: &AppHandle, asked: bool) -> Result<String, String> {
         Ok(bytes) => {
             *app.state::<config::State>().update.lock().unwrap() = Some(Ready { version: version.clone(), update, bytes });
             tray::update_ready(&version);
+            let _ = app.emit_to(settings::SETTINGS, settings::READY_EVENT, version.clone());
             tell(app, "g1t is ready to update", &format!("Version {version} is downloaded. Restart g1t from the tray to use it."));
             Ok(format!("ready:{version}"))
         }

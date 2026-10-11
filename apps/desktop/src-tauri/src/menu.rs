@@ -68,7 +68,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[&PredefinedMenuItem::minimize(app, None)?, &PredefinedMenuItem::maximize(app, None)?],
     )?;
-    let help = Submenu::with_items(app, "Help", true, &[&item("docs", "Desktop app guide", None)?, &item("status", "g1t.sh status", None)?, &separator()?, &check])?;
+    let help = Submenu::with_items(
+        app,
+        "Help",
+        true,
+        &[&item("docs", "Desktop app guide", None)?, &item("status", "g1t.sh status", None)?, &separator()?, &check, &tray::restart_item(app)?],
+    )?;
     // macOS keeps About in g1t's own menu; elsewhere it closes Help.
     #[cfg(not(target_os = "macos"))]
     {
@@ -136,12 +141,8 @@ pub fn handle(app: &AppHandle, id: &str) {
         "open" => tray::show(app),
         "settings" => settings::open(app),
         "server" => tray::launcher(app, "change"),
-        "check" => {
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let _ = updates::check(&app, true).await;
-            });
-        }
+        // The settings window asks, and shows the answer where it cannot be missed.
+        "check" => settings::open_and_check(app),
         "restart" => updates::restart(app),
         "quit" => updates::quit(app),
         "close" => tray::close(app),

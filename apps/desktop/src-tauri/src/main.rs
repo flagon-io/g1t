@@ -57,6 +57,7 @@ fn main() {
             bridge::save_settings,
             bridge::set_open_at_login,
             bridge::change_server,
+            bridge::restart_to_update,
         ])
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .setup(|app| {
