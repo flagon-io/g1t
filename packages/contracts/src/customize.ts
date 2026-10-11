@@ -287,8 +287,8 @@ export type AgentConnector = {
 
 /**
  * What a job's Claude Code receives from the workspace's Customize
- * (docs.g1t.sh/guides/self-hosted-runners/, "Plugins and skills on
- * runners"): plugins to fetch at their pinned commit, the library's skills
+ * (docs.g1t.sh/guides/self-hosted-runners/, "What a run gets from
+ * Customize"): plugins to fetch at their pinned commit, the library's skills
  * as files, and connectors with the headers that sign them in. Read with
  * the job's agent token, once per job.
  */
