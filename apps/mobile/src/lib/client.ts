@@ -80,6 +80,11 @@ export class Client {
     return answer.value;
   }
 
+  /** One of the site's JSON routes that answers in its own shape, such as `/-/notify`. */
+  siteRaw<T>(path: string, init?: RequestInit): Promise<T> {
+    return this.json<T>(this.session.server.site + path, init, "site");
+  }
+
   /** The current access token, refreshed first when it is about to expire. */
   async token(): Promise<string> {
     const credentials = this.session.credentials;

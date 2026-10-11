@@ -32,7 +32,9 @@
 	// Web Push (RFC 8292): the public half of the VAPID key pair browsers
 	// subscribe with, and who the push services may contact. The private
 	// half is the secret VAPID_PRIVATE_KEY (scripts/ops/vapid-keys.mjs).
-	// Empty: no pushes, everything else works.
+	// Empty: no pushes, everything else works. Pushes to the phone app go
+	// through Expo and need nothing here; the secret EXPO_ACCESS_TOKEN is
+	// needed only once the Expo project turns on enhanced push security.
 	"vars": { "VAPID_PUBLIC_KEY": "BBAhBFy-jgfEKm4IDEWKNN_5Nft9SjHqahXtpuZf1Aohop03XduSZgyat-hhDKXAP2hdtMv8yPX7TfqWyR6vJTo", "VAPID_SUBJECT": "https://g1t.sh" },
 	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

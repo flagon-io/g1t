@@ -6,6 +6,8 @@
 //   middle 66% Android keeps whatever the launcher's mask.
 // - android-icon-monochrome.png: the same in white, for themed icons.
 // - splash-icon.png: the mark alone, on the splash screen's background.
+// - notification-icon.png: the mark in white on nothing, as Android draws
+//   a notification's small icon (tinted with the accent).
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
@@ -29,4 +31,5 @@ await draw("icon.png", { size: 1024, scale: 0.62, background: BACKGROUND });
 await draw("android-icon-foreground.png", { size: 1024, scale: 0.46 });
 await draw("android-icon-monochrome.png", { size: 1024, scale: 0.46, color: "#ffffff" });
 await draw("splash-icon.png", { size: 512, scale: 0.9 });
-console.log("Drew icon.png, android-icon-foreground.png, android-icon-monochrome.png and splash-icon.png.");
+await draw("notification-icon.png", { size: 96, scale: 0.8, color: "#ffffff" });
+console.log("Drew icon.png, android-icon-foreground.png, android-icon-monochrome.png, splash-icon.png and notification-icon.png.");

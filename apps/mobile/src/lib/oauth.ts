@@ -28,10 +28,13 @@ WebBrowser.maybeCompleteAuthSession();
 
 /**
  * What the app asks for: what Chat, Code and Customize show and do. The
- * person can untick any of these on the approval page. Chat has no scope:
- * see the README's "Chat and OAuth tokens".
+ * person can untick any of these on the approval page. `chat:*` opens
+ * Chat's routes and live sockets on the site, and `notifications:*` the
+ * phone's registration for pushes (`/-/notify`), and nothing else there.
  */
 export const SCOPES = [
+  "chat:read",
+  "chat:write",
   "account:read",
   "workspace:read",
   "repo:read",

@@ -17,12 +17,13 @@ src/
     sign-in.tsx        Sign in with g1t, an access token, or another server
     oauth/callback.tsx where the site sends sign-in back (g1t://oauth/callback)
     (app)/             signed in: the tabs
-      chat/            conversations, and one conversation, live
+      chat/            the list, a conversation, a thread, new, browse
       code/            repositories, pull requests, issues, diffs
-      customize/       Skills, Connectors, Plugins
-      you/             workspaces, how you signed in, sign out
+      more/            Customize, notifications, workspaces, sign out
+      customize/       Skills, Connectors, Plugins (from More)
+      home/, notifications/, agents/  coming: they open the site
     +native-intent.tsx g1t:// links to screens (lib/links.ts)
-  components/        the building blocks, themed (ui.tsx), and Code's
+  components/        the building blocks, themed (ui.tsx); chat/ and Code's
   lib/
     server.ts          which g1t: site and API addresses
     oauth.ts           OAuth 2.1 with PKCE against the server's metadata
@@ -30,6 +31,9 @@ src/
     client.ts          every request: refresh, errors, the site or the API
     session.tsx        who is signed in, to which workspace
     chat.ts, code.ts   the data for Chat and Code (TanStack Query)
+    live.ts            the site's live sockets, with tickets, kept open
+    feed.tsx           counts, banners and presence while the app is open
+    push.ts            notifications on the phone
     customize.ts       Customize's listings, from @g1t/contracts' catalogs
   theme/             packages/theme/tokens.css's colours, for React Native
 ```
@@ -45,7 +49,8 @@ site can move the Marketplace onto the same model.
 | --- | --- | --- |
 | Who you are, your workspaces | `GET {api}/user` | `Authorization: Bearer g1t_…` |
 | Code | `{api}/repos…` REST | the same |
-| Chat | `{site}/<workspace>/-/chat/api` and its live socket, as the site's own pages use them | the same header, which the site takes only from a token with **Use the website as you**; the socket gets a ticket from `{site}/-/live/ticket` first |
+| Chat | `{site}/<workspace>/-/chat/api` and its live socket, as the site's own pages use them | the same header, with `chat:*` ([below](#chat-with-the-apps-sign-in)); a socket gets a ticket from `{site}/-/live/ticket` first |
+| Notifications | `{site}/-/notify` and the feed socket `{site}/-/live` | the same, with `notifications:*` |
 | Sign-in | `{api}/.well-known/oauth-authorization-server`, `{site}/oauth/authorize`, `{api}/oauth/token` | OAuth 2.1, PKCE (S256), public client |
 
 The OAuth client is not registered anywhere: its id encodes its name and
@@ -55,27 +60,40 @@ last 30 days and are refreshed a minute before they expire; a refresh
 token works once, so `lib/client.ts` shares one refresh between
 requests.
 
-### Open: Chat with the app's OAuth sign-in
+### Chat with the app's sign-in
 
-OAuth tokens are made without the website permission
-(`services/identity/src/oauth.rs` → `issue_oauth_tokens`), and Chat is
-only on the site, so **an OAuth sign-in reaches Code but not Chat**. The
-app says so on Chat and offers an access-token sign-in, which works today
-with a token that has **Use the website as you**. The server needs one of
-these before the app ships:
+Chat has no REST API: the app uses the site's own chat routes. The app
+asks for `chat:read`, `chat:write`, `notifications:read` and
+`notifications:write`, and the site takes a token holding them by name
+(OAuth or personal, without "Use the website as you") on these alone
+(`apps/web/app/lib/website-token.ts`, `scopedRoute` and `socketUser`):
 
-1. **Chat in the REST API** (recommended): `GET/POST /workspaces/:ws/chat…`
-   in `apps/api` with `chat:read` and `chat:write` scopes, calling the chat
-   service as the site does, and a socket ticket the API can mint. It is
-   what the API and MCP will want anyway; the app moves its three calls
-   in `lib/chat.ts` over.
-2. **Let the site take OAuth tokens for Chat's routes alone**:
-   `website-token.ts` accepts a token without `website` on
-   `/<ws>/-/chat/api`, `/<ws>/-/chat/live` and `/-/live/ticket` when it
-   has new `chat:*` scopes. Smaller, but it widens what the site accepts.
+| Route | Needs |
+| --- | --- |
+| `GET`, `POST /<ws>/-/chat/api` | `chat:read`, `chat:write` |
+| `GET /<ws>/-/chat/person/<username>` | `chat:read` |
+| `GET /-/live/ticket` for `/<ws>/-/chat/live` and `/-/live` | `chat:read` |
+| `GET`, `POST /-/notify` | `notifications:read`, `notifications:write` |
 
-Turning `website` on for every OAuth token is not one of them: it would
-let any approved application use the whole site as the person.
+A full-access token does not count: it reaches Chat only with the website
+permission.
+
+### Live, and notifications
+
+- **A conversation's socket** (`lib/chat.ts`, `useChannelLive`) brings new,
+  changed and deleted messages, reactions and typing, and takes the
+  app's own typing.
+- **The feed** (`lib/feed.tsx`), the socket every tab of the site keeps,
+  is open while the app is in front: unread counts, notifications (a
+  banner, `components/chat/banner.tsx`) and presence. It tells g1t the app
+  is focused, so nothing is pushed to the phone while it is in use; in the
+  background it closes.
+- **Push** (`lib/push.ts`): the app registers its Expo push token with
+  `POST /-/notify` `{ intent: "register_device", device: { token, platform, name } }`
+  and takes it back on signing out (`unregister_device`). The notify
+  service sends through Expo's push service on the Android channel
+  `messages`, with `data` `{ href, workspace, kind, tag, channel_id, thread_root, card }`;
+  tapping one opens its thread or conversation.
 
 ## Run it
 
@@ -102,8 +120,10 @@ application's own scheme. The approval page and Connected applications
 call it **g1t in Expo Go**. Its client id encodes that address, so a new
 network makes a new client: the app keeps the id it signed in with for
 refreshing, and signing in again after a move just adds a new entry to
-Connected applications. What Go can't do: open from `g1t://` links (they
-go to an installed build) and show the app's own name and icon.
+Connected applications. Chat works in Go in full, live, with banners
+while the app is open. What Go can't do: notifications on an Android
+phone (Expo took push out of Go there), open from `g1t://` links (they go
+to an installed build), and show the app's own name and icon.
 
 To develop against a g1t running on your computer, choose **Server** on
 the sign-in screen and give its address on your network, such as
@@ -139,10 +159,11 @@ npm test -w @g1t/mobile          # lib/*.test.ts under Node
 Once, by someone with access to the Expo account and Google Play:
 
 1. `npm install -g eas-cli`, then `eas login`.
-2. In `apps/mobile`, `eas init`. It makes the EAS project and prints its
-   id: put it in `EAS_PROJECT` in `app.config.ts` (the config is code, so
-   `eas init` cannot write it there). Set `EAS_OWNER` in your shell if the
-   project belongs to an organization.
+2. The EAS project exists (`35fb457b-…`, `EAS_PROJECT` in
+   `app.config.ts`); `eas whoami` should be an account with access to it.
+   Set `EAS_OWNER` in your shell if it belongs to an organization. On
+   expo.dev, the project's GitHub settings take `apps/mobile` as the base
+   directory.
 3. `eas build --profile preview --platform android`. EAS makes and keeps
    the upload keystore the first time; say yes. The build ends with a link
    and a QR code to install the APK.
@@ -160,12 +181,30 @@ Once, by someone with access to the Expo account and Google Play:
 iOS is the same with `--platform ios`, an Apple Developer account and the
 bundle id `sh.g1t.app`; EAS makes the certificates.
 
+### Push notifications on Android
+
+Expo's push service sends to Android through Firebase Cloud Messaging,
+which needs a Firebase project. Once:
+
+1. In the [Firebase console](https://console.firebase.google.com), make a
+   project, and in it an Android app for each package: `sh.g1t.app`,
+   `sh.g1t.app.preview` and `sh.g1t.app.dev`. Download
+   `google-services.json` (one file lists all three).
+2. Give it to EAS as a file variable:
+   `eas env:create --scope project --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --visibility secret --environment production --environment preview --environment development`.
+   `app.config.ts` reads it from there, or a `google-services.json` beside
+   it locally (ignored by git).
+3. In Firebase, **Project settings → Service accounts → Generate new private
+   key**, then `eas credentials` → Android → the production build's package →
+   **Google Service Account → Push Notifications (FCM V1)**, and upload that
+   key. Repeat for `sh.g1t.app.preview` and `sh.g1t.app.dev`.
+4. Build again. Pushes need a build: Expo Go on Android has none.
+
+`EXPO_ACCESS_TOKEN` on the notify Worker is needed only if the Expo
+project turns on **Enhanced push security**.
+
 ### Before the first store release
 
-- **Chat with OAuth**, above.
-- **Push notifications**: `expo-notifications`, and in `services/notify`
-  a subscription kind for Expo push tokens (or FCM and APNs) beside Web
-  Push, registered from the app after sign-in.
 - **App Links**: `https://g1t.sh/.well-known/assetlinks.json` naming
   `sh.g1t.app` and Play's signing certificate's SHA-256, then an
   `intentFilters` entry with `autoVerify` in `app.config.ts`, so g1t.sh
@@ -177,7 +216,8 @@ bundle id `sh.g1t.app`; EAS makes the certificates.
   agent; the site's `AgentFace` should be shared and drawn here.
 - **The store listing**: screenshots, a privacy policy URL, and Play's
   data safety form (the app keeps the server and credentials in the
-  keystore, and sends nothing anywhere but the g1t it is pointed at).
+  keystore, registers a push token with the g1t it is pointed at, and
+  sends nothing anywhere else).
 
 ## Notes
 

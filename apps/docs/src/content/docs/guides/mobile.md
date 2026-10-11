@@ -1,25 +1,72 @@
 ---
 title: The phone app
-description: g1t on Android and iOS, built with Expo. Chat, Code and Customize on your phone, signed in with g1t's own OAuth. Not in the stores yet; this is how it works and how to build it.
+description: g1t on Android and iOS, built with Expo. Chat with people and agents, live, with notifications on your phone, and Code and Customize, signed in with g1t's own OAuth. Not in the stores yet; this is how it works and how to build it.
 ---
 
 The phone app is g1t on Android and iOS, with its own screens for what
-you do away from a desk: answering in Chat, reviewing what agents made in
-Code, and seeing the skills, connectors and plugins your workspace can
-use in Customize. Everything else opens on the site, in your phone's
-browser.
+you do away from a desk: talking with your team and its agents in Chat,
+with notifications on your phone, reviewing what agents made in Code,
+and seeing the skills, connectors and plugins your workspace can use in
+Customize. Everything else opens on the site, in your phone's browser.
 
 It is not in Google Play or the App Store yet. Android comes first. Until
 then, it is built from `apps/mobile` in
 [g1t's repository](https://g1t.sh/flagon-io/g1t), as
 [For operators](#for-operators-building-and-releasing) says.
 
+The bar along the bottom is the site's phone bar:
+
 | Tab | What is on it |
 | --- | --- |
-| **Chat** | The channels you are in and your direct messages, with unread counts. A conversation shows its messages and agents' cards, live while it is open, and you write back from the box at the bottom. |
-| **Code** | The workspace's repositories, each with its pull requests and issues, open or closed. A pull request shows its description, checks, conversation and changed files, and you can approve it or ask for changes. An issue shows the pull requests made for it, and you can comment. |
-| **Customize** | **Skills** (what agents know how to do), **Connectors** (the tools they can reach, the Marketplace's integrations today) and **Plugins** (what adds pages and tools, the Marketplace's extensions today). Each opens where it is set up on the site. |
-| **You** | Your workspaces, to switch between them, how you signed in, and **Sign out**. |
+| **Home** | Coming. Opens Home on the site meanwhile. |
+| **Chat** | Your starred conversations, channels and direct messages, with what is unread, moving live. See [Chat](#chat). |
+| **Notifications** | Coming. Opens your notifications on the site meanwhile; messages to you already arrive [on the phone](#notifications). |
+| **Agents** | Coming. Opens Agents on the site meanwhile; message any agent from Chat. |
+| **Code** | The workspace's repositories, each with its pull requests and issues. A pull request shows its description, checks, conversation and changed files, and you can approve it or ask for changes. An issue shows the pull requests made for it, and you can comment. Shown when you use Code in the workspace. |
+| **More** | **Customize** (skills, connectors and plugins), whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
+
+## Chat
+
+Chat on the phone is the site's Chat: the same conversations, as they
+happen.
+
+- **Conversations** show messages as the site draws them: bold, italic,
+  code, lists, quotes, tables and links, with `@mentions`, `#channels`
+  and `#123` references standing out. Messages by one person a few minutes
+  apart run together, and each day is marked.
+- **Live.** New messages, edits, deletions and reactions appear as they
+  happen, and the line above the box says who is typing. Unread counts in
+  the list and on the **Chat** tab move as messages arrive anywhere.
+- **Sending** shows your message at once. If it doesn't reach g1t, it
+  stays, marked **Not sent**: tap it to try again.
+- **Agents' cards** work: their buttons (approve more budget, stop a
+  session, file a draft issue) act from the phone, asking first or asking
+  for an amount when the card does, and the card updates in place.
+- **Long-press a message** to react, reply in a thread, copy it, or edit
+  or delete your own. Tap a reaction to add yours or take it back.
+- **Threads** open from a message's replies, with the message they are
+  under at the top.
+- **⋯** on a conversation stars, mutes or leaves it.
+- **New message** (the pen at the top of Chat) messages a person or an
+  agent, or a few of them together, or makes a channel. **Browse** at the
+  foot of the list joins public channels.
+
+A notification for a conversation you have open is not shown; one for
+another shows as a banner at the top of the screen.
+
+## Notifications
+
+The phone gets the same notifications as [browser push](/guides/notifications/#on-your-phone):
+messages to you, mentions, replies in threads you are in, and agents
+waiting on you, under the same rules. Nothing comes while you are using
+g1t in a browser or in the app itself, and nothing in
+[Do not disturb](/guides/chat/#sounds-and-do-not-disturb). Tapping one
+opens the conversation or thread it is about.
+
+The app asks to notify you the first time you sign in. To change it
+later, use **More → Notifications on this phone**, or the phone's own
+settings for g1t, where Android lists the **Messages** channel. Signing
+out stops them on that phone.
 
 ## Signing in
 
@@ -42,16 +89,10 @@ could not do.
 [personal access token](/guides/authentication/#access-tokens) you paste
 in instead. The token stays on your phone, in its keystore.
 
-### Chat and the app's sign-in
-
-Chat is served by the site, and the site takes only a browser's session
-or a token with **Use the website as you** turned on. The app's OAuth
-sign-in is neither yet, so with it Code and Customize work and Chat says
-it needs another sign-in. Until the app's sign-in opens Chat, sign in
-with **Use an access token** and a token with
-[Use the website as you](/guides/authentication/#use-a-token-on-the-website)
-turned on. Keep that token as safe as your password: on the website it can
-do anything you can.
+The app asks for `chat:read` and `chat:write` too. They let it use
+Chat's routes and live connections on the site, and register for
+notifications, and nothing else there: the app's sign-in cannot open the
+site's pages as you.
 
 ## Links
 
@@ -79,15 +120,13 @@ it (`https://api.g1t.example.com`); if yours is elsewhere, enter it under
 ## What's not there yet
 
 - **Store releases.** Google Play first, then the App Store.
-- **Notifications on your phone.** g1t sends browser and desktop
-  notifications today; push to phones needs g1t to send through Firebase
-  and Apple, which is coming.
-- **Chat with the app's own sign-in**, as [above](#chat-and-the-apps-sign-in).
 - **Home, Notifications, Agents and Artifacts** as tabs of their own.
   Their pages open on the site meanwhile.
-- **Formatting.** Messages, descriptions and comments show their Markdown
-  as written.
-- **Threads.** A message's replies are counted, and read on the site.
+- **Formatting in Code.** Descriptions and comments show their Markdown
+  as written; messages in Chat are formatted.
+- **Attachments and custom emoji.** Files in messages, and a
+  workspace's own `:emoji:`, show as their names.
+- **Replying from a notification**, without opening the app.
 - **https links.** `g1t.sh` addresses open the site in the browser, not
   the app, until g1t.sh publishes the files Android and iOS check first.
 

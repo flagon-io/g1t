@@ -2,7 +2,7 @@ import type { Route } from "./+types/ticket";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { issueTicket, socketPath } from "../../lib/socket-ticket";
 import { ticketSecret } from "../../lib/socket-ticket.server";
-import { bearerToken } from "../../lib/website-token";
+import { bearerToken, socketUser } from "../../lib/website-token";
 
 const PRIVATE = { "cache-control": "no-store", "x-robots-tag": "noindex" };
 
@@ -11,12 +11,14 @@ const PRIVATE = { "cache-control": "no-store", "x-robots-tag": "noindex" };
  * `GET /-/live/ticket?path=/<workspace>/-/chat/live` answers
  * `{ ticket, expires_at }`, good for a minute on that socket alone
  * (lib/socket-ticket.ts). Only a request signed in by a token gets one: a
- * session's sockets carry its cookie and need none.
+ * session's sockets carry its cookie and need none. A token let in by its
+ * `chat:read` scope rather than the website permission gets one for Chat's
+ * socket and the feed (`/-/live`) alone (lib/website-token.ts `socketUser`).
  */
 export async function loader({ context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const token = bearerToken(request);
-  if (!viewer || !token || !viewer.token?.website) {
+  if (!viewer || !token || !viewer.token) {
     return Response.json(
       { message: "Socket tickets are for pages opened with an access token; a signed-in browser's sockets use its session." },
       { status: viewer ? 400 : 401, headers: PRIVATE },
@@ -24,6 +26,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   }
   const socket = socketPath(new URL(request.url).searchParams.get("path") ?? "");
   if (!socket) return Response.json({ message: "Which socket? `path` is one of the site's live sockets." }, { status: 400, headers: PRIVATE });
+  if (!socketUser(viewer, socket.path)) {
+    return Response.json({ message: "This access token can open Chat's sockets and your feed, not this one." }, { status: 403, headers: PRIVATE });
+  }
   if (socket.workspace && !roleIn(viewer, socket.workspace)) {
     return Response.json({ message: "Not found" }, { status: 404, headers: PRIVATE });
   }

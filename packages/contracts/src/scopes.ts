@@ -24,6 +24,7 @@ export type ScopeResource =
   | "memory"
   | "account"
   | "notifications"
+  | "chat"
   | "workspace"
   | "billing"
   | "access"
@@ -65,6 +66,8 @@ export const SCOPES = [
   { scope: "account:write", description: "Change your email addresses, make invites, answer invitations, pin projects and star repositories" },
   { scope: "notifications:read", description: "See your inbox, its threads, and what you subscribe to and watch" },
   { scope: "notifications:write", description: "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories" },
+  { scope: "chat:read", description: "Read the conversations you are in: channels, direct messages, threads and reactions, live" },
+  { scope: "chat:write", description: "Send, edit and delete your messages, react, mark conversations read, and answer cards in chat" },
   { scope: "workspace:read", description: "Read workspace settings, invites, integrations, model routes, teams and rulesets" },
   { scope: "workspace:admin", description: "Create and delete workspaces, invite members, connect integrations, create, change and delete teams, and change the workspace's rulesets" },
   { scope: "billing:read", description: "See a workspace's usage, budget, AI credit and invoices" },
@@ -115,6 +118,7 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string; group: R
   { resource: "memory", label: "Memory and context", group: "repository" },
   { resource: "account", label: "Your account", group: "account" },
   { resource: "notifications", label: "Notifications", group: "account" },
+  { resource: "chat", label: "Chat", group: "account" },
   { resource: "workspace", label: "Workspaces", group: "workspace" },
   { resource: "billing", label: "Billing", group: "workspace" },
   { resource: "access", label: "Who has access", group: "repository" },
@@ -159,6 +163,16 @@ export function scopeIncludes(held: Scope, needed: Scope): boolean {
     scopeResource(held) === scopeResource(needed) &&
     LEVEL_ORDER[scopeLevel(held)] >= LEVEL_ORDER[scopeLevel(needed)]
   );
+}
+
+/**
+ * Whether a token holding `scopes` may do what `needed` gates (Rust:
+ * `TokenAccess::allows`). Null or absent scopes are full access, which
+ * holds every scope; unknown names give nothing.
+ */
+export function tokenAllows(scopes: readonly string[] | null | undefined, needed: Scope): boolean {
+  if (scopes === null || scopes === undefined) return true;
+  return scopes.some((held) => isScope(held) && scopeIncludes(held, needed));
 }
 
 /** The levels a resource has, least first. */
@@ -215,7 +229,7 @@ export const FULL_ACCESS = "*";
 
 export type PresetId = "read_only" | "agent" | "ci" | "full";
 
-/** Starting points for choosing scopes. `*` is full access. */
+/** Starting points for choosing scopes. `*` is full access. No preset gives chat: an application gets it only by asking for it. */
 export const PRESET_SCOPES = {
   read_only: [
     "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "models:read", "artifacts:read",
@@ -654,6 +668,7 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "memory", label: "Memory & search", scopes: ["memory:read", "memory:write"] },
   { id: "account", label: "Account", scopes: ["account:read", "account:write"] },
   { id: "notifications", label: "Notifications", scopes: ["notifications:read", "notifications:write"] },
+  { id: "chat", label: "Chat", scopes: ["chat:read", "chat:write"] },
   { id: "workspace", label: "Workspace", scopes: ["workspace:read", "access:read", "webhooks:read", "secrets:read"] },
   { id: "billing", label: "Billing", scopes: ["billing:read", "billing:write"] },
   { id: "runners", label: "Runners", scopes: ["runners:read"] },

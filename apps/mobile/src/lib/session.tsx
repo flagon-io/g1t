@@ -6,6 +6,7 @@ import { type ReactNode, createContext, useCallback, useContext, useEffect, useM
 import { ApiError, Client } from "./client";
 import { type Credentials, clearCredentials, loadCredentials, loadServer, saveCredentials, saveServer } from "./credentials";
 import { signInWithOAuth } from "./oauth";
+import { unregisterPush } from "./push";
 import type { Server } from "./server";
 
 /**
@@ -126,6 +127,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
       signOut: async () => {
         const server = current();
+        // The phone stops getting notifications first, while the token still works.
+        if (state.status === "signed-in") await unregisterPush(state.client).catch(() => undefined);
         if (server) await signedOut(server);
       },
       changeServer: async (server) => {

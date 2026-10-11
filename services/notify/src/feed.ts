@@ -9,7 +9,9 @@
  * focus and page (`serializeAttachment`), which survive hibernation.
  *
  * Kept in the object's own SQLite storage: the latest notifications, the
- * unread counts per conversation, push subscriptions and preferences, and
+ * unread counts per conversation, push subscriptions (browsers) and
+ * devices (the phone app, pushed through Expo: src/expopush.ts) and
+ * preferences, and
  * the person's status, Do Not Disturb and whether they set themselves away,
  * and when they were last on each workspace's Home page (src/visits.ts).
  *
@@ -35,11 +37,13 @@ import {
   type FeedSeed,
   type NotifyPreferences,
   type NotifyStatus,
+  type PushDevice,
   type PushSubscriptionJson,
 } from "@g1t/contracts";
 
 import { applyCounts, totals } from "./counts.ts";
-import { cleanNotification, decide, mergePreferences, pushPayload, readPreferences, type TabState } from "./prefs.ts";
+import { cleanDevice, sendExpo } from "./expopush.ts";
+import { cleanNotification, decide, mergePreferences, pushPayload, readPreferences, type PushPayload, type TabState } from "./prefs.ts";
 import {
   OFFLINE_GRACE_MS,
   applyChange,
@@ -62,6 +66,12 @@ export type FeedEnv = {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
+  /**
+   * A secret, optional: the access token Expo's push service asks for once
+   * the Expo project turns on enhanced push security. Without it, pushes to
+   * phones go unauthenticated, which Expo takes otherwise.
+   */
+  EXPO_ACCESS_TOKEN?: string;
   /** One presence room per workspace (src/room.ts); without it, presence stays in the person's own tabs. */
   ROOMS?: DurableObjectNamespace<Room>;
 };
@@ -81,6 +91,8 @@ const HELLO = 20;
 const MAX_SUBSCRIPTIONS = 20;
 /** The longest endpoint taken. */
 const MAX_ENDPOINT = 2000;
+/** The most phones one person gets pushes on. */
+const MAX_DEVICES = 10;
 
 export class Feed extends DurableObject<FeedEnv> {
   private readonly sql: SqlStorage;
@@ -98,6 +110,8 @@ export class Feed extends DurableObject<FeedEnv> {
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS subscriptions (endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL, user_agent TEXT, created_at INTEGER NOT NULL)`,
     );
+    // The phone app's Expo push tokens (src/expopush.ts).
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS devices (token TEXT PRIMARY KEY, platform TEXT NOT NULL, name TEXT, created_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
     // When the person was last on each workspace's Home page (src/visits.ts).
     this.sql.exec(`CREATE TABLE IF NOT EXISTS visits (workspace TEXT PRIMARY KEY, seen_at INTEGER NOT NULL, previous_at INTEGER)`);
@@ -147,6 +161,10 @@ export class Feed extends DurableObject<FeedEnv> {
 
   private subscriptionCount(): number {
     return this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM subscriptions").one().n;
+  }
+
+  private deviceCount(): number {
+    return this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM devices").one().n;
   }
 
   // ── Presence ────────────────────────────────────────────────────────────
@@ -399,10 +417,11 @@ export class Feed extends DurableObject<FeedEnv> {
     return true;
   }
 
-  /** Tells the person: open tabs at once, then browsers when none is in front of them. */
+  /** Tells the person: open tabs at once, then browsers and phones when none is in front of them. */
   private async tell(notification: FeedNotification, test = false): Promise<number> {
     if (!test && !this.keep(notification)) return 0;
-    const subscriptions = this.subscriptionCount();
+    // Somewhere to push: a browser or a phone.
+    const subscriptions = this.subscriptionCount() + this.deviceCount();
     const now = Date.now();
     // Do Not Disturb: kept and counted, neither toasted nor pushed.
     const quiet = dndOn(this.kept().dnd_until, now);
@@ -411,12 +430,23 @@ export class Feed extends DurableObject<FeedEnv> {
     return decision.push ? this.push(notification) : 0;
   }
 
-  /** Pushes to every browser subscribed; drops the ones the push service says are gone. */
+  /** Pushes to every browser and phone at once; one failing does not stop the other. */
   private async push(notification: FeedNotification): Promise<number> {
+    const payload = pushPayload(notification);
+    const results = await Promise.allSettled([this.pushBrowsers(payload), this.pushDevices(notification, payload)]);
+    let sent = 0;
+    for (const result of results) {
+      if (result.status === "fulfilled") sent += result.value;
+      else console.error("notify: pushing failed", result.reason);
+    }
+    return sent;
+  }
+
+  /** Pushes to every browser subscribed; drops the ones the push service says are gone. */
+  private async pushBrowsers(payload: PushPayload): Promise<number> {
     const vapid = this.vapid();
     if (!vapid) return 0;
     const subscriptions = this.sql.exec<{ endpoint: string; p256dh: string; auth: string }>("SELECT endpoint, p256dh, auth FROM subscriptions").toArray();
-    const payload = pushPayload(notification);
     const results = await Promise.allSettled(
       subscriptions.map((s) => sendPush(s, payload, { vapid, urgency: payload.urgent ? "high" : "normal", topic: payload.tag, ttl: 12 * 3600 })),
     );
@@ -431,6 +461,16 @@ export class Feed extends DurableObject<FeedEnv> {
       else console.error("notify: a push service answered", result.value.status);
     }
     return sent;
+  }
+
+  /** Pushes to every phone through Expo; drops the ones Expo says the app is gone from. */
+  private async pushDevices(notification: FeedNotification, payload: PushPayload): Promise<number> {
+    const tokens = this.sql.exec<{ token: string }>("SELECT token FROM devices").toArray().map((r) => r.token);
+    if (!tokens.length) return 0;
+    const result = await sendExpo(tokens, payload, notification, { accessToken: this.env.EXPO_ACCESS_TOKEN });
+    for (const token of result.gone) this.sql.exec("DELETE FROM devices WHERE token = ?", token);
+    for (const error of result.errors) console.error("notify: a push to a phone failed", error);
+    return result.sent;
   }
 
   // ── RPC (called by the Worker, src/index.ts) ────────────────────────────
@@ -509,9 +549,36 @@ export class Feed extends DurableObject<FeedEnv> {
     return { ok: true };
   }
 
+  /** A phone the app runs on, by its Expo push token; registering it again moves it to the newest. */
+  async registerDevice(device: PushDevice): Promise<{ ok: boolean }> {
+    const clean = cleanDevice(device);
+    if (!clean) return { ok: false };
+    this.sql.exec(
+      "INSERT OR REPLACE INTO devices (token, platform, name, created_at) VALUES (?, ?, ?, ?)",
+      clean.token,
+      clean.platform,
+      clean.name,
+      Date.now(),
+    );
+    // The oldest go first past the limit.
+    this.sql.exec("DELETE FROM devices WHERE token NOT IN (SELECT token FROM devices ORDER BY created_at DESC LIMIT ?)", MAX_DEVICES);
+    return { ok: true };
+  }
+
+  async unregisterDevice(token: string): Promise<{ ok: boolean }> {
+    this.sql.exec("DELETE FROM devices WHERE token = ?", String(token ?? ""));
+    return { ok: true };
+  }
+
   async status(endpoint: string | null): Promise<NotifyStatus> {
     const subscribed = !!endpoint && this.sql.exec("SELECT 1 FROM subscriptions WHERE endpoint = ?", endpoint).toArray().length > 0;
-    return { preferences: this.preferences(), subscriptions: this.subscriptionCount(), subscribed, vapid_public_key: this.env.VAPID_PUBLIC_KEY || null };
+    return {
+      preferences: this.preferences(),
+      subscriptions: this.subscriptionCount(),
+      devices: this.deviceCount(),
+      subscribed,
+      vapid_public_key: this.env.VAPID_PUBLIC_KEY || null,
+    };
   }
 
   async setPreferences(change: unknown): Promise<NotifyPreferences> {

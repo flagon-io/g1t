@@ -24,6 +24,10 @@ use crate::credentials::Decision;
 pub enum Resource {
     Account,
     Notifications,
+    /// Chat: the conversations a person is in (channels, direct messages,
+    /// threads), read and answered as them on the site's chat routes and
+    /// live sockets. A person's own; no preset gives it.
+    Chat,
     Workspace,
     Billing,
     Repo,
@@ -50,7 +54,7 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub const ALL: [Resource; 22] = [
+    pub const ALL: [Resource; 23] = [
         Resource::Repo,
         Resource::Code,
         Resource::Security,
@@ -65,6 +69,7 @@ impl Resource {
         Resource::Memory,
         Resource::Account,
         Resource::Notifications,
+        Resource::Chat,
         Resource::Workspace,
         Resource::Billing,
         Resource::Access,
@@ -79,6 +84,7 @@ impl Resource {
         match self {
             Resource::Account => "account",
             Resource::Notifications => "notifications",
+            Resource::Chat => "chat",
             Resource::Workspace => "workspace",
             Resource::Billing => "billing",
             Resource::Repo => "repo",
@@ -107,6 +113,7 @@ impl Resource {
         match self {
             Resource::Account => "Your account",
             Resource::Notifications => "Notifications",
+            Resource::Chat => "Chat",
             Resource::Workspace => "Workspaces",
             Resource::Billing => "Billing",
             Resource::Repo => "Repositories",
@@ -198,6 +205,8 @@ pub enum Scope {
     AccountWrite,
     NotificationsRead,
     NotificationsWrite,
+    ChatRead,
+    ChatWrite,
     WorkspaceRead,
     WorkspaceAdmin,
     BillingRead,
@@ -219,7 +228,7 @@ pub enum Scope {
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 45] = [
+    pub const ALL: [Scope; 47] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
@@ -248,6 +257,8 @@ impl Scope {
         Scope::AccountWrite,
         Scope::NotificationsRead,
         Scope::NotificationsWrite,
+        Scope::ChatRead,
+        Scope::ChatWrite,
         Scope::WorkspaceRead,
         Scope::WorkspaceAdmin,
         Scope::BillingRead,
@@ -297,6 +308,8 @@ impl Scope {
             Scope::AccountWrite => "account:write",
             Scope::NotificationsRead => "notifications:read",
             Scope::NotificationsWrite => "notifications:write",
+            Scope::ChatRead => "chat:read",
+            Scope::ChatWrite => "chat:write",
             Scope::WorkspaceRead => "workspace:read",
             Scope::WorkspaceAdmin => "workspace:admin",
             Scope::BillingRead => "billing:read",
@@ -383,6 +396,8 @@ impl Scope {
             Scope::AccountWrite => "Change your email addresses, make invites, answer invitations, pin projects and star repositories",
             Scope::NotificationsRead => "See your inbox, its threads, and what you subscribe to and watch",
             Scope::NotificationsWrite => "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories",
+            Scope::ChatRead => "Read the conversations you are in: channels, direct messages, threads and reactions, live",
+            Scope::ChatWrite => "Send, edit and delete your messages, react, mark conversations read, and answer cards in chat",
             Scope::WorkspaceRead => "Read workspace settings, invites, integrations, model routes, teams and rulesets",
             Scope::WorkspaceAdmin => "Create and delete workspaces, invite members, connect integrations, create, change and delete teams, and change the workspace's rulesets",
             Scope::BillingRead => "See a workspace's usage, budget, AI credit and invoices",
@@ -478,7 +493,7 @@ impl ResourceGroup {
 impl Resource {
     pub fn group(self) -> ResourceGroup {
         match self {
-            Resource::Account | Resource::Notifications => ResourceGroup::Account,
+            Resource::Account | Resource::Notifications | Resource::Chat => ResourceGroup::Account,
             Resource::Workspace | Resource::Billing | Resource::Runners | Resource::Models | Resource::Artifacts => ResourceGroup::Workspace,
             _ => ResourceGroup::Repository,
         }
@@ -591,7 +606,13 @@ impl Preset {
 
     /// Its scopes; `None` for full access.
     pub fn scopes(self) -> Option<Vec<Scope>> {
-        let reads = || Scope::ALL.into_iter().filter(|scope| scope.level() == Level::Read && scope.offered());
+        // Chat is not in any: a person's conversations go to an application
+        // only when it asks for them by name.
+        let reads = || {
+            Scope::ALL
+                .into_iter()
+                .filter(|scope| scope.level() == Level::Read && scope.offered() && scope.resource() != Resource::Chat)
+        };
         match self {
             Preset::ReadOnly => Some(reads().collect()),
             Preset::Agent => {
@@ -1489,8 +1510,8 @@ mod tests {
         assert!(scopes.contains(&Scope::AgentsRun));
         assert!(scopes.iter().all(|scope| !scope.dangerous()), "{scopes:?}");
         for read in Scope::ALL.into_iter().filter(|scope| scope.level() == Level::Read && scope.offered()) {
-            // Every read offered but the machines work runs on.
-            assert_eq!(scopes.contains(&read), read != Scope::RunnersRead, "{read:?}");
+            // Every read offered but the machines work runs on, and chat.
+            assert_eq!(scopes.contains(&read), read != Scope::RunnersRead && read != Scope::ChatRead, "{read:?}");
         }
         assert!(Preset::ReadOnly.scopes().unwrap().iter().all(|scope| scope.level() == Level::Read));
         assert_eq!(Preset::Full.scopes(), None);
@@ -1563,6 +1584,34 @@ mod tests {
         let reader = token(&[Scope::ArtifactsRead]);
         assert!(!decide(&reader, "list_artifacts", &json!({ "repo": "acme/web" })).allowed);
         assert!(!decide(&token(&[Scope::WorkflowsRead]), "list_workspace_artifacts", &json!({})).allowed);
+    }
+
+    #[test]
+    fn chat_is_a_persons_own_and_given_only_when_asked_for() {
+        for scope in [Scope::ChatRead, Scope::ChatWrite] {
+            assert_eq!(scope.resource(), Resource::Chat);
+            assert!(!scope.dangerous());
+            assert_eq!(Scope::parse(scope.as_str()), Some(scope));
+        }
+        assert_eq!(Resource::Chat.label(), "Chat");
+        assert_eq!(Resource::Chat.group(), ResourceGroup::Account);
+        assert!(Scope::ChatWrite.includes(Scope::ChatRead));
+        assert!(!Scope::ChatRead.includes(Scope::ChatWrite));
+        // No preset, and so no OAuth default, gives it.
+        for preset in Preset::ALL {
+            let scopes = preset.scopes().unwrap_or_default();
+            assert!(!scopes.iter().any(|scope| scope.resource() == Resource::Chat), "{}", preset.as_str());
+        }
+        assert!(!oauth_default().iter().any(|scope| scope.resource() == Resource::Chat));
+        // An application that asks for it by name gets it; full access holds it.
+        assert_eq!(parse_scopes("chat:read chat:write"), vec![Scope::ChatRead, Scope::ChatWrite]);
+        assert!(offered_scopes().contains(&Scope::ChatWrite));
+        assert!(everything().contains(&Scope::ChatWrite));
+        assert!(TokenAccess::full().allows(Scope::ChatWrite));
+        // Only a person's token may hold it.
+        let asked = std::collections::BTreeMap::from([("chat".to_owned(), "write".to_owned())]);
+        assert_eq!(resolve_permissions(&asked, true), Ok(vec![Scope::ChatWrite]));
+        assert!(resolve_permissions(&asked, false).is_err());
     }
 
     #[test]

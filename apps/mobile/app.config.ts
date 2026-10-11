@@ -1,3 +1,8 @@
+/// <reference types="node" />
+
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
 import type { ConfigContext, ExpoConfig } from "expo/config";
 
 /**
@@ -11,12 +16,12 @@ import type { ConfigContext, ExpoConfig } from "expo/config";
  * | `preview`     | `sh.g1t.app.preview`         | g1t (beta)  |
  * | production    | `sh.g1t.app`                 | g1t         |
  *
- * The EAS project is set once `eas init` has made one (README.md); until
- * then, builds and updates are not linked to one.
+ * The EAS project is g1t's on expo.dev; push notifications on Android
+ * also need the Firebase credentials uploaded there (README.md).
  */
 
 /** The EAS project's id, from `eas init`. `EAS_PROJECT_ID` overrides it. */
-const EAS_PROJECT: string | undefined = undefined;
+const EAS_PROJECT = "35fb457b-905c-44cd-9b35-0899e12852dd";
 
 const variant = process.env.APP_VARIANT;
 const suffix = variant === "development" ? ".dev" : variant === "preview" ? ".preview" : "";
@@ -26,6 +31,16 @@ const projectId = process.env.EAS_PROJECT_ID ?? EAS_PROJECT;
 
 /** g1t's background, dark as the site is by default (packages/theme/tokens.css `--g1t-bg`). */
 const BACKGROUND = "#0f0f11";
+/** The accent, for the notification icon's tint (`--g1t-accent`). */
+const ACCENT = "#b6a8ff";
+
+/**
+ * Firebase's file for the Android app, which push on Android needs: from
+ * an EAS file secret in the cloud (`GOOGLE_SERVICES_JSON`), or a copy
+ * beside this file locally (ignored by git). Without one, everything but
+ * push works.
+ */
+const googleServices = process.env.GOOGLE_SERVICES_JSON ?? (existsSync(join(__dirname, "google-services.json")) ? "./google-services.json" : undefined);
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
@@ -52,12 +67,21 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
     predictiveBackGestureEnabled: true,
+    ...(googleServices ? { googleServicesFile: googleServices } : {}),
     softwareKeyboardLayoutMode: "resize",
   },
   plugins: [
     "expo-router",
     "expo-secure-store",
     "expo-web-browser",
+    [
+      "expo-notifications",
+      {
+        icon: "./assets/images/notification-icon.png",
+        color: ACCENT,
+        defaultChannel: "messages",
+      },
+    ],
     [
       "expo-splash-screen",
       {

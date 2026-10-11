@@ -10,7 +10,8 @@ import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.serv
 
 /**
  * What a chat page asks for as it runs, as JSON, without loading a page:
- * the sidebar again, a thread's replies, older messages; and everything it
+ * the sidebar again, a thread's replies, older messages, the channels to
+ * join (`?browse=1`, for the phone app); and everything it
  * sends: messages, read marks, stars, new channels and direct messages,
  * and the actions pressed on cards.
  * Every answer is `{ ok, value }` or `{ ok: false, error }`, the services'
@@ -25,6 +26,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const answer = await safely<unknown>(() => {
     // The workspace's own emoji, for the picker and for drawing :name: (components/emoji).
     if (url.searchParams.get("emoji")) return chat.listEmoji(slug, viewer);
+    // The channels to find and join, as Browse lists them; for the phone app.
+    if (url.searchParams.get("browse")) return chat.browse(slug, viewer, { archived: false });
     if (!channel) return chat.sidebar(slug, viewer);
     return chat.messages(slug, channel, viewer, {
       thread_root: url.searchParams.get("thread"),

@@ -19,11 +19,20 @@
  *   authentication, passwords, email addresses, SSH and signing keys,
  *   applications, deleting the account or a workspace, giving a workspace
  *   away, and payment methods ({@link needsRealSignIn}).
+ * - A person's own token without "Use the website as you" is still
+ *   accepted on a few JSON routes and live sockets, when it holds their
+ *   scope: Chat's (`chat:read`, `chat:write`) and the person's push and
+ *   notification settings (`notifications:read`, `notifications:write`).
+ *   That is how an application signed in with OAuth, such as the phone
+ *   app, reaches Chat, which has no API of its own ({@link scopedRoute}).
+ *   Only scopes given by name count, not full access. Nowhere else does
+ *   such a token sign in.
  * - A token that is not accepted is no one: a page loads signed out, and a
  *   data request or form post is refused with a 401 that says why.
  */
 
 import type { User, Viewer } from "@g1t/contracts";
+import { type Scope, tokenAllows } from "@g1t/contracts/scopes";
 
 /**
  * The page a request is for, as routes match it: decoded, any case, no
@@ -31,19 +40,24 @@ import type { User, Viewer } from "@g1t/contracts";
  * page (as lib/confirm-gate.ts's `pageOf`).
  */
 function pageOf(pathname: string): string {
-  let path = pathname;
-  try {
-    path = decodeURIComponent(path);
-  } catch {
-    // Left as it came: routes cannot match a malformed escape either.
-  }
-  path = path.toLowerCase().replace(/\/{2,}/g, "/");
+  let path = decodedPath(pathname);
   if (path.endsWith(".data")) {
     path = path.slice(0, -".data".length);
     if (path === "/_root") path = "/";
   }
   if (path.length > 1) path = path.replace(/\/+$/, "");
   return path || "/";
+}
+
+/** A path decoded, in any case, without doubled slashes. */
+function decodedPath(pathname: string): string {
+  let path = pathname;
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // Left as it came: routes cannot match a malformed escape either.
+  }
+  return path.toLowerCase().replace(/\/{2,}/g, "/");
 }
 
 /** Where the docs explain it. */
@@ -66,10 +80,91 @@ export function bearerToken(request: Request): string | null {
  * permission. Null otherwise.
  */
 export function websiteUser(viewer: Viewer): User | null {
+  const user = personsToken(viewer);
+  return user?.token?.website ? user : null;
+}
+
+/**
+ * A person resolved from their own token: not a workspace, an agent or
+ * someone acting through one, a workflow job or a deploy key. Null
+ * otherwise, and for a session.
+ */
+function personsToken(viewer: Viewer): User | null {
   if (!viewer || (viewer.kind ?? "user") !== "user" || viewer.acting) return null;
   const token = viewer.token;
-  if (!token?.website || token.job || token.deploy_key) return null;
+  if (!token || token.job || token.deploy_key) return null;
   return viewer;
+}
+
+/** A workspace in a path: any segment but `-`, which is no workspace's name. */
+const WORKSPACE = "(?!-/)[^/]+";
+
+/**
+ * The routes a person's token reaches by its scopes, without the website
+ * permission: each path (decoded, any case, no doubled or trailing
+ * slashes), the method, and the scope it needs. JSON and sockets only,
+ * never a page: a client navigation's `.data` is not one of them, since it
+ * would run the loaders of the pages around the route as well.
+ */
+const SCOPED_ROUTES: { path: RegExp; method: "GET" | "POST"; needs: Scope }[] = [
+  // Chat's JSON: the sidebar, messages, threads, emoji, browsing channels.
+  { path: new RegExp(`^/${WORKSPACE}/-/chat/api$`), method: "GET", needs: "chat:read" },
+  // Sending, editing and deleting, reactions, read marks, cards' actions.
+  { path: new RegExp(`^/${WORKSPACE}/-/chat/api$`), method: "POST", needs: "chat:write" },
+  // A person's card in Chat.
+  { path: new RegExp(`^/${WORKSPACE}/-/chat/person/[^/]+$`), method: "GET", needs: "chat:read" },
+  // Tickets for Chat's live socket and the person's feed (lib/socket-ticket.ts).
+  { path: /^\/-\/live\/ticket$/, method: "GET", needs: "chat:read" },
+  // Push registration and notification settings (routes/notify/api.ts).
+  { path: /^\/-\/notify$/, method: "GET", needs: "notifications:read" },
+  { path: /^\/-\/notify$/, method: "POST", needs: "notifications:write" },
+];
+
+/**
+ * The scope a token needs to reach this request without the website
+ * permission, or null when such a token reaches nothing here.
+ */
+export function scopedRoute(pathname: string, method: string): Scope | null {
+  let path = decodedPath(pathname);
+  if (path.length > 1) path = path.replace(/\/+$/, "");
+  if (path.endsWith(".data")) return null;
+  const wanted = method.toUpperCase();
+  return SCOPED_ROUTES.find((route) => route.method === wanted && route.path.test(path))?.needs ?? null;
+}
+
+/**
+ * The person a token resolved to when it may make this request by its
+ * scopes alone ({@link scopedRoute}): their own token, holding the scope
+ * the route needs, by name (see {@link grants}). Null otherwise.
+ */
+export function scopedUser(viewer: Viewer, pathname: string, method: string): User | null {
+  const needs = scopedRoute(pathname, method);
+  const user = needs ? personsToken(viewer) : null;
+  return user && needs && grants(user.token?.scopes, needs) ? user : null;
+}
+
+/**
+ * Whether a token was given `needed` by name. A full-access token (no
+ * scopes, or made before scopes) is not: those were made for git, the API
+ * and MCP, and reading someone's conversations is not what they were
+ * given, so they reach Chat only with "Use the website as you".
+ */
+function grants(scopes: readonly string[] | null | undefined, needed: Scope): boolean {
+  return Array.isArray(scopes) && tokenAllows(scopes, needed);
+}
+
+/**
+ * The person a token may open a live socket as (`path` is a
+ * lib/socket-ticket.ts `socketPath`): a token with the website permission
+ * opens any of them; a person's token with `chat:read` opens Chat's live
+ * socket and the person's feed (`/-/live`), never an artifact's.
+ */
+export function socketUser(viewer: Viewer, path: string): User | null {
+  const website = websiteUser(viewer);
+  if (website) return website;
+  const user = personsToken(viewer);
+  if (!user || !grants(user.token?.scopes, "chat:read")) return null;
+  return path === "/-/live" || new RegExp(`^/${WORKSPACE}/-/chat/live$`).test(path) ? user : null;
 }
 
 /** Why a token was not accepted, for the 401. */
@@ -168,7 +263,10 @@ export async function tokenVerdict(request: Request, lookup: (token: string) => 
   if (token === null) return { kind: "none" };
   const { pathname } = new URL(request.url);
   const method = request.method.toUpperCase();
-  const user = token.startsWith("g1t_") ? websiteUser(await lookup(token)) : null;
+  const viewer = token.startsWith("g1t_") ? await lookup(token) : null;
+  // The website permission opens the site; a token's scopes open only the
+  // few routes that need them.
+  const user = websiteUser(viewer) ?? scopedUser(viewer, pathname, method);
   if (!user) return wantsData(pathname, method) ? { kind: "refused", status: 401, body: TOKEN_REFUSED } : { kind: "signed-out" };
   let form: { get(name: string): unknown } | null = null;
   if (readsForm(pathname, method)) {

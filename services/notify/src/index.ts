@@ -1,5 +1,6 @@
 /**
- * The notify service: live notifications, unread counts and browser push.
+ * The notify service: live notifications, unread counts, and push to
+ * browsers (Web Push) and to the phone app (through Expo, src/expopush.ts).
  * One feed per person (src/feed.ts).
  *
  * Reached through service bindings only: `POST /rpc/<method>` with
@@ -13,7 +14,9 @@
  * - events: `notify`, for every inbox item, and `set_inbox`, the count after
  *   items arrive or are marked, naming the person by username;
  * - the site: `subscribe`, `unsubscribe`, `status`, `set_preferences`,
- *   `test`, `presence` and `set_presence`, for the person signed in; and
+ *   `test`, `presence` and `set_presence`, for the person signed in;
+ *   `register_device` and `unregister_device`, for the phone app they
+ *   signed in to (through `/-/notify`); and
  *   `last_visit` and `mark_visit`, when they were last on a workspace's
  *   Home page (src/visits.ts);
  * - agents and the site: `workspace_presence`, how a workspace's people
@@ -96,6 +99,10 @@ async function answer(env: Env, method: string, args: any): Promise<Response> {
       return Response.json(await stub.subscribe(args.subscription, typeof args.user_agent === "string" ? args.user_agent : null));
     case "unsubscribe":
       return Response.json(await stub.unsubscribe(String(args.endpoint ?? "")));
+    case "register_device":
+      return Response.json(await stub.registerDevice(args.device));
+    case "unregister_device":
+      return Response.json(await stub.unregisterDevice(String(args.token ?? "")));
     case "status":
       return Response.json(await stub.status(typeof args.endpoint === "string" ? args.endpoint : null));
     case "set_preferences":
