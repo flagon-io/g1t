@@ -79,22 +79,53 @@ let any approved application use the whole site as the person.
 
 ## Run it
 
-You need Node 22 (the repository's), and for Android, Android Studio with
-an emulator or a phone with USB debugging.
+You need Node 22 (the repository's).
+
+### In Expo Go (quickest)
+
+Everything the app uses is in Expo Go for SDK 57, so no native build is
+needed:
 
 ```sh
 npm install                      # at the repository's root: one workspace
 cd apps/mobile
-npx expo run:android             # builds a development app and starts Metro
+npx expo start                   # then scan the QR code with Expo Go
+```
+
+Install [Expo Go](https://expo.dev/go) on the phone, or press `a` for an
+Android emulator. The phone and the computer must be on the same network
+(or use `npx expo start --tunnel`).
+
+Signing in works in Go: the site sends you back to Go's own address,
+`exp://<your computer>:8081/--/oauth/callback`, which g1t accepts as an
+application's own scheme. The approval page and Connected applications
+call it **g1t in Expo Go**. Its client id encodes that address, so a new
+network makes a new client: the app keeps the id it signed in with for
+refreshing, and signing in again after a move just adds a new entry to
+Connected applications. What Go can't do: open from `g1t://` links (they
+go to an installed build) and show the app's own name and icon.
+
+To develop against a g1t running on your computer, choose **Server** on
+the sign-in screen and give its address on your network, such as
+`http://192.168.1.20:5173` and the API's `http://192.168.1.20:8789`
+(`localhost` on a phone is the phone). Run that g1t with its `SITE_URL`
+and `API_URL` set to those addresses too: the API's OAuth metadata
+names the sign-in page by `SITE_URL`, and the phone opens what it names.
+
+### In a development build
+
+For `g1t://` links, the app's own icon and name, and anything native Go
+lacks later (push notifications):
+
+```sh
+npx expo run:android             # builds g1t (dev) and starts Metro
 ```
 
 `expo run:android` makes the native project (`android/`, ignored by git)
-and installs `g1t (dev)`. After the first build, `npx expo start` and
-the installed app are enough until a native module changes.
-
-Expo Go works for screens that need nothing native beyond what Go has,
-and sign-in comes back to Go's own `exp://` address (allowed as a
-redirect). `g1t://` links need a development build.
+and installs `g1t (dev)`, which signs in through `g1t://oauth/callback`.
+After the first build, `npx expo start` and the installed app are enough
+until a native module changes. `eas build --profile development` makes
+the same build in the cloud.
 
 Checks, which CI runs from the root (`npm run typecheck`, `npm test`):
 

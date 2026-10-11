@@ -1,4 +1,5 @@
 import { encodeOAuthClient } from "@g1t/contracts/oauth";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
@@ -48,12 +49,19 @@ export const SCOPES = [
   "artifacts:read",
 ];
 
+/** Whether the app is running inside Expo Go, while developing. */
+export const IN_EXPO_GO = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
 /** The name shown on the approval page and in Connected applications. */
-const CLIENT_NAME = Platform.OS === "ios" ? "g1t for iOS" : "g1t for Android";
+const CLIENT_NAME = IN_EXPO_GO ? "g1t in Expo Go" : Platform.OS === "ios" ? "g1t for iOS" : "g1t for Android";
 
 /**
  * Where the site sends the person back: `g1t://oauth/callback` in a build
- * of the app, and Expo Go's own address while developing in it.
+ * of the app, and Expo Go's own address while developing in it
+ * (`exp://192.168.1.20:8081/--/oauth/callback`), which g1t accepts as an
+ * application's own scheme. Since the client id encodes it, Go's id
+ * changes with the computer's address; credentials keep the id they were
+ * issued to, for refreshing.
  */
 export function redirectUri(): string {
   return AuthSession.makeRedirectUri({ scheme: "g1t", path: OAUTH_CALLBACK_PATH.slice(1) });
@@ -131,10 +139,10 @@ export async function signInWithOAuth(server: Server): Promise<Credentials> {
     },
     discovery(meta),
   );
-  return fromTokenResponse(tokens);
+  return fromTokenResponse(tokens, id);
 }
 
-function fromTokenResponse(tokens: AuthSession.TokenResponse): Credentials {
+function fromTokenResponse(tokens: AuthSession.TokenResponse, clientId: string): Credentials {
   if (!tokens.refreshToken) throw new Error("g1t did not return a refresh token.");
   return {
     kind: "oauth",
@@ -142,6 +150,7 @@ function fromTokenResponse(tokens: AuthSession.TokenResponse): Credentials {
     refreshToken: tokens.refreshToken,
     expiresAt: (tokens.issuedAt + (tokens.expiresIn ?? 30 * 24 * 3600)) * 1000,
     scope: tokens.scope ?? "",
+    clientId,
   };
 }
 
@@ -159,12 +168,10 @@ export class SignedOut extends Error {
  */
 export async function refresh(server: Server, credentials: Extract<Credentials, { kind: "oauth" }>): Promise<Credentials> {
   const meta = await metadata(server);
+  const id = credentials.clientId ?? clientId(redirectUri());
   try {
-    const tokens = await AuthSession.refreshAsync(
-      { clientId: clientId(redirectUri()), refreshToken: credentials.refreshToken },
-      discovery(meta),
-    );
-    return fromTokenResponse(tokens);
+    const tokens = await AuthSession.refreshAsync({ clientId: id, refreshToken: credentials.refreshToken }, discovery(meta));
+    return fromTokenResponse(tokens, id);
   } catch (error) {
     // invalid_grant: used, expired or revoked in Connected applications.
     if (error instanceof AuthSession.TokenError) throw new SignedOut();

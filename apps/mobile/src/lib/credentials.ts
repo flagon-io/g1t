@@ -23,6 +23,12 @@ export type Credentials =
       expiresAt: number;
       /** The scopes the person granted, or `*` for full access. */
       scope: string;
+      /**
+       * The client id it was issued to: a refresh must name the same one.
+       * Kept, because in Expo Go the id follows the computer's address,
+       * which changes between sessions (lib/oauth.ts).
+       */
+      clientId?: string;
     }
   | { kind: "token"; accessToken: string };
 
