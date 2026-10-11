@@ -29,7 +29,9 @@ export type ShelfSkill =
   | {
       kind: "library";
       id: string;
+      /** `plugin:name` for a plugin's skill: what the agent calls it. */
       name: string;
+      plugin: string | null;
       description: string;
       version: number;
       tools: string[];
@@ -41,6 +43,7 @@ export type ShelfSkill =
 export type AttachedRow = {
   skill_id: string;
   name: string;
+  plugin: string | null;
   description: string;
   version: number;
   tools: string;
@@ -85,7 +88,8 @@ export function shelfFrom(off: readonly string[] | null | undefined, rows: reado
     library.push({
       kind: "library",
       id: row.skill_id,
-      name: row.name,
+      name: row.plugin ? `${row.plugin.slice(0, Math.max(row.plugin.lastIndexOf("@"), 0) || row.plugin.length)}:${row.name}` : row.name,
+      plugin: row.plugin,
       description: row.description,
       version: row.version,
       tools: parseList(row.tools),
@@ -101,7 +105,7 @@ export function shelfFrom(off: readonly string[] | null | undefined, rows: reado
 export async function attachedRows(db: D1Database, workspaceId: string, agentId: string, teams: readonly string[]): Promise<AttachedRow[]> {
   const rows = await db
     .prepare(
-      `SELECT s.id AS skill_id, s.name, v.description, a.version, v.tools, v.requires_computer, a.scope, a.attached_at
+      `SELECT s.id AS skill_id, s.name, s.plugin, v.description, a.version, v.tools, v.requires_computer, a.scope, a.attached_at
        FROM skill_attachments a
        JOIN skills s ON s.id = a.skill_id AND s.archived_at IS NULL AND s.status = 'published'
        JOIN skill_versions v ON v.skill_id = a.skill_id AND v.version = a.version

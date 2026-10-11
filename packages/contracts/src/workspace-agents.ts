@@ -14,8 +14,10 @@ import type { CardActionResult } from "./chat";
 // Model tiers (`ModelTier`, `MODEL_TIERS`) are integrations.ts's, the
 // same ones runs are routed between.
 import type { ModelTier } from "./integrations";
-import type { ExtensionInstall, InstallRequest, InstallRequestStatus, InstallRequests } from "./marketplace";
+import type { InstallRequest, InstallRequestStatus, InstallRequests } from "./marketplace";
 import type { AgentAbilities, AgentAbilitiesChange, McpServer } from "./abilities";
+import type { AgentConnector, ConnectorInput, ConnectorSignIn, CustomizeBundle, Marketplace, PluginAgentTemplate, PluginDetail, PluginInstall, PluginListing, SkillListing, WorkspaceConnector } from "./customize";
+import type { SkillScope } from "./skill-library";
 import type { AgentLook } from "./agent-look";
 import type { AgentComputerCommand, AgentComputerStatus } from "./runner";
 
@@ -1041,14 +1043,37 @@ export type WorkspaceAgentsApi = {
   /** An owner marks a request added (`done`) or turns it down (`declined`); whoever asked is told. */
   resolveInstallRequest(workspace: string, viewer: User, id: string, status: Exclude<InstallRequestStatus, "open">): Promise<Result<InstallRequest>>;
   /** The extensions installed in the workspace; any member sees them. */
-  extensionInstalls(workspace: string, viewer: User): Promise<Result<ExtensionInstall[]>>;
+  // Customize (./customize.ts): marketplaces, plugins and connectors.
+  marketplaces(workspace: string, viewer: User): Promise<Result<Marketplace[]>>;
+  addMarketplace(workspace: string, viewer: User, address: string, name?: string | null): Promise<Result<Marketplace>>;
+  removeMarketplace(workspace: string, viewer: User, name: string): Promise<Result<null>>;
+  refreshMarketplace(workspace: string, viewer: User, name: string): Promise<Result<Marketplace>>;
+  discover(workspace: string, viewer: User): Promise<Result<{ plugins: PluginListing[]; skills: SkillListing[]; marketplaces: Marketplace[] }>>;
+  plugin(workspace: string, viewer: User, ref: string): Promise<Result<PluginDetail>>;
+  pluginInstalls(workspace: string, viewer: User): Promise<Result<PluginInstall[]>>;
+  installPlugin(workspace: string, viewer: User, ref: string): Promise<Result<PluginInstall>>;
+  setPluginEnabled(workspace: string, viewer: User, ref: string, enabled: boolean): Promise<Result<PluginInstall>>;
+  uninstallPlugin(workspace: string, viewer: User, ref: string): Promise<Result<null>>;
+  pluginAgents(workspace: string, viewer: User): Promise<Result<PluginAgentTemplate[]>>;
+  connectors(workspace: string, viewer: User): Promise<Result<WorkspaceConnector[]>>;
+  connector(workspace: string, viewer: User, id: string): Promise<Result<WorkspaceConnector>>;
+  addConnector(workspace: string, viewer: User, input: ConnectorInput): Promise<Result<WorkspaceConnector>>;
+  setConnectorKey(workspace: string, viewer: User, id: string, headerName: string | null, value: string): Promise<Result<WorkspaceConnector>>;
+  removeConnector(workspace: string, viewer: User, id: string): Promise<Result<null>>;
+  refreshConnector(workspace: string, viewer: User, id: string): Promise<Result<WorkspaceConnector>>;
+  /** Where the browser goes to sign the connector in; `redirectUri` is this g1t's page the server sends it back to. */
+  startConnectorSignIn(workspace: string, viewer: User, id: string, redirectUri: string): Promise<Result<ConnectorSignIn>>;
+  finishConnectorSignIn(workspace: string, viewer: User, state: string, code: string): Promise<Result<WorkspaceConnector>>;
+  signOutConnector(workspace: string, viewer: User, id: string): Promise<Result<WorkspaceConnector>>;
+  /** `target`: an agent's handle or a team's slug; null for every agent. */
+  grantConnector(workspace: string, viewer: User, id: string, scope: SkillScope, target: string | null): Promise<Result<WorkspaceConnector>>;
+  revokeConnector(workspace: string, viewer: User, id: string, grant: string): Promise<Result<WorkspaceConnector>>;
+  agentConnectors(workspace: string, handle: string, viewer: User): Promise<Result<AgentConnector[]>>;
+  /** What a job's Claude Code gets, read with the job's agent token; secrets included, so only the API hands it to a runner. */
+  customizeBundle(workspace: string, viewer: User): Promise<Result<CustomizeBundle>>;
   /** Owners install a published extension at its current version; open requests for it are answered. */
-  installExtension(workspace: string, viewer: User, extension: string): Promise<Result<ExtensionInstall>>;
   /** Owners switch an install on or off: off is the kill switch. */
-  setExtensionEnabled(workspace: string, viewer: User, listing: string, enabled: boolean): Promise<Result<ExtensionInstall>>;
   /** Owners cap what an install spends a month; null leaves it to the workspace's limit. */
-  setExtensionBudget(workspace: string, viewer: User, listing: string, monthlyMicros: number | null): Promise<Result<ExtensionInstall>>;
-  uninstallExtension(workspace: string, viewer: User, listing: string): Promise<Result<null>>;
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -1128,10 +1153,29 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     installRequests: (workspace, viewer) => call("install_requests", { workspace, viewer }),
     requestInstall: (workspace, viewer, listing, note) => call("request_install", { workspace, viewer, listing, note: note ?? null }),
     resolveInstallRequest: (workspace, viewer, id, status) => call("resolve_install_request", { workspace, viewer, id, status }),
-    extensionInstalls: (workspace, viewer) => call("extension_installs", { workspace, viewer }),
-    installExtension: (workspace, viewer, extension) => call("install_extension", { workspace, viewer, extension }),
-    setExtensionEnabled: (workspace, viewer, listing, enabled) => call("set_extension_enabled", { workspace, viewer, listing, enabled }),
-    setExtensionBudget: (workspace, viewer, listing, monthlyMicros) => call("set_extension_budget", { workspace, viewer, listing, monthly_micros: monthlyMicros }),
-    uninstallExtension: (workspace, viewer, listing) => call("uninstall_extension", { workspace, viewer, listing }),
+    marketplaces: (workspace, viewer) => call("marketplaces", { workspace, viewer }),
+    addMarketplace: (workspace, viewer, address, name) => call("add_marketplace", { workspace, viewer, address, name: name ?? null }),
+    removeMarketplace: (workspace, viewer, name) => call("remove_marketplace", { workspace, viewer, name }),
+    refreshMarketplace: (workspace, viewer, name) => call("refresh_marketplace", { workspace, viewer, name }),
+    discover: (workspace, viewer) => call("discover", { workspace, viewer }),
+    plugin: (workspace, viewer, ref) => call("plugin", { workspace, viewer, ref }),
+    pluginInstalls: (workspace, viewer) => call("plugin_installs", { workspace, viewer }),
+    installPlugin: (workspace, viewer, ref) => call("install_plugin", { workspace, viewer, ref }),
+    setPluginEnabled: (workspace, viewer, ref, enabled) => call("set_plugin_enabled", { workspace, viewer, ref, enabled }),
+    uninstallPlugin: (workspace, viewer, ref) => call("uninstall_plugin", { workspace, viewer, ref }),
+    pluginAgents: (workspace, viewer) => call("plugin_agents", { workspace, viewer }),
+    connectors: (workspace, viewer) => call("connectors", { workspace, viewer }),
+    connector: (workspace, viewer, id) => call("connector", { workspace, viewer, id }),
+    addConnector: (workspace, viewer, input) => call("add_connector", { workspace, viewer, input }),
+    setConnectorKey: (workspace, viewer, id, headerName, value) => call("set_connector_key", { workspace, viewer, id, header_name: headerName, value }),
+    removeConnector: (workspace, viewer, id) => call("remove_connector", { workspace, viewer, id }),
+    refreshConnector: (workspace, viewer, id) => call("refresh_connector", { workspace, viewer, id }),
+    startConnectorSignIn: (workspace, viewer, id, redirectUri) => call("start_connector_sign_in", { workspace, viewer, id, redirect_uri: redirectUri }),
+    finishConnectorSignIn: (workspace, viewer, state, code) => call("finish_connector_sign_in", { workspace, viewer, state, code }),
+    signOutConnector: (workspace, viewer, id) => call("sign_out_connector", { workspace, viewer, id }),
+    grantConnector: (workspace, viewer, id, scope, target) => call("grant_connector", { workspace, viewer, id, scope, target }),
+    revokeConnector: (workspace, viewer, id, grant) => call("revoke_connector", { workspace, viewer, id, grant }),
+    agentConnectors: (workspace, handle, viewer) => call("agent_connectors", { workspace, handle, viewer }),
+    customizeBundle: (workspace, viewer) => call("customize_bundle", { workspace, viewer }),
   };
 }

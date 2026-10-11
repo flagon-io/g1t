@@ -19,7 +19,7 @@
  */
 import { type AgentDelivery, type ServiceBinding, identityClient, newId } from "@g1t/contracts";
 
-import { type AbilityEnv, abilitiesFor, abilitiesSection, abilityPorts, saidText } from "./abilities.ts";
+import { type AbilityEnv, abilitiesWithConnectors, abilitiesSection, abilityPorts, saidText } from "./abilities.ts";
 
 import { CHAT_MAX_HOPS } from "../../../packages/contracts/src/chat.ts";
 import type { Tokens } from "./budget.ts";
@@ -484,8 +484,9 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
         consult.attach(toolbox);
         // Its abilities outside g1t (abilities.ts): offered and enforced by the tool box, for the person it acts for.
         if (viewer) {
-          const sections = await abilitiesFor(env as unknown as AbilityEnv, { agent: row, definition, workspace: slug, asker: viewer }).catch(() => null);
-          if (sections) {
+          const resolved = await abilitiesWithConnectors(env as unknown as AbilityEnv, { agent: row, definition, workspace: slug, asker: viewer, teams: teamSlugs(teamsHere) }).catch(() => null);
+          const sections = resolved?.sections ?? null;
+          if (sections && resolved) {
             const saidByPeople = saidText([...history].reverse().filter((m) => m.author.kind === "user").slice(0, 3).map((m) => m.body));
             toolbox.useAbilities(
               sections,
@@ -496,9 +497,10 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
                 session: null,
                 asker: { id: delivery.asked_by, username: askerName },
                 postCard: (card) => surface.post("", card).catch(() => null),
+                connectors: resolved.connectors,
               }),
               saidByPeople,
-              definition.abilities.mcp_servers,
+              resolved.servers,
             );
             abilitiesText = abilitiesSection(sections);
           }

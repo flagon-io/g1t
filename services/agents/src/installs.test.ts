@@ -135,6 +135,14 @@ test("what the asker is told, and where it leads", () => {
   assert.equal(answerLine({ ...base, status: "done" }, "@chase").title, "Sentry was added to the workspace");
   assert.equal(answerLine({ ...base, status: "done" }, "@chase").body, "@chase connected it.");
   assert.match(answerLine({ ...base, status: "declined" }, "@chase").title, /@chase turned down your request for Sentry/);
-  assert.equal(listingPath("acme", "extension:support"), "/acme/-/marketplace/extensions/support");
-  assert.equal(listingPath("acme", "integration:sentry"), "/acme/-/marketplace/integrations");
+  assert.equal(listingPath("acme", "extension:support"), "/acme/-/customize/plugins/support%40g1t");
+  assert.equal(listingPath("acme", "integration:sentry"), "/acme/-/customize/connectors");
+  assert.equal(listingPath("acme", "plugin:pdf@anthropic-agent-skills"), "/acme/-/customize/plugins/pdf%40anthropic-agent-skills");
+  assert.equal(listingPath("acme", "skill:document-skills@anthropic-agent-skills/pdf"), "/acme/-/customize/skills");
+  assert.equal(listingPath("acme", "connector:notion"), "/acme/-/customize/connectors");
+  assert.equal(answerLine({ ...base, listing: "plugin:pdf@anthropic-agent-skills", kind: "plugin", name: "pdf", status: "done" }, "@chase").body, "@chase installed it.");
+  assert.deepEqual(findListing("plugin:pdf@anthropic-agent-skills"), { ref: "plugin:pdf@anthropic-agent-skills", kind: "plugin", id: "pdf@anthropic-agent-skills", name: "pdf" });
+  assert.deepEqual(findListing("skill:document-skills@anthropic-agent-skills/pdf"), { ref: "skill:document-skills@anthropic-agent-skills/pdf", kind: "skill", id: "document-skills@anthropic-agent-skills/pdf", name: "document-skills:pdf" });
+  assert.equal(findListing("connector:notion")?.name, "Notion");
+  assert.equal(findListing("connector:sentry"), null);
 });

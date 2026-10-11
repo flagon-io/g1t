@@ -173,7 +173,7 @@
 			"worker": "g1t-agents",
 			"d1": { "database": "g1t-agents", "migrations": "migrations" },
 			"stage": "core",
-			"secrets": [],
+			"secrets": ["CONNECTORS_KEY"],
 			"setup": [
 				"The D1 database, before the first deploy: npx wrangler d1 create g1t-agents, then put its id in services/agents/wrangler.jsonc"
 			],

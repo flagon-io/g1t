@@ -51,8 +51,10 @@ export type SkillOrigin =
   | { kind: "repository"; repo: string; path: string; ref: string; commit: string }
   /** Drafted by an agent from a finished session. */
   | { kind: "session"; session_id: string; agent: string; title: string }
-  /** From `.g1t/skills/<name>/` in the repository the library follows. */
-  | { kind: "mirror"; repo: string; path: string; commit: string };
+  /** From `.claude/skills/<name>/` in the repository the library follows. */
+  | { kind: "mirror"; repo: string; path: string; commit: string }
+  /** From a plugin installed from a marketplace (./claude-plugin.ts), at the commit it was read at. */
+  | { kind: "plugin"; plugin: string; marketplace: string; path: string; sha: string | null };
 
 /** A draft is waiting for a person to review it; only published skills can be attached. */
 export type SkillStatus = "published" | "draft";
@@ -60,6 +62,10 @@ export type SkillStatus = "published" | "draft";
 export type LibrarySkill = {
   id: string;
   name: string;
+  /** The plugin it came with (`name@marketplace`), or null for the workspace's own. */
+  plugin: string | null;
+  /** What agents and people call it: `plugin:name` for a plugin's skill, the name alone otherwise. */
+  qualified_name: string;
   /** When to use it. */
   description: string;
   status: SkillStatus;
@@ -181,6 +187,8 @@ export type AgentSkillLine = {
   /** A foundational skill's id, or a library skill's. */
   id: string;
   name: string;
+  /** The plugin it came with, or null. */
+  plugin: string | null;
   description: string;
   foundational: boolean;
   /** Whether it is on for this agent (owners turn skills off per agent). */

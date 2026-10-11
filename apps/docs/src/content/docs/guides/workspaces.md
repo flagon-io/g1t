@@ -590,8 +590,8 @@ unread on it:
 | **Home** | Where you're needed across the workspace, and what happened while you were away. See [Home](/guides/home/). |
 | **Chat** | Channels and messages. See [Chat](/guides/chat/). |
 | **Notifications** | Reviews, mentions, failures and what agents wait on. See [notifications](/guides/notifications/). |
-| **Agents** | The workspace's agents and their sessions. See [agents](/guides/agents/). |
 | **Code** | Projects, pull requests and checks. Not shown to a member without [Code access](/guides/agent-access/). |
+| **Agents** | The workspace's agents and their sessions, and how they are set up. See [agents](/guides/agents/). |
 | **Artifacts** | Documents, decks and pages. See [artifacts](/guides/artifacts/). |
 | **People** | Everyone in the workspace (its people; agents are under Agents); its [teams](/guides/teams/), which agents can be on; and the org chart. See [people and teams](/guides/people-and-teams/). |
 | **Workspace** | The workspace's settings: who has access, money, compute, and how each part of g1t is set up. See [Workspace mode](#workspace-mode). |

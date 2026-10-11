@@ -1,17 +1,120 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
-import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
+import {
+  Activity,
+  BarChart3,
+  Building2,
+  MessagesSquare,
+  Bell,
+  BookMarked,
+  BookOpen,
+  Bookmark,
+  Blocks,
+  Bot,
+  Box,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleDot,
+  GripVertical,
+  CircleUserRound,
+  Code2,
+  Coins,
+  Compass,
+  CreditCard,
+  Fingerprint,
+  GanttChart,
+  Gauge,
+  GitBranch,
+  GitPullRequest,
+  Globe,
+  History,
+  KanbanSquare,
+  Keyboard,
+  KeyRound,
+  Layers,
+  LayoutDashboard,
+  LayoutGrid,
+  LifeBuoy,
+  ListTree,
+  Lock,
+  LogOut,
+  Mail,
+  MonitorDown,
+  Network,
+  Package,
+  PlayCircle,
+  Plug,
+  Plus,
+  Rocket,
+  Search,
+  ServerCog,
+  Settings,
+  Shapes,
+  Shield,
+  ShieldCheck,
+  Scale,
+  Smile,
+  Sparkles,
+  Store,
+  House,
+  Ticket,
+  TrendingUp,
+  UserRoundKey,
+  Users,
+  UsersRound,
+  Webhook,
+  X,
+  ArrowLeftRight,
+} from "lucide-react";
+import {
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Link,
+  useFetcher,
+  useLocation,
+  useNavigation,
+  useRouteLoaderData,
+  useSubmit,
+} from "react-router";
 
-import { type Abilities, type ChatSidebarEntry, type InboxCounts, type WorkspaceAgent, type Membership, type RepoMirror, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
+import {
+  type Abilities,
+  type ChatSidebarEntry,
+  type InboxCounts,
+  type WorkspaceAgent,
+  type Membership,
+  type RepoMirror,
+  type Spike,
+  type User,
+  hasCodeAccess,
+  mayCreateTeams,
+  shownUsername,
+} from "@g1t/contracts";
 
 import { InMain } from "./landmark";
-import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
+import {
+  CommandPalette,
+  type PaletteCommand,
+  PaletteKey,
+  usePaletteShortcut,
+} from "./command-palette";
 import { NotificationsBell } from "./inbox";
 import { useDesktopApp } from "../lib/notify-client";
 import { SpendPill } from "./spend";
 import { PinButton } from "./pin-button";
 import { Hint } from "./ui/hint";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -37,7 +140,14 @@ import { Avatar } from "./ui/avatar";
 import { Skeleton } from "./ui/skeleton";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "./ui/breadcrumb";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "./ui/breadcrumb";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,17 +158,38 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { type RoadmapItem, roadmapIn, roadmapItem } from "../lib/roadmap";
-import { type ModeKey, WORKSPACE_SETTINGS_GROUPS, type WorkspaceSettingsPage, homePagePath, modeOf, workspaceSettingsPage } from "../lib/workspace-nav";
+import {
+  type ModeKey,
+  WORKSPACE_SETTINGS_GROUPS,
+  type WorkspaceSettingsPage,
+  homePagePath,
+  modeOf,
+  workspaceSettingsPage,
+} from "../lib/workspace-nav";
 import { AgentsSidebar } from "./agents-mode";
 import { ChatSidebar } from "./chat/sidebar";
 import { FoliosSidebar } from "./folios/sidebar";
-import { Rail, ShortcutsDialog, WorkspaceSwitcher, sidebarKeyLabel } from "./rail";
+import {
+  Rail,
+  ShortcutsDialog,
+  WorkspaceSwitcher,
+  sidebarKeyLabel,
+} from "./rail";
 import { BottomBar, isConversation, useVisualViewport } from "./mobile";
 import { useChatSidebar } from "./chat/actions";
 import { unreadTotals } from "../lib/chat";
-import { SETTINGS_CAPABILITY, type ViewerAccess, seesSettings } from "../lib/access";
+import {
+  SETTINGS_CAPABILITY,
+  type ViewerAccess,
+  seesSettings,
+} from "../lib/access";
 import { projectPages } from "../lib/chrome";
-import { ACCOUNT_SETTINGS, type AccountSettingsPage, FIRST_SETTINGS_PAGE, accountSettingsPage } from "../lib/account-settings";
+import {
+  ACCOUNT_SETTINGS,
+  type AccountSettingsPage,
+  FIRST_SETTINGS_PAGE,
+  accountSettingsPage,
+} from "../lib/account-settings";
 import { type PinnableApp, sidebarCookie } from "../lib/apps";
 import { REASON_FILTERS, inboxReason, inboxView } from "../lib/inbox";
 import { GithubMark } from "./github";
@@ -107,14 +238,23 @@ export type ShellData = {
   /** This month's usage: charged, or at cost while g1t is free. */
   monthUsageMicros: number | null;
   /** Whether new compute is paused (a spend spike or a hold), and whether the viewer can answer it. */
-  compute?: { paused: string | null; spike: Spike | null; owner: boolean } | null;
+  compute?: {
+    paused: string | null;
+    spike: Spike | null;
+    owner: boolean;
+  } | null;
   /** What is unread in their notifications, for the rail and the bell. Absent for a visitor. */
   inbox?: InboxCounts | null;
   /**
    * Chat, for the rail's badge: what is unread, and the
    * starred and latest conversations. Null when chat did not answer in time.
    */
-  chat?: { unread: number; mentions: number; starred?: ChatSidebarEntry[]; recent?: ChatSidebarEntry[] } | null;
+  chat?: {
+    unread: number;
+    mentions: number;
+    starred?: ChatSidebarEntry[];
+    recent?: ChatSidebarEntry[];
+  } | null;
   /** The workspace's agents, g1t first, for the Agents sidebar; null when not known. */
   agents?: ShellAgent[] | null;
   /** The apps this person pinned to their rail in the workspace (lib/apps.ts). */
@@ -124,7 +264,15 @@ export type ShellData = {
 /** An agent as the shell lists it. */
 export type ShellAgent = Pick<
   WorkspaceAgent,
-  "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "role" | "status" | "title" | "builtin"
+  | "id"
+  | "handle"
+  | "display_name"
+  | "avatar"
+  | "avatar_seed"
+  | "role"
+  | "status"
+  | "title"
+  | "builtin"
 > & {
   look?: WorkspaceAgent["look"];
   scope?: WorkspaceAgent["scope"];
@@ -135,7 +283,10 @@ export type ShellAgent = Pick<
 /** Whether `pathname` is `to` or a page under it (`end`: only `to` itself), the query left aside. */
 function under(pathname: string, to: string, end = false): boolean {
   const path = to.split("?")[0]!;
-  return pathname === path || (!end && pathname.startsWith(path.endsWith("/") ? path : `${path}/`));
+  return (
+    pathname === path ||
+    (!end && pathname.startsWith(path.endsWith("/") ? path : `${path}/`))
+  );
 }
 
 /**
@@ -145,12 +296,26 @@ function under(pathname: string, to: string, end = false): boolean {
  * views and reasons) are pending only when the page on its way is that
  * row's, query and all.
  */
-function useRowState(to: string, { end, also, current: lit }: { end?: boolean; also?: string | string[]; current?: boolean }) {
+function useRowState(
+  to: string,
+  {
+    end,
+    also,
+    current: lit,
+  }: { end?: boolean; also?: string | string[]; current?: boolean },
+) {
   const { pathname } = useLocation();
   const going = useNavigation().location;
-  const current = lit ?? (under(pathname, to, end) || [also ?? []].flat().some((prefix) => under(pathname, prefix)));
+  const current =
+    lit ??
+    (under(pathname, to, end) ||
+      [also ?? []].flat().some((prefix) => under(pathname, prefix)));
   const pending =
-    going != null && !current && (lit === undefined ? under(going.pathname, to, end) : `${going.pathname}${going.search}` === to);
+    going != null &&
+    !current &&
+    (lit === undefined
+      ? under(going.pathname, to, end)
+      : `${going.pathname}${going.search}` === to);
   return { current, pending };
 }
 
@@ -191,11 +356,22 @@ function SidebarLink({
   const Item = bare ? Fragment : SidebarMenuItem;
   return (
     <Item>
-      <SidebarMenuButton asChild isActive={current} isPending={pending} className={action ? "pr-7" : undefined}>
-        <Link to={to} prefetch="intent" aria-current={current ? "page" : undefined}>
+      <SidebarMenuButton
+        asChild
+        isActive={current}
+        isPending={pending}
+        className={action ? "pr-7" : undefined}
+      >
+        <Link
+          to={to}
+          prefetch="intent"
+          aria-current={current ? "page" : undefined}
+        >
           {icon}
           <span className="min-w-0 grow truncate">{children}</span>
-          {count != null && count > 0 && <SidebarMenuBadge>{count}</SidebarMenuBadge>}
+          {count != null && count > 0 && (
+            <SidebarMenuBadge>{count}</SidebarMenuBadge>
+          )}
           {drill && (
             <ChevronRight
               aria-hidden="true"
@@ -213,7 +389,15 @@ function SidebarLink({
  * Something a project will have, shown where it will live so people can
  * see where g1t is going. Not a link: nothing is behind it yet.
  */
-function SidebarSoon({ icon, children, about }: { icon: ReactNode; children: ReactNode; about: string }) {
+function SidebarSoon({
+  icon,
+  children,
+  about,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+  about: string;
+}) {
   return (
     <SidebarMenuItem>
       <Hint label={about} side="right">
@@ -254,8 +438,17 @@ function SidebarSoonLink({
   return (
     <SidebarMenuItem>
       <Hint label={about} side="right">
-        <SidebarMenuButton asChild variant="faint" isActive={current} isPending={pending}>
-          <Link to={to} prefetch="intent" aria-current={current ? "page" : undefined}>
+        <SidebarMenuButton
+          asChild
+          variant="faint"
+          isActive={current}
+          isPending={pending}
+        >
+          <Link
+            to={to}
+            prefetch="intent"
+            aria-current={current ? "page" : undefined}
+          >
             {icon}
             <span className="min-w-0 grow truncate">{children}</span>
             <SoonPill />
@@ -309,7 +502,13 @@ function NavGroup({
 }
 
 /** Rows with no name over them: the first of a list, or a run between rules. */
-function NavRows({ className, children }: { className?: string; children: ReactNode }) {
+function NavRows({
+  className,
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
   return (
     <SidebarGroup className={className}>
       <SidebarGroupContent>
@@ -334,19 +533,30 @@ const LEGAL_LINKS: [string, string][] = [
   ["Privacy", "/policies/privacy"],
   ["Security", "/security"],
 ];
-const LEGAL_LINK = "flex h-7 items-center rounded px-1.5 text-xs text-faint outline-none transition-colors";
+const LEGAL_LINK =
+  "flex h-7 items-center rounded px-1.5 text-xs text-faint outline-none transition-colors";
 
 function MenuLegalRow() {
   return (
-    <div role="group" aria-label="Legal" className="flex items-center gap-0.5 px-0.5 pt-0.5">
+    <div
+      role="group"
+      aria-label="Legal"
+      className="flex items-center gap-0.5 px-0.5 pt-0.5"
+    >
       {LEGAL_LINKS.map(([label, to], index) => (
         <span key={to} className="flex items-center gap-0.5">
           {index > 0 && (
-            <span aria-hidden="true" className="text-[0.625rem] text-line-strong">
+            <span
+              aria-hidden="true"
+              className="text-[0.625rem] text-line-strong"
+            >
               ·
             </span>
           )}
-          <DropdownMenuItem asChild className={`${LEGAL_LINK} py-0 data-highlighted:bg-line data-highlighted:text-fg`}>
+          <DropdownMenuItem
+            asChild
+            className={`${LEGAL_LINK} py-0 data-highlighted:bg-line data-highlighted:text-fg`}
+          >
             <Link to={to}>{label}</Link>
           </DropdownMenuItem>
         </span>
@@ -365,7 +575,11 @@ function StatusSummary({ open }: { open: boolean }) {
       <span aria-hidden="true" className="flex">
         <StatusDot state={status?.overall.state ?? null} />
       </span>
-      {words ? <span className="truncate">{words}</span> : <Skeleton className="h-3 w-20" />}
+      {words ? (
+        <span className="truncate">{words}</span>
+      ) : (
+        <Skeleton className="h-3 w-20" />
+      )}
     </span>
   );
 }
@@ -379,7 +593,13 @@ const MENU_ROW = "h-9 gap-2.5 px-2.5 text-[0.8125rem]";
  * and help: the documentation, support, status and the keyboard's
  * shortcuts; then signing out and the fine print.
  */
-function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "bottom" }) {
+function AccountMenu({
+  user,
+  side = "right",
+}: {
+  user: User;
+  side?: "right" | "bottom";
+}) {
   const submit = useSubmit();
   const [open, setOpen] = useState(false);
   const [keys, setKeys] = useState(false);
@@ -391,7 +611,8 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
   // pointer or focus reaches the button, so they are there when it opens.
   const details = useFetcher<AccountMenuData | null>({ key: "account-menu" });
   const prefetch = () => {
-    if (details.state === "idle" && details.data === undefined) details.load("/settings/menu.json");
+    if (details.state === "idle" && details.data === undefined)
+      details.load("/settings/menu.json");
   };
   useEffect(() => {
     if (open) prefetch();
@@ -405,129 +626,175 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
   const profile = `/u/${user.username}`;
   return (
     <>
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      {/* The avatar alone, with a dot that says how others see you (components/presence.tsx). */}
-      <Hint label={side === "right" ? "Your account" : undefined} side="right">
-        <DropdownMenuTrigger
-          aria-label={`Account menu for ${shownUsername(user)}`}
-          onPointerEnter={prefetch}
-          onFocus={prefetch}
-          className={
-            side === "right"
-              ? // At the foot of the rail: a 40px rounded square, as the rail's icons are.
-                "relative flex size-10 items-center justify-center rounded-[10px] outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-sidebar-accent"
-              : "relative flex rounded-full outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
-          }
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        {/* The avatar alone, with a dot that says how others see you (components/presence.tsx). */}
+        <Hint
+          label={side === "right" ? "Your account" : undefined}
+          side="right"
         >
-          <Avatar name={user.username} image={user.avatar} size={side === "right" ? 40 : 28} square={side === "right"} />
-          <OwnPresenceDot ring={side === "right" ? "var(--color-rail)" : "var(--color-bg)"} className={side === "right" ? "absolute -right-1 -bottom-1" : "absolute -right-0.5 -bottom-0.5"} />
-        </DropdownMenuTrigger>
-      </Hint>
-      <DropdownMenuContent align="end" side={side} sideOffset={side === "right" ? 14 : 6} collisionPadding={8} className="w-[17.5rem] p-1.5">
-        {/* Who is signed in, and a way to their profile. */}
-        <DropdownMenuItem asChild className="gap-3 px-2 py-2">
-          <Link to={profile} aria-label={`${me?.name ?? shownUsername(user)} (@${shownUsername(user)}), your profile`}>
-            <Avatar name={user.username} image={user.avatar} size={36} />
-            <span className="flex min-w-0 grow flex-col leading-tight" aria-busy={loading}>
-              {loading ? (
-                <Skeleton className="my-[0.1875rem] h-3.5 w-28" />
-              ) : (
-                <span className="truncate text-sm font-medium text-fg">{me?.name ?? shownUsername(user)}</span>
-              )}
-              <span className="truncate font-mono text-xs text-muted">@{shownUsername(user)}</span>
-              {loading ? (
-                <Skeleton className="mt-1 h-3 w-40" />
-              ) : (
-                me?.email && <span className="mt-0.5 truncate text-xs text-faint">{me.email}</span>
-              )}
-            </span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator className="my-1.5" />
-        {/* Your status, away, and pausing notifications. */}
-        <DropdownMenuGroup>
-          <OwnPresenceItems className="min-h-9 py-1.5 text-[0.8125rem]" onEdit={() => setEditing(true)} />
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator className="my-1.5" />
-        <DropdownMenuGroup>
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <Link to={profile}>
-              <CircleUserRound />
-              Your profile
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <Link to={FIRST_SETTINGS_PAGE}>
-              <Settings />
-              Your settings
-            </Link>
-          </DropdownMenuItem>
-          {invitesListed && (
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <Link to="/settings/invites">
-              <Ticket />
-              {ACCOUNT_SETTINGS.invites.title}
-              {loading && <Skeleton className="ml-auto h-4 w-12 rounded-full" />}
-              {me?.invites_left != null && (
-                <span className="ml-auto rounded-full bg-line px-1.5 text-[0.6875rem] tabular-nums text-muted">
-                  {me.invites_left} left
+          <DropdownMenuTrigger
+            aria-label={`Account menu for ${shownUsername(user)}`}
+            onPointerEnter={prefetch}
+            onFocus={prefetch}
+            className={
+              side === "right"
+                ? // At the foot of the rail: a 40px rounded square, as the rail's icons are.
+                  "relative flex size-10 items-center justify-center rounded-[10px] outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-sidebar-accent"
+                : "relative flex rounded-full outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
+            }
+          >
+            <Avatar
+              name={user.username}
+              image={user.avatar}
+              size={side === "right" ? 40 : 28}
+              square={side === "right"}
+            />
+            <OwnPresenceDot
+              ring={side === "right" ? "var(--color-rail)" : "var(--color-bg)"}
+              className={
+                side === "right"
+                  ? "absolute -right-1 -bottom-1"
+                  : "absolute -right-0.5 -bottom-0.5"
+              }
+            />
+          </DropdownMenuTrigger>
+        </Hint>
+        <DropdownMenuContent
+          align="end"
+          side={side}
+          sideOffset={side === "right" ? 14 : 6}
+          collisionPadding={8}
+          className="w-70 p-1.5"
+        >
+          {/* Who is signed in, and a way to their profile. */}
+          <DropdownMenuItem asChild className="gap-3 px-2 py-2">
+            <Link
+              to={profile}
+              aria-label={`${me?.name ?? shownUsername(user)} (@${shownUsername(user)}), your profile`}
+            >
+              <Avatar name={user.username} image={user.avatar} size={36} />
+              <span
+                className="flex min-w-0 grow flex-col leading-tight"
+                aria-busy={loading}
+              >
+                {loading ? (
+                  <Skeleton className="my-0.75 h-3.5 w-28" />
+                ) : (
+                  <span className="truncate text-sm font-medium text-fg">
+                    {me?.name ?? shownUsername(user)}
+                  </span>
+                )}
+                <span className="truncate font-mono text-xs text-muted">
+                  @{shownUsername(user)}
                 </span>
-              )}
+                {loading ? (
+                  <Skeleton className="mt-1 h-3 w-40" />
+                ) : (
+                  me?.email && (
+                    <span className="mt-0.5 truncate text-xs text-faint">
+                      {me.email}
+                    </span>
+                  )
+                )}
+              </span>
             </Link>
           </DropdownMenuItem>
-          )}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator className="my-1.5" />
-        {/* Auto, Light or Dark, switched in place (lib/theme.ts). */}
-        <ThemeMenuSwitch />
-        <DropdownMenuSeparator className="my-1.5" />
-        <DropdownMenuGroup>
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <a href="https://docs.g1t.sh/">
-              <BookOpen />
-              Documentation
-            </a>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <Link to="/support">
-              <LifeBuoy />
-              Support
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <a href={STATUS_URL}>
-              <Activity />
-              Status
-              <StatusSummary open={open} />
-            </a>
-          </DropdownMenuItem>
-          <DropdownMenuItem className={MENU_ROW} onSelect={() => setKeys(true)}>
-            <Keyboard />
-            Keyboard shortcuts
-            <PaletteKey className="ml-auto font-sans text-xs text-faint" />
-          </DropdownMenuItem>
-          {!inApp && (
+          <DropdownMenuSeparator className="my-1.5" />
+          {/* Your status, away, and pausing notifications. */}
+          <DropdownMenuGroup>
+            <OwnPresenceItems
+              className="min-h-9 py-1.5 text-[0.8125rem]"
+              onEdit={() => setEditing(true)}
+            />
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator className="my-1.5" />
+          <DropdownMenuGroup>
             <DropdownMenuItem asChild className={MENU_ROW}>
-              <Link to="/download">
-                <MonitorDown />
-                Get the desktop app
+              <Link to={profile}>
+                <CircleUserRound />
+                Your profile
               </Link>
             </DropdownMenuItem>
-          )}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator className="my-1.5" />
-        {/* Submitted from here: the menu closes on select, and a button
+            <DropdownMenuItem asChild className={MENU_ROW}>
+              <Link to={FIRST_SETTINGS_PAGE}>
+                <Settings />
+                Your settings
+              </Link>
+            </DropdownMenuItem>
+            {invitesListed && (
+              <DropdownMenuItem asChild className={MENU_ROW}>
+                <Link to="/settings/invites">
+                  <Ticket />
+                  {ACCOUNT_SETTINGS.invites.title}
+                  {loading && (
+                    <Skeleton className="ml-auto h-4 w-12 rounded-full" />
+                  )}
+                  {me?.invites_left != null && (
+                    <span className="ml-auto rounded-full bg-line px-1.5 text-[0.6875rem] tabular-nums text-muted">
+                      {me.invites_left} left
+                    </span>
+                  )}
+                </Link>
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator className="my-1.5" />
+          {/* Auto, Light or Dark, switched in place (lib/theme.ts). */}
+          <ThemeMenuSwitch />
+          <DropdownMenuSeparator className="my-1.5" />
+          <DropdownMenuGroup>
+            <DropdownMenuItem asChild className={MENU_ROW}>
+              <a href="https://docs.g1t.sh/">
+                <BookOpen />
+                Documentation
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className={MENU_ROW}>
+              <Link to="/support">
+                <LifeBuoy />
+                Support
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className={MENU_ROW}>
+              <a href={STATUS_URL}>
+                <Activity />
+                Status
+                <StatusSummary open={open} />
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={MENU_ROW}
+              onSelect={() => setKeys(true)}
+            >
+              <Keyboard />
+              Keyboard shortcuts
+              <PaletteKey className="ml-auto font-sans text-xs text-faint" />
+            </DropdownMenuItem>
+            {!inApp && (
+              <DropdownMenuItem asChild className={MENU_ROW}>
+                <Link to="/download">
+                  <MonitorDown />
+                  Get the desktop app
+                </Link>
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator className="my-1.5" />
+          {/* Submitted from here: the menu closes on select, and a button
             that has left the page cannot submit a form. */}
-        <DropdownMenuItem className={MENU_ROW} onSelect={() => submit(null, { method: "post", action: "/logout" })}>
-          <LogOut />
-          Sign out
-        </DropdownMenuItem>
-        <DropdownMenuSeparator className="my-1.5" />
-        <MenuLegalRow />
-      </DropdownMenuContent>
-    </DropdownMenu>
-    <StatusDialog open={editing} onOpenChange={setEditing} />
-    <ShortcutsDialog open={keys} onOpenChange={setKeys} />
+          <DropdownMenuItem
+            className={MENU_ROW}
+            onSelect={() => submit(null, { method: "post", action: "/logout" })}
+          >
+            <LogOut />
+            Sign out
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="my-1.5" />
+          <MenuLegalRow />
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <StatusDialog open={editing} onOpenChange={setEditing} />
+      <ShortcutsDialog open={keys} onOpenChange={setKeys} />
     </>
   );
 }
@@ -571,7 +838,9 @@ function Drill({ trail }: { trail: Level[] }) {
   const hydrated = useHydrated();
   const stack = useRef<Level[]>(trail);
   const before = stack.current;
-  const within = trail.every((level, index) => before[index]?.key === level.key);
+  const within = trail.every(
+    (level, index) => before[index]?.key === level.key,
+  );
   stack.current = within ? [...trail, ...before.slice(trail.length)] : trail;
   const levels = stack.current;
   // What was showing last time, to tell drilling in from moving across.
@@ -591,14 +860,20 @@ function Drill({ trail }: { trail: Level[] }) {
               : "pointer-events-none translate-x-full opacity-0";
         // A list that was not there before arrives: from the right when
         // drilling in, in place when moving across.
-        const arriving = hydrated && current && !shown.current.keys.includes(level.key);
+        const arriving =
+          hydrated && current && !shown.current.keys.includes(level.key);
         const enter = arriving
           ? depth > shown.current.depth
             ? "starting:translate-x-full starting:opacity-0"
             : "starting:opacity-0"
           : "";
         return (
-          <div key={level.key} className={`${LAYER} ${place} ${enter}`} inert={!current} aria-hidden={!current || undefined}>
+          <div
+            key={level.key}
+            className={`${LAYER} ${place} ${enter}`}
+            inert={!current}
+            aria-hidden={!current || undefined}
+          >
             {level.node}
           </div>
         );
@@ -611,7 +886,15 @@ function Drill({ trail }: { trail: Level[] }) {
  * The row at the top of a list drilled into: the list's name, which goes
  * back out, and what it belongs to, faint at the end.
  */
-function BackRow({ to, label, context }: { to: string; label: ReactNode; context?: ReactNode }) {
+function BackRow({
+  to,
+  label,
+  context,
+}: {
+  to: string;
+  label: ReactNode;
+  context?: ReactNode;
+}) {
   return (
     <NavRows className="mt-1">
       <SidebarMenuItem>
@@ -619,7 +902,11 @@ function BackRow({ to, label, context }: { to: string; label: ReactNode; context
           <Link to={to} prefetch="intent">
             <ChevronLeft className="text-faint transition-transform group-hover/menu-button:-translate-x-0.5 group-hover/menu-button:text-muted" />
             <span className="min-w-0 shrink-0 truncate">{label}</span>
-            {context && <span className="ml-auto min-w-0 truncate pl-2 font-mono text-[0.6875rem] font-normal text-faint">{context}</span>}
+            {context && (
+              <span className="ml-auto min-w-0 truncate pl-2 font-mono text-[0.6875rem] font-normal text-faint">
+                {context}
+              </span>
+            )}
           </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -647,15 +934,34 @@ function SidebarSubhead({ children }: { children: ReactNode }) {
  * way to all of them. Pins move by dragging, or with Alt and the arrow
  * keys; the projects service keeps the order.
  */
-function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellData; current: boolean }) {
+function SidebarProjects({
+  slug,
+  shell,
+  current,
+}: {
+  slug: string;
+  shell: ShellData;
+  current: boolean;
+}) {
   const reorder = useFetcher({ key: `pins:${slug}` });
   const saved = shell.pinned ?? [];
   // While a new order is on its way, it shows as made.
-  const asked = reorder.formData?.get("intent") === "reorder" ? reorder.formData.getAll("slug").map(String) : null;
+  const asked =
+    reorder.formData?.get("intent") === "reorder"
+      ? reorder.formData.getAll("slug").map(String)
+      : null;
   const pinned = asked
-    ? asked.map((name) => saved.find((project) => project.name === name)).filter((project): project is ShortcutProject => project != null)
+    ? asked
+        .map((name) => saved.find((project) => project.name === name))
+        .filter((project): project is ShortcutProject => project != null)
     : saved;
-  const active = shell.repo ? { namespace: shell.repo.namespace, name: shell.repo.name, isPrivate: false } : null;
+  const active = shell.repo
+    ? {
+        namespace: shell.repo.namespace,
+        name: shell.repo.name,
+        isPrivate: false,
+      }
+    : null;
   const recent = recentWith(shell.recent ?? [], pinned, active, slug);
   const [dragging, setDragging] = useState<number | null>(null);
   const move = (from: number, by: number) => {
@@ -704,63 +1010,78 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
         </Hint>
       </div>
       <SidebarGroupContent>
-      {/* Only there once something is pinned: each row below has its own pin. */}
-      {pinned.length > 0 && (
-        <>
-        <SidebarSubhead>Pinned</SidebarSubhead>
-        <SidebarMenu aria-label="Pinned projects">
-          {pinned.map((project, index) => (
-            <SidebarMenuItem
-              key={project.name}
-              draggable={pinned.length > 1}
-              onDragStart={(event) => {
-                setDragging(index);
-                event.dataTransfer.effectAllowed = "move";
-              }}
-              onDragOver={(event) => {
-                if (dragging != null) event.preventDefault();
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (dragging != null && dragging !== index) move(dragging, index - dragging);
-                setDragging(null);
-              }}
-              onDragEnd={() => setDragging(null)}
-              onKeyDown={(event) => {
-                if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
-                event.preventDefault();
-                move(index, event.key === "ArrowUp" ? -1 : 1);
-              }}
-              className={`group/pin ${dragging === index ? "opacity-50" : ""}`}
-            >
-              {row(project, true)}
-              {pinned.length > 1 && (
-                <Hint label="Drag, or Alt and an arrow key, to reorder" side="right">
-                  <span className="absolute top-1/2 -left-2 -translate-y-1/2 cursor-grab text-faint opacity-0 transition-opacity group-hover/pin:opacity-100">
-                    <GripVertical size={12} aria-hidden="true" />
-                  </span>
-                </Hint>
-              )}
-            </SidebarMenuItem>
-          ))}
+        {/* Only there once something is pinned: each row below has its own pin. */}
+        {pinned.length > 0 && (
+          <>
+            <SidebarSubhead>Pinned</SidebarSubhead>
+            <SidebarMenu aria-label="Pinned projects">
+              {pinned.map((project, index) => (
+                <SidebarMenuItem
+                  key={project.name}
+                  draggable={pinned.length > 1}
+                  onDragStart={(event) => {
+                    setDragging(index);
+                    event.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(event) => {
+                    if (dragging != null) event.preventDefault();
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (dragging != null && dragging !== index)
+                      move(dragging, index - dragging);
+                    setDragging(null);
+                  }}
+                  onDragEnd={() => setDragging(null)}
+                  onKeyDown={(event) => {
+                    if (
+                      !event.altKey ||
+                      (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+                    )
+                      return;
+                    event.preventDefault();
+                    move(index, event.key === "ArrowUp" ? -1 : 1);
+                  }}
+                  className={`group/pin ${dragging === index ? "opacity-50" : ""}`}
+                >
+                  {row(project, true)}
+                  {pinned.length > 1 && (
+                    <Hint
+                      label="Drag, or Alt and an arrow key, to reorder"
+                      side="right"
+                    >
+                      <span className="absolute top-1/2 -left-2 -translate-y-1/2 cursor-grab text-faint opacity-0 transition-opacity group-hover/pin:opacity-100">
+                        <GripVertical size={12} aria-hidden="true" />
+                      </span>
+                    </Hint>
+                  )}
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </>
+        )}
+        {recent.length > 0 && (
+          <>
+            <SidebarSubhead>Recent</SidebarSubhead>
+            <SidebarMenu aria-label="Recent projects">
+              {recent.map((project) => (
+                <Fragment key={`${project.namespace}/${project.name}`}>
+                  {row(project, false)}
+                </Fragment>
+              ))}
+            </SidebarMenu>
+          </>
+        )}
+        <SidebarMenu className="pt-1">
+          <SidebarLink
+            to={`/${slug}/-/projects`}
+            icon={<LayoutGrid />}
+            count={shell.repos.length}
+            current={current}
+          >
+            All projects
+          </SidebarLink>
         </SidebarMenu>
-        </>
-      )}
-      {recent.length > 0 && (
-        <>
-          <SidebarSubhead>Recent</SidebarSubhead>
-          <SidebarMenu aria-label="Recent projects">
-            {recent.map((project) => (
-              <Fragment key={`${project.namespace}/${project.name}`}>{row(project, false)}</Fragment>
-            ))}
-          </SidebarMenu>
-        </>
-      )}
-      <SidebarMenu className="pt-1">
-        <SidebarLink to={`/${slug}/-/projects`} icon={<LayoutGrid />} count={shell.repos.length} current={current}>
-          All projects
-        </SidebarLink>
-      </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
   );
@@ -788,7 +1109,10 @@ type MenuRepo = {
   pulls?: number;
 };
 
-function sameRepo(a: { namespace: string; name: string } | null, b: { namespace: string; name: string } | null) {
+function sameRepo(
+  a: { namespace: string; name: string } | null,
+  b: { namespace: string; name: string } | null,
+) {
   return (
     a != null &&
     b != null &&
@@ -816,15 +1140,27 @@ function RepoMenu({
   // What a member sees, what everyone who can see the project does, and
   // what a mirror offers now (lib/chrome.ts).
   const shows = new Set(projectPages(repo.member, repo.can, repo.mirror));
-  const { current: atOverview, pending: toOverview } = useRowState(base, { end: true });
+  const { current: atOverview, pending: toOverview } = useRowState(base, {
+    end: true,
+  });
   return (
     <nav aria-label={`${repo.namespace}/${repo.name}`} className={PANEL}>
       <BackRow to={back.to} label={back.label} />
       <NavRows className="mt-1">
         <SidebarMenuItem>
           <Hint label="Overview" side="right">
-            <SidebarMenuButton asChild size="lg" isActive={atOverview} isPending={toOverview} className="gap-2 font-normal">
-              <Link to={base} prefetch="intent" aria-current={atOverview ? "page" : undefined}>
+            <SidebarMenuButton
+              asChild
+              size="lg"
+              isActive={atOverview}
+              isPending={toOverview}
+              className="gap-2 font-normal"
+            >
+              <Link
+                to={base}
+                prefetch="intent"
+                aria-current={atOverview ? "page" : undefined}
+              >
                 <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line [&>svg]:size-3.5">
                   {isPrivate ? <Lock /> : <Box />}
                 </span>
@@ -841,22 +1177,58 @@ function RepoMenu({
           than one view shows them as tabs across its top. */}
       <Rule />
       <NavRows>
-        <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, `${base}/compare`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
+        <SidebarLink
+          to={`${base}/code`}
+          also={[
+            `${base}/tree`,
+            `${base}/blob`,
+            `${base}/commits`,
+            `${base}/commit`,
+            `${base}/branches`,
+            `${base}/tags`,
+            `${base}/compare`,
+            ...soonPaths(base, "Code"),
+          ]}
+          icon={<Code2 size={15} />}
+        >
           Code
         </SidebarLink>
         {/* A mirror that is not taken over lists none of these: its work happens on the remote. */}
         {shows.has("issues") && (
-          <SidebarLink to={`${base}/issues`} also={[`${base}/plans`, `${base}/milestones`, `${base}/labels`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
+          <SidebarLink
+            to={`${base}/issues`}
+            also={[
+              `${base}/plans`,
+              `${base}/milestones`,
+              `${base}/labels`,
+              ...soonPaths(base, "Issues"),
+            ]}
+            icon={<CircleDot size={15} />}
+            count={repo.issues}
+          >
             Issues
           </SidebarLink>
         )}
         {shows.has("pulls") && (
-          <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
+          <SidebarLink
+            to={`${base}/pulls`}
+            also={[`${base}/pull`, `${base}/queue`]}
+            icon={<GitPullRequest size={15} />}
+            count={repo.pulls}
+          >
             Pull requests
           </SidebarLink>
         )}
         {shows.has("agents") && (
-          <SidebarLink to={`${base}/agents`} also={[`${base}/sessions`, `${base}/memory`, ...soonPaths(base, "Agents")]} icon={<Bot size={15} />}>
+          <SidebarLink
+            to={`${base}/agents`}
+            also={[
+              `${base}/sessions`,
+              `${base}/memory`,
+              ...soonPaths(base, "Agents"),
+            ]}
+            icon={<Bot size={15} />}
+          >
             Agents
           </SidebarLink>
         )}
@@ -869,23 +1241,40 @@ function RepoMenu({
       <Rule />
       <NavRows>
         {shows.has("deployments") ? (
-          <SidebarLink to={`${base}/deployments`} also={soonPaths(base, "Deployments")} icon={<Rocket size={15} />}>
+          <SidebarLink
+            to={`${base}/deployments`}
+            also={soonPaths(base, "Deployments")}
+            icon={<Rocket size={15} />}
+          >
             Deployments
           </SidebarLink>
         ) : null}
         {shows.has("observability") && (
-          <SidebarSoonLink to={`${base}/soon/logs`} also={soonPaths(base, "Observability")} icon={<Activity size={15} />} about="Logs, errors, uptime and analytics of the project's deployed apps.">
+          <SidebarSoonLink
+            to={`${base}/soon/logs`}
+            also={soonPaths(base, "Observability")}
+            icon={<Activity size={15} />}
+            about="Logs, errors, uptime and analytics of the project's deployed apps."
+          >
             Observability
           </SidebarSoonLink>
         )}
         {shows.has("security") ? (
-          <SidebarLink to={`${base}/security`} also={soonPaths(base, "Security")} icon={<ShieldCheck size={15} />}>
+          <SidebarLink
+            to={`${base}/security`}
+            also={soonPaths(base, "Security")}
+            icon={<ShieldCheck size={15} />}
+          >
             Security
           </SidebarLink>
         ) : null}
         <SidebarLink
           to={`${base}/contributors`}
-          also={[`${base}/activity`, `${base}/stargazers`, ...soonPaths(base, "Insights")]}
+          also={[
+            `${base}/activity`,
+            `${base}/stargazers`,
+            ...soonPaths(base, "Insights"),
+          ]}
           icon={<BarChart3 size={15} />}
         >
           Insights
@@ -895,7 +1284,11 @@ function RepoMenu({
         <>
           <Rule />
           <NavRows>
-            <SidebarLink to={`${base}/settings`} icon={<Settings size={15} />} drill>
+            <SidebarLink
+              to={`${base}/settings`}
+              icon={<Settings size={15} />}
+              drill
+            >
               Settings
             </SidebarLink>
           </NavRows>
@@ -913,15 +1306,27 @@ function RepoMenu({
 function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
   const base = `/${repo.namespace}/${repo.name}`;
   // Each page shows to the roles that can use it, once the role is known.
-  const shows = (page: string) => !repo.can || repo.can[SETTINGS_CAPABILITY[page] ?? "administer"];
+  const shows = (page: string) =>
+    !repo.can || repo.can[SETTINGS_CAPABILITY[page] ?? "administer"];
   const running = shows("deployments");
   const agents = shows("agents") || shows("guardrails");
   return (
-    <nav aria-label={`${repo.namespace}/${repo.name} settings`} className={PANEL}>
-      <BackRow to={base} label="Settings" context={`${repo.namespace}/${repo.name}`} />
+    <nav
+      aria-label={`${repo.namespace}/${repo.name} settings`}
+      className={PANEL}
+    >
+      <BackRow
+        to={base}
+        label="Settings"
+        context={`${repo.namespace}/${repo.name}`}
+      />
       {shows("") && (
         <NavRows className="mt-2">
-          <SidebarLink to={`${base}/settings`} end icon={<Settings size={15} />}>
+          <SidebarLink
+            to={`${base}/settings`}
+            end
+            icon={<Settings size={15} />}
+          >
             General
           </SidebarLink>
         </NavRows>
@@ -930,10 +1335,16 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
         <>
           {shows("") && <Rule />}
           <NavRows className={shows("") ? undefined : "mt-2"}>
-            <SidebarLink to={`${base}/settings/deployments`} icon={<Rocket size={15} />}>
+            <SidebarLink
+              to={`${base}/settings/deployments`}
+              icon={<Rocket size={15} />}
+            >
               Deployments
             </SidebarLink>
-            <SidebarLink to={`${base}/settings/domains`} icon={<Globe size={15} />}>
+            <SidebarLink
+              to={`${base}/settings/domains`}
+              icon={<Globe size={15} />}
+            >
               Domains
             </SidebarLink>
           </NavRows>
@@ -944,12 +1355,18 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
           <Rule />
           <NavRows>
             {shows("agents") && (
-              <SidebarLink to={`${base}/settings/agents`} icon={<Bot size={15} />}>
+              <SidebarLink
+                to={`${base}/settings/agents`}
+                icon={<Bot size={15} />}
+              >
                 Agents
               </SidebarLink>
             )}
             {shows("guardrails") && (
-              <SidebarLink to={`${base}/settings/guardrails`} icon={<ShieldCheck size={15} />}>
+              <SidebarLink
+                to={`${base}/settings/guardrails`}
+                icon={<ShieldCheck size={15} />}
+              >
                 Guardrails
               </SidebarLink>
             )}
@@ -959,27 +1376,42 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
       <Rule />
       <NavRows>
         {shows("repository") && (
-          <SidebarLink to={`${base}/settings/repository`} icon={<BookMarked size={15} />}>
+          <SidebarLink
+            to={`${base}/settings/repository`}
+            icon={<BookMarked size={15} />}
+          >
             Repository
           </SidebarLink>
         )}
         {shows("mirroring") && (
-          <SidebarLink to={`${base}/settings/mirroring`} icon={<ArrowLeftRight size={15} />}>
+          <SidebarLink
+            to={`${base}/settings/mirroring`}
+            icon={<ArrowLeftRight size={15} />}
+          >
             Mirroring
           </SidebarLink>
         )}
         {shows("access") && (
-          <SidebarLink to={`${base}/settings/access`} icon={<Users size={15} />}>
+          <SidebarLink
+            to={`${base}/settings/access`}
+            icon={<Users size={15} />}
+          >
             Access
           </SidebarLink>
         )}
         {shows("keys") && (
-          <SidebarLink to={`${base}/settings/keys`} icon={<KeyRound size={15} />}>
+          <SidebarLink
+            to={`${base}/settings/keys`}
+            icon={<KeyRound size={15} />}
+          >
             Deploy keys
           </SidebarLink>
         )}
         {shows("branches") && (
-          <SidebarLink to={`${base}/settings/branches`} icon={<GitBranch size={15} />}>
+          <SidebarLink
+            to={`${base}/settings/branches`}
+            icon={<GitBranch size={15} />}
+          >
             Branches and merging
           </SidebarLink>
         )}
@@ -989,27 +1421,42 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
           </SidebarLink>
         )}
         {shows("secrets") && (
-          <SidebarLink to={`${base}/settings/secrets`} icon={<Lock size={15} />}>
+          <SidebarLink
+            to={`${base}/settings/secrets`}
+            icon={<Lock size={15} />}
+          >
             Secrets and variables
           </SidebarLink>
         )}
         {shows("actions") && (
-          <SidebarLink to={`${base}/settings/actions`} icon={<PlayCircle size={15} />}>
+          <SidebarLink
+            to={`${base}/settings/actions`}
+            icon={<PlayCircle size={15} />}
+          >
             Actions
           </SidebarLink>
         )}
         {shows("environments") && (
-          <SidebarLink to={`${base}/settings/environments`} icon={<Layers size={15} />}>
+          <SidebarLink
+            to={`${base}/settings/environments`}
+            icon={<Layers size={15} />}
+          >
             Environments
           </SidebarLink>
         )}
         {shows("runners") && (
-          <SidebarLink to={`${base}/settings/runners`} icon={<ServerCog size={15} />}>
+          <SidebarLink
+            to={`${base}/settings/runners`}
+            icon={<ServerCog size={15} />}
+          >
             Runners
           </SidebarLink>
         )}
         {shows("webhooks") && (
-          <SidebarLink to={`${base}/settings/webhooks`} icon={<Webhook size={15} />}>
+          <SidebarLink
+            to={`${base}/settings/webhooks`}
+            icon={<Webhook size={15} />}
+          >
             Webhooks
           </SidebarLink>
         )}
@@ -1027,7 +1474,8 @@ function useInvitesListed(): boolean {
   const inviteOnly = useInviteOnly();
   const details = useFetcher<AccountMenuData | null>({ key: "account-menu" });
   useEffect(() => {
-    if (!inviteOnly && details.state === "idle" && details.data === undefined) details.load("/settings/menu.json");
+    if (!inviteOnly && details.state === "idle" && details.data === undefined)
+      details.load("/settings/menu.json");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inviteOnly]);
   return inviteOnly || details.data?.invites_page === true;
@@ -1057,7 +1505,7 @@ function AccountSettingsMenu({ username }: { username: string }) {
       <Rule />
       <NavRows>
         {link("integrations", <Blocks size={15} />)}
-        {link("github", <GithubMark className="size-[15px]" />)}
+        {link("github", <GithubMark className="size-3.75" />)}
         {link("applications", <Plug size={15} />)}
       </NavRows>
       <Rule />
@@ -1098,54 +1546,107 @@ function CodeSidebar({
   const active = shell.repo;
   // In a repository, or on the way into one, its own list.
   const repoPath = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(target);
-  const reserved = new Set(["settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth", "policies", "security", "support", "status", "invite", "notifications", "inbox", ".well-known"]);
+  const reserved = new Set([
+    "settings",
+    "explore",
+    "search",
+    "new",
+    "u",
+    "pricing",
+    "avatars",
+    "workspaces",
+    "login",
+    "logout",
+    "register",
+    "verify",
+    "forgot",
+    "reset",
+    "device",
+    "oauth",
+    "policies",
+    "security",
+    "support",
+    "status",
+    "invite",
+    "notifications",
+    "inbox",
+    ".well-known",
+  ]);
   // An invitation to a repository is answered before its menu means anything.
   const inRepo =
     repoPath != null &&
     !reserved.has(repoPath[1]) &&
     repoPath[2] !== "-" &&
     !/^\/[^/]+\/[^/]+\/invitations\/?$/.test(target) &&
-    (!lost || sameRepo(active, { namespace: repoPath[1]!, name: repoPath[2]! }));
+    (!lost ||
+      sameRepo(active, { namespace: repoPath[1]!, name: repoPath[2]! }));
   // A project's settings, one level further in.
   const inRepoSettings = inRepo && REPO_SETTINGS_PAGE.test(target);
   // The repository the menu is for: the one loaded if it is the one being
   // gone to, else what the address says, at once.
-  const targetRepo = inRepo && repoPath ? { namespace: repoPath[1], name: repoPath[2] } : null;
+  const targetRepo =
+    inRepo && repoPath ? { namespace: repoPath[1], name: repoPath[2] } : null;
   const guessed: MenuRepo | null = targetRepo
     ? sameRepo(active, targetRepo)
       ? active
       : {
           ...targetRepo,
-          member: (user.workspaces ?? []).some((m) => m.slug === targetRepo.namespace.toLowerCase()),
+          member: (user.workspaces ?? []).some(
+            (m) => m.slug === targetRepo.namespace.toLowerCase(),
+          ),
         }
     : null;
   // The viewer's role there, from the repository's page once it has loaded.
   const page = useRouteLoaderData("routes/repo/layout") as
-    | { repo?: { namespace: string; name: string; mirror?: RepoMirror | null }; access?: ViewerAccess }
+    | {
+        repo?: { namespace: string; name: string; mirror?: RepoMirror | null };
+        access?: ViewerAccess;
+      }
     | undefined;
   const menuRepo: MenuRepo | null =
     guessed && page?.access && page.repo && sameRepo(page.repo, guessed)
-      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can, mirror: page.repo.mirror }
+      ? {
+          ...guessed,
+          member: page.access.insider,
+          settings: seesSettings(page.access),
+          can: page.access.can,
+          mirror: page.repo.mirror,
+        }
       : guessed;
 
   // The way from Code's list to the one shown.
-  const trail: Level[] = [{ key: "main", node: ws ? <CodeMenu shell={shell} slug={ws.slug} /> : null }];
+  const trail: Level[] = [
+    {
+      key: "main",
+      node: ws ? <CodeMenu shell={shell} slug={ws.slug} /> : null,
+    },
+  ];
   if (menuRepo) {
     const key = `repo:${menuRepo.namespace}/${menuRepo.name}`.toLowerCase();
     // Out of a project: to its workspace's projects when they are yours.
-    const home = (user.workspaces ?? []).find((m) => m.slug === menuRepo.namespace.toLowerCase());
-    const back = home ? { to: `/${home.slug}/-/projects`, label: "All projects" } : { to: ws ? `/${ws.slug}/-/overview` : "/explore", label: "Code" };
+    const home = (user.workspaces ?? []).find(
+      (m) => m.slug === menuRepo.namespace.toLowerCase(),
+    );
+    const back = home
+      ? { to: `/${home.slug}/-/projects`, label: "All projects" }
+      : { to: ws ? `/${ws.slug}/-/overview` : "/explore", label: "Code" };
     trail.push({
       key,
       node: (
         <RepoMenu
           repo={menuRepo}
-          isPrivate={[...shell.repos, ...(shell.shared ?? [])].some((repo) => sameRepo(repo, menuRepo) && repo.isPrivate)}
+          isPrivate={[...shell.repos, ...(shell.shared ?? [])].some(
+            (repo) => sameRepo(repo, menuRepo) && repo.isPrivate,
+          )}
           back={back}
         />
       ),
     });
-    if (inRepoSettings) trail.push({ key: `${key}:settings`, node: <RepoSettingsMenu repo={menuRepo} /> });
+    if (inRepoSettings)
+      trail.push({
+        key: `${key}:settings`,
+        node: <RepoSettingsMenu repo={menuRepo} />,
+      });
   }
 
   return (
@@ -1160,7 +1661,13 @@ function CodeSidebar({
  * A mode's sidebar heading: its name, quiet, under the workspace's
  * switcher, with what it makes at the end.
  */
-export function ModeHeader({ title, action }: { title: ReactNode; action?: ReactNode }) {
+export function ModeHeader({
+  title,
+  action,
+}: {
+  title: ReactNode;
+  action?: ReactNode;
+}) {
   return (
     <div className="flex h-8 shrink-0 items-center gap-1 pr-2 pl-3">
       <SidebarGroupLabel asChild className="min-w-0 grow truncate px-1">
@@ -1181,12 +1688,17 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
   const { pathname } = useLocation();
   const going = useNavigation().location?.pathname;
   const path = going ?? pathname;
-  const at = (page: string) => path === `/${slug}/-/${page}` || path.startsWith(`/${slug}/-/${page}/`);
+  const at = (page: string) =>
+    path === `/${slug}/-/${page}` || path.startsWith(`/${slug}/-/${page}/`);
   const shared = shell.shared ?? [];
   return (
     <nav aria-label="Code" className={PANEL}>
       <NavRows>
-        <SidebarLink to={`/${slug}/-/overview`} icon={<LayoutDashboard size={15} />} current={at("overview")}>
+        <SidebarLink
+          to={`/${slug}/-/overview`}
+          icon={<LayoutDashboard size={15} />}
+          current={at("overview")}
+        >
           Overview
         </SidebarLink>
       </NavRows>
@@ -1194,21 +1706,44 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
       <SidebarProjects slug={slug} shell={shell} current={at("projects")} />
       <Rule />
       <NavRows>
-        <SidebarLink to={`/${slug}/-/security`} icon={<ShieldCheck size={15} />} current={at("security") && !at("security/settings")}>
+        <SidebarLink
+          to={`/${slug}/-/security`}
+          icon={<ShieldCheck size={15} />}
+          current={at("security") && !at("security/settings")}
+        >
           Security
         </SidebarLink>
-        <SidebarLink to={`/${slug}/-/packages`} icon={<Package size={15} />} current={at("packages")}>
+        <SidebarLink
+          to={`/${slug}/-/packages`}
+          icon={<Package size={15} />}
+          current={at("packages")}
+        >
           Packages
         </SidebarLink>
         {INSIGHTS && (
-          <SidebarSoonLink to={`/${slug}/-/insights`} icon={<TrendingUp size={15} />} about={INSIGHTS.summary} current={at("insights")}>
+          <SidebarSoonLink
+            to={`/${slug}/-/insights`}
+            icon={<TrendingUp size={15} />}
+            about={INSIGHTS.summary}
+            current={at("insights")}
+          >
             {INSIGHTS.title}
           </SidebarSoonLink>
         )}
         {roadmapIn("Workspace")
-          .filter((item) => item.key !== "insights" && item.key !== "teams" && item.key !== "fleet")
+          .filter(
+            (item) =>
+              item.key !== "insights" &&
+              item.key !== "teams" &&
+              item.key !== "fleet",
+          )
           .map((item) => (
-            <SidebarSoonLink key={item.key} to={`/${slug}/-/soon/${item.key}`} icon={WORKSPACE_ICONS[item.key] ?? <Sparkles size={15} />} about={item.summary}>
+            <SidebarSoonLink
+              key={item.key}
+              to={`/${slug}/-/soon/${item.key}`}
+              icon={WORKSPACE_ICONS[item.key] ?? <Sparkles size={15} />}
+              about={item.summary}
+            >
               {item.title === "Board" ? "Boards" : item.title}
             </SidebarSoonLink>
           ))}
@@ -1272,7 +1807,15 @@ const WORKSPACE_PAGE_ICONS: Record<string, ReactNode> = {
  * is always open, and its button does nothing. Every group starts open, so
  * the server and the browser draw the same list.
  */
-function FoldingGroup({ title, current, children }: { title: string; current: boolean; children: ReactNode }) {
+function FoldingGroup({
+  title,
+  current,
+  children,
+}: {
+  title: string;
+  current: boolean;
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(true);
   return (
     <Collapsible open={open || current} onOpenChange={setOpen}>
@@ -1283,7 +1826,13 @@ function FoldingGroup({ title, current, children }: { title: string; current: bo
           className="flex h-7 w-full shrink-0 items-center justify-between rounded-md px-2 text-[0.6875rem] font-medium tracking-wide text-faint uppercase hover:text-muted focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default disabled:text-faint data-[state=open]:[&_svg]:rotate-90"
         >
           <span>{title}</span>
-          {!current && <ChevronRight size={12} aria-hidden="true" className="text-faint/70" />}
+          {!current && (
+            <ChevronRight
+              size={12}
+              aria-hidden="true"
+              className="text-faint/70"
+            />
+          )}
         </CollapsibleTrigger>
         <CollapsibleContent>
           <SidebarGroupContent>
@@ -1303,36 +1852,60 @@ function FoldingGroup({ title, current, children }: { title: string; current: bo
  * Pages only owners open are left out for members, and a group with none
  * left goes with them; a page that is coming is a Soon row, not a link.
  */
-export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean }) {
+export function WorkspaceSidebar({
+  slug,
+  owner,
+}: {
+  slug: string;
+  owner: boolean;
+}) {
   const { pathname } = useLocation();
   const going = useNavigation().location?.pathname;
   const path = going ?? pathname;
   const here = workspaceSettingsPage(path, slug);
-  const overview = path === `/${slug}/-/workspace` || path.startsWith(`/${slug}/-/workspace/`);
+  const overview =
+    path === `/${slug}/-/workspace` || path.startsWith(`/${slug}/-/workspace/`);
   const shown = (page: WorkspaceSettingsPage) => owner || !page.owner;
   return (
     <div className="flex h-full flex-col">
       <ModeHeader title="Workspace" />
       <nav aria-label="Workspace" className={PANEL}>
         <NavRows>
-          <SidebarLink to={`/${slug}/-/workspace`} icon={<LayoutGrid size={15} />} current={overview}>
+          <SidebarLink
+            to={`/${slug}/-/workspace`}
+            icon={<LayoutGrid size={15} />}
+            current={overview}
+          >
             Overview
           </SidebarLink>
         </NavRows>
-        {WORKSPACE_SETTINGS_GROUPS.filter((group) => group.pages.some(shown)).map((group) => (
+        {WORKSPACE_SETTINGS_GROUPS.filter((group) =>
+          group.pages.some(shown),
+        ).map((group) => (
           <Fragment key={group.key}>
             <Rule />
-            <FoldingGroup title={group.title} current={here?.group === group.key}>
+            <FoldingGroup
+              title={group.title}
+              current={here?.group === group.key}
+            >
               {group.pages.filter(shown).map((page) =>
                 page.soon ? (
-                  <SidebarSoon key={page.key} icon={WORKSPACE_PAGE_ICONS[page.key] ?? <Sparkles size={15} />} about={page.soon}>
+                  <SidebarSoon
+                    key={page.key}
+                    icon={
+                      WORKSPACE_PAGE_ICONS[page.key] ?? <Sparkles size={15} />
+                    }
+                    about={page.soon}
+                  >
                     {page.label}
                   </SidebarSoon>
                 ) : (
                   <SidebarLink
                     key={page.key}
                     to={`/${slug}/-/${page.path}`}
-                    icon={WORKSPACE_PAGE_ICONS[page.key] ?? <Settings size={15} />}
+                    icon={
+                      WORKSPACE_PAGE_ICONS[page.key] ?? <Settings size={15} />
+                    }
                     current={here?.page === page.key}
                   >
                     {page.label}
@@ -1357,19 +1930,32 @@ function PeopleSidebar({ slug }: { slug: string }) {
   const { pathname } = useLocation();
   const going = useNavigation().location?.pathname;
   const path = going ?? pathname;
-  const at = (page: string) => path === `/${slug}/-/${page}` || path.startsWith(`/${slug}/-/${page}/`);
+  const at = (page: string) =>
+    path === `/${slug}/-/${page}` || path.startsWith(`/${slug}/-/${page}/`);
   return (
     <div className="flex h-full flex-col">
       <ModeHeader title="People" />
       <nav aria-label="People" className={PANEL}>
         <NavRows>
-          <SidebarLink to={`/${slug}/-/people`} icon={<Users size={15} />} current={at("people")}>
+          <SidebarLink
+            to={`/${slug}/-/people`}
+            icon={<Users size={15} />}
+            current={at("people")}
+          >
             Everyone
           </SidebarLink>
-          <SidebarLink to={`/${slug}/-/teams`} icon={<UsersRound size={15} />} current={at("teams")}>
+          <SidebarLink
+            to={`/${slug}/-/teams`}
+            icon={<UsersRound size={15} />}
+            current={at("teams")}
+          >
             Teams
           </SidebarLink>
-          <SidebarLink to={`/${slug}/-/org-chart`} icon={<Network size={15} />} current={at("org-chart")}>
+          <SidebarLink
+            to={`/${slug}/-/org-chart`}
+            icon={<Network size={15} />}
+            current={at("org-chart")}
+          >
             Org chart
           </SidebarLink>
         </NavRows>
@@ -1389,14 +1975,25 @@ function NotificationsSidebar({ counts }: { counts: InboxCounts | null }) {
   const reason = inboxReason(params.get("reason"));
   const tab = params.get("tab");
   const address = (changes: Record<string, string | null>) => {
-    const merged: Record<string, string | null> = { tab, view: view === "inbox" ? null : view, reason, ...changes };
+    const merged: Record<string, string | null> = {
+      tab,
+      view: view === "inbox" ? null : view,
+      reason,
+      ...changes,
+    };
     const next = new URLSearchParams();
-    for (const [name, value] of Object.entries(merged)) if (value) next.set(name, value);
+    for (const [name, value] of Object.entries(merged))
+      if (value) next.set(name, value);
     const query = next.toString();
     return query ? `/notifications?${query}` : "/notifications";
   };
   const views = [
-    { view: "inbox", label: "Everything", icon: <Bell size={15} />, count: counts?.unread },
+    {
+      view: "inbox",
+      label: "Everything",
+      icon: <Bell size={15} />,
+      count: counts?.unread,
+    },
     { view: "saved", label: "Saved", icon: <Bookmark size={15} /> },
     { view: "done", label: "Done", icon: <Check size={15} /> },
   ] as const;
@@ -1408,7 +2005,10 @@ function NotificationsSidebar({ counts }: { counts: InboxCounts | null }) {
           {views.map((entry) => (
             <SidebarLink
               key={entry.view}
-              to={address({ view: entry.view === "inbox" ? null : entry.view, before: null })}
+              to={address({
+                view: entry.view === "inbox" ? null : entry.view,
+                before: null,
+              })}
               icon={entry.icon}
               count={"count" in entry ? (entry.count ?? undefined) : undefined}
               current={view === entry.view}
@@ -1418,12 +2018,12 @@ function NotificationsSidebar({ counts }: { counts: InboxCounts | null }) {
           ))}
         </NavRows>
         <Rule />
-      <NavGroup title="Why you were told">
+        <NavGroup title="Why you were told">
           {REASON_FILTERS.map((entry) => (
             <SidebarLink
               key={entry.reason ?? "any"}
               to={address({ reason: entry.reason, before: null })}
-              icon={<span className="block size-[15px]" />}
+              icon={<span className="block size-3.75" />}
               current={reason === entry.reason}
             >
               {entry.reason == null ? "Any reason" : entry.label}
@@ -1513,7 +2113,10 @@ const SECTIONS: Record<string, string> = {
 };
 
 /** Settings pages whose name differs from the section's of the same word. */
-const SETTINGS_SECTIONS: Record<string, string> = { branches: "Branches and merging", actions: "Actions" };
+const SETTINGS_SECTIONS: Record<string, string> = {
+  branches: "Branches and merging",
+  actions: "Actions",
+};
 
 /** Where the page is, as a trail of links: workspace / repository / section. */
 function Breadcrumbs({
@@ -1531,16 +2134,46 @@ function Breadcrumbs({
   // A 404 names nothing from the address, unless the project is real and
   // visible and only something inside it is missing.
   const visibleRepo = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(pathname);
-  if (missing && !(visibleRepo && sameRepo(repo ?? null, { namespace: visibleRepo[1]!, name: visibleRepo[2]! }))) {
+  if (
+    missing &&
+    !(
+      visibleRepo &&
+      sameRepo(repo ?? null, {
+        namespace: visibleRepo[1]!,
+        name: visibleRepo[2]!,
+      })
+    )
+  ) {
     return <Here>Not found</Here>;
   }
   const parts = pathname.split("/").filter(Boolean);
-  const reserved = ["settings", "explore", "new", "search", "workspaces", "policies", "security", "support", "status", "invite", "notifications"];
+  const reserved = [
+    "settings",
+    "explore",
+    "new",
+    "search",
+    "workspaces",
+    "policies",
+    "security",
+    "support",
+    "status",
+    "invite",
+    "notifications",
+  ];
   if (parts.length === 0) return <Here>Home</Here>;
   // Your settings: Settings / Emails.
   if (parts[0] === "settings") {
     const page = accountSettingsPage(pathname);
-    return <Trail trail={[{ label: "Settings", to: FIRST_SETTINGS_PAGE }, ...(page ? [{ label: ACCOUNT_SETTINGS[page].title, to: `/settings/${page}` }] : [])]} />;
+    return (
+      <Trail
+        trail={[
+          { label: "Settings", to: FIRST_SETTINGS_PAGE },
+          ...(page
+            ? [{ label: ACCOUNT_SETTINGS[page].title, to: `/settings/${page}` }]
+            : []),
+        ]}
+      />
+    );
   }
   if (reserved.includes(parts[0]!)) {
     const words: Record<string, string> = {
@@ -1561,8 +2194,11 @@ function Breadcrumbs({
   // A person's profile, by their handle.
   if (parts[0] === "u" && parts[1]) return <ProfileCrumb username={parts[1]} />;
   const [owner, second, third, fourth] = parts;
-  const ours = workspace != null && owner!.toLowerCase() === workspace.toLowerCase();
-  const trail: Crumb[] = ours ? [] : [{ label: owner!, to: `/${owner}`, mono: true }];
+  const ours =
+    workspace != null && owner!.toLowerCase() === workspace.toLowerCase();
+  const trail: Crumb[] = ours
+    ? []
+    : [{ label: owner!, to: `/${owner}`, mono: true }];
   if (second === "-") {
     const page = `/${owner}/-/${third}`;
     if (third === "settings" && fourth === "chat") {
@@ -1570,11 +2206,18 @@ function Breadcrumbs({
       trail.push({ label: "Chat settings", to: `${page}/chat` });
     } else if (third) {
       // The workspace's settings pages each stand alone: General, Members, Permissions.
-      trail.push({ label: third === "settings" ? "General" : (SECTIONS[third] ?? third), to: page });
+      trail.push({
+        label: third === "settings" ? "General" : (SECTIONS[third] ?? third),
+        to: page,
+      });
       // The Marketplace names its tab (Marketplace / Extensions), Agents its templates, and Members its invitations.
       const tabs: Record<string, string> =
         third === "marketplace"
-          ? { integrations: "Integrations", extensions: "Extensions", requests: "Requests" }
+          ? {
+              integrations: "Integrations",
+              extensions: "Extensions",
+              requests: "Requests",
+            }
           : third === "agents"
             ? { templates: "Templates" }
             : third === "members"
@@ -1586,14 +2229,32 @@ function Breadcrumbs({
   } else if (second) {
     const repo = `/${owner}/${second}`;
     trail.push({ label: second, to: repo, mono: true });
-    if (third === "pull" && fourth) trail.push({ label: `Pull request #${fourth}`, short: `#${fourth}`, to: `${repo}/pull/${fourth}` });
-    else if (third === "issues" && fourth && fourth !== "new") trail.push({ label: `Issue #${fourth}`, short: `#${fourth}`, to: `${repo}/issues/${fourth}` });
-    else if (third === "commit" && fourth) trail.push({ label: fourth.slice(0, 7), to: `${repo}/commit/${fourth}`, mono: true });
+    if (third === "pull" && fourth)
+      trail.push({
+        label: `Pull request #${fourth}`,
+        short: `#${fourth}`,
+        to: `${repo}/pull/${fourth}`,
+      });
+    else if (third === "issues" && fourth && fourth !== "new")
+      trail.push({
+        label: `Issue #${fourth}`,
+        short: `#${fourth}`,
+        to: `${repo}/issues/${fourth}`,
+      });
+    else if (third === "commit" && fourth)
+      trail.push({
+        label: fourth.slice(0, 7),
+        to: `${repo}/commit/${fourth}`,
+        mono: true,
+      });
     else if (third && SECTIONS[third]) {
       trail.push({ label: SECTIONS[third]!, to: `${repo}/${third}` });
       // A settings page names which one: Settings / Secrets and variables.
       if (third === "settings" && fourth && SECTIONS[fourth]) {
-        trail.push({ label: SETTINGS_SECTIONS[fourth] ?? SECTIONS[fourth]!, to: `${repo}/settings/${fourth}` });
+        trail.push({
+          label: SETTINGS_SECTIONS[fourth] ?? SECTIONS[fourth]!,
+          to: `${repo}/settings/${fourth}`,
+        });
       }
     }
   }
@@ -1603,16 +2264,36 @@ function Breadcrumbs({
 
 /** A profile's place in the top bar: the person's avatar and @handle, from the page once it has loaded. */
 function ProfileCrumb({ username }: { username: string }) {
-  const page = useRouteLoaderData("routes/user") as { profile?: { username: string; displayUsername?: string | null; avatar: string | null } } | undefined;
-  const profile = page?.profile?.username.toLowerCase() === username.toLowerCase() ? page.profile : null;
+  const page = useRouteLoaderData("routes/user") as
+    | {
+        profile?: {
+          username: string;
+          displayUsername?: string | null;
+          avatar: string | null;
+        };
+      }
+    | undefined;
+  const profile =
+    page?.profile?.username.toLowerCase() === username.toLowerCase()
+      ? page.profile
+      : null;
   return (
     <Breadcrumb className="min-w-0">
       <BreadcrumbList>
         <BreadcrumbItem>
-          <BreadcrumbPage asChild className="flex items-center gap-2 hover:bg-raised">
+          <BreadcrumbPage
+            asChild
+            className="flex items-center gap-2 hover:bg-raised"
+          >
             <Link to={`/u/${profile?.username ?? username}`}>
-              <Avatar name={profile?.username ?? username} image={profile?.avatar ?? null} size={20} />
-              <span className="truncate font-mono text-[0.8125rem]">@{profile ? shownUsername(profile) : username}</span>
+              <Avatar
+                name={profile?.username ?? username}
+                image={profile?.avatar ?? null}
+                size={20}
+              />
+              <span className="truncate font-mono text-[0.8125rem]">
+                @{profile ? shownUsername(profile) : username}
+              </span>
             </Link>
           </BreadcrumbPage>
         </BreadcrumbItem>
@@ -1643,11 +2324,19 @@ type Crumb = { label: string; to: string; mono?: boolean; short?: string };
  */
 function Trail({ trail }: { trail: Crumb[] }) {
   // Up on a phone, unless up is the workspace itself: its pages are the tabs.
-  const up = trail.length > 1 && !/^\/[^/]+$/.test(trail[trail.length - 2]!.to) ? trail[trail.length - 2]! : null;
+  const up =
+    trail.length > 1 && !/^\/[^/]+$/.test(trail[trail.length - 2]!.to)
+      ? trail[trail.length - 2]!
+      : null;
   return (
     <Breadcrumb className="flex min-w-0 items-center">
       {up && (
-        <Button asChild variant="ghost" size="icon-bar" className="-ml-1 sm:hidden">
+        <Button
+          asChild
+          variant="ghost"
+          size="icon-bar"
+          className="-ml-1 sm:hidden"
+        >
           <Link to={up.to} prefetch="intent" aria-label={`Back to ${up.label}`}>
             <ChevronLeft size={16} />
           </Link>
@@ -1701,29 +2390,92 @@ function commandsFor(user: User, shell: ShellData): Command[] {
   const commands: Command[] = [
     ...(ws
       ? [
-          { label: "Home", to: homePagePath(ws.slug), icon: <House size={15} /> },
-          { label: "Chat", to: `/${ws.slug}/-/chat`, icon: <MessagesSquare size={15} /> },
-          { label: "Agents", to: `/${ws.slug}/-/agents`, icon: <Sparkles size={15} /> },
-          ...(hasCodeAccess(ws) ? [{ label: "Code overview", to: `/${ws.slug}/-/overview`, icon: <Code2 size={15} /> }] : []),
-          { label: "Artifacts", to: `/${ws.slug}/-/artifacts`, icon: <Shapes size={15} /> },
-          { label: "Apps", hint: "Everything installed that you can use", to: `/${ws.slug}/-/apps`, icon: <LayoutGrid size={15} /> },
-          { label: "Marketplace", hint: "Extensions and integrations to add", to: `/${ws.slug}/-/marketplace`, icon: <Store size={15} /> },
-          { label: "Agent templates", hint: "Starting points for a new agent", to: `/${ws.slug}/-/agents/templates`, icon: <Bot size={15} /> },
-          { label: "Workspace", hint: "Billing, policies, settings", to: `/${ws.slug}/-/workspace`, icon: <Building2 size={15} /> },
+          {
+            label: "Home",
+            to: homePagePath(ws.slug),
+            icon: <House size={15} />,
+          },
+          {
+            label: "Chat",
+            to: `/${ws.slug}/-/chat`,
+            icon: <MessagesSquare size={15} />,
+          },
+          {
+            label: "Agents",
+            to: `/${ws.slug}/-/agents`,
+            icon: <Sparkles size={15} />,
+          },
+          ...(hasCodeAccess(ws)
+            ? [
+                {
+                  label: "Code overview",
+                  to: `/${ws.slug}/-/overview`,
+                  icon: <Code2 size={15} />,
+                },
+              ]
+            : []),
+          {
+            label: "Artifacts",
+            to: `/${ws.slug}/-/artifacts`,
+            icon: <Shapes size={15} />,
+          },
+          {
+            label: "Apps",
+            hint: "Everything installed that you can use",
+            to: `/${ws.slug}/-/apps`,
+            icon: <LayoutGrid size={15} />,
+          },
+          {
+            label: "Marketplace",
+            hint: "Extensions and integrations to add",
+            to: `/${ws.slug}/-/marketplace`,
+            icon: <Store size={15} />,
+          },
+          {
+            label: "Agent templates",
+            hint: "Starting points for a new agent",
+            to: `/${ws.slug}/-/agents/templates`,
+            icon: <Bot size={15} />,
+          },
+          {
+            label: "Workspace",
+            hint: "Billing, policies, settings",
+            to: `/${ws.slug}/-/workspace`,
+            icon: <Building2 size={15} />,
+          },
         ]
       : []),
-    ...(shell.repos.length > 0
-      ? [{ label: "Put an agent on it", hint: "Open an issue and assign g1t", to: "/?agent=new", icon: <Sparkles size={15} /> }]
-      : []),
-    { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
-    { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
-    { label: "Notifications", hint: "What needs you", to: "/notifications", icon: <Bell size={15} /> },
+    {
+      label: "Explore repositories",
+      to: "/explore",
+      icon: <Compass size={15} />,
+    },
+    {
+      label: "Search g1t",
+      hint: "Repositories, code, issues, people",
+      to: "/search",
+      icon: <Search size={15} />,
+    },
+    {
+      label: "Notifications",
+      hint: "What needs you",
+      to: "/notifications",
+      icon: <Bell size={15} />,
+    },
     { label: "New project", to: "/new", icon: <Plus size={15} /> },
-    { label: "New workspace", to: "/workspaces/new", icon: <Plus size={15} /> },
-    { label: "Your settings", to: FIRST_SETTINGS_PAGE, icon: <Settings size={15} /> },
+    {
+      label: "Your settings",
+      to: FIRST_SETTINGS_PAGE,
+      icon: <Settings size={15} />,
+    },
     ...(Object.keys(ACCOUNT_SETTINGS) as AccountSettingsPage[])
       .filter((page) => page !== "profile")
-      .map((page) => ({ label: ACCOUNT_SETTINGS[page].title, hint: "Your settings", to: `/settings/${page}`, icon: <Settings size={15} /> })),
+      .map((page) => ({
+        label: ACCOUNT_SETTINGS[page].title,
+        hint: "Your settings",
+        to: `/settings/${page}`,
+        icon: <Settings size={15} />,
+      })),
     ...THEME_COMMANDS,
   ];
   const repo = shell.repo;
@@ -1731,42 +2483,171 @@ function commandsFor(user: User, shell: ShellData): Command[] {
     const base = `/${repo.namespace}/${repo.name}`;
     const name = `${repo.namespace}/${repo.name}`;
     commands.unshift(
-      { label: "Overview", hint: name, to: base, icon: <LayoutGrid size={15} /> },
-      { label: "Code", hint: name, to: `${base}/code`, icon: <Code2 size={15} /> },
-      { label: "Issues", hint: name, to: `${base}/issues`, icon: <CircleDot size={15} /> },
-      { label: "New issue", hint: name, to: `${base}/issues/new`, icon: <Plus size={15} /> },
-      ...(repo.member
-        ? [{ label: `Put an agent on ${repo.name}`, hint: name, to: `${base}/issues/new?agent=1`, icon: <Sparkles size={15} /> }]
-        : []),
-      { label: "Pull requests", hint: name, to: `${base}/pulls`, icon: <GitPullRequest size={15} /> },
-      { label: "Commits", hint: name, to: `${base}/commits`, icon: <History size={15} /> },
+      {
+        label: "Overview",
+        hint: name,
+        to: base,
+        icon: <LayoutGrid size={15} />,
+      },
+      {
+        label: "Code",
+        hint: name,
+        to: `${base}/code`,
+        icon: <Code2 size={15} />,
+      },
+      {
+        label: "Issues",
+        hint: name,
+        to: `${base}/issues`,
+        icon: <CircleDot size={15} />,
+      },
+      {
+        label: "New issue",
+        hint: name,
+        to: `${base}/issues/new`,
+        icon: <Plus size={15} />,
+      },
       ...(repo.member
         ? [
-            { label: "Plan work", hint: name, to: `${base}/plans`, icon: <ListTree size={15} /> },
-            { label: "Deployments", hint: name, to: `${base}/deployments`, icon: <Rocket size={15} /> },
-            { label: "Secrets and variables", hint: name, to: `${base}/settings/secrets`, icon: <Lock size={15} /> },
-            { label: "Project settings", hint: name, to: `${base}/settings`, icon: <Settings size={15} /> },
-            { label: "Repository settings", hint: name, to: `${base}/settings/repository`, icon: <Settings size={15} /> },
+            {
+              label: `Put an agent on ${repo.name}`,
+              hint: name,
+              to: `${base}/issues/new?agent=1`,
+              icon: <Sparkles size={15} />,
+            },
+          ]
+        : []),
+      {
+        label: "Pull requests",
+        hint: name,
+        to: `${base}/pulls`,
+        icon: <GitPullRequest size={15} />,
+      },
+      {
+        label: "Commits",
+        hint: name,
+        to: `${base}/commits`,
+        icon: <History size={15} />,
+      },
+      ...(repo.member
+        ? [
+            {
+              label: "Plan work",
+              hint: name,
+              to: `${base}/plans`,
+              icon: <ListTree size={15} />,
+            },
+            {
+              label: "Deployments",
+              hint: name,
+              to: `${base}/deployments`,
+              icon: <Rocket size={15} />,
+            },
+            {
+              label: "Secrets and variables",
+              hint: name,
+              to: `${base}/settings/secrets`,
+              icon: <Lock size={15} />,
+            },
+            {
+              label: "Project settings",
+              hint: name,
+              to: `${base}/settings`,
+              icon: <Settings size={15} />,
+            },
+            {
+              label: "Repository settings",
+              hint: name,
+              to: `${base}/settings/repository`,
+              icon: <Settings size={15} />,
+            },
           ]
         : []),
     );
   }
   for (const membership of user.workspaces ?? []) {
     commands.push(
-      { label: displayName(membership), hint: `Workspace · ${membership.slug}`, to: `/${membership.slug}`, icon: <Avatar name={membership.slug} image={membership.avatar} size={15} square /> },
-      { label: "All projects", hint: membership.slug, to: `/${membership.slug}/-/projects`, icon: <LayoutGrid size={15} /> },
-      { label: "People", hint: membership.slug, to: `/${membership.slug}/-/people`, icon: <Users size={15} /> },
-      { label: "Spend", hint: `${membership.slug} · Budgets and receipts`, to: `/${membership.slug}/-/spend`, icon: <Coins size={15} /> },
-      { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
-      { label: "AI Gateway", hint: `${membership.slug} Â· Usage`, to: `/${membership.slug}/-/gateway`, icon: <Network size={15} /> },
-      { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
-      { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
-      { label: "Integrations", hint: membership.slug, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },
-      { label: "Members", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/members`, icon: <Users size={15} /> },
+      {
+        label: displayName(membership),
+        hint: `Workspace · ${membership.slug}`,
+        to: `/${membership.slug}`,
+        icon: (
+          <Avatar
+            name={membership.slug}
+            image={membership.avatar}
+            size={15}
+            square
+          />
+        ),
+      },
+      {
+        label: "All projects",
+        hint: membership.slug,
+        to: `/${membership.slug}/-/projects`,
+        icon: <LayoutGrid size={15} />,
+      },
+      {
+        label: "People",
+        hint: membership.slug,
+        to: `/${membership.slug}/-/people`,
+        icon: <Users size={15} />,
+      },
+      {
+        label: "Spend",
+        hint: `${membership.slug} · Budgets and receipts`,
+        to: `/${membership.slug}/-/spend`,
+        icon: <Coins size={15} />,
+      },
+      {
+        label: "Usage",
+        hint: membership.slug,
+        to: `/${membership.slug}/-/usage`,
+        icon: <BarChart3 size={15} />,
+      },
+      {
+        label: "AI Gateway",
+        hint: `${membership.slug} Â· Usage`,
+        to: `/${membership.slug}/-/gateway`,
+        icon: <Network size={15} />,
+      },
+      {
+        label: "Billing and plans",
+        hint: `${membership.slug} · Settings`,
+        to: `/${membership.slug}/-/billing`,
+        icon: <CreditCard size={15} />,
+      },
+      {
+        label: "Access tokens",
+        hint: `${membership.slug} · Settings`,
+        to: `/${membership.slug}/-/tokens`,
+        icon: <KeyRound size={15} />,
+      },
+      {
+        label: "Integrations",
+        hint: membership.slug,
+        to: `/${membership.slug}/-/integrations`,
+        icon: <Plug size={15} />,
+      },
+      {
+        label: "Members",
+        hint: `${membership.slug} · Access`,
+        to: `/${membership.slug}/-/members`,
+        icon: <Users size={15} />,
+      },
       ...(membership.role === "owner"
         ? [
-            { label: "Invitations", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/members/invitations`, icon: <Mail size={15} /> },
-            { label: "Permissions", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/permissions`, icon: <ShieldCheck size={15} /> },
+            {
+              label: "Invitations",
+              hint: `${membership.slug} · Access`,
+              to: `/${membership.slug}/-/members/invitations`,
+              icon: <Mail size={15} />,
+            },
+            {
+              label: "Permissions",
+              hint: `${membership.slug} · Access`,
+              to: `/${membership.slug}/-/permissions`,
+              icon: <ShieldCheck size={15} />,
+            },
           ]
         : []),
     );
@@ -1781,7 +2662,12 @@ function commandsFor(user: User, shell: ShellData): Command[] {
   }
   // "Put an agent on …": one per project, after the projects themselves.
   for (const listed of shell.repos) {
-    if (repo && listed.namespace === repo.namespace && listed.name === repo.name) continue;
+    if (
+      repo &&
+      listed.namespace === repo.namespace &&
+      listed.name === repo.name
+    )
+      continue;
     commands.push({
       label: `Put an agent on ${listed.title ?? listed.name}`,
       hint: `${listed.namespace}/${listed.name}`,
@@ -1801,7 +2687,8 @@ function commandsFor(user: User, shell: ShellData): Command[] {
 export function useLeaving() {
   const navigation = useNavigation();
   const method = navigation.formMethod?.toUpperCase();
-  const leaving = navigation.state === "loading" && (method == null || method === "GET");
+  const leaving =
+    navigation.state === "loading" && (method == null || method === "GET");
   return {
     "aria-busy": leaving || undefined,
     className: `transition-opacity motion-reduce:transition-none ${leaving ? "opacity-60 delay-200 duration-300" : "duration-150"}`,
@@ -1823,7 +2710,10 @@ export function Progress() {
       setVisible(true);
       setWidth(12);
       // Slows as it goes, never quite arriving until the page does.
-      const timer = setInterval(() => setWidth((now) => now + (90 - now) * 0.12), 200);
+      const timer = setInterval(
+        () => setWidth((now) => now + (90 - now) * 0.12),
+        200,
+      );
       return () => clearInterval(timer);
     }
     setWidth((now) => (now > 0 ? 100 : 0));
@@ -1837,7 +2727,7 @@ export function Progress() {
   return (
     <div
       aria-hidden="true"
-      className={`pointer-events-none fixed inset-x-0 top-0 z-[60] h-[3px] transition-opacity duration-300 ${
+      className={`pointer-events-none fixed inset-x-0 top-0 z-60 h-0.75 transition-opacity duration-300 ${
         visible ? "opacity-100" : "opacity-0"
       }`}
     >
@@ -1857,7 +2747,12 @@ export function Progress() {
 function AskG1tButton({ slug }: { slug: string }) {
   return (
     <Hint label="Ask g1t">
-      <Button asChild variant="soft" size="bar" className="gap-2 max-md:ring-0 lg:px-3">
+      <Button
+        asChild
+        variant="soft"
+        size="bar"
+        className="gap-2 max-md:ring-0 lg:px-3"
+      >
         <Link to={`/${slug}/-/chat?agent=g1t`} aria-label="Ask g1t">
           <MarkGlyph className="h-3.5" />
           <span className="max-lg:hidden">Ask g1t</span>
@@ -1874,13 +2769,22 @@ function AskG1tButton({ slug }: { slug: string }) {
  * settings and Notifications have one.
  */
 function sidebarFor(mode: ModeKey, workspace: boolean): Panel | null {
-  if (!workspace) return mode === "account" || mode === "notifications" ? mode : null;
+  if (!workspace)
+    return mode === "account" || mode === "notifications" ? mode : null;
   if (mode === "home" || mode === "apps" || mode === "site") return null;
   return mode;
 }
 
 /** The sidebars that sit beside the page, one per mode that has one. */
-type Panel = "chat" | "artifacts" | "agents" | "code" | "notifications" | "people" | "workspace" | "account";
+type Panel =
+  | "chat"
+  | "artifacts"
+  | "agents"
+  | "code"
+  | "notifications"
+  | "people"
+  | "workspace"
+  | "account";
 
 /** Each sidebar's name, for the button that opens it on a phone. */
 const MODE_MENU: Record<Panel, string> = {
@@ -1897,14 +2801,25 @@ const MODE_MENU: Record<Panel, string> = {
 /** Whether a key press happened in something you type into, where Ctrl B is the editor's. */
 function typing(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || target.closest("input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='textbox']") != null;
+  return (
+    target.isContentEditable ||
+    target.closest(
+      "input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='textbox']",
+    ) != null
+  );
 }
 
 /** Ctrl B (⌘B on a Mac) shows or hides the sidebar, except while typing. */
 function useSidebarShortcut(toggle: () => void) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== "b" || event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey)) return;
+      if (
+        event.key.toLowerCase() !== "b" ||
+        event.altKey ||
+        event.shiftKey ||
+        !(event.ctrlKey || event.metaKey)
+      )
+        return;
       if (event.defaultPrevented || typing(event.target)) return;
       event.preventDefault();
       toggle();
@@ -1918,7 +2833,13 @@ function useSidebarShortcut(toggle: () => void) {
  * Search or jump to: the command palette. On a computer it looks like the
  * field it opens, with its shortcut; on a phone, a magnifier.
  */
-function SearchButton({ onClick, place }: { onClick: () => void; place: "bar" | "sidebar" }) {
+function SearchButton({
+  onClick,
+  place,
+}: {
+  onClick: () => void;
+  place: "bar" | "sidebar";
+}) {
   const field = (
     <Button
       variant="outline"
@@ -1939,7 +2860,13 @@ function SearchButton({ onClick, place }: { onClick: () => void; place: "bar" | 
   if (place === "sidebar") return field;
   return (
     <>
-      <Button variant="ghost" size="icon-bar" aria-label="Search or jump to" onClick={onClick} className="md:hidden">
+      <Button
+        variant="ghost"
+        size="icon-bar"
+        aria-label="Search or jump to"
+        onClick={onClick}
+        className="md:hidden"
+      >
         <Search size={18} />
       </Button>
       {field}
@@ -1949,7 +2876,9 @@ function SearchButton({ onClick, place }: { onClick: () => void; place: "bar" | 
 
 /** The sidebar's shortcut, for the hint on its toggle. */
 function useSidebarKey(): string {
-  return sidebarKeyLabel(typeof navigator === "undefined" ? null : navigator.platform);
+  return sidebarKeyLabel(
+    typeof navigator === "undefined" ? null : navigator.platform,
+  );
 }
 
 /**
@@ -2007,7 +2936,11 @@ export function AppShell({
       ? { unread: live.chat, mentions: live.mentions ?? 0 }
       : (shell.chat ?? { unread: 0, mentions: 0 });
   const notificationsUnread = live?.inbox ?? shell.inbox?.unread ?? 0;
-  const unread = { notifications: notificationsUnread, chat: chatUnread.unread, mentions: chatUnread.mentions };
+  const unread = {
+    notifications: notificationsUnread,
+    chat: chatUnread.unread,
+    mentions: chatUnread.mentions,
+  };
 
   // Folding the sidebar away on a computer is remembered, so the next page is drawn the same from the server.
   const toggleSidebar = useCallback(() => {
@@ -2016,18 +2949,28 @@ export function AppShell({
       return;
     }
     setClosed((was) => {
-      document.cookie = sidebarCookie(!was, window.location.protocol === "https:");
+      document.cookie = sidebarCookie(
+        !was,
+        window.location.protocol === "https:",
+      );
       return !was;
     });
   }, []);
-  useSidebarShortcut(useCallback(() => {
-    if (panel) toggleSidebar();
-  }, [panel, toggleSidebar]));
+  useSidebarShortcut(
+    useCallback(() => {
+      if (panel) toggleSidebar();
+    }, [panel, toggleSidebar]),
+  );
 
   const inline = panel != null && !closed;
   const sidebarNode = () => {
     if (!panel) return null;
-    if (!ws) return panel === "notifications" ? <NotificationsSidebar counts={shell.inbox ?? null} /> : <AccountSidebar username={user.username} />;
+    if (!ws)
+      return panel === "notifications" ? (
+        <NotificationsSidebar counts={shell.inbox ?? null} />
+      ) : (
+        <AccountSidebar username={user.username} />
+      );
     switch (panel) {
       case "code":
         return <CodeSidebar user={user} shell={shell} missing={missing} />;
@@ -2036,7 +2979,14 @@ export function AppShell({
       case "artifacts":
         return <FoliosSidebar slug={ws.slug} />;
       case "agents":
-        return <AgentsSidebar slug={ws.slug} shellAgents={shell.agents ?? null} code={code} owner={ws.role === "owner"} />;
+        return (
+          <AgentsSidebar
+            slug={ws.slug}
+            shellAgents={shell.agents ?? null}
+            code={code}
+            owner={ws.role === "owner"}
+          />
+        );
       case "notifications":
         return <NotificationsSidebar counts={shell.inbox ?? null} />;
       case "people":
@@ -2050,7 +3000,8 @@ export function AppShell({
   const sidebarKey = useSidebarKey();
   // Search or jump to sits at the top of the sidebar, except in Chat and
   // Artifacts, whose sidebars search their own lists: there it stays in the bar.
-  const sidebarSearch = panel != null && panel !== "chat" && panel !== "artifacts";
+  const sidebarSearch =
+    panel != null && panel !== "chat" && panel !== "artifacts";
   // The sidebar's head: the workspace and its switcher, the way to fold the
   // sidebar or close the drawer, and search, which opens the palette.
   const sidebarTop = (inDrawer: boolean) => (
@@ -2059,19 +3010,35 @@ export function AppShell({
         {ws ? (
           <WorkspaceSwitcher user={user} workspace={ws} />
         ) : (
-          <Link to="/" aria-label="g1t" className="mr-auto flex h-9 items-center rounded-md px-2">
+          <Link
+            to="/"
+            aria-label="g1t"
+            className="mr-auto flex h-9 items-center rounded-md px-2"
+          >
             <Logo className="text-[1.125rem]" />
           </Link>
         )}
         {inDrawer ? (
-          <Button type="button" aria-label="Close menu" onClick={() => setDrawer(false)} variant="ghost" size="icon-sm" className="text-faint">
+          <Button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => setDrawer(false)}
+            variant="ghost"
+            size="icon-sm"
+            className="text-faint"
+          >
             <X size={16} />
           </Button>
         ) : (
-          <SidebarTrigger hint={`Hide the sidebar (${sidebarKey})`} className="text-faint" />
+          <SidebarTrigger
+            hint={`Hide the sidebar (${sidebarKey})`}
+            className="text-faint"
+          />
         )}
       </div>
-      {sidebarSearch && <SearchButton place="sidebar" onClick={() => setPalette(true)} />}
+      {sidebarSearch && (
+        <SearchButton place="sidebar" onClick={() => setPalette(true)} />
+      )}
     </SidebarHeader>
   );
 
@@ -2079,14 +3046,31 @@ export function AppShell({
   const conversation = isConversation(going ?? pathname);
   // Where the page panel starts: 8px past the rail (56px), or 8px past the sidebar (56 + 240px) when it is open.
   // The page starts where the rail (3.5rem) and, open, the sidebar (15rem) end.
-  const pad = ws ? (inline ? "md:pl-14 lg:pl-[18.5rem]" : "md:pl-14") : inline ? "lg:pl-[15rem]" : "";
+  const pad = ws
+    ? inline
+      ? "md:pl-14 lg:pl-[18.5rem]"
+      : "md:pl-14"
+    : inline
+      ? "lg:pl-[15rem]"
+      : "";
 
   return (
-    <SidebarProvider open={!closed} onOpenChange={(open) => setClosed(!open)} openMobile={drawer} onOpenMobileChange={setDrawer} toggleSidebar={toggleSidebar}>
+    <SidebarProvider
+      open={!closed}
+      onOpenChange={(open) => setClosed(!open)}
+      openMobile={drawer}
+      onOpenMobileChange={setDrawer}
+      toggleSidebar={toggleSidebar}
+    >
       <Progress />
       {ws && (
         <div className="fixed inset-y-0 left-0 z-40 hidden md:block">
-          <Rail workspace={ws} pins={shell.pins ?? []} unread={unread} account={<AccountMenu user={user} />} />
+          <Rail
+            workspace={ws}
+            pins={shell.pins ?? []}
+            unread={unread}
+            account={<AccountMenu user={user} />}
+          />
         </div>
       )}
       {panel && (
@@ -2102,7 +3086,10 @@ export function AppShell({
       {/* The drawer is a sheet: a dialog that holds focus, closes on Escape or
           a tap outside, and gives focus back to the button that opened it. */}
       {panel && (
-        <SidebarMobile title={`${MODE_MENU[panel]} menu`} className="pb-[env(safe-area-inset-bottom)] max-md:[&_nav_a]:min-h-10">
+        <SidebarMobile
+          title={`${MODE_MENU[panel]} menu`}
+          className="pb-[env(safe-area-inset-bottom)] max-md:[&_nav_a]:min-h-10"
+        >
           {sidebarTop(true)}
           <div className="min-h-0 grow">{sidebarNode()}</div>
         </SidebarMobile>
@@ -2124,31 +3111,55 @@ export function AppShell({
               />
             )}
             {ws && (
-              <span className={`flex min-w-0 shrink items-center gap-1.5 ${inline ? "lg:hidden" : ""}`}>
+              <span
+                className={`flex min-w-0 shrink items-center gap-1.5 ${inline ? "lg:hidden" : ""}`}
+              >
                 <WorkspaceSwitcher user={user} workspace={ws} compact />
                 <span aria-hidden="true" className="text-line-strong">
                   /
                 </span>
               </span>
             )}
-            <Breadcrumbs pathname={pathname} missing={missing} repo={shell.repo} workspace={ws?.slug ?? null} />
+            <Breadcrumbs
+              pathname={pathname}
+              missing={missing}
+              repo={shell.repo}
+              workspace={ws?.slug ?? null}
+            />
             {/* Search, then what's yours (spend, Ask g1t), then the bell and Create new: one height, one rhythm. */}
             <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
               {/* With the sidebar open, search is at its top. */}
-              <span className={`flex ${inline && sidebarSearch ? "lg:hidden" : ""}`}>
+              <span
+                className={`flex ${inline && sidebarSearch ? "lg:hidden" : ""}`}
+              >
                 <SearchButton place="bar" onClick={() => setPalette(true)} />
               </span>
               {/* Your spend this month, or the workspace's for owners and billing managers; on a phone it is on Spend. */}
               {ws && (
                 <span className="flex max-md:hidden">
-                  <SpendPill slug={ws.slug} mayWorkspace={ws.role === "owner" || !!ws.org_roles?.includes("billing_manager")} />
+                  <SpendPill
+                    slug={ws.slug}
+                    mayWorkspace={
+                      ws.role === "owner" ||
+                      !!ws.org_roles?.includes("billing_manager")
+                    }
+                  />
                 </span>
               )}
               {ws && <AskG1tButton slug={ws.slug} />}
-              <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5 max-md:hidden" />
+              <Separator
+                orientation="vertical"
+                className="mx-1 data-[orientation=vertical]:h-5 max-md:hidden"
+              />
               {/* On a phone, Notifications is in the bottom bar. */}
               <span className="flex max-md:hidden">
-                <NotificationsBell counts={shell.inbox ? { ...shell.inbox, unread: notificationsUnread } : null} />
+                <NotificationsBell
+                  counts={
+                    shell.inbox
+                      ? { ...shell.inbox, unread: notificationsUnread }
+                      : null
+                  }
+                />
               </span>
               <CreateMenu shell={shell} />
               {/* Without a workspace there is no rail: the account is here. */}
@@ -2156,13 +3167,31 @@ export function AppShell({
             </div>
           </header>
           {banner}
-          <main id="content" tabIndex={-1} {...leaving} className={`min-w-0 grow outline-none ${leaving.className}`}>
+          <main
+            id="content"
+            tabIndex={-1}
+            {...leaving}
+            className={`min-w-0 grow outline-none ${leaving.className}`}
+          >
             <InMain.Provider value={true}>{children}</InMain.Provider>
           </main>
         </div>
       </div>
-      {ws && <BottomBar user={user} workspace={ws} pins={shell.pins ?? []} unread={unread} onReselect={panel ? () => setDrawer(true) : undefined} />}
-      <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} repo={shell.repo ? `${shell.repo.namespace}/${shell.repo.name}` : null} />
+      {ws && (
+        <BottomBar
+          user={user}
+          workspace={ws}
+          pins={shell.pins ?? []}
+          unread={unread}
+          onReselect={panel ? () => setDrawer(true) : undefined}
+        />
+      )}
+      <CommandPalette
+        open={palette}
+        onOpenChange={setPalette}
+        commands={commands}
+        repo={shell.repo ? `${shell.repo.namespace}/${shell.repo.name}` : null}
+      />
     </SidebarProvider>
   );
 }
@@ -2173,7 +3202,12 @@ function CreateMenu({ shell }: { shell: ShellData }) {
     <DropdownMenu>
       <Hint label="Create new">
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="bar" aria-label="Create new" className="gap-0.5 px-1.5 text-fg/90">
+          <Button
+            variant="ghost"
+            size="bar"
+            aria-label="Create new"
+            className="gap-0.5 px-1.5 text-fg/90"
+          >
             <Plus size={17} className="max-md:size-5" />
             <ChevronDown size={12} className="text-faint max-md:hidden" />
           </Button>
@@ -2182,9 +3216,13 @@ function CreateMenu({ shell }: { shell: ShellData }) {
       <DropdownMenuContent align="end" className="min-w-52">
         {shell.repo && (
           <>
-            <DropdownMenuLabel className="truncate">In {shell.repo.name}</DropdownMenuLabel>
+            <DropdownMenuLabel className="truncate">
+              In {shell.repo.name}
+            </DropdownMenuLabel>
             <DropdownMenuItem asChild>
-              <Link to={`/${shell.repo.namespace}/${shell.repo.name}/issues/new`}>
+              <Link
+                to={`/${shell.repo.namespace}/${shell.repo.name}/issues/new`}
+              >
                 <CircleDot />
                 New issue
               </Link>
@@ -2201,12 +3239,6 @@ function CreateMenu({ shell }: { shell: ShellData }) {
           </>
         )}
         <DropdownMenuItem asChild>
-          <Link to="/?agent=new">
-            <Sparkles />
-            Put an agent on it
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
           <Link to="/new">
             <Box />
             New project
@@ -2218,16 +3250,13 @@ function CreateMenu({ shell }: { shell: ShellData }) {
             Import from GitHub
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link to="/workspaces/new">
-            <Users />
-            New workspace
-          </Link>
-        </DropdownMenuItem>
-        {/* A team in the workspace you are in, for whoever it lets create one. */}
+        {/* A team in the workspace you are in, for whoever it lets create one. A new workspace is made from the workspace switcher in the rail. */}
+        {shell.workspace && <DropdownMenuSeparator />}
         {shell.workspace &&
-          (mayCreateTeams(shell.workspace.team_creation, shell.workspace.role) ? (
+          (mayCreateTeams(
+            shell.workspace.team_creation,
+            shell.workspace.role,
+          ) ? (
             <DropdownMenuItem asChild>
               <Link to={`/${shell.workspace.slug}/-/teams/new`}>
                 <UsersRound />
@@ -2238,7 +3267,9 @@ function CreateMenu({ shell }: { shell: ShellData }) {
             <DropdownMenuItem disabled>
               <UsersRound />
               New team
-              <span className="ml-auto pl-3 text-xs text-faint">Owners only</span>
+              <span className="ml-auto pl-3 text-xs text-faint">
+                Owners only
+              </span>
             </DropdownMenuItem>
           ))}
       </DropdownMenuContent>

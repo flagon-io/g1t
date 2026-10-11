@@ -14,6 +14,7 @@
 import type { FailureCode, InstallRequest, InstallRequestStatus, ListingKind, Result } from "@g1t/contracts";
 import { CONNECTORS } from "@g1t/contracts/connectors";
 import { ANSWERED_REQUESTS_DAYS, MAX_OPEN_REQUESTS, extensionById, listingRef, parseListing } from "@g1t/contracts/marketplace";
+import { parsePluginRef } from "@g1t/contracts/claude-plugin";
 
 // Plain values rather than @g1t/contracts' helpers, so this file runs under Node's tests.
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
@@ -26,6 +27,19 @@ export type Listing = { ref: string; kind: ListingKind; id: string; name: string
 export function findListing(value: unknown): Listing | null {
   const parsed = parseListing(value);
   if (!parsed) return null;
+  if (parsed.kind === "plugin") {
+    const ref = parsePluginRef(parsed.id);
+    return ref ? { ref: listingRef("plugin", parsed.id), kind: "plugin", id: parsed.id, name: ref.name } : null;
+  }
+  if (parsed.kind === "skill") {
+    const [plugin, skill] = parsed.id.split("/");
+    const ref = parsePluginRef(plugin);
+    return ref && skill ? { ref: listingRef("skill", parsed.id), kind: "skill", id: parsed.id, name: `${ref.name}:${skill}` } : null;
+  }
+  if (parsed.kind === "connector") {
+    const connector = CONNECTORS.find((c) => c.id === parsed.id && c.mcp);
+    return connector ? { ref: listingRef("connector", connector.id), kind: "connector", id: connector.id, name: connector.name } : null;
+  }
   if (parsed.kind === "extension") {
     const extension = extensionById(parsed.id);
     return extension?.status === "available" ? { ref: listingRef("extension", extension.id), kind: "extension", id: extension.id, name: extension.name } : null;
@@ -179,14 +193,16 @@ export async function resolveListing(db: D1Database, workspaceId: string, listin
 
 /** Where a request is looked at in the workspace `slug`. */
 export function requestsPath(slug: string): string {
-  return `/${slug}/-/marketplace/requests`;
+  return `/${slug}/-/customize/requests`;
 }
 
 /** Where the thing a request asked for is, once added. */
 export function listingPath(slug: string, listing: string): string {
   const parsed = parseListing(listing);
-  if (parsed?.kind === "extension") return `/${slug}/-/marketplace/extensions/${parsed.id}`;
-  return `/${slug}/-/marketplace/integrations`;
+  if (parsed?.kind === "plugin") return `/${slug}/-/customize/plugins/${encodeURIComponent(parsed.id)}`;
+  if (parsed?.kind === "extension") return `/${slug}/-/customize/plugins/${encodeURIComponent(`${parsed.id}@g1t`)}`;
+  if (parsed?.kind === "skill") return `/${slug}/-/customize/skills`;
+  return `/${slug}/-/customize/connectors`;
 }
 
 /** What the person who asked is told when their request is answered. */
@@ -196,6 +212,20 @@ export function answerLine(request: InstallRequest, by: string): { title: string
   }
   return {
     title: `${request.name} was added to the workspace`,
-    body: request.kind === "extension" ? `${by} installed it.` : `${by} connected it.`,
+    body: request.kind === "extension" || request.kind === "plugin" ? `${by} installed it.` : request.kind === "skill" ? `${by} added it.` : `${by} connected it.`,
   };
+}
+
+/**
+ * After something was added from Customize: every open request for its
+ * listing is marked done. Telling the people who asked is index.ts's;
+ * here the rows change, so a listing added twice answers nothing new.
+ */
+export async function answerListing(ctx: { db: D1Database; workspaceId: string; viewer: { id: string; username: string } }, listing: string): Promise<Answered[]> {
+  try {
+    return await resolveListing(ctx.db, ctx.workspaceId, listing, { id: ctx.viewer.id, username: ctx.viewer.username });
+  } catch (error) {
+    console.error("agents: requests for a listing were not answered", listing, String(error));
+    return [];
+  }
 }

@@ -22,6 +22,7 @@ import { computerPorts } from "./computer.ts";
 export { abilitiesSection, saidText } from "./abilities-prompt.ts";
 import type { Definition } from "./definition.ts";
 import { callMcpTool } from "./mcp-client.ts";
+import { type ConnectorRow, type Deps as ConnectorDeps, asServer, headersFor, reaching, sealingKey, stateOf } from "./connectors.ts";
 import { type Row, isPersonal } from "./store.ts";
 import type { AbilityPorts, OutsideDone, OutsideItem } from "./tools.ts";
 
@@ -36,6 +37,8 @@ export type AbilityEnv = {
   RUNNER?: ServiceBinding;
   /** The site's address (https://g1t.sh), for links that leave g1t. */
   SITE_URL?: string;
+  /** Seals connectors' secrets (connectors.ts); without it, connectors that sign in can't be used. */
+  CONNECTORS_KEY?: string;
 };
 
 /** A call waiting to be allowed, as kept. */
@@ -86,6 +89,40 @@ export async function abilitiesFor(env: Pick<AbilityEnv, "INTEGRATIONS">, input:
   return resolveAbilities({ connectors: CONNECTORS, abilities: input.definition.abilities, autonomy: input.definition.autonomy, connected, personal: isPersonal(input.agent) });
 }
 
+/** What the connectors' secrets are sealed with, and where sign-ins come back to. */
+export async function connectorDeps(env: Pick<AbilityEnv, "CONNECTORS_KEY" | "SITE_URL">): Promise<ConnectorDeps> {
+  return { key: await sealingKey(env.CONNECTORS_KEY), site: siteUrl(env) };
+}
+
+/**
+ * The agent's abilities for a turn, with the workspace's connectors that
+ * reach it (docs.g1t.sh/guides/customize/, "Connectors") joined to its own
+ * MCP servers: every connected connector is an MCP source like them, so
+ * levels, Ask-first cards and the audit log treat both alike. `servers`
+ * is what the tool box is given; `connectors` the rows behind them, for
+ * their sign-ins.
+ */
+export async function abilitiesWithConnectors(
+  env: Pick<AbilityEnv, "INTEGRATIONS" | "DB">,
+  input: { agent: Row; definition: Definition; workspace: string; asker: User; teams: readonly string[] },
+): Promise<{ sections: AbilitySection[]; servers: McpServer[]; connectors: Map<string, ConnectorRow> }> {
+  const own = input.definition.abilities.mcp_servers ?? [];
+  const reach = await reaching(env.DB, input.agent.workspace_id, input.agent.id, input.teams).catch((error: unknown) => {
+    console.error("agents: connectors not read", input.agent.id, String(error));
+    return [] as Awaited<ReturnType<typeof reaching>>;
+  });
+  const rows = new Map<string, ConnectorRow>();
+  const servers: McpServer[] = [...own];
+  for (const { row } of reach) {
+    if (stateOf(row) !== "connected") continue;
+    rows.set(row.id, row);
+    servers.push(asServer(row));
+  }
+  const connected = await connectedConnectors(env, input.workspace, input.asker);
+  const sections = resolveAbilities({ connectors: CONNECTORS, abilities: { ...input.definition.abilities, mcp_servers: servers }, autonomy: input.definition.autonomy, connected, personal: isPersonal(input.agent) });
+  return { sections, servers, connectors: rows };
+}
+
 /** Where a request's card and a session's wait point: the Abilities tab. */
 export function abilitiesPath(workspace: string, handle: string): string {
   return `/${workspace}/-/agents/${handle}/abilities`;
@@ -109,9 +146,12 @@ export function abilityPorts(
     session: { id: string; title: string } | null;
     asker: { id: string | null; username: string | null };
     postCard: (card: MessageCard) => Promise<string | null>;
+    /** The workspace's connectors behind the agent's MCP servers, by server id (abilitiesWithConnectors). */
+    connectors?: Map<string, ConnectorRow>;
   },
 ): AbilityPorts {
   const integrations = integrationsClient(env.INTEGRATIONS);
+  let deps: Promise<ConnectorDeps> | null = null;
   const { agent, workspace } = input;
   const link = `${siteUrl(env)}/${workspace}/-/chat/${input.channel_id}`;
   return {
@@ -126,7 +166,15 @@ export function abilityPorts(
     // Personal connections to Linear, Jira and Sentry aren't available yet (connectors.ts says so), so nobody has one.
     askerConnected: async () => false,
     mcp: async (server, tool, args) => {
-      const done = await callMcpTool(server.url, tool.name, args);
+      let headers: Record<string, string> = {};
+      const row = input.connectors?.get(server.id);
+      if (row) {
+        deps ??= connectorDeps(env);
+        const signed = await headersFor(env.DB, await deps, row);
+        if (!signed) return { ok: false, code: "error", message: `${row.title} needs to be signed in again by an owner (Customize → Connectors).` };
+        headers = signed;
+      }
+      const done = await callMcpTool(server.url, tool.name, args, undefined, headers);
       return done.ok ? { ok: true, value: done.text } : { ok: false, code: "error", message: done.message };
     },
     async askFirst({ ability, source, tool, args, summary, note }) {
@@ -277,7 +325,11 @@ export async function pendingRequests(db: D1Database, sessionId: string): Promis
  * gone since). What the agent is told.
  */
 export async function runAllowed(env: AbilityEnv, request: AbilityRequestRow, agent: Row, definition: Definition, by: User): Promise<{ ok: boolean; message: string }> {
-  const sections = await abilitiesFor(env, { agent, definition, workspace: request.workspace, asker: by });
+  const teams = await identityClient(env.IDENTITY)
+    .agentTeams(request.workspace, agent.id)
+    .then((t) => t.map((x) => x.slug))
+    .catch(() => [] as string[]);
+  const { sections, servers, connectors } = await abilitiesWithConnectors(env, { agent, definition, workspace: request.workspace, asker: by, teams });
   const found = findAbility(sections, request.ability);
   if (!found) return { ok: false, message: `The ability ${request.ability} is no longer there.` };
   if (!found.source.connected) return { ok: false, message: `${found.source.name} is no longer connected.` };
@@ -288,7 +340,7 @@ export async function runAllowed(env: AbilityEnv, request: AbilityRequestRow, ag
   } catch {
     return { ok: false, message: "The call's arguments couldn't be read." };
   }
-  const ports = abilityPorts(env, { agent, workspace: request.workspace, channel_id: request.channel_id, session: null, asker: { id: by.id, username: by.username }, postCard: async () => null });
+  const ports = abilityPorts(env, { agent, workspace: request.workspace, channel_id: request.channel_id, session: null, asker: { id: by.id, username: by.username }, postCard: async () => null, connectors });
   const reference = String(args.reference ?? "").trim();
   try {
     switch (request.tool) {
