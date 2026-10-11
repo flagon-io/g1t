@@ -753,9 +753,9 @@ them within reach of your thumb:
 
 | | What it does |
 | --- | --- |
-| **The bar along the bottom** | **Home**, **Chat**, **Notifications**, **Agents** and **Code** (for members with Code access), each with what is unread, and **More**. It steps aside while the keyboard is up and inside a conversation. |
+| **The bar along the bottom** | **Home**, **Chat**, **Notifications**, **Agents** and **Code** (for members with Code access), each with what is unread, and **More**. It runs flat along the bottom edge, as the rail stands beside the page on a computer, and the page fills the screen above it. The app you are in is marked as on the rail. It steps aside while the keyboard is up and inside a conversation. |
 | **More** | A panel above the bar with **All apps**, the [Marketplace](/guides/marketplace/), your pinned apps, **Artifacts**, **People**, **Workspace**, and **You and help**: your status, profile and settings, [appearance](#appearance), the documentation, support, status, the keyboard's shortcuts and signing out. |
-| **The sidebar button**, at the left of the page's header | Opens the sidebar of the app you are in from the left: the same lists and links as on a computer. Tap outside it, or open a page, and it closes. |
+| **The sidebar button**, at the left of the page's header | Opens the sidebar of the app you are in from the left, most of the screen wide: the same lists and links as on a computer. Tap outside it, or open a page, and it closes. |
 | **The tab you are already on** | Tap it again to open that app's sidebar too. |
 | **The workspace's name** in the page's header | Switches workspace, or opens your profile or settings. |
 

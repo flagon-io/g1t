@@ -21,6 +21,10 @@ export type Palette = {
   accentLow: string;
   /** Text on an accent-filled button. */
   onAccent: string;
+  /** The rail and the bottom bar (apps/web app.css `--color-rail`). */
+  rail: string;
+  /** What marks the app you are in on the rail (`--color-sidebar-accent`). */
+  railAccent: string;
   success: string;
   successLow: string;
   info: string;
@@ -43,6 +47,8 @@ export const dark: Palette = {
   accentDim: "#8577e0",
   accentLow: "#221e38",
   onAccent: "#0f0f11",
+  rail: "#050507",
+  railAccent: "#1c1c20",
   success: "#86efc4",
   successLow: "#10302a",
   info: "#8ab4ff",
@@ -65,6 +71,8 @@ export const light: Palette = {
   accentDim: "#9584dc",
   accentLow: "#ece8fb",
   onAccent: "#ffffff",
+  rail: "#ffffff",
+  railAccent: "#e1e1de",
   success: "#0d7a52",
   successLow: "#e2f4ec",
   info: "#2160cc",

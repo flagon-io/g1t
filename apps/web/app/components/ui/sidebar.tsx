@@ -160,7 +160,8 @@ export function SidebarMobile({
           event.preventDefault();
           (event.currentTarget as HTMLElement | null)?.focus();
         }}
-        className={cn("group/sidebar w-[min(var(--sidebar-width),86vw)] border-sidebar-border bg-sidebar px-0 text-fg", className)}
+        // A phone's drawer takes most of the screen: names read whole and rows reach a thumb, with the page still showing beside it.
+        className={cn("group/sidebar w-[min(22rem,86vw)] border-sidebar-border bg-sidebar px-0 text-fg", className)}
         {...props}
       >
         <SheetTitle className="sr-only">{title}</SheetTitle>
@@ -235,7 +236,7 @@ export function SidebarFooter({ className, ...props }: ComponentProps<"div">) {
 }
 
 export function SidebarSeparator({ className, ...props }: ComponentProps<typeof Separator>) {
-  return <Separator data-slot="sidebar-separator" className={cn("mx-2 my-2 w-auto bg-sidebar-border", className)} {...props} />;
+  return <Separator data-slot="sidebar-separator" className={cn("mx-2 my-2 bg-sidebar-border data-[orientation=horizontal]:w-auto", className)} {...props} />;
 }
 
 /** What scrolls: the groups, between the header and the footer. */

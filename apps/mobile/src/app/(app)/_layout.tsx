@@ -1,7 +1,9 @@
 import * as Notifications from "expo-notifications";
 import { Tabs, router, useGlobalSearchParams } from "expo-router";
 import { Bell, Bot, Code2, House, Menu, MessagesSquare } from "lucide-react-native";
-import { useEffect, useRef } from "react";
+import type { LucideIcon } from "lucide-react-native";
+import { type ComponentType, useEffect, useRef } from "react";
+import { StyleSheet, View } from "react-native";
 
 import { Banner } from "@/components/chat/banner";
 import { FeedProvider, useFeed } from "@/lib/feed";
@@ -44,29 +46,42 @@ function AppTabs() {
       initialRouteName="chat"
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.line },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+        // The site's phone bar: flat along the bottom on the rail's colour, the
+        // app you are in marked as the rail marks it (apps/web components/mobile.tsx).
+        tabBarActiveTintColor: colors.fg,
+        tabBarInactiveTintColor: colors.faint,
+        tabBarStyle: { backgroundColor: colors.rail, borderTopColor: colors.line, borderTopWidth: StyleSheet.hairlineWidth, elevation: 0 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "500" },
+        tabBarIconStyle: { width: 44, height: 28 },
       }}
     >
       <Tabs.Screen name="index" options={{ href: null }} />
-      <Tabs.Screen name="home" options={{ title: "Home", tabBarIcon: ({ color, size }) => <House color={color} size={size} /> }} />
+      <Tabs.Screen name="home" options={{ title: "Home", tabBarIcon: (props) => <BarIcon icon={House} {...props} /> }} />
       <Tabs.Screen
         name="chat"
         options={{
           title: "Chat",
-          tabBarIcon: ({ color, size }) => <MessagesSquare color={color} size={size} />,
+          tabBarIcon: (props) => <BarIcon icon={MessagesSquare} {...props} />,
           tabBarBadge: badge,
           tabBarBadgeStyle: { backgroundColor: mentions > 0 ? colors.accent : colors.lineStrong, color: mentions > 0 ? colors.onAccent : colors.fg, fontSize: 11 },
         }}
       />
-      <Tabs.Screen name="notifications" options={{ title: "Notifications", tabBarIcon: ({ color, size }) => <Bell color={color} size={size} /> }} />
-      <Tabs.Screen name="agents" options={{ title: "Agents", tabBarIcon: ({ color, size }) => <Bot color={color} size={size} /> }} />
-      <Tabs.Screen name="code" options={{ title: "Code", href: code ? undefined : null, tabBarIcon: ({ color, size }) => <Code2 color={color} size={size} /> }} />
+      <Tabs.Screen name="notifications" options={{ title: "Notifications", tabBarIcon: (props) => <BarIcon icon={Bell} {...props} /> }} />
+      <Tabs.Screen name="agents" options={{ title: "Agents", tabBarIcon: (props) => <BarIcon icon={Bot} {...props} /> }} />
+      <Tabs.Screen name="code" options={{ title: "Code", href: code ? undefined : null, tabBarIcon: (props) => <BarIcon icon={Code2} {...props} /> }} />
       <Tabs.Screen name="customize" options={{ href: null }} />
-      <Tabs.Screen name="more" options={{ title: "More", tabBarIcon: ({ color, size }) => <Menu color={color} size={size} /> }} />
+      <Tabs.Screen name="more" options={{ title: "More", tabBarIcon: (props) => <BarIcon icon={Menu} {...props} /> }} />
     </Tabs>
+  );
+}
+
+/** A tab's icon: on the rail's accent in a 10px-rounded square when it is the tab you are in. */
+function BarIcon({ icon: Icon, focused }: { icon: LucideIcon | ComponentType<{ color: string; size: number }>; focused: boolean }) {
+  const colors = useColors();
+  return (
+    <View style={{ width: 44, height: 28, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: focused ? colors.railAccent : "transparent" }}>
+      <Icon color={focused ? colors.fg : colors.muted} size={20} />
+    </View>
   );
 }
 
