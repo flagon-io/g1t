@@ -487,7 +487,7 @@ connected connectors that reach it, with what signs them in. The runner
 writes the plugins to disk and starts Claude Code with each as a plugin
 directory, puts the skills where it reads them, and merges the connectors
 into its MCP configuration. See
-[plugins and skills on runners](/guides/self-hosted-runners/#plugins-and-skills-on-runners).
+[what a run gets from Customize](/guides/self-hosted-runners/#what-a-run-gets-from-customize).
 
 Chat replies and [sessions](/guides/agent-sessions/) on g1t get the same
 things in their own way: skills through `use_skill`, connectors as
@@ -497,10 +497,12 @@ abilities with levels.
 
 Customize is in the REST API under `/workspaces/{workspace}/customize/…`
 and in the MCP server as the `customize` tool, one action per thing an
-owner does here: marketplaces, Discover, plugins and installs, connectors
-with their sign-ins and grants. Reading needs `workspace:read`; adding,
-installing, connecting and granting need `workspace:admin`, as a person
-who owns the workspace. The bundle a runner reads,
+owner does here: marketplaces, Discover, plugins and installs (installing,
+switching off, updating and uninstalling), connectors with their keys and
+grants. Reading needs `workspace:read`; adding, installing, connecting and
+granting need `workspace:admin`, as a person who owns the workspace.
+Signing a connector in with OAuth needs a browser, so it stays on the
+site. The bundle a runner reads,
 `GET /workspaces/{workspace}/customize/bundle`, needs `agents:run` and is
 read with a job's agent token, since it carries the connectors' sign-ins.
 See the [MCP tools](/reference/mcp/) and the [API reference](/reference/api/).

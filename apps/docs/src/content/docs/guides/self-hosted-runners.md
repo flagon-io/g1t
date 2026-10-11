@@ -203,32 +203,49 @@ a runner needs to take it (`self-hosted` is always one).
   that credential, so budgets, caps and the audit log work as before. With
   your own [model provider](/guides/models/), g1t charges nothing for the
   run; otherwise the model is paid as usual and the machine is free.
-- Agent work needs an image with git, Node and the agent's CLI: register
-  the runner with `--agent-image` and an image of yours that has them, or
-  run it with `--no-docker` on a Linux machine set aside for it, where
-  `/work` can be written. g1t does not publish an agent image yet.
+- Agent work needs an image with git, Node, `tar` and the agent's CLI:
+  register the runner with `--agent-image` and an image of yours that has
+  them, or run it with `--no-docker` on a Linux machine set aside for it,
+  where `/work` can be written. g1t does not publish an agent image yet.
 - [Guardrails](/guides/guardrails/) still apply to what the agent does, but
   their network list cannot be enforced on your machine. The run's session
   says so when it starts.
 
 A project can have its own setting, or follow the workspace's.
 
-## Plugins and skills on runners
+## What a run gets from Customize
 
-When g1t's work runs Claude Code on a runner, the job gets what the
-workspace set up in [Customize](/guides/customize/), as the job's agent
-would have it. Before the first step, the runner reads the workspace's
-bundle with the job's short-lived credential, once per job:
+When g1t's work runs Claude Code on a runner (on g1t's own machines too),
+the job gets what the workspace set up in [Customize](/guides/customize/),
+as the job's agent would have it. Before Claude Code starts, the runner
+reads the workspace's bundle with the job's short-lived agent credential,
+once per job, and makes it ready:
 
-| In the bundle | What the runner does |
-| --- | --- |
-| Installed plugins that are switched on, each with where to fetch it and the commit it was installed at | Fetches each at that commit and starts Claude Code with it as a plugin directory, so its skills, agents, commands, hooks, LSP servers and `bin/` are all there |
-| The library's own skills that reach the agent, as files | Writes each skill's folder where Claude Code reads skills. A plugin's skills come with the plugin itself |
-| The connectors that reach the agent and are connected, with the headers that sign them in | Merges them into Claude Code's MCP configuration |
+| In the bundle | What the runner does | In Claude Code |
+| --- | --- | --- |
+| Installed plugins that are switched on, each with where to fetch it and the commit it is pinned to | Fetches each at that commit (GitHub's archive of the commit, a clone of the repository here, or the zip the marketplace names) into `/work/.g1t/plugins/<name>/` and passes it with `--plugin-dir`, one flag per plugin | Its skills as `/<plugin>:<skill>`, its subagents as `<plugin>:<agent>`, and its hooks, LSP servers, output styles and `bin/`, which run only here and never on g1t's own agents |
+| The library's own skills that reach the agent, as files | Writes them as one more plugin, `g1t-library`, with a `skills/<name>/` folder each, passed with `--plugin-dir` too. A plugin's skills come with the plugin itself | `/g1t-library:<skill>` |
+| The connectors that reach the agent and are connected, with the headers that sign them in | Merges each into the `--mcp-config` file's `mcpServers`, by its name, beside g1t's own server | `mcp__<name>__<tool>` |
 
-The bundle carries the connectors' sign-ins, so only a job's credential
-reads it: `GET /workspaces/{workspace}/customize/bundle`, scope
-`agents:run`. See [what a run gets](/guides/customize/#what-a-run-gets).
+The run's session gets one line saying what was loaded: *Loaded 2 plugins,
+1 library skill and 3 connectors from the workspace's Customize.* A plugin
+that could not be fetched, or a bundle that could not be read, is named
+there and the run goes on without it; nothing from Customize fails a run.
+Plugins from GitHub need `tar` on the machine.
+
+A run on a fork's head loads none of the fork's own settings, hooks, MCP
+servers or commands ([guardrails](/guides/guardrails/)). The workspace's
+plugins and connectors are the workspace's, not the checkout's, so they are
+still passed and merged; but every skill and command is switched off on
+such a run, the plugins' and the library's included, so an agent cannot
+invoke them there.
+
+The bundle carries the connectors' sign-ins, so only a job's agent
+credential or a workspace's token reads it, never a person's:
+[`GET /workspaces/{workspace}/customize/bundle`](/reference/api/customize/customize-bundle/),
+scope `agents:run`. g1t never keeps or logs it, and the runner keeps the
+keys it brought out of the session. See
+[what a run gets](/guides/customize/#what-a-run-gets).
 
 ## Billing
 
@@ -353,6 +370,7 @@ running fails. Runners offline for 14 days are removed by themselves.
 | Remove a runner | [`DELETE …/actions/runners/{id}`](/reference/api/runners/remove-runner-for-workspace/) | `remove_runner` | `runners:admin` |
 | Groups | [`GET`](/reference/api/runners/list-runner-groups/), [`POST`](/reference/api/runners/create-runner-group/), [`PATCH`](/reference/api/runners/update-runner-group/), [`DELETE`](/reference/api/runners/delete-runner-group/) `/workspaces/{workspace}/actions/runner-groups` | `list_runner_groups`, `create_runner_group`, `update_runner_group`, `delete_runner_group` | `runners:read`, `runners:admin` |
 | Where work runs | [`GET`](/reference/api/runners/get-runner-settings-for-workspace/), [`PATCH`](/reference/api/runners/update-runner-settings-for-workspace/) `…/actions/runner-settings` | `get_runner_settings`, `update_runner_settings` | `runners:read`, `runners:admin` |
+| What a run gets from Customize | [`GET /workspaces/{workspace}/customize/bundle`](/reference/api/customize/customize-bundle/) | `customize` tool, `bundle` | `agents:run`, with a job's agent token |
 
 The [Agent preset](/guides/authentication/#scopes) does not include
 `runners:read`.

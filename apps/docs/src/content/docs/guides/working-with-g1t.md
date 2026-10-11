@@ -616,6 +616,22 @@ works the same way there, with the same short-lived credentials, and its
 model calls still go through g1t; the machine time is free. g1t's network
 guardrails cannot be enforced on your machines, and the run says so.
 
+## What a run gets from Customize
+
+Wherever it runs, a run of @g1t is Claude Code, and it starts with what the
+workspace set up in [Customize](/guides/customize/), as the run's agent
+would have it: every installed plugin that is switched on, fetched at the
+commit it is pinned to and loaded as a plugin, so its skills are
+`/<plugin>:<skill>`; the library's own skills that reach the agent, as a
+plugin called `g1t-library`, so each is `/g1t-library:<skill>`; and the
+connectors that reach the agent and are signed in, as MCP servers beside
+g1t's own, so their tools are `mcp__<name>__<tool>`. A plugin's hooks, LSP
+servers, output styles and `bin/` run in that sandbox and never on g1t's
+own agents. The session's first lines say what was loaded; a plugin that
+could not be fetched is named there and the run goes on without it. See
+[what a run gets from Customize](/guides/self-hosted-runners/#what-a-run-gets-from-customize)
+for how the runner does it.
+
 ## Who can run agents
 
 Putting an agent to work (assigning it, mentioning it, asking it for a

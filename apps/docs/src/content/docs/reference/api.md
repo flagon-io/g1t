@@ -242,3 +242,4 @@ Times are RFC 3339 in UTC, with milliseconds, such as
 | [Secrets and variables](/reference/api/secrets-and-variables/list-actions-secrets/) | Values workflows and deployments read. |
 | [Webhooks](/reference/api/webhooks/list-webhooks/) | Events sent to your own address. |
 | [Integrations](/reference/api/integrations/list-integrations/) | Model providers, alert sources and issue trackers. |
+| [Customize](/reference/api/customize/list-marketplaces/) | What shapes a workspace's agents, in the formats Claude Code reads: the marketplaces it reads plugins from, Discover, installed plugins, connectors with their keys and grants, and the bundle a run's Claude Code loads. See [Customize](/guides/customize/). |

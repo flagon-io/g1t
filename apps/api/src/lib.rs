@@ -12,6 +12,7 @@ mod audit;
 mod billing;
 mod blobs;
 mod checks;
+mod customize;
 mod deployments;
 mod deploy_keys;
 mod limits;
