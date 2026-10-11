@@ -300,8 +300,10 @@ mod tests {
         use std::process::Command;
         use std::time::{Duration, Instant};
 
-        let api = Api { base: "http://127.0.0.1:9".into(), job: "job_1".into(), token: "t".into() };
-        let mut log = Log::new(api, Vec::new());
+        // Offline: on a busy machine the step can outlast a batch of the log,
+        // and sending it to an address that is not there held the loop for
+        // seconds, past the grace this test measures.
+        let mut log = Log::new(Api::offline(), Vec::new());
         let mut command = Command::new("sh");
         command.args(["-c", "trap 'echo cleaned up; exit 3' INT; echo started; while true; do sleep 0.1; done"]);
         let began = Instant::now();
