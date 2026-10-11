@@ -260,6 +260,68 @@ function commandAsSkill(name: string, text: string): SkillFile[] {
 
 // ── Installing ───────────────────────────────────────────────────────────
 
+/**
+ * Spreads a plugin's skills into the library under its name: `skills/<name>`
+ * folders and `commands/*.md` files, each a version of the skill of its
+ * name (a new version when it is there already, moving its attachments),
+ * cut to what a version holds. Skills the plugin no longer has are
+ * archived. What couldn't be written is named.
+ */
+async function spreadSkills(db: D1Database, workspaceId: string, ref: { ref: string; marketplace: string }, plugin: ReadPlugin, by: string, now: Date): Promise<{ skills: Installed["skills"]; problems: string[]; archived: string[] }> {
+  const skills: Installed["skills"] = [];
+  const problems: string[] = [];
+  const folders: { name: string; path: string; files: SkillFile[] }[] = [
+    ...plugin.layout.skills.map((s) => ({ name: s.name, path: s.path, files: folder(plugin.files, s.path) })),
+    ...plugin.layout.commands.map((c) => ({ name: c.name, path: c.path, files: commandAsSkill(c.name, textOf(plugin.files, c.path) ?? "") })),
+  ];
+  const seen = new Set<string>();
+  for (const one of folders) {
+    const fitted = fitSkillFolder(one.files);
+    if (fitted.omitted.length) problems.push(`${one.path}: ${fitted.omitted.length} ${fitted.omitted.length === 1 ? "file" : "files"} left out to fit (${fitted.omitted.slice(0, 5).join(", ")}${fitted.omitted.length > 5 ? "…" : ""}); Claude Code on a runner gets the whole plugin.`);
+    const checked = checkSkillFolder(fitted.files, { expectName: one.name, lenient: true, limits: PLUGIN_SKILL_LIMITS });
+    if (!checked.ok) {
+      problems.push(`${one.path}: ${checked.message}`);
+      skills.push({ name: one.name, id: "", problem: checked.message });
+      continue;
+    }
+    if (seen.has(checked.skill.name.toLowerCase())) {
+      problems.push(`${one.path}: the plugin has two skills called ${checked.skill.name}.`);
+      continue;
+    }
+    seen.add(checked.skill.name.toLowerCase());
+    const existing = await skillByName(db, workspaceId, checked.skill.name, ref.ref);
+    const written = await writeVersion(db, {
+      workspaceId: workspaceId,
+      existing,
+      checked: checked.skill,
+      origin: { kind: "plugin", plugin: ref.ref, marketplace: ref.marketplace, path: one.path, sha: plugin.sha },
+      note: `From ${ref.ref}${plugin.sha ? ` at ${plugin.sha.slice(0, 8)}` : ""}${fitted.omitted.length ? ` (${fitted.omitted.length} large files left out)` : ""}`,
+      by: by,
+      now,
+      status: "published",
+      mirrored: false,
+      plugin: ref.ref,
+      move: () => true,
+    });
+    if (!written.ok) {
+      problems.push(`${one.path}: ${written.error.message}`);
+      skills.push({ name: checked.skill.name, id: "", problem: written.error.message });
+    } else skills.push({ name: checked.skill.name, id: written.value.id, problem: null });
+  }
+  // Gone from the plugin: archived, with their attachments.
+  const { results } = await db.prepare("SELECT id, name FROM skills WHERE workspace_id = ? AND plugin = ? AND archived_at IS NULL").bind(workspaceId, ref.ref).all<{ id: string; name: string }>();
+  const gone = results.filter((s) => !seen.has(s.name.toLowerCase()));
+  if (gone.length) {
+    const at = now.toISOString();
+    await db.batch([
+      db.prepare("UPDATE skills SET archived_at = ?, updated_by = ?, updated_at = ? WHERE id IN (SELECT value FROM json_each(?))").bind(at, by, at, JSON.stringify(gone.map((s) => s.id))),
+      db.prepare("DELETE FROM skill_attachments WHERE skill_id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(gone.map((s) => s.id))),
+    ]);
+  }
+  return { skills, problems, archived: gone.map((s) => s.name) };
+}
+
+
 export type InstallInput = {
   workspaceId: string;
   listing: PluginListing;
@@ -327,51 +389,56 @@ export async function install(db: D1Database, input: InstallInput): Promise<Resu
     throw error;
   }
   // Its skills, into the library under the plugin's name.
-  const skills: Installed["skills"] = [];
-  const problems = [...plugin.problems];
-  const folders: { name: string; path: string; files: SkillFile[] }[] = [
-    ...plugin.layout.skills.map((s) => ({ name: s.name, path: s.path, files: folder(plugin.files, s.path) })),
-    ...plugin.layout.commands.map((c) => ({ name: c.name, path: c.path, files: commandAsSkill(c.name, textOf(plugin.files, c.path) ?? "") })),
-  ];
-  const seen = new Set<string>();
-  for (const one of folders) {
-    const fitted = fitSkillFolder(one.files);
-    if (fitted.omitted.length) problems.push(`${one.path}: ${fitted.omitted.length} ${fitted.omitted.length === 1 ? "file" : "files"} left out to fit (${fitted.omitted.slice(0, 5).join(", ")}${fitted.omitted.length > 5 ? "…" : ""}); Claude Code on a runner gets the whole plugin.`);
-    const checked = checkSkillFolder(fitted.files, { expectName: one.name, lenient: true, limits: PLUGIN_SKILL_LIMITS });
-    if (!checked.ok) {
-      problems.push(`${one.path}: ${checked.message}`);
-      skills.push({ name: one.name, id: "", problem: checked.message });
-      continue;
-    }
-    if (seen.has(checked.skill.name.toLowerCase())) {
-      problems.push(`${one.path}: the plugin has two skills called ${checked.skill.name}.`);
-      continue;
-    }
-    seen.add(checked.skill.name.toLowerCase());
-    const existing = await skillByName(db, input.workspaceId, checked.skill.name, listing.ref);
-    const written = await writeVersion(db, {
-      workspaceId: input.workspaceId,
-      existing,
-      checked: checked.skill,
-      origin: { kind: "plugin", plugin: listing.ref, marketplace: listing.marketplace, path: one.path, sha: plugin.sha },
-      note: `From ${listing.ref}${plugin.sha ? ` at ${plugin.sha.slice(0, 8)}` : ""}${fitted.omitted.length ? ` (${fitted.omitted.length} large files left out)` : ""}`,
-      by: input.by,
-      now,
-      status: "published",
-      mirrored: false,
-      plugin: listing.ref,
-      move: () => true,
-    });
-    if (!written.ok) {
-      problems.push(`${one.path}: ${written.error.message}`);
-      skills.push({ name: checked.skill.name, id: "", problem: written.error.message });
-    } else skills.push({ name: checked.skill.name, id: written.value.id, problem: null });
-  }
+  const spread = await spreadSkills(db, input.workspaceId, listing, plugin, input.by, now);
+  const { skills } = spread;
+  const problems = [...plugin.problems, ...spread.problems];
   if (problems.length) await db.prepare("UPDATE plugin_installs SET problems = ? WHERE id = ?").bind(JSON.stringify(problems.slice(0, 50)), row.id).run();
   return ok({ install: installOut({ ...row, problems: JSON.stringify(problems.slice(0, 50)) }), plugin, skills });
 }
 
-/** Switches an install on or off: off, its skills leave agents' prompts and its connectors stop (the kill switch). */
+/**
+ * Reads an installed plugin again from its marketplace's current listing
+ * and brings the install to it: its skills get new versions (attachments
+ * follow), skills it no longer has are archived, its subagents and what it
+ * brought are rewritten, and the install's commit and version move. New
+ * remote servers are the caller's (connectors.ts). Nothing changes when
+ * the plugin is at the same commit already.
+ */
+export async function update(db: D1Database, input: InstallInput): Promise<Result<Installed & { unchanged: boolean }>> {
+  const now = input.now ?? new Date();
+  const { listing } = input;
+  const row = await installByRef(db, input.workspaceId, listing.ref);
+  if (!row) return fail("not_found", "That plugin isn't installed.");
+  const plan = fetchPlan(input.entry.source, input.marketplace.source, { pluginRoot: input.marketplace.pluginRoot, host: input.host });
+  if (plan.kind === "unsupported") return fail("invalid", plan.why);
+  if (plan.kind === "github" && plan.sha && plan.sha === row.sha) return ok({ install: installOut(row), plugin: readPlugin([], row.sha, input.entry), skills: [], unchanged: true });
+  const fetched = await fetchPlugin(plan, input.deps);
+  if (!fetched.ok) return fail("invalid", fetched.message);
+  if (fetched.sha && fetched.sha === row.sha) return ok({ install: installOut(row), plugin: readPlugin(fetched.files, fetched.sha, input.entry, fetched.omitted), skills: [], unchanged: true });
+  const plugin = readPlugin(fetched.files, fetched.sha, input.entry, fetched.omitted);
+  const spread = await spreadSkills(db, input.workspaceId, listing, plugin, input.by, now);
+  const problems = [...plugin.problems, ...spread.problems].slice(0, 50);
+  const at = now.toISOString();
+  const fresh: PluginRow = {
+    ...row,
+    display_name: plugin.manifest?.displayName ?? listing.display_name,
+    description: plugin.manifest?.description || listing.description,
+    version: plugin.manifest?.version ?? listing.version,
+    sha: plugin.sha,
+    fetch: JSON.stringify(plan.kind === "github" && plugin.sha ? { ...plan, sha: plugin.sha } : plan),
+    components: JSON.stringify(plugin.components),
+    agents: JSON.stringify(plugin.agents),
+    problems: JSON.stringify(problems),
+    updated_at: at,
+  };
+  await db
+    .prepare("UPDATE plugin_installs SET display_name = ?, description = ?, version = ?, sha = ?, fetch = ?, components = ?, agents = ?, problems = ?, updated_at = ? WHERE id = ?")
+    .bind(fresh.display_name, fresh.description, fresh.version, fresh.sha, fresh.fetch, fresh.components, fresh.agents, fresh.problems, fresh.updated_at, row.id)
+    .run();
+  return ok({ install: installOut(fresh), plugin, skills: spread.skills, unchanged: false });
+}
+
+/** Switches an install on or off: off, its skills leave agents' prompts, its subagents leave the templates, and its connectors stop reaching agents (connectors.ts `reaching`): the kill switch. */
 export async function setEnabled(db: D1Database, workspaceId: string, ref: string, enabled: boolean, now = new Date()): Promise<Result<PluginInstall>> {
   const row = await installByRef(db, workspaceId, ref);
   if (!row) return fail("not_found", "That plugin isn't installed.");

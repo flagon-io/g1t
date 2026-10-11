@@ -28,6 +28,7 @@ import {
 } from "../../../packages/contracts/src/claude-plugin.ts";
 import { MAX_MARKETPLACES, type Marketplace, type PluginAvailability, type PluginListing, type SkillListing } from "../../../packages/contracts/src/customize.ts";
 import { newId } from "../../../packages/contracts/src/ids.ts";
+import { FIRST_PARTY_EXTENSIONS } from "../../../packages/contracts/src/marketplace.ts";
 import { type FetchDeps, fetchMarketplace } from "./customize-fetch.ts";
 
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
@@ -55,7 +56,29 @@ export const G1T_MARKETPLACE: MarketplaceManifest = {
   description: "g1t's own plugins: the pages, cards and roles g1t is building for what a team does besides code.",
   version: null,
   pluginRoot: null,
-  plugins: [],
+  // What g1t is building, announced before release: each a plugin here once it ships.
+  plugins: FIRST_PARTY_EXTENSIONS.map(
+    (extension): MarketplacePluginEntry => ({
+      name: extension.id,
+      source: { source: "path", path: `./${extension.id}` },
+      description: extension.tagline,
+      version: null,
+      author: { name: "g1t" },
+      homepage: null,
+      repository: null,
+      license: null,
+      keywords: [],
+      category: extension.category.toLowerCase(),
+      tags: [],
+      skills: [],
+      commands: [],
+      agents: [],
+      mcpServers: null,
+      strict: true,
+      displayName: extension.name,
+      extra: { status: extension.status === "available" ? "available" : "soon" },
+    }),
+  ),
   problems: [],
 };
 

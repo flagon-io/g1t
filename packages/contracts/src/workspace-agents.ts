@@ -1054,6 +1054,8 @@ export type WorkspaceAgentsApi = {
   installPlugin(workspace: string, viewer: User, ref: string): Promise<Result<PluginInstall>>;
   setPluginEnabled(workspace: string, viewer: User, ref: string, enabled: boolean): Promise<Result<PluginInstall>>;
   uninstallPlugin(workspace: string, viewer: User, ref: string): Promise<Result<null>>;
+  /** Reads an installed plugin again at its marketplace's current listing: new skill versions, subagents and servers; attachments follow. */
+  updatePlugin(workspace: string, viewer: User, ref: string): Promise<Result<PluginInstall>>;
   pluginAgents(workspace: string, viewer: User): Promise<Result<PluginAgentTemplate[]>>;
   connectors(workspace: string, viewer: User): Promise<Result<WorkspaceConnector[]>>;
   connector(workspace: string, viewer: User, id: string): Promise<Result<WorkspaceConnector>>;
@@ -1163,6 +1165,7 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     installPlugin: (workspace, viewer, ref) => call("install_plugin", { workspace, viewer, ref }),
     setPluginEnabled: (workspace, viewer, ref, enabled) => call("set_plugin_enabled", { workspace, viewer, ref, enabled }),
     uninstallPlugin: (workspace, viewer, ref) => call("uninstall_plugin", { workspace, viewer, ref }),
+    updatePlugin: (workspace, viewer, ref) => call("update_plugin", { workspace, viewer, ref }),
     pluginAgents: (workspace, viewer) => call("plugin_agents", { workspace, viewer }),
     connectors: (workspace, viewer) => call("connectors", { workspace, viewer }),
     connector: (workspace, viewer, id) => call("connector", { workspace, viewer, id }),

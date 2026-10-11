@@ -624,13 +624,15 @@ export async function revoke(db: D1Database, workspaceId: string, grantId: strin
   return done.meta.changes ? ok(null) : fail("not_found", "There is no such grant.");
 }
 
-/** The connectors that reach one agent, with how each reaches it (the closest grant wins), connected or not. */
+/** The connectors that reach one agent, with how each reaches it (the closest grant wins), connected or not. A switched-off plugin's connectors don't reach anyone. */
 export async function reaching(db: D1Database, workspaceId: string, agentId: string, teams: readonly string[]): Promise<{ row: ConnectorRow; via: SkillScope }[]> {
   const { results } = await db
     .prepare(
       `SELECT c.*, g.scope AS via FROM connector_grants g
        JOIN connectors c ON c.id = g.connector_id AND c.removed_at IS NULL
+       LEFT JOIN plugin_installs p ON p.workspace_id = c.workspace_id AND p.ref = json_extract(c.from_json, '$.ref') AND p.uninstalled_at IS NULL
        WHERE g.workspace_id = ?1
+         AND (json_extract(c.from_json, '$.kind') <> 'plugin' OR p.enabled = 1)
          AND (g.scope = 'workspace' OR (g.scope = 'agent' AND g.target = ?2) OR (g.scope = 'team' AND g.target IN (SELECT value FROM json_each(?3))))
        ORDER BY c.title COLLATE NOCASE LIMIT 200`,
     )

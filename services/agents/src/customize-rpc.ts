@@ -10,7 +10,7 @@
 import { type RepoPath, type Result, type User, fail, identityClient, ok, reposClient } from "@g1t/contracts";
 
 import { type McpServer } from "../../../packages/contracts/src/abilities.ts";
-import { parseMarketplaceAddress, parsePluginRef } from "../../../packages/contracts/src/claude-plugin.ts";
+import { type McpServerConfig, parseMarketplaceAddress, parsePluginRef } from "../../../packages/contracts/src/claude-plugin.ts";
 import type { AgentConnector, ConnectorInput, CustomizeBundle, Marketplace, PluginAgentTemplate, PluginDetail, PluginInstall, PluginListing, SkillListing, WorkspaceConnector } from "../../../packages/contracts/src/customize.ts";
 import type { SkillScope } from "../../../packages/contracts/src/skill-library.ts";
 import type { SkillFile } from "../../../packages/contracts/src/skill-format.ts";
@@ -162,17 +162,40 @@ async function installPlugin(ctx: ViewContext, ref: unknown): Promise<Result<Plu
   const { listing, entry } = found.value;
   const done = await plugins.install(ctx.db, { workspaceId: ctx.workspaceId, listing, entry: entry.entry, marketplace: { name: listing.marketplace, source: entry.source, pluginRoot: entry.pluginRoot }, host: hostOf(ctx), by: ctx.viewer.username, deps: fetchDeps(ctx) });
   if (!done.ok) return done;
-  // Its remote servers become connectors, for an owner to sign in or give a key.
-  const deps = await connectorDeps(ctx);
-  for (const server of done.value.plugin.servers) {
-    if ((server.type !== "http" && server.type !== "sse") || !server.url) continue;
-    const auth = server.variables.length ? "header" : "oauth";
-    const headerName = Object.keys(server.headers)[0] ?? "Authorization";
-    const added = await connectors.addConnector(ctx.db, deps, ctx.workspaceId, { from: { kind: "plugin", ref: listing.ref, server: server.name }, auth, header: auth === "header" ? { name: headerName, value: "" } : null }, ctx.viewer.username, { title: `${listing.display_name ?? listing.name}: ${server.name}`, url: server.url });
-    if (!added.ok) await ctx.db.prepare("UPDATE plugin_installs SET problems = json_insert(problems, '$[#]', ?) WHERE id = ?").bind(`${server.name}: ${added.error.message}`, done.value.install.id).run();
-  }
+  await pluginConnectors(ctx, listing, done.value.plugin.servers, done.value.install.id);
   ctx.audit?.("install_plugin", `customize/plugins/${listing.ref}`, `Installed the plugin ${listing.ref}${done.value.install.version ? ` ${done.value.install.version}` : ""} (${done.value.skills.filter((s) => !s.problem).length} skills, ${done.value.plugin.agents.length} agents)`);
   await answerListing(ctx, listingRef("plugin", listing.ref));
+  const fresh = await plugins.installByRef(ctx.db, ctx.workspaceId, listing.ref);
+  return ok(fresh ? plugins.installOut(fresh) : done.value.install);
+}
+
+/** A plugin's remote servers become connectors, for an owner to sign in or give a key; one the workspace has from this plugin already is left as it is. */
+async function pluginConnectors(ctx: ViewContext, listing: PluginListing, servers: McpServerConfig[], installId: string): Promise<void> {
+  const deps = await connectorDeps(ctx);
+  const have = new Set((await connectors.listConnectors(ctx.db, ctx.workspaceId)).map((row) => JSON.stringify(JSON.parse(row.from_json))));
+  for (const server of servers) {
+    if ((server.type !== "http" && server.type !== "sse") || !server.url) continue;
+    const from = { kind: "plugin" as const, ref: listing.ref, server: server.name };
+    if (have.has(JSON.stringify(from))) continue;
+    const auth = server.variables.length ? "header" : "oauth";
+    const headerName = Object.keys(server.headers)[0] ?? "Authorization";
+    const added = await connectors.addConnector(ctx.db, deps, ctx.workspaceId, { from, auth, header: auth === "header" ? { name: headerName, value: "" } : null }, ctx.viewer.username, { title: `${listing.display_name ?? listing.name}: ${server.name}`, url: server.url });
+    if (!added.ok) await ctx.db.prepare("UPDATE plugin_installs SET problems = json_insert(problems, '$[#]', ?) WHERE id = ?").bind(`${server.name}: ${added.error.message}`, installId).run();
+  }
+}
+
+async function updatePlugin(ctx: ViewContext, ref: unknown): Promise<Result<PluginInstall>> {
+  const may = owners(ctx, "update plugins");
+  if (!may.ok) return may;
+  const found = await listingFor(ctx, ref);
+  if (!found.ok) return found;
+  const { listing, entry } = found.value;
+  const done = await plugins.update(ctx.db, { workspaceId: ctx.workspaceId, listing, entry: entry.entry, marketplace: { name: listing.marketplace, source: entry.source, pluginRoot: entry.pluginRoot }, host: hostOf(ctx), by: ctx.viewer.username, deps: fetchDeps(ctx) });
+  if (!done.ok) return done;
+  if (!done.value.unchanged) {
+    await pluginConnectors(ctx, listing, done.value.plugin.servers, done.value.install.id);
+    ctx.audit?.("update_plugin", `customize/plugins/${listing.ref}`, `Updated the plugin ${listing.ref}${done.value.install.version ? ` to ${done.value.install.version}` : ""}${done.value.install.sha ? ` (${done.value.install.sha.slice(0, 8)})` : ""}`);
+  }
   const fresh = await plugins.installByRef(ctx.db, ctx.workspaceId, listing.ref);
   return ok(fresh ? plugins.installOut(fresh) : done.value.install);
 }
@@ -438,6 +461,8 @@ export async function customizeRpc(
       return view(args, (ctx) => setPluginEnabled(ctx, args.ref, args.enabled));
     case "uninstall_plugin":
       return view(args, (ctx) => uninstallPlugin(ctx, args.ref));
+    case "update_plugin":
+      return view(args, (ctx) => updatePlugin(ctx, args.ref));
     case "plugin_agents":
       return view(args, pluginAgents);
     case "connectors":

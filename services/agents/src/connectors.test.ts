@@ -198,3 +198,23 @@ test("grants: every agent, a team, one agent; the closest wins; an agent's turn 
   assert.deepEqual((await connectors.reaching(db, ws, "agt_1", ["qa"])).map((r) => [r.row.id, r.via]), [[b.value.id, "team"]]);
   assert.equal((await db.prepare("SELECT secrets FROM connectors WHERE id = ?").bind(a.value.id).first<{ secrets: string | null }>())!.secrets, null);
 });
+
+test("a switched-off plugin's connectors stop reaching agents; switched on, they are back", async () => {
+  const db = fakeD1();
+  const { fetchFn } = fakeServer();
+  const deps: connectors.Deps = { key: await connectors.sealingKey(KEY), fetchFn, site: "https://g1t.sh", now: at };
+  await db
+    .prepare("INSERT INTO plugin_installs (id, workspace_id, ref, name, marketplace, description, fetch, installed_by, installed_at, updated_at, enabled) VALUES ('plg_1', ?, 'release@acme', 'release', 'acme', '', '{}', 'chase', ?, ?, 1)")
+    .bind(ws, at.toISOString(), at.toISOString())
+    .run();
+  const fromPlugin = (await connectors.addConnector(db, deps, ws, { from: { kind: "plugin", ref: "release@acme", server: "tracker" }, auth: "header", header: { name: "X-Key", value: "secret-key" } }, "chase", { title: "Release: tracker", url: "https://mcp.example.com/mcp" })) as { ok: true; value: connectors.ConnectorRow };
+  const byHand = (await connectors.addConnector(db, deps, ws, { from: { kind: "address", name: "mine", url: "https://mcp.example.com/mcp" }, auth: "header", header: { name: "X-Key", value: "secret-key" } }, "chase")) as { ok: true; value: connectors.ConnectorRow };
+  assert.ok(fromPlugin.ok && byHand.ok);
+  await connectors.grant(db, deps, ws, fromPlugin.value.id, "workspace", "", "chase");
+  await connectors.grant(db, deps, ws, byHand.value.id, "workspace", "", "chase");
+  assert.deepEqual((await connectors.reaching(db, ws, "agt_1", [])).map((r) => r.row.name).sort(), ["mine", "tracker"]);
+  await db.prepare("UPDATE plugin_installs SET enabled = 0 WHERE id = 'plg_1'").run();
+  assert.deepEqual((await connectors.reaching(db, ws, "agt_1", [])).map((r) => r.row.name), ["mine"]);
+  await db.prepare("UPDATE plugin_installs SET enabled = 1 WHERE id = 'plg_1'").run();
+  assert.equal((await connectors.reaching(db, ws, "agt_1", [])).length, 2);
+});

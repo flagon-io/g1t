@@ -94,14 +94,16 @@ test("a marketplace is read from GitHub by its address, its plugins listed with 
   // The built-ins can't be read in this test (no GitHub), so they are listed with a problem and no plugins; the workspace's own lists three.
   const all = await marketplaces.loadAll(db, ws, deps, "g1t.sh", at);
   const listings = marketplaces.discoverPlugins(all, new Map(), "g1t.sh");
+  // The workspace's own marketplace first; g1t's announced plugins after it.
   assert.deepEqual(
-    listings.map((l) => [l.ref, l.availability.kind, l.fetch.kind]),
+    listings.filter((l) => l.marketplace === "acme-tools").map((l) => [l.ref, l.availability.kind, l.fetch.kind]),
     [
       ["release@acme-tools", "available", "github"],
       ["docs-skills@acme-tools", "available", "github"],
       ["from-npm@acme-tools", "unavailable", "unsupported"],
     ],
   );
+  assert.ok(listings.some((l) => l.ref === "mail@g1t" && l.availability.kind === "soon"));
   assert.deepEqual(listings[0]!.fetch, { kind: "github", repo: "acme/tools", ref: null, sha: null, path: "plugins/release" });
   const skills = marketplaces.discoverSkills(listings, new Set());
   assert.deepEqual(
@@ -243,4 +245,63 @@ test("a plugin skill larger than a version holds keeps its text and leaves its b
   assert.deepEqual(fitted.omitted, ["fonts/a.ttf"], "one font out brings it under the limit; text stays");
   assert.deepEqual(fitted.files.map((f) => f.path).sort(), ["SKILL.md", "fonts/b.ttf", "reference.md", "scripts/draw.py"]);
   assert.deepEqual(plugins.fitSkillFolder(files.slice(0, 2)).omitted, []);
+});
+
+test("an installed plugin updates in place at its marketplace's newer commit: skill versions move with their attachments, gone skills are archived; unchanged when at the same commit", async () => {
+  const db = fakeD1();
+  await marketplaces.addMarketplace(db, ws, null, { source: "github", repo: "acme/tools" }, "chase", deps, "g1t.sh", at);
+  const all = await marketplaces.loadAll(db, ws, deps, "g1t.sh", at);
+  const listings = marketplaces.discoverPlugins(all, new Map(), "g1t.sh");
+  const listing = marketplaces.findListing(listings, "release@acme-tools")!;
+  const entry = marketplaces.entryOf(all, { name: "release", marketplace: "acme-tools" })!;
+  const input = { workspaceId: ws, listing, entry: entry.entry, marketplace: { name: "acme-tools", source: entry.source, pluginRoot: entry.pluginRoot }, host: "g1t.sh", by: "chase", deps, now: at };
+  const installed = await plugins.install(db, input);
+  assert.ok(installed.ok);
+  const notes = (await skillByName(db, ws, "release-notes", "release@acme-tools"))!;
+  await db.prepare("INSERT INTO skill_attachments (id, workspace_id, skill_id, scope, target, version, attached_by, attached_at) VALUES ('ska_1', ?, ?, 'workspace', '', 1, 'chase', ?)").bind(ws, notes.id, at.toISOString()).run();
+  // Same commit: nothing moves.
+  const same = await plugins.update(db, input);
+  assert.ok(same.ok && same.value.unchanged);
+  // The repository moves on: a new version, a changed skill, the "code" skill gone.
+  const NEXT = "fedcba9876543210fedcba9876543210fedcba98";
+  const files = { ...REPO };
+  delete files["plugins/release/skills/code/SKILL.md"];
+  files["plugins/release/.claude-plugin/plugin.json"] = JSON.stringify({ name: "release", version: "1.3.0", description: "Cuts releases, now with notes" });
+  files["plugins/release/skills/release-notes/SKILL.md"] = "---\nname: release-notes\ndescription: Use when asked for release notes or a changelog.\n---\n\nRead the merged pull requests, group them, write the notes, link each.\n";
+  const moved: Fetch = async (url, init) => {
+    const u = new URL(url);
+    if (u.hostname === "api.github.com" && (u.pathname.endsWith("/commits/HEAD") || u.pathname.endsWith("/commits/main"))) return Response.json({ sha: NEXT });
+    if (u.hostname === "api.github.com" && u.pathname === `/repos/acme/tools/git/trees/${NEXT}`) return Response.json({ tree: Object.entries(files).map(([path, content]) => ({ path, type: "blob", size: content.length })), truncated: false });
+    if (u.hostname === "raw.githubusercontent.com") {
+      const [, , , ref, ...rest] = u.pathname.split("/");
+      const file = files[rest.map(decodeURIComponent).join("/")];
+      return ref === NEXT && file !== undefined ? new Response(file) : new Response("no", { status: 404 });
+    }
+    return githubFetch()(url, init);
+  };
+  const updated = await plugins.update(db, { ...input, deps: { fetchFn: moved }, now: new Date(at.getTime() + 60_000) });
+  assert.ok(updated.ok, !updated.ok ? updated.error.message : "");
+  assert.equal(updated.value.unchanged, false);
+  assert.equal(updated.value.install.version, "1.3.0");
+  assert.equal(updated.value.install.sha, NEXT);
+  assert.equal(updated.value.install.description, "Cuts releases, now with notes");
+  const after = (await skillByName(db, ws, "release-notes", "release@acme-tools"))!;
+  assert.equal(after.version, 2);
+  assert.equal((await db.prepare("SELECT version FROM skill_attachments WHERE id = 'ska_1'").first<{ version: number }>())!.version, 2, "the attachment followed");
+  assert.equal(await skillByName(db, ws, "code", "release@acme-tools"), null, "a skill the plugin no longer has is archived");
+  assert.deepEqual(plugins.installsOut([(await plugins.installByRef(db, ws, "release@acme-tools"))!], [listing])[0]!.update, { version: "1.2.0", sha: null }, "the marketplace's cached listing still says 1.2.0 until it is read again");
+});
+
+test("g1t's own announced plugins are listed, as Soon, and can't be installed yet", async () => {
+  const db = fakeD1();
+  const all = await marketplaces.loadAll(db, ws, deps, "g1t.sh", at);
+  const listings = marketplaces.discoverPlugins(all, new Map(), "g1t.sh");
+  const own = listings.filter((l) => l.marketplace === "g1t");
+  assert.ok(own.length >= 5);
+  assert.ok(own.every((l) => l.availability.kind === "soon"));
+  const mail = marketplaces.findListing(listings, "mail@g1t")!;
+  assert.equal(mail.display_name, "Mail");
+  const entry = marketplaces.entryOf(all, { name: "mail", marketplace: "g1t" })!;
+  const refused = await plugins.install(db, { workspaceId: ws, listing: mail, entry: entry.entry, marketplace: { name: "g1t", source: entry.source, pluginRoot: null }, host: "g1t.sh", by: "chase", deps, now: at });
+  assert.equal(!refused.ok && refused.error.code, "invalid");
 });

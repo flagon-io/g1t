@@ -91,7 +91,9 @@ skill first.
 
 When a plugin is **switched off**, its skills leave every agent that had
 them at once, and come back when it is switched on. When it is
-**uninstalled**, its skills and their attachments go.
+**uninstalled**, its skills and their attachments go. **Update** reads the
+plugin again at its marketplace's current listing: each skill gets a new
+version, and every attachment follows it.
 
 ## Connectors
 
@@ -318,11 +320,11 @@ subagents. A runner fetches them when a job runs (see
 
 | | |
 | --- | --- |
-| **Switch off** | The kill switch. The plugin's skills leave every agent at once, its agents leave Templates, and runners stop getting it. **Switch on** brings them back. |
+| **Switch off** | The kill switch. The plugin's skills leave every agent at once, its agents leave Templates, the connectors it brought stop reaching agents, and runners stop getting it. **Switch on** brings them all back. |
 | **Uninstall** | Its skills and their attachments go, and the connectors it brought are removed. The record of who installed and removed it stays. |
-| **Update available** | Its marketplace lists a newer version or commit than the one installed. An install never moves on its own: to take the update, uninstall the plugin and install it again, then make its skills available again. |
+| **Update** | Shown as **Update available** when its marketplace lists a newer version or commit than the one installed. An install never moves on its own. **Update** reads the plugin again at that commit: its skills get new versions and their attachments follow, skills it no longer has are archived, its agents and connectors are refreshed (a connector it already brought is left as it is), and the install's version and commit move. |
 
-A workspace installs at most 100 plugins. Installing, switching on and
+A workspace installs at most 100 plugins. Installing, updating, switching on and
 off and uninstalling are in the audit log under
 `customize/plugins/<name@marketplace>`, and adding or removing a
 marketplace under `customize/marketplaces/<name>`.
