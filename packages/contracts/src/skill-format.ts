@@ -359,8 +359,13 @@ export type SkillCheckOptions = {
   limits?: { files: number; bytes: number };
 };
 
-/** How large a plugin's skill may be: public skills carry references and schemas. */
-export const PLUGIN_SKILL_LIMITS = { files: 1000, bytes: 4 * 1024 * 1024 };
+/**
+ * How large a plugin's skill kept here may be: public skills carry
+ * references and schemas, and a version is one database row (2 MB at
+ * most, with its JSON). Larger folders keep their text and leave their
+ * biggest binaries out (the runner fetches the plugin whole anyway).
+ */
+export const PLUGIN_SKILL_LIMITS = { files: 1000, bytes: 1_500_000 };
 
 export function checkSkillFolder(input: SkillFile[], options: SkillCheckOptions = {}): SkillCheck {
   const bad = (message: string): SkillCheck => ({ ok: false, message });
@@ -403,9 +408,11 @@ export function checkSkillFolder(input: SkillFile[], options: SkillCheckOptions 
   const nameProblem = options.lenient ? lenientSkillNameProblem(name) : skillNameProblem(name);
   if (nameProblem) return bad(name ? nameProblem : "SKILL.md's front-matter needs a name: the skill's name, like release-notes.");
   if (options.expectName && options.expectName !== name) return bad(`The folder is ${options.expectName}, but its SKILL.md is named ${name}. They must match.`);
-  const description = typeof front.description === "string" ? front.description.replace(/\s+/g, " ").trim() : "";
-  if (!description) return bad("SKILL.md's front-matter needs a description: when an agent should use the skill.");
-  if (description.length > SKILL_DESCRIPTION_MAX) return bad(`A skill's description is at most ${SKILL_DESCRIPTION_MAX} characters.`);
+  const full = typeof front.description === "string" ? front.description.replace(/\s+/g, " ").trim() : "";
+  if (!full) return bad("SKILL.md's front-matter needs a description: when an agent should use the skill.");
+  if (full.length > SKILL_DESCRIPTION_MAX && !options.lenient) return bad(`A skill's description is at most ${SKILL_DESCRIPTION_MAX} characters.`);
+  // A plugin's skill keeps its text as written; the listing shows the first part.
+  const description = full.length > SKILL_DESCRIPTION_MAX ? `${full.slice(0, SKILL_DESCRIPTION_MAX - 1).trimEnd()}…` : full;
   const listed = listOf(front.tools);
   if (!listed) return bad("tools: is a list of tool names, like [read_file, make_file].");
   const named = [...new Set(listed.map((t) => t.trim()))].filter(Boolean);

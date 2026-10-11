@@ -229,3 +229,18 @@ test("what can't be fetched says why, and a marketplace that moved on shows an u
   assert.deepEqual(plugins.installsOut([row], [listing])[0]!.update, { version: "1.2.0", sha: null });
   assert.equal(plugins.installsOut([row], [{ ...listing, version: "1.0.0" }])[0]!.update, null);
 });
+
+test("a plugin skill larger than a version holds keeps its text and leaves its biggest binaries out", () => {
+  const big = "A".repeat(1_200_000);
+  const files = [
+    { path: "SKILL.md", content: "---\nname: canvas\ndescription: Use when drawing.\n---\n\nDraw.\n", encoding: "utf8" as const },
+    { path: "reference.md", content: "# Reference\n", encoding: "utf8" as const },
+    { path: "fonts/a.ttf", content: big, encoding: "base64" as const },
+    { path: "fonts/b.ttf", content: big, encoding: "base64" as const },
+    { path: "scripts/draw.py", content: "print(1)\n", encoding: "utf8" as const },
+  ];
+  const fitted = plugins.fitSkillFolder(files);
+  assert.deepEqual(fitted.omitted, ["fonts/a.ttf"], "one font out brings it under the limit; text stays");
+  assert.deepEqual(fitted.files.map((f) => f.path).sort(), ["SKILL.md", "fonts/b.ttf", "reference.md", "scripts/draw.py"]);
+  assert.deepEqual(plugins.fitSkillFolder(files.slice(0, 2)).omitted, []);
+});

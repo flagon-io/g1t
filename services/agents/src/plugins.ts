@@ -35,7 +35,7 @@ import {
 } from "../../../packages/contracts/src/claude-plugin.ts";
 import { MAX_PLUGIN_INSTALLS, type PluginAgentTemplate, type PluginComponents, type PluginDetail, type PluginInstall, type PluginListing, componentsOf } from "../../../packages/contracts/src/customize.ts";
 import { newId } from "../../../packages/contracts/src/ids.ts";
-import { PLUGIN_SKILL_LIMITS, type SkillFile, checkSkillFolder, parseFrontMatter, splitFrontMatter } from "../../../packages/contracts/src/skill-format.ts";
+import { PLUGIN_SKILL_LIMITS, type SkillFile, checkSkillFolder, parseFrontMatter, skillFileBytes, splitFrontMatter } from "../../../packages/contracts/src/skill-format.ts";
 import { type FetchDeps, fetchPlugin } from "./customize-fetch.ts";
 import { type SkillRow, skillByName, writeVersion } from "./skill-library.ts";
 
@@ -216,6 +216,29 @@ export function readPlugin(files: SkillFile[], sha: string | null, entry: Market
   };
 }
 
+/**
+ * A skill's folder cut to what one version holds: its biggest binary files
+ * go first, then its biggest other files besides SKILL.md, until it fits
+ * `PLUGIN_SKILL_LIMITS`. What was left out is named, for the install's
+ * problems and the version's note.
+ */
+export function fitSkillFolder(files: SkillFile[]): { files: SkillFile[]; omitted: string[] } {
+  let total = files.reduce((n, f) => n + skillFileBytes(f), 0);
+  if (files.length <= PLUGIN_SKILL_LIMITS.files && total <= PLUGIN_SKILL_LIMITS.bytes) return { files, omitted: [] };
+  const keep = new Map(files.map((f) => [f.path, f]));
+  const order = [...files]
+    .filter((f) => f.path.toLowerCase() !== "skill.md")
+    .sort((a, b) => Number(b.encoding === "base64") - Number(a.encoding === "base64") || skillFileBytes(b) - skillFileBytes(a));
+  const omitted: string[] = [];
+  for (const file of order) {
+    if (keep.size <= PLUGIN_SKILL_LIMITS.files && total <= PLUGIN_SKILL_LIMITS.bytes) break;
+    keep.delete(file.path);
+    total -= skillFileBytes(file);
+    omitted.push(file.path);
+  }
+  return { files: [...keep.values()], omitted: omitted.sort() };
+}
+
 /** A command file (`commands/<name>.md`) as a one-file skill: its front-matter's description, or its first line. */
 function commandAsSkill(name: string, text: string): SkillFile[] {
   const split = splitFrontMatter(text);
@@ -312,7 +335,9 @@ export async function install(db: D1Database, input: InstallInput): Promise<Resu
   ];
   const seen = new Set<string>();
   for (const one of folders) {
-    const checked = checkSkillFolder(one.files, { expectName: one.name, lenient: true, limits: PLUGIN_SKILL_LIMITS });
+    const fitted = fitSkillFolder(one.files);
+    if (fitted.omitted.length) problems.push(`${one.path}: ${fitted.omitted.length} ${fitted.omitted.length === 1 ? "file" : "files"} left out to fit (${fitted.omitted.slice(0, 5).join(", ")}${fitted.omitted.length > 5 ? "…" : ""}); Claude Code on a runner gets the whole plugin.`);
+    const checked = checkSkillFolder(fitted.files, { expectName: one.name, lenient: true, limits: PLUGIN_SKILL_LIMITS });
     if (!checked.ok) {
       problems.push(`${one.path}: ${checked.message}`);
       skills.push({ name: one.name, id: "", problem: checked.message });
@@ -329,7 +354,7 @@ export async function install(db: D1Database, input: InstallInput): Promise<Resu
       existing,
       checked: checked.skill,
       origin: { kind: "plugin", plugin: listing.ref, marketplace: listing.marketplace, path: one.path, sha: plugin.sha },
-      note: `From ${listing.ref}${plugin.sha ? ` at ${plugin.sha.slice(0, 8)}` : ""}`,
+      note: `From ${listing.ref}${plugin.sha ? ` at ${plugin.sha.slice(0, 8)}` : ""}${fitted.omitted.length ? ` (${fitted.omitted.length} large files left out)` : ""}`,
       by: input.by,
       now,
       status: "published",

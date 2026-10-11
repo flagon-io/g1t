@@ -261,10 +261,13 @@ test("a plugin's layout is found from its files, its manifest and a strict entry
   const entry = parseMarketplaceManifest(SKILLS);
   assert.ok(entry.ok);
   const docs = pluginLayout(["skills/xlsx/SKILL.md", "skills/docx/SKILL.md", "skills/pdf/SKILL.md", "skills/pptx/SKILL.md", "skills/other/SKILL.md", "README.md"], null, entry.value.plugins[0]!);
+  // The entry is not strict: it names its skills, so a sibling folder under skills/ is not its.
   assert.deepEqual(
     docs.skills.map((s) => s.name),
-    ["docx", "other", "pdf", "pptx", "xlsx"],
+    ["docx", "pdf", "pptx", "xlsx"],
   );
+  // An entry that names its skills gets exactly those, not every sibling folder under skills/.
+  assert.deepEqual(pluginLayout(["skills/xlsx/SKILL.md", "skills/claude-api/SKILL.md", "skills/other/SKILL.md"], null, entry.value.plugins[1]!).skills, [{ path: "skills/claude-api", name: "claude-api" }]);
   // A plugin that is one skill at its root.
   assert.deepEqual(pluginLayout(["SKILL.md", "reference.md"], null, { ...entry.value.plugins[1]!, skills: ["."] }).skills, [{ path: ".", name: "claude-api" }]);
 });

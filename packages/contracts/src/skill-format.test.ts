@@ -1,6 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { PLUGIN_SKILL_LIMITS, checkSkillFolder as checkFolder } from "./skill-format.ts";
+
+test("a plugin's skill is checked leniently: its name keeps its case, a long description is shortened, Claude Code's tools are kept aside, and it may be larger", () => {
+  const long = "Use when ".padEnd(1500, "x");
+  const checked = checkFolder([{ path: "SKILL.md", content: `---\nname: Claude-API\ndescription: ${long}\ntools: Read, read_file\n---\n\nBody.\n` }], { lenient: true, limits: PLUGIN_SKILL_LIMITS });
+  assert.ok(checked.ok, !checked.ok ? checked.message : "");
+  assert.equal(checked.skill.name, "Claude-API");
+  assert.equal(checked.skill.description.length, 1024);
+  assert.ok(checked.skill.description.endsWith("…"));
+  assert.deepEqual(checked.skill.tools, ["read_file"]);
+  assert.deepEqual(checked.skill.extra.tools, ["Read"]);
+  const strict = checkFolder([{ path: "SKILL.md", content: `---\nname: claude-api\ndescription: ${long}\n---\n\nBody.\n` }]);
+  assert.equal(strict.ok, false);
+});
+
 import {
   AGENT_TOOL_NAMES,
   RESERVED_SKILL_NAMES,

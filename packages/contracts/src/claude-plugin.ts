@@ -599,9 +599,12 @@ export type PluginLayout = {
 const mdName = (path: string): string => path.replace(/^.*\//, "").replace(/\.md$/i, "");
 
 /**
- * The plugin's components from its files: the standard folders, then the
- * manifest's and the marketplace entry's paths (the entry's added when it
- * is strict, as Claude Code does). `files` are paths inside the plugin.
+ * The plugin's components from its files: the standard folders
+ * (`skills/`, `commands/`, `agents/`) plus whatever the manifest names,
+ * plus the marketplace entry's paths. An entry that is not strict names
+ * its components outright instead of the standard folders, as the public
+ * skills marketplace does (one repository, one plugin per group of
+ * skills). `files` are paths inside the plugin.
  */
 export function pluginLayout(files: string[], manifest: PluginManifest | null, entry: MarketplacePluginEntry | null): PluginLayout {
   const set = new Set(files.map((f) => f.replace(/^\.\//, "")));
@@ -613,23 +616,23 @@ export function pluginLayout(files: string[], manifest: PluginManifest | null, e
     if (has(clean ? `${clean}/SKILL.md` : "SKILL.md")) skillDirs.add(clean || ".");
     else for (const f of under(clean || ".")) if (/(^|\/)SKILL\.md$/.test(f) && f.slice(clean.length + (clean ? 1 : 0)).split("/").length === 2) skillDirs.add(f.replace(/\/SKILL\.md$/, ""));
   };
-  addSkillDir("skills");
-  const strictExtras = entry && entry.strict ? entry : null;
-  for (const dir of [...(manifest?.skills ?? []), ...(strictExtras?.skills ?? []), ...(!manifest && entry ? entry.skills : [])]) addSkillDir(dir);
+  const standard = !(entry && !entry.strict);
+  if (standard) addSkillDir("skills");
+  for (const dir of [...(manifest?.skills ?? []), ...(entry?.skills ?? [])]) addSkillDir(dir);
   const commandFiles = new Set<string>();
   const addCommands = (path: string) => {
     if (/\.md$/i.test(path) && has(path)) commandFiles.add(path);
     else for (const f of under(path)) if (/\.md$/i.test(f)) commandFiles.add(f);
   };
-  addCommands("commands");
-  for (const p of [...(manifest?.commands ?? []), ...(strictExtras?.commands ?? []), ...(!manifest && entry ? entry.commands : [])]) addCommands(p);
+  if (standard) addCommands("commands");
+  for (const p of [...(manifest?.commands ?? []), ...(entry?.commands ?? [])]) addCommands(p);
   const agentFiles = new Set<string>();
   const addAgents = (path: string) => {
     if (/\.md$/i.test(path) && has(path)) agentFiles.add(path);
     else for (const f of under(path)) if (/\.md$/i.test(f)) agentFiles.add(f);
   };
-  addAgents("agents");
-  for (const p of [...(manifest?.agents ?? []), ...(strictExtras?.agents ?? []), ...(!manifest && entry ? entry.agents : [])]) addAgents(p);
+  if (standard) addAgents("agents");
+  for (const p of [...(manifest?.agents ?? []), ...(entry?.agents ?? [])]) addAgents(p);
   const hooks = [...(has("hooks/hooks.json") ? ["hooks/hooks.json"] : []), ...(manifest?.hooks ?? []).filter((h) => h === "(inline)" || has(h))];
   return {
     skills: [...skillDirs].sort().map((path) => ({ path, name: path === "." ? (manifest?.name ?? entry?.name ?? "skill") : path.replace(/^.*\//, "") })),
