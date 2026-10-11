@@ -40,7 +40,8 @@ jobs:
           [ "runner-v$version" = "${GITHUB_REF_NAME}" ] || { echo "::error::The tag is ${GITHUB_REF_NAME}, but crates/runner is $version"; exit 1; }
       - name: Install zig and cargo-zigbuild
         run: |
-          pip install --user ziglang==0.13.0
+          # The runner's Debian marks its Python as externally managed (PEP 668); zig goes under ~/.local anyway.
+          pip install --user --break-system-packages ziglang==0.13.0
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           cargo install --locked cargo-zigbuild
       - uses: actions/cache@v4
