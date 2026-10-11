@@ -189,12 +189,15 @@ rules:
 - never while **Do not disturb** is on;
 - nothing from a conversation you [muted](/guides/chat/#star-and-mute),
   but a direct message or a mention of you;
-- nothing while a g1t tab is in front of you: it tells you there.
+- nothing while a g1t tab, or the app itself, is in front of you: it tells you there.
 
 Your phone is registered when you allow notifications in the app.
-**Send a test notification** reaches it too. Signing out of the app stops
+**Send a test notification**, here or in the app under **More**, reaches it too. Signing out of the app stops
 them on that phone. g1t pushes to your 10 most recent phones, and stops
-on its own for a phone the app was removed from.
+on its own for a phone the app was removed from. Phones are reached
+through Expo's push service, which hands each notification to Google
+(Android) or Apple (iOS); a [self-hosted g1t](/guides/self-hosting/#the-phone-app)
+can turn that off.
 
 ## Settings
 

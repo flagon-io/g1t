@@ -1,16 +1,22 @@
 import { env } from "cloudflare:workers";
-import { Apple, Bell, Download, Link2, Monitor, RefreshCw, Server, Terminal } from "lucide-react";
+import { connectLink } from "@g1t/contracts/discovery";
+import { Apple, Bell, Download, Link2, Monitor, RefreshCw, Server, Smartphone, Terminal } from "lucide-react";
 import type { ReactNode } from "react";
 import { useLoaderData } from "react-router";
 
 import type { Route } from "./+types/download";
+import { QrCode } from "../components/qr-code";
 import { TrustPage } from "../components/trust-page";
 import { ButtonLink } from "../components/ui";
 import { Card } from "../components/ui/card";
+import { HOSTED_ADDRESSES } from "../lib/addresses";
+import { addresses } from "../lib/addresses.server";
 import { page } from "../lib/meta";
 
 /**
- * g1t.sh/download: the desktop app, from its newest release. The release
+ * g1t.sh/download: the desktop app, from its newest release, and the phone
+ * app. On a self-hosted g1t the phone section offers a `g1t://connect`
+ * link and its QR code, which point the app at this g1t. The release
  * is `desktop/latest.json` in the g1t-downloads bucket, as
  * scripts/desktop-release.mjs writes it: what the app's updater reads
  * (`platforms`), and the list this page shows (`downloads`). The visitor's
@@ -46,8 +52,8 @@ export function platformOf(userAgent: string | null): Platform | null {
 
 export function meta(args: Route.MetaArgs) {
   return page(args, {
-    title: "Download g1t for your desktop",
-    description: "g1t in a window of its own, for Windows, macOS and Linux: notifications from your system, a badge on the icon, g1t:// links, and updates that install themselves.",
+    title: "Download g1t for your desktop and phone",
+    description: "g1t in a window of its own, for Windows, macOS and Linux, and on your phone: notifications, a badge, g1t:// links, and updates that install themselves.",
   });
 }
 
@@ -65,7 +71,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   } catch (error) {
     console.error("download: the release could not be read", error);
   }
-  return { release, platform: platformOf(request.headers.get("user-agent")) };
+  const { site } = addresses();
+  return { release, platform: platformOf(request.headers.get("user-agent")), site, hosted: site === HOSTED_ADDRESSES.site };
 }
 
 const PLATFORMS: { id: Platform; name: string; icon: ReactNode; note: string }[] = [
@@ -96,11 +103,11 @@ const WHAT: { icon: ReactNode; title: string; text: string }[] = [
   { icon: <Bell size={16} />, title: "Notifications from your system", text: "A message to you, a mention, or an agent finished, while the window is behind another; the icon carries a badge until you have looked." },
   { icon: <Link2 size={16} />, title: "g1t:// links", text: "A g1t:// link opens the page in the app, from anywhere on your computer. Links to other sites open in your browser." },
   { icon: <RefreshCw size={16} />, title: "Updates install themselves", text: "The app downloads a new version in the background, signed by g1t, and asks only to restart. Everything you see is the site itself, so most changes need no update at all." },
-  { icon: <Server size={16} />, title: "Your own g1t", text: "Running g1t yourself? The tray's \u201cUse another g1t\u201d points the app at your server." },
+  { icon: <Server size={16} />, title: "Your own g1t", text: "Running g1t yourself? The tray's \u201cUse another g1t\u201d points the app at your server, and the phone app below works with it too." },
 ];
 
 export default function DownloadPage() {
-  const { release, platform } = useLoaderData<typeof loader>();
+  const { release, platform, site, hosted } = useLoaderData<typeof loader>();
   const ordered = platform ? [...PLATFORMS.filter((p) => p.id === platform), ...PLATFORMS.filter((p) => p.id !== platform)] : PLATFORMS;
   const yours = platform && release ? release.downloads.filter((d) => d.platform === platform) : [];
   const featured = yours.find((d) => d.kind === "installer" || d.kind === "dmg" || d.kind === "appimage") ?? yours[0] ?? null;
@@ -213,7 +220,55 @@ export default function DownloadPage() {
             </p>
           </section>
         )}
+        <PhoneApp site={site} hosted={hosted} />
       </div>
     </TrustPage>
+  );
+}
+
+/**
+ * The phone app: Chat with people and agents, live, and notifications on
+ * the phone. On a g1t of your own, a link and its QR code point the app
+ * here, so nobody types the address; on g1t.sh the app starts here anyway.
+ */
+function PhoneApp({ site, hosted }: { site: string; hosted: boolean }) {
+  const link = connectLink(site);
+  const host = new URL(site).host;
+  return (
+    <section className="mt-14">
+      <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+        <Smartphone size={18} className="text-accent" />
+        On your phone
+      </h2>
+      <p className="mt-1 max-w-2xl text-sm text-muted">
+        Chat with your team and its agents, live, with notifications for messages to you, mentions, replies and agents waiting on you;
+        review and approve pull requests on the way. Android comes first; it is in testing now, and the stores are next.
+      </p>
+      {hosted ? (
+        <p className="mt-4 text-sm text-muted">
+          How it works, and how to build it yourself meanwhile, is in{" "}
+          <a href="https://docs.g1t.sh/guides/mobile/" className="text-accent hover:underline">
+            the phone app guide
+          </a>
+          .
+        </p>
+      ) : (
+        <Card className="mt-4 flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
+          <QrCode value={link} label={`Open the g1t app on ${host}`} size={152} />
+          <div className="min-w-0">
+            <p className="font-medium">Use the app with {host}</p>
+            <p className="mt-1 text-sm text-muted">
+              With the g1t app on your phone, scan this with the camera, or open this page on the phone and tap the button: the app signs in
+              here instead of g1t.sh. In the app, <span className="text-fg-soft">Using your own g1t?</span> on the sign-in screen does the same with
+              the address typed.
+            </p>
+            <ButtonLink to={link} reloadDocument variant="secondary" className="mt-3">
+              <Smartphone size={16} />
+              Open in the g1t app
+            </ButtonLink>
+          </div>
+        </Card>
+      )}
+    </section>
   );
 }

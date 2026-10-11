@@ -256,7 +256,8 @@ export type NotifyApi = {
   subscribe(user: User, subscription: PushSubscriptionJson, userAgent?: string | null): Promise<{ ok: boolean }>;
   unsubscribe(user: User, endpoint: string): Promise<{ ok: boolean }>;
   /** A phone the app runs on gets pushes too; the newest 10 are kept. `ok` is false for a token that is not Expo's. */
-  registerDevice(user: User, device: PushDevice): Promise<{ ok: boolean }>;
+  /** `off`: this g1t sends phones nothing (PHONE_PUSH=off). */
+  registerDevice(user: User, device: PushDevice): Promise<{ ok: boolean; off?: boolean }>;
   /** That phone stops getting them: the app signed out. */
   unregisterDevice(user: User, token: string): Promise<{ ok: boolean }>;
   status(user: User, endpoint?: string | null): Promise<NotifyStatus>;

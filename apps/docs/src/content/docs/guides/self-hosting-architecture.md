@@ -64,7 +64,7 @@ place, so no service's code changes:
 | `services/search` | Runs: site search is SQLite full-text search |
 | `services/chat` | Runs, with its Durable Objects; custom emoji are kept with avatars |
 | `services/artifacts` | Runs: [artifacts](/guides/artifacts/) and their spaces, with their live rooms. Files people add are kept in the `g1t-docs-files` bucket. Search matches words, not meaning, because there is no embedding model. |
-| `services/notify` | Runs. Notifications are live in open tabs; browser push needs a VAPID key pair, which an installation does not make. Push to the phone app goes through Expo and needs nothing set. |
+| `services/notify` | Runs. Notifications are live in open tabs; browser push needs a VAPID key pair, which an installation does not make. Push to the phone app goes through Expo and needs nothing set; `PHONE_PUSH=off` sends phones nothing ([the phone app](/guides/self-hosting/#the-phone-app)). |
 | `services/agents` | Runs, but replies need the model proxy, which is off, so an agent answers with a short apology |
 | `services/billing` | Runs with nothing charged and no usage limit |
 | `services/integrations` | Runs |

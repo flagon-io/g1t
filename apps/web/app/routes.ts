@@ -84,6 +84,8 @@ export default [
   route("status", "routes/status.tsx"),
   route("status.json", "routes/status-json.ts"),
   route(".well-known/security.txt", "routes/security-txt.ts"),
+  // Where this g1t's parts are, for the phone app pointed at it (packages/contracts src/discovery.ts).
+  route(".well-known/g1t.json", "routes/well-known-g1t.ts"),
   // For search engines: what may be crawled, and a map of the public pages.
   route("robots.txt", "routes/robots-txt.ts"),
   route("sitemap.xml", "routes/sitemap-xml.ts"),

@@ -25,6 +25,8 @@ export function routeFor(sitePath: string): string | null {
   if (parts.length === 0) return "/";
   if (`/${parts.join("/")}` === OAUTH_CALLBACK_PATH) return OAUTH_CALLBACK_PATH + keep;
   const [owner, second, third, fourth, fifth] = parts;
+  // `g1t://connect?server=<site>`: point the app at a g1t, as a self-hosted one's download page offers.
+  if (owner === "connect" && !second && /(^|&)server=/.test(query)) return `/connect?${query}`;
   if (NOT_OWNERS.has(owner.toLowerCase())) return null;
   const workspace = `workspace=${encodeURIComponent(owner)}`;
 

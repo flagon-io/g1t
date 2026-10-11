@@ -61,6 +61,7 @@ function Navigation() {
           <Stack.Screen name="sign-in" />
         </Stack.Protected>
         <Stack.Screen name="oauth/callback" />
+        <Stack.Screen name="connect" />
         <Stack.Screen name="open" />
       </Stack>
     </ThemeProvider>

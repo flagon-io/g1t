@@ -18,11 +18,12 @@ export default function More() {
   const queries = useQueryClient();
   const name = me.display_username ?? me.username;
   const oauth = client.credentials.kind === "oauth";
-  const push = useQuery({ queryKey: ["push-state"], queryFn: pushState });
+  const push = useQuery({ queryKey: ["push-state", server.site], queryFn: () => pushState(server) });
   const test = useMutation({ mutationFn: () => sendTestPush(client) });
 
   const pushRow = {
     unsupported: { label: "Not here", detail: "Notifications need a build of the app on a phone: not Expo Go on Android, nor a simulator." },
+    off: { label: "Off", detail: `${new URL(server.site).host} sends no notifications to phones. Chat still updates while the app is open.` },
     denied: { label: "Off", detail: "Turned off for g1t in your phone's settings. Tap to open them." },
     undetermined: { label: "Off", detail: "Tap to get notified of messages to you, mentions and agents waiting on you." },
     granted: { label: "On", detail: "Messages to you, mentions, replies and agents waiting on you, when you're not at g1t elsewhere." },
@@ -53,7 +54,7 @@ export default function More() {
             push.data === "denied"
               ? () => void Linking.openSettings()
               : push.data === "undetermined"
-                ? () => void registerForPush(client, true).finally(() => queries.invalidateQueries({ queryKey: ["push-state"] }))
+                ? () => void registerForPush(client, true).finally(() => queries.invalidateQueries({ queryKey: ["push-state", server.site] }))
                 : undefined
           }
         />

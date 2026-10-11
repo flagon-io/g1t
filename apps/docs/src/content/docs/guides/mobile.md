@@ -111,11 +111,33 @@ Any other page opens on the site, in the browser.
 
 ## Your own g1t
 
-If you [run g1t yourself](/guides/self-hosting/), choose **Server** on the
-sign-in screen and enter your site's address, such as
-`https://g1t.example.com`. The app takes the API to be `api.` in front of
-it (`https://api.g1t.example.com`); if yours is elsewhere, enter it under
-**API**. **Use g1t.sh** goes back.
+The app works with a g1t you [run yourself](/guides/self-hosting/) as well
+as with g1t.sh. It talks to one g1t at a time, and opens on g1t.sh unless
+you point it elsewhere. Two ways to point it at yours:
+
+- **Scan its code.** Your g1t's download page, `<your g1t>/download`, has
+  a QR code under **On your phone**. Scan it with the phone's camera, or
+  open the page on the phone and choose **Open in the g1t app**. The app
+  asks **Use g1t.example.com?**, then signs you in there.
+- **Type its address.** On the sign-in screen, choose **Using your own
+  g1t? Sign in there** and enter the address you open it at in a browser,
+  such as `g1t.example.com`.
+
+Either way the app reads `<your g1t>/.well-known/g1t.json`, where your g1t
+says where its API is, so you never type that. A g1t from before the phone
+app has no such file: the app then takes the API to be `api.` in front of
+the site, and offers **Its API is at another address** if it is not.
+
+The sign-in screen then says **Signing in to g1t.example.com**, with
+**Change** and **Use g1t.sh**. Switching signs you out of the g1t you were
+on.
+
+| Your g1t | What to know |
+| --- | --- |
+| Reached by the phone | `PUBLIC_URL` and `API_URL` must be addresses the phone can open. `localhost` on a phone is the phone itself: use your computer's address on the network, or a domain. |
+| `https` | Store builds of the app open `https` addresses only, as Android requires. A development build also opens `http`, for a g1t on your own network. |
+| Notifications | Work with no setup: your g1t sends them through Expo's push service, as g1t.sh does. To keep notifications' words off Expo's, Google's and Apple's services, set `PHONE_PUSH=off` ([self-hosting](/guides/self-hosting/#the-phone-app)); the app then says your g1t sends no notifications, and Chat still updates while it is open. |
+| Older versions | A g1t from before the phone app does not let the app's sign-in into Chat. Upgrade it, or sign in with an access token that has **Use the website as you**. |
 
 ## What's not there yet
 
