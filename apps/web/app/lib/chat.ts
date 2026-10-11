@@ -151,12 +151,18 @@ export function onlyEmoji(text: string): boolean {
 export type ChatFilter = "all" | "unread" | "mentions";
 
 /** The sidebar's rows that pass the filter and the "Jump to" text. */
-export function filterEntries(entries: ChatSidebarEntry[], filter: ChatFilter, query: string): ChatSidebarEntry[] {
+/**
+ * The conversations the sidebar lists, by filter and by what is typed in
+ * Jump to. A direct message with archived or deleted agents alone is not
+ * listed on its own: it is found by typing the agent's name, and stays
+ * while it is the conversation that is open (`current`, its channel id).
+ */
+export function filterEntries(entries: ChatSidebarEntry[], filter: ChatFilter, query: string, current: string | null = null): ChatSidebarEntry[] {
   const q = query.trim().toLowerCase().replace(/^[#@]/, "");
   return entries.filter((entry) => {
     if (filter === "unread" && entry.unread === 0 && entry.mentions === 0) return false;
     if (filter === "mentions" && entry.mentions === 0) return false;
-    if (!q) return true;
+    if (!q) return entry.channel.id === current || !archivedAgentsDm(entry);
     if (entry.title.toLowerCase().includes(q)) return true;
     return entry.others.some((member) => member.name.toLowerCase().includes(q) || member.display_name.toLowerCase().includes(q));
   });

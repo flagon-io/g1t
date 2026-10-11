@@ -86,7 +86,9 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
     if (sidebar) setMutedConversations(sidebar.entries.filter((e) => e.muted).map((e) => e.channel.id));
   }, [sidebar]);
   const entries = (sidebar?.entries ?? []).map((e) => (pins.has(e.channel.id) ? { ...e, starred: pins.get(e.channel.id)! } : e));
-  const shown = filterEntries(entries, filter, query);
+  // The open conversation stays listed even when it is one with an archived agent, which Jump to otherwise finds.
+  const currentId = entries.find((e) => pathname === channelPath(slug, e.channel) || pathname.startsWith(`${channelPath(slug, e.channel)}/`))?.channel.id ?? null;
+  const shown = filterEntries(entries, filter, query, currentId);
   const { pinned, channels, people, agents: agentConversations } = sections(shown);
   const { agentDms } = sections(entries);
   const loading = !data;

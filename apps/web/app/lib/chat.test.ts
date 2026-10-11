@@ -178,7 +178,7 @@ test("the sidebar: sections, filters and the rail's count", () => {
   assert.deepEqual(unreadTotals(all), { unread: 3, mentions: 1 });
 });
 
-test("an archived agent's conversation stays listed under Agents, read-only; the agent itself is no longer offered", () => {
+test("an archived agent's conversation leaves the list until searched for or open; the agent itself is no longer offered", () => {
   const archived = { ...bot, id: "a2", name: "scribe", display_name: "Scribe", archived_at: "2026-10-08T09:00:00Z", archived_by: "ana" };
   const all = [
     entry("d1", { kind: "dm", title: "reviewer", others: [bot], last: "2026-10-02T00:00:00Z" }),
@@ -194,6 +194,10 @@ test("an archived agent's conversation stays listed under Agents, read-only; the
   assert.deepEqual(agents.map((e) => e.title), ["scribe", "reviewer, scribe", "reviewer", "triage"]);
   assert.deepEqual(all.map((e) => archivedAgentsDm(e)?.name ?? null), [null, "scribe", null, null, "triage"]);
   assert.equal(archivedAgentsDm(all[4]!)?.deleted, true);
+  // Not listed on their own; found by name; kept while open.
+  assert.deepEqual(filterEntries(all, "all", "").map((e) => e.title), ["reviewer", "ana, scribe", "reviewer, scribe"]);
+  assert.deepEqual(filterEntries(all, "all", "scri").map((e) => e.title), ["scribe", "ana, scribe", "reviewer, scribe"]);
+  assert.deepEqual(filterEntries(all, "all", "", "d5").map((e) => e.title), ["reviewer", "ana, scribe", "reviewer, scribe", "triage"]);
   // The agents you haven't talked to yet: live ones without a conversation, g1t first; never an archived one.
   const roster = [
     { id: "a1", handle: "reviewer", display_name: "Reviewer", role: "Reviews", builtin: false, archived_at: null },
