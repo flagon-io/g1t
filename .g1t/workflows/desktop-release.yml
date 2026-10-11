@@ -1,21 +1,29 @@
-# Releases the desktop app, g1t (apps/desktop): builds it for Windows and
-# Linux on a Linux machine, for macOS on a Mac when one is registered, signs
-# every updater file, publishes the release to g1t.sh/downloads/desktop/
-# (the g1t-downloads R2 bucket), and points latest.json at it. Apps already
-# installed update themselves to it; g1t.sh/download offers it.
+# Releases the desktop app, g1t (apps/desktop): builds it for Linux on
+# g1t's machines, for Windows and macOS on machines registered for them,
+# signs every updater file, publishes the release to
+# g1t.sh/downloads/desktop/ (the g1t-downloads R2 bucket), and points
+# latest.json at it. Apps already installed update themselves to it;
+# g1t.sh/download offers it, and says which platforms a release lacks.
 #
 # A release is a tag `desktop-v<version>`, where the version is the one in
 # apps/desktop/src-tauri/Cargo.toml; or run it by hand. scripts/
 # desktop-release.mjs does the work, and its header says how to make the
 # signing key the first time; CONTRIBUTING.md ("Deploying") says how a
-# release is made.
+# release is made; the guide is docs.g1t.sh/guides/desktop/.
 #
 # Needs the repository secret DESKTOP_SIGNING_KEY (the updater's private
-# key; its public half is in tauri.conf.json), CLOUDFLARE_API_TOKEN and
-# CLOUDFLARE_ACCOUNT_ID as the deploy has them, and, for macOS, a
-# self-hosted runner on a Mac with the labels `self-hosted` and `macos`
-# plus the repository variable DESKTOP_MACOS_RUNNER set to `true`; without
-# it the macOS job is skipped and the release carries Windows and Linux.
+# key; its public half is in tauri.conf.json), and CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID as the deploy has them. The platform jobs beyond
+# Linux each wait on a repository variable, so a release goes out with what
+# can be built:
+#
+#   DESKTOP_WINDOWS_RUNNER=true   a self-hosted runner on Windows, labels `self-hosted` and `windows`,
+#                                 with Rust, Node and the Visual Studio build tools (the NSIS installer is fetched)
+#   DESKTOP_WINDOWS_FROM_LINUX=true  no Windows machine: cross-build on g1t's Linux machine with cargo-xwin and NSIS.
+#                                 Needs aka.ms and download.visualstudio.microsoft.com among the project's
+#                                 workflow-only domains for desktop-release.yml in production (Settings, Guardrails),
+#                                 where cargo-xwin fetches the MSVC CRT from.
+#   DESKTOP_MACOS_RUNNER=true     a self-hosted runner on a Mac, labels `self-hosted` and `macos`.
 name: Desktop release
 
 on:
@@ -55,7 +63,7 @@ jobs:
           fi
 
   linux:
-    name: Linux and Windows
+    name: Linux
     needs: version
     # The larger machine: linking Tauri on the small one dies with a bus error.
     runs-on: g1t-4core
@@ -63,16 +71,15 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
-      - name: What Tauri needs on Linux, and to build Windows from here
+      - name: What Tauri needs on Linux
         # Tried three times: the mirror has answered with a mismatched package before.
         run: |
           ok=0
           for try in 1 2 3; do
-            if sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev nsis lld llvm; then ok=1; break; fi
+            if sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev; then ok=1; break; fi
             sudo apt-get clean; sleep 15
           done
           [ "$ok" = 1 ]
-          cargo install --locked cargo-xwin
       - uses: actions/cache@v4
         with:
           path: |
@@ -85,12 +92,73 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.DESKTOP_SIGNING_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-        run: node scripts/desktop-release.mjs build --windows-from-linux
+        run: node scripts/desktop-release.mjs build
       - name: Collect
         run: node scripts/desktop-release.mjs collect
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-linux
+          path: target/desktop-release/${{ needs.version.outputs.version }}/
+
+  windows:
+    name: Windows
+    needs: version
+    if: vars.DESKTOP_WINDOWS_RUNNER == 'true'
+    runs-on: [self-hosted, windows]
+    environment: production
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Build and sign
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.DESKTOP_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: node scripts/desktop-release.mjs build
+      - name: Collect
+        run: node scripts/desktop-release.mjs collect
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: target/desktop-release/${{ needs.version.outputs.version }}/
+
+  windows_cross:
+    name: Windows, built on Linux
+    needs: version
+    if: vars.DESKTOP_WINDOWS_FROM_LINUX == 'true' && vars.DESKTOP_WINDOWS_RUNNER != 'true'
+    runs-on: g1t-4core
+    environment: production
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: What the cross build needs
+        run: |
+          ok=0
+          for try in 1 2 3; do
+            if sudo apt-get update && sudo apt-get install -y build-essential curl wget file libssl-dev nsis lld llvm; then ok=1; break; fi
+            sudo apt-get clean; sleep 15
+          done
+          [ "$ok" = 1 ]
+          cargo install --locked cargo-xwin
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            apps/desktop/src-tauri/target
+          key: desktop-release-windows-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Build and sign
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.DESKTOP_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: node scripts/desktop-release.mjs build --windows-from-linux --only-windows
+      - name: Collect
+        run: node scripts/desktop-release.mjs collect
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
           path: target/desktop-release/${{ needs.version.outputs.version }}/
 
   macos:
@@ -122,9 +190,13 @@ jobs:
 
   publish:
     name: Publish to g1t.sh/downloads/desktop
-    needs: [version, linux, macos]
-    # With no Mac registered the macOS job is skipped, and the release still goes out.
-    if: always() && needs.linux.result == 'success' && (needs.macos.result == 'success' || needs.macos.result == 'skipped')
+    needs: [version, linux, windows, windows_cross, macos]
+    # A platform with no machine registered is skipped, and the release still goes out with the rest.
+    if: >-
+      always() && needs.linux.result == 'success'
+      && contains(fromJSON('["success","skipped"]'), needs.windows.result)
+      && contains(fromJSON('["success","skipped"]'), needs.windows_cross.result)
+      && contains(fromJSON('["success","skipped"]'), needs.macos.result)
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 20

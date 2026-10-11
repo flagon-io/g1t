@@ -103,9 +103,12 @@ setup.
 - **The desktop app** is released the same way: bump `version` in
   `apps/desktop/src-tauri/Cargo.toml`, merge, and push a
   `desktop-v<version>` tag. `.g1t/workflows/desktop-release.yml` builds
-  the installers (Windows and Linux on Linux; macOS on a Mac runner when
-  one is registered), signs the updater's files and publishes them, and
-  installed apps update themselves. `scripts/desktop-release.mjs` does the
+  the installers (Linux on g1t's machines; Windows and macOS on machines
+  registered for them, or Windows cross-built on Linux once its download
+  hosts are allowed, each switched on by a repository variable the
+  workflow's header names; a platform with no machine is left out of that
+  release), signs the updater's files and publishes them, and installed
+  apps update themselves. `scripts/desktop-release.mjs` does the
   same by hand. The app loads the live site, so a change to the site needs
   no release; only a change under `apps/desktop` does. The guide is
   [The desktop app](https://docs.g1t.sh/guides/desktop/).

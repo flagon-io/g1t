@@ -129,8 +129,10 @@ the files a release holds.
 | What | Where |
 | --- | --- |
 | The updater's signing key | `node scripts/desktop-release.mjs keygen`, once. The private key is the repository secret `DESKTOP_SIGNING_KEY`; the public key is `plugins.updater.pubkey` in `tauri.conf.json`. Losing the private key means every installed app stops updating: keep it. |
-| Windows and Linux builds | A Linux machine builds both: Linux natively, Windows with `cargo-xwin` and NSIS. |
-| macOS builds | A Mac, registered as a [self-hosted runner](/guides/self-hosted-runners/) with the labels `self-hosted` and `macos`, and the repository variable `DESKTOP_MACOS_RUNNER` set to `true`. Without one, the macOS job is skipped and the release carries Windows and Linux. |
+| Linux builds | g1t's own Linux machines, in every release. |
+| Windows builds | Either a Windows machine registered as a [self-hosted runner](/guides/self-hosted-runners/) with the labels `self-hosted` and `windows` (Rust, Node and the Visual Studio build tools on it) and the repository variable `DESKTOP_WINDOWS_RUNNER` set to `true`; or, with no Windows machine, `DESKTOP_WINDOWS_FROM_LINUX` set to `true`, which cross-builds on Linux with `cargo-xwin` and NSIS and needs `aka.ms` and `download.visualstudio.microsoft.com` among the project's [workflow-only domains](/guides/guardrails/#workflow-only-domains) for `desktop-release.yml` in `production`, where the MSVC runtime is fetched from. |
+| macOS builds | A Mac, registered as a self-hosted runner with the labels `self-hosted` and `macos`, and the repository variable `DESKTOP_MACOS_RUNNER` set to `true`. |
+| A platform with no machine | Its job is skipped and the release goes out with the rest; the download page says which platforms a release lacks, and the next release fills them in. |
 | Where releases are served | `g1t.sh/downloads/desktop/<version>/<file>`, from the same bucket as the runner's and the CLI's releases. |
 
 A self-hosted g1t does not serve the app's releases: the app always

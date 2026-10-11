@@ -194,6 +194,16 @@ export default function DownloadPage() {
           </Card>
         )}
 
+        {release && !featured && platform && (
+          <Card className="p-5">
+            <p className="font-medium">Not yet for {PLATFORMS.find((p) => p.id === platform)?.name}.</p>
+            <p className="mt-1 text-sm text-muted">
+              Version {release.version} is out for {Array.from(new Set(release.downloads.map((d) => PLATFORMS.find((p) => p.id === d.platform)?.name))).join(" and ")};
+              yours is built in a later release. Until then, g1t works as an installed web app: in your browser's menu, choose Install or Add to Dock.
+            </p>
+          </Card>
+        )}
+
         <div className="mt-10 grid gap-3 sm:grid-cols-2">
           {WHAT.map((item) => (
             <div key={item.title} className="flex gap-3 rounded-xl border border-line bg-surface p-5">
@@ -219,7 +229,16 @@ export default function DownloadPage() {
             <div className="mt-4 space-y-3">
               {ordered.map((p) => {
                 const files = release.downloads.filter((d) => d.platform === p.id);
-                if (files.length === 0) return null;
+                // A platform this release lacks: it is built on a machine not yet registered.
+                if (files.length === 0) {
+                  return (
+                    <Card key={p.id} tone="plain" className="flex flex-wrap items-center gap-2 rounded-xl px-4 py-3">
+                      <span className="text-faint">{p.icon}</span>
+                      <span className="font-medium text-muted">{p.name}</span>
+                      <span className="text-sm text-muted">· Coming in a later release. {p.note}</span>
+                    </Card>
+                  );
+                }
                 return (
                   <Card key={p.id} tone="plain" divided className="rounded-xl">
                     <div className="flex items-center gap-2 px-4 py-3">

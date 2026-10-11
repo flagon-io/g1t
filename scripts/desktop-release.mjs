@@ -8,7 +8,7 @@
 // release (apps/web/app/routes/download.tsx).
 //
 //   node scripts/desktop-release.mjs keygen                    # once: the updater's signing key
-//   node scripts/desktop-release.mjs build [--windows-from-linux]
+//   node scripts/desktop-release.mjs build [--windows-from-linux [--only-windows]]
 //   node scripts/desktop-release.mjs collect                   # this machine's bundles, into the release folder
 //   node scripts/desktop-release.mjs manifest [--notes "…"]    # latest.json and SHA256SUMS from what is collected
 //   node scripts/desktop-release.mjs publish [--dry-run]
@@ -155,10 +155,13 @@ function keygen() {
   run("npx", ["tauri", "signer", "generate", "--ci"], { cwd: APP });
 }
 
-function build(windowsFromLinux) {
+/** `windowsFromLinux` adds the Windows cross build; `onlyWindows` skips this machine's own. */
+function build(windowsFromLinux, onlyWindows = false) {
   if (!process.env.TAURI_SIGNING_PRIVATE_KEY) console.error("warning: TAURI_SIGNING_PRIVATE_KEY is not set; these bundles cannot be fetched by the updater");
-  console.error(`building ${hostPlatform()}`);
-  run("npx", ["tauri", "build", "--ci"], { cwd: APP });
+  if (!onlyWindows) {
+    console.error(`building ${hostPlatform()}`);
+    run("npx", ["tauri", "build", "--ci"], { cwd: APP });
+  }
   if (windowsFromLinux) {
     // Tauri's cross build: cargo-xwin for the MSVC target, NSIS for the
     // installer, both on PATH (the release workflow installs them).
@@ -249,7 +252,7 @@ if (process.argv[1]?.replaceAll("\\", "/").endsWith("scripts/desktop-release.mjs
         keygen();
         break;
       case "build":
-        build(rest.includes("--windows-from-linux"));
+        build(rest.includes("--windows-from-linux"), rest.includes("--only-windows"));
         break;
       case "collect":
         collect();
