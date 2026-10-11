@@ -102,7 +102,9 @@ impl Actions {
     /// `report.repository` (`owner/repo`) and `report.ref`. Answers
     /// `{"source": "g1t", "url", "ref", "token"}` (a read-only token for
     /// that repository, ending with the job, when it is private),
-    /// `{"source": "github"}`, or a refusal saying why it may not be used.
+    /// `{"source": "github", "sha", "archive", "note"}` (the commit its ref
+    /// names, and whether g1t keeps its archive; see registry.rs), or a
+    /// refusal saying why it may not be used.
     pub async fn job_action(&self, a: g1t_contracts::actions::JobCallArgs) -> Result<Outcome<Value>> {
         let job = crate::check!(self.job_for_token(&a).await?);
         let Some(run) = self.run_row(&job.run_id).await? else {
@@ -117,7 +119,7 @@ impl Actions {
             return Ok(fail(FailureCode::NotFound, "The repository is gone."));
         };
         let target = match crate::check!(self.find_used(&caller, &ws, &used).await?) {
-            Found::GitHub => return Ok(Outcome::Ok(json!({ "source": "github" }))),
+            Found::GitHub => return Ok(Outcome::Ok(self.github_action(&used).await?)),
             Found::G1t(target) => target,
         };
         let full_name = format!("{}/{}", target.namespace, target.name);

@@ -2340,6 +2340,12 @@ impl Actions {
         {
             worker::console_error!("actions: the cache's sweep failed: {error}");
         }
+        // And the archives of GitHub's actions no job uses any more.
+        if (now_ms / 60_000) % 60 == 47
+            && let Err(error) = self.sweep_action_archives(now_ms).await
+        {
+            worker::console_error!("actions: the action archives' sweep failed: {error}");
+        }
         // And artifacts past their time, and the toolkit's abandoned parts.
         if (now_ms / 60_000) % 60 == 37 {
             if let Err(error) = self.sweep_artifacts(now_ms).await {
