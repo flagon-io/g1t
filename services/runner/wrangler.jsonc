@@ -62,17 +62,15 @@
 		{ "tag": "v3", "new_sqlite_classes": ["AgentComputer"] }
 	],
 	// Where agents' computers keep their homes between wakes (src/computer.ts).
-	// NOT YET ENABLED: the bucket does not exist, and a deploy with a binding
-	// to a missing bucket fails. The operator creates it, then uncomments
-	// this block ("Agents' computers" in docs.g1t.sh/guides/deploy-to-cloudflare/):
+	// The operator makes the bucket before the first deploy with this binding
+	// ("Agents' computers" in docs.g1t.sh/guides/deploy-to-cloudflare/):
 	//
 	//   npx wrangler r2 bucket create g1t-agent-homes
 	//   npx wrangler r2 bucket lifecycle add g1t-agent-homes abort-uploads homes/ --abort-multipart-days 1
 	//
-	// Until then computers work but forget their home when they sleep, and
+	// Without it computers work but forget their home when they sleep, and
 	// the Computer tab says the disk isn't attached yet.
-	//
-	// "r2_buckets": [{ "binding": "HOMES", "bucket_name": "g1t-agent-homes" }],
+	"r2_buckets": [{ "binding": "HOMES", "bucket_name": "g1t-agent-homes" }],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },

@@ -334,8 +334,11 @@ each Computer tab says the disk isn't attached yet. To turn it on:
    npx wrangler r2 bucket lifecycle add g1t-agent-homes abort-uploads homes/ --abort-multipart-days 1
    ```
 
-2. Uncomment the `r2_buckets` block in `services/runner/wrangler.jsonc`
-   (`HOMES` → `g1t-agent-homes`) and deploy the runner.
+2. Deploy the runner: its `wrangler.jsonc` binds the bucket as `HOMES`.
+   A deploy with that binding fails until the bucket exists, so a
+   self-hosted g1t without agent computers comments the `r2_buckets`
+   line out instead; computers then work but forget their home when
+   they sleep, and the Computer tab says the disk isn't attached.
 
 An archived agent's home is deleted by the object itself 30 days later;
 nothing else expires in the bucket. Reset deletes the agent's object at
