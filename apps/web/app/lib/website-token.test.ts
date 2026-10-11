@@ -11,6 +11,9 @@ import {
   bearerToken,
   isNeedsSignIn,
   needsRealSignIn,
+  scopedRoute,
+  scopedUser,
+  socketUser,
   tokenVerdict,
   websiteUser,
 } from "./website-token.ts";
@@ -168,4 +171,105 @@ test("cross-site form posts are refused for a session cookie and a token alike",
   assert.ok(crossOrigin(post({ cookie: "g1t_session=" + "a".repeat(64), origin: "null" })));
   assert.ok(!crossOrigin(post({ cookie: "g1t_session=" + "a".repeat(64), origin: "https://g1t.sh" })));
   assert.ok(!crossOrigin(post(bearer("g1t_web"))), "automation that sends no Origin is not another site");
+});
+
+/** A person's token without the website permission, as an OAuth sign-in (the phone app) or a personal token has it. */
+const scoped = (scopes: string[] | null, more: Partial<NonNullable<User["token"]>> = {}): User => ({
+  ...ada,
+  token: { token_id: "tok_app", scopes, ...more },
+});
+
+const scopedTokens = lookup({
+  g1t_chat_read: scoped(["chat:read", "notifications:read"]),
+  g1t_chat_write: scoped(["chat:write", "notifications:write"]),
+  g1t_no_chat: scoped(["repo:read", "issues:write", "notifications:read"]),
+  g1t_full: scoped(null),
+  g1t_legacy: scoped(null, { legacy: true }),
+  g1t_web: ada,
+  g1t_workspace: { ...ada, id: "wsp_1", username: "acme", kind: "workspace", token: { token_id: "tok_ws", scopes: ["chat:write"] } },
+  g1t_job: scoped(["chat:write"], { job: { run_id: "run_1", job_id: "job_1" } }),
+  g1t_deploy: scoped(["chat:write"], { deploy_key: "key_1" }),
+  g1t_agent: { ...scoped(["chat:write"]), kind: "agent" },
+});
+
+const verdictOf = async (token: string, path: string, method = "GET") =>
+  (await tokenVerdict(request(path, { method, headers: bearer(token), body: method === "GET" ? undefined : JSON.stringify({ intent: "post" }) }), scopedTokens)).kind;
+
+test("a token with chat:read reads Chat's JSON without the website permission, and sends nothing", async () => {
+  for (const path of ["/acme/-/chat/api", "/acme/-/chat/api?channel=ch_1&thread=m_1", "/Acme//-/chat/api/", "/acme/-/chat/person/bob"]) {
+    assert.equal(await verdictOf("g1t_chat_read", path), "signed-in", path);
+  }
+  assert.equal(await verdictOf("g1t_chat_read", "/acme/-/chat/api", "POST"), "refused");
+  assert.equal(await verdictOf("g1t_chat_read", "/acme/-/chat/person/bob", "POST"), "refused");
+});
+
+test("a token with chat:write sends to Chat's JSON, and reads it too", async () => {
+  assert.equal(await verdictOf("g1t_chat_write", "/acme/-/chat/api", "POST"), "signed-in");
+  assert.equal(await verdictOf("g1t_chat_write", "/acme/-/chat/api"), "signed-in");
+  assert.equal(await verdictOf("g1t_chat_write", "/-/live/ticket?path=%2Facme%2F-%2Fchat%2Flive"), "signed-in");
+});
+
+test("a token without a chat scope, or not a person's own, reaches none of Chat", async () => {
+  for (const token of ["g1t_no_chat", "g1t_workspace", "g1t_job", "g1t_deploy", "g1t_agent"]) {
+    assert.equal(await verdictOf(token, "/acme/-/chat/api"), "signed-out", token);
+    assert.equal(await verdictOf(token, "/acme/-/chat/api", "POST"), "refused", token);
+    assert.equal(await verdictOf(token, "/-/live/ticket?path=%2F-%2Flive"), "signed-out", token);
+  }
+});
+
+test("a chat-scoped token opens nothing else on the site: pages are signed out, data and posts are a 401", async () => {
+  for (const token of ["g1t_chat_write", "g1t_full"]) {
+    for (const path of ["/", "/acme", "/acme/-/chat", "/acme/-/chat/general", "/acme/rocket", "/settings/profile", "/acme/-/chat/live", "/-/live"]) {
+      assert.deepEqual(await tokenVerdict(request(path, { headers: bearer(token) }), scopedTokens), { kind: "signed-out" }, `${token} ${path}`);
+    }
+    // A client navigation's data runs the loaders around the route as well, so it is not Chat's JSON.
+    for (const path of ["/acme/-/chat/api.data", "/acme/-/chat/person/bob.data", "/acme/-/chat.data", "/-/notify.data", "/-/live/ticket.data", "/_root.data"]) {
+      assert.deepEqual(await tokenVerdict(request(path, { headers: bearer(token) }), scopedTokens), { kind: "refused", status: 401, body: TOKEN_REFUSED }, `${token} ${path}`);
+    }
+    for (const path of ["/acme/rocket/issues/new", "/acme/-/chat/general", "/-/live/ticket", "/acme/-/chat/person/bob", "/-/-/chat/api"]) {
+      assert.equal(await verdictOf(token, path, "POST"), "refused", `${token} ${path}`);
+    }
+    assert.equal(await verdictOf(token, "/acme/-/chat/api", "DELETE"), "refused");
+  }
+  assert.equal(scopedRoute("/-/-/chat/api", "GET"), null, "`-` is no workspace");
+  assert.equal(scopedRoute("/acme/web/-/chat/api", "GET"), null);
+  assert.equal(scopedRoute("/acme/-/chat/person/bob/x", "GET"), null);
+});
+
+test("push registration and notification settings take the notifications scopes", async () => {
+  assert.equal(await verdictOf("g1t_chat_read", "/-/notify"), "signed-in");
+  assert.equal(await verdictOf("g1t_chat_read", "/-/notify", "POST"), "refused");
+  assert.equal(await verdictOf("g1t_chat_write", "/-/notify", "POST"), "signed-in");
+  assert.equal(await verdictOf("g1t_chat_write", "/-/notify"), "signed-in", "write includes read");
+  assert.equal(await verdictOf("g1t_no_chat", "/-/notify"), "signed-in", "notifications:read alone is enough");
+  assert.equal(await verdictOf("g1t_no_chat", "/-/notify", "POST"), "refused");
+  assert.equal(scopedRoute("/-/notify", "POST"), "notifications:write");
+});
+
+test("full access, legacy or not, reaches Chat only with the website permission; the website permission keeps opening everything", async () => {
+  for (const token of ["g1t_full", "g1t_legacy"]) {
+    assert.equal(await verdictOf(token, "/acme/-/chat/api", "GET"), "signed-out", token);
+    assert.equal(await verdictOf(token, "/acme/-/chat/api", "POST"), "refused", token);
+    assert.equal(await verdictOf(token, "/-/notify", "POST"), "refused", token);
+    assert.equal(socketUser(scoped(null), "/-/live"), null, token);
+  }
+  // A website token with no chat scope is the website's as before, Chat included.
+  assert.equal(await verdictOf("g1t_web", "/acme/-/chat/api", "POST"), "signed-in");
+  assert.equal(await verdictOf("g1t_web", "/acme/rocket"), "signed-in");
+  assert.equal(scopedUser(scoped(["chat:read"]), "/acme/-/chat/api", "GET")?.username, "ada");
+  assert.equal(scopedUser({ ...ada, token: undefined }, "/acme/-/chat/api", "GET"), null, "a session is not a token");
+  assert.equal(scopedUser(scoped(["chat:bogus", "chat"]), "/acme/-/chat/api", "GET"), null);
+});
+
+test("a chat-scoped token opens Chat's socket and the feed, never an artifact's", () => {
+  const reader = scoped(["chat:read"]);
+  assert.equal(socketUser(reader, "/acme/-/chat/live")?.username, "ada");
+  assert.equal(socketUser(reader, "/-/live")?.username, "ada");
+  assert.equal(socketUser(reader, "/acme/-/artifacts/live"), null);
+  assert.equal(socketUser(scoped(null), "/acme/-/chat/live"), null, "full access, without the website permission");
+  assert.equal(socketUser(scoped(["notifications:write"]), "/-/live"), null);
+  assert.equal(socketUser(scoped(["chat:read"], { job: { run_id: "run_1", job_id: "job_1" } }), "/-/live"), null);
+  assert.equal(socketUser({ ...ada, token: undefined }, "/-/live"), null);
+  // The website permission opens every socket, as before.
+  assert.equal(socketUser(ada, "/acme/-/artifacts/live")?.username, "ada");
 });

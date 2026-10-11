@@ -353,12 +353,12 @@ html[data-theme="dark"] {
 
 /*
  * The app's frame (components/shell.tsx), set on <body data-frame="app">:
- * the page fills the window beside the rail and the sidebar; on a phone
- * it is a rounded panel inset above the bottom bar. What sticks to the top
- * or the bottom of a page reads these:
- * --frame-top  the gap above the page (none on a computer)
+ * the page fills the window beside the rail and the sidebar, and on a
+ * phone it fills the window above the bottom bar, flat, as on a computer.
+ * What sticks to the top or the bottom of a page reads these:
+ * --frame-top  what is above the page: a phone's status bar, where it overlaps
  * --topbar-h   that gap plus the top bar: where sticky things sit
- * --tabbar-h   what the bottom takes: on a phone, the gap under the panel and the bar
+ * --tabbar-h   what the bottom takes: on a phone, the bar and the home indicator under it
  * --page-h     the height left for a page that fills the window (Chat)
  * The public frame keeps a plain header 3.5rem tall and nothing at the bottom.
  */
@@ -374,9 +374,9 @@ body[data-frame="app"] {
 }
 @media (max-width: 767px) {
   body[data-frame="app"] {
-    --frame-top: max(0.375rem, env(safe-area-inset-top));
-    /* The bottom bar: 64px tall, 8px off the edge, 6px under the panel. */
-    --tabbar-h: calc(4.875rem + env(safe-area-inset-bottom));
+    --frame-top: env(safe-area-inset-top);
+    /* The bottom bar: 56px tall along the bottom edge, and the home indicator's room under it. */
+    --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom));
   }
 }
 

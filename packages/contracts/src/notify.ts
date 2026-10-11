@@ -1,7 +1,8 @@
 /**
  * Notifications: the notify service (`services/notify`) keeps one feed per
  * person, a Durable Object holding their open tabs' sockets, their latest
- * notifications, live unread counts and their browser push subscriptions.
+ * notifications, live unread counts, their browser push subscriptions and
+ * the phones the g1t app pushes to.
  *
  * Chat tells it about every message a person should count or hear of, the
  * events service about every inbox item, and the site forwards each tab's
@@ -90,6 +91,13 @@ export type PushSubscriptionJson = {
   expiration_time?: number | null;
   keys: { p256dh: string; auth: string };
 };
+
+/**
+ * A phone the g1t app runs on, as the app registers it: the push token
+ * Expo gave it (`ExponentPushToken[…]`), which platform, and a name to
+ * know it by (at most 100 characters).
+ */
+export type PushDevice = { token: string; platform: "android" | "ios"; name?: string | null };
 
 /** A conversation's unread counts for one person. */
 export type ChannelCounts = { channel_id: string; unread: number; mentions: number; muted: boolean };
@@ -232,6 +240,8 @@ export type NotifyStatus = {
   preferences: NotifyPreferences;
   /** How many browsers get pushes. */
   subscriptions: number;
+  /** How many phones the g1t app pushes to (absent from a service older than them). */
+  devices?: number;
   /** Whether this browser's endpoint is one of them, when it was asked about. */
   subscribed: boolean;
   /** The public key a browser subscribes with; null when push is not set up. */
@@ -245,6 +255,10 @@ export type NotifyApi = {
   deliver(items: FeedDelivery[]): Promise<{ ok: boolean }>;
   subscribe(user: User, subscription: PushSubscriptionJson, userAgent?: string | null): Promise<{ ok: boolean }>;
   unsubscribe(user: User, endpoint: string): Promise<{ ok: boolean }>;
+  /** A phone the app runs on gets pushes too; the newest 10 are kept. `ok` is false for a token that is not Expo's. */
+  registerDevice(user: User, device: PushDevice): Promise<{ ok: boolean }>;
+  /** That phone stops getting them: the app signed out. */
+  unregisterDevice(user: User, token: string): Promise<{ ok: boolean }>;
   status(user: User, endpoint?: string | null): Promise<NotifyStatus>;
   setPreferences(user: User, preferences: NotifyPreferencesChange): Promise<NotifyPreferences>;
   /** Sends the person a test notification, toasted and pushed whatever their focus. */
@@ -293,6 +307,8 @@ export function notifyClient(service: ServiceBinding): NotifyApi {
     deliver: (items) => call("deliver", { items }),
     subscribe: (user, subscription, userAgent) => call("subscribe", { user_id: user.id, subscription, user_agent: userAgent ?? null }),
     unsubscribe: (user, endpoint) => call("unsubscribe", { user_id: user.id, endpoint }),
+    registerDevice: (user, device) => call("register_device", { user_id: user.id, device }),
+    unregisterDevice: (user, token) => call("unregister_device", { user_id: user.id, token }),
     status: (user, endpoint) => call("status", { user_id: user.id, endpoint: endpoint ?? null }),
     setPreferences: (user, preferences) => call("set_preferences", { user_id: user.id, preferences }),
     test: (user) => call("test", { user_id: user.id, username: user.username }),

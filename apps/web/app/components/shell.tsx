@@ -288,17 +288,19 @@ function NavGroup({
   children,
 }: {
   title: string;
-  /** A small button at the label's end: what the group makes (a `SidebarGroupAction`). */
+  /** A small button at the label's end, in its row: what the group makes (a `SidebarGroupAction` with `relative top-auto right-auto`). */
   action?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
   return (
     <SidebarGroup className={className}>
-      <SidebarGroupLabel asChild>
-        <h2>{title}</h2>
-      </SidebarGroupLabel>
-      {action}
+      <div className="flex items-center justify-between gap-2 pr-1">
+        <SidebarGroupLabel asChild>
+          <h2>{title}</h2>
+        </SidebarGroupLabel>
+        {action}
+      </div>
       <SidebarGroupContent>
         <SidebarMenu>{children}</SidebarMenu>
       </SidebarGroupContent>
@@ -688,16 +690,19 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
   );
   return (
     <SidebarGroup>
-      <SidebarGroupLabel asChild>
-        <h2>Projects</h2>
-      </SidebarGroupLabel>
-      <Hint label="New project">
-        <SidebarGroupAction asChild>
-          <Link to="/new" aria-label="New project">
-            <Plus />
-          </Link>
-        </SidebarGroupAction>
-      </Hint>
+      {/* The label and its button share a row, so the button stays level with the words at any text size. */}
+      <div className="flex items-center justify-between gap-2 pr-1">
+        <SidebarGroupLabel asChild>
+          <h2>Projects</h2>
+        </SidebarGroupLabel>
+        <Hint label="New project">
+          <SidebarGroupAction asChild className="relative top-auto right-auto">
+            <Link to="/new" aria-label="New project">
+              <Plus />
+            </Link>
+          </SidebarGroupAction>
+        </Hint>
+      </div>
       <SidebarGroupContent>
       {/* Only there once something is pinned: each row below has its own pin. */}
       {pinned.length > 0 && (
@@ -1941,7 +1946,7 @@ function useSidebarKey(): string {
  * filling the rest of the window, with its top bar across the top and a
  * line under it: the sidebar's toggle, where you are, search, Ask g1t and
  * Create new. On a phone the rail is a bar along the bottom and the page
- * a rounded panel above it. Only for someone signed in; without a workspace yet, there
+ * fills the window above it, flat as well. Only for someone signed in; without a workspace yet, there
  * is no rail. The rail and the sidebar are drawn from the sidebar kit
  * (components/ui/sidebar.tsx): one provider holds whether the sidebar is
  * open on a computer and whether the drawer is.
@@ -2089,12 +2094,12 @@ export function AppShell({
         </SidebarMobile>
       )}
 
-      <div className={`min-h-dvh pt-(--frame-top) pb-(--tabbar-h) max-md:px-1.5 ${pad}`}>
+      <div className={`min-h-dvh pt-(--frame-top) pb-(--tabbar-h) ${pad}`}>
         {/* The top bar always has its line, so a page's own header (data-page-head: a conversation's, a project's,
             a sticky one under an open artifact) sits under it as its own band. */}
-        <div className="flex min-h-[calc(100dvh-var(--frame-top)-var(--tabbar-h))] min-w-0 flex-col bg-bg max-md:rounded-[14px]">
+        <div className="flex min-h-[calc(100dvh-var(--frame-top)-var(--tabbar-h))] min-w-0 flex-col bg-bg">
           <header
-            className={`sticky top-(--frame-top) z-30 flex h-14 items-center gap-1 border-b border-line bg-bg pr-2 pl-2 max-md:rounded-t-[14px] sm:pr-3 ${inline ? "lg:pl-3.5" : ""} ${conversation ? "max-md:hidden" : ""}`}
+            className={`sticky top-(--frame-top) z-30 flex h-14 items-center gap-1 border-b border-line bg-bg pr-2 pl-2 sm:pr-3 ${inline ? "lg:pl-3.5" : ""} ${conversation ? "max-md:hidden" : ""}`}
           >
             {panel && (
               <SidebarTrigger
@@ -2142,12 +2147,6 @@ export function AppShell({
           </main>
         </div>
       </div>
-      {/* On a phone the page is a rounded panel above the bottom bar: a frame over it, with the background beyond,
-          so what scrolls stays inside. A phone's conversation, full screen over everything, goes without. */}
-      <div
-        aria-hidden="true"
-        className={`pointer-events-none fixed top-(--frame-top) right-1.5 bottom-(--tabbar-h) left-1.5 z-[35] rounded-[14px] shadow-[0_0_0_1px_var(--color-line),0_0_0_100vmax_var(--color-shell)] md:hidden ${conversation ? "max-md:hidden" : ""}`}
-      />
       {ws && <BottomBar user={user} workspace={ws} pins={shell.pins ?? []} unread={unread} onReselect={panel ? () => setDrawer(true) : undefined} />}
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} repo={shell.repo ? `${shell.repo.namespace}/${shell.repo.name}` : null} />
     </SidebarProvider>

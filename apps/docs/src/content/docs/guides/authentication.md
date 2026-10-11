@@ -589,7 +589,7 @@ the website too when you turn that on for it:
 | git | As the password, with your username. |
 | API | `Authorization: Bearer g1t_…` |
 | MCP | The same header, set when you add the server. |
-| The website | The same header on every request, from automation that drives a browser. Only a token with **Use the website as you** turned on. See [use a token on the website](#use-a-token-on-the-website). |
+| The website | The same header on every request, from automation that drives a browser. Only a token with **Use the website as you** turned on. See [use a token on the website](#use-a-token-on-the-website). A token with [Chat's scopes](#chat-and-notifications-without-the-website) reaches Chat without it. |
 
 A token is shown once, when it is created; g1t stores only a hash of it.
 If you lose one, delete it and create another. Delete a token the moment
@@ -762,6 +762,31 @@ these pages answer **This needs you to sign in** (`403`):
 | Deleting a workspace, and giving it to another owner | A workspace's General settings, and its Members page |
 | Payment methods: the billing portal, adding a card, subscribing and buying AI credit | A workspace's Billing |
 
+### Chat and notifications without the website
+
+[Chat](/guides/chat/) has no API of its own: an application such as a
+phone app reads and sends messages through the same addresses the website's
+chat pages call. A token with Chat's scopes, from
+[OAuth](#signing-in-with-oauth) or a personal token, may use those
+addresses without **Use the website as you**, and nothing else on the site:
+
+| Request | Needs |
+| --- | --- |
+| `GET /{workspace}/-/chat/api`, `GET /{workspace}/-/chat/person/{username}` | `chat:read` |
+| `POST /{workspace}/-/chat/api` | `chat:write` |
+| `GET /-/live/ticket?path=…`, for Chat's live socket `/{workspace}/-/chat/live` or your feed `/-/live` | `chat:read` |
+| `GET /-/notify`, registering for push notifications and reading your notification settings | `notifications:read` |
+| `POST /-/notify`, changing them | `notifications:write` |
+
+The socket opens with the ticket, and the token is checked again then, so a
+token that has lost `chat:read` opens nothing. Such a token gets no ticket
+for an artifact's socket. Every other page loads signed out with it, and
+every other data request and form post answers `401`, as for any token not
+accepted. The token must have been given these scopes by name: a
+full-access token, or one made before tokens had scopes, reaches Chat only
+with **Use the website as you**. No preset holds them either, so an
+application gets Chat only when it asks for it by name.
+
 ### Permissions
 
 A permission is a resource and a level. A higher level includes the lower
@@ -806,6 +831,7 @@ token can hold them:
 | --- | --- | --- |
 | Your account | read, read and write | `account:read`, `account:write` |
 | Notifications | read, read and write | `notifications:read`, `notifications:write` |
+| Chat | read, read and write | `chat:read`, `chat:write` |
 
 What each level lets a token do is in [scopes](#scopes). On the form, each
 row says it for the level chosen, and admin and delete levels are shown in
@@ -839,8 +865,8 @@ any row.
 
 | Preset | Permissions |
 | --- | --- |
-| Read only | Every resource at read. Changes nothing. |
-| Agent | Every resource at read except Self-hosted runners, and Code, Issues, Pull requests, Memory and context and Notifications at read and write, and g1t agents at run. Reads everything, works on issues and pull requests, pushes code, puts g1t to work, and answers your inbox. No admin level. |
+| Read only | Every resource at read except Chat. Changes nothing. |
+| Agent | Every resource at read except Self-hosted runners and Chat, and Code, Issues, Pull requests, Memory and context and Notifications at read and write, and g1t agents at run. Reads everything, works on issues and pull requests, pushes code, puts g1t to work, and answers your inbox. No admin level. |
 | CI | Repositories: read; Code, Packages, Workflows, Checks and statuses, and Deployments: read and write. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments. |
 
 A new personal token starts on Read only; a new workspace token on CI.
@@ -888,6 +914,8 @@ one.
 | `account:write` | Change your email addresses, make invites, answer invitations, pin projects and star repositories |
 | `notifications:read` | See your [notifications](/guides/notifications/), its threads, and what you subscribe to and watch |
 | `notifications:write` | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories |
+| `chat:read` | Read the conversations you are in: channels, direct messages, threads and reactions, live. Not in any preset. See [Chat and notifications without the website](#chat-and-notifications-without-the-website). |
+| `chat:write` | Send, edit and delete your messages, react, mark conversations read, and answer cards in chat. Not in any preset. |
 | `workspace:read` | Read workspace settings, invites, integrations, model routes and [teams](/guides/teams/) |
 | `workspace:admin` | Create and delete workspaces, invite members, manage teams, connect integrations |
 | `billing:read` | See a workspace's [usage, budget, AI credit and invoices](/guides/usage-and-billing/) |
@@ -1098,11 +1126,12 @@ you cannot give it more than it asked for. Like a token, it reaches
 everything you can.
 
 An application that asks for no scopes in particular gets the
-[Agent preset](#presets): every `read` scope except `runners:read`, and `code:write`,
+[Agent preset](#presets): every `read` scope except `runners:read` and `chat:read`, and `code:write`,
 `issues:write`, `pull_requests:write`, `agents:run`, `memory:write` and
 `notifications:write`.
 It never gets an admin scope unless it asks for one and you leave it
-ticked.
+ticked, and it gets `chat:read` and `chat:write` only by asking for them;
+with them it can use [Chat](#chat-and-notifications-without-the-website).
 
 Applications you have approved are listed in
 [Settings → Connected applications](https://g1t.sh/settings/applications),

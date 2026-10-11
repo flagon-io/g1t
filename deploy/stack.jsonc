@@ -158,6 +158,9 @@
 			"stage": "core",
 			// The private half of the VAPID key pair browser pushes are signed
 			// with; without it, notifications are live in open tabs only.
+			// EXPO_ACCESS_TOKEN, for pushes to the phone app, is optional
+			// (only for an Expo project with enhanced push security), so it
+			// is not listed.
 			"secrets": ["VAPID_PRIVATE_KEY"],
 			"setup": [
 				"The VAPID key pair for browser push: `node scripts/ops/vapid-keys.mjs` prints both halves and stores nothing. Put the public half in VAPID_PUBLIC_KEY in services/notify/wrangler.jsonc, and the private half with `npx wrangler secret put VAPID_PRIVATE_KEY` in services/notify"

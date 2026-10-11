@@ -113,7 +113,7 @@ talk to the app, whichever it is, and updates still come from g1t.sh.
   page is open, the window shows the web view's own error until it is
   back; starting without a network shows the app's own page, with a retry.
 - **Notarization on macOS**, so the first open needs no right-click.
-- **A phone app.**
+- **A phone app.** It is being built: see [the phone app](/guides/mobile/).
 
 ## For operators: releasing the app
 

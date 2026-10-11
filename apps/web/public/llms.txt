@@ -335,7 +335,7 @@ as `repo`, written `owner/name`.
 
 Every access token and OAuth sign-in has scopes, `resource:level`:
 `repo`, `code`, `issues`, `pull_requests`, `workflows`, `checks`, `deployments`, `memory`,
-`account`, `notifications`, `access`, `webhooks`, `secrets`, `runners`, `models`, `artifacts` (read, write or admin
+`account`, `notifications`, `chat`, `access`, `webhooks`, `secrets`, `runners`, `models`, `artifacts` (read, write or admin
 as each has them), `agents:run`, `workspace:read` and `workspace:admin`. A higher
 level includes the lower. A token may expire. It reaches every workspace
 and repository its owner can (a workspace's token, that workspace only);
@@ -349,12 +349,16 @@ but full access); a workflow job's token never has it. A fine-grained
 token reaches one workspace (or only its owner's account), all, chosen or
 only public repositories of it, with permissions (`contents`, `issues`,
 `workflows`, …) mapped to these scopes; a workspace may require an owner to approve one first. For
-an agent, use the Agent preset (every read scope but `runners:read`, plus `code:write`,
+an agent, use the Agent preset (every read scope but `runners:read` and `chat:read`, plus `code:write`,
 `issues:write`, `pull_requests:write`, `agents:run`, `memory:write`,
 `notifications:write`). For CI, the CI preset (`repo:read`, `code:read`,
 `code:write`, `packages:read`, `packages:write`, `workflows:read`,
 `workflows:write`, `deployments:read`, `deployments:write`). `models:write` (sending requests through the AI
 Gateway, which spends AI credit) is in no preset but full access.
+`chat:read` and `chat:write` are in no preset either: with them a person's
+token, OAuth or personal, uses Chat's JSON routes (`/{workspace}/-/chat/api`)
+and live sockets on the website without "Use the website as you", and
+nothing else there.
 OAuth clients may send `scope`;
 the person can untick any; asking for none gives the Agent preset. Tokens
 from device sign-in (above) have full access. Guide:

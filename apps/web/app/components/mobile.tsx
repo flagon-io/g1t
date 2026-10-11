@@ -120,9 +120,11 @@ export function useBack(fallback: string) {
 type Tab = { key: ModeKey; label: string; badge?: { count: number; loud: boolean } };
 
 /**
- * The bottom bar of a phone, floating 8px from the edges: Home, Chat,
+ * The bottom bar of a phone, flat along the bottom edge under a rule, as
+ * the rail stands flat beside the page on a computer: Home, Chat,
  * Notifications, Agents and Code (for a member with Code access), each
- * with what is unread, and More. It steps aside while the keyboard is up
+ * with what is unread, and More. The tab you are in has the rail's own
+ * mark: its icon on the sidebar's accent. It steps aside while the keyboard is up
  * and inside a conversation. The tab you are in, tapped again, opens its
  * mode's menu (its sidebar).
  */
@@ -160,7 +162,7 @@ export function BottomBar({
     <>
       <nav
         aria-label="Apps"
-        className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-2 z-40 h-16 rounded-2xl border border-line bg-rail px-1 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_8px_24px_rgba(0,0,0,0.35)] md:hidden in-data-[keyboard=open]:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 h-(--tabbar-h) border-t border-line bg-rail pb-[env(safe-area-inset-bottom)] md:hidden in-data-[keyboard=open]:hidden"
       >
         <ul className="grid h-full" style={{ gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))` }}>
           {tabs.map((tab) => {
@@ -183,23 +185,21 @@ export function BottomBar({
                   }}
                   className={BAR_ITEM}
                 >
-                  {current && <TopBar />}
                   <BarIcon current={current}>
                     {appIcon(tab.key as BuiltinApp, 20)}
                     {tab.badge && <CountBadge count={count} loud={tab.badge.loud} />}
                   </BarIcon>
-                  <span className={`w-full truncate text-[0.625rem] leading-tight font-medium max-[380px]:text-[0.5625rem] max-[380px]:tracking-[-0.02em] ${current ? "text-fg" : "text-faint"}`}>{tab.label}</span>
+                  <BarLabel current={current}>{tab.label}</BarLabel>
                 </Link>
               </li>
             );
           })}
           <li className="min-w-0">
             <button type="button" aria-expanded={more} aria-haspopup="dialog" onClick={() => setMore(true)} className={BAR_ITEM}>
-              {(more || !inTabs) && <TopBar />}
               <BarIcon current={more || !inTabs}>
                 <Ellipsis size={20} />
               </BarIcon>
-              <span className={`w-full truncate text-[0.625rem] leading-tight font-medium ${more || !inTabs ? "text-fg" : "text-faint"}`}>More</span>
+              <BarLabel current={more || !inTabs}>More</BarLabel>
             </button>
           </li>
         </ul>
@@ -209,16 +209,23 @@ export function BottomBar({
   );
 }
 
-const BAR_ITEM = "relative flex h-full w-full flex-col items-center justify-center gap-0.5 rounded-xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent active:bg-raised/60";
+const BAR_ITEM = "group relative flex h-full w-full flex-col items-center justify-center gap-1 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset";
 
-/** The bar on the bottom bar's top edge, over the current tab. */
-function TopBar() {
-  return <span aria-hidden="true" className="absolute -top-px left-1/2 h-[3px] w-[22px] -translate-x-1/2 rounded-b-[3px] bg-fg" />;
-}
-
+/** A tab's icon, marked as the rail marks the app you are in (ui/sidebar.tsx, `size: icon`). */
 function BarIcon({ current, children }: { current: boolean; children: ReactNode }) {
   return (
-    <span className={`relative flex size-8 items-center justify-center rounded-[10px] transition-colors ${current ? "bg-raised text-fg shadow-[inset_0_0_0_1px_var(--color-line-strong)]" : "text-muted"}`}>
+    <span
+      className={`relative flex h-7 w-11 items-center justify-center rounded-[10px] transition-colors group-active:bg-sidebar-accent/60 ${current ? "bg-sidebar-accent text-fg" : "text-muted"}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** A tab's name, centred under its icon; a long one gives way rather than crowding its neighbours. */
+function BarLabel({ current, children }: { current: boolean; children: ReactNode }) {
+  return (
+    <span className={`block w-full truncate px-0.5 text-center text-[0.6875rem] leading-none font-medium max-[380px]:text-[0.625rem] ${current ? "text-fg" : "text-faint"}`}>
       {children}
     </span>
   );
@@ -228,12 +235,12 @@ function BarIcon({ current, children }: { current: boolean; children: ReactNode 
 function MoreTile({ to, icon, label, onClick, disabled, note }: { to?: string; icon: ReactNode; label: string; onClick?: () => void; disabled?: boolean; note?: string }) {
   const inner = (
     <>
-      <span className={`flex size-11 items-center justify-center rounded-xl ${disabled ? "bg-raised/60 text-faint" : "bg-raised text-fg"}`}>{icon}</span>
+      <span className={`flex size-11 items-center justify-center rounded-[10px] ${disabled ? "bg-raised/60 text-faint" : "bg-raised text-fg"}`}>{icon}</span>
       <span className={`line-clamp-2 w-full text-xs leading-tight max-[380px]:text-[0.6875rem] ${disabled ? "text-faint" : "text-fg-soft"}`}>{label}</span>
       {note && <span className="-mt-0.5 rounded-full bg-line px-1.5 text-[0.625rem] font-medium text-muted">{note}</span>}
     </>
   );
-  const className = "flex min-w-0 flex-col items-center gap-1.5 rounded-xl px-1 py-2.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-accent active:bg-raised/60";
+  const className = "flex min-w-0 flex-col items-center gap-1.5 rounded-md px-1 py-2.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-accent active:bg-raised/60";
   if (to) {
     return (
       <Link to={to} className={className}>
@@ -249,7 +256,7 @@ function MoreTile({ to, icon, label, onClick, disabled, note }: { to?: string; i
 }
 
 /**
- * More, from the bottom bar: a rounded panel just above it, with g1t's
+ * More, from the bottom bar: a flat panel standing on it, with g1t's
  * mark at its top and a grid of big tiles: all apps, the Marketplace,
  * your pinned apps, Artifacts, People, Workspace, and "You and
  * help", which opens your account's sheet.
@@ -266,7 +273,7 @@ function MoreSheet({ open, onOpenChange, user, workspace, pins }: { open: boolea
           <Primitive.Content
             aria-describedby={undefined}
             onOpenAutoFocus={(event) => event.preventDefault()}
-            className="fixed right-2 bottom-[calc(4.875rem+env(safe-area-inset-bottom))] left-2 z-50 max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-[18px] border border-line-strong bg-rail px-3 pt-2 pb-3.5 text-fg shadow-2xl shadow-black/60 outline-none data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out md:hidden"
+            className="fixed inset-x-0 bottom-(--tabbar-h) z-50 max-h-[calc(100dvh-var(--tabbar-h)-3.5rem)] overflow-y-auto border-t border-line bg-rail px-3 pt-2 pb-3.5 text-fg shadow-2xl shadow-black/60 outline-none data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out md:hidden"
           >
             <div aria-hidden="true" className="mx-auto mt-0.5 mb-2 h-1 w-9 rounded-full bg-line-strong" />
             <div className="mb-2 flex items-center gap-2 px-1">
@@ -342,7 +349,7 @@ export function BottomSheet({
           aria-describedby={undefined}
           onOpenAutoFocus={(event) => event.preventDefault()}
           style={{ transform: drag ? `translateY(${drag}px)` : undefined, transition: from.current == null ? "transform 0.2s ease-out" : "none" }}
-          className="fixed inset-x-0 bottom-0 z-50 flex max-h-[88dvh] flex-col rounded-t-2xl border-t border-line-strong bg-surface pb-[env(safe-area-inset-bottom)] text-fg shadow-2xl shadow-black/60 outline-none data-[state=open]:animate-[sheet-in-bottom_0.24s_cubic-bezier(0.16,1,0.3,1)]"
+          className="fixed inset-x-0 bottom-0 z-50 flex max-h-[88dvh] flex-col border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] text-fg shadow-2xl shadow-black/60 outline-none data-[state=open]:animate-[sheet-in-bottom_0.24s_cubic-bezier(0.16,1,0.3,1)]"
         >
           <div {...handlers} className="flex shrink-0 cursor-grab touch-none justify-center pt-2.5 pb-2" aria-hidden="true">
             <span className="h-1.5 w-10 rounded-full bg-line-strong" />
@@ -357,7 +364,7 @@ export function BottomSheet({
 
 /** A row in a bottom sheet: 48px tall, an icon, words, and what sits at its end. */
 export function SheetRow({ to, href, icon, children, end, onClick }: { to?: string; href?: string; icon: ReactNode; children: ReactNode; end?: ReactNode; onClick?: () => void }) {
-  const className = "flex h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-[0.9375rem] text-fg-soft transition-colors active:bg-raised";
+  const className = "flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-[0.9375rem] text-fg-soft transition-colors active:bg-raised";
   const inner = (
     <>
       <span className="flex w-6 shrink-0 justify-center text-muted [&_svg]:size-5">{icon}</span>

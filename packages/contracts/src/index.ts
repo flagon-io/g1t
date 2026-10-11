@@ -15,6 +15,7 @@ export * from "./codeowners";
 export * from "./compute";
 export * from "./connectors";
 export * from "./context";
+export * from "./customize";
 export * from "./d1";
 export * from "./datasets";
 export * from "./docs";

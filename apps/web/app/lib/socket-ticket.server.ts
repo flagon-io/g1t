@@ -5,7 +5,7 @@ import type { User } from "@g1t/contracts";
 import { getViewer, roleIn } from "./session.server";
 import { identity } from "./services.server";
 import { issueTicket, socketPath, ticketViewer } from "./socket-ticket";
-import { bearerToken, websiteUser } from "./website-token";
+import { bearerToken, socketUser } from "./website-token";
 
 let isolateSecret: string | null = null;
 
@@ -35,9 +35,9 @@ export function ticketSecret(): string {
 export async function socketTicketFor(context: Parameters<typeof getViewer>[0], request: Request, path: string): Promise<{ ticket: string; expires_at: string } | null> {
   const viewer = getViewer(context);
   const token = bearerToken(request);
-  if (!viewer || !token || !viewer.token?.website) return null;
+  if (!viewer || !token || !viewer.token) return null;
   const socket = socketPath(path);
-  if (!socket || (socket.workspace && !roleIn(viewer, socket.workspace))) return null;
+  if (!socket || !socketUser(viewer, socket.path) || (socket.workspace && !roleIn(viewer, socket.workspace))) return null;
   return issueTicket(ticketSecret(), { token, userId: viewer.id, path: socket.path });
 }
 
@@ -49,5 +49,5 @@ export async function socketTicketFor(context: Parameters<typeof getViewer>[0], 
 export async function socketViewer(context: Parameters<typeof getViewer>[0], request: Request): Promise<User | null> {
   const viewer = getViewer(context);
   if (viewer) return viewer;
-  return ticketViewer(request, ticketSecret(), async (token) => websiteUser(await identity.userForAccessToken(token)));
+  return ticketViewer(request, ticketSecret(), async (token, path) => socketUser(await identity.userForAccessToken(token), path));
 }

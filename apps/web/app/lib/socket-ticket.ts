@@ -19,7 +19,8 @@
  * - holds the token itself, encrypted and authenticated (AES-GCM) under a
  *   key only the site has, so the upgrade checks the token exactly as a
  *   page request does: deleted, expired, revoked by a workspace or with
- *   "Use the website as you" turned off, it opens nothing, even inside the
+ *   "Use the website as you" turned off (or, for a token let in by its
+ *   `chat:read` scope, without it), it opens nothing, even inside the
  *   ticket's minute;
  * - is never stored, logged or passed on: the socket handlers build the
  *   service's address afresh, without it.
@@ -165,7 +166,7 @@ export async function openTicket(
 /**
  * The person a socket's ticket signs in, checked as a page request with
  * the token would be: `lookup` is identity's `user_for_access_token`
- * narrowed by lib/website-token.ts's `websiteUser`.
+ * narrowed by lib/website-token.ts's `socketUser` for the socket's path.
  * Null for anything but a WebSocket upgrade to the socket the ticket was
  * made for, and for a ticket that is not genuine, has expired, or whose
  * token no longer may use the website.
@@ -173,7 +174,7 @@ export async function openTicket(
 export async function ticketViewer(
   request: Request,
   secret: string,
-  lookup: (token: string) => Promise<User | null>,
+  lookup: (token: string, path: string) => Promise<User | null>,
   nowMs = Date.now(),
 ): Promise<User | null> {
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return null;
@@ -184,6 +185,6 @@ export async function ticketViewer(
   if (!socket) return null;
   const opened = await openTicket(secret, ticket, socket.path, nowMs);
   if (!opened || !opened.token.startsWith("g1t_")) return null;
-  const user = await lookup(opened.token);
+  const user = await lookup(opened.token, socket.path);
   return user && user.id === opened.userId ? user : null;
 }

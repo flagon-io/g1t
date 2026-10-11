@@ -391,6 +391,15 @@ drafts no incident during them or for 3 minutes after.
 half in `VAPID_PUBLIC_KEY` in `services/notify/wrangler.jsonc` and the
 private half in the secret `VAPID_PRIVATE_KEY`.
 
+Pushes to the phone app go through Expo's push service and need nothing
+set. If the Expo project the app is built from turns on **enhanced push
+security**, put an Expo access token in the notify Worker's secret
+`EXPO_ACCESS_TOKEN`:
+
+```sh
+cd services/notify && npx wrangler secret put EXPO_ACCESS_TOKEN
+```
+
 ## Rate limits
 
 Every public surface that costs money or sends something is behind a

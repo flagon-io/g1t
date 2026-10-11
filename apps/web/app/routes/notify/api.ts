@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { data } from "react-router";
 
-import { notifyClient, type NotifyPreferencesChange, type PresenceChange, type PushSubscriptionJson } from "@g1t/contracts";
+import { notifyClient, type NotifyPreferencesChange, type PresenceChange, type PushDevice, type PushSubscriptionJson } from "@g1t/contracts";
 import type { SoundSettingsChange } from "@g1t/contracts/sounds";
 
 import type { Route } from "./+types/api";
@@ -15,10 +15,15 @@ function client() {
 
 /**
  * The signed-in person's notification settings, as JSON: `GET` their
- * status (with `?endpoint=` for whether this browser gets pushes), `POST`
- * a change: `subscribe`, `unsubscribe`, `preferences`, `test`,
- * `presence` (your status, being away, Do Not Disturb), or `sounds` (what
- * you hear when chat moves, kept with the account by identity).
+ * status (with `?endpoint=` for whether this browser gets pushes, and how
+ * many phones do), `POST` a change: `subscribe`, `unsubscribe`,
+ * `register_device` and `unregister_device` (the phone app, with its Expo
+ * push token), `preferences`, `test`, `presence` (your status, being away,
+ * Do Not Disturb), or `sounds` (what you hear when chat moves, kept with
+ * the account by identity).
+ *
+ * The phone app calls this with its access token and no `Origin`, which
+ * the same-origin check lets through (lib/same-origin.ts).
  */
 export async function loader({ context, request }: Route.LoaderArgs) {
   const user = requireUser(context, request);
@@ -31,6 +36,8 @@ type Sent = {
   intent?: string;
   subscription?: PushSubscriptionJson & { expirationTime?: number | null };
   endpoint?: string;
+  device?: PushDevice;
+  token?: string;
   preferences?: NotifyPreferencesChange;
   change?: PresenceChange | SoundSettingsChange;
 };
@@ -49,6 +56,16 @@ export async function action({ context, request }: Route.ActionArgs) {
     }
     case "unsubscribe":
       return Response.json(await notify.unsubscribe(user, String(sent.endpoint ?? "")));
+    case "register_device": {
+      const d = sent.device;
+      if (typeof d?.token !== "string" || (d.platform !== "android" && d.platform !== "ios")) return Response.json({ ok: false }, { status: 400 });
+      const device: PushDevice = { token: d.token, platform: d.platform, name: typeof d.name === "string" ? d.name : null };
+      const registered = await notify.registerDevice(user, device);
+      // The service checks the token is Expo's.
+      return Response.json(registered, { status: registered.ok ? 200 : 400 });
+    }
+    case "unregister_device":
+      return Response.json(await notify.unregisterDevice(user, String(sent.token ?? "")));
     case "preferences":
       return Response.json(await notify.setPreferences(user, sent.preferences ?? {}));
     case "test":

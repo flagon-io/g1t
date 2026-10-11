@@ -190,3 +190,13 @@ test("a push shows only the card's actions that need nothing typed or confirmed,
   // Its own notification: a later message in the conversation does not replace it.
   assert.equal(payload.tag, "approval:approval:ses_1:2000000");
 });
+
+test("a person with only the phone app is pushed to: the feed counts browsers and phones together", () => {
+  const dm = { kind: "dm" as const, workspace: "acme" };
+  const browsers = 0;
+  const phones = 1;
+  assert.deepEqual(decide({ prefs: dms, notification: dm, tabs: [], subscriptions: browsers + phones, now: NOW }), { toast: true, push: true });
+  // The same rules hold: not while a tab is in front of them, nor in Do Not Disturb.
+  assert.equal(decide({ prefs: dms, notification: dm, tabs: [{ focused: true, seen_at: NOW }], subscriptions: browsers + phones, now: NOW }).push, false);
+  assert.equal(decide({ prefs: dms, notification: dm, tabs: [], subscriptions: browsers + phones, now: NOW, dnd: true }).push, false);
+});

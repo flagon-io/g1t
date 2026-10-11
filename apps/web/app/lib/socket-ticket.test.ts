@@ -5,7 +5,7 @@ import type { User, Viewer } from "@g1t/contracts";
 
 import { liveAddress, offerTicket, openLive, setLiveViaToken, takeOfferedTicket } from "./live-socket.ts";
 import { TICKET_PARAM, TICKET_ROUTE, TICKET_SECONDS, issueTicket, openTicket, socketPath, ticketViewer } from "./socket-ticket.ts";
-import { tokenVerdict, websiteUser } from "./website-token.ts";
+import { socketUser, tokenVerdict, websiteUser } from "./website-token.ts";
 
 const SECRET = "site-secret";
 const NOW = Date.UTC(2026, 9, 9, 12, 0, 0);
@@ -177,4 +177,23 @@ test("a session's page opens its sockets at once and adds no ticket; a token's p
     Object.defineProperty(globalThis, "location", { value: was.location, configurable: true });
     globalThis.fetch = was.fetch;
   }
+});
+
+test("a ticket for a chat-scoped token opens Chat's socket and the feed, checked again as it opens", async () => {
+  const app: User = { ...ada, token: { token_id: "tok_app", scopes: ["chat:read"] } };
+  const tokens: Record<string, Viewer> = { g1t_app: app };
+  // As the site checks it: identity's answer narrowed by `socketUser` for the socket's path.
+  const bySocket = async (token: string, path: string) => socketUser(tokens[token] ?? null, path);
+  for (const path of [CHAT, "/-/live"]) {
+    const { ticket } = await issueTicket(SECRET, { token: "g1t_app", userId: "usr_ada", path }, NOW);
+    assert.equal((await ticketViewer(upgrade(path, ticket), SECRET, bySocket, NOW))?.id, "usr_ada", path);
+  }
+  // An artifact's socket is the website's alone, even with a genuine ticket.
+  const artifacts = "/acme/-/artifacts/live";
+  const { ticket } = await issueTicket(SECRET, { token: "g1t_app", userId: "usr_ada", path: artifacts }, NOW);
+  assert.equal(await ticketViewer(upgrade(artifacts, ticket), SECRET, bySocket, NOW), null);
+  // Chat taken away since the ticket was made: the socket opens nothing.
+  const chat = await issueTicket(SECRET, { token: "g1t_app", userId: "usr_ada", path: CHAT }, NOW);
+  tokens.g1t_app = { ...app, token: { token_id: "tok_app", scopes: ["notifications:read"] } };
+  assert.equal(await ticketViewer(upgrade(CHAT, chat.ticket), SECRET, bySocket, NOW), null);
 });
