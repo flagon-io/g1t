@@ -2,7 +2,7 @@ import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookO
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
-import { type Abilities, type ChatSidebarEntry, type InboxCounts, type WorkspaceAgent, type Membership, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
+import { type Abilities, type ChatSidebarEntry, type InboxCounts, type WorkspaceAgent, type Membership, type RepoMirror, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
 
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
@@ -782,6 +782,8 @@ type MenuRepo = {
   settings?: boolean;
   /** What they may do there, once the repository's page loads. */
   can?: Abilities;
+  /** The remote it mirrors, once the repository's page loads: a mirror lists only what it offers. */
+  mirror?: RepoMirror | null;
   issues?: number;
   pulls?: number;
 };
@@ -811,8 +813,9 @@ function RepoMenu({
   back: { to: string; label: string };
 }) {
   const base = `/${repo.namespace}/${repo.name}`;
-  // What a member sees, and what everyone who can see the project does.
-  const shows = new Set(projectPages(repo.member, repo.can));
+  // What a member sees, what everyone who can see the project does, and
+  // what a mirror offers now (lib/chrome.ts).
+  const shows = new Set(projectPages(repo.member, repo.can, repo.mirror));
   const { current: atOverview, pending: toOverview } = useRowState(base, { end: true });
   return (
     <nav aria-label={`${repo.namespace}/${repo.name}`} className={PANEL}>
@@ -841,18 +844,27 @@ function RepoMenu({
         <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, `${base}/compare`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
           Code
         </SidebarLink>
-        <SidebarLink to={`${base}/issues`} also={[`${base}/plans`, `${base}/milestones`, `${base}/labels`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
-          Issues
-        </SidebarLink>
-        <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
-          Pull requests
-        </SidebarLink>
-        <SidebarLink to={`${base}/agents`} also={[`${base}/sessions`, `${base}/memory`, ...soonPaths(base, "Agents")]} icon={<Bot size={15} />}>
-          Agents
-        </SidebarLink>
-        <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
-          Workflows
-        </SidebarLink>
+        {/* A mirror that is not taken over lists none of these: its work happens on the remote. */}
+        {shows.has("issues") && (
+          <SidebarLink to={`${base}/issues`} also={[`${base}/plans`, `${base}/milestones`, `${base}/labels`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
+            Issues
+          </SidebarLink>
+        )}
+        {shows.has("pulls") && (
+          <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
+            Pull requests
+          </SidebarLink>
+        )}
+        {shows.has("agents") && (
+          <SidebarLink to={`${base}/agents`} also={[`${base}/sessions`, `${base}/memory`, ...soonPaths(base, "Agents")]} icon={<Bot size={15} />}>
+            Agents
+          </SidebarLink>
+        )}
+        {shows.has("actions") && (
+          <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
+            Workflows
+          </SidebarLink>
+        )}
       </NavRows>
       <Rule />
       <NavRows>
@@ -861,9 +873,11 @@ function RepoMenu({
             Deployments
           </SidebarLink>
         ) : null}
-        <SidebarSoonLink to={`${base}/soon/logs`} also={soonPaths(base, "Observability")} icon={<Activity size={15} />} about="Logs, errors, uptime and analytics of the project's deployed apps.">
-          Observability
-        </SidebarSoonLink>
+        {shows.has("observability") && (
+          <SidebarSoonLink to={`${base}/soon/logs`} also={soonPaths(base, "Observability")} icon={<Activity size={15} />} about="Logs, errors, uptime and analytics of the project's deployed apps.">
+            Observability
+          </SidebarSoonLink>
+        )}
         {shows.has("security") ? (
           <SidebarLink to={`${base}/security`} also={soonPaths(base, "Security")} icon={<ShieldCheck size={15} />}>
             Security
@@ -1107,11 +1121,11 @@ function CodeSidebar({
     : null;
   // The viewer's role there, from the repository's page once it has loaded.
   const page = useRouteLoaderData("routes/repo/layout") as
-    | { repo?: { namespace: string; name: string }; access?: ViewerAccess }
+    | { repo?: { namespace: string; name: string; mirror?: RepoMirror | null }; access?: ViewerAccess }
     | undefined;
   const menuRepo: MenuRepo | null =
     guessed && page?.access && page.repo && sameRepo(page.repo, guessed)
-      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can }
+      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can, mirror: page.repo.mirror }
       : guessed;
 
   // The way from Code's list to the one shown.

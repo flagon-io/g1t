@@ -13,8 +13,8 @@ push wins: a write reaches the leader, or it doesn't land.
 
 | The repository on g1t is | Who leads | What works on g1t |
 | --- | --- | --- |
-| A **mirror**, standing by | The remote | Reading, cloning, search. Nothing else: it's an exact, read-only copy that runs nothing. |
-| A mirror in **CI failover** | The remote, for code | The remote's workflows run on g1t. Code, issues and pull requests stay on the remote. |
+| A **mirror**, standing by | The remote | Reading, cloning, search, what security scanning found, insights and settings. Nothing else: it's an exact, read-only copy that runs nothing and opens nothing. |
+| A mirror in **CI failover** | The remote, for code | The same, and the remote's workflows run on g1t. Code, issues and pull requests stay on the remote. |
 | A mirror **taken over** | g1t, for now | Everything: pushes, pull requests, issues, agents, workflows. |
 | **Mirrored to** other hosts | g1t | Everything. Each push is sent to the followers. |
 
@@ -39,22 +39,50 @@ force-pushes a branch or deletes it, the commit g1t had is kept under
 `refs/g1t/replaced/<branch>/<time>` for at least 30 days. Nothing a mirror
 held is lost silently.
 
-## What a mirror standing by refuses
+## What a standby mirror offers
 
-A standby mirror is a backup you can switch to. It doesn't take work of its
-own:
+A standby mirror is a backup you can switch to: an exact copy of the
+remote, kept up to date, that you can read and clone. It doesn't take work
+of its own, and nothing on g1t opens anything on it by itself. One rule
+decides, by state:
 
-| | Standing by | CI failover | Taken over |
-| --- | --- | --- | --- |
-| Clone, fetch, browse, search | ✓ | ✓ | ✓ |
-| Push, merge, edit on the web | – | – | ✓ |
-| Issues, pull requests, agents | – | – | ✓ |
-| `.g1t/workflows` | Only with **Keep CI warm** | ✓ | ✓ |
-| `.github/workflows` | – | ✓ | ✓ unless turned off |
-| Deployments on g1t.page | – | – | ✓ |
-| Settings, rules, webhooks | ✓ | ✓ | ✓ |
+| | Standing by | CI failover | Taken over | Handing back |
+| --- | --- | --- | --- | --- |
+| **Code**: files, commits, branches, tags, compare, releases; clone, fetch, search | ✓ | ✓ | ✓ | ✓ |
+| **Security**: what scanning found, read-only | ✓ | ✓ | ✓ | ✓ |
+| **Insights**, **Settings** (mirroring settings included), rules, webhooks | ✓ | ✓ | ✓ | ✓ |
+| **Workflows**: `.g1t/workflows` | Only with **Keep CI warm** | ✓ | ✓ | – |
+| **Workflows**: `.github/workflows` | – | ✓ | ✓ unless turned off | – |
+| Push, merge, edit on the web, make a release | – | – | ✓ | – |
+| **Issues**, **Pull requests**, **Agents** | – | – | ✓ | – |
+| **Deployments** on g1t.page | – | – | ✓ | – |
+| Security updates, dependency updates, upkeep: anything that opens a branch or a pull request on its own | – | – | ✓ | – |
 
-What's refused says why. A `git push` to a standby mirror answers:
+What it looks like:
+
+- The repository shows **Mirror of github.com/acme/web** beside its name, and
+  so does its row on the workspace's **Projects** page, in the list and the
+  grid, where the **Kind** filter can show **Mirrors** or **On g1t** alone.
+  A mirror in CI failover, taken over or handing back says that instead.
+- Its sidebar lists only what it offers: **Code**, **Security**, **Insights**
+  and **Settings**, plus **Workflows** when they run here. Opening an address
+  it doesn't offer, such as `/acme/web/issues` or `/acme/web/pulls/new`, shows
+  a note that says it's a mirror, links the remote, and leads to **Settings →
+  Mirroring**, instead of the list or the form.
+- Its overview shows the copy: the remote, the default branch, the latest
+  commit, when it last synced, the latest commits and the About card. There
+  is no **Where does it run**, no **Get started** checklist and no
+  **Right now**: nothing runs here.
+- **Security → Vulnerabilities** still lists what the daily scan found, but
+  no security update opens: each alert says the update waits until the
+  repository is taken over or moved to g1t. The same goes for
+  [dependency updates](/guides/dependency-updates/) and anything else g1t
+  does on its own.
+- Every button that would write is greyed out, with the reason on hover, and
+  the services refuse the write as well: a form posted to a mirror answers
+  `409` with the reason, and the API answers `403`.
+
+A `git push` to a standby mirror answers:
 
 ```text
 remote: acme/web is a mirror of github.com/acme/web, so it is read-only here.
@@ -62,8 +90,11 @@ remote: Push to github.com/acme/web, or take over in Settings → Mirroring to w
  ! [remote rejected] main -> main
 ```
 
-The repository shows **Mirror of github.com/acme/web** beside its name,
-and every button that would write is greyed out, with the reason on hover.
+**Taking over** changes all of it at once: the sidebar fills in, the
+overview shows where the project runs and what is moving, security and
+dependency updates open on the next scan, and pushes, pull requests, issues,
+agents, workflows and deployments work until you hand back. **Moving to g1t**
+does the same for good.
 
 ## When the remote stops answering
 

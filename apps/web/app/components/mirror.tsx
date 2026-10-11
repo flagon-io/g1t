@@ -5,11 +5,12 @@ import { Form, Link, useRouteLoaderData } from "react-router";
 import type { RepoMirror } from "@g1t/contracts";
 
 import { ConfirmDialog } from "./repo-lifecycle";
-import { ButtonLink, SubmitButton, TimeAgo } from "./ui";
+import { ButtonLink, EmptyState, SubmitButton, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
 import {
+  MIRRORING_DOCS,
   type MirrorBrief,
   type MirroredRepo,
   followersOf,
@@ -300,6 +301,54 @@ export function MirrorCloneNote({ mirror, base, admin }: { mirror: RepoMirror | 
         </>
       )}
     </p>
+  );
+}
+
+/**
+ * In place of a page a mirror does not offer now (lib/chrome.ts
+ * `hiddenOnMirror`: issues, pull requests, agents, workflows, deployments,
+ * a new release): what the repository is, where the work happens, and the
+ * way to take over.
+ */
+export function MirrorReadOnlyPage({ base, repo, mirror, admin, what }: {
+  base: string;
+  repo: { namespace: string; name: string };
+  mirror: RepoMirror;
+  /** Whether the viewer manages its mirroring: they get the way to its settings. */
+  admin: boolean;
+  /** What the page would list, lowercase: "issues", "pull requests". */
+  what: string;
+}) {
+  const full = `${repo.namespace}/${repo.name}`;
+  const remote = (
+    <a href={mirror.url} target="_blank" rel="noreferrer" className="font-mono text-fg underline underline-offset-4 hover:text-accent">
+      {mirror.remote}
+    </a>
+  );
+  return (
+    <EmptyState title={`This is a mirror of ${mirror.remote}`}>
+      <p className="mx-auto max-w-xl">
+        {mirror.state === "handing_back" ? (
+          <>
+            {full} is handing back to {remote}, so there are no {what} here until that is done.
+          </>
+        ) : (
+          <>
+            {full} is a read-only copy until someone takes over, so there are no {what} here. Its {what} are on {remote}.
+          </>
+        )}
+      </p>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        {admin && (
+          <ButtonLink to={mirroringSettings(base)} variant="outline" size="sm">
+            Mirroring settings
+          </ButtonLink>
+        )}
+        <ButtonLink to={MIRRORING_DOCS} variant="ghost" size="sm" target="_blank" rel="noreferrer">
+          How mirroring works
+        </ButtonLink>
+      </div>
+    </EmptyState>
   );
 }
 

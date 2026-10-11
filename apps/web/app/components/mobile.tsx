@@ -19,7 +19,7 @@ import { Dialog as Primitive } from "radix-ui";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSubmit } from "react-router";
 
-import { type Abilities, type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
+import { type Abilities, type Membership, type RepoMirror, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
 
 import { appIcon, pinnedApp } from "./apps";
 import { CountBadge, ShortcutsDialog } from "./rail";
@@ -533,6 +533,7 @@ export function ProjectStrip({
   can,
   settings,
   counts,
+  mirror,
   always = false,
 }: {
   /** `/<namespace>/<name>`. */
@@ -542,13 +543,15 @@ export function ProjectStrip({
   /** Whether they see its settings (lib/access.ts `seesSettings`), as the sidebar decides. */
   settings?: boolean;
   counts?: { issues: number; pulls: number };
+  /** The remote the repository mirrors: a mirror lists only what it offers (lib/chrome.ts). */
+  mirror?: RepoMirror | null;
   /** On a computer too: for a visitor, who has no sidebar to list them. */
   always?: boolean;
 }) {
   const { pathname } = useLocation();
   const rest = pathname.toLowerCase().startsWith(base.toLowerCase()) ? pathname.slice(base.length) : "";
   const at = projectPageAt(rest, SOON_PAGES);
-  const pages: (ProjectPage | "overview")[] = ["overview", ...projectPages(member, can).filter((page) => page !== "observability" && page !== "settings"),
+  const pages: (ProjectPage | "overview")[] = ["overview", ...projectPages(member, can, mirror).filter((page) => page !== "observability" && page !== "settings"),
     ...(settings ?? member ? (["settings"] as const) : []),
   ];
   const pill = (current: boolean) =>

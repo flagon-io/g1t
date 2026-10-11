@@ -19,6 +19,7 @@ import {
   KeyRound,
   Loader,
   Package,
+  PauseCircle,
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
@@ -540,10 +541,36 @@ const PULL_ICON: Record<PullStatus, ReactNode> = {
   closed: <GitPullRequestClosed size={13} className="text-danger" />,
 };
 
-/** Where g1t's security update for a package stands. */
-function UpdateStatus({ update, name, pulls, base }: { update: SecurityUpdate; name: string; pulls: Record<number, PullInfo>; base: string }) {
+/**
+ * Where g1t's security update for a package stands. On a mirror g1t does
+ * not lead (`updatesWait`, the reason), an update that has not opened a
+ * pull request waits: nothing is made or pushed there until a takeover.
+ */
+function UpdateStatus({ update, name, pulls, base, updatesWait }: {
+  update: SecurityUpdate;
+  name: string;
+  pulls: Record<number, PullInfo>;
+  base: string;
+  updatesWait?: string | null;
+}) {
   const meta = UPDATE_STATES[update.state];
   const pull = update.pull != null ? pulls[update.pull] : undefined;
+  if (updatesWait && (update.state === "requested" || update.state === "failed" || update.state === "needs_code")) {
+    return (
+      <Card tone="plain" radius="lg" className="mt-2.5 bg-bg/40 px-3 py-2 text-xs sm:ml-7">
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+          <PauseCircle size={13} className="text-muted" />
+          <Badge>Security update waiting</Badge>
+          <span className="text-faint">
+            <TimeAgo at={update.updatedAt} />
+          </span>
+        </div>
+        <p className="mt-1 text-muted wrap-anywhere">
+          Raising {name} to {update.target} is on hold until {base.replace(/^\//, "")} is taken over or moved to g1t.
+        </p>
+      </Card>
+    );
+  }
   const about: Record<SecurityUpdate["state"], ReactNode> = {
     requested: <>A sandbox is raising {name} to {update.target}.</>,
     open: <>It raises {name} to {update.target} and lands through your branch's required checks.</>,
@@ -605,6 +632,7 @@ export function VulnerabilityList({
   fixes,
   pulls,
   upkeep,
+  updatesWait,
   base,
   action,
   focus,
@@ -618,6 +646,8 @@ export function VulnerabilityList({
   pulls: Record<number, PullInfo>;
   /** Whether security updates are on. */
   upkeep: boolean;
+  /** Why no update opens now: the repository is a mirror g1t does not lead (lib/mirror.ts). */
+  updatesWait?: string | null;
   base: string;
   action: string;
   focus: string | null;
@@ -648,6 +678,7 @@ export function VulnerabilityList({
           fixes={fixes}
           pulls={pulls}
           upkeep={upkeep}
+          updatesWait={updatesWait}
           base={base}
           action={action}
           focus={focus}
@@ -664,6 +695,7 @@ function PackageItem({
   fixes,
   pulls,
   upkeep,
+  updatesWait,
   base,
   action,
   focus,
@@ -674,6 +706,7 @@ function PackageItem({
   fixes: Record<number, UpgradeFix>;
   pulls: Record<number, PullInfo>;
   upkeep: boolean;
+  updatesWait?: string | null;
   base: string;
   action: string;
   focus: string | null;
@@ -701,7 +734,7 @@ function PackageItem({
           </p>
         </div>
       </div>
-      {update && <UpdateStatus update={update} name={group.name} pulls={pulls} base={base} />}
+      {update && <UpdateStatus update={update} name={group.name} pulls={pulls} base={base} updatesWait={updatesWait} />}
       {issue != null && (
         <div className="mt-2 sm:ml-7">
           <FixLink issue={issue} fix={fixes[issue]} base={base} />
@@ -716,6 +749,7 @@ function PackageItem({
               showManifest={manifests.length > 1}
               activity={activity}
               upkeep={upkeep}
+              updatesWait={updatesWait}
               base={base}
               action={action}
               focused={vuln.id === focus}
@@ -733,6 +767,7 @@ function AdvisoryItem({
   showManifest,
   activity,
   upkeep,
+  updatesWait,
   base,
   action,
   focused,
@@ -742,6 +777,7 @@ function AdvisoryItem({
   showManifest: boolean;
   activity: AlertActivity[];
   upkeep: boolean;
+  updatesWait?: string | null;
   base: string;
   action: string;
   focused: boolean;
@@ -790,9 +826,11 @@ function AdvisoryItem({
           </p>
           <p className="mt-1 text-muted">
             No release fixes this yet. Dependencies are checked again daily
-            {upkeep
-              ? ", and g1t opens a pull request when a fix is published."
-              : "; turn on security updates and g1t opens a pull request when a fix is published."}
+            {updatesWait
+              ? ". A fix is applied once the repository is taken over or moved to g1t."
+              : upkeep
+                ? ", and g1t opens a pull request when a fix is published."
+                : "; turn on security updates and g1t opens a pull request when a fix is published."}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <a href={osv} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-fg-soft hover:text-fg hover:underline">

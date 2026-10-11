@@ -628,6 +628,11 @@ what their agents do, but not which model ran or what a run cost; those
 are for members of the workspace. A run for an outside collaborator is
 told the project's memory, never the workspace's.
 
+Nobody can run an agent on a [mirror](/guides/mirroring/) that g1t does not
+lead: a standby mirror is a read-only copy, its **Issues**, **Pull requests**
+and **Agents** pages stand aside, and assigning, mentioning and planning are
+refused until someone takes over or moves it to g1t.
+
 Agents cost g1t real money, so they run for paid workspaces. A free
 workspace has the whole forge, and two ways to try agents:
 

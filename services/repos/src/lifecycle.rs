@@ -673,7 +673,8 @@ impl Registry {
             .map(|row| row.now))
     }
 
-    /// Whether a repository is archived or deleted; unknown is deleted.
+    /// Whether a repository is archived or deleted, and the remote it
+    /// mirrors; unknown is deleted.
     pub async fn status(&self, id: &str) -> Result<RepoStatus> {
         #[derive(Deserialize)]
         struct Row {
@@ -681,10 +682,12 @@ impl Registry {
             archived_at: Option<String>,
             #[serde(default)]
             deleted_at: Option<String>,
+            #[serde(default)]
+            mirror: Option<String>,
         }
         Ok(self
             .db
-            .prepare("SELECT archived_at, deleted_at FROM repos WHERE id = ?")
+            .prepare("SELECT archived_at, deleted_at, mirror FROM repos WHERE id = ?")
             .bind(&[id.into()])?
             .first::<Row>(None)
             .await?
@@ -692,10 +695,12 @@ impl Registry {
                 RepoStatus {
                     archived: false,
                     deleted: true,
+                    mirror: None,
                 },
                 |row| RepoStatus {
                     archived: row.archived_at.is_some(),
                     deleted: row.deleted_at.is_some(),
+                    mirror: row.mirror.as_deref().and_then(|mirror| serde_json::from_str(mirror).ok()),
                 },
             ))
     }

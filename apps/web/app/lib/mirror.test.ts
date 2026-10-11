@@ -3,7 +3,14 @@ import { test } from "node:test";
 
 import type { HandbackPlan, RepoMirror } from "@g1t/contracts";
 
-import { DEFAULT_MIRROR_SETTINGS, TAKE_OVER_AFTER_MINUTES, mirrorWritable } from "../../../../packages/contracts/src/mirrors.ts";
+import {
+  DEFAULT_MIRROR_SETTINGS,
+  type RepoArea,
+  TAKE_OVER_AFTER_MINUTES,
+  mirrorOffers,
+  mirrorUpdatesWait,
+  mirrorWritable,
+} from "../../../../packages/contracts/src/mirrors.ts";
 
 import {
   clampMinutes,
@@ -13,8 +20,10 @@ import {
   mirrorBanner,
   mirrorReason,
   mirrorSettingsFrom,
+  offers,
   shortSha,
   TAKE_OVER_MINUTES,
+  updatesWaitReason,
   workflowReason,
   writable,
 } from "./mirror.ts";
@@ -29,11 +38,37 @@ const repo = (state: RepoMirror["state"] | null) => ({ namespace: "acme", name: 
 const leader = (reachable: boolean) => ({ repoId: "r", role: "leader" as const, name: "github.com/acme/web", state: "standby" as const, reachable });
 const follower = (name: string) => ({ repoId: "r", role: "follower" as const, name, state: "following" as const, reachable: true });
 
+const AREAS: RepoArea[] = ["code", "issues", "pulls", "agents", "workflows", "deployments", "security", "insights", "settings", "updates"];
+
 test("the copies agree with the contracts", () => {
   for (const state of [null, "standby", "ci", "takeover", "handing_back"] as const) {
-    assert.equal(writable(state ? mirror(state) : null), mirrorWritable(state ? mirror(state) : null));
+    const of = state ? mirror(state) : null;
+    assert.equal(writable(of), mirrorWritable(of));
+    for (const area of AREAS) {
+      assert.equal(offers(of, area), mirrorOffers(of, area), `${state} ${area}`);
+      if (of) assert.equal(offers({ ...of, warm: true }, area), mirrorOffers({ ...of, warm: true }, area), `${state} warm ${area}`);
+    }
+    if (state) assert.equal(updatesWaitReason(repo(state)), mirrorOffers(mirror(state), "updates") ? null : mirrorUpdatesWait("acme", "web", mirror(state)));
   }
   assert.deepEqual([...TAKE_OVER_MINUTES], [...TAKE_OVER_AFTER_MINUTES]);
+});
+
+test("a mirror offers a read-only copy until it is taken over", () => {
+  for (const state of ["standby", "ci", "handing_back"] as const) {
+    for (const area of ["code", "security", "insights", "settings"] as const) assert.ok(offers(mirror(state), area), `${state} ${area}`);
+    for (const area of ["issues", "pulls", "agents", "deployments", "updates"] as const) assert.ok(!offers(mirror(state), area), `${state} ${area}`);
+  }
+  for (const area of AREAS) {
+    assert.ok(offers(mirror("takeover"), area), area);
+    assert.ok(offers(null, area), area);
+  }
+  assert.ok(!offers(mirror("standby"), "workflows"));
+  assert.ok(offers({ ...mirror("standby"), warm: true }, "workflows"), "a standby kept warm runs .g1t/workflows");
+  assert.ok(offers(mirror("ci"), "workflows"));
+  assert.ok(!offers({ ...mirror("handing_back"), warm: true }, "workflows"));
+  assert.match(updatesWaitReason(repo("standby"))!, /^Security updates wait until acme\/web is taken over or moved to g1t\./);
+  assert.equal(updatesWaitReason(repo("takeover")), null);
+  assert.equal(updatesWaitReason(repo(null)), null);
 });
 
 test("a read-only mirror says why its buttons are off, and where to take over", () => {

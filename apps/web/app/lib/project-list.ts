@@ -5,16 +5,23 @@
  * filtered list can be shared, bookmarked and gone back to.
  */
 
-import type { Project, ProjectEcosystem, ProjectKind } from "@g1t/contracts";
+import type { MirrorState, Project, ProjectEcosystem, ProjectKind } from "@g1t/contracts";
 
 export type ProjectSort = "updated" | "name" | "active" | "pushed";
 export type ProjectView = "list" | "grid";
+
+/**
+ * The Kind filter's choices: a kind of project, or where it is managed.
+ * `mirror` is a repository that mirrors a remote (whatever state the mirror
+ * is in), `g1t` one that is g1t's own.
+ */
+export type ProjectKindFilter = "all" | ProjectKind | "mirror" | "g1t";
 
 export type ProjectQuery = {
   /** Words in the name, slug or description. */
   q: string;
   visibility: "all" | "public" | "private";
-  kind: "all" | ProjectKind;
+  kind: ProjectKindFilter;
   /** A language, from the manifests at the project's root. */
   language: string | null;
   /** Only projects with Deployments on. */
@@ -58,11 +65,17 @@ export const LANGUAGE_OF: Record<ProjectEcosystem, string> = {
   python: "Python",
 };
 
-/** What the list needs of a project, with whether its Deployments are on. */
+/** The remote a project's repository mirrors, and where the mirror stands, for its row. */
+export type ListedMirror = { state: MirrorState; remote: string };
+
+/**
+ * What the list needs of a project, with whether its Deployments are on and
+ * the remote its repository mirrors (null for one managed on g1t).
+ */
 export type Listed = Pick<
   Project,
   "id" | "slug" | "name" | "description" | "private" | "archived" | "kind" | "ecosystem" | "updatedAt" | "pushedAt" | "activity"
-> & { deploying: boolean };
+> & { deploying: boolean; mirror: ListedMirror | null };
 
 const one = <T extends string>(value: string | null, allowed: readonly T[], fallback: T): T =>
   (allowed as readonly string[]).includes(value ?? "") ? (value as T) : fallback;
@@ -73,7 +86,7 @@ export function readProjectQuery(params: URLSearchParams): ProjectQuery {
   return {
     q: (params.get("q") ?? "").trim().slice(0, 100),
     visibility: one(params.get("visibility"), ["all", "public", "private"] as const, "all"),
-    kind: one(params.get("kind"), ["all", "app", "library", "tool", "docs", "other"] as const, "all"),
+    kind: one(params.get("kind"), ["all", "app", "library", "tool", "docs", "other", "mirror", "g1t"] as const, "all"),
     language: params.get("language")?.trim() || null,
     deployments: params.get("deployments") === "on",
     archived: one(params.get("archived"), ["hide", "include", "only"] as const, "hide"),
@@ -128,7 +141,8 @@ export function filterProjects(projects: Listed[], query: ProjectQuery): Listed[
     (project) =>
       (query.archived === "include" || (query.archived === "only") === project.archived) &&
       (query.visibility === "all" || (query.visibility === "private") === project.private) &&
-      (query.kind === "all" || project.kind === query.kind) &&
+      (query.kind === "all" ||
+        (query.kind === "mirror" ? project.mirror != null : query.kind === "g1t" ? project.mirror == null : project.kind === query.kind)) &&
       (!query.language || (project.ecosystem != null && LANGUAGE_OF[project.ecosystem] === query.language)) &&
       (!query.deployments || project.deploying) &&
       (words.length === 0 || matches(project, words)),
@@ -170,16 +184,26 @@ export type Facets = {
   languages: { name: string; count: number }[];
   deploying: number;
   archived: number;
+  /** Projects whose repository mirrors a remote; the rest are managed on g1t. */
+  mirrors: number;
 };
 
 /** How many of the workspace's projects each filter would show, before any is chosen. */
 export function facetsOf(projects: Listed[]): Facets {
   const languages = new Map<string, number>();
-  const facets: Facets = { visibility: { public: 0, private: 0 }, kind: { app: 0, library: 0, tool: 0, docs: 0, other: 0 }, languages: [], deploying: 0, archived: 0 };
+  const facets: Facets = {
+    visibility: { public: 0, private: 0 },
+    kind: { app: 0, library: 0, tool: 0, docs: 0, other: 0 },
+    languages: [],
+    deploying: 0,
+    archived: 0,
+    mirrors: 0,
+  };
   for (const project of projects) {
     facets.visibility[project.private ? "private" : "public"]++;
     facets.kind[project.kind]++;
     if (project.deploying) facets.deploying++;
+    if (project.mirror) facets.mirrors++;
     if (project.archived) facets.archived++;
     if (project.ecosystem) {
       const language = LANGUAGE_OF[project.ecosystem];

@@ -15,7 +15,7 @@ import { SelectField } from "../../components/ui/select";
 import { LabelChip } from "../../components/labels";
 import { integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
-import { accessTo } from "../../lib/access.server";
+import { accessTo, requireWritableRepo } from "../../lib/access.server";
 import { computeNoteFor } from "../../lib/compute.server";
 import { delegateForm, issuePath, notStarted } from "../../lib/delegate";
 
@@ -56,6 +56,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  await requireWritableRepo(context, params);
   const form = await request.formData();
   if (form.get("intent") === "import") {
     const imported = await integrations.import(

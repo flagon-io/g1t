@@ -53,7 +53,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const pinned = (shortcuts?.pinned ?? []).map((pin) => byId.get(pin.id)).filter((project): project is Project => project != null);
   // However many there are: the most active first, archived ones last.
   const byActivity = sortProjects(
-    projects.map((project) => ({ ...project, pushedAt: project.pushedAt ?? null, activity: project.activity ?? 0, deploying: false })),
+    // Deploying and mirroring do not order the list, so neither is read here.
+    projects.map((project) => ({ ...project, pushedAt: project.pushedAt ?? null, activity: project.activity ?? 0, deploying: false, mirror: null })),
     "active",
   )
     .sort((a, b) => Number(a.archived) - Number(b.archived))

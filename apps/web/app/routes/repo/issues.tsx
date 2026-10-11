@@ -24,7 +24,7 @@ import { computeNoteFor } from "../../lib/compute.server";
 import { isWaitingMessage } from "../../lib/compute";
 import { work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
-import { accessTo, refusal } from "../../lib/access.server";
+import { accessTo, refusal, requireWritableRepo } from "../../lib/access.server";
 
 /** As many sandboxes as one request may start. */
 const MAX_ASSIGNED_AT_ONCE = 10;
@@ -66,6 +66,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  await requireWritableRepo(context, params);
   const path = { namespace: params.owner, name: params.repo };
   const numbers = (await request.formData())
     .getAll("issue")

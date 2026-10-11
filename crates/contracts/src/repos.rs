@@ -1403,24 +1403,36 @@ pub struct ResolveBranchArgs {
     pub branch: String,
 }
 
-/// `status_by_id`: whether a repository is archived or deleted, for g1t's
-/// own services deciding whether to act on it. An unknown id answers as
-/// deleted. Returns `RepoStatus`.
+/// `status_by_id`: whether a repository is archived or deleted, and the
+/// remote it mirrors, for g1t's own services deciding whether to act on
+/// it. An unknown id answers as deleted. Returns `RepoStatus`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StatusByIdArgs {
     pub id: String,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RepoStatus {
     pub archived: bool,
     pub deleted: bool,
+    /// Set when it mirrors a remote that leads (see [`crate::mirrors`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mirror: Option<crate::mirrors::RepoMirror>,
 }
 
 impl RepoStatus {
-    /// Whether work may start on it: neither archived nor deleted.
+    /// Whether work may start on it: neither archived nor deleted. A
+    /// mirror is active too: scanning goes on, and so does everything
+    /// else that only reads.
     pub fn active(&self) -> bool {
         !self.archived && !self.deleted
+    }
+
+    /// Whether g1t may open branches and pull requests on it of its own
+    /// accord (security and dependency updates, upkeep): active, and not
+    /// a mirror short of a takeover (`RepoArea::Updates`).
+    pub fn takes_updates(&self) -> bool {
+        self.active() && crate::mirrors::offers(self.mirror.as_ref(), crate::mirrors::RepoArea::Updates)
     }
 }
 

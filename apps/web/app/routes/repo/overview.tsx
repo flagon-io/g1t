@@ -32,6 +32,7 @@ import {
   type PackageSummary,
   type Project,
   type Pull,
+  type RepoMirror,
   RUN_KIND_LABEL,
   isActiveRun,
   workOwner,
@@ -51,6 +52,7 @@ import { Loading, Skeleton, SkeletonRows } from "../../components/ui/skeleton";
 import { ProductionShot } from "../../components/production-shot";
 import { GithubLinkStrip } from "../../components/github";
 import { MirrorOverviewNote, useRepoMirror } from "../../components/mirror";
+import { type MirrorBrief, leaderOf, mirroringSettings, writable } from "../../lib/mirror";
 import { distinctFacts } from "../../lib/memory-facts";
 import { githubApp } from "../../lib/github.server";
 import { ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui";
@@ -97,7 +99,7 @@ import { DocsHead, ElsewhereHead, type ExternalDeployment, OtherHead, WhereItRun
 import { actions, agents, deployments, events as eventLog, identity, packages, projects, repos, work } from "../../lib/services.server";
 import { madeByG1t } from "../../lib/opened-by";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
-import { accessTo, countsFor, projectFor, refusal, repoFor } from "../../lib/access.server";
+import { accessTo, countsFor, projectFor, refusal, repoFor, requireWritableRepo } from "../../lib/access.server";
 import { shotVersion } from "./production-screenshot";
 import { DeploymentsPanel } from "../../components/deployments-panel";
 import { environmentUrl, productionEnvironment } from "../../lib/deployments";
@@ -497,6 +499,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return saved.ok ? { notice: "Saved." } : { error: saved.error.message };
   }
   // Deploying is compute. Syncing with GitHub is under Settings → Mirroring.
+  await requireWritableRepo(context, params);
   const refused = await refusal(context, params, "run");
   if (refused) return { error: refused };
   const started = await deployments.redeploy(user, { workspace: params.owner, slug: params.repo }, null);
@@ -816,6 +819,26 @@ function Overview({
   useLiveRefresh(moving);
   const ages = health.ages;
   const oldest = ages ? Math.max(1, ...ages.map((a) => a.count)) : 1;
+
+  // A mirror that is not taken over is a read-only copy (lib/mirror.ts
+  // `offers`): what it is, where it comes from and what it holds, and
+  // nothing to start. Where it runs, the checklist, Right now and the
+  // agents' panels come back with a takeover.
+  const readOnlyMirror = mirrorRepo?.mirror && !writable(mirrorRepo.mirror) ? mirrorRepo.mirror : null;
+  if (readOnlyMirror) {
+    return (
+      <MirrorOverview
+        loaderData={loaderData}
+        base={base}
+        mirror={readOnlyMirror}
+        briefs={mirrorBriefs}
+        admin={mirrorAdmin}
+        source={source}
+        canChange={canChange}
+        addresses={addresses}
+      />
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -1237,37 +1260,7 @@ function Overview({
             )}
           </Panel>
 
-          {loaderData.commits.length > 0 && (
-            <Panel
-              title={`Latest on ${source?.defaultBranch ?? "main"}`}
-              icon={<GitCommitHorizontal size={14} />}
-              all={{ to: `${base}/commits`, label: "All commits" }}
-            >
-              <Card asChild divided className="overflow-hidden">
-                <ul>
-                  {loaderData.commits.map((one) => (
-                    <li key={one.hash} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                      <CommitAvatars commit={one} size={18} max={2} />
-                      <span className="min-w-0 grow">
-                        <Link to={`${base}/commit/${one.hash}`} className="block truncate hover:text-accent">
-                          {one.message}
-                        </Link>
-                        <span className="text-xs text-muted">
-                          <CommitNames commit={one} className="hover:text-fg" />
-                        </span>
-                      </span>
-                      <Link to={`${base}/commit/${one.hash}`} className="hidden shrink-0 font-mono text-xs text-faint hover:text-fg sm:block">
-                        {one.hash.slice(0, 7)}
-                      </Link>
-                      <span className="w-16 shrink-0 text-right text-xs text-faint">
-                        <TimeAgo at={one.at} />
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            </Panel>
-          )}
+          <LatestCommits commits={loaderData.commits} base={base} branch={source?.defaultBranch ?? "main"} />
 
           <Panel title="Activity" icon={<ActivityIcon size={14} />}>
             {loaderData.eventsLoaded ? (
@@ -1313,70 +1306,7 @@ function Overview({
         <aside className="space-y-4 text-sm">
           {/* Deployments panel (deployments-panel.tsx): each environment's latest deployment. */}
           <DeploymentsPanel base={base} summary={loaderData.environments} className="rounded-xl border border-line bg-surface p-5" />
-          {project && (
-            <Card asChild className="p-5">
-              <section>
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold">About</h2>
-                  {canChange && <AboutEditor project={project} />}
-                </div>
-                <p className={`mt-2.5 text-sm ${project.description ? "text-fg-soft" : "text-faint"}`}>
-                  {project.description ?? "No description."}
-                </p>
-                <LinkList links={project.links} className="mt-3" />
-                <ul className="mt-4 space-y-2 text-xs text-muted">
-                  <li className="flex items-center gap-2">
-                    {project.kind === "library" || project.kind === "tool" ? (
-                      <PackageGlyph size={13} className="shrink-0 text-faint" />
-                    ) : project.kind === "docs" ? (
-                      <BookOpen size={13} className="shrink-0 text-faint" />
-                    ) : (
-                      <Rocket size={13} className="shrink-0 text-faint" />
-                    )}
-                    <Hint label={project.kindReason.detail}>
-                      <span>{kindLabel(project)}</span>
-                    </Hint>
-                  </li>
-                  {loaderData.release && (
-                    <li className="flex items-center gap-2">
-                      <Tag size={13} className="shrink-0 text-faint" />
-                      <Link to={`${base}/tags`} className="hover:text-fg">
-                        <span className="font-mono text-fg-soft">{loaderData.release.name}</span>
-                        {loaderData.release.at && (
-                          <span className="text-faint">
-                            {" · "}
-                            <TimeAgo at={loaderData.release.at} />
-                          </span>
-                        )}
-                      </Link>
-                    </li>
-                  )}
-                  {loaderData.languages && loaderData.languages.length > 0 && (
-                    <li className="flex items-center gap-2">
-                      <Code2 size={13} className="shrink-0 text-faint" />
-                      <span>
-                        {loaderData.languages
-                          .slice(0, 3)
-                          .map((language) => `${language.name} ${Math.round(language.share * 100)}%`)
-                          .join(" · ")}
-                      </span>
-                    </li>
-                  )}
-                </ul>
-                {loaderData.contributors && loaderData.contributors.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-1">
-                    {loaderData.contributors.slice(0, 12).map((person) => (
-                      <Hint key={person.username} label={person.username}>
-                        <Link to={`/${person.username}`}>
-                          <Avatar name={person.username} size={22} />
-                        </Link>
-                      </Hint>
-                    ))}
-                  </div>
-                )}
-              </section>
-            </Card>
-          )}
+          {project && <AboutCard project={project} canChange={canChange} base={base} loaderData={loaderData} />}
 
           {member && (
             <Card asChild className="p-5">
@@ -1486,16 +1416,279 @@ function Overview({
             </section>
           </Card>
 
-          {source && (
-            <Card asChild className="p-5">
-              <section>
-                <h2 className="text-sm font-semibold">Clone</h2>
-                <div className="mt-3">
-                  <CopyLine breakAtSlashes text={`git clone ${cloneUrl(addresses, `${source.repo.namespace}/${source.repo.name}`)}`} />
-                </div>
-              </section>
-            </Card>
+          {source && <CloneCard addresses={addresses} path={`${source.repo.namespace}/${source.repo.name}`} />}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+/** The newest commits on the default branch, with who made them. */
+function LatestCommits({ commits, base, branch }: { commits: Loaded["commits"]; base: string; branch: string }) {
+  if (commits.length === 0) return null;
+  return (
+    <Panel title={`Latest on ${branch}`} icon={<GitCommitHorizontal size={14} />} all={{ to: `${base}/commits`, label: "All commits" }}>
+      <Card asChild divided className="overflow-hidden">
+        <ul>
+          {commits.map((one) => (
+            <li key={one.hash} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+              <CommitAvatars commit={one} size={18} max={2} />
+              <span className="min-w-0 grow">
+                <Link to={`${base}/commit/${one.hash}`} className="block truncate hover:text-accent">
+                  {one.message}
+                </Link>
+                <span className="text-xs text-muted">
+                  <CommitNames commit={one} className="hover:text-fg" />
+                </span>
+              </span>
+              <Link to={`${base}/commit/${one.hash}`} className="hidden shrink-0 font-mono text-xs text-faint hover:text-fg sm:block">
+                {one.hash.slice(0, 7)}
+              </Link>
+              <span className="w-16 shrink-0 text-right text-xs text-faint">
+                <TimeAgo at={one.at} />
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Card>
+    </Panel>
+  );
+}
+
+/** What the project is: its description, links, kind, latest release, languages and contributors. */
+function AboutCard({
+  project,
+  canChange,
+  base,
+  loaderData,
+}: {
+  project: NonNullable<Loaded["project"]>;
+  canChange: boolean;
+  base: string;
+  loaderData: Pick<Loaded, "release" | "languages" | "contributors">;
+}) {
+  return (
+    <Card asChild className="p-5">
+      <section>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">About</h2>
+          {canChange && <AboutEditor project={project} />}
+        </div>
+        <p className={`mt-2.5 text-sm ${project.description ? "text-fg-soft" : "text-faint"}`}>{project.description ?? "No description."}</p>
+        <LinkList links={project.links} className="mt-3" />
+        <ul className="mt-4 space-y-2 text-xs text-muted">
+          <li className="flex items-center gap-2">
+            {project.kind === "library" || project.kind === "tool" ? (
+              <PackageGlyph size={13} className="shrink-0 text-faint" />
+            ) : project.kind === "docs" ? (
+              <BookOpen size={13} className="shrink-0 text-faint" />
+            ) : (
+              <Rocket size={13} className="shrink-0 text-faint" />
+            )}
+            <Hint label={project.kindReason.detail}>
+              <span>{kindLabel(project)}</span>
+            </Hint>
+          </li>
+          {loaderData.release && (
+            <li className="flex items-center gap-2">
+              <Tag size={13} className="shrink-0 text-faint" />
+              <Link to={`${base}/tags`} className="hover:text-fg">
+                <span className="font-mono text-fg-soft">{loaderData.release.name}</span>
+                {loaderData.release.at && (
+                  <span className="text-faint">
+                    {" · "}
+                    <TimeAgo at={loaderData.release.at} />
+                  </span>
+                )}
+              </Link>
+            </li>
           )}
+          {loaderData.languages && loaderData.languages.length > 0 && (
+            <li className="flex items-center gap-2">
+              <Code2 size={13} className="shrink-0 text-faint" />
+              <span>
+                {loaderData.languages
+                  .slice(0, 3)
+                  .map((language) => `${language.name} ${Math.round(language.share * 100)}%`)
+                  .join(" · ")}
+              </span>
+            </li>
+          )}
+        </ul>
+        {loaderData.contributors && loaderData.contributors.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-1">
+            {loaderData.contributors.slice(0, 12).map((person) => (
+              <Hint key={person.username} label={person.username}>
+                <Link to={`/${person.username}`}>
+                  <Avatar name={person.username} size={22} />
+                </Link>
+              </Hint>
+            ))}
+          </div>
+        )}
+      </section>
+    </Card>
+  );
+}
+
+/** The clone command, with the address this g1t serves. */
+function CloneCard({ addresses, path }: { addresses: ReturnType<typeof useAddresses>; path: string }) {
+  return (
+    <Card asChild className="p-5">
+      <section>
+        <h2 className="text-sm font-semibold">Clone</h2>
+        <div className="mt-3">
+          <CopyLine breakAtSlashes text={`git clone ${cloneUrl(addresses, path)}`} />
+        </div>
+      </section>
+    </Card>
+  );
+}
+
+/**
+ * The overview of a mirror g1t does not lead (standing by, in CI failover
+ * or handing back): the remote it copies and when it last did, the facts
+ * of the copy, its latest commits, and About. Nothing here starts
+ * anything: there is no place it runs, no checklist and no Right now, since
+ * work happens on the remote until someone takes over.
+ */
+function MirrorOverview({
+  loaderData,
+  base,
+  mirror,
+  briefs,
+  admin,
+  source,
+  canChange,
+  addresses,
+}: {
+  loaderData: Loaded;
+  base: string;
+  mirror: RepoMirror;
+  briefs: readonly MirrorBrief[];
+  admin: boolean;
+  source: { repo: { namespace: string; name: string }; defaultBranch?: string | null } | null;
+  canChange: boolean;
+  addresses: ReturnType<typeof useAddresses>;
+}) {
+  const { project, commit, checks } = loaderData;
+  const branch = source?.defaultBranch ?? "main";
+  const synced = leaderOf(briefs)?.syncedAt ?? loaderData.github?.syncedAt ?? null;
+  const remote = (
+    <a href={mirror.url} target="_blank" rel="noreferrer" className="font-mono text-fg hover:text-accent">
+      {mirror.remote}
+    </a>
+  );
+  return (
+    <div className="space-y-8">
+      <MirrorOverviewNote
+        base={base}
+        mirror={mirror}
+        briefs={briefs}
+        admin={admin}
+        syncedAt={loaderData.github?.syncedAt}
+        lastError={loaderData.github?.lastError}
+      />
+      {/* The copy: where it comes from, and what it holds. */}
+      <section className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <div className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted uppercase">
+              <GitBranch size={13} className="text-accent" />
+              {mirror.state === "handing_back" ? "Handing back to" : "Mirror of"}
+            </p>
+            <DeployLink href={mirror.url} className="mt-2 flex items-center gap-1.5 truncate font-mono text-lg font-medium hover:text-accent">
+              {mirror.remote}
+              <ArrowUpRight size={16} className="shrink-0 text-faint" />
+            </DeployLink>
+            <p className="mt-1.5 max-w-xl text-sm text-muted">
+              {mirror.state === "handing_back" ? (
+                <>What was done here is going back to {remote}, branch by branch. Read-only until it is done.</>
+              ) : (
+                <>
+                  Every branch and tag of {remote} is copied here as it moves. Nothing runs or opens here on its own;
+                  {mirror.state === "ci" && " its workflows run on g1t meanwhile;"} the work happens there until someone takes over.
+                </>
+              )}
+            </p>
+          </div>
+          {admin && mirror.state !== "handing_back" && (
+            <ButtonLink to={mirroringSettings(base)} variant="outline" className="shrink-0">
+              Mirroring settings
+            </ButtonLink>
+          )}
+        </div>
+        <div className="grid grid-cols-2 divide-line border-t border-line text-sm sm:grid-cols-4 sm:divide-x">
+          <Stat
+            label="Source"
+            value={
+              <a href={mirror.url} target="_blank" rel="noreferrer" className="inline-flex min-w-0 items-center gap-1.5 font-mono hover:text-accent">
+                <Code2 size={12} className="shrink-0 text-faint" />
+                <span className="truncate">{mirror.remote}</span>
+              </a>
+            }
+          />
+          <Stat
+            label="Default branch"
+            to={`${base}/commits`}
+            value={
+              <span className="inline-flex items-center gap-1.5 font-mono">
+                <GitBranch size={12} className="text-faint" />
+                {branch}
+              </span>
+            }
+          />
+          <Stat
+            label="Latest commit"
+            value={
+              commit ? (
+                <span className="flex min-w-0 items-center gap-1">
+                  <Hint label={commit.message.split("\n")[0]}>
+                    <Link to={`${base}/commit/${commit.hash}`} className="min-w-0 truncate hover:text-accent">
+                      <span className="font-mono">{commit.hash.slice(0, 7)}</span>{" "}
+                      <span className="font-normal text-muted">
+                        <TimeAgo at={commit.authoredAt} />
+                      </span>
+                    </Link>
+                  </Hint>
+                  <CommitChecksBadge checks={checks} sha={commit.hash} className="size-5" />
+                </span>
+              ) : (
+                "No commits yet"
+              )
+            }
+          />
+          <Stat
+            label="Synced"
+            value={
+              synced ? (
+                <span className="font-normal text-muted">
+                  <TimeAgo at={synced} />
+                </span>
+              ) : (
+                "Not yet"
+              )
+            }
+          />
+        </div>
+        {commit && (
+          <p className="truncate border-t border-line px-5 py-2.5 text-xs text-muted sm:px-6">
+            <GitCommitHorizontal size={12} className="mr-1.5 inline text-faint" />
+            {commit.message.split("\n")[0]}{" "}
+            <span className="text-faint">
+              · <CommitNames commit={commit} className="hover:text-fg" />
+            </span>
+          </p>
+        )}
+      </section>
+
+      <div className="grid gap-x-8 gap-y-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0 space-y-8">
+          <LatestCommits commits={loaderData.commits} base={base} branch={branch} />
+        </div>
+        <aside className="space-y-4 text-sm">
+          {project && <AboutCard project={project} canChange={canChange} base={base} loaderData={loaderData} />}
+          {source && <CloneCard addresses={addresses} path={`${source.repo.namespace}/${source.repo.name}`} />}
         </aside>
       </div>
     </div>

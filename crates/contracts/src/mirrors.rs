@@ -10,6 +10,22 @@
 //! The integrations service keeps the links (`remotes`) and decides; the
 //! repos service keeps each repository's [`RepoMirror`], so pushes and
 //! merges are refused or allowed without asking anyone.
+//!
+//! What a mirror offers on g1t is one rule, [`RepoMirror::offers`], by
+//! state (`mirrorOffers` in the TypeScript contracts):
+//!
+//! | Area | Standing by | CI failover | Taken over | Handing back |
+//! | --- | --- | --- | --- | --- |
+//! | `Code`: files, commits, branches, tags, compare, releases (read) | ✓ | ✓ | ✓ | ✓ |
+//! | `Security`: what scanning found, read-only | ✓ | ✓ | ✓ | ✓ |
+//! | `Insights`, `Settings` (mirroring settings included) | ✓ | ✓ | ✓ | ✓ |
+//! | `Workflows`: runs on g1t | with Keep CI warm | ✓ | ✓ | – |
+//! | `Issues`, `Pulls`, `Agents`, `Deployments` | – | – | ✓ | – |
+//! | `Updates`: security and dependency updates, upkeep, anything that opens a branch or a pull request on its own | – | – | ✓ | – |
+//!
+//! The sidebar lists only what is offered, a page not offered says so in
+//! place of its list or form, every service refuses the writes, and g1t's
+//! own automation checks the same rule before it opens anything.
 
 use std::collections::BTreeMap;
 
@@ -93,6 +109,75 @@ impl RepoMirror {
     pub fn writable(&self) -> bool {
         self.state.leads()
     }
+
+    /// Whether the repository offers `area` now: the table in this
+    /// module's comment. A mirror g1t has taken over offers everything;
+    /// one standing by or handing back is a read-only copy (code, what
+    /// security scanning found, insights, settings). Workflows run in CI
+    /// failover, and while standing by only when the link keeps CI warm.
+    pub fn offers(&self, area: RepoArea) -> bool {
+        if self.writable() || area.read_only() {
+            return true;
+        }
+        match area {
+            RepoArea::Workflows => self.state == MirrorState::Ci || (self.state == MirrorState::Standby && self.warm),
+            _ => false,
+        }
+    }
+}
+
+/// The parts of a repository a mirror may or may not offer: the sidebar's
+/// pages, and `Updates` for what g1t does on its own (security and
+/// dependency updates, upkeep, anything that opens a branch or a pull
+/// request without being asked).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepoArea {
+    Code,
+    Issues,
+    Pulls,
+    Agents,
+    Workflows,
+    Deployments,
+    Security,
+    Insights,
+    Settings,
+    Updates,
+}
+
+impl RepoArea {
+    pub const ALL: [RepoArea; 10] = [
+        RepoArea::Code,
+        RepoArea::Issues,
+        RepoArea::Pulls,
+        RepoArea::Agents,
+        RepoArea::Workflows,
+        RepoArea::Deployments,
+        RepoArea::Security,
+        RepoArea::Insights,
+        RepoArea::Settings,
+        RepoArea::Updates,
+    ];
+
+    /// Whether every mirror offers it, whatever its state: an exact copy, read.
+    pub fn read_only(self) -> bool {
+        matches!(self, RepoArea::Code | RepoArea::Security | RepoArea::Insights | RepoArea::Settings)
+    }
+}
+
+/// Whether a repository with `mirror` offers `area`: everything when it
+/// leads, else [`RepoMirror::offers`].
+pub fn offers(mirror: Option<&RepoMirror>, area: RepoArea) -> bool {
+    mirror.is_none_or(|mirror| mirror.offers(area))
+}
+
+/// Why g1t's own updates wait on a mirror: the sentence the security pages
+/// and the service share (`mirrorUpdatesWait` in the TypeScript contracts).
+pub fn updates_wait_message(namespace: &str, name: &str, mirror: &RepoMirror) -> String {
+    format!(
+        "Security updates wait until {namespace}/{name} is taken over or moved to g1t. It is a mirror of {remote}, so nothing opens a branch or a pull request here on its own.",
+        remote = mirror.remote
+    )
 }
 
 /// Why a mirror refuses a write, for people and for `git push`.
@@ -605,6 +690,34 @@ mod tests {
         }
         assert!(mirror_message("acme", "web", &RepoMirror { remote: "github.com/acme/web".into(), ..RepoMirror::default() })
             .contains("is a mirror of github.com/acme/web"));
+    }
+
+    #[test]
+    fn a_mirror_offers_a_read_only_copy_until_it_is_taken_over() {
+        let mirror = |state| RepoMirror { state, remote: "github.com/acme/web".into(), ..RepoMirror::default() };
+        let read = [RepoArea::Code, RepoArea::Security, RepoArea::Insights, RepoArea::Settings];
+        let work = [RepoArea::Issues, RepoArea::Pulls, RepoArea::Agents, RepoArea::Deployments, RepoArea::Updates];
+        for state in [MirrorState::Standby, MirrorState::Ci, MirrorState::HandingBack] {
+            for area in read {
+                assert!(mirror(state).offers(area), "{state:?} {area:?}");
+            }
+            for area in work {
+                assert!(!mirror(state).offers(area), "{state:?} {area:?}");
+            }
+        }
+        for area in RepoArea::ALL {
+            assert!(mirror(MirrorState::Takeover).offers(area), "{area:?}");
+            assert!(offers(None, area), "a repository that leads offers {area:?}");
+        }
+        // Workflows: CI failover and takeovers, and a standby kept warm.
+        assert!(!mirror(MirrorState::Standby).offers(RepoArea::Workflows));
+        assert!(RepoMirror { warm: true, ..mirror(MirrorState::Standby) }.offers(RepoArea::Workflows));
+        assert!(mirror(MirrorState::Ci).offers(RepoArea::Workflows));
+        assert!(!mirror(MirrorState::HandingBack).offers(RepoArea::Workflows));
+        assert!(!RepoMirror { warm: true, ..mirror(MirrorState::HandingBack) }.offers(RepoArea::Workflows));
+        let message = updates_wait_message("acme", "web", &mirror(MirrorState::Standby));
+        assert!(message.starts_with("Security updates wait until acme/web is taken over or moved to g1t."));
+        assert!(message.contains("github.com/acme/web"));
     }
 
     #[test]

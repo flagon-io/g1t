@@ -19,6 +19,7 @@ import {
 import { Card } from "../../components/ui/card";
 import { repos, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
+import { requireWritableRepo } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `New pull request · ${params.owner}/${params.repo} · g1t` });
@@ -59,6 +60,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  await requireWritableRepo(context, params);
   const form = await request.formData();
   const issue = Number(form.get("issue"));
   const result = await work.openPull(

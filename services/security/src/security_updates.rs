@@ -628,15 +628,17 @@ impl Security {
     }
 
     /// Updates whose sandbox never pushed: raising the version did not
-    /// work, so g1t gets an issue for it.
+    /// work, so g1t gets an issue for it. On a repository that takes no
+    /// updates now (security updates off, archived, deleted, or a mirror
+    /// that is not taken over, whose pushes are refused) the update fails
+    /// with the reason instead: nothing is opened there.
     pub async fn stalled_updates(&self) -> Result<()> {
         let before = rfc3339(now_ms().saturating_sub(STALLED_MS));
         for row in self.store.stalled_updates(&before, 10).await? {
             let Some(repo) = self.store.repo(&row.repo_id).await? else { continue };
-            if repo.upkeep == 0 || !self.active(&repo.repo_id).await? {
-                self.store
-                    .set_update(&row, UpdateState::Failed, row.pull(), None, Some("The version could not be raised in a sandbox."))
-                    .await?;
+            let waits = if repo.upkeep == 0 { Some("The version could not be raised in a sandbox.".to_owned()) } else { self.takes_updates(&repo).await?.err() };
+            if let Some(why) = waits {
+                self.store.set_update(&row, UpdateState::Failed, row.pull(), None, Some(&why)).await?;
                 continue;
             }
             self.needs_code(&repo, &row, "The version could not be raised in a sandbox on its own").await?;

@@ -189,18 +189,38 @@ impl Security {
         Ok(Outcome::Ok(row))
     }
 
-    /// Whether the repository is neither archived nor deleted. When repos
-    /// cannot say, it is taken as active.
-    async fn active(&self, repo_id: &str) -> Result<bool> {
+    /// Where the repository stands: archived, deleted, a mirror. When repos
+    /// cannot say, it is taken as an ordinary active repository.
+    async fn status(&self, repo_id: &str) -> Result<RepoStatus> {
         let status: Result<RepoStatus> =
             g1t_kit::call(&self.repos, "status_by_id", &StatusByIdArgs { id: repo_id.to_owned() }).await;
         Ok(match status {
-            Ok(status) => status.active(),
+            Ok(status) => status,
             Err(error) => {
                 worker::console_error!("security: status_by_id {repo_id}: {error}");
-                true
+                RepoStatus::default()
             }
         })
+    }
+
+    /// Whether the repository is neither archived nor deleted. Scanning
+    /// goes on in a mirror: it reads.
+    async fn active(&self, repo_id: &str) -> Result<bool> {
+        Ok(self.status(repo_id).await?.active())
+    }
+
+    /// Whether g1t may open branches and pull requests here on its own
+    /// (security and dependency updates): active, and not a mirror short
+    /// of a takeover (`g1t_contracts::mirrors`). `Err` says why not.
+    async fn takes_updates(&self, repo: &RepoRow) -> Result<std::result::Result<(), String>> {
+        let status = self.status(&repo.repo_id).await?;
+        if status.takes_updates() {
+            return Ok(Ok(()));
+        }
+        Ok(Err(match &status.mirror {
+            Some(mirror) if status.active() => g1t_contracts::mirrors::updates_wait_message(&repo.namespace, &repo.name, mirror),
+            _ => "Updates wait while the repository is archived or deleted.".to_owned(),
+        }))
     }
 
     /// Records a repository named in an event, by id. Forks are not

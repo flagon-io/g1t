@@ -9,11 +9,13 @@ import {
   can,
   granted,
   httpStatus,
+  mirrorWritable,
   needs,
   permission,
 } from "@g1t/contracts";
 
 import type { ViewerAccess } from "./access";
+import { mirrorReason } from "./mirror";
 import { projects, repos, work } from "./services.server";
 import { getViewer } from "./session.server";
 
@@ -146,4 +148,18 @@ export async function refusal(context: Context, params: RepoParams, capability: 
 export async function requireCapability(context: Context, params: RepoParams, capability: Capability): Promise<void> {
   const refused = await refusal(context, params, capability);
   if (refused) throw data(refused, { status: 403 });
+}
+
+/**
+ * For an action that would open, change or run something in the
+ * repository (an issue, a pull request, a label, a release, an agent, a
+ * deployment): a 409 that says why when it is a mirror that is not taken
+ * over (`mirrorWritable` in the contracts), otherwise nothing. The
+ * services refuse too; this answers before anything is tried. Settings,
+ * scans and anything that only reads stay open on a mirror.
+ */
+export async function requireWritableRepo(context: Context, params: RepoParams): Promise<void> {
+  const found = await repoFor(context, params);
+  if (!found.ok) return;
+  if (!mirrorWritable(found.value.mirror)) throw data(mirrorReason(found.value), { status: 409 });
 }

@@ -8,6 +8,21 @@
  * a while, then **hands back**), or **move it to g1t** for good, after which
  * g1t no longer tracks the remote. A repository g1t leads can be **mirrored
  * to** any number of followers.
+ *
+ * What a mirror offers on g1t is one rule, `mirrorOffers`, by state:
+ *
+ * | Area | Standing by | CI failover | Taken over | Handing back |
+ * | --- | --- | --- | --- | --- |
+ * | `code`: files, commits, branches, tags, compare, releases (read) | ✓ | ✓ | ✓ | ✓ |
+ * | `security`: what scanning found, read-only | ✓ | ✓ | ✓ | ✓ |
+ * | `insights`, `settings` (mirroring settings included) | ✓ | ✓ | ✓ | ✓ |
+ * | `workflows`: runs on g1t | with Keep CI warm | ✓ | ✓ | – |
+ * | `issues`, `pulls`, `agents`, `deployments` | – | – | ✓ | – |
+ * | `updates`: security and dependency updates, upkeep, anything that opens a branch or a pull request on its own | – | – | ✓ | – |
+ *
+ * The sidebar lists only what is offered, a page not offered says so in
+ * place of its list or form, every service refuses the writes, and g1t's
+ * own automation checks the same rule before it opens anything.
  */
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
@@ -33,6 +48,47 @@ export type RepoMirror = {
 /** Whether the repository takes pushes, merges, issues and agents now. */
 export function mirrorWritable(mirror: RepoMirror | null | undefined): boolean {
   return !mirror || mirror.state === "takeover";
+}
+
+/**
+ * The parts of a repository a mirror may or may not offer: the sidebar's
+ * pages, and `updates` for what g1t does on its own (security and
+ * dependency updates, upkeep, anything that opens a branch or a pull
+ * request without being asked).
+ */
+export type RepoArea =
+  | "code"
+  | "issues"
+  | "pulls"
+  | "agents"
+  | "workflows"
+  | "deployments"
+  | "security"
+  | "insights"
+  | "settings"
+  | "updates";
+
+/** What every mirror offers, whatever its state: an exact copy, read. */
+export const MIRROR_READ_AREAS: readonly RepoArea[] = ["code", "security", "insights", "settings"];
+
+/**
+ * Whether a repository with `mirror` offers `area` now (the table in this
+ * module's comment). A repository that leads offers everything, as does a
+ * mirror g1t has taken over. One standing by or handing back is a
+ * read-only copy: code, what security scanning found, insights and
+ * settings. Workflows run in CI failover, and while standing by only when
+ * the link keeps CI warm.
+ */
+export function mirrorOffers(mirror: RepoMirror | null | undefined, area: RepoArea): boolean {
+  if (mirrorWritable(mirror)) return true;
+  if (MIRROR_READ_AREAS.includes(area)) return true;
+  if (area === "workflows") return mirror!.state === "ci" || (mirror!.state === "standby" && mirror!.warm === true);
+  return false;
+}
+
+/** Why g1t's own updates wait on a mirror: the sentence the security pages and the service share. */
+export function mirrorUpdatesWait(namespace: string, name: string, mirror: RepoMirror): string {
+  return `Security updates wait until ${namespace}/${name} is taken over or moved to g1t. It is a mirror of ${mirror.remote}, so nothing opens a branch or a pull request here on its own.`;
 }
 
 export type RemoteProvider = "github" | "g1t" | "git";

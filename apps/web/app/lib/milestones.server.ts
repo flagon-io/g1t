@@ -2,7 +2,7 @@
 // Each needs the Triage role, which work checks again.
 
 import type { MilestoneResult } from "../components/milestones";
-import { refusal } from "./access.server";
+import { refusal, requireWritableRepo } from "./access.server";
 import { work } from "./services.server";
 import { assertSameOrigin, requireUser } from "./session.server";
 
@@ -12,6 +12,7 @@ type RepoParams = Parameters<typeof refusal>[1];
 export async function milestoneAction(request: Request, params: RepoParams, context: Context): Promise<MilestoneResult> {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  await requireWritableRepo(context, params);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const number = Number(form.get("number")) || undefined;

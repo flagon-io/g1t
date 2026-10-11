@@ -60,8 +60,12 @@ export type DeletedRepo = {
   purgeAfter: string;
 };
 
-/** Whether a repository is archived or deleted, for services deciding whether to act on it. */
-export type RepoStatus = { archived: boolean; deleted: boolean };
+/**
+ * Whether a repository is archived or deleted, and the remote it mirrors,
+ * for services deciding whether to act on it (`mirrorOffers` in
+ * `./mirrors` says what a mirror takes).
+ */
+export type RepoStatus = { archived: boolean; deleted: boolean; mirror?: RepoMirror | null };
 
 /** The most topics a repository has, and the longest topic. */
 export const MAX_TOPICS = 20;

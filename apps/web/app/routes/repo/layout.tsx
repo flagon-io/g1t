@@ -19,7 +19,8 @@ import { WatchMenu } from "../../components/notifications";
 import { PinButton } from "../../components/pin-button";
 import { StarButton } from "../../components/star-button";
 import { ArchivedBanner } from "../../components/repo-lifecycle";
-import { MirrorBadge, MirrorBanner } from "../../components/mirror";
+import { MirrorBadge, MirrorBanner, MirrorReadOnlyPage } from "../../components/mirror";
+import { hiddenOnMirror } from "../../lib/chrome";
 import type { MirrorBrief } from "../../lib/mirror";
 import { WelcomeBanner } from "../../components/welcome";
 import { clearWelcome, welcomes } from "../../lib/invites";
@@ -196,9 +197,14 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   // The project's own description, else the repository's as it is now.
   const description = (project && !project.descriptionInherited ? project.description : null) ?? repo.description;
   const { pathname } = useLocation();
-  const tabs = tabsFor(pathname.slice(base.length + 1), member, access.can);
+  const rest = pathname.slice(base.length + 1);
+  const tabs = tabsFor(rest, member, access.can, repo.mirror);
+  // A page a mirror does not offer now (lib/chrome.ts): the note that says
+  // where the work happens stands in for its list or form, whatever the
+  // address, and its tabs stay away with it.
+  const hidden = hiddenOnMirror(rest, repo.mirror);
   // The files' own About says what it is and its topics, as the one place.
-  const filesPage = /^(code|tree|blob|commits?|branches|tags|releases|compare)(\/|$)/.test(pathname.slice(base.length + 1));
+  const filesPage = /^(code|tree|blob|commits?|branches|tags|releases|compare)(\/|$)/.test(rest);
   // Everyone, signed in or not, finds the project's pages in the sidebar;
   // the page shows its name, and the views of the page it is on as tabs.
   return (
@@ -230,7 +236,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
           {!filesPage && <Topics topics={repo.topics} />}
           {/* A phone, or a visitor: the project's pages, which the sidebar lists for someone signed in. */}
           <div className={signedIn ? "mt-3 md:hidden" : "mt-3"}>
-            <ProjectStrip base={base} member={member} can={access.can} settings={seesSettings(access)} counts={loaderData.open} always={!signedIn} />
+            <ProjectStrip base={base} member={member} can={access.can} settings={seesSettings(access)} counts={loaderData.open} mirror={repo.mirror} always={!signedIn} />
           </div>
           {tabs && (
             <div className="mt-3">
@@ -263,7 +269,11 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             className="mb-6"
           />
         )}
-        <Outlet />
+        {hidden && repo.mirror ? (
+          <MirrorReadOnlyPage base={base} repo={repo} mirror={repo.mirror} admin={access.can.manage_integrations} what={hidden.what} />
+        ) : (
+          <Outlet />
+        )}
       </div>
     </>
   );

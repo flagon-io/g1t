@@ -15,6 +15,33 @@ export function writable(mirror: RepoMirror | null | undefined): boolean {
   return !mirror || mirror.state === "takeover";
 }
 
+/** As `RepoArea` in the contracts: the parts of a repository a mirror may or may not offer. */
+export type RepoArea = "code" | "issues" | "pulls" | "agents" | "workflows" | "deployments" | "security" | "insights" | "settings" | "updates";
+
+/**
+ * As `mirrorOffers` in the contracts. A repository that leads, or a
+ * mirror g1t has taken over, offers everything; one standing by or handing
+ * back is a read-only copy: code, what security scanning found, insights
+ * and settings. Workflows run in CI failover, and while standing by only
+ * when the link keeps CI warm.
+ */
+export function offers(mirror: RepoMirror | null | undefined, area: RepoArea): boolean {
+  if (writable(mirror)) return true;
+  if (area === "code" || area === "security" || area === "insights" || area === "settings") return true;
+  if (area === "workflows") return mirror!.state === "ci" || (mirror!.state === "standby" && mirror!.warm === true);
+  return false;
+}
+
+/**
+ * As `mirrorUpdatesWait` in the contracts: why g1t opens no security or
+ * dependency updates on the repository now. Null when it does.
+ */
+export function updatesWaitReason(repo: MirroredRepo | null | undefined): string | null {
+  const mirror = repo?.mirror;
+  if (!repo || !mirror || offers(mirror, "updates")) return null;
+  return `Security updates wait until ${repo.namespace}/${repo.name} is taken over or moved to g1t. It is a mirror of ${mirror.remote}, so nothing opens a branch or a pull request here on its own.`;
+}
+
 /** As `TAKE_OVER_AFTER_MINUTES` in the contracts: 5 minutes to a day. */
 export const TAKE_OVER_MINUTES = [5, 24 * 60] as const;
 
