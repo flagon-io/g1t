@@ -50,11 +50,16 @@ jobs:
             ~/.cargo/registry
             target
           key: runner-release-${{ hashFiles('Cargo.lock') }}
-      - name: Build every platform
+      - name: Build Linux and Windows
+        # The macOS targets need Apple's SDK to link (the Security and
+        # CoreFoundation frameworks), which zig does not carry, so they are
+        # left out until this builds in the rust-cross/cargo-zigbuild image
+        # as the CLI's release does (scripts/cli-release.mjs). A Mac runner
+        # keeps the version it has, since the manifest names no file for it.
         env:
           G1T_RUNNER_RELEASE_KEY: ${{ vars.RUNNER_RELEASE_PUBLIC_KEY }}
           RUNNER_AGENT_IMAGE: ${{ vars.RUNNER_AGENT_IMAGE }}
-        run: node scripts/runner-release.mjs build
+        run: node scripts/runner-release.mjs build --targets linux-x64,linux-arm64,windows-x64
       - name: Sign
         env:
           RUNNER_RELEASE_KEY: ${{ secrets.RUNNER_RELEASE_KEY }}
