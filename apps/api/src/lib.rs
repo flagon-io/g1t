@@ -728,6 +728,33 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         }
         // A sandbox running a GitHub Actions job: fetching the job, and
         // reporting how it goes. The job's own token is the credential.
+        // A sandbox downloading an action's archive that g1t keeps
+        // (actions' registry.rs). The job's own token is the credential.
+        ("POST", path) if path.starts_with("/actions/jobs/") && path.ends_with("/archive") => {
+            let job = path.trim_start_matches("/actions/jobs/").trim_end_matches("/archive").to_owned();
+            let body = json_body(&mut request).await;
+            let kept: Outcome<Value> = g1t_kit::call(
+                &services.actions,
+                "job_action_archive",
+                &json!({ "job": job, "token": body["token"], "report": body["report"] }),
+            )
+            .await?;
+            let kept = match kept {
+                Outcome::Ok(kept) => kept,
+                Outcome::Fail(refused) => return failure(&refused),
+            };
+            let bucket = env.bucket("ACTIONS_CACHE")?;
+            let object = kept["object"].as_str().unwrap_or_default();
+            let Some(stored) = bucket.get(object).execute().await? else {
+                return fail(FailureCode::NotFound, "The archive is gone.");
+            };
+            let Some(body) = stored.body() else {
+                return fail(FailureCode::NotFound, "The archive is gone.");
+            };
+            let mut response = Response::from_body(body.response_body()?)?;
+            response.headers_mut().set("content-type", "application/gzip")?;
+            return Ok(response);
+        }
         ("POST", path) if path.starts_with("/actions/jobs/") => {
             let rest = path.trim_start_matches("/actions/jobs/");
             // `/action`: where to fetch another repository's action from (on

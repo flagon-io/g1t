@@ -15,6 +15,7 @@ g1t-kit.workspace = true
 g1t-secrets.workspace = true
 serde.workspace = true
 base64 = "0.22"
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 hex = "0.4"
 serde_json = { workspace = true, features = ["preserve_order"] }
 worker.workspace = true

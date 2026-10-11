@@ -85,12 +85,16 @@ impl Api {
     }
 
     /// Where to fetch another repository's action from: `{"source": "g1t",
-    /// "url", "ref", "token"}` or `{"source": "github"}`. Err holds why g1t
+    /// "url", "ref", "token"}`, or `{"source": "github", "sha", "archive",
+    /// "note"}`: the commit GitHub's ref names, and whether g1t keeps its
+    /// archive (`action_archive`). Err holds why g1t
     /// refused (`true`: the repository is private and may not be used
     /// here), or that it could not be asked (`false`).
     pub(crate) fn action(&self, repository: &str, git_ref: &str) -> std::result::Result<Value, (bool, String)> {
+        // The first job to use an action at a commit waits while g1t
+        // fetches and keeps its archive.
         let sent = ureq::post(&format!("{}/actions/jobs/{}/action", self.base, self.job))
-            .timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(120))
             .send_json(json!({ "token": self.token, "report": { "repository": repository, "ref": git_ref } }));
         match sent {
             Ok(response) => response.into_json().map_err(|error| (false, error.to_string())),
@@ -101,6 +105,22 @@ impl Api {
             }
             Err(error) => Err((false, error.to_string())),
         }
+    }
+
+    /// Downloads the archive g1t keeps of `repository` at `sha` to `to`.
+    pub(crate) fn action_archive(&self, repository: &str, sha: &str, to: &std::path::Path) -> std::result::Result<u64, String> {
+        let response = ureq::post(&format!("{}/actions/jobs/{}/archive", self.base, self.job))
+            .timeout(Duration::from_secs(300))
+            .send_json(json!({ "token": self.token, "report": { "repository": repository, "sha": sha } }))
+            .map_err(|error| match error {
+                ureq::Error::Status(code, response) => {
+                    let body: Value = response.into_json().unwrap_or(Value::Null);
+                    body["error"]["message"].as_str().map_or_else(|| format!("g1t answered {code}"), str::to_owned)
+                }
+                other => other.to_string(),
+            })?;
+        let mut file = std::fs::File::create(to).map_err(|error| error.to_string())?;
+        std::io::copy(&mut response.into_reader(), &mut file).map_err(|error| error.to_string())
     }
 
     /// An API with no address, which sends nothing: what the tests use, so

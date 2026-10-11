@@ -750,7 +750,9 @@ fn run_job(job: &mut Job) {
             job.docker_hosted = false;
         }
     }
-    let containers_started = job.start_containers();
+    // Actions first, then containers, as GitHub's "Set up job" and
+    // "Initialize containers".
+    let containers_started = job.prepare_actions(&steps) && job.start_containers();
     job.log.flush();
 
     let mut frame = Frame::default();

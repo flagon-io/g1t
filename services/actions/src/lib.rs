@@ -14,6 +14,9 @@
 //!   environments' protection rules, holds jobs at those rules until they
 //!   pass, and lets pull requests' runs from outside wait for approval.
 //! - [`cache`] lists `actions/cache` entries, which the API keeps in R2.
+//! - [`reach`] finds the actions and reusable workflows of other
+//!   repositories on g1t, and [`registry`] resolves those from GitHub to
+//!   commits and keeps their archives, for jobs to download from g1t.
 //! - [`runners`] keeps self-hosted runners, hands them jobs (and agent
 //!   work from the runner service) when they ask, and hears back.
 //!
@@ -29,6 +32,7 @@ mod payload;
 mod plan;
 mod protection;
 mod reach;
+mod registry;
 mod rename;
 pub mod runtime;
 mod runners;
@@ -249,6 +253,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "job_spec" => reply(&service.job_spec(args(body)?).await?),
         "job_auth" => reply(&service.job_auth(args(body)?).await?),
         "job_action" => reply(&service.job_action(args(body)?).await?),
+        "job_action_archive" => reply(&service.job_action_archive(args(body)?).await?),
         "check_runs" => reply(&service.check_runs(args(body)?).await?),
         "job_report" => reply(&service.job_report(args(body)?).await?),
         // actions/cache, through the API with the job's token.

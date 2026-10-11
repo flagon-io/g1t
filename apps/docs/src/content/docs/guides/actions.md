@@ -133,7 +133,7 @@ g1t looks for it on g1t first:
 | On g1t and public | Your workflows use it, from any workspace. |
 | On g1t, private, in your workspace, with **Access** set to *Accessible from repositories in* the workspace | Your private repositories' workflows use it. A job reads it with a read-only token for that repository alone, which ends with the job. |
 | On g1t, private, and not shared that way | The step or job fails, and says why. A private repository's actions are never used by a public repository's workflows, whose logs anyone can read, nor from another workspace. |
-| Not on g1t, or private in a workspace you cannot see | An action is fetched from GitHub, as before; a reusable workflow is read from a public repository on GitHub. |
+| Not on g1t, or private in a workspace you cannot see | An action comes from GitHub, at the commit its ref names there (see [actions from GitHub](#actions-from-github)); a reusable workflow is read from a public repository on GitHub. |
 
 `ref` is a branch, a tag or a commit. A reusable workflow may be under
 `.g1t/workflows/` or `.github/workflows/`; a `.github/workflows/` path
@@ -146,6 +146,31 @@ workspace, an admin chooses **Settings → Actions → Access → Accessible fro
 repositories in** the workspace, or calls
 `PUT /repos/{owner}/{repo}/actions/permissions/access` with
 `{"access_level": "organization"}` (`none` to stop).
+
+### Actions from GitHub
+
+g1t keeps the actions your workflows use from GitHub, so a job downloads
+them from g1t rather than from GitHub:
+
+1. Before the first step, the job downloads every action its steps name,
+   as GitHub's runner does in **Set up job**, and fails there if one can't
+   be had. Its log names each one's commit:
+   `Download action repository 'actions/setup-node@v4' (SHA:…) from g1t`.
+2. g1t reads which commit the ref (`v4`, a branch, or a commit) names on
+   GitHub, a tag before a branch of the same name, and looks again at
+   most every 5 minutes, so a tag that moves is followed within minutes.
+3. The first job to use an action at a commit has g1t fetch that commit's
+   archive from GitHub and keep it. Every later job, in any workspace,
+   downloads the same bytes from g1t.
+
+While GitHub doesn't answer, a ref reads as the commit it last named, and
+the job says so in a warning; an action g1t keeps still downloads. An
+action whose archive is larger than 32 MB, or from a private repository
+on GitHub, is downloaded from GitHub by the job itself. An archive no job
+has used for 30 days is deleted, and fetched again when next used.
+Kept archives are g1t's and count toward no workspace's storage.
+
+Actions that a composite action uses are downloaded when it runs.
 
 ### Secrets for a called workflow
 

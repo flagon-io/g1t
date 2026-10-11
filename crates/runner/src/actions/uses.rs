@@ -1,7 +1,10 @@
 //! `uses:` steps: `actions/checkout` done natively against g1t, actions
-//! fetched from another repository on g1t (or else GitHub) and run as they are (JavaScript, composite and
-//! Docker), `docker://` images, and a few of GitHub's own whose services
-//! g1t does not have yet.
+//! fetched from another repository on g1t (or else GitHub, at the commit
+//! g1t resolved its ref to, from the archive g1t keeps of it when it has
+//! one) and run as they are (JavaScript, composite and Docker),
+//! `docker://` images, and a few of GitHub's own whose services g1t does
+//! not have yet. Every action a job's steps name is downloaded before the
+//! first step runs, as GitHub's runner does.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -31,6 +34,42 @@ enum Source {
 
 fn safe(part: &str) -> bool {
     !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/')) && !part.contains("..")
+}
+
+fn is_sha(text: &str) -> bool {
+    text.len() == 40 && text.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Whether the runner does `name` (lowercased, without its ref) itself
+/// rather than fetching it.
+fn native(name: &str, docker_hosted: bool) -> bool {
+    matches!(
+        name,
+        "actions/checkout"
+            | "actions/upload-artifact"
+            | "actions/upload-artifact/merge"
+            | "actions/download-artifact"
+            | "actions/cache"
+            | "actions/cache/restore"
+            | "actions/cache/save"
+    ) || (docker_hosted && name == "docker/setup-buildx-action")
+}
+
+/// The repository and ref of an action `uses` fetches from another
+/// repository: (owner, repo, ref). None for one that is local, a Docker
+/// image, done natively, or not a name at all.
+fn remote_action(uses: &str, docker_hosted: bool) -> Option<(String, String, String)> {
+    let uses = uses.trim();
+    if uses.starts_with("./") || uses.starts_with("docker://") {
+        return None;
+    }
+    let (name, git_ref) = uses.split_once('@')?;
+    if git_ref.is_empty() || native(&name.to_ascii_lowercase(), docker_hosted) {
+        return None;
+    }
+    let mut parts = name.splitn(3, '/');
+    let (owner, repo) = (parts.next()?, parts.next()?);
+    (!owner.is_empty() && !repo.is_empty()).then(|| (owner.to_owned(), repo.to_owned(), git_ref.to_owned()))
 }
 
 impl Job {
@@ -192,14 +231,26 @@ impl Job {
         }
         match self.log.api.action(&format!("{owner}/{repo}"), git_ref) {
             Ok(found) if found["source"] == "g1t" => self.fetch_g1t_action(&on_g1t, owner, repo, git_ref, &found),
-            Ok(_) => self.fetch_action(owner, repo, git_ref),
+            Ok(found) => {
+                if let Some(note) = found["note"].as_str() {
+                    self.log.line(&format!("##[warning]{note}"));
+                }
+                let sha = found["sha"].as_str().filter(|sha| is_sha(sha)).map(str::to_owned);
+                if let Some(sha) = &sha
+                    && found["archive"] == true
+                    && let Some(dir) = self.fetch_archived_action(owner, repo, git_ref, sha)
+                {
+                    return Some(dir);
+                }
+                self.fetch_action(owner, repo, git_ref, sha.as_deref())
+            }
             Err((true, why)) => {
                 self.log.line(&format!("##[error]{why}"));
                 None
             }
             Err((false, why)) => {
                 self.log.line(&format!("##[warning]g1t could not say where {owner}/{repo} is ({why}); fetching it from GitHub."));
-                self.fetch_action(owner, repo, git_ref)
+                self.fetch_action(owner, repo, git_ref, None)
             }
         }
     }
@@ -235,8 +286,40 @@ impl Job {
         Some(dir.to_path_buf())
     }
 
-    /// Fetches an action from GitHub, once per job.
-    fn fetch_action(&mut self, owner: &str, repo: &str, git_ref: &str) -> Option<PathBuf> {
+    /// Downloads a GitHub action's archive that g1t keeps, at the commit
+    /// g1t resolved its ref to. None when it could not, and the job fetches
+    /// it from GitHub instead.
+    fn fetch_archived_action(&mut self, owner: &str, repo: &str, git_ref: &str, sha: &str) -> Option<PathBuf> {
+        let dir = super::paths::under_home(ACTIONS_DIR).join(owner).join(repo).join(git_ref);
+        self.log.line(&format!("Download action repository '{owner}/{repo}@{git_ref}' (SHA:{sha}) from g1t"));
+        let archive = self.temp.join(format!("action{}.tar.gz", super::rand_id()));
+        let downloaded = self.log.api.action_archive(&format!("{owner}/{repo}"), sha, &archive);
+        let unpacked = match downloaded {
+            Ok(_) => {
+                let _ = std::fs::remove_dir_all(&dir);
+                let _ = std::fs::create_dir_all(&dir);
+                let mut command = Command::new("tar");
+                command.arg("-xzf").arg(&archive).arg("-C").arg(&dir).arg("--strip-components=1");
+                let mut commands = Commands::default();
+                matches!(process::run(command, Duration::from_secs(300).min(self.remaining_time()), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
+            }
+            Err(why) => {
+                self.log.line(&format!("g1t could not send it ({why}); fetching it from GitHub."));
+                false
+            }
+        };
+        let _ = std::fs::remove_file(&archive);
+        if !unpacked {
+            let _ = std::fs::remove_dir_all(&dir);
+            return None;
+        }
+        let _ = std::fs::write(dir.join(".g1t-fetched"), "");
+        Some(dir)
+    }
+
+    /// Fetches an action from GitHub, once per job: at `sha` when g1t
+    /// resolved its ref to one, so it is the commit g1t named.
+    fn fetch_action(&mut self, owner: &str, repo: &str, git_ref: &str, sha: Option<&str>) -> Option<PathBuf> {
         let dir = super::paths::under_home(ACTIONS_DIR).join(owner).join(repo).join(git_ref);
         if dir.join(".g1t-fetched").exists() {
             return Some(dir);
@@ -245,9 +328,12 @@ impl Job {
             self.log.line(&format!("##[error]`{owner}/{repo}@{git_ref}` is not a name g1t can fetch."));
             return None;
         }
-        self.log.line(&format!("Download action repository '{owner}/{repo}@{git_ref}'"));
+        match sha {
+            Some(sha) => self.log.line(&format!("Download action repository '{owner}/{repo}@{git_ref}' (SHA:{sha})")),
+            None => self.log.line(&format!("Download action repository '{owner}/{repo}@{git_ref}'")),
+        }
         let _ = std::fs::create_dir_all(&dir);
-        let url = format!("https://codeload.github.com/{owner}/{repo}/tar.gz/{git_ref}");
+        let url = format!("https://codeload.github.com/{owner}/{repo}/tar.gz/{}", sha.unwrap_or(git_ref));
         let script = format!("set -o pipefail; curl -fsSL --retry 3 '{url}' | tar -xz -C '{}' --strip-components=1", dir.display());
         let mut command = Command::new("bash");
         command.args(["-c", &script]);
@@ -263,6 +349,36 @@ impl Job {
                 None
             }
         }
+    }
+
+    /// Downloads every action the job's steps fetch from other
+    /// repositories, before the first step runs, as GitHub's runner does in
+    /// "Set up job". False when one could not be: the job fails before
+    /// anything runs. Actions a composite action uses are fetched as it
+    /// runs.
+    pub(crate) fn prepare_actions(&mut self, steps: &[Map<String, Value>]) -> bool {
+        let mut wanted: Vec<(String, String, String)> = Vec::new();
+        for step in steps {
+            if let Some(found) = step.get("uses").and_then(Value::as_str).and_then(|uses| remote_action(uses, self.docker_hosted))
+                && !wanted.contains(&found)
+            {
+                wanted.push(found);
+            }
+        }
+        if wanted.is_empty() {
+            return true;
+        }
+        self.log.line("Prepare all required actions");
+        let mut ready = true;
+        for (owner, repo, git_ref) in &wanted {
+            if self.fetch_remote_action(owner, repo, git_ref).is_none() {
+                ready = false;
+            }
+        }
+        if !ready {
+            self.log.line("##[error]Not every action this job uses could be downloaded, so no step was run.");
+        }
+        ready
     }
 
     /// Runs a JavaScript file of an action with Node.
@@ -337,7 +453,7 @@ impl Job {
         }
         let (name, git_ref) = uses.split_once('@').unwrap_or((uses, ""));
         let lower = name.to_ascii_lowercase();
-        if lower == "docker/setup-buildx-action" && self.docker_hosted {
+        if lower == "docker/setup-buildx-action" && native(&lower, self.docker_hosted) {
             return self.setup_buildx(with);
         }
         match lower.as_str() {
@@ -573,5 +689,26 @@ impl Job {
             });
         }
         (ok, outputs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_actions_fetched_before_the_first_step_are_other_repositories() {
+        let found = |uses: &str| remote_action(uses, true);
+        assert_eq!(found("actions/setup-node@v4"), Some(("actions".into(), "setup-node".into(), "v4".into())));
+        assert_eq!(found(" github/codeql-action/init@v3 "), Some(("github".into(), "codeql-action".into(), "v3".into())));
+        // Done by the runner itself, local, an image, or no version.
+        assert_eq!(found("actions/checkout@v4"), None);
+        assert_eq!(found("Actions/Cache/Restore@v4"), None);
+        assert_eq!(found("docker/setup-buildx-action@v3"), None);
+        assert!(remote_action("docker/setup-buildx-action@v3", false).is_some());
+        assert_eq!(found("./.g1t/actions/setup"), None);
+        assert_eq!(found("docker://alpine:3"), None);
+        assert_eq!(found("actions/setup-node"), None);
+        assert_eq!(found("setup-node@v4"), None);
     }
 }
