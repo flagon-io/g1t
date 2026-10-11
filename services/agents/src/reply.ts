@@ -24,7 +24,7 @@ import { type AbilityEnv, abilitiesFor, abilitiesSection, abilityPorts, saidText
 import { CHAT_MAX_HOPS } from "../../../packages/contracts/src/chat.ts";
 import type { Tokens } from "./budget.ts";
 import { handOffPort } from "./handoff.ts";
-import { HISTORY_LIMIT, lastAddressed, systemPrompt, turns } from "./prompt.ts";
+import { HISTORY_LIMIT, fixedWelcome, lastAddressed, systemPrompt, turns, welcomeAsk } from "./prompt.ts";
 import { loadShelf, skillsSection, teamSlugs } from "./skills.ts";
 import { readVersion } from "./skill-library.ts";
 import { type Specialist, orchestratorInstructions, orchestratorTier, rosterLines } from "./orchestrator.ts";
@@ -226,8 +226,13 @@ type Outcome = {
   effort?: string | null;
 };
 
-/** What a desk is handed: a message to answer. */
-export type DeskWork = AgentDelivery;
+/**
+ * What a desk is handed: a message to answer, or (`welcome`) a word for a
+ * person who just joined the workspace, in the direct message that was
+ * opened for it (welcome.ts). Only the built-in @g1t honours `welcome`:
+ * no other agent speaks first.
+ */
+export type DeskWork = AgentDelivery & { welcome?: boolean };
 
 /** How a limit's refusal reads in chat, in the agent's voice. */
 function noticeFor(reason: string, message: string): string {
@@ -252,6 +257,9 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
   const db = env.DB;
   const row = await db.prepare("SELECT * FROM agents WHERE id = ?").bind(delivery.agent_id).first<Row>();
   if (!row || row.archived_at || row.workspace_id !== delivery.workspace_id) return;
+  // A welcome is @g1t's alone: any other desk handed one says nothing.
+  const welcome = !!delivery.welcome;
+  if (welcome && !row.builtin) return;
   const id = newId("arp", now.getTime());
   const claimed = await db
     .prepare(
@@ -317,6 +325,11 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
 
   /** Says once, in this conversation, why the agent cannot answer; a repeat within hours is kept back. */
   const notice = async (message: string, reason: string) => {
+    // A welcome is never an excuse: without a model, a fixed one.
+    if (welcome) {
+      const posted = await surface.post(fixedWelcome(delivery.asker?.username ?? null, delivery.workspace)).catch(() => null);
+      return await finish({ status: "blocked", error: reason, reply_id: posted });
+    }
     const since = new Date(now.getTime() - NOTICE_QUIET_MS).toISOString();
     const recent = await db
       .prepare(
@@ -358,7 +371,8 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
       members: conversationHere ? conversationHere.people + conversationHere.agents : null,
     });
     if (refused) return await notice(refused, "personal_agent");
-    const conversation = turns(history, row.id);
+    // A welcome has no conversation yet: @g1t is asked to welcome the person.
+    const conversation = welcome ? [{ role: "user" as const, content: welcomeAsk(delivery.asker?.username ?? null, delivery.workspace) }] : turns(history, row.id);
     if (!conversation.length) return await finish({ status: "skipped", error: "nothing to answer" });
     const author = askerIn(history, delivery);
     const askerName = delivery.asker?.username ?? author?.name ?? null;

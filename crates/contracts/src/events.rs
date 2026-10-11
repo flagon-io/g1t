@@ -916,6 +916,36 @@ pub struct WorkspaceUpdated {
     pub slug: String,
 }
 
+/// How someone came to be a member of a workspace (`workspace.member_joined`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinedHow {
+    /// They accepted a workspace invitation sent to them by name.
+    Invitation,
+    /// They made the workspace, and are its first owner.
+    Created,
+    /// They used an invite code or link that named the workspace.
+    Joined,
+}
+
+/// `workspace.member_joined`: a person became a member of a workspace,
+/// published by identity as the membership is written. `how` says by
+/// which door; the workspace's creator is `created`, so a listener that
+/// greets new members can leave them out (the agents service's @g1t
+/// welcomes everyone else, once). Never published for an agent or a
+/// token: only a person joins.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemberJoined {
+    pub workspace_id: String,
+    /// The workspace's slug.
+    pub workspace: String,
+    pub user_id: String,
+    pub username: String,
+    pub role: crate::Role,
+    pub how: JoinedHow,
+}
+
 /// `invite.created`: someone (or staff) made an invite. Never the code or
 /// the address it is for.
 #[derive(Debug, Serialize, serde::Deserialize)]
@@ -1381,6 +1411,34 @@ mod tests {
         assert_eq!(renamed.stale_paths("acme/new"), vec!["acme/old"]);
         // Delivered after a transfer: both names in acme move.
         assert_eq!(renamed.stale_paths("flagon/new"), vec!["acme/old", "acme/new"]);
+    }
+
+    #[test]
+    fn a_member_joining_says_by_which_door() {
+        let joined = MemberJoined {
+            workspace_id: "wsp_1".into(),
+            workspace: "acme".into(),
+            user_id: "usr_ada".into(),
+            username: "ada".into(),
+            role: crate::Role::Member,
+            how: JoinedHow::Invitation,
+        };
+        let data = serde_json::to_value(&joined).unwrap();
+        assert_eq!(
+            data,
+            serde_json::json!({
+                "workspaceId": "wsp_1",
+                "workspace": "acme",
+                "userId": "usr_ada",
+                "username": "ada",
+                "role": "member",
+                "how": "invitation",
+            })
+        );
+        let back: MemberJoined = serde_json::from_value(data).unwrap();
+        assert_eq!(back, joined);
+        assert_eq!(serde_json::to_value(JoinedHow::Created).unwrap(), "created");
+        assert_eq!(serde_json::to_value(JoinedHow::Joined).unwrap(), "joined");
     }
 
     #[test]

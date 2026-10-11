@@ -195,8 +195,10 @@ pub const ROUTES: &[(&str, &[&str])] = &[
     ("SUBSCRIBER_DOCS", &["git.push", "pull.merged"]),
     // Agents' routines that run on events: a pull request ready for
     // review or merged, checks or a deploy failing, an issue opened
-    // (agents/src/triggers.ts); and pushes, which skill libraries that
-    // follow a repository read again (agents/src/skill-library.ts).
+    // (agents/src/triggers.ts); pushes, which skill libraries that
+    // follow a repository read again (agents/src/skill-library.ts); and
+    // a person joining a workspace, whom its @g1t welcomes
+    // (agents/src/welcome.ts).
     (
         "SUBSCRIBER_AGENTS",
         &[
@@ -207,6 +209,7 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "checks.completed",
             "issue.opened",
             "deployment.failed",
+            "workspace.member_joined",
         ],
     ),
 ];
@@ -317,7 +320,9 @@ mod tests {
         assert!(routed("SUBSCRIBER_DOCS", "pull.merged"));
         assert!(!routed("SUBSCRIBER_DOCS", "pull.opened"));
         assert!(routed("SUBSCRIBER_AGENTS", "git.push"));
+        assert!(routed("SUBSCRIBER_AGENTS", "workspace.member_joined"));
         assert!(!routed("SUBSCRIBER_AGENTS", "comment.created"));
+        assert!(!routed("SUBSCRIBER_AGENTS", "workspace.updated"));
         // Every subscriber follows what moves or removes a repository.
         for (binding, _) in ROUTES {
             for kind in LIFECYCLE {

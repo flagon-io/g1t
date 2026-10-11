@@ -105,6 +105,22 @@ test("a conversation that ends on the agent's own message still ends on a user t
   assert.deepEqual(turns([], "agt_ship"), []);
 });
 
+test("@g1t's welcome to a new member: asked in its own voice, or a fixed one without a model", async () => {
+  const { fixedWelcome, welcomeAsk } = await import("./prompt.ts");
+  const ask = welcomeAsk("ada", "acme");
+  assert.match(ask, /@ada just joined the acme workspace/);
+  assert.match(ask, /this workspace's orchestrator/);
+  assert.match(ask, /direct message like this one and when @mentioned in a channel/);
+  assert.match(ask, /Home .* Chat .* Code .* Artifacts/);
+  assert.match(ask, /Three or four sentences, no fluff/);
+  assert.match(welcomeAsk(null, "acme"), /^\(Someone just joined/);
+  assert.equal(
+    fixedWelcome("ada", "acme"),
+    "Welcome to acme, @ada! I'm g1t, this workspace's orchestrator: message me here with a question or a task, or @mention me or any agent in a channel. Home shows what happened while you were away, Chat is where the team talks, Code holds the repositories and Artifacts the docs and files.",
+  );
+  assert.match(fixedWelcome(null, "acme"), /^Welcome to acme! I'm g1t/);
+});
+
 test("the prompt says the agent's title, its teams, duties, and that subagents work inside sessions", () => {
   const prompt = systemPrompt({
     ...base,

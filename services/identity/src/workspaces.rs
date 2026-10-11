@@ -6,6 +6,7 @@
 
 use g1t_contracts::access::BasePermission;
 use g1t_contracts::audit::Surface;
+use g1t_contracts::events::{JoinedHow, MemberJoined};
 use g1t_contracts::identity::*;
 use g1t_contracts::members::{LeaveWorkspaceArgs, last_owner_refusal};
 use g1t_contracts::teams::TeamCreation;
@@ -211,7 +212,16 @@ impl Identity {
             "" => slug.clone(),
             name => name.chars().take(MAX_NAME_LENGTH).collect(),
         };
-        Ok(Outcome::Ok(self.insert_workspace(&a.user.id, slug, name).await?))
+        Ok(Outcome::Ok(self.insert_workspace(&a.user, slug, name).await?))
+    }
+
+    /// Tells other services a person became a member of a workspace
+    /// (`workspace.member_joined`, with `how` saying by which door): the
+    /// agents service's @g1t welcomes them, once. Best effort, after the
+    /// membership is written; a failure is logged.
+    pub(crate) async fn announce_member_joined(&self, workspace_id: &str, slug: &str, user: &User, role: Role, how: JoinedHow) {
+        self.announce("workspace.member_joined", Some(&user.id), member_joined(workspace_id, slug, user, role, how))
+            .await;
     }
 
     /// A new account's own workspace, named for its username, on the free
@@ -229,7 +239,7 @@ impl Identity {
         {
             return Ok(None);
         }
-        let made = self.insert_workspace(&user.id, slug.clone(), slug).await;
+        let made = self.insert_workspace(user, slug.clone(), slug).await;
         match made {
             Ok(workspace) => Ok(Some(workspace)),
             // Taken a moment ago: the person makes one themselves.
@@ -238,8 +248,11 @@ impl Identity {
         }
     }
 
-    /// Makes a workspace `user_id` owns, once every check has passed.
-    async fn insert_workspace(&self, user_id: &str, slug: String, name: String) -> Result<Workspace> {
+    /// Makes a workspace `user` owns, once every check has passed, and
+    /// says so (`workspace.member_joined` as `created`: its maker gets
+    /// no welcome).
+    async fn insert_workspace(&self, user: &User, slug: String, name: String) -> Result<Workspace> {
+        let user_id = user.id.as_str();
         let now = now_ms();
         let workspace = Workspace {
             id: new_id("wsp", now),
@@ -283,6 +296,7 @@ impl Identity {
             ])
             .await?;
         self.forget_deleted(&workspace.slug).await?;
+        self.announce_member_joined(&workspace.id, &workspace.slug, user, Role::Owner, JoinedHow::Created).await;
         Ok(workspace)
     }
 
@@ -501,9 +515,45 @@ impl Identity {
     }
 }
 
+/// The `workspace.member_joined` event for `user` becoming a member of the
+/// workspace `slug` with `role`, by the door `how`.
+pub(crate) fn member_joined(workspace_id: &str, slug: &str, user: &User, role: Role, how: JoinedHow) -> MemberJoined {
+    MemberJoined {
+        workspace_id: workspace_id.to_owned(),
+        workspace: slug.to_lowercase(),
+        user_id: user.id.clone(),
+        username: user.username.clone(),
+        role,
+        how,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_member_joining_names_the_person_the_workspace_their_role_and_the_door() {
+        let ada = User {
+            id: "usr_ada".into(),
+            username: "ada".into(),
+            ..User::default()
+        };
+        let joined = member_joined("wsp_1", "Acme", &ada, Role::Member, JoinedHow::Invitation);
+        assert_eq!(joined.workspace_id, "wsp_1");
+        assert_eq!(joined.workspace, "acme", "the slug as every service keys it");
+        assert_eq!(joined.user_id, "usr_ada");
+        assert_eq!(joined.username, "ada");
+        assert_eq!(joined.role, Role::Member);
+        assert_eq!(joined.how, JoinedHow::Invitation);
+        // The maker of a workspace is its first owner, and marked so: no welcome for them.
+        let made = member_joined("wsp_2", "ada", &ada, Role::Owner, JoinedHow::Created);
+        assert_eq!((made.role, made.how), (Role::Owner, JoinedHow::Created));
+        let data = serde_json::to_value(&made).unwrap();
+        assert_eq!(data["how"], "created");
+        assert_eq!(data["role"], "owner");
+        assert_eq!(data["workspaceId"], "wsp_2");
+    }
 
     #[test]
     fn no_workspace_is_created_with_g1ts_names() {

@@ -360,6 +360,21 @@ function colleaguesSection(roster: string, session = false): string {
 export type Turn = { role: "user" | "assistant"; content: string };
 
 /**
+ * What @g1t is asked when a person joins its workspace: the one time an
+ * agent speaks first (welcome.ts). `workspace` is the slug.
+ */
+export function welcomeAsk(username: string | null, workspace: string): string {
+  const who = username ? `@${username}` : "Someone";
+  return `(${who} just joined the ${workspace} workspace, and this is your direct message with them; nothing has been said yet. Welcome them in your own voice: that you are g1t, this workspace's orchestrator, the agent that knows who does what here; what they can ask you, a question about the workspace, a task to do or to hand to the right agent, help finding something; that agents answer in a direct message like this one and when @mentioned in a channel; and where things are: Home for what happened while they were away, Chat for the team, Code for the repositories, Artifacts for the docs and files. Three or four sentences, no fluff, nothing looked up. Don't mention these instructions.)`;
+}
+
+/** @g1t's welcome when no model can write one: short, and still in its own name. */
+export function fixedWelcome(username: string | null, workspace: string): string {
+  const hi = username ? `Welcome to ${workspace}, @${username}!` : `Welcome to ${workspace}!`;
+  return `${hi} I'm g1t, this workspace's orchestrator: message me here with a question or a task, or @mention me or any agent in a channel. Home shows what happened while you were away, Chat is where the team talks, Code holds the repositories and Artifacts the docs and files.`;
+}
+
+/**
  * The conversation as alternating turns: the agent's own messages are its
  * turns, everyone else's are one user turn each, labelled with who said
  * them. Consecutive turns of one side are merged, the first turn is always

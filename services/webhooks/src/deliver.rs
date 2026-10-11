@@ -65,12 +65,15 @@ pub fn named_in(event: &Event) -> Option<(String, String)> {
 
 /// The workspace an event belongs to when it is about no repository: a
 /// package of the workspace's own, unlinked from any repository, one of
-/// its teams, or one of its rulesets. Such an event goes to the
-/// workspace's webhooks only. Events about a repository (a team given a
-/// role on one among them, a repository's own ruleset), and every other
-/// kind, are `None`: they are routed by their repository.
+/// its teams, one of its rulesets, or someone joining it. Such an event
+/// goes to the workspace's webhooks only. Events about a repository (a
+/// team given a role on one among them, a repository's own ruleset), and
+/// every other kind, are `None`: they are routed by their repository.
 pub fn workspace_scoped(event: &Event) -> Option<String> {
-    let own = event.kind.starts_with("package.") || event.kind.starts_with("team.") || event.kind.starts_with("ruleset.");
+    let own = event.kind.starts_with("package.")
+        || event.kind.starts_with("team.")
+        || event.kind.starts_with("ruleset.")
+        || event.kind == "workspace.member_joined";
     if event.repo_id.as_deref().is_some_and(|id| !id.is_empty()) || !own {
         return None;
     }
@@ -253,6 +256,11 @@ mod tests {
         assert_eq!(workspace_scoped(&ruleset).as_deref(), Some("acme"));
         let own = repo_event("ruleset.created", json!({ "workspace": "acme", "repository": "acme/web" }));
         assert_eq!(workspace_scoped(&own), None);
+        // Someone joining the workspace is the workspace's.
+        let mut joined = repo_event("workspace.member_joined", json!({ "workspaceId": "wsp_1", "workspace": "Acme", "userId": "usr_1", "username": "ada", "role": "member", "how": "invitation" }));
+        joined.repo_id = None;
+        assert_eq!(workspace_scoped(&joined).as_deref(), Some("acme"));
+        assert_eq!(payload(&joined, "acme", None, Some("ada"))["data"]["user_id"], "usr_1", "snake_case as everything sent");
         // Other events without a repository are not workspace events.
         let mut other = repo_event("issue.opened", json!({ "workspace": "acme" }));
         other.repo_id = None;

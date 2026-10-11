@@ -74,7 +74,7 @@ const GROUPS: { title: string; events: string[] }[] = [
     events: ["deployment.created", "deployment_status.created", "deployment.succeeded", "deployment.failed"],
   },
   { title: "Agents", events: ["session.appended", "agent.asked"] },
-  { title: "Access", events: ["repo.collaborator_added", "repo.collaborator_removed", "repo.collaborator_role_changed"] },
+  { title: "Access", events: ["workspace.member_joined", "repo.collaborator_added", "repo.collaborator_removed", "repo.collaborator_role_changed"] },
   {
     title: "Teams",
     events: [

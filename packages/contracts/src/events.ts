@@ -67,6 +67,20 @@ export type RepoCollaboratorData = {
 export type TeamRequested = { team: string; notified: string[]; assigned: string[] };
 
 /** The payload of the `team.*` events; each sets the fields that apply. */
+/** How someone came to be a member of a workspace (`workspace.member_joined`). */
+export type JoinedHow = "invitation" | "created" | "joined";
+
+/** The payload of `workspace.member_joined`. Mirrors `MemberJoined` in events.rs. */
+export type MemberJoinedData = {
+  workspaceId: string;
+  /** The workspace's slug. */
+  workspace: string;
+  userId: string;
+  username: string;
+  role: "owner" | "member";
+  how: JoinedHow;
+};
+
 export type TeamChangedData = {
   workspace: string;
   teamId: string;
@@ -162,6 +176,13 @@ export type EventPayloads = {
   "user.deleted": { userId: string; username: string };
   /** A workspace was made, or its name, description or icon changed. */
   "workspace.updated": { workspaceId: string; slug: string };
+  /**
+   * A person became a member of a workspace. `how` says by which door;
+   * the workspace's creator is `created`, so a listener that greets new
+   * members leaves them out (the agents service's @g1t welcomes everyone
+   * else, once). Never for an agent or a token.
+   */
+  "workspace.member_joined": MemberJoinedData;
   /** Someone, or g1t staff, made an invite. Never the code or the address. */
   "invite.created": { inviteId: string; inviterId: string | null; workspaceId: string | null; bound: boolean };
   /** An invite was used: by a new account, or by an account joining a workspace. */

@@ -388,6 +388,20 @@ with an account signs in and accepts on the page. Accepting lands them in
 the workspace, with a one-time welcome. See
 [using an invite](/guides/authentication/#using-an-invite).
 
+#### When someone joins
+
+The moment a person becomes a member, by accepting an invitation or by
+using an invite code that names the workspace, the workspace's
+[@g1t](/guides/agents/#after-that) opens its direct message with them in
+Chat and says a short welcome: who it is, what they can ask it, that
+agents answer in a direct message and when @mentioned in a channel, and
+where Home, Chat, Code and Artifacts are. It is the only time an agent
+speaks first, it happens once per person per workspace, and whoever
+created the workspace gets none. The welcome is a reply like any other,
+charged to @g1t's budget; with no model the workspace can use, it is a
+short fixed message. The join is also an event, `workspace.member_joined`,
+for the workspace's [webhooks](/guides/webhooks/#events).
+
 Every invitation sent is on **Invitations**,
 `g1t.sh/<workspace>/-/members/invitations` (**Workspace → Access →
 Invitations**, owners only): a table of who it is for, who sent it, the

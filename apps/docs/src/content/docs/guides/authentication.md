@@ -174,7 +174,9 @@ repository, or just making an account), and finishes the job there:
 Nobody joins a workspace without saying yes. With an existing account,
 accepting on the invite's page is that yes: you land in the workspace (or
 the repository) the invite was for, with a one-time "You're in" banner,
-and it becomes the workspace your sidebar shows.
+and it becomes the workspace your sidebar shows. The workspace's @g1t
+says a short welcome in your direct message with it, once; see
+[when someone joins](/guides/workspaces/#when-someone-joins).
 
 A new account made from an invite that names a workspace is invited to
 it: once the account's address is confirmed, g1t takes you to

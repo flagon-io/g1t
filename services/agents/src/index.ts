@@ -59,6 +59,7 @@ import { TEMPLATES, TEMPLATE_IDS } from "./templates.ts";
 import { readPolicy } from "./policy.ts";
 import { runDue } from "./routines.ts";
 import { onEvents } from "./triggers.ts";
+import { welcome } from "./welcome.ts";
 import { cardAction } from "./cards.ts";
 import { type SessionEnv, sweep } from "./sessions.ts";
 import { EFFORT_NAMES, checkDue, effortCostsOf, markResolved, outcomesSince, readRecommendations, recommendationRow, sinceWindow, toRecommendation } from "./recommend.ts";
@@ -1063,12 +1064,17 @@ export default {
     return opened.finish(await answer(service, match[1], args));
   },
 
-  /** Events routines run on, from the events service (SUBSCRIBER_AGENTS). */
+  /** Events routines run on, and people joining whom @g1t welcomes, from the events service (SUBSCRIBER_AGENTS). */
   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
     const events = batch.messages.map((message) => message.body as G1tEvent);
     // A push to a default branch: skill libraries that follow that repository read it again (./skill-library.ts).
     const pushes = events.flatMap((event) => (event?.type === "git.push" && event.data?.defaultBranch && event.data.repoId ? [{ repoId: event.data.repoId }] : []));
-    await Promise.all([onEvents(env as unknown as SessionEnv, events.filter((event) => event?.type !== "git.push")), pushes.length ? skillPushes(env as unknown as SessionEnv, pushes) : null]);
+    await Promise.all([
+      onEvents(env as unknown as SessionEnv, events.filter((event) => event?.type !== "git.push")),
+      pushes.length ? skillPushes(env as unknown as SessionEnv, pushes) : null,
+      // A person joined a workspace: its @g1t says welcome, once (./welcome.ts).
+      welcome(env as unknown as SessionEnv, events).catch((error: unknown) => console.error("agents: welcomes were not sent", String(error))),
+    ]);
     batch.ackAll();
   },
 

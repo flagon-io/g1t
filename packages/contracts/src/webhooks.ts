@@ -35,6 +35,7 @@ export const EVENT_TYPES = [
   "team.repo_added",
   "team.repo_role_changed",
   "team.repo_removed",
+  "workspace.member_joined",
   "ruleset.created",
   "ruleset.updated",
   "ruleset.deleted",

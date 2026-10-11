@@ -31,7 +31,7 @@
 //! INVITE_TTL_DAYS, INVITE_STAFF_WORKSPACES (comma separated slugs).
 
 use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
-use g1t_contracts::events::{InviteCreated, InviteRedeemed, WaitlistRequested};
+use g1t_contracts::events::{InviteCreated, InviteRedeemed, JoinedHow, WaitlistRequested};
 use g1t_contracts::identity::*;
 use g1t_contracts::time::{SQL_NOW, rfc3339};
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, new_id};
@@ -1038,6 +1038,8 @@ impl Identity {
                     ])
                     .await?;
                 joined = Some(slug.clone());
+                // They are a member now: the workspace's @g1t welcomes them (agents service).
+                self.announce_member_joined(workspace_id, slug, user, row.joins_as(), JoinedHow::Joined).await;
             }
         }
         self.db

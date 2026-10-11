@@ -438,6 +438,9 @@ impl Identity {
         if accepted.as_deref() != Some(now.as_str()) {
             return Ok(Outcome::fail(FailureCode::Conflict, NOT_OPEN));
         }
+        // They are a member now: the workspace's @g1t welcomes them (agents service).
+        self.announce_member_joined(&workspace_id, &slug, &a.user, role, g1t_contracts::events::JoinedHow::Invitation)
+            .await;
         if row.kind == "workspace" {
             // An existing account's invitation: using it is this.
             self.settled(&row, &a.user, false, Some(slug.clone())).await;
