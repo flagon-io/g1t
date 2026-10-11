@@ -9,7 +9,7 @@ own. To run g1t on one machine without Cloudflare, see
 [Run g1t yourself](/guides/self-hosting/) instead.
 
 You need a Cloudflare account on the Workers Paid plan (Cloudflare
-Artifacts, where repositories are kept, requires it), Node 22.22 or newer,
+Artifacts, where repositories are kept, requires it), Node 24,
 Rust with the `wasm32-unknown-unknown` target, and Docker to build the
 runner's image.
 
@@ -399,6 +399,16 @@ security**, put an Expo access token in the notify Worker's secret
 ```sh
 cd services/notify && npx wrangler secret put EXPO_ACCESS_TOKEN
 ```
+
+For g1t.sh, leave enhanced push security off: every self-hosted g1t
+pushes to the same app, through the same Expo project, without a token of
+g1t's. Turning it on stops notifications to phones from every
+installation but g1t.sh.
+
+To send phones nothing at all, set `PHONE_PUSH` to `off` in the `vars` of
+both `services/notify/wrangler.jsonc` and `apps/web/wrangler.jsonc`: the
+notify Worker sends them nothing, and the site's
+`/.well-known/g1t.json` tells the app so.
 
 ## Rate limits
 

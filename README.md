@@ -43,7 +43,7 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | Scratchpads: tools, reports and agents anyone can build on a copy of the data, promoted after review | Coming |
 | Desktop app for Windows, macOS and Linux (Tauri): the site in a window of its own, notifications from the system, a badge, g1t:// links, updates that install themselves | Preview |
 | A runner inside the desktop app | Coming |
-| A phone app for Android and iOS (Expo, in `apps/mobile`): Chat, Code and Customize, signed in with OAuth; Android first | Coming |
+| A phone app for Android and iOS (Expo, in `apps/mobile`): Chat in full, live, with notifications on the phone; Code and Customize; signed in with OAuth, to g1t.sh or your own g1t. Android first, in testing; not in the stores yet | Preview |
 
 ### Agents
 
@@ -183,8 +183,8 @@ what runs inside it.
 ### On Cloudflare
 
 You need a Cloudflare account on the Workers Paid plan (Cloudflare
-Artifacts, where repositories are stored, requires it), Node 22.22 or newer (`engines` in `package.json`; g1t is built on
-Node 24), Rust with the `wasm32-unknown-unknown` target, and
+Artifacts, where repositories are stored, requires it), Node 24 (`.nvmrc`, and `engines` in `package.json`), Rust with the
+`wasm32-unknown-unknown` target, and
 Docker to build the sandbox image.
 
 ```sh

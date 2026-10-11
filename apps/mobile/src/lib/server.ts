@@ -14,6 +14,8 @@ export type Server = {
   site: string;
   /** An origin, no trailing slash: `https://api.g1t.sh`. */
   api: string;
+  /** False when this g1t sends phones no notifications (its PHONE_PUSH=off, lib/discover.ts). */
+  push?: boolean;
 };
 
 export const HOSTED: Server = { site: "https://g1t.sh", api: "https://api.g1t.sh" };

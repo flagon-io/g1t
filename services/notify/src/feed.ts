@@ -72,6 +72,13 @@ export type FeedEnv = {
    * phones go unauthenticated, which Expo takes otherwise.
    */
   EXPO_ACCESS_TOKEN?: string;
+  /**
+   * `off` sends phones nothing: a self-hosted g1t that would rather not pass
+   * notifications through Expo's push service (and Google's and Apple's)
+   * sets PHONE_PUSH=off (deploy/self-host/configs.mjs). Phones then do not
+   * register, and the site's /.well-known/g1t.json says so to the app.
+   */
+  PHONE_PUSH?: string;
   /** One presence room per workspace (src/room.ts); without it, presence stays in the person's own tabs. */
   ROOMS?: DurableObjectNamespace<Room>;
 };
@@ -164,7 +171,13 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   private deviceCount(): number {
+    if (!this.phonePush()) return 0;
     return this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM devices").one().n;
+  }
+
+  /** Whether this g1t sends phones anything (PHONE_PUSH). */
+  private phonePush(): boolean {
+    return this.env.PHONE_PUSH !== "off";
   }
 
   // ── Presence ────────────────────────────────────────────────────────────
@@ -465,6 +478,7 @@ export class Feed extends DurableObject<FeedEnv> {
 
   /** Pushes to every phone through Expo; drops the ones Expo says the app is gone from. */
   private async pushDevices(notification: FeedNotification, payload: PushPayload): Promise<number> {
+    if (!this.phonePush()) return 0;
     const tokens = this.sql.exec<{ token: string }>("SELECT token FROM devices").toArray().map((r) => r.token);
     if (!tokens.length) return 0;
     const result = await sendExpo(tokens, payload, notification, { accessToken: this.env.EXPO_ACCESS_TOKEN });
@@ -550,7 +564,8 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   /** A phone the app runs on, by its Expo push token; registering it again moves it to the newest. */
-  async registerDevice(device: PushDevice): Promise<{ ok: boolean }> {
+  async registerDevice(device: PushDevice): Promise<{ ok: boolean; off?: boolean }> {
+    if (!this.phonePush()) return { ok: false, off: true };
     const clean = cleanDevice(device);
     if (!clean) return { ok: false };
     this.sql.exec(

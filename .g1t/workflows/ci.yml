@@ -117,5 +117,5 @@ jobs:
       # tested here, built into installers by desktop-release.yml.
       - name: Check and test
         run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --quiet
-      - name: The release script's tests
-        run: node --test scripts/desktop-release.test.mjs
+      - name: The release scripts' tests
+        run: node --test scripts/desktop-release.test.mjs scripts/mobile-release.test.mjs

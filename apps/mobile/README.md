@@ -97,7 +97,7 @@ permission.
 
 ## Run it
 
-You need Node 22 (the repository's).
+You need Node 24 (the repository's `.nvmrc`; EAS builds on 24.21.0, `eas.json`).
 
 ### In Expo Go (quickest)
 
@@ -185,6 +185,29 @@ Once, by someone with access to the Expo account and Google Play:
 iOS is the same with `--platform ios`, an Apple Developer account and the
 bundle id `sh.g1t.app`; EAS makes the certificates.
 
+### Releasing on g1t.sh/download (until Google Play)
+
+Google Play and the App Store wait on Flagon's D-U-N-S number. Until then
+the `preview` build, `g1t (beta)`, is what people install, from
+g1t.sh/download:
+
+```sh
+# a new native side or version: bump `version` in app.config.ts, then
+git tag mobile-v0.1.0 && git push origin mobile-v0.1.0   # .g1t/workflows/mobile-release.yml
+# or by hand, from the repository's root:
+node scripts/mobile-release.mjs build      # EAS builds the APK
+node scripts/mobile-release.mjs fetch      # the newest finished preview build
+node scripts/mobile-release.mjs manifest
+node scripts/mobile-release.mjs publish    # to g1t.sh/downloads/mobile/, latest.json last
+
+# code alone: over the air to every installed copy of this version
+cd apps/mobile && npx eas-cli update --channel preview --message "What changed"
+```
+
+The workflow needs `EXPO_TOKEN` (expo.dev → Access tokens) beside the
+deploy's Cloudflare secrets. Preview builds count their own versionCode
+(`autoIncrement`), so each installs over the last.
+
 ### Push notifications on Android
 
 Expo's push service sends to Android through Firebase Cloud Messaging,
@@ -205,7 +228,25 @@ which needs a Firebase project. Once:
 4. Build again. Pushes need a build: Expo Go on Android has none.
 
 `EXPO_ACCESS_TOKEN` on the notify Worker is needed only if the Expo
-project turns on **Enhanced push security**.
+project turns on **Enhanced push security**. Leave that off: self-hosted
+g1ts push to this same app through this same project, without g1t's
+token, and turning it on stops their notifications.
+
+### Self-hosted g1t
+
+The app works with any g1t (docs: the phone app guide's "Your own g1t",
+and self-hosting's "The phone app"):
+
+- `GET <site>/.well-known/g1t.json` (`@g1t/contracts/discovery`,
+  `apps/web/app/routes/well-known-g1t.ts`) says where the API is and
+  whether the g1t sends phones notifications (`PHONE_PUSH`). The app reads
+  it in `lib/discover.ts`, and falls back to `api.<host>` for an older g1t.
+- `g1t://connect?server=<site>` (`app/connect.tsx`) points the app at a
+  g1t after asking; a self-hosted g1t's `/download` shows it as a QR code.
+- On g1t.sh none of it shows: the sign-in screen has one button, and a
+  quiet "Using your own g1t?" at its foot.
+- Store builds open `https` only (Android blocks cleartext); development
+  builds also open `http`, for a g1t on your network.
 
 ### Before the first store release
 

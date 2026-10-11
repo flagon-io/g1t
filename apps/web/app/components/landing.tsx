@@ -563,7 +563,7 @@ export function Landing() {
               { text: "Pull requests, checks and deploys as cards in the channel", soon: true },
               { text: "Mentions and approvals in Notifications", soon: true },
               "A desktop app for Windows, macOS and Linux",
-              { text: "A phone app", soon: true },
+              { text: "A phone app with notifications, Android first, for g1t.sh or your own g1t", soon: true },
             ]}
           />
           <p className="mt-5 flex max-w-xl flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm leading-6 text-muted">

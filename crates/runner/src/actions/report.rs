@@ -103,7 +103,19 @@ impl Api {
         }
     }
 
+    /// An API with no address, which sends nothing: what the tests use, so
+    /// a step's run is not held up by reports that go nowhere (each one
+    /// tried three times, with waits between, over a second and a half).
+    #[cfg(test)]
+    pub(crate) fn offline() -> Api {
+        Api { base: String::new(), job: "job_1".into(), token: "t".into() }
+    }
+
     pub(crate) fn report(&self, report: Value) {
+        // No address: nowhere to send it (Api::offline).
+        if self.base.is_empty() {
+            return;
+        }
         // A report that cannot be sent is tried a few times, then dropped:
         // the job goes on, and g1t notices a silent job by itself.
         for attempt in 0..3 {
@@ -135,6 +147,10 @@ pub(crate) struct Log {
     last: Instant,
     /// When anything was last sent, for the ping.
     sent: Instant,
+    /// Everything sent so far, so a test reads the whole log however its
+    /// batches fell (`buffered`).
+    #[cfg(test)]
+    flushed: String,
 }
 
 impl Log {
@@ -148,13 +164,15 @@ impl Log {
             buffer: String::new(),
             last: Instant::now(),
             sent: Instant::now(),
+            #[cfg(test)]
+            flushed: String::new(),
         }
     }
 
-    /// What waits to be sent.
+    /// The log so far: what was sent and what waits to be.
     #[cfg(all(test, unix))]
     pub(crate) fn buffered(&self) -> String {
-        self.buffer.clone()
+        format!("{}{}", self.flushed, self.buffer)
     }
 
     /// Starts writing to step `number` (0 for the job's setup).
@@ -210,6 +228,8 @@ impl Log {
         }
         self.sent = Instant::now();
         let text = std::mem::take(&mut self.buffer);
+        #[cfg(test)]
+        self.flushed.push_str(&text);
         self.api.report(json!({ "kind": "log", "step": self.step, "text": text }));
     }
 
@@ -286,8 +306,7 @@ mod tests {
     use super::*;
 
     fn log(secrets: &[&str]) -> Log {
-        let api = Api { base: "http://127.0.0.1:9".into(), job: "job_1".into(), token: "t".into() };
-        Log::new(api, mask::all_variants(secrets.iter().copied()))
+        Log::new(Api::offline(), mask::all_variants(secrets.iter().copied()))
     }
 
     #[test]

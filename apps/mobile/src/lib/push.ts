@@ -44,15 +44,16 @@ Notifications.setNotificationHandler({
   },
 });
 
-export type PushState = "unsupported" | "denied" | "undetermined" | "granted";
+export type PushState = "unsupported" | "off" | "denied" | "undetermined" | "granted";
 
 /** Whether pushes can work here: a real phone, in a build of the app (Expo Go on Android has no push). */
 export function pushSupported(): boolean {
   return Device.isDevice && !(IN_EXPO_GO && Platform.OS === "android");
 }
 
-export async function pushState(): Promise<PushState> {
+export async function pushState(server?: { push?: boolean }): Promise<PushState> {
   if (!pushSupported()) return "unsupported";
+  if (server?.push === false) return "off";
   const { status } = await Notifications.getPermissionsAsync();
   return status === "granted" ? "granted" : status === "denied" ? "denied" : "undetermined";
 }
@@ -64,6 +65,8 @@ export async function pushState(): Promise<PushState> {
  */
 export async function registerForPush(client: Client, ask: boolean): Promise<PushState> {
   if (!pushSupported()) return "unsupported";
+  // A g1t that sends phones nothing (PHONE_PUSH=off): no asking, nothing to register.
+  if (client.server.push === false) return "off";
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync(MESSAGES_CHANNEL, {
       name: "Messages",
@@ -80,13 +83,14 @@ export async function registerForPush(client: Client, ask: boolean): Promise<Pus
 
   const projectId = (Constants.expoConfig?.extra?.eas as { projectId?: string } | undefined)?.projectId ?? Constants.easConfig?.projectId;
   const { data: token } = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
-  await client.siteRaw("/-/notify", {
+  const answer = await client.siteRaw<{ ok: boolean; off?: boolean }>("/-/notify", {
     method: "POST",
     body: JSON.stringify({
       intent: "register_device",
       device: { token, platform: Platform.OS === "ios" ? "ios" : "android", name: Device.deviceName ?? Device.modelName ?? null },
     }),
   });
+  if (answer.off) return "off";
   await SecureStore.setItemAsync(TOKEN_KEY, token);
   return "granted";
 }

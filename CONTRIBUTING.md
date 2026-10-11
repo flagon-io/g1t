@@ -109,6 +109,16 @@ setup.
   same by hand. The app loads the live site, so a change to the site needs
   no release; only a change under `apps/desktop` does. The guide is
   [The desktop app](https://docs.g1t.sh/guides/desktop/).
+- **The phone app** for Android is released on g1t.sh/download while it
+  is not in Google Play (that waits on Flagon's D-U-N-S number): bump
+  `version` in `apps/mobile/app.config.ts` when its native side changes,
+  merge, and push a `mobile-v<version>` tag.
+  `.g1t/workflows/mobile-release.yml` has EAS build the APK and publishes
+  it; `scripts/mobile-release.mjs` does the same by hand. A change to the
+  app's code alone needs no release: `eas update --channel preview` in
+  `apps/mobile` reaches installed copies. Its server half (chat scopes,
+  `/-/notify`, notify's phone push) deploys with the site and services.
+  The guide is [The phone app](https://docs.g1t.sh/guides/mobile/).
 
 ## Speed
 

@@ -18,6 +18,7 @@ export * from "./context";
 export * from "./customize";
 export * from "./d1";
 export * from "./datasets";
+export * from "./discovery";
 export * from "./docs";
 export * from "./deploy-keys";
 export * from "./deployments";

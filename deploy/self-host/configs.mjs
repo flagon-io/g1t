@@ -251,6 +251,11 @@ function selfHosted(service) {
     Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL, OG_URL: "", USERCONTENT_URL: (process.env.USERCONTENT_URL ?? "").trim() });
   }
   if (hosted.name === "g1t-api") Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL });
+  // Notifications on the g1t phone app go through Expo's push service (and
+  // from there Google's and Apple's), with no setup here, unless
+  // PHONE_PUSH=off: notify then sends phones nothing, and the site's
+  // /.well-known/g1t.json tells the app so.
+  if (service.web || hosted.name === "g1t-notify") config.vars.PHONE_PUSH = process.env.PHONE_PUSH === "off" ? "off" : "on";
   if (hosted.name === "g1t-identity") config.vars.SITE_URL = PUBLIC_URL;
   // Nightly backups' bundles go to a bucket of their own on the same
   // S3-compatible store, instead of the BACKUPS R2 bucket, and so do the

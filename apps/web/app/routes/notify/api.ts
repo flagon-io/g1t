@@ -61,8 +61,8 @@ export async function action({ context, request }: Route.ActionArgs) {
       if (typeof d?.token !== "string" || (d.platform !== "android" && d.platform !== "ios")) return Response.json({ ok: false }, { status: 400 });
       const device: PushDevice = { token: d.token, platform: d.platform, name: typeof d.name === "string" ? d.name : null };
       const registered = await notify.registerDevice(user, device);
-      // The service checks the token is Expo's.
-      return Response.json(registered, { status: registered.ok ? 200 : 400 });
+      // The service checks the token is Expo's; `off` is this g1t sending phones nothing (PHONE_PUSH=off), not a mistake.
+      return Response.json(registered, { status: registered.ok || registered.off ? 200 : 400 });
     }
     case "unregister_device":
       return Response.json(await notify.unregisterDevice(user, String(sent.token ?? "")));

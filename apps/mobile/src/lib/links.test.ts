@@ -35,3 +35,11 @@ test("the app's sign-in comes back to its own screen, and the site's own pages s
   assert.equal(routeFor("/settings/tokens"), null);
   assert.equal(routeFor("/"), "/");
 });
+
+test("a connect link points the app at a g1t", () => {
+  assert.equal(routeFor("/connect?server=https%3A%2F%2Fg1t.example.com"), "/connect?server=https%3A%2F%2Fg1t.example.com");
+  assert.equal(sitePathOf("g1t://connect?server=https%3A%2F%2Fg1t.example.com"), "/connect?server=https%3A%2F%2Fg1t.example.com");
+  // A workspace named connect is still a workspace.
+  assert.equal(routeFor("/connect/-/chat"), "/chat?workspace=connect");
+  assert.equal(routeFor("/connect/web"), "/code/connect/web");
+});

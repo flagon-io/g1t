@@ -32,6 +32,7 @@ a private network, not yet for an installation on the open internet.
 | Deployments on `g1t.page` | Off |
 | Billing | Off. Nothing is charged, and no usage limit stops work. |
 | Site analytics | Off. Only g1t.sh sends page analytics (to HeyCatch, as its [privacy policy](https://g1t.sh/policies/privacy#how-the-site-is-used) describes); your installation sends none. |
+| [The phone app](/guides/mobile/) | Works: Chat, notifications, Code. Point it here from your download page's QR code ([below](#the-phone-app)). |
 | Git over SSH and the `g1t` CLI | Not available yet |
 | Scheduled jobs | Run on their schedules inside the g1t container: webhook retries, purging deleted repositories, the packages sweep, security sweeps, audit log retention, access request summaries and emptying artifacts left in the trash for 30 days. Actions schedules (`on: schedule`) are not run. |
 
@@ -173,6 +174,30 @@ Set these in the environment, or in a `.env` file next to
 | `STATUS_PORT` | `8788` | The port the status page is published on |
 | `STATUS_PROBE_REPO` | (none) | A public repository, `workspace/repo`, whose branches the status page lists every minute as a clone would. Empty: git is not checked. |
 | `INVITE_STAFF_WORKSPACES` | (none) | Workspace slugs, comma separated, whose owners can make invites without a limit. Set it to your own workspace before you switch to `invite`, so someone can invite the first people. |
+| `PHONE_PUSH` | `on` | `off`: send [the phone app](#the-phone-app) no notifications, so their words never pass through Expo's push service. Browser and desktop notifications are not affected. |
+
+## The phone app
+
+[The g1t phone app](/guides/mobile/) works with your installation as it
+does with g1t.sh: the same sign-in (OAuth, approved on your site), Chat
+live, notifications and Code. Nothing is set up for it here.
+
+1. Make the installation reachable from a phone: `PUBLIC_URL` and
+   `API_URL` set to addresses the phone can open, such as
+   `https://git.example.com` and `https://api.git.example.com` behind your
+   proxy. Store builds of the app open `https` addresses only.
+2. People open `PUBLIC_URL/download` and scan the code under **On your
+   phone**, or tap **Open in the g1t app** on the phone. The link is
+   `g1t://connect?server=<PUBLIC_URL>`; you can hand it out yourself.
+3. The app reads `PUBLIC_URL/.well-known/g1t.json` for where the API is,
+   and signs in there.
+
+Notifications reach phones through the push service of g1t's app on Expo,
+which hands them to Google's (Android) or Apple's (iOS): your installation
+sends each one there, with its title and a line of the message, as g1t.sh
+does. No account or key is needed. To send phones nothing, set
+`PHONE_PUSH=off`: the app then tells people your g1t sends no
+notifications, and everything else works.
 
 ## The status page
 

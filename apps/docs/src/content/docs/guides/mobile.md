@@ -1,6 +1,6 @@
 ---
 title: The phone app
-description: g1t on Android and iOS, built with Expo. Chat with people and agents, live, with notifications on your phone, and Code and Customize, signed in with g1t's own OAuth. Not in the stores yet; this is how it works and how to build it.
+description: g1t on Android and iOS, built with Expo. Chat with people and agents, live, with notifications on your phone, and Code and Customize, signed in with g1t's own OAuth. Android first, downloaded from g1t.sh while it waits for Google Play.
 ---
 
 The phone app is g1t on Android and iOS, with its own screens for what
@@ -9,10 +9,31 @@ with notifications on your phone, reviewing what agents made in Code,
 and seeing the skills, connectors and plugins your workspace can use in
 Customize. Everything else opens on the site, in your phone's browser.
 
-It is not in Google Play or the App Store yet. Android comes first. Until
-then, it is built from `apps/mobile` in
-[g1t's repository](https://g1t.sh/flagon-io/g1t), as
-[For operators](#for-operators-building-and-releasing) says.
+## Install it
+
+Android comes first. Get it from [g1t.sh/download](https://g1t.sh/download),
+under **On your phone**:
+
+1. On your Android phone, choose **Download for Android**. On a computer,
+   scan the code there with the phone's camera instead.
+2. Open the downloaded file. Android asks once to allow your browser to
+   install apps: allow it.
+3. Open **g1t (beta)** and choose **Sign in with g1t**.
+
+The page shows each release's SHA-256, to check the file you have is the
+one g1t published.
+
+**Why a download, and not Google Play?** Google Play and the App Store
+publish a company's apps only once it is verified with a D-U-N-S number,
+and Flagon's is on its way. Until then the Android app is published on
+g1t.sh, signed by g1t, as [the desktop app](/guides/desktop/) is. It moves
+into Google Play as soon as it can. iOS has no way in but the App Store,
+so it follows then.
+
+**Updates** reach the app by themselves: most arrive the next time you
+open it, with nothing to install. A change that needs a new install is a
+new release on the download page; installing it over the one you have
+keeps you signed in.
 
 The bar along the bottom is the site's phone bar:
 
@@ -111,15 +132,39 @@ Any other page opens on the site, in the browser.
 
 ## Your own g1t
 
-If you [run g1t yourself](/guides/self-hosting/), choose **Server** on the
-sign-in screen and enter your site's address, such as
-`https://g1t.example.com`. The app takes the API to be `api.` in front of
-it (`https://api.g1t.example.com`); if yours is elsewhere, enter it under
-**API**. **Use g1t.sh** goes back.
+The app works with a g1t you [run yourself](/guides/self-hosting/) as well
+as with g1t.sh. It talks to one g1t at a time, and opens on g1t.sh unless
+you point it elsewhere. Two ways to point it at yours:
+
+- **Scan its code.** Your g1t's download page, `<your g1t>/download`, has
+  a QR code under **On your phone**. Scan it with the phone's camera, or
+  open the page on the phone and choose **Open in the g1t app**. The app
+  asks **Use g1t.example.com?**, then signs you in there.
+- **Type its address.** On the sign-in screen, choose **Using your own
+  g1t? Sign in there** and enter the address you open it at in a browser,
+  such as `g1t.example.com`.
+
+Either way the app reads `<your g1t>/.well-known/g1t.json`, where your g1t
+says where its API is, so you never type that. A g1t from before the phone
+app has no such file: the app then takes the API to be `api.` in front of
+the site, and offers **Its API is at another address** if it is not.
+
+The sign-in screen then says **Signing in to g1t.example.com**, with
+**Change** and **Use g1t.sh**. Switching signs you out of the g1t you were
+on.
+
+| Your g1t | What to know |
+| --- | --- |
+| Reached by the phone | `PUBLIC_URL` and `API_URL` must be addresses the phone can open. `localhost` on a phone is the phone itself: use your computer's address on the network, or a domain. |
+| `https` | Store builds of the app open `https` addresses only, as Android requires. A development build also opens `http`, for a g1t on your own network. |
+| Notifications | Work with no setup: your g1t sends them through Expo's push service, as g1t.sh does. To keep notifications' words off Expo's, Google's and Apple's services, set `PHONE_PUSH=off` ([self-hosting](/guides/self-hosting/#the-phone-app)); the app then says your g1t sends no notifications, and Chat still updates while it is open. |
+| Older versions | A g1t from before the phone app does not let the app's sign-in into Chat. Upgrade it, or sign in with an access token that has **Use the website as you**. |
 
 ## What's not there yet
 
-- **Store releases.** Google Play first, then the App Store.
+- **Google Play and the App Store**, once Flagon's D-U-N-S number
+  arrives ([above](#install-it)). Until then, Android from the download
+  page; iOS waits for the App Store.
 - **Home, Notifications, Agents and Artifacts** as tabs of their own.
   Their pages open on the site meanwhile.
 - **Formatting in Code.** Descriptions and comments show their Markdown
@@ -145,4 +190,26 @@ the commands for running it on a phone and the first-time setup.
 
 The three install side by side. `eas submit --platform android` sends
 the latest production build to Google Play's internal testing track as a
-draft.
+draft, once there is a Play account to send it to.
+
+### Releasing on g1t.sh/download
+
+Until the app is in Google Play, the `preview` build is the one people
+install, from g1t.sh/download. A release is a tag `mobile-v<version>`,
+where the version is `version` in `apps/mobile/app.config.ts`: push it,
+and the `Mobile release` workflow (`.g1t/workflows/mobile-release.yml`)
+has EAS build the APK, then publishes it to the `g1t-downloads` bucket
+at `g1t.sh/downloads/mobile/<version>/` and points `mobile/latest.json`
+at it, which the download page reads. `scripts/mobile-release.mjs` does
+the same by hand (`build`, `fetch`, `manifest`, `publish`).
+
+| Secret or variable | What it is |
+| --- | --- |
+| `EXPO_TOKEN` | An Expo access token with access to the g1t project, from expo.dev |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | As the deploy has them |
+
+Most changes need no release: `eas update --channel preview` in
+`apps/mobile` sends the app's new code to every installed copy of that
+version, which takes it the next time it opens. A release is for a change
+to the app's native side (a new native module, `app.config.ts`) or its
+`version`, which is also what decides which updates a copy takes.

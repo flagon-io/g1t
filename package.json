@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.22.0"
+    "node": ">=24"
   },
   "workspaces": [
     "apps/*",
@@ -15,7 +15,7 @@
     "deploy": "npm run deploy -w @g1t/web",
     "test:deploy": "node --test \"scripts/deploy/*.test.mjs\"",
     "test:ops": "node --test \"scripts/ops/*.test.mjs\"",
-    "test:release": "node --test \"scripts/desktop-release.test.mjs\""
+    "test:release": "node --test \"scripts/desktop-release.test.mjs\" \"scripts/mobile-release.test.mjs\""
   },
   "devDependencies": {
     "typescript": "^5.9.3",
