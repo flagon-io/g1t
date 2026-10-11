@@ -7,18 +7,22 @@
 //! loads.
 
 use serde::Serialize;
-use tauri::{AppHandle, Webview};
+use tauri::{AppHandle, Manager, UserAttentionType, Webview};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
-use crate::{badge, config, updates};
+use crate::settings::{self, Settings};
+use crate::{WINDOW, badge, config, updates};
 
 const SCRIPT: &str = include_str!("bridge.js");
 
 /// The bridge, run at the start of every page the window loads.
 pub fn script() -> String {
-    SCRIPT.replace("__VERSION__", env!("CARGO_PKG_VERSION")).replace("__PLATFORM__", std::env::consts::OS)
+    SCRIPT
+        .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
+        .replace("__PLATFORM__", std::env::consts::OS)
+        .replace("\"__OUTSIDE__\"", &serde_json::to_string(crate::navigation::OUTSIDE).expect("a list of paths is JSON"))
 }
 
 /// What the site and the launcher learn about the app.
@@ -47,6 +51,12 @@ fn from_launcher(webview: &Webview) -> Result<(), String> {
     if config::is_launcher(&url) { Ok(()) } else { Err("only the launcher may ask that".into()) }
 }
 
+/// The page asking is the settings window's, bundled with the app.
+fn from_settings(webview: &Webview) -> Result<(), String> {
+    from_launcher(webview)?;
+    if webview.label() == settings::SETTINGS { Ok(()) } else { Err("only the settings window may ask that".into()) }
+}
+
 fn from_either(app: &AppHandle, webview: &Webview) -> Result<(), String> {
     from_site(app, webview).or_else(|_| from_launcher(webview))
 }
@@ -67,6 +77,13 @@ pub fn desktop_info(app: AppHandle, webview: Webview) -> Result<Info, String> {
 #[tauri::command]
 pub fn notify(app: AppHandle, webview: Webview, title: String, body: String) -> Result<(), String> {
     from_site(&app, &webview)?;
+    let settings = config::settings(&app);
+    if let Some(window) = app.get_webview_window(WINDOW).filter(|window| settings.flash && !window.is_focused().unwrap_or(false)) {
+        let _ = window.request_user_attention(Some(UserAttentionType::Informational));
+    }
+    if !settings.notifications {
+        return Ok(());
+    }
     app.notification().builder().title(title).body(body).show().map_err(|error| error.to_string())
 }
 
@@ -118,4 +135,56 @@ pub fn set_server(app: AppHandle, webview: Webview, url: String) -> Result<Strin
 pub async fn check_for_updates(app: AppHandle, webview: Webview) -> Result<String, String> {
     from_either(&app, &webview)?;
     updates::check(&app, true).await
+}
+
+/// Opens the app's settings window: the site's account menu asks for it.
+#[tauri::command]
+pub fn open_settings(app: AppHandle, webview: Webview) -> Result<(), String> {
+    from_either(&app, &webview)?;
+    settings::open(&app);
+    Ok(())
+}
+
+/// What the settings window shows.
+#[tauri::command]
+pub fn get_settings(app: AppHandle, webview: Webview) -> Result<settings::View, String> {
+    from_settings(&webview)?;
+    Ok(settings::view(&app))
+}
+
+/// The settings window changed something: everything but opening at sign-in.
+#[tauri::command]
+pub fn save_settings(app: AppHandle, webview: Webview, settings: Settings) -> Result<settings::View, String> {
+    from_settings(&webview)?;
+    settings::apply(&app, settings)?;
+    Ok(settings::view(&app))
+}
+
+/// Opening at sign-in, which the system keeps.
+#[tauri::command]
+pub fn set_open_at_login(app: AppHandle, webview: Webview, on: bool) -> Result<settings::View, String> {
+    from_settings(&webview)?;
+    settings::open_at_login(&app, on)?;
+    Ok(settings::view(&app))
+}
+
+/// The settings window's "Change…": the main window goes to the launcher's choice of server.
+#[tauri::command]
+pub fn change_server(app: AppHandle, webview: Webview) -> Result<(), String> {
+    from_settings(&webview)?;
+    if let Some(window) = app.get_webview_window(settings::SETTINGS) {
+        let _ = window.close();
+    }
+    crate::tray::launcher(&app, "change");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_bridge_has_nothing_left_to_fill_in() {
+        let script = super::script();
+        assert!(!script.contains("__VERSION__") && !script.contains("__PLATFORM__") && !script.contains("__OUTSIDE__"));
+        assert!(script.contains(r#"var OUTSIDE = ["/pricing""#));
+    }
 }

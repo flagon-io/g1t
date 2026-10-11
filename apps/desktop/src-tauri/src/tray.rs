@@ -1,6 +1,8 @@
 //! The tray icon and its menu, and showing and hiding the window. Closing
-//! the window hides it; g1t keeps running for notifications, and the
-//! tray's Open, or the icon, brings it back. Quit is here too.
+//! the window hides it, unless settings say closing quits; g1t keeps
+//! running for notifications, and the tray's Open, or the icon, brings it
+//! back. Quit is here too. The menu's rows are handled with the app
+//! menu's (menu.rs).
 
 use std::sync::OnceLock;
 
@@ -8,7 +10,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
 
-use crate::{WINDOW, updates};
+use crate::{WINDOW, config, updates};
 
 pub const TRAY: &str = "g1t";
 
@@ -19,6 +21,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open g1t", true, None::<&str>)?;
     let check = MenuItem::with_id(app, "check", "Check for updates…", true, None::<&str>)?;
     let restart = MenuItem::with_id(app, "restart", "Restart to finish updating", false, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let server = MenuItem::with_id(app, "server", "Use another g1t…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit g1t", true, None::<&str>)?;
     let menu = Menu::with_items(
@@ -29,6 +32,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             &check,
             &restart,
             &PredefinedMenuItem::separator(app)?,
+            &settings,
             &server,
             &PredefinedMenuItem::separator(app)?,
             &quit,
@@ -39,19 +43,6 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .tooltip("g1t")
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "open" => show(app),
-            "check" => {
-                let app = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    let _ = updates::check(&app, true).await;
-                });
-            }
-            "restart" => updates::restart(app),
-            "server" => launcher(app, "change"),
-            "quit" => updates::quit(app),
-            _ => {}
-        })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                 show(tray.app_handle());
@@ -77,6 +68,15 @@ pub fn show(app: &AppHandle) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+    }
+}
+
+/// The window was closed: it waits in the tray, or g1t quits, as settings say.
+pub fn close(app: &AppHandle) {
+    if config::settings(app).close_to_tray {
+        hide(app);
+    } else {
+        updates::quit(app);
     }
 }
 

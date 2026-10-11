@@ -17,6 +17,8 @@ moment it is deployed. What the app adds is what a browser cannot do:
 - **Updates that install themselves**, signed by g1t, in the background.
 - **Your own g1t**, if you [run one](/guides/self-hosting/): the app points
   at any server.
+- **Settings of its own**: opening when you sign in to your computer,
+  what closing the window does, notifications, the badge, zoom and updates.
 
 Get it at [g1t.sh/download](https://g1t.sh/download), or from your account
 menu, **Get the desktop app**.
@@ -32,9 +34,11 @@ menu, **Get the desktop app**.
 Every file's SHA-256 is in `SHA256SUMS` beside it, at
 `https://g1t.sh/downloads/desktop/<version>/`.
 
-The app opens on g1t.sh and asks you to sign in once; it keeps you signed
-in like a browser does. Signing in with GitHub goes to github.com and comes
-back inside the window.
+The app opens on g1t.sh's sign-in page, not the site's landing page: it
+is for using g1t, not for reading about it. It keeps you signed in like a
+browser does, and signing out brings you back to the sign-in page.
+Signing in with GitHub goes to github.com and comes back inside the
+window.
 
 ## Notifications and the badge
 
@@ -51,7 +55,10 @@ notification is coming.
 
 The icon carries a badge with what is waiting for you: the count on macOS
 and Linux, a lavender dot on Windows. The tray icon's hover text says the
-number everywhere.
+number everywhere. With a notification, the taskbar icon flashes on
+Windows and the dock icon bounces on macOS, while the window is not in
+front. [The app's settings](#settings) turn off each of these: the
+notifications, the flash and the badge.
 
 [Chat sounds](/guides/chat/#sounds-and-do-not-disturb) play as on the
 site, through the app's own audio.
@@ -62,10 +69,53 @@ Closing the window hides it; g1t keeps running in the tray (the menu bar
 on macOS) so notifications still arrive. Click the tray icon, or its
 **Open g1t**, to bring the window back; on macOS the dock icon does too.
 **Quit g1t** in the tray menu ends it. The window remembers its size and
-place.
+place. To have closing the window quit instead, turn off **Keep g1t
+running when the window closes** in [the app's settings](#settings).
 
-The tray menu also holds **Check for updates…**, **Use another g1t…** and,
-when an update is downloaded, **Restart to update**.
+The tray menu also holds **Settings…**, **Check for updates…**, **Use
+another g1t…** and, when an update is downloaded, **Restart to update**.
+
+### The menu
+
+The app has the menus a desktop app has: under the window's title on
+Windows and Linux, at the top of the screen on macOS.
+
+| Menu | What is in it |
+| --- | --- |
+| **File** (**g1t** on macOS) | **Settings** (Ctrl+, or ⌘,), **Use another g1t…**, **Close window** (Ctrl+W), **Quit g1t** (Ctrl+Q or ⌘Q) |
+| **Edit** | Undo, redo, cut, copy, paste and select all |
+| **View** | **Reload** (Ctrl+R), **Actual size** (Ctrl+0), **Zoom in** (Ctrl+=), **Zoom out** (Ctrl+-), full screen |
+| **Go** | **Back** (Alt+Left, or ⌘[), **Forward** (Alt+Right, or ⌘]), **Home**, **Notifications** |
+| **Window** | Minimize and maximize |
+| **Help** | **Desktop app guide** and **g1t.sh status**, in your browser; **Check for updates…**; **About g1t** |
+
+On Windows and Linux, **Show the menu bar** in the settings hides it; the
+tray's **Settings…** and your account menu still open the settings to bring
+it back.
+
+## Settings
+
+The app's own settings are in a window of their own: **Settings** in the
+File menu (the g1t menu on macOS), **Settings…** in the tray, or **Desktop
+app settings** in your account menu on g1t. Each change takes effect at
+once and is kept on this computer. Your account's settings, which things
+notify you among them, stay on g1t, in [your settings](/guides/notifications/#settings).
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| **Open g1t when you sign in** | Off | Starts g1t with your computer. The system keeps this: a login item on macOS, a startup entry on Windows, an autostart entry on Linux. |
+| **Start in the tray** | On | Opened at sign-in, g1t waits in the tray without opening its window. Opening it yourself always shows the window. |
+| **Keep g1t running when the window closes** | On | Closing the window leaves g1t in the tray for notifications. Off, closing the window quits. |
+| **Show notifications** | On | Notifications from your system. Off, nothing pops up from the app, whatever your account's settings say. |
+| **Flash the taskbar icon** (**Bounce the dock icon** on macOS) | On | Asks for your attention with a notification while the window is not in front. |
+| **Show a badge on the icon** | On | The count, or the dot on Windows. Off, the icon stays clean; the tray's hover text still counts. |
+| **Show the menu bar** | On | Windows and Linux only. |
+| **Zoom** | 100% | How large g1t is drawn, from 67% to 200%. The View menu changes it too. |
+| **Download updates by themselves** | On | Off, the app never checks on its own; **Check for updates** still does. |
+
+The settings window also shows the app's version, with **Check for
+updates**, and the server it opens, with **Change…** to [use another
+g1t](#your-own-g1t).
 
 ## Links
 
@@ -76,9 +126,11 @@ reload, and one opened while it is not starts it there. Scripts, launchers
 and other apps on your computer can use it.
 
 A link to another site opens in the browser your system uses; the window
-stays on g1t. Links on g1t that would open a new tab open in the window
-instead, as it has no tabs. Signing in with GitHub is the one trip
-outside g1t that stays in the window.
+stays on g1t. That includes this documentation and the status page. So do
+g1t's own pages for reading about g1t rather than using it: pricing, the
+policies, security, support and the downloads. Links on g1t that would
+open a new tab open in the window instead, as it has no tabs. Signing in
+with GitHub is the one trip outside g1t that stays in the window.
 
 ## Updates
 
@@ -86,8 +138,9 @@ The app asks `g1t.sh/downloads/desktop/latest.json` for a newer version
 shortly after it starts and every six hours, and downloads one in the
 background. It never installs under you: a notification and the tray's
 **Restart to update** say it is ready, and the restart, or quitting,
-installs it. **Check for updates…** in the tray asks now and tells you the
-answer.
+installs it. **Check for updates…** in the tray or the Help menu asks now
+and tells you the answer. To stop the app checking on its own, turn off
+**Download updates by themselves** in [the settings](#settings).
 
 Every release is signed with g1t's key, whose public half is built into
 the app; a download whose signature does not check out is thrown away.
@@ -97,7 +150,8 @@ update at all: the app updates when something native changes.
 ## Your own g1t
 
 If you [run g1t yourself](/guides/self-hosting/), point the app at it:
-**Use another g1t…** in the tray menu, then your server's address, such as
+**Use another g1t…** in the tray or the File menu, or **Change…** in [the
+settings](#settings), then your server's address, such as
 `https://g1t.example.com`. The app keeps it and opens there from then on;
 **Use g1t.sh** on the same page goes back. Only that server's pages can
 talk to the app, whichever it is, and updates still come from g1t.sh.

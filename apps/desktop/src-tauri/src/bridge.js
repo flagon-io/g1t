@@ -9,6 +9,9 @@
   if (window.g1tDesktop) return;
   var VERSION = "__VERSION__";
   var PLATFORM = "__PLATFORM__";
+  // The site's pages for reading about g1t, not using it, which open in
+  // the browser (navigation.rs); one ending in "/" is every page under it.
+  var OUTSIDE = "__OUTSIDE__";
 
   function invoke(command, args) {
     var core = window.__TAURI__ && window.__TAURI__.core;
@@ -74,12 +77,23 @@
     checkForUpdates: function () {
       return invoke("check_for_updates");
     },
+    // The app's own settings, in a window of their own.
+    openSettings: function () {
+      quietly(invoke("open_settings"));
+    },
   };
   Object.defineProperty(window, "g1tDesktop", { value: Object.freeze(bridge), writable: false, configurable: false });
 
-  // Links out. A link to another site opens in the system's browser, and
-  // the window stays on g1t; a link that asks for a new tab, or a click
+  // Links out. A link to another site, or to one of the site's pages for
+  // reading about g1t, opens in the system's browser, and the window stays
+  // where it is; a link that asks for a new tab, or a click
   // with Ctrl or Cmd held, goes on in this window, which has no tabs.
+  function outside(url) {
+    var path = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, "") : url.pathname;
+    return OUTSIDE.some(function (page) {
+      return page.charAt(page.length - 1) === "/" ? path.indexOf(page) === 0 : path === page;
+    });
+  }
   function destination(href) {
     try {
       var url = new URL(href, location.href);
@@ -96,7 +110,7 @@
       if (!anchor || anchor.hasAttribute("download")) return;
       var url = destination(anchor.getAttribute("href"));
       if (!url) return;
-      if (url.origin !== location.origin) {
+      if (url.origin !== location.origin || outside(url)) {
         event.preventDefault();
         event.stopImmediatePropagation();
         bridge.openUrl(url.href);
@@ -112,7 +126,7 @@
   window.open = function (href, target, features) {
     var url = destination(href);
     if (url) {
-      if (url.origin === location.origin) location.assign(url.href);
+      if (url.origin === location.origin && !outside(url)) location.assign(url.href);
       else bridge.openUrl(url.href);
       return null;
     }

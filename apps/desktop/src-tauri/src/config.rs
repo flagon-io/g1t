@@ -1,10 +1,11 @@
 //! What the app keeps between launches, and what it knows while running.
 //!
-//! The one setting is the server: `https://g1t.sh` unless someone runs a
-//! g1t of their own, kept in `desktop.json` in the app's config folder
-//! (`~/.config/g1t` on Linux, `~/Library/Application Support/sh.g1t.desktop`
-//! on macOS, `%APPDATA%\sh.g1t.desktop` on Windows). The server's pages are
-//! the only remote pages allowed to talk to the app (`allow_site`).
+//! The server, `https://g1t.sh` unless someone runs a g1t of their own,
+//! and the app's own settings (settings.rs) are kept in `desktop.json` in
+//! the app's config folder (`~/.config/sh.g1t.desktop` on Linux,
+//! `~/Library/Application Support/sh.g1t.desktop` on macOS,
+//! `%APPDATA%\sh.g1t.desktop` on Windows). The server's pages are the only
+//! remote pages allowed to talk to the app (`allow_site`).
 
 use std::fs;
 use std::path::PathBuf;
@@ -33,14 +34,19 @@ pub struct State {
     pub update: Mutex<Option<updates::Ready>>,
     /// What the badge shows.
     pub waiting: Mutex<i64>,
+    /// The app's own settings, as the settings window last left them.
+    pub settings: Mutex<Settings>,
 }
 
+use crate::settings::Settings;
 use crate::updates;
 
 #[derive(Default, Serialize, Deserialize)]
 struct File {
     #[serde(default)]
     server: Option<String>,
+    #[serde(flatten)]
+    settings: Settings,
 }
 
 fn path(app: &AppHandle) -> Option<PathBuf> {
@@ -61,14 +67,40 @@ pub fn parse(text: &str) -> Option<Url> {
     Some(url)
 }
 
-/// Reads the saved server, or takes g1t.sh.
+/// Reads the saved server, or takes g1t.sh, and the saved settings.
 pub fn load(app: &AppHandle) {
     let file: File = path(app)
         .and_then(|path| fs::read(path).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default();
     let server = file.server.as_deref().and_then(parse).unwrap_or_else(|| Url::parse(DEFAULT_SERVER).expect("the default server is a URL"));
-    *app.state::<State>().server.lock().unwrap() = Some(server);
+    let state = app.state::<State>();
+    *state.server.lock().unwrap() = Some(server);
+    *state.settings.lock().unwrap() = file.settings;
+}
+
+/// Writes the server and the settings as they are now.
+fn save(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<State>();
+    let file = File {
+        server: state.server.lock().unwrap().as_ref().map(Url::to_string),
+        settings: state.settings.lock().unwrap().clone(),
+    };
+    let path = path(app).ok_or("The app has no folder to keep its settings in.")?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    }
+    fs::write(&path, serde_json::to_vec_pretty(&file).map_err(|error| error.to_string())?).map_err(|error| error.to_string())
+}
+
+pub fn settings(app: &AppHandle) -> Settings {
+    app.state::<State>().settings.lock().unwrap().clone()
+}
+
+/// Keeps new settings.
+pub fn set_settings(app: &AppHandle, settings: Settings) -> Result<(), String> {
+    *app.state::<State>().settings.lock().unwrap() = settings;
+    save(app)
 }
 
 pub fn server(app: &AppHandle) -> Url {
@@ -83,13 +115,8 @@ pub fn server(app: &AppHandle) -> Url {
 /// Saves a new server and lets its pages talk to the app.
 pub fn set_server(app: &AppHandle, text: &str) -> Result<Url, String> {
     let server = parse(text).ok_or("That is not a web address. It looks like https://g1t.example.com.")?;
-    let file = File { server: Some(server.to_string()) };
-    let path = path(app).ok_or("The app has no folder to keep its settings in.")?;
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|error| error.to_string())?;
-    }
-    fs::write(&path, serde_json::to_vec_pretty(&file).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
     *app.state::<State>().server.lock().unwrap() = Some(server.clone());
+    save(app)?;
     allow_site(app).map_err(|error| error.to_string())?;
     Ok(server)
 }

@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorCog, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -7,7 +7,7 @@ import { type Abilities, type ChatSidebarEntry, type InboxCounts, type Workspace
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
 import { NotificationsBell } from "./inbox";
-import { useDesktopApp } from "../lib/notify-client";
+import { desktopBridge, useDesktopApp } from "../lib/notify-client";
 import { SpendPill } from "./spend";
 import { PinButton } from "./pin-button";
 import { Hint } from "./ui/hint";
@@ -462,6 +462,13 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
               Your settings
             </Link>
           </DropdownMenuItem>
+          {/* The app's own: starting with the computer, closing to the tray, the badge (apps/desktop). */}
+          {inApp && desktopBridge()?.openSettings && (
+            <DropdownMenuItem className={MENU_ROW} onSelect={() => desktopBridge()?.openSettings?.()}>
+              <MonitorCog />
+              Desktop app settings
+            </DropdownMenuItem>
+          )}
           {invitesListed && (
           <DropdownMenuItem asChild className={MENU_ROW}>
             <Link to="/settings/invites">

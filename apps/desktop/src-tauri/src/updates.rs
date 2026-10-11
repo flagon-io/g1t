@@ -25,12 +25,15 @@ pub struct Ready {
 const FIRST_CHECK: Duration = Duration::from_secs(15);
 const EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
-/// Checks soon after the start, then every six hours.
+/// Checks soon after the start, then every six hours, unless settings
+/// turned that off; a person can still check from the menu.
 pub fn schedule(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(FIRST_CHECK).await;
         loop {
-            let _ = check(&app, false).await;
+            if config::settings(&app).auto_update {
+                let _ = check(&app, false).await;
+            }
             tokio::time::sleep(EVERY).await;
         }
     });

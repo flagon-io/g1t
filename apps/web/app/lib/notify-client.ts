@@ -68,7 +68,15 @@ import {
  *   onNavigate(listener) { return () => {} },
  *   // Looks for an update now: "current", "ready:<version>", or rejects with why.
  *   checkForUpdates() { return Promise.resolve("current") },
+ *   // Opens the app's own settings (starting with the computer, closing to
+ *   // the tray, notifications, the badge, zoom, updates) in their window.
+ *   openSettings() {},
  * };
+ *
+ * The app also opens the site's pages for reading about g1t (pricing,
+ * policies, security, support, downloads) in the system's browser, and
+ * opens `/?app=desktop` at launch, so someone signed out there is sent to
+ * sign in rather than shown the landing page (lib/desktop.ts).
  * ```
  */
 export type DesktopBridge = {
@@ -79,6 +87,7 @@ export type DesktopBridge = {
   openUrl(url: string): void;
   onNavigate?(listener: (href: string) => void): () => void;
   checkForUpdates?(): Promise<string>;
+  openSettings?(): void;
 };
 
 declare global {
