@@ -85,7 +85,12 @@ export type DocSpace = {
   agent_mode: DocAgentMode;
   /** People with edit access may share what is in it (Artifacts), as people with full access can. Off unless turned on. */
   editors_can_share: boolean;
-  /** The workspace's General space, made the first time Docs is opened. Can't be archived. */
+  /**
+   * The workspace's General space, made once when Artifacts is first
+   * opened and shown to every member without joining. It can be archived
+   * and deleted like any other; once deleted it is not made again, and no
+   * other space takes its place.
+   */
   is_default: boolean;
   /** Projects (repositories, `owner/name`) the space is about: Docs filters by them. */
   projects: string[];
@@ -589,8 +594,10 @@ export type DocsApi = {
   sidebar(workspace: string, viewer: User): Promise<Result<DocsSidebar>>;
   home(workspace: string, viewer: User, options?: { project?: string | null }): Promise<Result<DocsHome>>;
   space(workspace: string, spaceSlug: string, viewer: User): Promise<Result<{ space: DocSpace; members: DocSpaceMember[]; pages: DocPage[] }>>;
+  /** Every space the viewer can open, archived ones included (never deleted ones), General first. */
+  spaces(workspace: string, viewer: User): Promise<Result<DocSpace[]>>;
   createSpace(workspace: string, viewer: User, input: NewDocSpace): Promise<Result<DocSpace>>;
-  /** Manage role only. */
+  /** Manage role only. `archived` true or false archives a space or brings it back, the General space too. */
   updateSpace(workspace: string, spaceId: string, viewer: User, change: DocSpaceChange): Promise<Result<DocSpace>>;
   /** Adds, changes (`role`) or removes (`role` null) a member. Manage role only; the last manager stays. */
   setSpaceMember(workspace: string, spaceId: string, viewer: User, member: DocMemberKey, role: DocRole | null): Promise<Result<DocSpaceMember[]>>;
@@ -750,6 +757,7 @@ export function docsClient(service: ServiceBinding): DocsApi {
     sidebar: (workspace, viewer) => call("sidebar", { workspace, viewer }),
     home: (workspace, viewer, options) => call("home", { workspace, viewer, project: options?.project ?? null }),
     space: (workspace, spaceSlug, viewer) => call("space", { workspace, space: spaceSlug, viewer }),
+    spaces: (workspace, viewer) => call("spaces", { workspace, viewer }),
     createSpace: (workspace, viewer, input) => call("create_space", { workspace, viewer, input }),
     updateSpace: (workspace, spaceId, viewer, change) => call("update_space", { workspace, space_id: spaceId, viewer, change }),
     setSpaceMember: (workspace, spaceId, viewer, member, role) => call("set_space_member", { workspace, space_id: spaceId, viewer, member, role }),

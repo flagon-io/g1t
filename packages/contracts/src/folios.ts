@@ -630,6 +630,7 @@ export const FOLIO_RPC_METHODS = [
   "restore_folio",
   "delete_folio",
   "folio_trash",
+  "empty_folio_trash",
   "favorite_folio",
   // A person's (or a token's) own read and edit in the agent form.
   "folio_content",
@@ -641,6 +642,7 @@ export const FOLIO_RPC_METHODS = [
   "request_folio_access",
   "join_space",
   "leave_space",
+  "delete_space",
   // Search, history, templates and export.
   "search_folios",
   "folio_versions",
@@ -699,7 +701,15 @@ export type FoliosApi = {
   restore(workspace: string, viewer: User, folioId: string): Promise<Result<Folio>>;
   /** For good: only from the trash, manage role. */
   delete(workspace: string, viewer: User, folioId: string): Promise<Result<boolean>>;
+  /** What is in the trash that the viewer may restore: the tops of what went there together. */
   trashed(workspace: string, viewer: User): Promise<Result<Folio[]>>;
+  /**
+   * Deletes for good everything in the trash that the viewer has manage
+   * role on (what `trashed` lists for them with full access), with
+   * everything under it. What they may only edit stays. `deleted` counts
+   * the tops that went.
+   */
+  emptyTrash(workspace: string, viewer: User): Promise<Result<{ deleted: number }>>;
   favorite(workspace: string, viewer: User, folioId: string, on: boolean): Promise<Result<boolean>>;
   /** The folio in its agent form, for a person or their token. */
   content(workspace: string, viewer: User, folioId: string): Promise<Result<FolioAgentRead>>;
@@ -713,6 +723,14 @@ export type FoliosApi = {
   requestAccess(workspace: string, viewer: User, folioId: string, message?: string | null): Promise<Result<boolean>>;
   joinSpace(workspace: string, viewer: User, spaceId: string): Promise<Result<boolean>>;
   leaveSpace(workspace: string, viewer: User, spaceId: string): Promise<Result<boolean>>;
+  /**
+   * Deletes a space, the General space included: everything in it goes to
+   * the trash (`trashed` counts the artifacts), where whoever could edit
+   * it restores it as usual, and the space itself is gone for good. Full
+   * access to the space, or a workspace owner. A workspace may end up with
+   * no spaces; General is never made again once deleted.
+   */
+  deleteSpace(workspace: string, viewer: User, spaceId: string): Promise<Result<{ trashed: number }>>;
 
   search(workspace: string, viewer: User, query: { q: string; kinds?: FolioKind[] | null; space_id?: string | null; project?: string | null; owner?: string | null; mode?: "words" | "hybrid" | null; limit?: number | null }): Promise<Result<FolioSearchHit[]>>;
   versions(workspace: string, viewer: User, folioId: string): Promise<Result<FolioVersion[]>>;
@@ -802,6 +820,7 @@ export function foliosClient(service: ServiceBinding): FoliosApi {
     restore: (workspace, viewer, folioId) => call("restore_folio", { workspace, viewer, folio_id: folioId }),
     delete: (workspace, viewer, folioId) => call("delete_folio", { workspace, viewer, folio_id: folioId }),
     trashed: (workspace, viewer) => call("folio_trash", { workspace, viewer }),
+    emptyTrash: (workspace, viewer) => call("empty_folio_trash", { workspace, viewer }),
     favorite: (workspace, viewer, folioId, on) => call("favorite_folio", { workspace, viewer, folio_id: folioId, on }),
     content: (workspace, viewer, folioId) => call("folio_content", { workspace, viewer, folio_id: folioId }),
     edit: (workspace, viewer, folioId, edit) => call("edit_folio", { workspace, viewer, folio_id: folioId, edit }),
@@ -811,6 +830,7 @@ export function foliosClient(service: ServiceBinding): FoliosApi {
     requestAccess: (workspace, viewer, folioId, message) => call("request_folio_access", { workspace, viewer, folio_id: folioId, message: message ?? null }),
     joinSpace: (workspace, viewer, spaceId) => call("join_space", { workspace, viewer, space_id: spaceId }),
     leaveSpace: (workspace, viewer, spaceId) => call("leave_space", { workspace, viewer, space_id: spaceId }),
+    deleteSpace: (workspace, viewer, spaceId) => call("delete_space", { workspace, viewer, space_id: spaceId }),
     search: (workspace, viewer, query) => call("search_folios", { workspace, viewer, query }),
     versions: (workspace, viewer, folioId) => call("folio_versions", { workspace, viewer, folio_id: folioId }),
     version: (workspace, viewer, folioId, versionId) => call("folio_version", { workspace, viewer, folio_id: folioId, version_id: versionId }),
