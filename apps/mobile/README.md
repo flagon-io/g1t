@@ -107,7 +107,7 @@ needed:
 ```sh
 npm install                      # at the repository's root: one workspace
 cd apps/mobile
-npx expo start                   # then scan the QR code with Expo Go
+npx expo start --go              # then scan the QR code with Expo Go
 ```
 
 Install [Expo Go](https://expo.dev/go) on the phone, or press `a` for an
@@ -138,14 +138,18 @@ For `g1t://` links, the app's own icon and name, and anything native Go
 lacks later (push notifications):
 
 ```sh
-npx expo run:android             # builds g1t (dev) and starts Metro
+npm run build:android:dev        # EAS builds g1t (dev) in the cloud: install it from the link
+npx expo start                   # then open g1t (dev) on the phone; it finds this computer
 ```
 
-`expo run:android` makes the native project (`android/`, ignored by git)
-and installs `g1t (dev)`, which signs in through `g1t://oauth/callback`.
-After the first build, `npx expo start` and the installed app are enough
-until a native module changes. `eas build --profile development` makes
-the same build in the cloud.
+The development build is `g1t (dev)` (`sh.g1t.app.dev`), with
+`expo-dev-client`: it loads the app's code from `npx expo start` on your
+computer, signs in through `g1t://oauth/callback`, and gets notifications
+once Firebase is set up ([below](#push-notifications-on-android)). Build
+it again only when a native module or `app.config.ts` changes; code
+changes reload live. With Android Studio, `APP_VARIANT=development npx expo
+run:android` builds the same app on your computer instead (it makes
+`android/`, ignored by git).
 
 Checks, which CI runs from the root (`npm run typecheck`, `npm test`):
 

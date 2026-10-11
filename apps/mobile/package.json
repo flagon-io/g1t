@@ -6,6 +6,7 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
+    "start:go": "expo start --go",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "prebuild": "expo prebuild --clean",
@@ -13,6 +14,7 @@
     "test": "node --test \"src/lib/*.test.ts\"",
     "doctor": "expo-doctor",
     "icons": "node scripts/icons.mjs",
+    "build:android:dev": "eas build --platform android --profile development",
     "build:android": "eas build --platform android --profile production",
     "build:android:apk": "eas build --platform android --profile preview",
     "build:ios": "eas build --platform ios --profile production"
@@ -25,6 +27,7 @@
     "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.21",
     "expo-crypto": "~57.0.3",
+    "expo-dev-client": "~57.0.19",
     "expo-device": "~57.0.2",
     "expo-font": "~57.0.4",
     "expo-haptics": "~57.0.3",

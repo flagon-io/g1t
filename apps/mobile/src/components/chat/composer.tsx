@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { ArrowUp } from "lucide-react-native";
-import { useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Keyboard, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { radius, space, useColors } from "@/theme";
@@ -13,11 +13,34 @@ const drafts = new Map<string, string>();
  * The box at the bottom of a conversation. Enter makes a new line, as on
  * a phone; the arrow sends. Typing tells the others (at most every 3 s).
  */
-export function Composer({ draftKey, placeholder, onSend, onTyping }: { draftKey: string; placeholder: string; onSend: (body: string) => void; onTyping: () => void }) {
+export function Composer({
+  draftKey,
+  placeholder,
+  onSend,
+  onTyping,
+  onFocus,
+}: {
+  draftKey: string;
+  placeholder: string;
+  onSend: (body: string) => void;
+  onTyping: () => void;
+  /** The box was tapped into: the conversation goes to its newest message. */
+  onFocus?: () => void;
+}) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [text, setText] = useState(() => drafts.get(draftKey) ?? "");
   const ready = text.trim().length > 0;
+  // With the keyboard up the box sits on it; the home indicator's room is only for when it is down.
+  const [keyboard, setKeyboard] = useState(false);
+  useEffect(() => {
+    const shown = Keyboard.addListener("keyboardDidShow", () => setKeyboard(true));
+    const hidden = Keyboard.addListener("keyboardDidHide", () => setKeyboard(false));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, []);
 
   const send = () => {
     const body = text.trim();
@@ -29,7 +52,7 @@ export function Composer({ draftKey, placeholder, onSend, onTyping }: { draftKey
   };
 
   return (
-    <View style={[styles.bar, { borderTopColor: colors.line, backgroundColor: colors.surface, paddingBottom: Math.max(insets.bottom, space.sm) }]}>
+    <View style={[styles.bar, { borderTopColor: colors.line, backgroundColor: colors.surface, paddingBottom: keyboard ? space.sm : Math.max(insets.bottom, space.sm) }]}>
       <TextInput
         value={text}
         onChangeText={(next) => {
@@ -39,6 +62,7 @@ export function Composer({ draftKey, placeholder, onSend, onTyping }: { draftKey
         }}
         placeholder={placeholder}
         placeholderTextColor={colors.faint}
+        onFocus={onFocus}
         multiline
         style={[styles.input, { color: colors.fg, backgroundColor: colors.bg, borderColor: colors.lineStrong }]}
       />

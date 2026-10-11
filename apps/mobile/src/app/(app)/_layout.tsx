@@ -1,5 +1,5 @@
 import * as Notifications from "expo-notifications";
-import { Tabs, router, useGlobalSearchParams } from "expo-router";
+import { Tabs, router, useGlobalSearchParams, useSegments } from "expo-router";
 import { Bell, Bot, Code2, House, Menu, MessagesSquare } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
 import { type ComponentType, useEffect, useRef } from "react";
@@ -39,6 +39,9 @@ function AppTabs() {
     if (linked && linked.toLowerCase() !== workspace?.slug.toLowerCase()) void selectWorkspace(linked);
   }, [linked, workspace?.slug, selectWorkspace]);
   const code = !workspace || hasCodeAccess(workspace);
+  // A conversation or a thread takes the whole screen, as on the site: the bar steps aside.
+  const segments = useSegments() as string[];
+  const inConversation = segments[1] === "chat" && (segments[2] === "[channel]" || segments[2] === "thread");
   const badge = mentions > 0 ? mentions : unread > 0 ? unread : undefined;
 
   return (
@@ -50,7 +53,10 @@ function AppTabs() {
         // app you are in marked as the rail marks it (apps/web components/mobile.tsx).
         tabBarActiveTintColor: colors.fg,
         tabBarInactiveTintColor: colors.faint,
-        tabBarStyle: { backgroundColor: colors.rail, borderTopColor: colors.line, borderTopWidth: StyleSheet.hairlineWidth, elevation: 0 },
+        tabBarStyle: inConversation
+          ? { display: "none" }
+          : { backgroundColor: colors.rail, borderTopColor: colors.line, borderTopWidth: StyleSheet.hairlineWidth, elevation: 0 },
+        tabBarHideOnKeyboard: true,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "500" },
         tabBarIconStyle: { width: 44, height: 28 },
       }}
@@ -97,6 +103,11 @@ function PushSetup() {
 
   useEffect(() => {
     void registerForPush(client, true).catch((error: unknown) => console.warn("g1t: registering for notifications failed", error));
+    // The system can give the app a new push token: register that one too.
+    const changed = Notifications.addPushTokenListener(() => {
+      void registerForPush(client, false).catch(() => undefined);
+    });
+    return () => changed.remove();
   }, [client]);
 
   useEffect(() => {

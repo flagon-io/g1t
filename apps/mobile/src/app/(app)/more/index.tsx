@@ -1,12 +1,12 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
 import { Stack, router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { Bell, Blocks, Check, ExternalLink, LogOut } from "lucide-react-native";
+import { Bell, BellRing, Blocks, Check, ExternalLink, LogOut } from "lucide-react-native";
 import { Linking, View } from "react-native";
 
 import { Avatar, Badge, Button, Row, Screen, SectionHeader, Text } from "@/components/ui";
-import { pushState, registerForPush } from "@/lib/push";
+import { pushState, registerForPush, sendTestPush } from "@/lib/push";
 import { isHosted, siteUrl } from "@/lib/server";
 import { useSignedIn } from "@/lib/session";
 import { space, useColors } from "@/theme";
@@ -19,6 +19,7 @@ export default function More() {
   const name = me.display_username ?? me.username;
   const oauth = client.credentials.kind === "oauth";
   const push = useQuery({ queryKey: ["push-state"], queryFn: pushState });
+  const test = useMutation({ mutationFn: () => sendTestPush(client) });
 
   const pushRow = {
     unsupported: { label: "Not here", detail: "Notifications need a build of the app on a phone: not Expo Go on Android, nor a simulator." },
@@ -56,6 +57,25 @@ export default function More() {
                 : undefined
           }
         />
+        {push.data === "granted" ? (
+          <Row
+            leading={<BellRing size={22} color={colors.accent} />}
+            title="Send a test notification"
+            subtitle={
+              test.isPending
+                ? "Sending…"
+                : test.error
+                  ? test.error.message
+                  : test.data !== undefined
+                    ? test.data > 0
+                      ? `Sent to ${test.data} ${test.data === 1 ? "place" : "places"}: this phone, and any browser with notifications on.`
+                      : "Nothing was sent: g1t has no phone or browser for you. Sign out and in again to register this phone."
+                    : "To check this phone gets them. It arrives in a few seconds, even with the app open; if it never does, see the setup guide's troubleshooting."
+            }
+            chevron={false}
+            onPress={test.isPending ? undefined : () => test.mutate()}
+          />
+        ) : null}
       </View>
 
       <View>

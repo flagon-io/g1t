@@ -46,7 +46,13 @@ export function FeedProvider({ children }: { children: ReactNode }) {
   pathRef.current = path;
 
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => setActive(state === "active"));
+    const subscription = AppState.addEventListener("change", (state) => {
+      // Say so before the socket closes: a phone can freeze it rather than close
+      // it, and g1t pushes nothing while a socket says it is in front (for up to
+      // 70 s after it last spoke).
+      if (state !== "active") sendRef.current?.({ type: "state", focused: false, path: pathRef.current });
+      setActive(state === "active");
+    });
     return () => subscription.remove();
   }, []);
 

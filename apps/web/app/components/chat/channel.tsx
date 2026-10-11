@@ -68,6 +68,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { type Mentionable, type ShownMessage, agentsAmong, channelPath, dmPlaceholder, isMixed, mentionNames, mergeMessages, mixedNotice, shownHandle, shownName, timeline } from "../../lib/chat";
 import { codeAccessPath } from "../../lib/workspace-nav";
 import { conversationCache } from "./conversation-cache";
+import { atBottom, useKeepAtBottom } from "./stick";
 // Reactions and the workspace's own emoji (components/emoji).
 import { EmojiProvider, useCustomEmoji } from "../emoji/context";
 import { AddReaction, QuickReactions, ReactionBar } from "../emoji/reaction-bar";
@@ -243,6 +244,8 @@ export function ChannelView({ data }: { data: Loaded }) {
   useEffect(() => {
     if (stick.current) toBottom(true);
   }, [messages.length, typing.size, toBottom]);
+  // And while the list or what is in it changes size: the keyboard opening on a phone, a card laying out.
+  useKeepAtBottom(scroller, stick);
 
   // Read up to the newest message whenever it is in view.
   const lastRead = useRef<string | null>(null);
@@ -648,7 +651,7 @@ export function ChannelView({ data }: { data: Loaded }) {
           ref={scroller}
           onScroll={(event) => {
             const element = event.currentTarget;
-            stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
+            stick.current = atBottom(element);
           }}
           className="min-h-0 grow overflow-y-auto overscroll-contain [scrollbar-gutter:stable] [scrollbar-width:thin]"
         >
@@ -1579,9 +1582,21 @@ function ThreadPanel({
   draftKey: string;
 }) {
   const rows = useMemo(() => timeline(replies ?? [], new Date(), zone).filter((row) => row.kind === "message"), [replies, zone]);
+  // The newest reply stays in view as replies arrive and as the keyboard opens, unless the reader scrolled up.
+  const scroller = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  useKeepAtBottom(scroller, stick);
   return (
     <>
-      <div className="min-h-0 grow overflow-y-auto px-1 py-3 [scrollbar-width:thin]">
+      <div
+        ref={scroller}
+        onScroll={(event) => {
+          stick.current = atBottom(event.currentTarget);
+        }}
+        className="min-h-0 grow overflow-y-auto overscroll-contain px-1 py-3 [scrollbar-width:thin]"
+      >
+        {/* One box for what scrolls, so its growing is seen (./stick.ts). */}
+        <div>
         {root ? (
           <MessageRow message={root} head zone={zone} context={context} code={code} slug={slug} onRetry={() => onRetry(root)} inThread />
         ) : (
@@ -1606,6 +1621,7 @@ function ThreadPanel({
             />
           ) : null,
         )}
+        </div>
       </div>
       {joined && (
         <div className="shrink-0 p-3">

@@ -2,9 +2,10 @@ import type { CardAction, ChatMessage } from "@g1t/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect } from "expo-router";
+import { useHeaderHeight } from "expo-router/react-navigation";
 import { ArrowDown, Copy, MessageSquareReply, Pencil, Trash2 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Pressable, StyleSheet, View } from "react-native";
 
 import { Composer } from "@/components/chat/composer";
 import { Message, runsOn } from "@/components/chat/message";
@@ -38,6 +39,7 @@ export function Conversation({ channelId, thread, title }: { channelId: string; 
   const [scrolledUp, setScrolledUp] = useState(false);
   const list = useRef<FlatList<Row>>(null);
   const focused = useRef(false);
+  const headerHeight = useHeaderHeight();
 
   // While on screen, this conversation's banners and pushes are not shown.
   useFocusEffect(
@@ -103,7 +105,10 @@ export function Conversation({ channelId, thread, title }: { channelId: string; 
   const typingLine = typingText(live.typing.map((member) => member.display_name));
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 96 : 0}>
+    // The keyboard pushes the composer up and the list shrinks from the top, on
+    // Android too: apps draw edge to edge there, so the window no longer resizes
+    // for it. The list is drawn from the bottom, so the newest stays in view.
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={headerHeight}>
       <View style={{ flex: 1 }}>
         {messages.isPending ? (
           <Loading />
@@ -152,7 +157,6 @@ export function Conversation({ channelId, thread, title }: { channelId: string; 
             }
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
-            maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
           />
         )}
         {scrolledUp ? (
@@ -175,7 +179,16 @@ export function Conversation({ channelId, thread, title }: { channelId: string; 
           </Text>
         ) : null}
       </View>
-      <Composer draftKey={`${channelId}:${thread ?? ""}`} placeholder={thread ? "Reply in thread" : `Message ${title}`} onSend={(body) => send(body)} onTyping={live.sayTyping} />
+      <Composer
+        draftKey={`${channelId}:${thread ?? ""}`}
+        placeholder={thread ? "Reply in thread" : `Message ${title}`}
+        onSend={(body) => {
+          send(body);
+          list.current?.scrollToOffset({ offset: 0, animated: true });
+        }}
+        onTyping={live.sayTyping}
+        onFocus={() => list.current?.scrollToOffset({ offset: 0, animated: true })}
+      />
 
       <Sheet visible={!!picked} onClose={() => setPicked(null)}>
         <View style={styles.quick}>

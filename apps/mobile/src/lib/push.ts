@@ -101,3 +101,13 @@ export async function unregisterPush(client: Client): Promise<void> {
   await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => undefined);
   await Notifications.setBadgeCountAsync(0).catch(() => undefined);
 }
+
+/**
+ * Sends a test notification to this person's phones and browsers
+ * (`POST /-/notify` `test`), whatever is in front of them: the way to see
+ * that a build gets pushes. Answers how many it reached.
+ */
+export async function sendTestPush(client: Client): Promise<number> {
+  const answer = await client.siteRaw<{ ok: boolean; pushed: number }>("/-/notify", { method: "POST", body: JSON.stringify({ intent: "test" }) });
+  return answer.pushed ?? 0;
+}
