@@ -7,7 +7,7 @@ use g1t_contracts::access::{self, Capability};
 use g1t_contracts::security::{AlertActivity, NewSecret, SecretFinding, SecretStatus};
 use g1t_contracts::security_suite::{
     AlertType, BypassArgs, BypassReason, BypassRequest, BypassRequestsArgs, BypassResult, CheckSecretArgs, CheckValidityArgs,
-    PaidFeature, ReviewBypassArgs, SecretAlertArgs, SecretAlertDetail, SecretValidity, SecurityEvent,
+    MAX_SUMMARY_IDS, PaidFeature, ReviewBypassArgs, SecretAlertArgs, SecretAlertDetail, SecretValidity, SecurityEvent,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role, User};
@@ -18,6 +18,7 @@ use worker::Result;
 use crate::Security;
 use crate::store::{Activity, RepoRow};
 use crate::suite::link;
+use crate::summaries::Changed;
 
 const MAX_COMMENT_CHARS: usize = 500;
 /// Validity checks the sweep makes per repository, and how often a secret
@@ -71,20 +72,36 @@ fn reviews_bypasses(user: &User, repo: &RepoRow) -> bool {
 }
 
 impl Security {
-    /// Records where new secrets were found and publishes an alert for each
-    /// one seen for the first time. `fresh` are the fingerprints not known
-    /// before; `pusher` is who pushed, for a blocked push.
+    /// Records where new secrets were found and tells of those seen for the
+    /// first time: an alert event each for webhooks, and one summary of the
+    /// scan for the inbox. `fresh` are the fingerprints not known before;
+    /// `pusher` is who pushed, for a blocked push, who is told at once.
+    /// With history alerts off for the repository, what the history scan
+    /// (and a push too large to scan first) finds is recorded and shown,
+    /// but tells nobody; push protection goes on refusing pushes.
     pub(crate) async fn secrets_found(&self, repo: &RepoRow, secrets: &[NewSecret], source: &str, fresh: &[String], pusher: Option<&str>) -> Result<()> {
         self.store.note_found(&repo.repo_id, secrets, source).await?;
+        if fresh.is_empty() {
+            return Ok(());
+        }
+        if source == "history" && !self.store.repo_settings(&repo.repo_id).await?.0.history_alerts {
+            return Ok(());
+        }
         let known = self.store.known(&repo.repo_id, fresh).await?;
-        for (_, id, _) in known.iter().take(20) {
+        let mut blocked = 0;
+        for (_, id, _) in known.iter().take(MAX_SUMMARY_IDS) {
             if let Some(secret) = self.store.secret(&repo.repo_id, id).await? {
+                if secret.status == SecretStatus::Blocked {
+                    blocked += 1;
+                }
                 let mut event = secret_event(repo, &secret);
                 event.pusher = pusher.filter(|_| secret.status == SecretStatus::Blocked).map(str::to_owned);
                 self.alert_event(AlertType::SecretScanning, "created", repo, event, None).await;
             }
         }
-        Ok(())
+        let opened: Vec<String> = known.iter().map(|(_, id, _)| id.clone()).collect();
+        let changed = Changed { scan: source, opened, pusher: pusher.filter(|_| blocked > 0), blocked, ..Changed::default() };
+        self.summarize(repo, AlertType::SecretScanning, changed, None).await
     }
 
     pub(crate) async fn secret_alert(&self, a: SecretAlertArgs) -> Result<Outcome<SecretAlertDetail>> {
@@ -226,6 +243,7 @@ impl Security {
         if let Some(dismissal) = reason.dismissal() {
             let event = SecurityEvent { reason: Some(dismissal.as_str().to_owned()), state: "dismissed".to_owned(), ..secret_event(repo, secret) };
             self.alert_event(AlertType::SecretScanning, "dismissed", repo, event, Some(by.id.clone())).await;
+            self.summarize(repo, AlertType::SecretScanning, Changed { scan: "change", dismissed: 1, ..Changed::default() }, Some(by.id.clone())).await?;
         }
         Ok(())
     }

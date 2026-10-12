@@ -32,6 +32,7 @@ export * from "./github";
 export * from "./guardrails";
 export * from "./identity";
 export * from "./sounds";
+export * from "./advisories";
 export * from "./inbox";
 export * from "./instances";
 export * from "./marketplace";

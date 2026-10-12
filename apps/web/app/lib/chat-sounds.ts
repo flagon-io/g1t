@@ -81,6 +81,7 @@ export function cueForNotificationKind(kind: FeedNotification["kind"]): SoundCue
       return "direct";
     case "mention":
     case "approval":
+    case "security":
       return "mention";
     case "thread_reply":
       return "message";

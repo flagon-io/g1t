@@ -546,6 +546,10 @@ struct SettingsRow {
     username: String,
     email: Option<String>,
     default_watch: Option<String>,
+    #[serde(default)]
+    security_alerts: Option<f64>,
+    #[serde(default)]
+    security_digest: Option<String>,
 }
 
 impl SettingsRow {
@@ -557,6 +561,8 @@ impl SettingsRow {
                 None => defaults.email,
             },
             default_watch: self.default_watch.as_deref().and_then(WatchLevel::parse).unwrap_or(defaults.default_watch),
+            security_alerts: self.security_alerts.map_or(defaults.security_alerts, |on| on != 0.0),
+            security_digest: self.security_digest.as_deref().and_then(DigestCadence::parse).unwrap_or(defaults.security_digest),
         }
     }
 }
@@ -577,7 +583,7 @@ pub async fn settings_of(db: &D1Database, usernames: &[String]) -> Result<HashMa
     let marks = vec!["?"; usernames.len()].join(", ");
     let values: Vec<JsValue> = usernames.iter().map(|name| JsValue::from(name.as_str())).collect();
     Ok(db
-        .prepare(format!("SELECT username, email, default_watch FROM inbox_settings WHERE username IN ({marks})"))
+        .prepare(format!("SELECT username, email, default_watch, security_alerts, security_digest FROM inbox_settings WHERE username IN ({marks})"))
         .bind(&values)?
         .all()
         .await?
@@ -605,16 +611,20 @@ pub async fn update_settings(db: &D1Database, a: UpdateInboxSettingsArgs) -> Res
         })
         .transpose()?;
     db.prepare(
-        "INSERT INTO inbox_settings (username, email, default_watch, updated_at) VALUES (?1, ?2, ?3, ?4)
+        "INSERT INTO inbox_settings (username, email, default_watch, security_alerts, security_digest, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT (username) DO UPDATE SET
            email = COALESCE(excluded.email, inbox_settings.email),
            default_watch = COALESCE(excluded.default_watch, inbox_settings.default_watch),
+           security_alerts = COALESCE(excluded.security_alerts, inbox_settings.security_alerts),
+           security_digest = COALESCE(excluded.security_digest, inbox_settings.security_digest),
            updated_at = excluded.updated_at",
     )
     .bind(&[
         username.as_str().into(),
         email.map_or(JsValue::NULL, JsValue::from),
         a.default_watch.map_or(JsValue::NULL, |level| level.as_str().into()),
+        a.security_alerts.map_or(JsValue::NULL, |on| i32::from(on).into()),
+        a.security_digest.map_or(JsValue::NULL, |cadence| cadence.as_str().into()),
         rfc3339(now_ms()).into(),
     ])?
     .run()
@@ -690,11 +700,18 @@ mod tests {
     fn choices_keep_only_what_is_known() {
         assert_eq!(custom_events(&["Pulls".into(), "releases".into(), "issues".into(), "pulls".into()]), vec!["issues", "pulls"]);
         assert_eq!(email_reasons(&["mention".into(), "nope".into(), "agent".into()]), vec![Reason::Agent, Reason::Mention]);
-        let settings = SettingsRow { username: "ana".into(), email: None, default_watch: Some("participating".into()) }.into_settings();
+        let settings = SettingsRow { username: "ana".into(), email: None, default_watch: Some("participating".into()), security_alerts: None, security_digest: None }.into_settings();
         assert_eq!(settings.email, DEFAULT_EMAIL.to_vec());
         assert_eq!(settings.default_watch, WatchLevel::Participating);
-        let settings = SettingsRow { username: "ana".into(), email: Some("[]".into()), default_watch: None }.into_settings();
+        // Until chosen: urgent alerts at once, the rest daily.
+        assert!(settings.security_alerts);
+        assert_eq!(settings.security_digest, DigestCadence::Daily);
+        let settings = SettingsRow { username: "ana".into(), email: Some("[]".into()), default_watch: None, security_alerts: Some(0.0), security_digest: Some("weekly".into()) }.into_settings();
         assert!(settings.email.is_empty());
         assert_eq!(settings.default_watch, WatchLevel::All);
+        assert!(!settings.security_alerts);
+        assert_eq!(settings.security_digest, DigestCadence::Weekly);
+        let settings = SettingsRow { username: "ana".into(), email: None, default_watch: None, security_alerts: None, security_digest: Some("hourly".into()) }.into_settings();
+        assert_eq!(settings.security_digest, DigestCadence::Daily);
     }
 }

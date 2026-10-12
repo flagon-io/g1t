@@ -13,10 +13,15 @@ import type { CardAction } from "./chat";
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
 
-/** What a notification is about; the preferences decide which ones toast and push. */
-export type NotificationKind = "dm" | "mention" | "thread_reply" | "inbox" | "agent_waiting" | "approval";
+/**
+ * What a notification is about; the preferences decide which ones toast and
+ * push. `security` is an urgent security alert (critical or high, a refused
+ * push, a vulnerability report), shown like a mention; the rest of the
+ * security items are ordinary `inbox` ones.
+ */
+export type NotificationKind = "dm" | "mention" | "thread_reply" | "inbox" | "agent_waiting" | "approval" | "security";
 
-export const NOTIFICATION_KINDS: readonly NotificationKind[] = ["dm", "mention", "thread_reply", "inbox", "agent_waiting", "approval"];
+export const NOTIFICATION_KINDS: readonly NotificationKind[] = ["dm", "mention", "thread_reply", "inbox", "agent_waiting", "approval", "security"];
 
 /** Who it is from: a person, an agent, or g1t itself. */
 export type NotificationActor = {

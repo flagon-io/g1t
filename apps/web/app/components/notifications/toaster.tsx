@@ -1,4 +1,4 @@
-import { AtSign, BellRing, CornerDownLeft, GitPullRequest, Hourglass, Bell, MessageCircle, MessagesSquare, X } from "lucide-react";
+import { AtSign, BellRing, CornerDownLeft, GitPullRequest, Hourglass, Bell, MessageCircle, MessagesSquare, ShieldAlert, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import type { FeedNotification, NotificationKind } from "@g1t/contracts";
@@ -18,6 +18,7 @@ const KIND: Record<NotificationKind, { label: string; icon: ReactNode }> = {
   inbox: { label: "Notifications", icon: <Bell /> },
   agent_waiting: { label: "Waiting on you", icon: <Hourglass /> },
   approval: { label: "Needs your review", icon: <GitPullRequest /> },
+  security: { label: "Security alert", icon: <ShieldAlert /> },
 };
 
 /** Room kept clear of the stack: the top bar and the edge on a computer; the top inset and the tab bar on a phone. */
@@ -25,7 +26,7 @@ const DESKTOP_MARGIN = 84;
 const PHONE_MARGIN = 112;
 
 /** Said to you, so drawn in the accent. */
-const LOUD: ReadonlySet<NotificationKind> = new Set(["dm", "mention", "agent_waiting", "approval"]);
+const LOUD: ReadonlySet<NotificationKind> = new Set(["dm", "mention", "agent_waiting", "approval", "security"]);
 
 // The toast's entrance (up from the corner on a computer, down from the top
 // on a phone) and its timer, a line that empties over TOAST_MS. Paused while

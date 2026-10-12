@@ -137,12 +137,30 @@ export type Watching = {
   updatedAt: string | null;
 };
 
+/**
+ * When security alerts that are not urgent (medium, low, and what is only to
+ * know) reach a person: in a digest once a day or once a week, at once like
+ * the urgent ones, or not at all. Critical and high alerts, a refused push
+ * and a vulnerability report never wait for the digest.
+ */
+export type DigestCadence = "daily" | "weekly" | "at_once" | "off";
+
+export const DIGEST_CADENCES: DigestCadence[] = ["daily", "weekly", "at_once", "off"];
+
 /** A person's choices about being told. */
 export type InboxSettings = {
   /** The reasons they are also emailed for. */
   email: InboxReason[];
   /** How they watch a repository they create. */
   defaultWatch: WatchLevel;
+  /**
+   * Whether critical and high security alerts on repositories they watch for
+   * security reach their inbox at once. A workspace's owners and security
+   * managers are told whatever this says.
+   */
+  securityAlerts: boolean;
+  /** When the rest of the security alerts reach them. */
+  securityDigest: DigestCadence;
 };
 
 /** The inbox itself (not done, not snoozed), what was saved, or what is done. */

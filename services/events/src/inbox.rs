@@ -22,6 +22,9 @@
 //! | `comment.created` | everyone mentioned, the people of teams mentioned, then everyone subscribed | mention, team_mention, or why they are subscribed | info (success for an approval) |
 //! | `comment.created` by a workspace's agent | the same, shown as "Margo (agent)"; a review also tells the owner, "(advisory)" | the same, or author | the same |
 //! | `issue.opened`, `pull.opened` | whoever was assigned, asked to review or mentioned in its description (people and teams); watchers | assign, review_requested, mention, team_mention, subscribed | info |
+//! | `secret_scanning_alert.summary`, `code_scanning_alert.summary`, `vulnerability_alert.summary` | the workspace's owners and security managers, whoever pushed a refused push, and watchers who chose security and may see findings; one thread per repository and alert type | security_alert | error for critical or high (told at once), info for the rest (a digest, unless the person chose at once) |
+//! | `security_advisory.reported` | the workspace's owners and security managers | security_alert | warning |
+//! | `secret_scanning.bypass_requested`, `.bypass_reviewed` | the reviewers named; the requester | security_alert | warning; info |
 //!
 //! Watchers of a repository at `all` (or `custom`, for the kinds they
 //! chose) hear of every issue and pull request opened, commented on,
@@ -42,6 +45,8 @@ use g1t_contracts::events::{Event, WorkspaceRenamed};
 use g1t_contracts::identity::{AGENT_ID, UsernamesArgs};
 use g1t_contracts::inbox::*;
 use g1t_contracts::repos::{PathByIdArgs, ReadableArgs, Repo, RepoPath};
+use g1t_contracts::security::SeverityCounts;
+use g1t_contracts::security_suite::{AlertType, SecuritySummary};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{new_id, system};
 use g1t_kit::now_ms;
@@ -155,15 +160,20 @@ pub fn wants(event: &Event) -> Option<Wanted> {
     }
 }
 
-/// The security service's events the inbox tells people of: new alerts,
-/// and push protection bypasses asked for and decided. Fixes and
-/// dismissals are on the Security page and in webhooks.
-pub const SECURITY_EVENTS: [&str; 5] = [
-    "secret_scanning_alert.created",
-    "code_scanning_alert.created",
-    "vulnerability_alert.created",
+/// The security service's events the inbox tells people of: each scan's
+/// summary of what it opened and fixed (one thread per repository and
+/// alert type, brought up to date by the next scan; never one item per
+/// alert), push protection bypasses asked for and decided, vulnerability
+/// reports, and advisories published. The per-alert `.created`, `.fixed`
+/// and `.dismissed` events are for webhooks.
+pub const SECURITY_EVENTS: [&str; 7] = [
+    "secret_scanning_alert.summary",
+    "code_scanning_alert.summary",
+    "vulnerability_alert.summary",
     "secret_scanning.bypass_requested",
     "secret_scanning.bypass_reviewed",
+    "security_advisory.reported",
+    "security_advisory.published",
 ];
 
 /// The integrations service's mirroring events (see
@@ -237,9 +247,15 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
             run_id: None,
             link: text("link"),
         },
-        // One alert, or one bypass request: its page is the link.
+        // A repository's alerts of one type (`rep_1/security/vulnerability`),
+        // its reports, one advisory, or one bypass request: the page is the link.
         kind if SECURITY_EVENTS.contains(&kind) => {
-            let which = text("requestId").or_else(|| text("alertId")).unwrap_or_else(|| event.id.clone());
+            let which = match kind {
+                "security_advisory.reported" => "reports".to_owned(),
+                "security_advisory.published" => format!("advisories/{}", text("id").unwrap_or_default()),
+                _ if kind.ends_with(".summary") => text("alertType").unwrap_or_else(|| "alerts".to_owned()),
+                _ => text("requestId").or_else(|| text("alertId")).unwrap_or_else(|| event.id.clone()),
+            };
             Thread {
                 key: format!("{}/security/{which}", wanted.repo_id),
                 kind: None,
@@ -605,38 +621,62 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             }
         }
         (kind, None) if SECURITY_EVENTS.contains(&kind) => {
-            let severity = match data["severity"].as_str() {
-                _ if kind == "secret_scanning.bypass_requested" => Severity::Warning,
-                _ if kind == "secret_scanning.bypass_reviewed" => Severity::Info,
-                Some("critical" | "high") => Severity::Error,
-                _ => Severity::Warning,
-            };
             let what = data["title"].as_str().unwrap_or("A security alert");
-            let title = match kind {
-                "secret_scanning.bypass_requested" => format!("{who} asked to bypass push protection in {repo}"),
+            match kind {
+                "secret_scanning.bypass_requested" => {
+                    let title = format!("{who} asked to bypass push protection in {repo}");
+                    for name in names(data, "notify") {
+                        told.tell(&name, Reason::SecurityAlert, Severity::Warning, &title, what, true);
+                    }
+                }
                 "secret_scanning.bypass_reviewed" => {
                     let verdict = data["state"].as_str().unwrap_or("reviewed");
-                    format!("Your request to bypass push protection in {repo} was {verdict}")
+                    let title = format!("Your request to bypass push protection in {repo} was {verdict}");
+                    for name in names(data, "notify") {
+                        told.tell(&name, Reason::SecurityAlert, Severity::Info, &title, what, true);
+                    }
                 }
-                _ if data["pusher"].is_string() => format!("A push to {repo} was blocked: it adds a secret"),
-                _ => format!("New security alert in {repo}"),
-            };
-            // Whoever pushed a blocked secret, and those the service names
-            // (the workspace's owners, or whoever asked for a bypass).
-            if let Some(pusher) = data["pusher"].as_str() {
-                told.tell(pusher, Reason::SecurityAlert, Severity::Error, &title, what, true);
-            }
-            for name in names(data, "notify") {
-                told.tell(&name, Reason::SecurityAlert, severity, &title, what, true);
-            }
-            // Watchers who chose security alerts, if they may see findings:
-            // the service lists who may (`members`), as findings are never
-            // shown to someone who cannot change the code.
-            if !kind.starts_with("secret_scanning.bypass") {
-                let members = names(data, "members");
-                let watching: Vec<String> = told.audience.watching("security").collect();
-                for name in watching.iter().filter(|name| members.iter().any(|member| member.eq_ignore_ascii_case(name))) {
-                    told.tell(name, Reason::SecurityAlert, severity, &title, what, false);
+                // Something to act on: the owners and security managers, at once.
+                "security_advisory.reported" => {
+                    let title = format!("A vulnerability was reported privately to {repo}");
+                    for name in names(data, "notify") {
+                        told.tell(&name, Reason::SecurityAlert, Severity::Warning, &title, what, true);
+                    }
+                }
+                // Published for everyone: watchers who chose security.
+                "security_advisory.published" => {
+                    let title = format!("{repo} published a security advisory");
+                    told.tell_watchers("security", Severity::Info, &title, what);
+                }
+                // A scan's summary. One that opened nothing is no news: it
+                // brings the thread up to date instead (deliver_one). Whether
+                // what is not urgent is told now or in a digest is each
+                // person's choice, applied there too.
+                _ => {
+                    let Some(summary) = security_summary(event) else {
+                        return told.notices;
+                    };
+                    if summary.opened_count == 0 {
+                        return told.notices;
+                    }
+                    let severity = if summary.urgent() { Severity::Error } else { Severity::Info };
+                    let (title, pushed) = summary_titles(repo, &summary);
+                    let body = summary.latest.clone().unwrap_or_default();
+                    // Whoever pushed a refused push must act: told at once, whatever was found.
+                    if let Some(pusher) = &summary.pusher {
+                        told.tell(pusher, Reason::SecurityAlert, Severity::Error, &pushed, &body, true);
+                    }
+                    for name in &summary.notify {
+                        told.tell(name, Reason::SecurityAlert, severity, &title, &body, true);
+                    }
+                    // Watchers who chose security alerts, if they may see findings:
+                    // the service lists who may (`members`), as findings are never
+                    // shown to someone who cannot change the code.
+                    let members = names(data, "members");
+                    let watching: Vec<String> = told.audience.watching("security").collect();
+                    for name in watching.iter().filter(|name| members.iter().any(|member| member.eq_ignore_ascii_case(name))) {
+                        told.tell(name, Reason::SecurityAlert, severity, &title, &body, false);
+                    }
                 }
             }
         }
@@ -756,6 +796,152 @@ pub fn subscribes(event: &Event, subject: Option<&InboxSubject>) -> Vec<(String,
 
 fn short(sha: &str) -> &str {
     sha.get(..7).unwrap_or(sha)
+}
+
+// --- Security summaries ------------------------------------------------------
+
+/// The scan summary a `<type>_alert.summary` event carries.
+pub fn security_summary(event: &Event) -> Option<SecuritySummary> {
+    if !event.kind.ends_with("_alert.summary") {
+        return None;
+    }
+    serde_json::from_value(event.data.clone()).ok()
+}
+
+/// "1 critical, 2 high": the counts that are not zero, worst first.
+pub fn breakdown(counts: &SeverityCounts) -> String {
+    [("critical", counts.critical), ("high", counts.high), ("medium", counts.medium), ("low", counts.low), ("unknown", counts.unknown)]
+        .into_iter()
+        .filter(|(_, n)| *n > 0)
+        .map(|(name, n)| format!("{n} {name}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// "vulnerability" or "vulnerabilities", as a count wants.
+fn alerts_called(alert_type: &str, n: u32) -> &'static str {
+    match (AlertType::parse(alert_type), n) {
+        (Some(AlertType::SecretScanning), 1) => "secret",
+        (Some(AlertType::SecretScanning), _) => "secrets",
+        (Some(AlertType::CodeScanning), 1) => "code scanning alert",
+        (Some(AlertType::CodeScanning), _) => "code scanning alerts",
+        (Some(AlertType::Vulnerability), 1) => "vulnerability",
+        (Some(AlertType::Vulnerability), _) => "vulnerabilities",
+        (None, 1) => "security alert",
+        (None, _) => "security alerts",
+    }
+}
+
+/// What a scan's item says to those who look after the repository ("3 new
+/// vulnerabilities in acme/rocket: 1 critical, 2 high"), and to whoever
+/// pushed a push that was refused.
+pub fn summary_titles(repo: &str, summary: &SecuritySummary) -> (String, String) {
+    let n = summary.opened_count;
+    let counts = breakdown(&summary.new_by_severity);
+    let title = if counts.is_empty() {
+        format!("{n} new {} in {repo}", alerts_called(&summary.alert_type, n))
+    } else {
+        format!("{n} new {} in {repo}: {counts}", alerts_called(&summary.alert_type, n))
+    };
+    let pushed = match summary.blocked {
+        0 | 1 => format!("A push to {repo} was blocked: it adds a secret"),
+        n => format!("A push to {repo} was blocked: it adds {n} secrets"),
+    };
+    (title, pushed)
+}
+
+/// What a scan that opened nothing makes the thread say: how many alerts
+/// are open now ("2 open vulnerabilities in acme/rocket: 2 high"), or that
+/// none is, with what changed as the line of history.
+pub fn refreshed_text(repo: &str, summary: &SecuritySummary) -> (String, String) {
+    let open = summary.open_total();
+    let mut changes = Vec::new();
+    if summary.fixed_count > 0 {
+        changes.push(format!("{} fixed", summary.fixed_count));
+    }
+    if summary.dismissed_count > 0 {
+        changes.push(format!("{} dismissed", summary.dismissed_count));
+    }
+    let title = if open == 0 {
+        format!("No open {} in {repo}", alerts_called(&summary.alert_type, 2))
+    } else {
+        format!("{open} open {} in {repo}: {}", alerts_called(&summary.alert_type, open), breakdown(&summary.open))
+    };
+    (title, changes.join(", "))
+}
+
+/// Where a scan summary's notice goes for one person.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Delivery {
+    /// Their inbox, now.
+    Now,
+    /// Their next security digest.
+    Digest,
+    /// Nowhere.
+    Never,
+}
+
+/// The policy: critical and high alerts, and a refused push, reach the
+/// people the service names (the workspace's owners and security managers,
+/// the pusher) at once whatever they chose, and watchers at once unless
+/// they turned security alerts off. Everything else waits for the person's
+/// digest, or comes at once or never, as they chose.
+pub fn security_delivery(summary: &SecuritySummary, username: &str, settings: &InboxSettings) -> Delivery {
+    if summary.urgent() {
+        let named = summary.notify.iter().any(|name| name.eq_ignore_ascii_case(username))
+            || summary.pusher.as_deref().is_some_and(|pusher| pusher.eq_ignore_ascii_case(username));
+        return if named || settings.security_alerts { Delivery::Now } else { Delivery::Never };
+    }
+    match settings.security_digest {
+        DigestCadence::AtOnce => Delivery::Now,
+        DigestCadence::Daily | DigestCadence::Weekly => Delivery::Digest,
+        DigestCadence::Off => Delivery::Never,
+    }
+}
+
+/// Brings every person's thread about a repository's alerts of one type up
+/// to date after a scan that opened nothing: the title says what is open
+/// now, a line of history says what changed, and a thread with nothing
+/// left open is done. Nobody is woken: what was read stays read, and the
+/// thread keeps its place.
+async fn refresh_security_thread(db: &D1Database, thread: &str, repo: &str, summary: &SecuritySummary, event: &Event) -> Result<()> {
+    let (title, body) = refreshed_text(repo, summary);
+    let now = now_ms();
+    let at = rfc3339(now);
+    let settled = i32::from(summary.open_total() == 0);
+    db.batch(vec![
+        db.prepare(
+            "UPDATE inbox_items SET event_id = ?1, event = ?2, title = ?3, body = ?4, updated_at = ?5, activity = activity + 1,
+               done_at = CASE WHEN ?6 = 1 THEN COALESCE(done_at, ?5) ELSE done_at END,
+               read_at = CASE WHEN ?6 = 1 THEN COALESCE(read_at, ?5) ELSE read_at END
+             WHERE thread = ?7
+               AND NOT EXISTS (SELECT 1 FROM inbox_activity a WHERE a.event_id = ?1 AND a.username = inbox_items.username)",
+        )
+        .bind(&[
+            event.id.as_str().into(),
+            event.kind.as_str().into(),
+            title.as_str().into(),
+            body.as_str().into(),
+            at.as_str().into(),
+            settled.into(),
+            thread.into(),
+        ])?,
+        db.prepare(
+            "INSERT OR IGNORE INTO inbox_activity (id, item_id, username, event_id, event, reason, severity, title, body, actor, created_at)
+             SELECT ?1 || ':' || username, id, username, ?2, ?3, 'security_alert', 'info', ?4, ?5, NULL, ?6 FROM inbox_items WHERE thread = ?7",
+        )
+        .bind(&[
+            new_id("ntf", now).into(),
+            event.id.as_str().into(),
+            event.kind.as_str().into(),
+            title.as_str().into(),
+            body.as_str().into(),
+            event.time.as_str().into(),
+            thread.into(),
+        ])?,
+    ])
+    .await?;
+    Ok(())
 }
 
 /// Where an item is on g1t.sh.
@@ -1100,8 +1286,30 @@ async fn deliver_one(
         watchers: watchers.get(&wanted.repo_id).cloned().unwrap_or_default(),
     };
     let repo = format!("{}/{}", path.namespace, path.name).to_lowercase();
-    let told = notices(event, &repo, &actor, subject.as_ref(), &audience);
+    let mut told = notices(event, &repo, &actor, subject.as_ref(), &audience);
     let mut statements = subscriptions::auto_subscribe(db, &thread.key, &wanted.repo_id, &subscribes(event, subject.as_ref()), &event.time)?;
+    // A scan's summary: one that opened nothing brings the thread up to date
+    // without waking anyone, and what is not urgent waits for each person's
+    // digest, or comes at once or never, as they chose (security_delivery).
+    if let Some(summary) = security_summary(event) {
+        if summary.opened_count == 0 {
+            refresh_security_thread(db, &thread.key, &repo, &summary, event).await?;
+            return Ok(Vec::new());
+        }
+        let people: Vec<String> = told.iter().map(|notice| notice.username.clone()).collect();
+        let settings = subscriptions::settings_of(db, &people).await?;
+        let now = now_ms();
+        let mut kept = Vec::with_capacity(told.len());
+        for notice in told {
+            let setting = settings.get(&notice.username).cloned().unwrap_or_default();
+            match security_delivery(&summary, &notice.username, &setting) {
+                Delivery::Now => kept.push(notice),
+                Delivery::Digest => statements.push(crate::security_digest::queue(db, &notice.username, &path, &summary, &event.id, now)?),
+                Delivery::Never => {}
+            }
+        }
+        told = kept;
+    }
     if told.is_empty() {
         if !statements.is_empty() {
             db.batch(statements).await?;
@@ -1205,7 +1413,7 @@ async fn deliver_one(
 /// happens when the person was already told of this event. While the
 /// thread is unread its most urgent severity is kept; done or not, it
 /// comes back to the inbox. A snooze stands.
-const BUMP: &str = "INSERT INTO inbox_items (id, username, thread, event_id, event, reason, severity, title, body,
+pub(crate) const BUMP: &str = "INSERT INTO inbox_items (id, username, thread, event_id, event, reason, severity, title, body,
    workspace, repo_id, repo, subject, number, run_id, link, actor, created_at, updated_at, bumped, activity)
  SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?18, ?19, 1
  WHERE NOT EXISTS (SELECT 1 FROM inbox_activity WHERE event_id = ?4 AND username = ?2)
@@ -1240,6 +1448,10 @@ pub fn live_notification(event_id: &str, notice: &Notice, url: &str, at: &str) -
         Reason::Agent => "agent_waiting",
         Reason::ReviewRequested => "approval",
         Reason::Mention | Reason::TeamMention => "mention",
+        // A critical or high alert, a refused push, a report or a bypass to
+        // review: toasted like a mention. A digest, or what came at once by
+        // choice, is an ordinary inbox item.
+        Reason::SecurityAlert if notice.severity != Severity::Info => "security",
         _ => "inbox",
     };
     let path = url.split(['?', '#']).next().unwrap_or_default();
@@ -1282,7 +1494,7 @@ pub async fn tell_inbox_count(db: &D1Database, notify: &Fetcher, username: &str)
 
 /// Hands items to the notify service, one call each. Logged and left when it
 /// cannot be reached: the inbox and email do not wait on it.
-async fn tell_live(notify: &Fetcher, items: Vec<(String, serde_json::Value)>) {
+pub(crate) async fn tell_live(notify: &Fetcher, items: Vec<(String, serde_json::Value)>) {
     #[derive(serde::Serialize)]
     struct NotifyArgs {
         username: String,
@@ -2225,18 +2437,34 @@ mod tests {
         assert_eq!(told(&notices(&back, "acme/rocket", &Actor::default(), None, &audience)), vec![("ana", Reason::StateChange, Severity::Success)]);
     }
 
-    #[test]
-    fn security_alerts_tell_the_pusher_the_owners_and_member_watchers() {
-        let blocked = event(
-            "secret_scanning_alert.created",
+    /// A scan's summary, as the security service publishes it.
+    fn summary(alert_type: &str, opened: &[&str], new: (u32, u32, u32, u32), open: (u32, u32, u32, u32), pusher: Option<&str>) -> Event {
+        let counts = |(critical, high, medium, low): (u32, u32, u32, u32)| json!({ "critical": critical, "high": high, "medium": medium, "low": low, "unknown": 0 });
+        let worst = [(new.0, "critical"), (new.1, "high"), (new.2, "medium"), (new.3, "low")].into_iter().find(|(n, _)| *n > 0).map(|(_, name)| name);
+        let page = match alert_type {
+            "secret_scanning" => "secret-scanning",
+            "code_scanning" => "code-scanning",
+            _ => "vulnerabilities",
+        };
+        event(
+            &format!("{alert_type}_alert.summary"),
             None,
             json!({
-                "repoId": "rep_1", "alertId": "sec_1", "alertType": "secret_scanning", "severity": "critical",
-                "title": "An AWS access key in config/prod.env", "link": "/acme/rocket/security/secret-scanning/sec_1",
-                "state": "open", "pusher": "bo", "notify": ["ana"], "members": ["ana", "bo", "cy"]
+                "repoId": "rep_1", "alertType": alert_type, "scan": if pusher.is_some() { "push" } else { "dependencies" },
+                "opened": opened, "openedCount": opened.len(), "fixedCount": 0, "dismissedCount": 0,
+                "newBySeverity": counts(new), "open": counts(open), "worst": worst,
+                "latest": if opened.is_empty() { serde_json::Value::Null } else { json!("lodash 4.17.20 in package-lock.json: GHSA-1") },
+                "link": format!("/acme/rocket/security/{page}"),
+                "pusher": pusher, "blocked": if pusher.is_some() { opened.len() } else { 0 },
+                "notify": ["ana"], "members": ["ana", "bo", "cy"]
             }),
-        );
-        assert_eq!(wants(&blocked), Some(Wanted { repo_id: "rep_1".into(), number: None, comment_id: None }));
+        )
+    }
+
+    #[test]
+    fn a_scan_is_one_item_per_repository_and_alert_type() {
+        let found = summary("vulnerability", &["vul_3", "vul_2", "vul_1"], (1, 2, 0, 0), (1, 2, 0, 0), None);
+        assert_eq!(wants(&found), Some(Wanted { repo_id: "rep_1".into(), number: None, comment_id: None }));
         // cy watches for security alerts and is a member; eve watches
         // everything but cannot see findings; dee watches issues only.
         let audience = watched(&[
@@ -2244,20 +2472,69 @@ mod tests {
             ("dee", WatchLevel::Custom, &["issues"]),
             ("eve", WatchLevel::All, &[]),
         ]);
-        let notices_ = notices(&blocked, "acme/rocket", &Actor::default(), None, &audience);
-        assert_eq!(
-            told(&notices_),
-            vec![
-                ("bo", Reason::SecurityAlert, Severity::Error),
-                ("ana", Reason::SecurityAlert, Severity::Error),
-                ("cy", Reason::SecurityAlert, Severity::Error),
-            ]
-        );
-        assert_eq!(notices_[0].title, "A push to acme/rocket was blocked: it adds a secret");
-        assert_eq!(notices_[0].body, "An AWS access key in config/prod.env");
-        let thread = thread_of(&blocked, &wants(&blocked).unwrap(), None);
-        assert_eq!(thread.key, "rep_1/security/sec_1");
-        assert_eq!(url(Some("acme/rocket"), thread.kind, None, None, thread.link.as_deref()), "/acme/rocket/security/secret-scanning/sec_1");
+        let notices_ = notices(&found, "acme/rocket", &Actor::default(), None, &audience);
+        assert_eq!(told(&notices_), vec![("ana", Reason::SecurityAlert, Severity::Error), ("cy", Reason::SecurityAlert, Severity::Error)]);
+        assert_eq!(notices_[0].title, "3 new vulnerabilities in acme/rocket: 1 critical, 2 high");
+        assert_eq!(notices_[0].body, "lodash 4.17.20 in package-lock.json: GHSA-1");
+        // The same thread for every scan of this type, however many alerts.
+        let thread = thread_of(&found, &wants(&found).unwrap(), None);
+        assert_eq!(thread.key, "rep_1/security/vulnerability");
+        assert_eq!(url(Some("acme/rocket"), thread.kind, None, None, thread.link.as_deref()), "/acme/rocket/security/vulnerabilities");
+        // Medium and low are news, but not urgent: an info item, or the digest.
+        let quiet = summary("code_scanning", &["cod_1"], (0, 0, 1, 0), (0, 0, 1, 0), None);
+        let notices_ = notices(&quiet, "acme/rocket", &Actor::default(), None, &audience);
+        assert_eq!(told(&notices_), vec![("ana", Reason::SecurityAlert, Severity::Info), ("cy", Reason::SecurityAlert, Severity::Info)]);
+        assert_eq!(notices_[0].title, "1 new code scanning alert in acme/rocket: 1 medium");
+        // A scan that opened nothing tells nobody: the thread is brought up to date instead.
+        let fixed = summary("vulnerability", &[], (0, 0, 0, 0), (0, 1, 0, 0), None);
+        assert!(notices(&fixed, "acme/rocket", &Actor::default(), None, &audience).is_empty());
+        let (title, body) = refreshed_text("acme/rocket", &SecuritySummary { fixed_count: 2, ..security_summary(&fixed).unwrap() });
+        assert_eq!(title, "1 open vulnerability in acme/rocket: 1 high");
+        assert_eq!(body, "2 fixed");
+        let settled = SecuritySummary { fixed_count: 1, dismissed_count: 1, open: SeverityCounts::default(), ..security_summary(&fixed).unwrap() };
+        assert_eq!(refreshed_text("acme/rocket", &settled), ("No open vulnerabilities in acme/rocket".to_owned(), "1 fixed, 1 dismissed".to_owned()));
+        // Per-alert events are for webhooks.
+        assert_eq!(wants(&event("vulnerability_alert.created", None, json!({ "repoId": "rep_1" }))), None);
+        assert_eq!(wants(&event("code_scanning_alert.fixed", None, json!({ "repoId": "rep_1" }))), None);
+    }
+
+    #[test]
+    fn a_refused_push_tells_the_pusher_at_once_and_the_owners_once() {
+        let blocked = summary("secret_scanning", &["sec_1", "sec_2"], (2, 0, 0, 0), (2, 0, 0, 0), Some("bo"));
+        let notices_ = notices(&blocked, "acme/rocket", &Actor::default(), None, &nobody());
+        assert_eq!(told(&notices_), vec![("bo", Reason::SecurityAlert, Severity::Error), ("ana", Reason::SecurityAlert, Severity::Error)]);
+        assert_eq!(notices_[0].title, "A push to acme/rocket was blocked: it adds 2 secrets");
+        assert_eq!(notices_[1].title, "2 new secrets in acme/rocket: 2 critical");
+        assert_eq!(thread_of(&blocked, &wants(&blocked).unwrap(), None).key, "rep_1/security/secret_scanning");
+        // Whatever bo chose, the push is theirs to fix; ana, an owner, is told whatever she chose.
+        let summary_ = security_summary(&blocked).unwrap();
+        let off = InboxSettings { security_alerts: false, security_digest: DigestCadence::Off, ..InboxSettings::default() };
+        assert_eq!(security_delivery(&summary_, "bo", &off), Delivery::Now);
+        assert_eq!(security_delivery(&summary_, "ana", &off), Delivery::Now);
+        // A watcher who turned security alerts off hears of nothing urgent.
+        assert_eq!(security_delivery(&summary_, "cy", &off), Delivery::Never);
+        assert_eq!(security_delivery(&summary_, "cy", &InboxSettings::default()), Delivery::Now);
+    }
+
+    #[test]
+    fn what_is_not_urgent_waits_for_the_digest_unless_the_person_chose_otherwise() {
+        let medium = security_summary(&summary("vulnerability", &["vul_1"], (0, 0, 1, 0), (0, 0, 1, 0), None)).unwrap();
+        assert!(!medium.urgent());
+        let choose = |cadence| InboxSettings { security_digest: cadence, ..InboxSettings::default() };
+        // Owners too: a medium alert is for the digest, as they chose.
+        assert_eq!(security_delivery(&medium, "ana", &choose(DigestCadence::Daily)), Delivery::Digest);
+        assert_eq!(security_delivery(&medium, "cy", &choose(DigestCadence::Weekly)), Delivery::Digest);
+        assert_eq!(security_delivery(&medium, "cy", &choose(DigestCadence::AtOnce)), Delivery::Now);
+        assert_eq!(security_delivery(&medium, "ana", &choose(DigestCadence::Off)), Delivery::Never);
+        let high = security_summary(&summary("vulnerability", &["vul_1"], (0, 1, 0, 0), (0, 1, 0, 0), None)).unwrap();
+        assert_eq!(security_delivery(&high, "ana", &choose(DigestCadence::Off)), Delivery::Now);
+        assert_eq!(breakdown(&SeverityCounts { critical: 1, low: 3, ..SeverityCounts::default() }), "1 critical, 3 low");
+        assert_eq!(breakdown(&SeverityCounts::default()), "");
+    }
+
+    #[test]
+    fn bypass_requests_reports_and_advisories_tell_who_they_name() {
+        let audience = watched(&[("cy", WatchLevel::Custom, &["security"]), ("eve", WatchLevel::All, &[])]);
         // A bypass request goes to the reviewers named, never to watchers.
         let requested = event(
             "secret_scanning.bypass_requested",
@@ -2267,8 +2544,26 @@ mod tests {
         let notices_ = notices(&requested, "acme/rocket", &actor("usr_bo", "bo"), None, &audience);
         assert_eq!(told(&notices_), vec![("ana", Reason::SecurityAlert, Severity::Warning)]);
         assert_eq!(notices_[0].title, "bo asked to bypass push protection in acme/rocket");
-        // Fixes and dismissals are not news to the inbox.
-        assert_eq!(wants(&event("code_scanning_alert.fixed", None, json!({ "repoId": "rep_1" }))), None);
+        assert_eq!(thread_of(&requested, &wants(&requested).unwrap(), None).key, "rep_1/security/byp_1");
+        // A private report is for the owners and security managers, at once, with no reporter named.
+        let reported = event(
+            "security_advisory.reported",
+            None,
+            json!({ "repoId": "rep_1", "id": "vrp_1", "title": "XSS in the search box", "state": "new", "link": "/acme/rocket/security/reports", "notify": ["ana"], "members": ["ana", "cy"] }),
+        );
+        let notices_ = notices(&reported, "acme/rocket", &Actor::default(), None, &audience);
+        assert_eq!(told(&notices_), vec![("ana", Reason::SecurityAlert, Severity::Warning)]);
+        assert_eq!(notices_[0].title, "A vulnerability was reported privately to acme/rocket");
+        assert_eq!(thread_of(&reported, &wants(&reported).unwrap(), None).key, "rep_1/security/reports");
+        // A published advisory is for watchers who chose security; it is public, so no members list is needed.
+        let published = event(
+            "security_advisory.published",
+            Some("usr_ana"),
+            json!({ "repoId": "rep_1", "id": "adv_1", "g1tsaId": "G1TSA-2026-abcd-efgh", "title": "XSS in the search box", "severity": "high", "state": "published", "link": "/acme/rocket/security/advisories/G1TSA-2026-abcd-efgh" }),
+        );
+        let notices_ = notices(&published, "acme/rocket", &actor("usr_ana", "ana"), None, &audience);
+        assert_eq!(told(&notices_), vec![("cy", Reason::Subscribed, Severity::Info), ("eve", Reason::Subscribed, Severity::Info)]);
+        assert_eq!(thread_of(&published, &wants(&published).unwrap(), None).key, "rep_1/security/advisories/adv_1");
     }
 
     #[test]

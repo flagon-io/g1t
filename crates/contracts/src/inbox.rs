@@ -562,6 +562,37 @@ pub struct WatchArgs {
     pub events: Vec<String>,
 }
 
+/// When security alerts that are not urgent (medium, low, and what is only
+/// to know) reach a person: in a digest once a day or once a week, at once
+/// like the urgent ones, or not at all. Critical and high alerts, a refused
+/// push and a vulnerability report never wait for the digest.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DigestCadence {
+    #[default]
+    Daily,
+    Weekly,
+    AtOnce,
+    Off,
+}
+
+impl DigestCadence {
+    pub const ALL: [DigestCadence; 4] = [DigestCadence::Daily, DigestCadence::Weekly, DigestCadence::AtOnce, DigestCadence::Off];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DigestCadence::Daily => "daily",
+            DigestCadence::Weekly => "weekly",
+            DigestCadence::AtOnce => "at_once",
+            DigestCadence::Off => "off",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<DigestCadence> {
+        DigestCadence::ALL.into_iter().find(|cadence| cadence.as_str() == value)
+    }
+}
+
 /// A person's choices about being told.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -570,6 +601,19 @@ pub struct InboxSettings {
     pub email: Vec<Reason>,
     /// How they watch a repository they create.
     pub default_watch: WatchLevel,
+    /// Whether critical and high security alerts on repositories they watch
+    /// for security reach their inbox at once. A workspace's owners and
+    /// security managers are told whatever this says: those alerts are
+    /// theirs to act on.
+    #[serde(default = "yes")]
+    pub security_alerts: bool,
+    /// When the rest of the security alerts reach them.
+    #[serde(default)]
+    pub security_digest: DigestCadence,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Default for InboxSettings {
@@ -577,12 +621,16 @@ impl Default for InboxSettings {
         InboxSettings {
             email: DEFAULT_EMAIL.to_vec(),
             default_watch: WatchLevel::All,
+            security_alerts: true,
+            security_digest: DigestCadence::Daily,
         }
     }
 }
 
-/// What a person is emailed for until they choose: what is waiting on them.
-pub const DEFAULT_EMAIL: [Reason; 3] = [Reason::Agent, Reason::ReviewRequested, Reason::Mention];
+/// What a person is emailed for until they choose: what is waiting on
+/// them, and security alerts, which reach their inbox only when urgent or
+/// as their digest.
+pub const DEFAULT_EMAIL: [Reason; 4] = [Reason::Agent, Reason::ReviewRequested, Reason::Mention, Reason::SecurityAlert];
 
 /// `inbox_update_settings`. What is left out is unchanged.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -593,6 +641,10 @@ pub struct UpdateInboxSettingsArgs {
     pub email: Option<Vec<Reason>>,
     #[serde(default)]
     pub default_watch: Option<WatchLevel>,
+    #[serde(default)]
+    pub security_alerts: Option<bool>,
+    #[serde(default)]
+    pub security_digest: Option<DigestCadence>,
 }
 
 /// `inbox_subject` on the work service: what an event names, for the

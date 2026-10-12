@@ -19,8 +19,8 @@ import { readLook } from "../../../packages/contracts/src/agent-look.ts";
 const NOTIFY_LEVELS: readonly NotifyLevel[] = ["all", "dms_mentions", "none"];
 const DEFAULT_NOTIFY_PREFERENCES: NotifyPreferences = { level: "dms_mentions", workspaces: {} };
 
-/** What `dms_mentions`, the default, lets through: what was said to you, or waits on you. */
-const DIRECT: ReadonlySet<NotificationKind> = new Set(["dm", "mention", "thread_reply", "agent_waiting", "approval"]);
+/** What `dms_mentions`, the default, lets through: what was said to you, waits on you, or is an urgent security alert. */
+const DIRECT: ReadonlySet<NotificationKind> = new Set(["dm", "mention", "thread_reply", "agent_waiting", "approval", "security"]);
 
 /** A tab whose last word is older than this is not in front of anyone. Pings come every 25 s. */
 export const STALE_MS = 70_000;
@@ -111,7 +111,7 @@ export function cleanNotification(value: unknown): FeedNotification | null {
   if (!value || typeof value !== "object") return null;
   const n = value as Record<string, unknown>;
   const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
-  const kinds: NotificationKind[] = ["dm", "mention", "thread_reply", "inbox", "agent_waiting", "approval"];
+  const kinds: NotificationKind[] = ["dm", "mention", "thread_reply", "inbox", "agent_waiting", "approval", "security"];
   const kind = kinds.find((k) => k === n.kind);
   const id = text(n.id, 200);
   const workspace = text(n.workspace, 100).toLowerCase();

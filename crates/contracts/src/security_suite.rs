@@ -138,6 +138,19 @@ pub struct RepoSecuritySettings {
     pub review_deny_licenses: Vec<String>,
     /// Whether the review also comments its summary on the pull request.
     pub review_comment: bool,
+    /// Whether secrets found in the history (and in pushes too large to
+    /// scan first) open alerts and tell people. Push protection is never
+    /// off: a push that adds a secret is refused whatever this says.
+    #[serde(default = "yes")]
+    pub history_alerts: bool,
+    /// Whether anyone who can see the repository may report a
+    /// vulnerability privately to its maintainers (`report_vulnerability`).
+    #[serde(default)]
+    pub private_vulnerability_reporting: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Default for RepoSecuritySettings {
@@ -148,6 +161,8 @@ impl Default for RepoSecuritySettings {
             review_fail_on: "high".to_owned(),
             review_deny_licenses: Vec::new(),
             review_comment: true,
+            history_alerts: true,
+            private_vulnerability_reporting: false,
         }
     }
 }
@@ -1072,22 +1087,132 @@ pub struct SecurityEvent {
     pub request_id: Option<String>,
 }
 
+/// What one scan did to a repository's alerts of one type
+/// (`secret_scanning_alert.summary`, `code_scanning_alert.summary`,
+/// `vulnerability_alert.summary`): published once per scan, beside the
+/// per-alert `.created` and `.fixed` events webhooks get. The inbox reads
+/// these alone, so a scan that finds forty vulnerabilities is one item,
+/// not forty, and a later scan brings the same item back up to date
+/// (docs.g1t.sh/guides/notifications/#security).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecuritySummary {
+    pub repo_id: String,
+    /// `secret_scanning`, `code_scanning` or `vulnerability`.
+    pub alert_type: String,
+    /// What ran: `push`, `history`, `dependencies`, `analysis`, or
+    /// `change` for a dismissal, a reopening or a bypass.
+    pub scan: String,
+    /// Alerts the scan opened, newest first, at most [`MAX_SUMMARY_IDS`];
+    /// `opened_count` says how many there were.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub opened: Vec<String>,
+    pub opened_count: u32,
+    /// Those it closed as fixed (and how many), and how many were dismissed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fixed: Vec<String>,
+    pub fixed_count: u32,
+    pub dismissed_count: u32,
+    /// The alerts opened, by severity.
+    pub new_by_severity: SeverityCounts,
+    /// What is open of this type after the scan, by severity.
+    pub open: SeverityCounts,
+    /// The worst severity among those opened: `critical`, `high`, `medium`
+    /// or `low`; absent when nothing opened.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worst: Option<String>,
+    /// One line for the newest alert opened: "An AWS access key in
+    /// config/prod.env", "lodash 4.17.20 in package-lock.json: GHSA-…".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest: Option<String>,
+    /// The findings page, from the site's root: `/acme/rocket/security/…`.
+    pub link: String,
+    /// For a push that was refused: who pushed, and how many secrets
+    /// stopped it. They are told at once, whatever the severity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pusher: Option<String>,
+    #[serde(default)]
+    pub blocked: u32,
+    /// Who hears of it besides the repository's security watchers: its
+    /// workspace's owners and security managers, by username.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notify: Vec<String>,
+}
+
+/// The most alert ids a summary names; counts say the rest.
+pub const MAX_SUMMARY_IDS: usize = 200;
+
+/// Whether `severity` goes to the inbox at once; the rest wait for the
+/// person's security digest.
+pub fn at_once(severity: &str) -> bool {
+    matches!(severity, "critical" | "high")
+}
+
+impl SecuritySummary {
+    /// How many alerts are open of this type after the scan.
+    pub fn open_total(&self) -> u32 {
+        self.open.critical + self.open.high + self.open.medium + self.open.low + self.open.unknown
+    }
+
+    /// Whether what it tells of is told at once: anything critical or high,
+    /// or a push that was refused.
+    pub fn urgent(&self) -> bool {
+        self.pusher.is_some() || self.worst.as_deref().is_some_and(at_once)
+    }
+}
+
+impl AlertType {
+    /// The summary event: `vulnerability_alert.summary`.
+    pub fn summary_event(self) -> &'static str {
+        match self {
+            AlertType::SecretScanning => "secret_scanning_alert.summary",
+            AlertType::CodeScanning => "code_scanning_alert.summary",
+            AlertType::Vulnerability => "vulnerability_alert.summary",
+        }
+    }
+
+    /// What people call the alerts: "secrets", "code scanning alerts",
+    /// "vulnerabilities".
+    pub fn plural(self) -> &'static str {
+        match self {
+            AlertType::SecretScanning => "secrets",
+            AlertType::CodeScanning => "code scanning alerts",
+            AlertType::Vulnerability => "vulnerabilities",
+        }
+    }
+
+    /// Where the alerts are listed under a repository's Security page.
+    pub fn page(self) -> &'static str {
+        match self {
+            AlertType::SecretScanning => "secret-scanning",
+            AlertType::CodeScanning => "code-scanning",
+            AlertType::Vulnerability => "vulnerabilities",
+        }
+    }
+}
+
 /// The security event types, as webhooks list them.
-pub const EVENT_TYPES: [&str; 14] = [
+pub const EVENT_TYPES: [&str; 20] = [
     "secret_scanning_alert.created",
     "secret_scanning_alert.fixed",
     "secret_scanning_alert.dismissed",
     "secret_scanning_alert.reopened",
+    "secret_scanning_alert.summary",
     "secret_scanning.bypass_requested",
     "secret_scanning.bypass_reviewed",
     "code_scanning_alert.created",
     "code_scanning_alert.fixed",
     "code_scanning_alert.dismissed",
     "code_scanning_alert.reopened",
+    "code_scanning_alert.summary",
     "vulnerability_alert.created",
     "vulnerability_alert.fixed",
     "vulnerability_alert.dismissed",
     "vulnerability_alert.reopened",
+    "vulnerability_alert.summary",
+    "security_advisory.published",
+    "security_advisory.withdrawn",
+    "security_advisory.reported",
 ];
 
 /// The checks the suite reports on pull requests, as commit statuses:

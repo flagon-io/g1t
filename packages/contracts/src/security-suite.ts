@@ -53,6 +53,13 @@ export type RepoSecuritySettings = {
   reviewFailOn: ReviewFailOn;
   reviewDenyLicenses: string[];
   reviewComment: boolean;
+  /**
+   * Whether secrets found in the history (and in pushes too large to scan
+   * first) open alerts and tell people. Push protection is never off.
+   */
+  historyAlerts: boolean;
+  /** Whether anyone who can see the repository may report a vulnerability privately. */
+  privateVulnerabilityReporting: boolean;
 };
 
 export type WorkspaceSecuritySettings = {
