@@ -1,4 +1,5 @@
 import { Link, useFetcher } from "react-router";
+import type { ReactNode } from "react";
 
 import { CODE_SCANNING_GATES, type CodeScanningGate, type RepoSecuritySettings, type ReviewFailOn } from "@g1t/contracts";
 
@@ -6,10 +7,11 @@ import type { Route } from "./+types/security-settings";
 import { page } from "../../lib/meta";
 import { ActivationPrompt, CARD, SectionHeader } from "../../components/security-suite";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { SelectField } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
-import { securitySuite } from "../../lib/services.server";
+import { security, securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
@@ -46,6 +48,8 @@ export function settingsFrom(form: FormData): RepoSecuritySettings | string {
       .filter(Boolean)
       .slice(0, 50),
     reviewComment: form.get("reviewComment") === "on",
+    historyAlerts: form.get("historyAlerts") === "on",
+    privateVulnerabilityReporting: form.get("privateVulnerabilityReporting") === "on",
   };
 }
 
@@ -54,13 +58,33 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const refused = await refusal(context, params, "manage_settings");
   if (refused) return { ok: false, error: refused };
-  const settings = settingsFrom(await request.formData());
+  const form = await request.formData();
+  const path = { namespace: params.owner, name: params.repo };
+  // Security updates are a setting of their own, saved as the switch moves.
+  if (form.get("intent") === "upkeep") {
+    const set = await security.setUpkeep(user, path, form.get("enabled") === "true");
+    return set.ok ? { ok: true } : { ok: false, error: set.error.message };
+  }
+  const settings = settingsFrom(form);
   if (typeof settings === "string") return { ok: false, error: settings };
-  const saved = await securitySuite.setSettings(user, { namespace: params.owner, name: params.repo }, settings);
+  const saved = await securitySuite.setSettings(user, path, settings);
   return saved.ok ? { ok: true } : { ok: false, error: saved.error.message };
 }
 
 const SELECT = "w-full sm:w-72";
+
+/** A setting that is on or off, with the words on what it does, as a card. */
+function SettingSwitch({ name, title, children, defaultChecked, disabled }: { name: string; title: string; children: ReactNode; defaultChecked: boolean; disabled: boolean }) {
+  return (
+    <label className={`${CARD} flex items-start justify-between gap-4 p-4 ${disabled ? "opacity-60" : ""}`}>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="mt-1 block text-sm text-muted">{children}</span>
+      </span>
+      <Switch name={name} defaultChecked={defaultChecked} disabled={disabled} className="mt-0.5" />
+    </label>
+  );
+}
 
 export default function SecuritySettings({ loaderData, params }: Route.ComponentProps) {
   const { view, price, can, owner } = loaderData;
@@ -68,14 +92,59 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
   const fetcher = useFetcher<{ ok: boolean; error?: string }>();
   const { settings } = view;
   const disabled = !can.manage_settings || !view.entitled;
+  // Free everywhere: switches that need no activation.
+  const locked = !can.manage_settings;
+  const upkeep = useFetcher<{ ok: boolean; error?: string }>();
+  const upkeepOn = upkeep.formData ? upkeep.formData.get("enabled") === "true" : view.upkeep;
   return (
     <div className="max-w-3xl space-y-6">
       <SectionHeader
         title="Security settings"
-        about="When the pull request checks this repository's security suite reports fail. Require them in branch protection to block merges on them, for people and agents alike."
+        about="What this repository's security does on its own, and when the pull request checks its security suite reports fail. Require those checks in branch protection to block merges on them, for people and agents alike."
       />
+      <section aria-labelledby="alerts-and-updates" className="space-y-3">
+        <h3 id="alerts-and-updates" className="text-sm font-semibold">
+          Alerts, updates and reporting
+        </h3>
+        <Card asChild className="flex items-start justify-between gap-4 p-4">
+          <label>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">Security updates</span>
+              <span className="mt-1 block text-sm text-muted">
+                Open a pull request to upgrade each vulnerable dependency that has a fix. It lands through your branch's required checks. The same switch is on
+                the Vulnerabilities page.
+              </span>
+              {upkeep.data?.error && <span className="mt-1 block text-xs text-danger">{upkeep.data.error}</span>}
+            </span>
+            <Hint label={whyNot(can, "manage_settings")} disabled={locked}>
+              <Switch
+                className="mt-0.5"
+                checked={upkeepOn}
+                disabled={upkeep.state !== "idle" || locked}
+                onCheckedChange={(checked) => upkeep.submit({ intent: "upkeep", enabled: String(checked) }, { method: "post" })}
+              />
+            </Hint>
+          </label>
+        </Card>
+      </section>
       {!view.entitled && <ActivationPrompt workspace={params.owner} feature="Code scanning and dependency review" monthlyCents={price} isOwner={owner} />}
       <fetcher.Form method="post" className="space-y-4">
+        <fieldset disabled={locked} className="space-y-3">
+          <legend className="sr-only">Alerts and reporting</legend>
+          <SettingSwitch name="historyAlerts" title="Alerts for secrets in the history" defaultChecked={settings.historyAlerts} disabled={locked}>
+            Secrets found in the history, and in pushes too large to scan first, open alerts and tell the workspace's owners and security managers. Off, they
+            are still listed under Secret scanning but tell nobody. Push protection is always on: a push that adds a secret is refused either way.
+          </SettingSwitch>
+          <SettingSwitch
+            name="privateVulnerabilityReporting"
+            title="Private vulnerability reporting"
+            defaultChecked={settings.privateVulnerabilityReporting}
+            disabled={locked}
+          >
+            Anyone who can see this repository can report a vulnerability to its maintainers privately from its Security tab; on a public repository, without
+            an account, with an email address. The owners and security managers are told at once.
+          </SettingSwitch>
+        </fieldset>
         <fieldset disabled={disabled} className={`${CARD} space-y-3 p-4 disabled:opacity-60`}>
           <legend className="sr-only">Code scanning</legend>
           <p className="text-sm font-medium">Code scanning results</p>
@@ -135,7 +204,7 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
           <Hint label={whyNot(can, "manage_settings")} disabled={!can.manage_settings}>
             <Button
               type="submit"
-              disabled={disabled || fetcher.state !== "idle"}>
+              disabled={locked || fetcher.state !== "idle"}>
               {fetcher.state !== "idle" ? "Saving…" : "Save"}
             </Button>
           </Hint>
@@ -147,11 +216,11 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
         </div>
       </fetcher.Form>
       <p className="text-sm text-muted">
-        Security updates are on the{" "}
-        <Link to={`${base}/security/vulnerabilities`} className="underline underline-offset-2 hover:text-fg">
-          Vulnerabilities
-        </Link>{" "}
-        page, and version updates on{" "}
+        Advisories and private reports are under{" "}
+        <Link to={`${base}/security/advisories`} className="underline underline-offset-2 hover:text-fg">
+          Advisories
+        </Link>
+        , and version updates on{" "}
         <Link to={`${base}/security/dependency-updates`} className="underline underline-offset-2 hover:text-fg">
           Dependency updates
         </Link>

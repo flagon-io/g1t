@@ -144,10 +144,12 @@ test("costly pages are recognised", () => {
     "/acme/rocket/actions/runs/run_1/logs.zip",
     "/acme/rocket/actions/runs/run_1/artifacts/dist",
     "/acme/rocket/actions/jobs/job_1/log.txt",
+    "/acme/rocket/security/report",
+    "/acme/rocket/security/report.data",
   ]) {
     assert.ok(heavy(path), path);
   }
-  for (const path of ["/", "/acme/rocket", "/acme/rocket/actions", "/acme/rocket/issues/1", "/acme/search"]) {
+  for (const path of ["/", "/acme/rocket", "/acme/rocket/actions", "/acme/rocket/issues/1", "/acme/search", "/acme/rocket/security", "/acme/rocket/security/reports"]) {
     assert.ok(!heavy(path), path);
   }
 });

@@ -101,6 +101,9 @@ export type VulnerabilityReport = {
 
 export type ReviewedReport = { report: VulnerabilityReport; advisory?: Advisory | null };
 
+/** Whether a repository takes private reports, and how many advisories it published: for anyone who can see it. */
+export type ReportSettings = { privateVulnerabilityReporting: boolean; published: number };
+
 export interface AdvisoriesApi {
   /** Published ones for anyone who can see the repository; every state for those who see findings. */
   list(repo: RepoPath, viewer: Viewer, state?: AdvisoryState | null): Promise<Result<Advisory[]>>;
@@ -117,6 +120,8 @@ export interface AdvisoriesApi {
     repo: RepoPath,
     report: { title: string; description: string; severity?: AdvisorySeverity | null; email?: string | null },
   ): Promise<Result<VulnerabilityReport>>;
+  /** Whether the repository takes private reports, and how many advisories it published. Anyone who can see it. */
+  reportSettings(repo: RepoPath, viewer: Viewer): Promise<Result<ReportSettings>>;
   /** The repository's reports, newest first. Those who see findings. */
   reports(repo: RepoPath, viewer: Viewer, state?: ReportState | null): Promise<Result<VulnerabilityReport[]>>;
   /** `accept` makes a draft advisory from the report; `decline` closes it. */
@@ -149,6 +154,7 @@ export function advisoriesClient(service: ServiceBinding): AdvisoriesApi {
         severity: report.severity ?? null,
         email: report.email ?? null,
       }),
+    reportSettings: (repo, viewer) => call("report_settings", { repo, viewer }),
     reports: (repo, viewer, state = null) => call("list_vulnerability_reports", { repo, viewer, state }),
     review: (actor, repo, id, decision, note) => call("review_vulnerability_report", { actor, repo, id, decision, note }),
   };

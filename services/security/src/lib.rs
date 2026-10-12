@@ -769,6 +769,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "update_advisory" => reply(&security.update_advisory(args(body)?).await?),
         "set_advisory_state" => reply(&security.set_advisory_state(args(body)?).await?),
         "report_vulnerability" => reply(&security.report_vulnerability(args(body)?).await?),
+        "report_settings" => reply(&security.report_settings(args(body)?).await?),
         "list_vulnerability_reports" => reply(&security.list_vulnerability_reports(args(body)?).await?),
         "review_vulnerability_report" => reply(&security.review_vulnerability_report(args(body)?).await?),
         _ => Response::error("Unknown method", 404),

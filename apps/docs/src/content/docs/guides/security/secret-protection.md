@@ -20,6 +20,24 @@ whether it still works.
 
 See [What's free and what's paid](/guides/security/pricing/).
 
+## Alerts, and who hears of them
+
+A push that adds a secret is refused, and whoever pushed is told at once,
+in their [notifications](/guides/notifications/#security) and by email:
+that is theirs to act on. A scan of the history that finds secrets is one
+notification per page of the scan to the workspace's owners and security
+managers, "2 new secrets in acme/rocket: 2 critical", and to watchers who
+chose **Security alerts** and can see findings; a later page brings the
+same notification up to date rather than adding another. A secret that
+looks like a test value is low, and waits for the person's security
+digest.
+
+**Alerts for secrets in the history**, in the repository's Security
+settings (Admin, or a security manager), turns the history's alerts off
+for a repository whose history is known to hold old fixtures or rotated
+keys: what the scan finds is still listed on this page, but tells nobody.
+Push protection stays on whatever this says.
+
 ## The Secret scanning page
 
 `g1t.sh/<owner>/<project>/security/secret-scanning` lists the

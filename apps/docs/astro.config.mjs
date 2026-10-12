@@ -131,6 +131,7 @@ export default defineConfig({
 						{ label: 'Secret protection', slug: 'guides/security/secret-protection' },
 						{ label: 'Code scanning', slug: 'guides/security/code-scanning' },
 						{ label: 'Supply chain', slug: 'guides/security/supply-chain' },
+						{ label: 'Advisories and reporting', slug: 'guides/security/advisories' },
 						{ label: 'Security overview', slug: 'guides/security/security-overview' },
 						{ label: "What's free and what's paid", slug: 'guides/security/pricing' },
 					],

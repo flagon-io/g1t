@@ -6,6 +6,7 @@
  * decides who is told of what.
  */
 import type {
+  DigestCadence,
   InboxCounts,
   InboxItem,
   InboxMarkArgs,
@@ -299,6 +300,11 @@ export const EMAIL_REASONS: { reason: InboxReason; label: string; detail: string
   { reason: "team_mention", label: "Your team is mentioned", detail: "Someone wrote @workspace/team for a team you're in." },
   { reason: "assign", label: "You're assigned", detail: "Someone assigned you an issue or a pull request." },
   { reason: "ci_activity", label: "Your work's checks and deployments", detail: "Checks, a workflow or a deployment failed on your work." },
+  {
+    reason: "security_alert",
+    label: "Security alerts",
+    detail: "Critical and high alerts, a push of yours that push protection refused, a vulnerability report, and your security digest.",
+  },
   { reason: "state_change", label: "What you follow closes or merges", detail: "An issue or pull request you're subscribed to was closed, reopened or merged." },
   { reason: "author", label: "News on your work", detail: "An approval, changes asked for, or g1t finishing what you asked for." },
   { reason: "comment", label: "Conversations you're in", detail: "Comments on issues and pull requests you commented on." },
@@ -310,4 +316,22 @@ export const EMAIL_REASONS: { reason: InboxReason; label: string; detail: string
 export function emailReasonsFromForm(form: FormData): InboxReason[] {
   const checked = form.getAll("email").map(String);
   return INBOX_REASONS.filter((reason) => checked.includes(reason));
+}
+
+/**
+ * When security alerts that are not urgent (medium and low) reach a person,
+ * in the settings' order. Critical and high alerts, a refused push and a
+ * vulnerability report come at once whatever is chosen here.
+ */
+export const SECURITY_DIGEST_CHOICES: { cadence: DigestCadence; label: string; detail: string }[] = [
+  { cadence: "daily", label: "In a daily digest", detail: "One item and email a day per workspace, in the morning (UTC), with what was found." },
+  { cadence: "weekly", label: "In a weekly digest", detail: "The same, on Monday mornings." },
+  { cadence: "at_once", label: "At once", detail: "Each scan that finds something is an item of its own, as the urgent ones are." },
+  { cadence: "off", label: "Not at all", detail: "Only critical and high alerts reach you. The findings are still on each repository's Security page." },
+];
+
+/** The cadence a settings form posts, or null for anything else. */
+export function securityDigestFromForm(form: FormData): DigestCadence | null {
+  const given = String(form.get("security_digest") ?? "");
+  return SECURITY_DIGEST_CHOICES.find((choice) => choice.cadence === given)?.cadence ?? null;
 }

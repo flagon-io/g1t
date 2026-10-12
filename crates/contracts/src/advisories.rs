@@ -219,6 +219,23 @@ pub struct ReportVulnerabilityArgs {
     pub email: Option<String>,
 }
 
+/// `report_settings`: whether a repository takes private vulnerability
+/// reports, for anyone who can see it (its public Security page says so).
+/// Returns `Outcome<ReportSettings>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReportSettingsArgs {
+    pub viewer: Option<User>,
+    pub repo: RepoPath,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportSettings {
+    pub private_vulnerability_reporting: bool,
+    /// Published advisories.
+    pub published: u32,
+}
+
 /// `list_vulnerability_reports`: a repository's reports, newest first.
 /// Those who see findings. Returns `Outcome<Vec<VulnerabilityReport>>`.
 #[derive(Debug, Serialize, Deserialize)]

@@ -24,6 +24,9 @@ Notifications hold one **thread** for each thing you were told about:
 - a workflow on one branch
 - a deployment: a project's production, or one pull request's preview
 - a workflow run waiting for your review to deploy to an environment
+- a repository's security alerts of one kind: its secrets, its code
+  scanning alerts, or its vulnerable dependencies (see [Security](#security))
+- your security digest for a workspace
 
 When something new happens on a thread, it comes back to the top of your
 notifications, unread, even if you had marked it done. It is not added a second
@@ -51,7 +54,7 @@ table is shown.
 | `mention` | mentioned | Someone mentioned you with `@username`, or you were mentioned on it before. |
 | `team_mention` | team mentioned | Someone mentioned a [team](/guides/teams/#mentions) you are in with `@workspace/team`, or a team you are in was mentioned on it before. |
 | `ci_activity` | CI activity | A check, workflow or deployment on your work finished badly, or recovered. |
-| `security_alert` | security alert | A new secret, code scanning or vulnerability alert on a repository you look after, a push of yours that push protection blocked, or a [bypass request](/guides/security/secret-protection/#delegated-bypass) to review or its answer. The workspace's owners hear of new alerts; watchers who chose **Security alerts** do too, if they can see findings. |
+| `security_alert` | security alert | A scan found new secrets, code scanning alerts or vulnerable dependencies on a repository you look after (one thread per repository and kind; see [Security](#security)), a push of yours that push protection refused, a [vulnerability report](/guides/security/advisories/#private-vulnerability-reporting) sent to a repository you look after, a [bypass request](/guides/security/secret-protection/#delegated-bypass) to review or its answer, or your security digest. The workspace's owners and security managers hear of these; watchers who chose **Security alerts** do too, if they can see findings. |
 | `state_change` | state changed | It was closed, reopened or merged. |
 | `author` | your work | You opened it, or you asked g1t for it. Also an owner's answer to your [token made for a workspace](/guides/authentication/#create-a-token) waiting for approval, or its revocation. |
 | `comment` | commented | You commented on it. |
@@ -164,12 +167,46 @@ To change how you watch a repository:
 A repository you create is watched the way you choose in
 [your settings](#settings): **All activity** unless you change it.
 
+## Security
+
+Security alerts are told the way they can be lived with. A scan that finds
+forty vulnerabilities is one notification, not forty: each repository has
+one thread per kind of alert (secrets, code scanning alerts, vulnerable
+dependencies), titled by what the latest scan found, "3 new vulnerabilities
+in acme/rocket: 1 critical, 2 high", with the worst new alert as its line.
+The next scan brings the same thread back up to date rather than adding
+another; a scan that only fixed or dismissed alerts refreshes it quietly,
+"2 open vulnerabilities in acme/rocket: 2 high" with "1 fixed" in its
+history, without waking you, and marks it done when nothing is left open.
+
+What reaches you, and when, follows the alert's severity:
+
+| Alert | Who | When |
+| --- | --- | --- |
+| Critical or high | The workspace's owners and security managers, and watchers who chose **Security alerts**. | At once, as an error, with a pop-up like a mention's. |
+| A push of yours that push protection refused | You. | At once, whatever you chose. |
+| A vulnerability report, a bypass request | The owners and security managers; the reviewers. | At once, as something waiting on you. |
+| Medium or low | The same people. | In your **security digest**, once a day or once a week as you choose, or at once, or never. |
+| A published advisory | Watchers who chose **Security alerts**. | At once, as information. |
+
+The **security digest** is one notification and one email per workspace,
+"Security digest for acme: 4 new medium vulnerabilities in 2 repositories,
+1 new low secret in 1 repository", naming the newest alerts, sent in the
+morning (UTC): every day, or on Mondays. Owners and security managers get
+the urgent alerts whatever their settings say; those alerts are theirs to
+act on. Everyone else can turn the urgent ones off too, and anyone can
+choose how the rest arrive, in [Settings](#settings).
+
+Fixes and dismissals never make a notification of their own. The findings
+themselves are always on each repository's [Security page](/guides/security/).
+
 ## Email
 
 You can also be emailed when you are told of something. By default, g1t
-emails you for three reasons: **agent waiting**, **review requested** and
-**mentioned**. Each time you are told of something for a reason you chose,
-g1t sends one email with what happened and a link to it.
+emails you for four reasons: **agent waiting**, **review requested**,
+**mentioned** and **security alert**. Each time you are told of something
+for a reason you chose, g1t sends one email with what happened and a link
+to it; a security digest is one email.
 
 An email is sent only when:
 
@@ -211,7 +248,9 @@ holds your choices:
 | **Do not disturb** | Silences sounds, pop-ups, and browser and phone notifications until a time you choose. | Off |
 | **Desktop notifications** | A system notification from an open tab for a message to you while the window is behind another. In [the desktop app](/guides/desktop/) it is on, and the app shows them itself. | Off |
 | **Notify me about**, **Browser notifications** | What pops up and is pushed; see [chat notifications](/guides/chat/#notifications). | DMs and mentions; off |
-| **Email** | One checkbox per reason: you are also emailed when you are told of something for it. | agent waiting, review requested, mentioned |
+| **Email** | One checkbox per reason: you are also emailed when you are told of something for it. | agent waiting, review requested, mentioned, security alert |
+| **Security: Critical and high alerts at once** | Whether urgent alerts on repositories you watch for security reach you at once. The workspaces you own or manage security for tell you whatever this says. | On |
+| **Security: Medium and low alerts** | In a daily digest, in a weekly digest, at once, or not at all. | Daily digest |
 | **Repositories you create** | How you watch a new repository you create: **Participating and @mentions** or **All activity**. | All activity |
 | **Watched repositories** | Every repository you watch other than the default way, with how. | |
 

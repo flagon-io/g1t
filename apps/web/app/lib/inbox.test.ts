@@ -6,10 +6,12 @@ import type { InboxItem } from "@g1t/contracts";
 import {
   EMAIL_REASONS,
   REASON_FILTERS,
+  SECURITY_DIGEST_CHOICES,
   REASON_LABEL,
   bellCount,
   emailReasonsFromForm,
   emptyFor,
+  securityDigestFromForm,
   inboxReason,
   inboxTab,
   inboxView,
@@ -142,7 +144,7 @@ test("every reason has words, a filter and an email choice", () => {
   // alert, which nothing sends yet.
   assert.deepEqual(
     EMAIL_REASONS.map((entry) => entry.reason).sort(),
-    reasons.filter((reason) => reason !== "security_alert").sort(),
+    reasons.sort(),
   );
   assert.equal(inboxReason("mention"), "mention");
   assert.equal(inboxReason("gossip"), null);
@@ -197,4 +199,19 @@ test("email reasons are read from the settings form in rank order", () => {
   for (const value of ["mention", "nope", "agent", "mention"]) data.append("email", value);
   assert.deepEqual(emailReasonsFromForm(data), ["agent", "mention"]);
   assert.deepEqual(emailReasonsFromForm(new FormData()), []);
+});
+
+test("security alerts that are not urgent reach people as they choose, daily until they do", () => {
+  assert.deepEqual(
+    SECURITY_DIGEST_CHOICES.map((choice) => choice.cadence),
+    ["daily", "weekly", "at_once", "off"],
+  );
+  const data = new FormData();
+  data.set("security_digest", "weekly");
+  assert.equal(securityDigestFromForm(data), "weekly");
+  data.set("security_digest", "hourly");
+  assert.equal(securityDigestFromForm(data), null);
+  assert.equal(securityDigestFromForm(new FormData()), null);
+  // Security alerts are among the reasons one can be emailed for.
+  assert.ok(EMAIL_REASONS.some((entry) => entry.reason === "security_alert"));
 });

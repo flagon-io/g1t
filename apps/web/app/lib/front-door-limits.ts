@@ -41,9 +41,14 @@ export type FrontDoorLimits = {
 /** Files the Worker serves that are never limited: build output, fonts, and top-level files such as robots.txt. */
 const UNLIMITED = /^\/(?:assets\/|fonts\/|favicon|[^/]+\.(?:ico|png|svg|txt|xml|webmanifest)$)/;
 
-/** What is costly to answer for a signed-out visitor: a repository's archives, a run's page, logs and artifacts, and search. */
+/**
+ * What is costly to answer for a signed-out visitor, or must not be flooded:
+ * a repository's archives, a run's page, logs and artifacts, search, and
+ * the form that reports a vulnerability to a repository's maintainers
+ * privately, which takes no account.
+ */
 const HEAVY =
-  /^\/(?:search(?:\.data)?$|[^/]+\/[^/]+\/(?:archive\/|actions\/runs\/[^/]+(?:\.data|\/logs\.zip|\/artifacts\/[^/]+)?$|actions\/jobs\/[^/]+\/log))/;
+  /^\/(?:search(?:\.data)?$|[^/]+\/[^/]+\/(?:archive\/|actions\/runs\/[^/]+(?:\.data|\/logs\.zip|\/artifacts\/[^/]+)?$|actions\/jobs\/[^/]+\/log|security\/report(?:\.data)?$))/;
 
 export function unlimited(pathname: string): boolean {
   return UNLIMITED.test(pathname);

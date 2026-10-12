@@ -21,10 +21,13 @@ It shows what g1t has found, and what is being done about each alert:
   SBOM, and dependency review on pull requests.
 - **Code.** Static analysis results uploaded as SARIF become alerts, and
   checks on pull requests. See [code scanning](/guides/security/code-scanning/).
+- **Reporting.** What the repository tells people about vulnerabilities in
+  what it ships, and how people tell its maintainers about one privately.
+  See [advisories and private reporting](/guides/security/advisories/).
 
 Its pages are **Overview**, **Secret scanning**, **Code scanning**,
-**Vulnerabilities**, **Dependency graph**, **Dependency updates** and
-**Settings**. Secret scanning,
+**Vulnerabilities**, **Dependency graph**, **Dependency updates**,
+**Advisories** and **Settings**. Secret scanning,
 push protection, vulnerability alerts, security updates and the dependency
 graph are free everywhere; the rest is free on public repositories and part
 of the g1t plan, as Security and quality, on private ones. See
@@ -41,8 +44,8 @@ is public or private:
 | **Dismiss** or **Reopen** an alert: a secret, a dependency or code scanning | Write |
 | **Bypass** push protection for a blocked secret | Write (or a request, with [delegated bypass](/guides/security/secret-protection/#delegated-bypass)) |
 | **Fix with g1t** | Write, and agents allowed to run |
-| **Security updates** on or off, **Set up code scanning** | Maintain |
-| **Security settings**, **Custom patterns**, reviewing bypass requests | Admin |
+| **Security updates** on or off, **Set up code scanning**, **Set up a security policy** | Maintain |
+| **Security settings**, **Custom patterns**, reviewing bypass requests, writing and publishing advisories, reviewing reports | Admin |
 
 A workspace's [security managers](/guides/workspaces/#roles-that-add-to-a-member)
 can do all of this on every repository in it, and change the workspace's
@@ -52,9 +55,28 @@ Someone with Read or Triage is told the page needs Write. The workspace's
 own page, `g1t.sh/<owner>/-/security`, lists the open alerts of every
 project the member can see them on, most severe first.
 
+Anyone else who can see a public repository sees its public face at the
+same address: the security policy, the published advisories, and, when the
+repository takes them, **Report a vulnerability**.
+
 ## The overview
 
-The **Overview** counts open alerts by severity: critical, high,
+The **Overview** is one row per feature, in three groups, each with a
+status word (**Enabled**, **Disabled**, **Needs setup** or **Coming**), a
+line on what it does, and the one thing to do about it:
+
+| Group | Row | Status | To the right |
+| --- | --- | --- | --- |
+| Policy | **Security policy** | Enabled when a `SECURITY.md` (or `.github/SECURITY.md`, `docs/SECURITY.md`) is on the default branch; Needs setup otherwise. | **View policy**, or **Set up a security policy**, which opens a pull request with a starting one. |
+| Findings | **Dependency alerts** | Enabled. | **View alerts**. |
+| Findings | **Security updates** | Enabled or Disabled. | The switch, for Maintain and up. The same switch is on **Vulnerabilities** and in **Settings**. |
+| Findings | **Code scanning** | Enabled once an analysis was uploaded; Needs setup before. | **View alerts**, or **Set up code scanning**. |
+| Findings | **Secret scanning** | Enabled; push protection is always on. | **View alerts**. |
+| Findings | **Code quality** | Coming: not built yet. | |
+| Reporting | **Security advisories** | Enabled. | **Manage advisories** or **View advisories**. |
+| Reporting | **Private vulnerability reporting** | Enabled or Disabled. | The switch, for Admins and security managers. |
+
+Below the rows, the open alerts are counted by severity: critical, high,
 medium, low and unrated. The counts are:
 
 - each open vulnerability, by its severity,
@@ -212,6 +234,14 @@ pauses if the workspace reaches its spending limit.
 A secret found in history is open: it is in the repository, and anyone
 who could clone it may have it. Rotate it, then dismiss it as **Revoked**.
 Removing it from the code is not enough, since it stays in history.
+
+Each page of the scan that finds secrets is one
+[notification](/guides/notifications/#security) to the workspace's owners
+and security managers, with how many it found; a repository whose history
+holds old test fixtures or rotated keys can turn **Alerts for secrets in
+the history** off in its Security settings, and the secrets are still
+listed here but tell nobody. Push protection is never off: a push that
+adds a secret is refused either way.
 
 ### Dismissing a secret alert
 

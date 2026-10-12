@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import {
   accountsClient,
   actionsClient,
+  advisoriesClient,
   agentsClient,
   billingClient,
   chatClient,
@@ -72,6 +73,8 @@ export const projects = projectsClient(PROJECTS);
 export const security = securityClient(SECURITY);
 /** The security suite: patterns, bypasses, code scanning, the dependency graph, settings. */
 export const securitySuite = securitySuiteClient(SECURITY);
+/** Security advisories and private vulnerability reports: methods of the security service. */
+export const advisories = advisoriesClient(SECURITY);
 /** Agent runs, sessions and memory: methods of the work service. */
 export const agents = agentsClient(WORK);
 /** What agents may do in a sandbox: methods of the work service. */

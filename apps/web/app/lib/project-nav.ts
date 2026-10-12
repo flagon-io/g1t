@@ -86,6 +86,7 @@ export const SECTIONS: Section[] = [
       { label: "Vulnerabilities", path: "security/vulnerabilities", members: true, needs: "security_alerts" },
       { label: "Dependency graph", path: "security/dependency-graph", members: true, needs: "security_alerts" },
       { label: "Dependency updates", path: "security/dependency-updates", members: true, needs: "security_alerts" },
+      { label: "Advisories", path: "security/advisories", members: true, needs: "security_alerts", also: ["security/reports"] },
       { label: "Settings", path: "security/settings", members: true, needs: "security_alerts" },
       ...soon("Security"),
     ],

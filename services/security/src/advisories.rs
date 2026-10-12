@@ -648,6 +648,16 @@ impl Security {
         Ok(Outcome::Ok(report))
     }
 
+    pub(crate) async fn report_settings(&self, a: ReportSettingsArgs) -> Result<Outcome<ReportSettings>> {
+        let (repo, _) = match self.visible_repo(&a.repo, &a.viewer).await? {
+            Outcome::Ok(found) => found,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let (settings, _) = self.store.repo_settings(&repo.repo_id).await?;
+        let published = self.store.security_advisories(&repo, &["published"]).await?.len() as u32;
+        Ok(Outcome::Ok(ReportSettings { private_vulnerability_reporting: settings.private_vulnerability_reporting, published }))
+    }
+
     pub(crate) async fn list_vulnerability_reports(&self, a: ListReportsArgs) -> Result<Outcome<Vec<VulnerabilityReport>>> {
         let repo = match self.member_repo(&a.repo, &a.viewer, crate::SEE_FINDINGS).await? {
             Outcome::Ok(repo) => repo,
