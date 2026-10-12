@@ -295,7 +295,12 @@ workflow jobs and deploy builds) from one Containers image in two parts:
 runner's image is tagged with a hash of what it is built from, so a deploy
 builds it only when the registry does not already have it. When nothing
 the image is built from changed, the deploy leaves running sandboxes
-alone.
+alone. When it did, Cloudflare replaces sandboxes on the new image but
+leaves any that started within the last two hours
+(`rollout_active_grace_period` in `services/runner/wrangler.jsonc`) to
+finish first. A workflow job on g1t's machines runs for at most 60
+minutes, so a deploy never cuts one short; an agent run whose guardrails
+allow more than two hours can be.
 
 Jobs choose larger machines with `runs-on: g1t-2core` or `g1t-4core`. Your
 account's Containers limits must allow `standard-4`.

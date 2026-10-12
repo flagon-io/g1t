@@ -1405,6 +1405,9 @@ their steps, logs and summaries. Pick one from **Attempt #** at the top of
 the page to read it. Its jobs have ids of their own, so a link to an
 earlier attempt's job keeps showing that job's log.
 
+A job that runs again has its whole time limit from when it starts: the
+time cap of the attempt before it never stops it.
+
 #### Debug logging
 
 Each re-run asks whether to **Enable debug logging**. The new attempt's
