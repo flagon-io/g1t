@@ -167,6 +167,8 @@ pub(crate) struct Log {
     last: Instant,
     /// When anything was last sent, for the ping.
     sent: Instant,
+    /// The problem matchers steps added, which last the whole job.
+    pub(crate) matchers: super::matchers::Matchers,
     /// Everything sent so far, so a test reads the whole log however its
     /// batches fell (`buffered`).
     #[cfg(test)]
@@ -184,6 +186,7 @@ impl Log {
             buffer: String::new(),
             last: Instant::now(),
             sent: Instant::now(),
+            matchers: super::matchers::Matchers::default(),
             #[cfg(test)]
             flushed: String::new(),
         }
@@ -282,17 +285,30 @@ impl Log {
         self.api.report(json!({ "kind": "summary", "step": self.step, "markdown": markdown }));
     }
 
+    /// An annotation, from `::error::` and its kin or a problem matcher:
+    /// its `file`, `line`, `col`, `endLine` and `endColumn` as GitHub's
+    /// commands spell them, sent as `file`, `line`, `column`, `end_line`
+    /// and `end_column`.
     pub(crate) fn annotation(&mut self, level: &str, message: &str, properties: &serde_json::Map<String, Value>) {
+        let report = self.annotation_report(level, message, properties);
+        self.api.report(report);
+    }
+
+    fn annotation_report(&self, level: &str, message: &str, properties: &serde_json::Map<String, Value>) -> Value {
         let message = self.mask(message);
         let title = properties.get("title").and_then(Value::as_str).map(|title| self.mask(title));
-        self.api.report(json!({
+        let number = |keys: &[&str]| keys.iter().find_map(|key| properties.get(*key).and_then(Value::as_str)).and_then(|n| n.trim().parse::<u32>().ok());
+        json!({
             "kind": "annotation",
             "level": level,
             "message": message,
             "title": title,
             "file": properties.get("file"),
-            "line": properties.get("line").and_then(|l| l.as_str()).and_then(|l| l.parse::<u32>().ok()),
-        }));
+            "line": number(&["line"]),
+            "column": number(&["col"]),
+            "end_line": number(&["endLine"]),
+            "end_column": number(&["endColumn"]),
+        })
     }
 
     pub(crate) fn done(&mut self, conclusion: &str, outputs: &serde_json::Map<String, Value>, reason: Option<&str>) {
@@ -364,6 +380,22 @@ mod tests {
         log.summary(&"x".repeat(MAX_SUMMARY_BYTES + 1));
         assert!(log.buffer.contains("$GITHUB_STEP_SUMMARY upload aborted"));
         assert!(log.buffer.contains("1025k"));
+    }
+
+    #[test]
+    fn annotations_carry_their_columns_and_end() {
+        let log = log(&["hidden"]);
+        let properties: serde_json::Map<String, Value> =
+            serde_json::from_value(json!({ "file": "a.rs", "line": "3", "col": "7", "endLine": "4", "endColumn": "2", "title": "t hidden" })).unwrap();
+        let report = log.annotation_report("error", "bad hidden", &properties);
+        assert_eq!(report["line"], 3);
+        assert_eq!(report["column"], 7);
+        assert_eq!(report["end_line"], 4);
+        assert_eq!(report["end_column"], 2);
+        assert_eq!(report["title"], "t ***");
+        assert_eq!(report["message"], "bad ***");
+        let bare = log.annotation_report("notice", "x", &serde_json::Map::new());
+        assert!(bare["column"].is_null() && bare["file"].is_null());
     }
 
     #[test]

@@ -12,6 +12,7 @@ mod blobs;
 mod containers;
 mod files;
 mod glob;
+mod matchers;
 mod paths;
 mod process;
 mod report;
@@ -57,7 +58,7 @@ pub(crate) struct Post {
 }
 
 pub(crate) enum PostRun {
-    Node { action_dir: PathBuf, script: String },
+    Node { action_dir: PathBuf, script: String, using: String },
     CacheSave { key: String, paths: Vec<String>, version: String },
     /// A Docker action's `post-entrypoint`.
     Docker(containers::DockerRun),
@@ -91,6 +92,9 @@ pub(crate) struct Job {
     /// What the last Node process left, for the step that ran it.
     pub(crate) last_node_outputs: BTreeMap<String, String>,
     pub(crate) last_node_state: BTreeMap<String, String>,
+    /// What each action's `pre` saved, by its step's `GITHUB_ACTION`, for
+    /// the step's main and post.
+    pub(crate) pre_state: BTreeMap<String, BTreeMap<String, String>>,
     /// The names of the sandbox's own variables, which a container does
     /// not get.
     host_env: BTreeSet<String>,
@@ -113,6 +117,44 @@ fn text_map(value: Option<&Value>) -> BTreeMap<String, String> {
         .and_then(Value::as_object)
         .map(|map| map.iter().map(|(k, v)| (k.clone(), expr::to_text(v))).collect())
         .unwrap_or_default()
+}
+
+/// Where `name_steps` puts a step's `GITHUB_ACTION`.
+const ACTION_NAME: &str = "__g1t_action";
+
+/// Gives each step its `GITHUB_ACTION`, as GitHub's runner names them: its
+/// `id`, else `__run` for a script and `__owner_repo` for an action
+/// (`__self` for one in the repository), the second of a name `_2`, the
+/// third `_3`.
+pub(crate) fn name_steps(steps: &mut [Map<String, Value>]) {
+    let mut taken: BTreeSet<String> = steps.iter().filter_map(|step| step.get("id").map(expr::to_text)).collect();
+    for step in steps.iter_mut() {
+        let name = match step.get("id").map(expr::to_text) {
+            Some(id) => id,
+            None => {
+                let base = match step.get("uses").map(expr::to_text) {
+                    None => "run".to_owned(),
+                    Some(uses) if uses.starts_with("./") => "self".to_owned(),
+                    Some(uses) => {
+                        let name = uses.split('@').next().unwrap_or_default();
+                        let name = name.strip_prefix("docker://").unwrap_or(name);
+                        let repository: Vec<&str> = name.splitn(3, '/').take(2).collect();
+                        repository.join("_").chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' }).collect()
+                    }
+                };
+                let base = format!("__{base}");
+                let mut name = base.clone();
+                let mut n = 2;
+                while taken.contains(&name) {
+                    name = format!("{base}_{n}");
+                    n += 1;
+                }
+                taken.insert(name.clone());
+                name
+            }
+        };
+        step.insert(ACTION_NAME.into(), Value::String(name));
+    }
 }
 
 /// A step's title when it has no name, as GitHub shows it.
@@ -285,7 +327,7 @@ impl Job {
             None => ("bash".into(), vec!["-e".into(), "{0}".into()], "sh"),
             Some("bash") => ("bash".into(), vec!["--noprofile".into(), "--norc".into(), "-eo".into(), "pipefail".into(), "{0}".into()], "sh"),
             Some("sh") => ("sh".into(), vec!["-e".into(), "{0}".into()], "sh"),
-            Some("python") => ("python3".into(), vec!["{0}".into()], "py"),
+            Some("python") => (self.python_program(), vec!["{0}".into()], "py"),
             Some("pwsh") if cfg!(windows) || program_exists("pwsh") => ("pwsh".into(), powershell_args(), "ps1"),
             Some("powershell") if cfg!(windows) => ("powershell".into(), powershell_args(), "ps1"),
             Some("cmd") if cfg!(windows) => (
@@ -306,11 +348,12 @@ impl Job {
                 if !args.iter().any(|a| a.contains("{0}")) {
                     args.push("{0}".into());
                 }
-                (program, args, "sh")
+                let extension = script_extension(&program);
+                (program, args, extension)
             }
         };
-        let script_path = self.temp.join(format!("{id}.{extension}"));
-        if let Err(error) = std::fs::write(&script_path, script) {
+        let script_path = self.temp.join(if extension.is_empty() { id.clone() } else { format!("{id}.{extension}") });
+        if let Err(error) = std::fs::write(&script_path, script_contents(&program, script)) {
             self.log.line(&format!("##[error]Could not write the script: {error}"));
             return (false, BTreeMap::new(), BTreeMap::new());
         }
@@ -420,13 +463,8 @@ impl Job {
         }
 
         // The step's own env, read with the contexts before it.
-        let mut env = env_before.clone();
-        if let Some(Value::Object(step_env)) = step.get("env") {
-            for (name, value) in step_env {
-                let value = self.with_scope(&contexts, |scope| expr::interpolate_value(value, scope)).unwrap_or(Value::Null);
-                env.insert(name.clone(), expr::to_text(&value));
-            }
-        }
+        let env = self.step_env(step, &contexts, env_before.clone());
+        let action_name = step.get(ACTION_NAME).map(expr::to_text).or_else(|| id.clone()).unwrap_or_else(|| "__run".into());
         let minutes = step
             .get("timeout-minutes")
             .and_then(|v| self.with_scope(&contexts, |scope| expr::interpolate_value(v, scope)).ok())
@@ -470,21 +508,13 @@ impl Job {
                 if let Some(path) = &frame.action_path {
                     env.insert("GITHUB_ACTION_PATH".into(), path.clone());
                 }
+                env.insert("GITHUB_ACTION".into(), action_name.clone());
                 let (ok, outputs, _) = self.run_script(&script, shell.as_deref(), working_directory.as_deref(), &env, timeout);
                 (ok, outputs)
             }
         } else if let Some(uses) = step.get("uses").map(expr::to_text) {
-            let with: BTreeMap<String, String> = match step.get("with") {
-                Some(Value::Object(with)) => with
-                    .iter()
-                    .map(|(k, v)| {
-                        let value = self.with_scope(&contexts, |scope| expr::interpolate_value(v, scope)).unwrap_or(Value::Null);
-                        (k.clone(), expr::to_text(&value))
-                    })
-                    .collect(),
-                _ => BTreeMap::new(),
-            };
-            self.uses(&uses, &with, &env, frame, &title, id.as_deref(), timeout)
+            let with = self.step_with(step, &contexts);
+            self.uses(&uses, &with, &env, frame, &title, &action_name, timeout)
         } else {
             self.log.line("##[error]A step needs `run` or `uses`.");
             (false, BTreeMap::new())
@@ -531,6 +561,31 @@ impl Job {
         conclusion == "success"
     }
 
+    /// A step's own `env` over `base`, read with `contexts`.
+    fn step_env(&self, step: &Map<String, Value>, contexts: &Map<String, Value>, mut base: BTreeMap<String, String>) -> BTreeMap<String, String> {
+        if let Some(Value::Object(step_env)) = step.get("env") {
+            for (name, value) in step_env {
+                let value = self.with_scope(contexts, |scope| expr::interpolate_value(value, scope)).unwrap_or(Value::Null);
+                base.insert(name.clone(), expr::to_text(&value));
+            }
+        }
+        base
+    }
+
+    /// A `uses:` step's `with`, read with `contexts`.
+    fn step_with(&self, step: &Map<String, Value>, contexts: &Map<String, Value>) -> BTreeMap<String, String> {
+        match step.get("with") {
+            Some(Value::Object(with)) => with
+                .iter()
+                .map(|(k, v)| {
+                    let value = self.with_scope(contexts, |scope| expr::interpolate_value(v, scope)).unwrap_or(Value::Null);
+                    (k.clone(), expr::to_text(&value))
+                })
+                .collect(),
+            _ => BTreeMap::new(),
+        }
+    }
+
     fn report_steps(&self) {
         self.log.steps(&self.step_names);
     }
@@ -566,6 +621,56 @@ fn windows_powershell() -> String {
 /// How GitHub runs a PowerShell step: the script, stopping at the first error.
 fn powershell_args() -> Vec<String> {
     vec!["-NoLogo".into(), "-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), ". '{0}'".into()]
+}
+
+/// The name of a shell's program, without its folder or `.exe`.
+fn program_name(program: &str) -> &str {
+    let name = program.rsplit(['/', '\\']).next().unwrap_or(program);
+    name.strip_suffix(".exe").or_else(|| name.strip_suffix(".EXE")).unwrap_or(name)
+}
+
+/// The extension GitHub's runner gives a script, by its shell's program:
+/// none for a program it does not know.
+fn script_extension(program: &str) -> &'static str {
+    match program_name(program) {
+        "bash" | "sh" => "sh",
+        "pwsh" | "powershell" => "ps1",
+        "cmd" => "cmd",
+        "python" => "py",
+        _ => "",
+    }
+}
+
+/// A script as GitHub's runner writes it: for PowerShell, stopping at the
+/// first error and exiting with the last program's exit code.
+fn script_contents(program: &str, script: &str) -> String {
+    let newline = if cfg!(windows) { "\r\n" } else { "\n" };
+    match program_name(program) {
+        "pwsh" | "powershell" => format!(
+            "$ErrorActionPreference = 'stop'{newline}{script}{newline}if ((Test-Path -LiteralPath variable:\\LASTEXITCODE)) {{ exit $LASTEXITCODE }}"
+        ),
+        _ => script.to_owned(),
+    }
+}
+
+/// Whether `program` is a file in one of `path`'s folders (or, on
+/// Windows, `program.exe`), without running it.
+fn on_path(program: &str, path: &str) -> bool {
+    let names = if cfg!(windows) { vec![program.to_owned(), format!("{program}.exe")] } else { vec![program.to_owned()] };
+    path.split(paths::PATH_SEPARATOR).filter(|dir| !dir.is_empty()).any(|dir| names.iter().any(|name| Path::new(dir).join(name).is_file()))
+}
+
+impl Job {
+    /// `shell: python`'s program: `python`, as on GitHub, where there is
+    /// one, else `python3` (Debian has no `python`).
+    fn python_program(&self) -> String {
+        if let Some(container) = &self.container {
+            return container.python.into();
+        }
+        let path = std::iter::once(self.base_env.get("PATH").cloned().unwrap_or_default());
+        let path: Vec<String> = self.path_prepend.iter().cloned().chain(path).collect();
+        if on_path("python", &path.join(paths::PATH_SEPARATOR)) { "python".into() } else { "python3".into() }
+    }
 }
 
 /// Whether `program` is on `PATH`.
@@ -615,7 +720,9 @@ fn step_debug(contexts: &Map<String, Value>, variables: &Value) -> bool {
 
 fn setup(mut spec: Value, api: Api) -> Result<Job> {
     let masks: Vec<String> = spec["masks"].as_array().map(|m| m.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
-    let log = Log::new(api, masks);
+    let mut log = Log::new(api, masks);
+    // Variables GitHub sets that a g1t from before them does not send.
+    default_variables(&mut spec);
     // On a self-hosted runner's own machine, GitHub's layout lives in a
     // folder of the runner's (paths.rs).
     for part in ["variables", "github"] {
@@ -624,6 +731,7 @@ fn setup(mut spec: Value, api: Api) -> Result<Job> {
     paths::relocate(&mut spec["contexts"]["runner"]);
     let workspace = paths::under_home(WORKSPACE);
     let temp = paths::under_home(TEMP);
+    log.matchers.workspace = workspace.clone();
     std::fs::create_dir_all(&workspace).context("could not make the workspace")?;
     std::fs::create_dir_all(&temp).context("could not make the temporary folder")?;
     std::fs::write(temp.join("event.json"), serde_json::to_string_pretty(&spec["event"])?)?;
@@ -633,7 +741,9 @@ fn setup(mut spec: Value, api: Api) -> Result<Job> {
     let docker_hosted = cfg!(target_os = "linux")
         && std::env::var("G1T_DOCKER").as_deref() == Ok("on")
         && spec["variables"]["RUNNER_ENVIRONMENT"].as_str() != Some("self-hosted");
-    // This process's environment, less what only it should see.
+    // This process's environment, less what only it should see. `ImageOS`
+    // and `ImageVersion` come with it when the machine's image sets them,
+    // as GitHub's images do; nothing makes them up otherwise.
     let mut base_env: BTreeMap<String, String> =
         std::env::vars().filter(|(name, _)| !matches!(name.as_str(), "ACTIONS_TOKEN" | "ACTIONS_JOB" | "MODE") && !name.starts_with("G1T_")).collect();
     base_env.insert("HOME".into(), std::env::var("HOME").unwrap_or_else(|_| "/home/node".into()));
@@ -669,6 +779,7 @@ fn setup(mut spec: Value, api: Api) -> Result<Job> {
         debug,
         last_node_outputs: BTreeMap::new(),
         last_node_state: BTreeMap::new(),
+        pre_state: BTreeMap::new(),
         host_env,
         docker_hosted,
         network: None,
@@ -688,6 +799,24 @@ fn setup(mut spec: Value, api: Api) -> Result<Job> {
     Ok(job)
 }
 
+/// `RUNNER_WORKSPACE` and `GITHUB_REPOSITORY_OWNER_ID` (with
+/// `github.repository_owner_id`), when the spec does not have them: the
+/// folder the workspace is in, and the owner's id from the event.
+fn default_variables(spec: &mut Value) {
+    if spec["variables"].is_object() && spec["variables"].get("RUNNER_WORKSPACE").is_none() {
+        spec["variables"]["RUNNER_WORKSPACE"] = json!(g1t_actions::events::RUNNER_WORKSPACE);
+    }
+    let owner_id = g1t_actions::events::owner_id(&spec["event"]);
+    if let Some(owner_id) = owner_id.filter(|id| !id.is_empty()) {
+        if spec["variables"].is_object() && spec["variables"].get("GITHUB_REPOSITORY_OWNER_ID").and_then(Value::as_str).is_none_or(str::is_empty) {
+            spec["variables"]["GITHUB_REPOSITORY_OWNER_ID"] = json!(owner_id);
+        }
+        if spec["github"].is_object() && spec["github"].get("repository_owner_id").and_then(Value::as_str).is_none_or(str::is_empty) {
+            spec["github"]["repository_owner_id"] = json!(owner_id);
+        }
+    }
+}
+
 /// The job's `defaults.run`, its own over the workflow's.
 fn run_defaults(spec: &Value) -> Map<String, Value> {
     let mut defaults = spec["workflow"]["defaults"]["run"].as_object().cloned().unwrap_or_default();
@@ -698,10 +827,11 @@ fn run_defaults(spec: &Value) -> Map<String, Value> {
 }
 
 fn run_job(job: &mut Job) {
-    let steps: Vec<Map<String, Value>> = job.spec["spec"]["steps"]
+    let mut steps: Vec<Map<String, Value>> = job.spec["spec"]["steps"]
         .as_array()
         .map(|steps| steps.iter().filter_map(|s| s.as_object().cloned()).collect())
         .unwrap_or_default();
+    name_steps(&mut steps);
     let defaults = run_defaults(&job.spec);
 
     // Step names as they read before anything has run.
@@ -751,8 +881,18 @@ fn run_job(job: &mut Job) {
         }
     }
     // Actions first, then containers, as GitHub's "Set up job" and
-    // "Initialize containers".
-    let containers_started = job.prepare_actions(&steps) && job.start_containers();
+    // "Initialize containers". Each action's `pre` (read from the actions
+    // just downloaded) is a step of its own, "Pre <step>", before the
+    // job's first step.
+    let prepared = job.prepare_actions(&steps);
+    let pres = if prepared { job.pre_steps(&steps) } else { Vec::new() };
+    if !pres.is_empty() {
+        let mut names: Vec<String> = pres.iter().map(|(index, _)| format!("Pre {}", job.step_names[*index])).collect();
+        names.extend(job.step_names.iter().cloned());
+        job.step_names = names;
+        job.report_steps();
+    }
+    let containers_started = prepared && job.start_containers();
     job.log.flush();
 
     let mut frame = Frame::default();
@@ -762,8 +902,34 @@ fn run_job(job: &mut Job) {
             job.log.step_state(index as u32 + 1, name, "completed", Some("skipped"));
         }
     }
+    for (index, (_, pre)) in pres.iter().enumerate().filter(|_| containers_started) {
+        let number = index as u32 + 1;
+        let name = job.step_names[index].clone();
+        if report::cancelled() {
+            report::take_cancel();
+        }
+        if !job.pre_runs(pre) {
+            job.log.step_state(number, &name, "completed", Some("skipped"));
+            continue;
+        }
+        job.log.step(number);
+        job.log.step_state(number, &name, "in_progress", None);
+        let ok = job.run_pre(pre);
+        if !ok {
+            job.failed = true;
+        }
+        let conclusion = if ok {
+            "success"
+        } else if report::cancelled() {
+            "cancelled"
+        } else {
+            "failure"
+        };
+        job.log.step_state(number, &name, "completed", Some(conclusion));
+    }
+    let offset = pres.len() as u32;
     for (index, step) in steps.iter().enumerate().filter(|_| containers_started) {
-        job.step(&mut frame, step, index as u32 + 1, true, &defaults);
+        job.step(&mut frame, step, offset + index as u32 + 1, true, &defaults);
         job.log_docker_notes();
         if job.job_remaining().is_zero() {
             job.log.line("##[error]The job ran past its time limit.");
@@ -787,7 +953,7 @@ fn run_job(job: &mut Job) {
         job.log.step(number);
         job.log.step_state(number, &post.name, "in_progress", None);
         let ok = match &post.run {
-            PostRun::Node { action_dir, script } => job.run_node(action_dir, script, &post.env),
+            PostRun::Node { action_dir, script, using } => job.run_node(action_dir, script, &post.env, using),
             PostRun::CacheSave { key, paths, version } => job.cache_save(key, paths, version),
             PostRun::Docker(run) => job.run_docker(run).0,
         };
@@ -880,6 +1046,83 @@ mod tests {
         assert!(step_debug(&contexts(json!({})), &json!({ "RUNNER_DEBUG": "1" })));
         assert!(step_debug(&contexts(json!({})), &json!({ "ACTIONS_STEP_DEBUG": "true" })));
         assert!(!step_debug(&contexts(json!({})), &json!({ "RUNNER_DEBUG": "0" })));
+    }
+
+    #[test]
+    fn scripts_get_githubs_extension_for_their_shell() {
+        assert_eq!(script_extension("bash"), "sh");
+        assert_eq!(script_extension("/usr/bin/sh"), "sh");
+        assert_eq!(script_extension("pwsh"), "ps1");
+        assert_eq!(script_extension("C:\\Windows\\powershell.exe"), "ps1");
+        assert_eq!(script_extension("cmd"), "cmd");
+        assert_eq!(script_extension("python"), "py");
+        // A program GitHub does not know: no extension.
+        assert_eq!(script_extension("perl"), "");
+        assert_eq!(script_extension("python3"), "");
+    }
+
+    #[test]
+    fn powershell_scripts_stop_at_errors_and_keep_the_exit_code() {
+        let newline = if cfg!(windows) { "\r\n" } else { "\n" };
+        assert_eq!(
+            script_contents("pwsh", "Write-Output hi"),
+            format!("$ErrorActionPreference = 'stop'{newline}Write-Output hi{newline}if ((Test-Path -LiteralPath variable:\\LASTEXITCODE)) {{ exit $LASTEXITCODE }}")
+        );
+        assert!(script_contents("powershell.exe", "x").starts_with("$ErrorActionPreference = 'stop'"));
+        assert_eq!(script_contents("bash", "echo hi"), "echo hi");
+    }
+
+    #[test]
+    fn programs_are_found_on_path_without_running_them() {
+        let dir = std::env::temp_dir().join(format!("g1t-on-path-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("python"), "").unwrap();
+        let path = format!("/nowhere{}{}", paths::PATH_SEPARATOR, dir.display());
+        assert!(on_path("python", &path));
+        assert!(!on_path("python9", &path));
+        assert!(!on_path("python", ""));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn steps_are_named_for_github_action_as_github_names_them() {
+        let mut steps: Vec<Map<String, Value>> = serde_json::from_value(json!([
+            { "run": "a" },
+            { "run": "b" },
+            { "id": "build", "run": "c" },
+            { "uses": "actions/setup-node@v4" },
+            { "uses": "actions/cache/restore@v4" },
+            { "uses": "actions/setup-node@v4" },
+            { "uses": "./.github/actions/x" },
+            { "run": "d" },
+            { "id": "__run_4", "run": "e" },
+            { "run": "f" },
+        ]))
+        .unwrap();
+        name_steps(&mut steps);
+        let names: Vec<String> = steps.iter().map(|s| expr::to_text(&s[ACTION_NAME])).collect();
+        assert_eq!(
+            names,
+            ["__run", "__run_2", "build", "__actions_setup-node", "__actions_cache", "__actions_setup-node_2", "__self", "__run_3", "__run_4", "__run_5"]
+        );
+    }
+
+    #[test]
+    fn variables_a_spec_lacks_are_filled_in() {
+        let mut spec = json!({
+            "variables": { "CI": "true" },
+            "github": { "repository_owner_id": "" },
+            "event": { "repository": { "owner": { "id": 7 } } },
+        });
+        default_variables(&mut spec);
+        assert_eq!(spec["variables"]["RUNNER_WORKSPACE"], "/home/runner/work");
+        assert_eq!(spec["variables"]["GITHUB_REPOSITORY_OWNER_ID"], "7");
+        assert_eq!(spec["github"]["repository_owner_id"], "7");
+        // What g1t sent stands.
+        let mut spec = json!({ "variables": { "RUNNER_WORKSPACE": "/w", "GITHUB_REPOSITORY_OWNER_ID": "9" }, "github": {}, "event": {} });
+        default_variables(&mut spec);
+        assert_eq!(spec["variables"]["RUNNER_WORKSPACE"], "/w");
+        assert_eq!(spec["variables"]["GITHUB_REPOSITORY_OWNER_ID"], "9");
     }
 
     #[test]
