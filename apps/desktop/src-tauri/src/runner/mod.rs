@@ -1200,7 +1200,7 @@ impl Keeper {
             Step::Up => launcher::up_args(&dir, &up),
             Step::Update => launcher::update_args(&dir),
         };
-        if let Err(why) = self.spawn_step(step, args) {
+        if let Err(why) = self.spawn_step(step, args, up.token) {
             self.run = None;
             return self.not_started(workspace, token, why);
         }
@@ -1229,9 +1229,11 @@ impl Keeper {
     }
 
     /// Runs a launcher command for the sandbox's run, reading its output.
-    fn spawn_step(&mut self, step: Step, args: Vec<std::ffi::OsString>) -> Result<(), String> {
+    fn spawn_step(&mut self, step: Step, args: Vec<std::ffi::OsString>, token: Option<&str>) -> Result<(), String> {
         let binary = native::binary(&folder(&self.app));
-        let mut child = launcher::command(&binary, args).spawn().map_err(|e| format!("g1t-runner sandbox {} could not start: {e}", step.name()))?;
+        let mut command = launcher::command(&binary, args);
+        launcher::with_token(&mut command, token);
+        let mut child = command.spawn().map_err(|e| format!("g1t-runner sandbox {} could not start: {e}", step.name()))?;
         let _ = std::fs::write(folder(&self.app).join("pid"), child.id().to_string());
         let Some(generation) = self.run.as_ref().map(|run| run.generation) else {
             native::stop(&mut child);
@@ -1250,7 +1252,7 @@ impl Keeper {
             return;
         }
         let dir = native_dir(&self.app, Backend::Sandboxed);
-        if let Err(why) = self.spawn_step(step, launcher::update_args(&dir)) {
+        if let Err(why) = self.spawn_step(step, launcher::update_args(&dir), None) {
             self.write_log(&format!("g1t: {why}"));
         }
     }

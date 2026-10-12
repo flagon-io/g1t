@@ -730,7 +730,13 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
         saved.runner_image = Some(image.to_owned());
     }
     saved.save(dir)?;
-    let token = options.value("token").map(str::to_owned);
+    // From G1T_RUNNER_TOKEN too, as register-and-run takes it: a token on
+    // the command line shows in the process list to anyone on the machine
+    // while `up` runs, and the desktop app passes it this way.
+    let token = options
+        .value("token")
+        .map(str::to_owned)
+        .or_else(|| std::env::var("G1T_RUNNER_TOKEN").ok().filter(|token| !token.trim().is_empty()));
 
     let backend = backend(dir);
     let found = backend.availability();

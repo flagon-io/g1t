@@ -199,7 +199,7 @@ copy of `g1t-runner` and its state in the app's data folder
 
 | When | The app runs |
 | --- | --- |
-| A few seconds after g1t opens | `g1t-runner sandbox up --json --state-dir <data folder>/sandbox --url <server> --name <computer> --labels desktop`, with `--token` the first time only. The first `up` downloads and checks the sandbox's image and makes the VM, which takes a few minutes. |
+| A few seconds after g1t opens | `g1t-runner sandbox up --json --state-dir <data folder>/sandbox --url <server> --name <computer> --labels desktop`, with the registration token the first time only, in its environment as `G1T_RUNNER_TOKEN`, never on its command line, where anyone on the computer could read it. The first `up` downloads and checks the sandbox's image and makes the VM, which takes a few minutes. |
 | Every few seconds while it runs | `g1t-runner sandbox status --json`, for the tray, the settings and the Runners page. |
 | When g1t quits, or you press **Stop** | `g1t-runner sandbox down`: a job that is running is cut short. |
 | When you choose another way of running jobs | `g1t-runner sandbox down --drain`, once the job that is running ends. The sandbox keeps its registration, so choosing Sandboxed again needs no new one. |

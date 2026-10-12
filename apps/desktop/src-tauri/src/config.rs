@@ -182,7 +182,7 @@ pub fn allow_site(app: &AppHandle) -> tauri::Result<()> {
     let origin = origin(&server(app));
     let state = app.state::<State>();
     let mut allowed = state.allowed.lock().unwrap();
-    if allowed.iter().any(|known| *known == origin) {
+    if allowed.contains(&origin) {
         return Ok(());
     }
     let mut site = CapabilityBuilder::new(format!("site-{}", allowed.len())).window(WINDOW).remote(format!("{origin}/*"));

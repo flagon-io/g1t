@@ -227,18 +227,24 @@ fn args(action: &str, dir: &Path) -> Vec<OsString> {
     args
 }
 
-/// `sandbox up`'s arguments.
+/// `sandbox up`'s arguments. The token is never one of them: anyone on the
+/// computer can read a process's command line while it runs, so it goes in
+/// `up`'s environment instead ([`with_token`]).
 pub fn up_args(dir: &Path, up: &Up) -> Vec<OsString> {
     let mut args = args("up", dir);
     for (name, value) in [("--url", up.url), ("--name", up.name), ("--labels", up.labels)] {
         args.push(name.into());
         args.push(value.into());
     }
-    if let Some(token) = up.token {
-        args.push("--token".into());
-        args.push(token.into());
-    }
     args
+}
+
+/// Gives a launcher command the registration token, as `G1T_RUNNER_TOKEN`
+/// in its environment and nowhere else.
+pub fn with_token(command: &mut Command, token: Option<&str>) {
+    if let Some(token) = token {
+        command.env("G1T_RUNNER_TOKEN", token);
+    }
 }
 
 /// How `down` stops the sandbox.
@@ -529,7 +535,13 @@ mod tests {
         let up = text(up_args(&dir, &first));
         assert_eq!(&up[..4], ["sandbox", "up", "--json", "--state-dir"]);
         assert_eq!(up[4], dir.to_string_lossy());
-        assert_eq!(&up[5..], ["--url", "https://g1t.sh", "--name", "build-box", "--labels", "desktop", "--token", "g1trt_secret"]);
+        // Never the token: it goes in the environment, out of the process list.
+        assert_eq!(&up[5..], ["--url", "https://g1t.sh", "--name", "build-box", "--labels", "desktop"]);
+        assert!(!up.iter().any(|a| a == "--token" || a.starts_with("g1trt_")));
+        let mut command = command(Path::new("g1t-runner"), up_args(&dir, &first));
+        with_token(&mut command, first.token);
+        assert!(command.get_envs().any(|(name, value)| name == "G1T_RUNNER_TOKEN" && value == Some(std::ffi::OsStr::new("g1trt_secret"))));
+        assert!(!command.get_args().any(|a| a.to_string_lossy().contains("g1trt_")));
         // Its name and labels as the app has them: the launcher adds `-linux` and the OS labels.
         assert!(!up.iter().any(|a| a.ends_with("-linux") || a.contains("windows")));
         let again = text(up_args(&dir, &Up { token: None, ..first.clone() }));

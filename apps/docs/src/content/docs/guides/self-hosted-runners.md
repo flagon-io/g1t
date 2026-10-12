@@ -205,7 +205,7 @@ and needs no token.
 
 | Option (`up`) | |
 | --- | --- |
-| `--url`, `--token` | Where to register and the registration token, for the first `up`. |
+| `--url`, `--token` | Where to register and the registration token, for the first `up`. The token can come from `G1T_RUNNER_TOKEN` in the environment instead, which keeps it out of the process list. |
 | `--name` | The runners' name before `-linux` and `-windows`. The computer's name if left out. |
 | `--labels`, `--group` | As for [register](#register-options), for both runners. |
 | `--cpus` | The Linux VM's runner's CPUs, and so its jobs'. Half the computer's, at most 8, if left out. |
