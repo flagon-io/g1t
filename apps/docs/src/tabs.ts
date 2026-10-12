@@ -1,23 +1,25 @@
 /**
  * The tabs under the header. Each shows its own part of the sidebar: the
- * groups whose pages fit its `match`. A page belongs to the tab whose
- * `match` it fits.
+ * groups named in its `groups`, in the sidebar's order. A page belongs to
+ * the tab holding its group; the home page, in no group, to the first.
+ * The API reference tab takes every group not named here, since the
+ * operations' groups are named after the API's tags.
  */
-export type Tab = { label: string; href: string; match: (slug: string) => boolean };
+export type Tab = { label: string; groups: string[] };
 
 export const TABS: Tab[] = [
-	{
-		label: 'Documentation',
-		href: '/',
-		match: (slug) => !slug.startsWith('reference/'),
-	},
-	{
-		label: 'API reference',
-		href: '/reference/api/',
-		match: (slug) => slug.startsWith('reference/'),
-	},
+	{ label: 'Get started', groups: ['Get started', 'About'] },
+	{ label: 'Chat and agents', groups: ['Chat and agents', 'Agents on code'] },
+	{ label: 'Code', groups: ['Landing changes', 'Security'] },
+	{ label: 'Projects', groups: ['Projects'] },
+	{ label: 'Workspaces', groups: ['Workspaces', 'Connect your tools'] },
+	{ label: 'Self-hosting', groups: ['Run g1t yourself'] },
+	{ label: 'API reference', groups: [] },
 ];
 
-export function tabFor(slug: string): Tab {
-	return TABS.find((tab) => tab.match(slug)) ?? TABS[0];
+const API = TABS[TABS.length - 1];
+
+/** The tab that holds the sidebar group with this label. */
+export function tabForGroup(label: string): Tab {
+	return TABS.find((tab) => tab.groups.includes(label)) ?? API;
 }
