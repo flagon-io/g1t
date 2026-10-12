@@ -188,6 +188,16 @@ jobs:
             sudo ln -sf "$(readlink -f "$found")" "/usr/local/bin/$name"
             echo "$name: $(readlink -f "$found")"
           done
+          # Tauri's installer script includes Win\RestartManager.nsh, which
+          # NSIS ships from 3.10 on; Debian's is 3.08. The header stands
+          # alone (defines and System calls), so it is added from NSIS 3.11's
+          # source, checked against its SHA-256.
+          rm_nsh=/usr/share/nsis/Include/Win/RestartManager.nsh
+          if [ ! -f "$rm_nsh" ]; then
+            curl -fsSL --retry 3 -o /tmp/RestartManager.nsh https://raw.githubusercontent.com/kichik/nsis/v311/Include/Win/RestartManager.nsh
+            echo "67149978412da9b283e2e1abe48a360093df9caf6363373e2cabe463978b7c0e  /tmp/RestartManager.nsh" | sha256sum -c -
+            sudo install -m 0644 /tmp/RestartManager.nsh "$rm_nsh"
+          fi
           cargo install --locked cargo-xwin
       - uses: actions/cache@v4
         with:
