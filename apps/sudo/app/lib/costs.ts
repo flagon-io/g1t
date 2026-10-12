@@ -278,7 +278,7 @@ export function spendBanner(caps: SpendCaps): string | null {
   const parts: string[] = [];
   if (caps.tripped) {
     parts.push(
-      `the daily breaker is open (${usd(caps.todayMicros)} of ${usd(caps.dailyCapMicros)} today), so new hosted-model agent runs g1t pays for wait until 00:00 UTC`,
+      `the daily breaker is open (${usd(caps.todayMicros)} of ${usd(caps.dailyCapMicros)} today), so new runs g1t pays for wait until 00:00 UTC`,
     );
   }
   for (const budget of caps.comped) {

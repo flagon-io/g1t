@@ -21,10 +21,11 @@
 //!    month; at 100% new work on it is refused until staff raise it or the
 //!    month turns. Work already running finishes.
 //! 2. **The daily breaker**: when g1t's part across every workspace today
-//!    (UTC) reaches `PLATFORM_DAILY_SPEND_CAP_MICROS` ($75), new agent runs
-//!    on g1t's hosted models that g1t would pay for are paused for the rest
-//!    of the day: everyone's except workspaces paying with real money on
-//!    the plan or an enterprise contract. Staff are emailed at once and sudo
+//!    (UTC) reaches `PLATFORM_DAILY_SPEND_CAP_MICROS` ($75), new compute
+//!    that g1t would pay for (sandboxes for workflows, checks, the merge
+//!    queue and agents alike) is paused for the rest of the day: everyone's
+//!    except workspaces paying with real money on the plan or an enterprise
+//!    contract, and comped accounts, which have their own monthly budget. Staff are emailed at once and sudo
 //!    shows a red bar; staff can lift it for the day.
 //!
 //! Zero for either variable turns that cap off.
@@ -133,10 +134,12 @@ pub(crate) fn breaker_open(today: i64, cap: i64, lifted: bool) -> bool {
     cap > 0 && today >= cap && !lifted
 }
 
-/// Whether the breaker is about this start: an agent run on g1t's hosted
-/// models (an agent run that does not say is taken to be one).
-pub(crate) fn breaker_applies(kind: ComputeKind, hosted_model: Option<bool>) -> bool {
-    kind == ComputeKind::Agent && hosted_model.unwrap_or(true)
+/// Whether the breaker is about this start: any compute g1t would pay
+/// for. Every kind costs g1t sandbox time, whatever model an agent uses,
+/// so none is left out; a workspace whose spend is covered is left out by
+/// [`covered_by_revenue`] instead.
+pub(crate) fn breaker_applies(_kind: ComputeKind, _hosted_model: Option<bool>) -> bool {
+    true
 }
 
 /// Whether a workspace's spend is covered by revenue, so the breaker
@@ -175,7 +178,7 @@ pub(crate) fn comped_refusal(name: &str, used: i64, ceiling: i64) -> String {
 /// What a hosted-model start is told while the breaker is open.
 pub(crate) fn breaker_refusal(today: i64, cap: i64) -> String {
     format!(
-        "g1t's daily spend breaker is open: g1t has paid {} of its {} a day for work today, so new agent runs on g1t's hosted models wait until 00:00 UTC. Agents on the workspace's own model provider still run, and so does work on the paid plan.",
+        "g1t's daily spend breaker is open: g1t has paid {} of its {} a day for work today, so new runs g1t pays for wait until 00:00 UTC. Work on the paid plan still runs.",
         cents(today),
         cents(cap)
     )
@@ -290,7 +293,7 @@ impl Billing {
         let lifted = self.breaker_row(day).await?.and_then(|row| row.lifted_by);
         let mut lines = vec![
             format!(
-                "g1t paid {} for work today ({day}, UTC), its daily cap of {} (PLATFORM_DAILY_SPEND_CAP_MICROS). New agent runs on g1t's hosted models that g1t pays for are paused until 00:00 UTC; workspaces paying with real money, and agents on their own model provider, are not affected. Runs already going finish.",
+                "g1t paid {} for work today ({day}, UTC), its daily cap of {} (PLATFORM_DAILY_SPEND_CAP_MICROS). New compute that g1t pays for (workflows, checks, the merge queue and agents) is paused until 00:00 UTC; workspaces paying with real money, and comped accounts, are not affected. Runs already going finish.",
                 cents(total),
                 cents(self.caps.daily)
             ),
@@ -324,7 +327,8 @@ impl Billing {
             return Ok(None);
         }
         let comped = account.terms.full_discount();
-        if covered_by_revenue(plan, comped, account.allowances.plan, self.live()) {
+        // A comped account is held by its own monthly budget instead.
+        if comped || covered_by_revenue(plan, comped, account.allowances.plan, self.live()) {
             return Ok(None);
         }
         let day = today();
@@ -680,12 +684,12 @@ mod tests {
     }
 
     #[test]
-    fn the_breaker_is_about_hosted_model_agent_runs() {
+    fn the_breaker_is_about_all_compute_g1t_pays_for() {
         assert!(breaker_applies(ComputeKind::Agent, Some(true)));
         assert!(breaker_applies(ComputeKind::Agent, None));
-        assert!(!breaker_applies(ComputeKind::Agent, Some(false)));
-        assert!(!breaker_applies(ComputeKind::Check, None));
-        assert!(!breaker_applies(ComputeKind::Workflow, Some(true)));
+        assert!(breaker_applies(ComputeKind::Agent, Some(false)));
+        assert!(breaker_applies(ComputeKind::Check, None));
+        assert!(breaker_applies(ComputeKind::Workflow, Some(true)));
     }
 
     #[test]
