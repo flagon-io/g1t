@@ -15,6 +15,7 @@ use crate::deployments::DeploymentsOp;
 use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
 use crate::folios::FoliosOp;
+use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
 use crate::operations::Op;
@@ -336,6 +337,17 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Claims and work",
+        "Coordinating work on issues: an advisory, expiring claim that says you are on one (never a lock), handing it off with a note, and everything an agent needs before starting on an issue in one call. What an issue is blocked by is set with update_issue.",
+        &[
+            Op::Coordination(CoordinationOp::GetWork),
+            Op::Coordination(CoordinationOp::ClaimIssue),
+            Op::Coordination(CoordinationOp::ReleaseClaim),
+            Op::Coordination(CoordinationOp::HandOffIssue),
+            Op::Coordination(CoordinationOp::ListClaims),
+        ],
+    ),
+    (
         "Labels and milestones",
         "A repository's labels, which issues and pull requests carry by name, and its milestones, which gather them under a goal and a due date.",
         &[
@@ -373,8 +385,17 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Sessions",
-        "The record of how a pull request was made: prompts, reasoning and the tools that ran.",
-        &[Op::ReadSession, Op::RecordSession],
+        "Who is working on what, and how a pull request was made. A session is one run of your own harness (a Claude Code session, a Codex run) on a repository: started once, kept alive by heartbeats, attached to an issue and a pull request, and recording prompts, reasoning and the tools that ran. A pull request's session shows what was recorded on it.",
+        &[
+            Op::Coordination(CoordinationOp::StartSession),
+            Op::Coordination(CoordinationOp::UpdateSession),
+            Op::Coordination(CoordinationOp::EndSession),
+            Op::Coordination(CoordinationOp::GetSession),
+            Op::Coordination(CoordinationOp::ListSessions),
+            Op::Coordination(CoordinationOp::RecordSessionEntries),
+            Op::ReadSession,
+            Op::RecordSession,
+        ],
     ),
     (
         "Memory",
@@ -772,6 +793,7 @@ fn title(op: Op) -> &'static str {
         Op::DeployKeys(op) => op.title(),
         Op::Packages(op) => op.title(),
         Op::Folios(op) => op.title(),
+        Op::Coordination(op) => op.title(),
     }
 }
 

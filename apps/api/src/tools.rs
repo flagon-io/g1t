@@ -26,6 +26,7 @@ use crate::deployments::DeploymentsOp;
 use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
 use crate::folios::FoliosOp;
+use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
 use crate::operations::Op;
@@ -134,13 +135,13 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "issue",
         title: "Issues",
-        description: "Issues: what should change. Read one before working on it to see the pull requests already made for it. Issues and pull requests share numbers; `comment` works on either.",
+        description: "Issues: what should change. Before working on one, `work` gives everything about it (definition of done, who is on it, its pull requests, what it waits on); `claim` says you are on it (advisory and expiring, never a lock), `release` or `handoff` when you stop. `update` with blocked_by sets the issues that must land first. Issues and pull requests share numbers; `comment` works on either.",
         default_action: None,
         actions: &[
             a("list", Op::ListIssues, "Issues on a repository, newest first"),
             a("get", Op::GetIssue, "One issue with comments and its pull requests"),
             a("create", Op::CreateIssue, "Open an issue"),
-            a("update", Op::UpdateIssue, "Change title, body, labels, milestone or assignees"),
+            a("update", Op::UpdateIssue, "Change title, body, labels, milestone, assignees or blocked_by"),
             a("labels", Op::ListIssueLabels, "The labels an issue or pull request carries"),
             a("add_labels", Op::AddIssueLabels, "Add labels to an issue or pull request"),
             a("set_labels", Op::SetIssueLabels, "Replace the labels of an issue or pull request"),
@@ -151,6 +152,11 @@ pub const TOOLS: &[Tool] = &[
             a("edit_comment", Op::EditComment, "Change a comment's text: your own, or any with the Maintain role"),
             a("delete_comment", Op::DeleteComment, "Delete a comment: your own, or any with the Maintain role"),
             a("import", Op::ImportIssue, "Open an issue from a Jira, Linear or Sentry item"),
+            a("work", Op::Coordination(CoordinationOp::GetWork), "Everything to pick it up: done means, claims, sessions, pull requests, blockers, decisions, recent events"),
+            a("claim", Op::Coordination(CoordinationOp::ClaimIssue), "Say you are working on it; lists who else is, and what it is blocked by"),
+            a("release", Op::Coordination(CoordinationOp::ReleaseClaim), "Stop working on it"),
+            a("handoff", Op::Coordination(CoordinationOp::HandOffIssue), "Hand it off, to someone or anyone, with a note on where it stands"),
+            a("list_claims", Op::Coordination(CoordinationOp::ListClaims), "Claims on a repository's issues: who is working on what"),
         ],
     },
     Tool {
@@ -175,6 +181,20 @@ pub const TOOLS: &[Tool] = &[
             a("reopen", Op::ReopenPullRequest, "Reopen a closed one"),
             a("merge", Op::MergePullRequest, "Land it, or join the merge queue"),
             a("merge_queue", Op::GetMergeQueue, "The repository's merge queue"),
+        ],
+    },
+    Tool {
+        name: "session",
+        title: "Sessions",
+        description: "Your harness session on a repository, so others see who is working on what: `start` once (idempotent on harness_session_id), `update` as a heartbeat or to attach an issue, pull request, branch or head commit, `record` prompts, reasoning and tool calls (idempotent on key), `end` when done. A session goes idle after 15 minutes without a heartbeat and ends after 2 hours.",
+        default_action: None,
+        actions: &[
+            a("start", Op::Coordination(CoordinationOp::StartSession), "Start one, or get the one started with this harness_session_id"),
+            a("update", Op::Coordination(CoordinationOp::UpdateSession), "Heartbeat; or attach an issue, pull request, branch, head commit or title"),
+            a("record", Op::Coordination(CoordinationOp::RecordSessionEntries), "Record prompts, reasoning and tool calls; a key makes each idempotent"),
+            a("end", Op::Coordination(CoordinationOp::EndSession), "End it"),
+            a("get", Op::Coordination(CoordinationOp::GetSession), "One session and its entries"),
+            a("list", Op::Coordination(CoordinationOp::ListSessions), "A repository's sessions: active, idle or ended, by issue or pull request"),
         ],
     },
     Tool {
@@ -846,7 +866,7 @@ mod tests {
                 assert!(tool.action(default).is_some(), "{}", tool.name);
             }
         }
-        assert!(TOOLS.len() <= 18, "{} tools", TOOLS.len());
+        assert!(TOOLS.len() <= 19, "{} tools", TOOLS.len());
     }
 
     #[test]
@@ -911,7 +931,7 @@ mod tests {
             assert_eq!(tool["annotations"]["destructiveHint"], false);
         }
         let issue = tools.iter().find(|tool| tool["name"] == "issue").unwrap();
-        assert_eq!(issue["inputSchema"]["properties"]["action"]["enum"], json!(["list", "get", "labels"]));
+        assert_eq!(issue["inputSchema"]["properties"]["action"]["enum"], json!(["list", "get", "labels", "work", "list_claims"]));
     }
 
     #[test]

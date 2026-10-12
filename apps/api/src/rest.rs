@@ -10,6 +10,7 @@ use crate::deployments::DeploymentsOp;
 use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
 use crate::folios::FoliosOp;
+use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
 use crate::operations::Op;
@@ -582,6 +583,34 @@ pub const ROUTES: &[Route] = &[
         "POST",
         "/repos/:owner/:name/issues/import",
         Op::ImportIssue,
+        &[],
+    ),
+    // Coordinating work: claims on issues, an issue's whole context, and
+    // sessions of people's own harnesses.
+    route("GET", "/repos/:owner/:name/issues/:number/work", Op::Coordination(CoordinationOp::GetWork), &[]),
+    route("POST", "/repos/:owner/:name/issues/:number/claim", Op::Coordination(CoordinationOp::ClaimIssue), &[]),
+    route("POST", "/repos/:owner/:name/issues/:number/release", Op::Coordination(CoordinationOp::ReleaseClaim), &[]),
+    route("POST", "/repos/:owner/:name/issues/:number/handoff", Op::Coordination(CoordinationOp::HandOffIssue), &[]),
+    route(
+        "GET",
+        "/repos/:owner/:name/claims",
+        Op::Coordination(CoordinationOp::ListClaims),
+        &[("state", "state"), ("issue", "issue")],
+    ),
+    route("POST", "/repos/:owner/:name/sessions", Op::Coordination(CoordinationOp::StartSession), &[]),
+    route(
+        "GET",
+        "/repos/:owner/:name/sessions",
+        Op::Coordination(CoordinationOp::ListSessions),
+        &[("state", "state"), ("issue", "issue"), ("pull", "pull")],
+    ),
+    route("GET", "/repos/:owner/:name/sessions/:id", Op::Coordination(CoordinationOp::GetSession), &[("after", "after")]),
+    route("PATCH", "/repos/:owner/:name/sessions/:id", Op::Coordination(CoordinationOp::UpdateSession), &[]),
+    route("POST", "/repos/:owner/:name/sessions/:id/end", Op::Coordination(CoordinationOp::EndSession), &[]),
+    route(
+        "POST",
+        "/repos/:owner/:name/sessions/:id/entries",
+        Op::Coordination(CoordinationOp::RecordSessionEntries),
         &[],
     ),
     route(
