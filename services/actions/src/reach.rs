@@ -233,6 +233,88 @@ pub(crate) fn missing_secrets(called_raw: &Value, plan: &Value) -> Vec<String> {
         .collect()
 }
 
+/// The secrets `plan` passes by name that the called workflow does not
+/// declare under `on.workflow_call.secrets`, which GitHub refuses.
+pub(crate) fn undeclared_secrets(called_raw: &Value, plan: &Value) -> Vec<String> {
+    let on = called_raw.get("on").or_else(|| called_raw.get("true")).cloned().unwrap_or(Value::Null);
+    let declared = on.get("workflow_call").and_then(|call| call.get("secrets")).and_then(Value::as_object).cloned().unwrap_or_default();
+    plan["map"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(name, _)| name)
+        .filter(|name| !declared.keys().any(|known| known.eq_ignore_ascii_case(name)))
+        .cloned()
+        .collect()
+}
+
+/// The inputs a called workflow gets, as GitHub reads them: `given` (the
+/// caller's `with:`, its expressions read) checked against `declared`
+/// (`on.workflow_call.inputs` of `file`). A name it does not declare is
+/// refused, and so is a value that is not of the input's `type`: a
+/// `boolean` takes `true` or `false`, a `number` a number (an output is
+/// text, so `fromJSON()` it), and a `string` text, a number or a boolean
+/// becoming its text. An input not given takes its `default`, else, unless
+/// it is `required`, `false`, `0` or `''` by its type.
+pub(crate) fn call_inputs(
+    file: &str,
+    declared: &serde_json::Map<String, Value>,
+    given: &serde_json::Map<String, Value>,
+) -> std::result::Result<serde_json::Map<String, Value>, String> {
+    if let Some(name) = given.keys().find(|name| !declared.keys().any(|known| known.eq_ignore_ascii_case(name))) {
+        return Err(format!("Invalid input: `{name}` is not defined in `{file}`."));
+    }
+    let mut inputs = serde_json::Map::new();
+    for (name, spec) in declared {
+        let kind = spec.get("type").and_then(Value::as_str).unwrap_or_default().trim().to_ascii_lowercase();
+        let passed = given.iter().find(|(key, _)| key.eq_ignore_ascii_case(name)).map(|(_, value)| value).filter(|value| !value.is_null());
+        let value = match (passed, spec.get("default").filter(|value| !value.is_null())) {
+            (Some(value), _) => typed(&kind, value).ok_or_else(|| {
+                let shown = match value {
+                    Value::String(text) => format!("'{text}'"),
+                    other => other.to_string(),
+                };
+                let hint = if value.is_string() { " An output is text: pass `${{ fromJSON(...) }}` for its value." } else { "" };
+                format!("The input `{name}` of `{file}` is a {kind}, and `with` gives it {shown}.{hint}")
+            })?,
+            // A default as written, a `'true'` for a boolean taken as true.
+            (None, Some(default)) => typed(&kind, default).or_else(|| loose(&kind, default)).unwrap_or_else(|| default.clone()),
+            (None, None) if spec.get("required").and_then(Value::as_bool) == Some(true) => {
+                return Err(format!("`{file}` needs the input `{name}`."));
+            }
+            (None, None) => match kind.as_str() {
+                "boolean" => Value::Bool(false),
+                "number" => json!(0),
+                "string" => Value::String(String::new()),
+                _ => Value::Null,
+            },
+        };
+        inputs.insert(name.clone(), value);
+    }
+    Ok(inputs)
+}
+
+/// `value` as an input of `kind`, if it is one.
+fn typed(kind: &str, value: &Value) -> Option<Value> {
+    match (kind, value) {
+        ("boolean", Value::Bool(_)) | ("number", Value::Number(_)) | ("string", Value::String(_)) => Some(value.clone()),
+        ("string", Value::Bool(_) | Value::Number(_)) => Some(Value::String(g1t_actions::expr::to_text(value))),
+        ("boolean" | "number" | "string", _) => None,
+        _ => Some(value.clone()),
+    }
+}
+
+/// A default written as text for a boolean or a number.
+fn loose(kind: &str, value: &Value) -> Option<Value> {
+    let text = value.as_str()?.trim();
+    match kind {
+        "boolean" if text.eq_ignore_ascii_case("true") => Some(Value::Bool(true)),
+        "boolean" if text.eq_ignore_ascii_case("false") => Some(Value::Bool(false)),
+        "number" => text.parse::<f64>().ok().and_then(serde_json::Number::from_f64).map(Value::Number),
+        _ => None,
+    }
+}
+
 /// The `secrets` a called workflow's job gets, by `plan` (`secrets_plan`),
 /// from `base` (the repository's secrets, as the top caller has them),
 /// with `github` and `vars` for the expressions. The job's token is added
@@ -405,6 +487,51 @@ mod tests {
         assert!(missing_secrets(&called, &passed).is_empty());
         let inherit = secrets_plan(&json!({ "secrets": "inherit" }), &serde_json::Map::new(), None);
         assert!(missing_secrets(&called, &inherit).is_empty());
+    }
+
+    #[test]
+    fn a_called_workflows_inputs_are_checked_against_their_types() {
+        let declared: serde_json::Map<String, Value> = serde_json::from_value(json!({
+            "flag": { "type": "boolean" },
+            "count": { "type": "number", "default": 2 },
+            "name": { "type": "string", "required": true },
+            "dry": { "type": "boolean", "default": "true" },
+        }))
+        .unwrap();
+        let given = |value: Value| -> serde_json::Map<String, Value> { serde_json::from_value(value).unwrap() };
+        let file = ".g1t/workflows/build.yml";
+        // A string input takes a number as its text; what is not given takes
+        // its default, else false, 0 or '' by its type.
+        let inputs = call_inputs(file, &declared, &given(json!({ "name": 18 }))).unwrap();
+        assert_eq!(inputs["name"], json!("18"));
+        assert_eq!(inputs["flag"], json!(false));
+        assert_eq!(inputs["count"], json!(2));
+        assert_eq!(inputs["dry"], json!(true));
+        let inputs = call_inputs(file, &declared, &given(json!({ "NAME": "x", "flag": true, "count": 3.5 }))).unwrap();
+        assert_eq!((inputs["name"].clone(), inputs["flag"].clone(), inputs["count"].clone()), (json!("x"), json!(true), json!(3.5)));
+        // Text where a boolean or a number is declared is refused, as on GitHub.
+        let wrong = call_inputs(file, &declared, &given(json!({ "name": "x", "flag": "true" }))).unwrap_err();
+        assert!(wrong.contains("`flag`") && wrong.contains("boolean") && wrong.contains("fromJSON"), "{wrong}");
+        assert!(call_inputs(file, &declared, &given(json!({ "name": "x", "count": "3" }))).unwrap_err().contains("number"));
+        assert!(call_inputs(file, &declared, &given(json!({ "name": ["a"] }))).unwrap_err().contains("string"));
+        // A required input left out, and one the workflow does not declare.
+        assert_eq!(call_inputs(file, &declared, &given(json!({}))).unwrap_err(), "`.g1t/workflows/build.yml` needs the input `name`.");
+        assert_eq!(
+            call_inputs(file, &declared, &given(json!({ "name": "x", "extra": 1 }))).unwrap_err(),
+            "Invalid input: `extra` is not defined in `.g1t/workflows/build.yml`."
+        );
+    }
+
+    #[test]
+    fn secrets_a_called_workflow_does_not_declare_are_refused() {
+        let called = g1t_actions::workflow::parse(
+            "on:\n  workflow_call:\n    secrets:\n      token: { required: false }\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{ run: 'true' }]",
+        )
+        .unwrap()
+        .raw;
+        let plan = secrets_plan(&json!({ "secrets": { "TOKEN": "x", "other": "y" } }), &serde_json::Map::new(), None);
+        assert_eq!(undeclared_secrets(&called, &plan), ["other"]);
+        assert!(undeclared_secrets(&called, &secrets_plan(&json!({ "secrets": "inherit" }), &serde_json::Map::new(), None)).is_empty());
     }
 
     #[test]

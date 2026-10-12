@@ -64,7 +64,8 @@ export function groupJobs(jobs: GraphJob[], prefix = "", parent: string | null =
     const rest = job.key.slice(prefix.length);
     if (!rest) continue;
     const segment = rest.split("/")[0]!;
-    const key = prefix + segment;
+    // A matrix's calls each have their jobs under `build[i]/`, in `build`'s box.
+    const key = prefix + segment.replace(/\[\d+\]$/, "");
     if (!direct.has(key)) {
       order.push(key);
       direct.set(key, []);
@@ -79,6 +80,9 @@ export function groupJobs(jobs: GraphJob[], prefix = "", parent: string | null =
     const label = own.length > 0 ? within(own.length > 1 ? baseName(own[0]!.name) : own[0]!.name, parent) : key.slice(prefix.length);
     if (inner.length > 0 || own.some((job) => job.uses)) {
       const callerName = own.length > 0 ? (own.length > 1 ? baseName(own[0]!.name) : own[0]!.name) : label;
+      // One call, or one for each combination of the caller's matrix,
+      // whose jobs keep the combination in their names.
+      const calls = unique(inner.map((job) => job.key.slice(0, job.key.indexOf("/", key.length) + 1)));
       return {
         kind: "call",
         key,
@@ -86,7 +90,7 @@ export function groupJobs(jobs: GraphJob[], prefix = "", parent: string | null =
         needs,
         uses: own.find((job) => job.uses)?.uses ?? null,
         callers: own,
-        units: groupJobs(inner, `${key}/`, callerName),
+        units: calls.flatMap((under) => groupJobs(inner, under, under === `${key}/` ? callerName : baseName(callerName))),
       };
     }
     if (own.length > 1) return { kind: "matrix", key, label, needs, jobs: own };

@@ -999,7 +999,7 @@ impl Actions {
         // One job of a concurrency group runs at a time.
         sql.push_str(
             " AND (jobs.concurrency_group IS NULL OR NOT EXISTS (SELECT 1 FROM jobs o WHERE o.repo_id = jobs.repo_id
-               AND o.concurrency_group = jobs.concurrency_group AND o.status = 'in_progress'))",
+               AND o.concurrency_group = jobs.concurrency_group AND o.status IN ('in_progress', 'calling')))",
         );
         sql.push_str(" ORDER BY jobs.rowid LIMIT 50");
         #[derive(Deserialize)]
