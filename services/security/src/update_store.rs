@@ -42,6 +42,9 @@ pub struct PullRow {
     pub reviewers: String,
     pub state: String,
     pub pull: Option<i64>,
+    /// The issue g1t opened for it, from before it stopped doing that.
+    #[serde(default)]
+    pub issue: Option<i64>,
     pub head: Option<String>,
     pub merge_by: Option<String>,
     pub error: Option<String>,
@@ -55,6 +58,10 @@ impl PullRow {
 
     pub fn pull(&self) -> Option<u32> {
         self.pull.map(|n| n.max(0) as u32)
+    }
+
+    pub fn issue(&self) -> Option<u32> {
+        self.issue.map(|n| n.max(0) as u32)
     }
 
     pub fn dependencies(&self) -> Vec<UpdatedDependency> {
@@ -252,6 +259,17 @@ impl Store {
     }
 
     /// Update pull requests asked of a sandbox before `before` that never pushed.
+    /// Version updates left in `needs_code`, which g1t opened an issue for
+    /// before it stopped doing that.
+    pub async fn needs_code_update_pulls(&self, limit: u32) -> Result<Vec<PullRow>> {
+        self.db
+            .prepare("SELECT * FROM update_pulls WHERE state = 'needs_code' ORDER BY updated_at LIMIT ?")
+            .bind(&[limit.into()])?
+            .all()
+            .await?
+            .results::<PullRow>()
+    }
+
     pub async fn stalled_update_pulls(&self, before: &str, limit: u32) -> Result<Vec<PullRow>> {
         self.db
             .prepare("SELECT * FROM update_pulls WHERE state = 'requested' AND updated_at < ? ORDER BY updated_at LIMIT ?")

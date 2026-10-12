@@ -902,6 +902,38 @@ impl Store {
         Ok(())
     }
 
+    /// Each of `alert_ids`' latest action and comment, for the alerts that
+    /// have any.
+    pub async fn latest_activity(&self, repo_id: &str, alert_ids: &[String]) -> Result<HashMap<String, (String, Option<String>)>> {
+        #[derive(Deserialize)]
+        struct Latest {
+            alert_id: String,
+            action: String,
+            comment: Option<String>,
+        }
+        if alert_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let marks = vec!["?"; alert_ids.len()].join(", ");
+        let mut binds: Vec<JsValue> = vec![repo_id.into()];
+        binds.extend(alert_ids.iter().map(|id| JsValue::from(id.as_str())));
+        let rows = self
+            .db
+            .prepare(format!(
+                "SELECT alert_id, action, comment FROM alert_activity WHERE repo_id = ? AND alert_id IN ({marks})
+                 ORDER BY at DESC, id DESC"
+            ))
+            .bind(&binds)?
+            .all()
+            .await?
+            .results::<Latest>()?;
+        let mut latest = HashMap::new();
+        for row in rows {
+            latest.entry(row.alert_id).or_insert((row.action, row.comment));
+        }
+        Ok(latest)
+    }
+
     /// What happened to a repository's alerts, newest first.
     pub async fn activity(&self, repo_id: &str, limit: u32) -> Result<Vec<AlertActivity>> {
         Ok(self
@@ -952,6 +984,17 @@ impl Store {
     }
 
     /// Updates asked of a sandbox before `before` that never pushed.
+    /// Updates left in `needs_code`, which g1t opened an issue for before
+    /// it stopped doing that.
+    pub async fn needs_code_updates(&self, limit: u32) -> Result<Vec<UpdateRow>> {
+        self.db
+            .prepare("SELECT * FROM updates WHERE state = 'needs_code' ORDER BY updated_at LIMIT ?")
+            .bind(&[limit.into()])?
+            .all()
+            .await?
+            .results::<UpdateRow>()
+    }
+
     pub async fn stalled_updates(&self, before: &str, limit: u32) -> Result<Vec<UpdateRow>> {
         self.db
             .prepare("SELECT * FROM updates WHERE state = 'requested' AND updated_at < ? ORDER BY updated_at LIMIT ?")

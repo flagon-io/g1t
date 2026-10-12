@@ -399,6 +399,18 @@ impl Security {
             let error = "The update could not be made in a sandbox: its packages may need code changes to move, or a registry could not be reached.";
             self.store.set_update_pull(&row.id, UpdateState::Failed, row.pull(), None, Some(error)).await?;
         }
+        // Left from when g1t opened an issue for an update whose checks
+        // failed: the issue closes, and the next run opens the update again
+        // as a pull request that stays open with its failing checks.
+        for row in self.store.needs_code_update_pulls(10).await? {
+            if let (Some(repo), Some(number)) = (self.store.repo(&row.repo_id).await?, row.issue()) {
+                let why = "g1t no longer opens issues for updates whose checks fail. The entry's next run opens this update again \
+                           as a pull request, which stays open with its checks for you to decide on.";
+                self.close_issue_with(&repo, number, why.to_owned()).await?;
+            }
+            let error = "Raising the versions failed this branch's required checks.";
+            self.store.set_update_pull(&row.id, UpdateState::Failed, row.pull(), None, Some(error)).await?;
+        }
         Ok(())
     }
 
@@ -1567,6 +1579,7 @@ mod tests {
             reviewers: "[]".into(),
             state: state.into(),
             pull: Some(3),
+            issue: None,
             head: None,
             merge_by: None,
             error: None,

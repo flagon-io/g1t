@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::security::{BumpArgs, UpdateState, update_branch};
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::{OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, Runtime, ViewArgs};
+use g1t_contracts::work::{IssueActionArgs, IssueReason, OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, Runtime, ViewArgs};
 use g1t_contracts::{Outcome, User};
 use g1t_kit::now_ms;
 use g1t_scan::osv::{self, Severity};
@@ -74,6 +74,13 @@ pub fn next_step(state: UpdateState, current: &str, target: &str, updated_at: &s
         UpdateState::Failed if updated_at < retry_after => Next::Request,
         _ => Next::Wait,
     }
+}
+
+/// Why an update that never pushed failed, as its alert shows it.
+pub fn cannot_raise(package: &str, target: &str) -> String {
+    format!(
+        "`{package}` could not be raised to {target} on its own: a package that depends on it may hold it back, or the upgrade needs code changes."
+    )
 }
 
 /// The pull request's title.
@@ -250,11 +257,31 @@ impl Security {
         Ok(matches!(closed, Outcome::Ok(_)))
     }
 
-    /// Records `action` on every open alert of an update's package.
+    /// Closes an issue g1t opened for an update before it stopped opening
+    /// them, saying why. One already closed is left as it is.
+    pub(crate) async fn close_issue_with(&self, repo: &RepoRow, number: u32, why: String) -> Result<()> {
+        let system = User::system(&repo.namespace);
+        let path = Self::path_of(repo);
+        let closed: Outcome<Value> = g1t_kit::call(
+            &self.work,
+            "close_issue",
+            &IssueActionArgs { actor: system.clone(), repo: path.clone(), number, reason: Some(IssueReason::NotPlanned) },
+        )
+        .await?;
+        if matches!(closed, Outcome::Ok(_)) {
+            self.comment(&system, &path, number, why).await?;
+        }
+        Ok(())
+    }
+
+    /// Records `action` on every open alert of an update's package, except
+    /// on an alert whose latest entry already says the same.
     async fn note(&self, row: &UpdateRow, action: &str, actor: Option<&str>, number: Option<u32>, comment: Option<&str>) -> Result<()> {
         let ids = self.store.open_ids(&row.repo_id, &row.ecosystem, &row.package).await?;
+        let latest = self.store.latest_activity(&row.repo_id, &ids).await?;
         let activity: Vec<Activity> = ids
             .iter()
+            .filter(|id| latest.get(*id).is_none_or(|(last, said)| last != action || said.as_deref() != comment))
             .map(|id| Activity { alert_id: id, action, actor, reason: None, comment, number })
             .collect();
         self.store.record(&row.repo_id, &activity).await
@@ -618,10 +645,23 @@ impl Security {
                 self.store.set_update(&row, UpdateState::Failed, row.pull(), None, Some(&why)).await?;
                 continue;
             }
-            let why = format!(
-                "`{}` could not be raised to {} on its own: a package that depends on it may hold it back, or the upgrade needs code changes.",
-                row.package, row.target
-            );
+            let why = cannot_raise(&row.package, &row.target);
+            self.store.set_update(&row, UpdateState::Failed, row.pull(), None, Some(&why)).await?;
+            self.note(&row, "update_failed", Some(g1t_contracts::system::USERNAME), None, Some(&why)).await?;
+        }
+        // Left from when g1t opened an issue for an upgrade it could not
+        // make: the issue closes, and the update fails as one would now.
+        for row in self.store.needs_code_updates(10).await? {
+            let why = cannot_raise(&row.package, &row.target);
+            if let (Some(repo), Some(number)) = (self.store.repo(&row.repo_id).await?, row.issue()) {
+                let path = Self::path_of(&repo);
+                let alerts = format!("/{}/{}/security/vulnerabilities", path.namespace, path.name);
+                self.close_issue_with(&repo, number, format!(
+                    "g1t no longer opens issues for upgrades it cannot make on its own. This one is on [its alert]({alerts}), \
+                     which says why and is tried again later. To have an agent make the change, use **Fix with g1t** there."
+                ))
+                .await?;
+            }
             self.store.set_update(&row, UpdateState::Failed, row.pull(), None, Some(&why)).await?;
             self.note(&row, "update_failed", Some(g1t_contracts::system::USERNAME), None, Some(&why)).await?;
         }
