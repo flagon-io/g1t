@@ -149,12 +149,43 @@ what it failed with:
 
 | What happened | Who it failed with (`suspects`) |
 | --- | --- |
-| Tested on `main` alone | Nobody: the change is the cause. |
+| Tested on `main` alone, and its own checks fail on its head too | Nobody: the change is the cause. |
+| Tested on `main` alone, though its own checks pass on its head | Nobody: the change answers for it, and the note names what landed on `main` since it branched (`landed`), [below](#when-main-moved-under-it). |
 | Its own checks fail on its head too | Nobody: the change is the cause. |
 | It conflicts with an entry ahead | That entry, and the conflicting files. |
 | A required check did not report, or the state could not be built | Nobody: the note says what to fix. |
 | Its own checks pass, one entry ahead | That entry. |
 | Its own checks pass, several entries ahead | Found by building smaller combinations, below. |
+
+### When `main` moved under it
+
+An entry with nothing ahead of it is tested on `main` as it is now. When
+its own checks pass on its head but a check fails once it is merged into
+`main`, something that landed on `main` after the pull request branched is
+what it now breaks with: #1 changed a function's signature, say, and this
+pull request, written before #1 landed, still calls the old one.
+
+The entry still answers for the failure, since it is the one that has to
+adapt, and nothing extra is built. g1t looks at the 50 pull requests most
+recently merged into `main` before the entry was tested, keeps those whose
+commits the entry's history (its latest 1,000 commits) does not hold, and
+reports up to ten of them, newest first, as `landed`. A pull request that
+was brought up to date with `main` since it branched holds what it merged,
+so only what landed after that is named. The note on the pull request then
+reads, for example:
+
+> g1t traced its merge queue failure to the default branch as it is now:
+> `CI / merge_group` failed with this change merged into it, though this
+> passes its checks on its own. Since this branched, #1 landed and is the
+> likely cause. Bring it up to date with the default branch, fix what
+> breaks, and push. Push a fix: once its checks pass on the new commit, it
+> rejoins the merge queue by itself.
+
+When only one pull request landed it is named as the likely cause; when
+several did, they are listed as what it may conflict with. When none is
+found (`main` moved by a push rather than a pull request, say), the note
+says the change is the cause, as before. A conflict, a required check that
+did not report and a state that could not be built never look this up.
 
 ### Narrowing it down
 
@@ -186,18 +217,23 @@ can name more than one pull request.
    conflict, the pull request ahead it collided with and the files.
 2. Its conversation records that it was taken out of the queue, then what
    g1t found: the pull requests it fails with, whether that was narrowed
-   down, and the check that failed.
+   down, and the check that failed; or, with nothing ahead, the pull
+   requests that landed on `main` since it branched.
 3. Its issue's conversation says the same in one line, and so does the
    pull request's [session](/guides/why-blame/#sessions), so the agent
    working on it reads it there.
 4. A [decision record](/guides/why-blame/#decision-records) of kind
    `integration_failure`, confidence `tested`, keeps it, with the
-   combination, the check and the suspects as evidence.
+   combination, the check, the suspects, `bisected` and `landed` as
+   evidence. [`get_work`](/guides/sessions/)'s `last_integration_failure`
+   is the latest of these.
 5. The `integration.failed` [event](/guides/webhooks/#events) carries the
    same to webhooks and to anyone following the repository's events:
    `pull` (the entry that failed, also `number`), `issue`, `combination`
    (the pull requests tested together, in order), `check` (`name`,
-   `conclusion`, `url`), `bisected`, `suspects`, `other_pulls` and `commit`.
+   `conclusion`, `url`), `bisected`, `suspects`, `other_pulls`, `landed`
+   (with nothing ahead, the pull requests merged into `main` since it
+   branched, newest first; otherwise empty) and `commit`.
 6. The entries that were tested on top of it are tested again without it.
 
 A combined state that passes is recorded too: an `integration_passed`

@@ -351,7 +351,10 @@ export type EventPayloads = {
   /**
    * A combined state in the merge queue failed. `pull` (also `number`)
    * answers for it; `suspects` are the pull requests ahead it fails with,
-   * narrowed by building smaller combinations when `bisected`.
+   * narrowed by building smaller combinations when `bisected`. With
+   * nothing ahead, though it passes its checks on its own, `landed` lists
+   * the pull requests merged into the default branch since it branched,
+   * newest first.
    */
   "integration.failed": {
     repoId: string;
@@ -364,6 +367,7 @@ export type EventPayloads = {
     bisected: boolean;
     suspects: number[];
     otherPulls: number[];
+    landed: number[];
     commit: string | null;
   };
   /** A combined state in the merge queue passed. */
