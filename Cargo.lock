@@ -1107,6 +1107,7 @@ dependencies = [
  "g1t-scan",
  "hex",
  "libc",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml",

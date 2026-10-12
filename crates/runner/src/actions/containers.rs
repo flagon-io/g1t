@@ -35,6 +35,8 @@ pub(crate) struct JobContainer {
     pub(crate) id: String,
     /// `bash`, or `sh` in an image without it.
     pub(crate) shell: &'static str,
+    /// `python`, or `python3` in an image without it, for `shell: python`.
+    pub(crate) python: &'static str,
     /// Whether the runner's Node runs in it.
     pub(crate) node: bool,
     /// The image's own `PATH`.
@@ -419,7 +421,14 @@ impl Job {
                 self.log.line("##[warning]The runner's Node does not run in this image (it needs glibc and libstdc++), so JavaScript actions run beside the container, on g1t's image, with the same files.");
             }
             self.job_context.insert("container".into(), json!({ "id": id, "network": network }));
-            self.container = Some(JobContainer { id: name, shell: if has_bash { "bash" } else { "sh" }, node, path });
+            let has_python = self.docker_output(&["exec", &name, "sh", "-c", "command -v python"]).is_some_and(|out| !out.is_empty());
+            self.container = Some(JobContainer {
+                id: name,
+                shell: if has_bash { "bash" } else { "sh" },
+                python: if has_python { "python" } else { "python3" },
+                node,
+                path,
+            });
         }
 
         // Services with a health check are waited for.

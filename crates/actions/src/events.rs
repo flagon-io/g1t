@@ -104,6 +104,11 @@ impl RunInfo {
         self.repository.split('/').next().unwrap_or_default()
     }
 
+    /// The owner's id, as the event's `repository.owner.id` gives it.
+    fn owner_id(&self) -> String {
+        owner_id(&self.event).unwrap_or_default()
+    }
+
     /// The `github` context for a job. `token` is `github.token` (and
     /// `secrets.GITHUB_TOKEN`); `job` is the job's id.
     pub fn context(&self, job: &str, token: &str, action: Option<&str>) -> Value {
@@ -131,7 +136,7 @@ impl RunInfo {
             "repository": self.repository,
             "repository_id": self.repository_id,
             "repository_owner": self.owner(),
-            "repository_owner_id": "",
+            "repository_owner_id": self.owner_id(),
             "repositoryUrl": format!("{}/{}.git", self.server_url, self.repository),
             "retention_days": 14,
             "run_attempt": self.run_attempt.to_string(),
@@ -174,6 +179,7 @@ impl RunInfo {
         set("GITHUB_REPOSITORY", self.repository.clone());
         set("GITHUB_REPOSITORY_ID", self.repository_id.clone());
         set("GITHUB_REPOSITORY_OWNER", self.owner().to_owned());
+        set("GITHUB_REPOSITORY_OWNER_ID", self.owner_id());
         set("GITHUB_RETENTION_DAYS", "14".into());
         set("GITHUB_RUN_ATTEMPT", self.run_attempt.to_string());
         set("GITHUB_RUN_ID", self.run_id.clone());
@@ -191,12 +197,26 @@ impl RunInfo {
         set("RUNNER_TEMP", "/home/runner/_temp".into());
         set("RUNNER_TOOL_CACHE", "/home/runner/_tool".into());
         set("RUNNER_ENVIRONMENT", "github-hosted".into());
+        set("RUNNER_WORKSPACE", RUNNER_WORKSPACE.into());
         vars
+    }
+}
+
+/// The owner's id in a webhook-shaped payload, `repository.owner.id`, a
+/// number or a string.
+pub fn owner_id(event: &Value) -> Option<String> {
+    match &event["repository"]["owner"]["id"] {
+        Value::String(id) => Some(id.clone()),
+        Value::Number(id) => Some(id.to_string()),
+        _ => None,
     }
 }
 
 /// Where a job's repository is checked out, as on GitHub's runners.
 pub const WORKSPACE: &str = "/home/runner/work/repo";
+
+/// The folder the workspace is in, as GitHub's `RUNNER_WORKSPACE` is.
+pub const RUNNER_WORKSPACE: &str = "/home/runner/work";
 
 /// The `runner` context.
 /// Whether a head commit's `message` asks, as GitHub lets it, that the
@@ -280,6 +300,21 @@ mod tests {
         assert_eq!(vars["GITHUB_REF_NAME"], "v1.2.0");
         assert_eq!(vars["GITHUB_JOB"], "build");
         assert_eq!(vars["RUNNER_OS"], "Linux");
+        assert_eq!(vars["RUNNER_WORKSPACE"], "/home/runner/work");
+        assert_eq!(vars["GITHUB_REPOSITORY_OWNER_ID"], "");
+    }
+
+    #[test]
+    fn the_owners_id_comes_from_the_event() {
+        let info = RunInfo {
+            repository: "acme/web".into(),
+            event: json!({ "repository": { "owner": { "id": 42 } } }),
+            ..RunInfo::default()
+        };
+        assert_eq!(info.variables("build")["GITHUB_REPOSITORY_OWNER_ID"], "42");
+        assert_eq!(info.context("build", "", None)["repository_owner_id"], "42");
+        assert_eq!(owner_id(&json!({ "repository": { "owner": { "id": "ws_1" } } })).as_deref(), Some("ws_1"));
+        assert_eq!(owner_id(&json!({})), None);
     }
 }
 

@@ -23,6 +23,9 @@ pub(crate) struct Commands {
     pub(crate) stopped: Option<String>,
     /// Whether `::debug::` lines are shown (`ACTIONS_STEP_DEBUG`).
     pub(crate) debug: bool,
+    /// `::echo::on` or `::echo::off`: whether command lines are shown as
+    /// well as acted on. Until a step says, they are with debug logging.
+    pub(crate) echo: Option<bool>,
 }
 
 /// `%25`, `%0D`, `%0A`, and in properties `%3A` and `%2C`, as the
@@ -65,11 +68,19 @@ impl Commands {
                 self.stopped = None;
                 return None;
             }
-            return Some(line.to_owned());
+            return Some(output(line, log));
         }
         let Some((name, properties, data)) = parse_command(line) else {
-            return Some(line.to_owned());
+            return Some(output(line, log));
         };
+        // Echoed as it reads, before it is acted on; `::add-mask::` never is.
+        let known = matches!(
+            name.as_str(),
+            "add-mask" | "error" | "warning" | "notice" | "group" | "endgroup" | "debug" | "set-output" | "save-state" | "stop-commands" | "echo" | "add-matcher" | "remove-matcher" | "add-path" | "set-env"
+        );
+        if known && name != "add-mask" && self.echo.unwrap_or(self.debug) {
+            log.line(line);
+        }
         match name.as_str() {
             "add-mask" => {
                 if !data.trim().is_empty() {
@@ -79,12 +90,7 @@ impl Commands {
             }
             "error" | "warning" | "notice" => {
                 log.annotation(&name, &data, &properties);
-                let label = match name.as_str() {
-                    "error" => "Error",
-                    "warning" => "Warning",
-                    _ => "Notice",
-                };
-                Some(format!("##[{name}]{label}: {data}"))
+                Some(issue_line(&name, &data))
             }
             "group" => Some(format!("##[group]{data}")),
             "endgroup" => Some("##[endgroup]".to_owned()),
@@ -105,14 +111,78 @@ impl Commands {
                 self.stopped = Some(data);
                 None
             }
-            "echo" => None,
+            "echo" => {
+                match data.trim().to_ascii_lowercase().as_str() {
+                    "on" => self.echo = Some(true),
+                    "off" => self.echo = Some(false),
+                    _ => return Some(format!("##[error]Invalid echo command value. Possible values can be: 'on', 'off'. Current value is: '{}'.", data.trim())),
+                }
+                None
+            }
+            "add-matcher" => {
+                let path = matcher_path(data.trim(), &log.matchers.workspace);
+                let read = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display())).and_then(|text| super::matchers::parse(&text));
+                match read {
+                    Ok(matchers) => {
+                        log.matchers.add(matchers);
+                        None
+                    }
+                    Err(problem) => Some(format!("##[error]Unable to process command '{line}' successfully.\n##[error]{problem}")),
+                }
+            }
+            "remove-matcher" => {
+                match properties.get("owner").and_then(Value::as_str).filter(|o| !o.trim().is_empty()) {
+                    Some(owner) => log.matchers.remove(owner.trim()),
+                    // No owner: every matcher in the file named.
+                    None => {
+                        let path = matcher_path(data.trim(), &log.matchers.workspace);
+                        match std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display())).and_then(|text| super::matchers::parse(&text)) {
+                            Ok(matchers) => matchers.iter().for_each(|m| log.matchers.remove(&m.owner)),
+                            Err(problem) => return Some(format!("##[error]Unable to process command '{line}' successfully.\n##[error]{problem}")),
+                        }
+                    }
+                }
+                None
+            }
             "add-path" | "set-env" => Some(format!(
                 "##[error]The `{name}` command is disabled, as on GitHub. Write to the file in $GITHUB_{} instead.",
                 if name == "add-path" { "PATH" } else { "ENV" }
             )),
-            _ => Some(line.to_owned()),
+            _ => Some(output(line, log)),
         }
     }
+}
+
+/// How an annotation shows in the log.
+fn issue_line(level: &str, message: &str) -> String {
+    let label = match level {
+        "error" => "Error",
+        "warning" => "Warning",
+        _ => "Notice",
+    };
+    format!("##[{level}]{label}: {message}")
+}
+
+/// A line of output, as the log shows it: as it is, or, when a problem
+/// matcher reads an issue in it, the issue, annotated.
+fn output(line: &str, log: &mut Log) -> String {
+    match log.matchers.issue(line) {
+        Some(issue) => {
+            log.annotation(issue.level, &issue.message, &issue.properties);
+            issue_line(issue.level, &issue.message)
+        }
+        None => line.to_owned(),
+    }
+}
+
+/// A matcher file's path: relative to the workspace, and a Docker action's
+/// `/github/workspace` read as the workspace it is.
+fn matcher_path(given: &str, workspace: &std::path::Path) -> std::path::PathBuf {
+    if let Some(rest) = given.strip_prefix("/github/workspace") {
+        return workspace.join(rest.trim_start_matches('/'));
+    }
+    let path = std::path::Path::new(given);
+    if path.is_absolute() { path.to_path_buf() } else { workspace.join(path) }
 }
 
 /// How a process ended.
@@ -314,6 +384,58 @@ mod tests {
         let text = log.buffered();
         assert!(text.contains("The operation was canceled."), "{text}");
         assert!(text.contains("cleaned up"), "{text}");
+    }
+
+    /// `::echo::on` shows command lines until `::echo::off`, which is
+    /// itself shown; `::add-mask::` never is.
+    #[cfg(unix)]
+    #[test]
+    fn echo_shows_command_lines_while_on() {
+        use super::Commands;
+        use crate::actions::report::{Api, Log};
+
+        let mut log = Log::new(Api::offline(), Vec::new());
+        let mut commands = Commands::default();
+        for line in ["::set-output name=a::1", "::echo::on", "::save-state name=b::2", "::add-mask::s3cret", "::echo::off", "::save-state name=c::3"] {
+            if let Some(shown) = commands.handle(line, &mut log) {
+                log.line(&shown);
+            }
+        }
+        let text = log.buffered();
+        assert_eq!(text, "::save-state name=b::2\n::echo::off\n");
+        assert_eq!((commands.outputs.len(), commands.state.len()), (1, 2));
+        // Debug logging echoes until a step says otherwise.
+        let mut log = Log::new(Api::offline(), Vec::new());
+        let mut commands = Commands { debug: true, ..Commands::default() };
+        commands.handle("::set-output name=a::1", &mut log);
+        assert!(log.buffered().contains("::set-output name=a::1"));
+        assert!(commands.handle("::echo::maybe", &mut log).unwrap().contains("Invalid echo command value"));
+    }
+
+    /// A matcher added by one line reads the lines after it, until removed.
+    #[cfg(unix)]
+    #[test]
+    fn matchers_are_added_and_removed_by_command() {
+        use super::Commands;
+        use crate::actions::report::{Api, Log};
+
+        let dir = std::env::temp_dir().join(format!("g1t-add-matcher-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("go.json"),
+            r#"{"problemMatcher": [{"owner": "go", "pattern": [{"regexp": "^\\s*(.+\\.go):(?:(\\d+):(\\d+):)? (.*)", "file": 1, "line": 2, "column": 3, "message": 4}]}]}"#,
+        )
+        .unwrap();
+        let mut log = Log::new(Api::offline(), Vec::new());
+        log.matchers.workspace = dir.clone();
+        let mut commands = Commands::default();
+        assert_eq!(commands.handle("main.go:3:1: undefined: x", &mut log).unwrap(), "main.go:3:1: undefined: x");
+        assert!(commands.handle("::add-matcher::go.json", &mut log).is_none());
+        assert_eq!(commands.handle("main.go:3:1: undefined: x", &mut log).unwrap(), "##[error]Error: undefined: x");
+        assert!(commands.handle("::remove-matcher owner=go::", &mut log).is_none());
+        assert_eq!(commands.handle("main.go:3:1: undefined: x", &mut log).unwrap(), "main.go:3:1: undefined: x");
+        assert!(commands.handle("::add-matcher::missing.json", &mut log).unwrap().contains("Unable to process command"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

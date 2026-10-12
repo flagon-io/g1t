@@ -18,6 +18,8 @@ flate2 = "1"
 crc32fast = "1"
 # Checking that a release of the self-hosted runner is g1t's.
 ed25519-dalek = "3"
+# Problem matchers' patterns (actions/matchers.rs).
+regex = { version = "1.13", default-features = false, features = ["std", "perf", "unicode-perl", "unicode-case"] }
 anyhow = "1"
 base64 = "0.22"
 serde = { workspace = true }

@@ -56,13 +56,14 @@ gives their values out, so they cannot be copied across.
 | `concurrency` with `cancel-in-progress`, for the workflow or for one job | The same: one run, or one job, of a group at a time. |
 | `permissions:` for the workflow or for one job, `read-all`, `write-all` | The same: they decide what [the job's token](#the-jobs-token) may do. |
 | `${{ }}` expressions: every operator, function and context | The same, including `hashFiles`, `success()`, `failure()`, `always()` and `cancelled()`. |
-| `run:` with `bash`, `sh`, `python` or a custom shell | The same. |
-| JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
+| `run:` with `bash`, `sh`, `python`, `pwsh` or a custom shell | The same, with GitHub's file for each: `.sh` for `bash` and `sh`, `.py` for `python`, `.ps1` for PowerShell (stopping at the first error, and exiting with the last program's code), `.cmd` for `cmd`, and no extension for another program. `python` runs `python`, or `python3` on a machine without it. |
+| JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. An action that declares `node20` runs on Node 20 where the machine has one. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories) and [an action's pre and post](#an-actions-pre-and-post). |
 | Composite actions | The same. |
 | Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository) | The same: `with:` inputs checked against their `type`, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, `strategy.matrix` on the calling job (one call for each combination), `concurrency` on the calling job, and up to ten levels of workflows with at most 50 different reusable workflows in a run. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
 | `actions/checkout` | Checks out from g1t, with `ref`, `fetch-depth`, `path`, `repository`, `token` and `submodules`. |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. Step summaries show on the run's page; see [job summaries](#job-summaries). |
-| `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run, and [masked](#masking-secrets) values stay hidden. |
+| `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::`, `::echo::on` | The same: errors and warnings become annotations on the run, with their `file`, `line`, `col`, `endLine` and `endColumn`, and [masked](#masking-secrets) values stay hidden. |
+| Problem matchers (`::add-matcher::`, `::remove-matcher::`) | The same, so `actions/setup-node`, `setup-go` and `setup-python` turn compiler and linter output into annotations. See [problem matchers](#problem-matchers). |
 | `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is [the job's own token](#the-jobs-token); `GITHUB_TOKEN` is its alias. |
 | `environment:` on a job | The job waits for the environment's [protection rules](#environments), then reads each key's row for that environment, as environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. The name may be an expression. |
 | `actions/upload-artifact`, `actions/download-artifact`, `actions/upload-artifact/merge` | The same inputs and outputs as version 4: `retention-days`, `overwrite`, `compression-level`, `include-hidden-files`, `!` exclusions, download by `pattern` with `merge-multiple`, and from another run with `run-id` and `github-token`. Up to 5 GiB each; see [artifacts](#artifacts). |
@@ -373,8 +374,11 @@ its job's token, start no workflows, so a workflow cannot set itself off.
 Jobs run in a fresh sandbox each: Debian with Node 24, Python 3, Go, Rust,
 Java 21, .NET 8, Ruby 3.3, `build-essential`, `git`, `curl`, `jq`, Docker
 (with Buildx and Compose) and passwordless `sudo`, in GitHub's layout
-(`/home/runner/work`, `RUNNER_TEMP`, `RUNNER_TOOL_CACHE`).
-`runner.os` is `Linux`. `ubuntu-latest`, `ubuntu-24.04` and other Linux
+(`/home/runner/work`, `RUNNER_WORKSPACE`, `RUNNER_TEMP`, `RUNNER_TOOL_CACHE`).
+`runner.os` is `Linux`. Each step's `GITHUB_ACTION` is its `id`, or
+GitHub's name for it: `__run`, `__run_2` and on for `run:` steps,
+`__actions_checkout` for `uses: actions/checkout`. `ImageOS` and
+`ImageVersion` are set when the machine's image sets them. `ubuntu-latest`, `ubuntu-24.04` and other Linux
 labels all run here. A job whose `runs-on` names `self-hosted` waits for one
 of your [self-hosted runners](/guides/self-hosted-runners/) instead. Setup actions such as
 `actions/setup-node` and `actions/setup-python` install other versions as
@@ -768,6 +772,65 @@ repository's cache.
   with its own message. `actions/upload-artifact`,
   `actions/download-artifact` and `actions/upload-artifact/merge` work:
   g1t runs those itself.
+
+## An action's pre and post
+
+A JavaScript action's `pre` runs before the job's first step, as on
+GitHub: each one is a step of its own, *Pre* and the step's name, in the
+order of the steps, when its `pre-if` holds (`always()` when it has
+none). Its `post` runs after the last step, *Post* and the step's name,
+last first. What `pre` saves with `GITHUB_STATE` or `::save-state::`
+reaches the step's main as `STATE_<name>`, and what either saves reaches
+`post`.
+
+An action in your repository (`uses: ./…`) is not checked out when the
+job starts, so its `pre` is not run and the step warns, as on GitHub. An
+action inside a composite action runs its `pre` right before its main.
+
+A step that gives an input the action does not declare is warned of:
+*Unexpected input(s) 'foo', valid inputs are ['token', 'path']*. The
+step still runs.
+
+## Problem matchers
+
+`::add-matcher::path/to/matcher.json` adds the matchers in a file of
+GitHub's format, and they read every line of output from then on, for
+the rest of the job. A line one matches becomes an error, warning or
+notice annotation, with the file, line, column and message it found, in
+place of the line in the log.
+
+```json
+{
+  "problemMatcher": [
+    {
+      "owner": "my-linter",
+      "pattern": [
+        {
+          "regexp": "^(.+):(\\d+):(\\d+): (error|warning) (.*)$",
+          "file": 1, "line": 2, "column": 3, "severity": 4, "message": 5
+        }
+      ]
+    }
+  ]
+}
+```
+
+- A pattern of several lines matches them in order. The last one can
+  set `loop` to match each issue after a header line, as ESLint's
+  stylish output has.
+- `severity` is the matcher's own default, `error` when it gives none.
+  A severity other than `error`, `warning` or `notice` is no annotation.
+- A file is kept when it exists in a repository in the workspace, as a
+  path inside it; `fromPath` names the file a relative path is from.
+- A matcher added with an owner already there takes its place.
+  `::remove-matcher owner=my-linter::` removes it.
+- Patterns are regular expressions as Rust's `regex` reads them, which
+  has no lookaround or backreferences. A file whose patterns do not
+  read is refused, with an error in the log.
+
+`::echo::on` shows each workflow command in the log as it is read,
+until `::echo::off`; with [debug logging](#debug-logging) they are shown
+from the start.
 
 ## Caching Rust builds
 
