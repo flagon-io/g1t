@@ -13,7 +13,6 @@ import {
   arrivalKey,
   cueFor,
   cueForNotificationKind,
-  finishedCard,
   lookingAt,
   mentionsMe,
   wantsDesktopToast,
@@ -144,7 +143,7 @@ test("sounds off, or one cue off, is silent for that", () => {
   assert.equal(cueFor(chat(message({ body: "@ana" })), ctx({ focus: away }, { sound_cues: { mention: false } })), null);
 });
 
-test("agents' messages count like people's, and a finished card plays `agent_done`", () => {
+test("an old agent's message counts like a person's", () => {
   const away = ctx({ focus: { visible: true, focused: false, viewingChannel: "chn_general" } });
   assert.equal(cueFor(chat(message({ author: margo })), away), "message");
   assert.equal(cueFor(chat(message({ author: margo, channel_id: "chn_dm" }), "dm"), away), "direct");
@@ -155,16 +154,9 @@ test("agents' messages count like people's, and a finished card plays `agent_don
     body: "",
     card: { kind: "session", title: "Fix the flaky test", detail: "2 files changed", state: "Done", href: "/acme/web/pull/4" },
   });
-  assert.ok(finishedCard(card));
-  assert.equal(cueFor(chat(card), away), "agent_done");
-  assert.equal(cueFor(chat(card), ctx()), null, "looking at it: silent");
-  assert.equal(cueFor(chat(card), ctx({ focus: away.focus }, { sound_cues: { agent_done: false } })), null);
-  // A card still running, or a person's card, is a message.
-  assert.ok(!finishedCard({ ...card, card: { ...card.card!, state: "Running" } }));
-  assert.ok(!finishedCard({ ...card, author: bea }));
-  assert.equal(cueFor(chat({ ...card, card: { ...card.card!, state: "Running" } }), away), "message");
-  // An agent waiting on you, over the feed, is the same cue.
-  assert.equal(cueFor(feed(notification({ kind: "agent_waiting", actor: { kind: "agent", id: "a1", name: "Margo" } })), away), "agent_done");
+  assert.equal(cueFor(chat(card), away), "message");
+  // An old "waiting on you" notification makes no sound of its own.
+  assert.equal(cueFor(feed(notification({ kind: "agent_waiting", actor: { kind: "agent", id: "a1", name: "Margo" } })), away), null);
 });
 
 test("a deleted message, and an inbox notification, make no sound", () => {

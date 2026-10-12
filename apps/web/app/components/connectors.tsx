@@ -16,10 +16,12 @@ import {
   Search,
   ShieldCheck,
   Siren,
+  Webhook,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
+import { type Provider, PROVIDERS } from "@g1t/contracts";
 import { type ConnectorScope, type ConnectorView, connectorPath } from "@g1t/contracts/connectors";
 
 import { CONTACT } from "../lib/legal";
@@ -37,7 +39,7 @@ import {
   tileColor,
 } from "../lib/connectors";
 import { cn } from "../lib/cn";
-import { ProviderMark } from "./model-providers";
+import { integrationsSection } from "../lib/integration-sections";
 import { Badge } from "./ui/badge";
 import { Hint } from "./ui/hint";
 import { Input } from "./ui";
@@ -59,6 +61,82 @@ const CATEGORY_ICONS: Record<CategoryFilter, ReactNode> = {
   security: <ShieldCheck size={15} />,
   files: <FolderOpen size={15} />,
 };
+
+const PROVIDER_COLORS: Partial<Record<Provider, string>> = {
+  sentry: "#a78bfa",
+  datadog: "#a26ce6",
+  webhook: "#5eead4",
+  jira: "#5b8def",
+  linear: "#8b8ff0",
+};
+
+/** A provider's mark: its initial in its colour, or an icon for the generic ones. */
+export function ProviderMark({ provider, size = 32 }: { provider: Provider; size?: number }) {
+  const color = PROVIDER_COLORS[provider] ?? "#a1a1aa";
+  const content =
+    provider === "webhook" ? (
+      <Webhook size={size * 0.5} />
+    ) : provider.endsWith("_endpoint") ? (
+      <Bot size={size * 0.5} />
+    ) : (
+      PROVIDERS[provider].label[0]
+    );
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex shrink-0 items-center justify-center font-semibold tracking-tight"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size * 0.28,
+        fontSize: size * 0.42,
+        background: `color-mix(in srgb, ${color} 16%, transparent)`,
+        // Toward the text colour, so the letter reads on the tile in both themes.
+        color: `color-mix(in srgb, ${color} 60%, var(--color-fg))`,
+        boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)`,
+      }}
+    >
+      {content}
+    </span>
+  );
+}
+
+/** Providers to choose from, as compact tiles that open their form. */
+export function ProviderTiles({
+  providers,
+  slug,
+  adding,
+  blurb,
+}: {
+  providers: Provider[];
+  slug: string;
+  adding: Provider | null;
+  blurb: (provider: Provider) => string;
+}) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {providers.map((provider) => (
+        <Link
+          key={provider}
+          to={`/${slug}/-/integrations/${integrationsSection(PROVIDERS[provider].kind)}?add=${provider}#add`}
+          preventScrollReset
+          className={`group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
+            adding === provider ? "border-accent-dim bg-surface" : "border-line hover:border-line-strong hover:bg-surface"
+          }`}
+        >
+          <ProviderMark provider={provider} size={28} />
+          <span className="min-w-0 grow">
+            <span className="block truncate text-sm font-medium">{PROVIDERS[provider].label}</span>
+            <Hint label={blurb(provider)}>
+              <span className="block truncate text-xs text-muted">{blurb(provider)}</span>
+            </Hint>
+          </span>
+          <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
+        </Link>
+      ))}
+    </div>
+  );
+}
 
 /** A connector's tile: its provider's mark, or its letters on a steady colour. No logos. */
 export function ConnectorMark({ view, size = 36 }: { view: Pick<ConnectorView, "id" | "name" | "provider">; size?: number }) {
@@ -367,7 +445,7 @@ export function ScopeNote({ scope, workspace }: { scope: ConnectorScope; workspa
       <p>
         {scope === "workspace" ? (
           <>
-            Connected here, a tool works <span className="text-fg">for everyone in {workspace}</span>: its people and its agents.
+            Connected here, a tool works <span className="text-fg">for everyone in {workspace}</span>.
             Your own accounts, such as your calendar, are under{" "}
             <Link to="/settings/integrations" className="text-accent hover:underline">
               your integrations

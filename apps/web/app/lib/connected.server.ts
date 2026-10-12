@@ -2,7 +2,7 @@
  * What a workspace has connected, by connector id (@g1t/contracts/connectors):
  * its provider connections from the integrations service, the GitHub App's
  * installations and its own webhooks, each with how it is doing. The
- * Integrations directory and Customize both read it.
+ * Integrations directory and Apps read it.
  */
 import type { User } from "@g1t/contracts";
 import { PROVIDERS } from "@g1t/contracts";
@@ -34,7 +34,7 @@ export async function workspaceConnections(slug: string, viewer: User): Promise<
   const connected: Record<string, ConnectedState> = {};
   if (connections?.ok) {
     for (const connector of CONNECTORS) {
-      if (!connector.provider) continue;
+      if (!connector.provider || !integrationsSection(PROVIDERS[connector.provider].kind)) continue;
       const mine = connections.value.filter((connection) => connection.provider === connector.provider);
       if (mine.length === 0) continue;
       const broken = mine.find((connection) => connection.lastError);

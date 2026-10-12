@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import {
   Bot,
   ChevronRight,
@@ -14,7 +13,6 @@ import {
   Hand,
   Loader,
   Radar,
-  Sparkles,
   MessageSquare,
   ArrowUpRight,
   MessagesSquare,
@@ -49,8 +47,6 @@ import { openedBy } from "../../lib/opened-by";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { DiffView } from "../../components/diff-view";
 import { DetailsDisclosure, detailsSummary } from "../../components/details-disclosure";
-import { LifecyclePanel } from "../../components/lifecycle";
-import { AgentPanel } from "../../components/agents";
 import { BaseBranch } from "../../components/base-branch";
 import { LabelChip, LabelsBox, MilestoneBox } from "../../components/labels";
 import { Markdown } from "../../components/markdown";
@@ -58,12 +54,10 @@ import {
   ButtonLink,
   CopyLine,
   EmptyState,
-  ComputeNote,
   ErrorText,
   SubmitButton,
   Textarea,
   TimeAgo,
-  usePending,
 } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
@@ -82,17 +76,13 @@ import {
   PersonLink,
   PullState,
   TimelineItem,
-  agentReviews,
-  AgentReviewLine,
   verdicts,
 } from "../../components/work";
-import { CatchUpProgress, ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
+import { ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
 import { ViolationList } from "../../components/rules";
 import { PullCodeOwnersPanel, TeamReviewer } from "../../components/codeowners";
-import { CATCH_UP_TIMEOUT_MS } from "../../lib/catch-up";
 import { notFound } from "../../lib/not-found.server";
-import { computeNoteFor } from "../../lib/compute.server";
-import { actions, agents, deployments, identity, inbox, repos, work } from "../../lib/services.server";
+import { actions, deployments, identity, inbox, repos, work } from "../../lib/services.server";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { CommitChecksBadge } from "../../components/commit-checks";
 import { DeployLink } from "../../components/deploy";
@@ -100,7 +90,7 @@ import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.serv
 import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
 import { useMirrorReason } from "../../components/mirror";
-import { REFRESH_MS, useRefreshWhile } from "../../lib/refresh";
+import { useRefreshWhile } from "../../lib/refresh";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
 
@@ -149,16 +139,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const milestonesFound = work.listMilestones(path, viewer);
   labelsFound.catch(() => null);
   milestonesFound.catch(() => null);
-  const [{ can }, found, repo, settings, agentsEnabled, members, computeNote, session, deployed, subscription, runs, teamList] = await Promise.all([
+  const [{ can }, found, repo, settings, members, session, deployed, subscription, teamList] = await Promise.all([
     access,
     pullFound,
     repos.get(path, viewer),
     work.getSettings(path, viewer),
-    env.RUNNER.enabled(viewer, path),
     // A member picks reviewers and assignees from the workspace's people.
     member ? identity.listMembers(params.owner, viewer) : null,
-    // Before someone asks g1t for something: whether the plan lets it start.
-    access.then(({ can }) => (can.run ? computeNoteFor(params.owner, "agent") : null)),
     tab === "session" ? work.readSession(path, number, viewer) : null,
     // Its preview, for people with a role here: beside the rest, not after.
     access.then(({ insider }) => (insider ? deployments.list(ref, viewer).catch(() => null) : null)),
@@ -168,8 +155,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
           found.ok ? inbox.subscription(viewer, { repoId: found.value.id, number }).catch(() => null) : null,
         )
       : null,
-    // Its agent's latest runs, for the Agent panel: with the page, not after it.
-    agents.listRuns(viewer, { repo: path, number, limit: 5 }).catch(() => null),
     // A member asks the workspace's teams to review, and mentions them.
     member ? identity.listTeams(viewer, params.owner).catch(() => null) : null,
   ]);
@@ -250,19 +235,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Triage and up manage anyone's pull request; its author, their own,
     // and whoever asked g1t for one, that one.
     canManage: can.triage || (viewer != null && viewer.id === workOwner(pull).id),
-    // Telling its agent things, and re-running checks, spend compute: Write and up.
-    canRun: can.run,
     // Maintain and up edit and delete anyone's comments; everyone, their own.
     canModerate: can.manage_settings,
     // A catch-up is pushed as the viewer: a fork takes pushes only from
     // whoever it is for (who asked g1t for it, or its author), a branch
     // from anyone who can push.
     canUpdate: pull.fork ? viewer?.id === workOwner(pull).id : can.push,
-    agentsEnabled,
-    computeNote,
     subscription,
-    // As the project's agents.json has them; left out, the panel fetches them.
-    agentRuns: runs?.ok ? { runs: runs.value, member: can.run } : undefined,
     members: members?.ok ? members.value.map((person) => person.username) : [],
     // `workspace/slug` and name of each team the viewer can see.
     teams: teamList?.ok ? teamList.value.map((team) => ({ ref: `${team.workspace}/${team.slug}`, name: team.name })) : [],
@@ -336,10 +315,8 @@ function deploymentOf(
   return { preview, build };
 }
 const PULL_NEEDS: Record<string, Capability> = {
-  "agent-review": "run",
   "rerun-workflow": "run",
   "rerun-failed": "run",
-  message: "run",
   merge: "merge",
   unqueue: "merge",
   milestone: "triage",
@@ -365,13 +342,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     // `@acme/backend` is asked as `acme/backend`.
     ...String(form.get("others") ?? "").split(/[\s,]+/).map((name) => name.replace(/^@/, "")),
   ];
-  // Asking g1t for its review records the request, then starts it.
-  if (action === "agent-review") {
-    const asked = await work.updatePull(user, path, number, {
-      reviewers: [...form.getAll("reviewer").map(String), "g1t"],
-    });
-    if (!asked.ok) return { error: asked.error.message, action };
-  }
   // Its labels, milestone and base, from the sidebar's menus and the header.
   if (action === "labels") {
     const set = await work.setLabels(user, path, number, form.getAll("label").map(String));
@@ -389,20 +359,22 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return changed.ok ? null : { error: changed.error.message, action };
   }
   // Catching up: merged and pushed in seconds when the two sides changed
-  // different files; otherwise handed to a sandbox, which takes a minute.
+  // different files. When they changed the same files, the merge is left
+  // to whoever works on the branch.
   if (action === "update") {
     const caught = await work.catchUpPull(user, path, number);
     if (!caught.ok) return { action, error: caught.error.message };
     const update = caught.value;
-    if (update.outcome !== "needs_agent") {
+    if (update.outcome === "needs_agent") {
       return {
         action,
-        updated: { commit: update.commit, already: update.outcome === "up_to_date", at: Date.now() },
+        error: "It and its base changed some of the same files, so it can't be caught up here. Merge the base into the branch where you work on it, then push.",
       };
     }
-    const started = await env.RUNNER.update(user, path, number);
-    if (!started.ok) return { action, error: started.error.message };
-    return { action, agent: { update, startedAt: Date.now() } };
+    return {
+      action,
+      updated: { commit: update.commit, already: update.outcome === "up_to_date", at: Date.now() },
+    };
   }
   // A workflow run's failed jobs, run again. Who may is the actions service's call.
   if (action === "rerun-workflow") {
@@ -445,16 +417,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         })
       : action === "unqueue"
         ? await work.removeFromQueue(user, path, number)
-      : action === "message"
-        ? await work.messageAgent(user, path, number, String(form.get("body") ?? ""))
       : action === "close"
         ? await work.closePull(user, path, number)
       : action === "reopen"
         ? await work.reopenPull(user, path, number)
       : action === "draft"
         ? await work.convertPullToDraft(user, path, number)
-        : action === "agent-review"
-            ? await env.RUNNER.review(user, path, number)
           : action === "reviewers"
             ? await work.updatePull(user, path, number, { reviewers: picked("reviewer") })
           : action === "assign"
@@ -626,7 +594,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     behind,
     reviewPending,
     lifecycle,
-    messages,
     statuses = [],
     requiredChecks = [],
     noChecks,
@@ -646,8 +613,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     requiredApprovals,
     canIgnoreChecks,
     canUpdate,
-    agentsEnabled,
-    agentRuns,
     members,
     teams,
     codeOwners,
@@ -658,7 +623,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     viewer,
     canMerge,
     canManage,
-    canRun,
     canModerate,
     defaultBranch: repoDefault,
   } = loaderData;
@@ -706,12 +670,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     : cloneUrl(addresses, `${params.owner}/${params.repo}`);
   const active = pull.status === "draft" || pull.status === "open";
 
-  // Follow an agent at work, or checks in progress, without a manual reload.
+  // Follow a draft being worked on, or checks in progress, without a manual reload.
   const working = pull.status === "draft";
   const checking = statuses.some((status) => status.state === "pending");
   const reviews = verdicts(comments);
-  // Agents' reviews: shown, never counted.
-  const advisory = agentReviews(comments);
   // What stands between this pull request and a merge, if anything: a
   // required check that has not passed, or the merge queue taking it out.
   const unchecked = requiredChecks.some((check) => check.state !== "success") || checks?.status === "failed";
@@ -737,26 +699,20 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   ];
   // Branch protection wants code owners' approval it does not have yet.
   const ownersMissing = codeOwners?.required && codeOwners.missing ? codeOwners.missing : null;
-  // A catch-up: the click shows at once; the answer says whether it is
-  // done already or a sandbox is on it.
-  const catchUpPending = usePending({ action: "update" });
+  // A catch-up: the click shows at once; the answer says whether it is done.
   const catchUp = actionData?.action === "update" ? actionData : null;
   const caughtUp = catchUp && "updated" in catchUp ? catchUp.updated : null;
-  const agentCatchUp = catchUp && "agent" in catchUp ? catchUp.agent : null;
   // Pushed already: followed until the pull request's head is the merge,
   // so its checks show starting again, for a minute at most.
   const settling =
     caughtUp != null && !caughtUp.already && pull.headCommit !== caughtUp.commit && Date.now() - caughtUp.at < 60_000;
-  // Followed until it is pushed, or for so long, never longer.
-  const catchingUp =
-    agentCatchUp != null && behind && Date.now() - agentCatchUp.startedAt < CATCH_UP_TIMEOUT_MS + REFRESH_MS;
-  // g1t is taking a step of its own accord, so the page will change.
+  // It is moving on its own (the merge queue, auto-merge), so the page will change.
   const moving =
     lifecycle != null && lifecycle.stage !== "ready" && lifecycle.stage !== "needs_you";
   // Whether it merges cleanly is being worked out, so the box will change.
   const probing = active && mergeable === "checking";
   const conflicting = active && mergeable === "conflicting";
-  useRefreshWhile(working || checking || reviewPending || catchingUp || settling || moving || landing || probing);
+  useRefreshWhile(working || checking || reviewPending || settling || moving || landing || probing);
   // New commits, checks, reviews and comments, and its merge or close, as
   // they happen: the timeline grows where the reader is, and one reading
   // at its end follows it.
@@ -843,11 +799,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           )}
         </div>
 
-        {(reviews.length > 0 || advisory.length > 0) && (
+        {reviews.length > 0 && (
           <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            {advisory.map(({ agent, verdict }) => (
-              <AgentReviewLine key={agent.id} agent={agent} verdict={verdict} base={base} />
-            ))}
             {reviews.map(({ reviewer, verdict }) => (
               <span
                 key={reviewer}
@@ -888,9 +841,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       </header>
       <div className={`mt-6 grid gap-6 lg:gap-8 ${tab === "changes" ? "" : "lg:grid-cols-[1fr_19rem]"}`}>
         <div className="min-w-0">
-          {/* What is happening on it now: its stage, its agent, what people told
-              the agent, and what else touches the same files. On the conversation,
-              so the tabs sit right under the title. */}
+          {/* What is happening on it now: its issue, how it ended, the other
+              attempts at its issue, and what else touches the same files. On the
+              conversation, so the tabs sit right under the title. */}
           {tab === "conversation" && (
             <div>
               {issue && (
@@ -942,80 +895,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </p>
                 </Card>
               )}
-              {lifecycle && <LifecyclePanel lifecycle={lifecycle} />}
-              {/* The agent on it: who, doing what this minute, for how long, at what cost. */}
-              <AgentPanel
-                owner={params.owner}
-                repo={params.repo}
-                number={pull.number}
-                stage={lifecycle?.stage ?? null}
-                confidence={pull.confidence ?? null}
-                runs={agentRuns}
-              />
-
-              {/* Steering: while its agent works, people can tell it things. */}
-              {canRun &&
-                pull.runtime === "hosted" &&
-                (working || ["working", "revising", "catching_up", "answering"].includes(lifecycle?.stage ?? "")) && (
-                  // Keyed by the messages so the box empties once one shows below.
-                  <Form method="post" className="mt-4 rounded-2xl bg-surface p-4 ring-1 ring-accent/30" key={messages.length}>
-                    <p className="flex items-center gap-2 text-sm font-medium">
-                      <Sparkles size={15} className="text-accent" />
-                      Message the agent
-                    </p>
-                    <p className="mt-1 text-xs text-muted">
-                      A correction, a hint, a change of plan. It reads it at its next step, without
-                      starting over.
-                    </p>
-                    <div className="mt-3 flex gap-2">
-                      <input type="hidden" name="action" value="message" />
-                      <input
-                        name="body"
-                        required
-                        autoComplete="off"
-                        data-1p-ignore
-                        placeholder="Keep the old flag working too…"
-                        className="h-9 min-w-0 grow rounded-md bg-bg px-3 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-accent/60"
-                      />
-                      <SubmitButton match={{ action: "message" }} pending="Sending…">
-                        Send
-                      </SubmitButton>
-                    </div>
-                  </Form>
-                )}
-              {messages.length > 0 && (
-                <ul className="mt-3 space-y-1.5">
-                  {messages.map((message) => (
-                    <li key={message.id} className="flex items-start gap-2 text-sm">
-                      <Avatar name={message.author} size={18} />
-                      <span className="min-w-0 grow">
-                        <span className="font-medium">
-                          {message.fromNumber != null ? `The agent on #${message.fromNumber}` : message.author}
-                        </span>{" "}
-                        <span className="text-muted">
-                          {message.kind === "question"
-                            ? "asked:"
-                            : message.kind === "handoff"
-                              ? "handed over:"
-                              : message.kind === "answer"
-                                ? "answered:"
-                                : "to the agent:"}
-                        </span>{" "}
-                        {message.body}
-                        {message.answer && (
-                          <span className="mt-1 block border-l-2 border-accent/40 pl-2 text-muted">
-                            {message.declined ? "Declined: " : "Answer: "}
-                            {message.answer}
-                          </span>
-                        )}
-                      </span>
-                      <span className={`shrink-0 text-xs ${message.deliveredAt ? "text-success" : "text-faint"}`}>
-                        {message.deliveredAt ? "read by the agent" : "waiting for its next step"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
               {attempts && pull.issue != null && <AttemptsBox attempts={attempts} issue={pull.issue} base={base} />}
               {collisions.length > 0 && active && (
                 <Card className="mt-4 px-4 py-3 text-sm">
@@ -1055,8 +934,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             ) : tab === "session" ? (
               session.length === 0 ? (
                 <EmptyState title="Nothing recorded yet">
-                  The agent's prompts, reasoning and tool calls appear here as it
-                  works.
+                  A coding agent's prompts, reasoning and tool calls appear here once
+                  it records them with record_session.
                 </EmptyState>
               ) : (
                 <ol className="relative space-y-5 before:absolute before:top-2 before:bottom-2 before:left-3.25 before:w-px before:bg-line">
@@ -1197,7 +1076,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                               .join(" · ")
                       }
                     >
-                      {reviewPending && "g1t is reviewing it now. "}
                       {requiredApprovals > 0 &&
                         `This repository requires ${requiredApprovals} approving ${
                           requiredApprovals === 1 ? "review" : "reviews"
@@ -1223,21 +1101,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         icon={<Loader size={16} className="animate-spin text-accent" />}
                         title="Merging"
                       >
-                        {defaultBranch} has moved, so g1t is bringing this up to date first. It
-                        lands as soon as that is done. Watch it in the Session tab.
+                        {defaultBranch} has moved, so it is being brought up to date first. It
+                        lands as soon as that is done.
                       </StatusRow>
-                    ) : agentCatchUp && behind ? (
-                      <CatchUpProgress
-                        owner={params.owner}
-                        repo={params.repo}
-                        number={pull.number}
-                        defaultBranch={defaultBranch}
-                        behind={behind}
-                        update={agentCatchUp.update}
-                        startedAt={agentCatchUp.startedAt}
-                        retrying={catchUpPending}
-                        runs={agentRuns}
-                      />
                     ) : conflicting ? (
                       <ConflictsSection
                         conflicts={conflicts}
@@ -1246,8 +1112,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         repo={params.repo}
                         defaultBranch={defaultBranch}
                         changesUrl={here + "?tab=changes"}
-                        canResolve={canUpdate && agentsEnabled}
-                        resolving={catchUpPending}
                         error={catchUp && "error" in catchUp ? catchUp.error : null}
                       />
                     ) : probing ? (
@@ -1276,7 +1140,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         <StatusRow
                           icon={<CircleCheck size={16} className="text-success" />}
                           title={
-                            (caughtUp && !caughtUp.already) || agentCatchUp
+                            caughtUp && !caughtUp.already
                               ? `Brought up to date with ${defaultBranch}`
                               : `Up to date with ${defaultBranch}`
                           }
@@ -1288,7 +1152,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                               again on the new commit.
                             </>
                           )}
-                          {agentCatchUp && "g1t merged it in and pushed the result. Its checks run again on the new commit."}
                           {/* A catch-up refused or failed after the pull request stopped being behind. */}
                           {catchUp && "error" in catchUp && <ErrorText>{catchUp.error}</ErrorText>}
                         </StatusRow>
@@ -1430,7 +1293,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </Form>
                 )}
                 {actionData &&
-                  !["merge", "comment", "rerun-failed", "rerun-workflow", "update", "agent-review", "reviewers", "assign", "edit-comment", "delete-comment"].includes(
+                  !["merge", "comment", "rerun-failed", "rerun-workflow", "update", "reviewers", "assign", "edit-comment", "delete-comment"].includes(
                     String(actionData.action),
                   ) && <ErrorText>{actionData.error}</ErrorText>}
               </div>
@@ -1458,23 +1321,13 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             <ul className="mt-2 space-y-1.5 text-sm">
               {reviewerNames.map((name) => {
                 const verdict = reviews.find(({ reviewer }) => reviewer === name)?.verdict;
-                const pending = name === "g1t" && reviewPending;
                 return (
                   <li key={name} className="flex items-center gap-2 px-1">
-                    {name === "g1t" ? (
-                      <Sparkles size={16} className="shrink-0 text-accent" />
-                    ) : (
-                      <Avatar name={name} size={20} />
-                    )}
+                    <Avatar name={name} size={20} />
                     <span className="grow truncate font-mono text-xs">
                       <PersonLink name={name} className="hover:underline" />
                     </span>
-                    {pending ? (
-                      <span className="flex items-center gap-1.5 text-xs text-muted">
-                        <span className="size-1.5 animate-pulse rounded-full bg-accent" />
-                        Reviewing
-                      </span>
-                    ) : verdict === "approve" ? (
+                    {verdict === "approve" ? (
                       <span className="flex items-center gap-1 text-xs text-success">
                         <CircleCheck size={13} /> Approved
                       </span>
@@ -1497,34 +1350,16 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             </ul>
             {pull.status === "open" && canManage && (
               <div className="mt-3 space-y-2">
-                {agentsEnabled && !reviewPending && (
-                  <Form method="post">
-                    <input type="hidden" name="action" value="agent-review" />
-                    {[...pull.reviewers, ...teamReviewers].map((name) => (
-                      <input key={name} type="hidden" name="reviewer" value={name} />
-                    ))}
-                    <div className="*:w-full">
-                      <SubmitButton variant="outline" match={{ action: "agent-review" }} pending="Asking g1t…">
-                        <Sparkles size={14} className="text-accent" />
-                        Request review from g1t
-                      </SubmitButton>
-                    </div>
-                    <ComputeNote note={loaderData.computeNote} />
-                  </Form>
-                )}
                 <details>
                   <summary className="cursor-pointer text-xs text-faint hover:text-fg">
                     {teamChoices.length > 0 ? "Request review from people or teams" : "Request review from people"}
                   </summary>
                   <Form method="post" className="mt-2 space-y-2" key={[...pull.reviewers, ...teamReviewers].join()}>
                     <input type="hidden" name="action" value="reviewers" />
-                    {pull.reviewers.includes("g1t") && (
-                      <input type="hidden" name="reviewer" value="g1t" />
-                    )}
                     <PeoplePicker
                       name="reviewer"
                       members={members.filter((name) => name !== workOwner(pull).username)}
-                      chosen={pull.reviewers.filter((name) => name !== "g1t")}
+                      chosen={pull.reviewers}
                       placeholder="Other usernames or teams (acme/backend)"
                     />
                     {teamChoices.length > 0 && (
@@ -1555,7 +1390,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 </details>
               </div>
             )}
-            {["agent-review", "reviewers"].includes(String(actionData?.action)) && (
+            {actionData?.action === "reviewers" && (
               <ErrorText>{actionData?.error}</ErrorText>
             )}
           </section>

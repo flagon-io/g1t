@@ -18,8 +18,6 @@ declare global {
       DEPLOYMENTS: ServiceBinding;
       PROJECTS: ServiceBinding;
       SECURITY: ServiceBinding;
-      /** The context hub: catalog, search and scorecards. */
-      CONTEXT: ServiceBinding;
       /** Search across all of g1t, and Explore. */
       SEARCH: ServiceBinding;
       /**
@@ -29,8 +27,6 @@ declare global {
       CHAT: ServiceBinding & { fetch(request: Request): Promise<Response> };
       /** Artifacts (services/artifacts): RPC, each artifact's live socket, and files in them. */
       ARTIFACTS: ServiceBinding & { fetch(request: Request | string, init?: RequestInit): Promise<Response> };
-      /** The workspace's own agents: definitions, templates and desks. */
-      AGENTS: ServiceBinding;
       /**
        * Live notifications, counts and browser push (services/notify): RPC,
        * and each tab's feed socket, forwarded as it is (routes/notify/live.ts).

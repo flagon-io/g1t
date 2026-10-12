@@ -26,7 +26,6 @@ const COMMON_ACTIONS = [
   "review_pull_request",
   "merge_pull_request",
   "remember",
-  "message_agent",
 ];
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -87,8 +86,7 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
   return (
     <div>
       <p className="max-w-3xl text-sm text-muted">
-        Every action taken with an agent run's credentials, reads included, and every change people and
-        workspace tokens make through the API, MCP and git: who did it, on whose behalf, with which
+        Every change people, apps and workspace tokens make through the API, MCP and git: who did it, on whose behalf, with which
         credential, to what, and whether it was allowed. Refusals name the rule that refused them.
         {role === "owner"
           ? " As an owner you see the whole workspace."
@@ -100,8 +98,7 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
       <Card asChild className="mt-6 p-4">
         <Form method="get">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <FilterField label="Actor" name="actor" value={filters.actor} placeholder="A person, or whom an agent worked for" />
-            <FilterField label="Agent" name="agent" value={filters.agent} placeholder="g1t" />
+            <FilterField label="Actor" name="actor" value={filters.actor} placeholder="A person, or whom an app worked for" />
             <FilterField label="Action" name="action" value={filters.action} placeholder="git.push" list="audit-actions" />
             <FilterField label="Project" name="project" value={filters.project} placeholder="Any" list="audit-projects" />
             <Field label="Outcome">
@@ -125,7 +122,6 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
                 className={SELECT}
                 options={[
                   { value: "", label: "Anyone" },
-                  { value: "agent", label: "Agents" },
                   { value: "person", label: "People" },
                   { value: "workspace", label: "Workspace tokens" },
                 ]}
@@ -182,7 +178,7 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
           <EmptyState title={filtered ? "Nothing matches these filters" : "Nothing recorded yet"}>
             {filtered
               ? "Try a wider time range, or clear the filters."
-              : "Entries appear as agents work and as people change things through the API, MCP and git."}
+              : "Entries appear as people, apps and workspace tokens change things through the API, MCP and git."}
           </EmptyState>
         ) : (
           <AuditTable entries={entries} base={base} />

@@ -7,7 +7,7 @@ import { CODE_DISMISS_REASONS, type DismissReason, dismissLabel } from "@g1t/con
 import type { Route } from "./+types/security-code-alert";
 import { page } from "../../lib/meta";
 import { DismissDialog, ReopenButton, SeverityBadge } from "../../components/security";
-import { CARD, FixWithG1t, shortRule } from "../../components/security-suite";
+import { CARD, shortRule } from "../../components/security-suite";
 import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { securitySuite } from "../../lib/services.server";
@@ -33,7 +33,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const repo = { namespace: params.owner, name: params.repo };
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
-  const refused = await refusal(context, params, intent === "fix" ? "run" : "security_alerts");
+  const refused = await refusal(context, params, "security_alerts");
   if (refused) return { ok: false, error: refused };
   const number = Number(params.number) || 0;
   if (intent === "dismiss") {
@@ -45,10 +45,6 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   if (intent === "reopen") {
     const done = await securitySuite.setCodeAlertState(user, repo, number, "open", null, "");
     return done.ok ? { ok: true } : { ok: false, error: done.error.message };
-  }
-  if (intent === "fix") {
-    const done = await securitySuite.fixAlert(user, repo, String(form.get("id") ?? ""));
-    return done.ok ? { ok: true, issue: done.value.issue, message: done.value.message } : { ok: false, error: done.error.message };
   }
   return { ok: false, error: "Unknown action." };
 }
@@ -77,7 +73,6 @@ export default function CodeAlertPage({ loaderData, params }: Route.ComponentPro
         </div>
         {can.push && (
           <div className="flex items-center gap-2">
-            {alert.state === "open" && can.run && <FixWithG1t id={alert.id} action={action} issue={alert.issue} base={base} />}
             {alert.state === "open" ? (
               <DismissDialog id={alert.id} title={`Dismiss alert #${alert.number}`} detail={`${where ?? alert.ruleId}`} reasons={CODE_DISMISS_REASONS} action={action} />
             ) : alert.state === "dismissed" ? (

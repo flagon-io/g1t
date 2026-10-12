@@ -128,7 +128,7 @@ export function billReadNote(read: BillRead): { text: string; warn: boolean } {
 export function versionCells(v: { costMicros: number; priceMicros: number; basis?: string }): { cost: string; price: string; note: string | null } {
   if (v.basis === "weight") {
     const weight = Number((v.costMicros / 1_000_000).toFixed(6));
-    return { cost: "—", price: `×${weight}`, note: "A weight on the agent rate's tokens, not money" };
+    return { cost: "—", price: `×${weight}`, note: "A weight, not money (retired agent token pricing)" };
   }
   if (v.basis === "rate") return { cost: "—", price: unitDollars(v.priceMicros), note: "g1t's own rate: no cost behind it" };
   return { cost: unitDollars(v.costMicros), price: unitDollars(v.priceMicros), note: null };
@@ -278,7 +278,7 @@ export function spendBanner(caps: SpendCaps): string | null {
   const parts: string[] = [];
   if (caps.tripped) {
     parts.push(
-      `the daily breaker is open (${usd(caps.todayMicros)} of ${usd(caps.dailyCapMicros)} today), so new hosted-model agent runs g1t pays for wait until 00:00 UTC`,
+      `the daily breaker is open (${usd(caps.todayMicros)} of ${usd(caps.dailyCapMicros)} today), so new work g1t pays for waits until 00:00 UTC`,
     );
   }
   for (const budget of caps.comped) {
@@ -327,8 +327,8 @@ export function capPercent(usedMicros: number, capMicros: number): number {
 
 /** What each level of the platform pause stops, for the page and the banner. */
 export const PAUSE_LEVELS: { level: PauseLevel; title: string; stops: string }[] = [
-  { level: "compute", title: "Compute", stops: "New agent runs, checks, workflow jobs and deploy builds, for every workspace. Runs already going finish." },
-  { level: "schedules", title: "Schedules", stops: "Actions' cron-triggered runs, and the runner's sweep that starts queued agents." },
+  { level: "compute", title: "Compute", stops: "New checks, workflow jobs and deploy builds, for every workspace. Runs already going finish." },
+  { level: "schedules", title: "Schedules", stops: "Actions' cron-triggered runs." },
   { level: "indexing", title: "Indexing", stops: "Context embeddings and backfills, and search's backfills (they go on from where they were when resumed)." },
   { level: "renders", title: "Renders", stops: "Social card images: a cache miss gets the brand card or the static logo." },
 ];

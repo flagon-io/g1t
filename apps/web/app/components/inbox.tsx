@@ -292,7 +292,7 @@ export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | nu
         <Bell size={17} />
         {dnd && <span aria-hidden="true" className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-warn ring-2 ring-bg" />}
         {shown && (
-          // Amber while an agent waits on them, red for a failure, else the accent.
+          // Amber while something waits on them, red for a failure, else the accent.
           <span
             className={cn(
               "absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.625rem] font-semibold tabular-nums text-bg ring-2 ring-bg",
@@ -364,7 +364,7 @@ export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | nu
 
 /**
  * Mission control's card of what is unread in the person's notifications and
- * worth a look: items an agent is waiting on, then failures. Titled for
+ * worth a look: items waiting on them, then failures. Titled for
  * notifications, not "Needs you", which on mission control is the work list's
  * own count. Not shown when there are none.
  */

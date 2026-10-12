@@ -8,8 +8,6 @@ declare global {
       EVENTS: ServiceBinding;
       /** apps/status's `StatusAdmin` entrypoint: see `StatusAdminApi`. */
       STATUS: Fetcher;
-      /** services/models's `Discovery` entrypoint: see `ModelDiscoveryApi`. */
-      MODELS: Fetcher;
       ASSETS: Fetcher;
       ACCESS_TEAM_DOMAIN: string;
       ACCESS_AUD: string;

@@ -1,12 +1,11 @@
 /**
- * Share an artifact (docs.g1t.sh/guides/artifacts/, "Sharing"): invite people,
- * agents and teams with a role, see everyone who has access and where it
- * comes from, choose whether it follows its space or parent or only
- * people invited, open it to the workspace or to anyone in it with the
- * link, and say how agents may change it. People who can't share see it
- * read-only.
+ * Share an artifact (docs.g1t.sh/guides/artifacts/, "Sharing"): invite people
+ * and teams with a role, see everyone who has access and where it comes
+ * from, choose whether it follows its space or parent or only people
+ * invited, and open it to the workspace or to anyone in it with the link.
+ * People who can't share see it read-only.
  */
-import { DOC_AGENT_MODE_LABELS, DOC_ROLE_LABELS, FOLIO_GENERAL_ROLES, type DocRole, type Folio, type FolioAccessChange, type FolioAccessList, type FolioGeneralAccess, type FolioGeneralRole } from "@g1t/contracts";
+import { DOC_ROLE_LABELS, FOLIO_GENERAL_ROLES, type DocRole, type Folio, type FolioAccessChange, type FolioAccessList, type FolioGeneralAccess, type FolioGeneralRole } from "@g1t/contracts";
 import { Check, Globe, Link2, Lock, Users } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -24,7 +23,7 @@ import { Face } from "./parts";
 
 const ROLES: DocRole[] = ["view", "comment", "edit", "manage"];
 
-type Candidate = { value: string; label: string; kind: "user" | "agent" | "team"; name: string };
+type Candidate = { value: string; label: string; kind: "user" | "team"; name: string };
 
 export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { slug: string; folio: Pick<Folio, "id" | "title" | "path" | "space" | "parent_id" | "viewer_role">; open: boolean; onOpenChange: (o: boolean) => void; onChanged?: () => void }) {
   const layout = useFoliosData();
@@ -68,7 +67,7 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
   const listed = new Set([...(access?.rows ?? []).map((r) => r.principal), access ? `user:${access.owner.id}` : ""]);
   const candidates: Candidate[] = useMemo(
     () => [
-      ...(layout?.mentionables ?? []).map((m): Candidate => (m.kind === "agent" ? { value: `agent:${m.id}`, label: `${m.display_name} (agent)`, kind: "agent", name: m.name } : { value: `username:${m.name}`, label: `${m.display_name} (@${m.name})`, kind: "user", name: m.name })),
+      ...(layout?.mentionables ?? []).map((m): Candidate => ({ value: `username:${m.name}`, label: `${m.display_name} (@${m.name})`, kind: "user", name: m.name })),
       ...teams.map((t): Candidate => ({ value: `team:${t.slug}`, label: `${t.name} (team)`, kind: "team", name: t.slug })),
     ],
     [layout?.mentionables, teams],
@@ -102,7 +101,7 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
         {canShare && (
           <div className="space-y-2">
             <div className="flex flex-wrap gap-2">
-              <Combobox options={offered.map((c) => ({ value: c.value, label: c.label }))} value={who} onValueChange={setWho} placeholder="Add people, agents or teams" searchPlaceholder="Search the workspace" emptyText="Nobody else to add." className="h-9 min-w-0 grow basis-56" />
+              <Combobox options={offered.map((c) => ({ value: c.value, label: c.label }))} value={who} onValueChange={setWho} placeholder="Add people or teams" searchPlaceholder="Search the workspace" emptyText="Nobody else to add." className="h-9 min-w-0 grow basis-56" />
               <SelectField aria-label="Their role" value={role} onValueChange={(r) => setRole(r as DocRole)} options={roleOptions} className="h-9 w-36" />
             </div>
             {who && (
@@ -251,21 +250,6 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
                   Public link: off for this workspace
                 </span>
               </Hint>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-muted">Agents may</span>
-              <SelectField
-                aria-label="How agents change it"
-                disabled={!manager || busy}
-                value={access.agent_mode ?? "default"}
-                onValueChange={(v) => change({ op: "agent_mode", agent_mode: v === "default" ? null : (v as "suggest" | "edit") })}
-                options={[
-                  { value: "default", label: folio.space ? `As ${folio.space.name} says` : "Suggest changes (default)" },
-                  { value: "suggest", label: DOC_AGENT_MODE_LABELS.suggest },
-                  { value: "edit", label: DOC_AGENT_MODE_LABELS.edit },
-                ]}
-                className="h-8 w-52"
-              />
             </div>
           </section>
         )}

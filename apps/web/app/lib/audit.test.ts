@@ -53,7 +53,8 @@ test("filters are read from the address, and nonsense is dropped", () => {
   );
   assert.equal(filters.actor, "syntaqx");
   assert.equal(filters.outcome, "");
-  assert.equal(filters.kind, "agent");
+  // Agents are no longer a filter: an old link's kind=agent is dropped.
+  assert.equal(filters.kind, "");
   assert.equal(filters.from, "2026-10-01");
   assert.equal(filters.to, "");
   const query = toQuery("acme", { kind: "all" }, { ...filters, to: "2026-10-04" }, 100);
@@ -61,7 +62,7 @@ test("filters are read from the address, and nonsense is dropped", () => {
   assert.equal(query.since, "2026-10-01T00:00:00.000Z");
   // The end day is inclusive.
   assert.equal(query.until, "2026-10-05T00:00:00.000Z");
-  assert.equal(query.actorKind, "agent");
+  assert.equal(query.actorKind, null);
   assert.equal(query.outcome, null);
 });
 
@@ -71,12 +72,12 @@ test("links keep the other filters", () => {
   assert.equal(filterHref("/acme/-/audit", parseFilters(new URLSearchParams())), "/acme/-/audit");
 });
 
-test("an agent is shown with whom it acted for", () => {
+test("an old agent's entry is shown with whom it acted for", () => {
   assert.equal(actorLabel(entry), "g1t on behalf of syntaqx");
   assert.equal(actorLabel({ actor: "ana", agent: null, onBehalfOf: null }), "ana");
   assert.equal(targetLabel(entry), "acme/rocket#12");
   assert.equal(targetLabel({ ...entry, number: null, gitRef: "refs/heads/fix" }), "acme/rocket refs/heads/fix");
-  assert.equal(ruleLabel("never"), "never allowed for agents");
+  assert.equal(ruleLabel("never"), "never allowed for agents (an old entry)");
   assert.equal(ruleLabel("run:implement/tools"), "implement run tools");
   assert.equal(ruleLabel("run:update/runner:push"), "update run runner (push)");
 });

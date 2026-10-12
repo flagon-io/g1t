@@ -23,7 +23,7 @@ export const OG = "https://og.g1t.sh";
 
 /** What g1t is, for pages with nothing more particular to say. */
 export const DESCRIPTION =
-  "One workspace where a team and its agents talk, work and ship: chat with people and agents, agents with a job and a budget, and code that lands through checks. Open source, never per seat.";
+  "Repositories, pull requests, required checks, a merge queue and deployments, with chat for your team. Connect the coding agents you already use through MCP and the API. Open source, never per seat.";
 
 /** As much of `MetaArgs` as the tags need. */
 export type PageArgs = {

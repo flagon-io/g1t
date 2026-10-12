@@ -8,53 +8,31 @@ import {
   Forward,
   GitPullRequest,
   ListChecks,
-  LoaderCircle,
   Rocket,
   ShieldCheck,
   Sparkles,
   X,
 } from "lucide-react";
-import {
-  type FormEvent,
-  type KeyboardEvent,
-  type ReactNode,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { type ReactNode, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { Link } from "react-router";
 
-import type { CardAction, CardActionResult, MessageCard, Result } from "@g1t/contracts";
+import type { CardAction, MessageCard } from "@g1t/contracts";
 
 import { Markdown } from "../markdown";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../ui/alert-dialog";
 import { Badge, type BadgeTone } from "../ui/badge";
 import { ButtonLink } from "../ui";
 import { Button, type ButtonVariant } from "../ui/button";
-import { InputAddon, InputGroup } from "../ui/input";
 import { cn } from "../../lib/cn";
-import { type CardChip, actionMode, cardChip, foldsBody, inputValue, moneyInitial, shownActions } from "../../lib/card-actions";
+import { type CardChip, cardChip, foldsBody, shownActions } from "../../lib/card-actions";
 import { repoAt } from "../../lib/markdown-plugins";
 import { sessionChip } from "../../lib/session-card";
 import { codeAccessPath } from "../../lib/workspace-nav";
 
-// A card g1t or an agent posts in chat: what
-// it is about, its state, a preview, a few facts, and what people can do
-// right here. Pressing an action goes to the site (routes/workspace/chat/
-// api.ts, `card_action`), then to chat, then to the service that owns the
-// card; the card changes in place when that service updates it
-// (`message.updated`), so nothing here changes it ahead of time.
+// A card g1t posts in chat (or an agent did, on old messages): what it is
+// about, its state, a preview, a few facts, and links to where it goes.
+// The card changes in place when the service that posted it updates it
+// (`message.updated`). Buttons that ran something on an old agent's card
+// are not shown: nothing answers them any more.
 
 const CARD_ICONS: Record<string, ReactNode> = {
   pull: <GitPullRequest size={16} />,
@@ -64,7 +42,7 @@ const CARD_ICONS: Record<string, ReactNode> = {
   deploy: <Rocket size={16} />,
   approval: <ShieldCheck size={16} />,
   session: <Bot size={16} />,
-  // Where an agent handed the work: the group message it went to.
+  // Where an agent handed the work, on old messages: the group message it went to.
   handoff: <Forward size={16} />,
 };
 
@@ -130,7 +108,7 @@ function dismissToast(id: number) {
   setToasts(toasts.filter((t) => t.id !== id));
 }
 
-/** Says something in the conversation's toasts: what a card's action did, or that a link was copied. */
+/** Says something in the conversation's toasts: that a link was copied, say. */
 export function showToast(ok: boolean, message: string) {
   const id = ++toastSeq;
   // Three at most; a fourth pushes the oldest out.
@@ -144,7 +122,7 @@ function subscribeToasts(listener: () => void) {
 }
 
 /**
- * The toasts that say what a card's action did. Put once in a conversation;
+ * The conversation's toasts (a link copied, or not). Put once in a conversation;
  * along the top on a phone, above the composer on a computer, clear of the
  * notification toasts in the corner.
  */
@@ -156,7 +134,7 @@ export function CardToasts() {
   );
   return (
     <section
-      aria-label="Card actions"
+      aria-label="Notices"
       aria-live="polite"
       className="pointer-events-none fixed z-[66] flex flex-col items-center gap-2 max-sm:inset-x-3 max-sm:top-[calc(env(safe-area-inset-top)+0.75rem)] sm:bottom-28 sm:left-1/2 sm:w-[min(26rem,calc(100vw-2rem))] sm:-translate-x-1/2"
     >
@@ -190,99 +168,32 @@ export function CardToasts() {
 
 // ── The card.
 
-/** A card's actions are small buttons, a finger tall on a phone; the action's style names the variant. */
+/** A card's links are small buttons, a finger tall on a phone; the action's style names the variant. */
 const ACTION_VARIANT: Record<NonNullable<CardAction["style"]>, ButtonVariant> = { primary: "accent", danger: "destructive", default: "outline" };
 
-function actionProps(action: Pick<CardAction, "style">, active = false) {
-  return { variant: ACTION_VARIANT[action.style ?? "default"], size: "sm" as const, className: cn("max-md:h-10 max-md:px-3.5", active && "border-accent/60 bg-raised text-fg") };
-}
-
-/** Sends a card's action; says what happened in a toast; true when it was done. */
-async function pressAction(slug: string, channelId: string, messageId: string, action: CardAction, input: string | null): Promise<boolean> {
-  try {
-    const response = await fetch(`/${slug}/-/chat/api`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ intent: "card_action", channel_id: channelId, message_id: messageId, action_id: action.id, input }),
-    });
-    const result = (await response.json()) as Result<CardActionResult>;
-    if (!result.ok) {
-      showToast(false, result.error.message);
-      return false;
-    }
-    showToast(result.value.ok, result.value.message ?? (result.value.ok ? `${action.label}: done.` : `${action.label} didn't work.`));
-    return result.value.ok;
-  } catch {
-    showToast(false, `${action.label} didn't go through. Try again in a moment.`);
-    return false;
-  }
+function actionProps(action: Pick<CardAction, "style">) {
+  return { variant: ACTION_VARIANT[action.style ?? "default"], size: "sm" as const, className: "max-md:h-10 max-md:px-3.5" };
 }
 
 /**
- * A card g1t or an agent posted: its title (a link when it goes somewhere),
- * its state, a line of detail, a preview, its facts, and its actions.
+ * A card g1t (or, on old messages, an agent) posted: its title (a link
+ * when it goes somewhere), its state, a line of detail, a preview, its
+ * facts, and its links.
  */
 export function CardBox({
   card,
   slug,
   code,
-  channelId,
-  messageId,
-  inert = false,
 }: {
   card: MessageCard;
   slug: string;
   /** Whether the viewer uses Code, for where links go. */
   code: boolean;
-  channelId: string;
-  messageId: string;
-  /** Not yet sent, or gone: drawn, but nothing on it can be pressed. */
-  inert?: boolean;
 }) {
   const href = cardHref(card.href, slug, code);
   const chip = chipOf(card);
   const live = card.kind === "session" && !!chip?.live;
   const actions = shownActions(card);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [asking, setAsking] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<CardAction | null>(null);
-  const triggers = useRef(new Map<string, HTMLButtonElement>());
-  const panelId = useId();
-  const askingAction = actions.find((a) => a.id === asking && a.input) ?? null;
-
-  // The card changed under an open field (the session finished, say): the
-  // action it was for is gone, so the field goes too.
-  useEffect(() => {
-    if (asking && !askingAction) setAsking(null);
-  }, [asking, askingAction]);
-
-  const run = async (action: CardAction, input: string | null = null) => {
-    if (busy || inert) return false;
-    setBusy(action.id);
-    const done = await pressAction(slug, channelId, messageId, action, input);
-    setBusy(null);
-    return done;
-  };
-
-  const press = (action: CardAction) => {
-    switch (actionMode(action)) {
-      case "input":
-        setAsking((now) => (now === action.id ? null : action.id));
-        return;
-      case "confirm":
-        setConfirming(action);
-        return;
-      case "run":
-        void run(action);
-        return;
-    }
-  };
-
-  const closeField = (refocus: string | null) => {
-    setAsking(null);
-    if (refocus) requestAnimationFrame(() => triggers.current.get(refocus)?.focus());
-  };
-
   const head = (
     <>
       <span
@@ -339,83 +250,22 @@ export function CardBox({
       {actions.length > 0 && (
         <div
           role="group"
-          aria-label={`${card.title}: actions`}
+          aria-label={`${card.title}: links`}
           className="mt-3 flex flex-wrap items-center gap-2 sm:pl-11"
-          aria-busy={busy ? true : undefined}
-          // A press here is for the button, not the message's long-press sheet.
+          // A press here is for the link, not the message's long-press sheet.
           onTouchStart={(event) => event.stopPropagation()}
         >
           {actions.map((action) => {
-            const target = actionMode(action) === "link" ? cardHref(action.href, slug, code) : null;
-            if (target) {
-              return (
-                <ButtonLink key={action.id} to={target} {...actionProps(action)}>
-                  {action.label}
-                  <ArrowUpRight size={14} aria-hidden="true" className="-mr-0.5 text-faint" />
-                </ButtonLink>
-              );
-            }
-            const working = busy === action.id;
-            const opens = !!action.input;
-            return (
-              <Button
-                key={action.id}
-                ref={(element) => {
-                  if (element) triggers.current.set(action.id, element);
-                  else triggers.current.delete(action.id);
-                }}
-                type="button"
-                disabled={inert || !!busy}
-                aria-busy={working || undefined}
-                aria-expanded={opens ? asking === action.id : undefined}
-                aria-controls={opens && asking === action.id ? panelId : undefined}
-                aria-haspopup={action.confirm && !opens ? "dialog" : undefined}
-                onClick={() => press(action)}
-                {...actionProps(action, opens && asking === action.id)}
-              >
-                {working && <LoaderCircle size={14} aria-hidden="true" className="-ml-0.5 animate-spin" />}
+            const target = cardHref(action.href, slug, code);
+            return target ? (
+              <ButtonLink key={action.id} to={target} {...actionProps(action)}>
                 {action.label}
-              </Button>
-            );
+                <ArrowUpRight size={14} aria-hidden="true" className="-mr-0.5 text-faint" />
+              </ButtonLink>
+            ) : null;
           })}
         </div>
       )}
-
-      {askingAction && (
-        <ActionField
-          key={askingAction.id}
-          id={panelId}
-          action={askingAction}
-          busy={busy === askingAction.id}
-          disabled={inert || !!busy}
-          onCancel={() => closeField(askingAction.id)}
-          onSubmit={async (value) => {
-            if (await run(askingAction, value)) closeField(null);
-          }}
-        />
-      )}
-
-      <AlertDialog open={!!confirming} onOpenChange={(open) => !open && setConfirming(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirming?.label}</AlertDialogTitle>
-            <AlertDialogDescription>{confirming?.confirm}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className={confirming?.style === "danger" ? undefined : "bg-accent text-bg hover:bg-accent-hover"}
-              onClick={() => {
-                const action = confirming;
-                setConfirming(null);
-                if (action) void run(action);
-              }}
-            >
-              {confirming?.label}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
@@ -463,147 +313,5 @@ function CardBody({ body, repo }: { body: string; repo?: string }) {
         </Button>
       )}
     </div>
-  );
-}
-
-/**
- * The value an action needs, asked right under the card: an amount with a
- * "$" before it and the suggestion filled in, or a line of text that grows
- * (Enter sends, Shift+Enter is a new line). Escape puts it away.
- */
-function ActionField({
-  id,
-  action,
-  busy,
-  disabled,
-  onSubmit,
-  onCancel,
-}: {
-  id: string;
-  action: CardAction;
-  busy: boolean;
-  disabled: boolean;
-  onSubmit: (value: string) => void;
-  onCancel: () => void;
-}) {
-  const input = action.input!;
-  const money = input.kind === "money";
-  const [value, setValue] = useState(() => (money ? moneyInitial(input.initial) : (input.initial ?? "")));
-  const [tried, setTried] = useState(false);
-  const field = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
-  const labelId = useId();
-  const errorId = useId();
-  const ready = inputValue(action, value);
-  const invalid = tried && !ready;
-
-  useEffect(() => {
-    const element = field.current;
-    if (!element) return;
-    element.focus();
-    if (money) element.select();
-  }, [money]);
-
-  // A line of text grows with what is written, up to about six lines.
-  useEffect(() => {
-    const element = field.current;
-    if (money || !element) return;
-    element.style.height = "auto";
-    element.style.height = `${Math.min(element.scrollHeight, 160)}px`;
-  }, [value, money]);
-
-  const submit = (event?: FormEvent) => {
-    event?.preventDefault();
-    if (disabled) return;
-    if (!ready) {
-      setTried(true);
-      field.current?.focus();
-      return;
-    }
-    onSubmit(ready);
-  };
-
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      onCancel();
-      return;
-    }
-    if (!money && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      submit();
-    }
-  };
-
-  return (
-    <form
-      id={id}
-      onSubmit={submit}
-      onTouchStart={(event) => event.stopPropagation()}
-      className="mt-3 animate-pop-in sm:pl-11 motion-reduce:animate-none"
-      aria-labelledby={labelId}
-    >
-      <label id={labelId} htmlFor={`${id}-field`} className="mb-1.5 block text-xs font-medium text-muted">
-        {input.label || action.label}
-      </label>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-        {money ? (
-          <InputGroup className={cn("sm:max-w-44 max-md:h-10", invalid && "border-danger/70")}>
-            <InputAddon className="pr-0 font-mono text-muted">$</InputAddon>
-            <input
-              ref={field}
-              id={`${id}-field`}
-              value={value}
-              onChange={(event) => {
-                setValue(event.target.value);
-                setTried(false);
-              }}
-              onKeyDown={onKeyDown}
-              inputMode="decimal"
-              autoComplete="off"
-              data-1p-ignore
-              placeholder={input.placeholder ?? "0.00"}
-              aria-invalid={invalid || undefined}
-              aria-describedby={invalid ? errorId : undefined}
-              className="w-full min-w-0 bg-transparent pr-3 pl-1 font-mono text-sm text-fg tabular-nums outline-none placeholder:text-faint"
-            />
-          </InputGroup>
-        ) : (
-          <textarea
-            ref={field}
-            id={`${id}-field`}
-            rows={1}
-            value={value}
-            onChange={(event) => {
-              setValue(event.target.value);
-              setTried(false);
-            }}
-            onKeyDown={onKeyDown}
-            autoComplete="off"
-            data-1p-ignore
-            placeholder={input.placeholder ?? undefined}
-            aria-invalid={invalid || undefined}
-            aria-describedby={invalid ? errorId : undefined}
-            className="min-h-9 w-full min-w-0 grow resize-none rounded-md border border-line bg-bg px-3 py-[0.4375rem] text-sm leading-5 text-fg outline-none transition-[border-color,box-shadow] placeholder:text-faint hover:border-line-strong focus-visible:border-accent-dim focus-visible:ring-2 focus-visible:ring-accent/25 aria-invalid:border-danger/70 max-md:min-h-10 max-md:text-base"
-          />
-        )}
-        <div className="flex shrink-0 gap-2 max-sm:[&>*]:grow">
-          <Button type="button" onClick={onCancel} {...actionProps({})}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={disabled} aria-busy={busy || undefined} {...actionProps({ style: action.style === "danger" ? "danger" : "primary" })}>
-            {busy && <LoaderCircle size={14} aria-hidden="true" className="-ml-0.5 animate-spin" />}
-            {action.label}
-          </Button>
-        </div>
-      </div>
-      {invalid ? (
-        <p id={errorId} className="mt-1.5 text-xs text-danger">
-          {money ? "Enter an amount in dollars, like 5.00." : "Write something first."}
-        </p>
-      ) : (
-        !money && <p className="mt-1.5 text-[0.6875rem] text-faint max-md:hidden">Enter to send, Shift+Enter for a new line, Esc to close</p>
-      )}
-    </form>
   );
 }

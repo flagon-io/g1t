@@ -281,11 +281,6 @@ export function allowanceLines(allowances: Allowances | undefined, comped: boole
   if (!allowances) return lines;
   if (allowances.ossRepoMicros != null) lines.push(`Open-source pool: ${usd(allowances.ossRepoMicros)} a month for each public repository`);
   if (allowances.trialMicros != null) lines.push(`Trial: ${usd(allowances.trialMicros)}, outside the monthly pool`);
-  if (allowances.maxConcurrentAgents != null) {
-    lines.push(`${allowances.maxConcurrentAgents} agent${allowances.maxConcurrentAgents === 1 ? "" : "s"} at once`);
-  }
-  if (allowances.runCapMicros != null) lines.push(`Run cap: ${usd(allowances.runCapMicros)} a run`);
-  if (allowances.issueCapMicros != null) lines.push(`Issue cap: ${usd(allowances.issueCapMicros)} an issue`);
   if (allowances.auditRetentionDays != null) lines.push(`Audit log: ${allowances.auditRetentionDays} days, in place of the plan's`);
   if (allowances.hold) lines.push(`Held: ${allowances.hold}`);
   return lines;
@@ -293,8 +288,7 @@ export function allowanceLines(allowances: Allowances | undefined, comped: boole
 
 /**
  * The g1t plan without its price, the account's share of g1t's pools, and
- * staff's overrides of what owners set: agents at once, the run and issue
- * caps, the days of audit log kept (such as for an organization that pays
+ * staff's overrides of what owners set: the days of audit log kept (such as for an organization that pays
  * for longer), and a hold on new compute. Accounts on a 100% discount have the plan
  * anyway.
  */
@@ -354,21 +348,6 @@ export function AllowancesForm({
           </Field>
           <Field label="Trial $" hint="Each workspace, outside the monthly pool. Blank: the default ($5).">
             <Input name="trial" inputMode="decimal" placeholder="Default" defaultValue={values?.trial ?? dollarsField(current.trialMicros)} />
-          </Field>
-          <Field label="Agents at once" hint="Blank: the plan's (2 in the first month or on the trial, then 10).">
-            <Input
-              name="agents"
-              inputMode="numeric"
-              pattern="\d{1,3}"
-              placeholder="Default"
-              defaultValue={values?.agents ?? (current.maxConcurrentAgents != null ? String(current.maxConcurrentAgents) : "")}
-            />
-          </Field>
-          <Field label="Run cap $" hint="One run's spend, over the owners'. Blank: theirs, or $2.">
-            <Input name="runCap" inputMode="decimal" placeholder="Owners'" defaultValue={values?.runCap ?? dollarsField(current.runCapMicros)} />
-          </Field>
-          <Field label="Issue cap $" hint="One issue's agents in all, over the owners'. Blank: theirs, or $10.">
-            <Input name="issueCap" inputMode="decimal" placeholder="Owners'" defaultValue={values?.issueCap ?? dollarsField(current.issueCapMicros)} />
           </Field>
           <Field label="Audit log days" hint="Kept, in place of the plan's, longer or shorter, up to 400. Blank: the plan's (7 free, 90 on the plan).">
             <Input

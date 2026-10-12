@@ -96,25 +96,15 @@ export function quickReplyRequest(notification: FeedNotification, body: string):
 
 // ── Cards ─────────────────────────────────────────────────────────────────
 
-/** A card's actions on its notification: what the toast and the panel offer. */
+/**
+ * A card's actions on its notification, what the toast and the panel
+ * offer: its links. Nothing answers a card's other buttons any more (they
+ * were an agent's), so they are left out.
+ */
 export function notificationActions(notification: FeedNotification): CardAction[] {
   const card = notification.card;
   if (!card || !notification.workspace || !card.channel_id || !card.message_id) return [];
-  return card.actions.filter((a) => !!a.id && !!a.label);
-}
-
-/** What pressing one posts: the same `card_action` the card itself sends, to the chat api route. */
-export function cardActionRequest(
-  notification: FeedNotification,
-  action: CardAction,
-  input: string | null,
-): { url: string; body: { intent: "card_action"; channel_id: string; message_id: string; action_id: string; input: string | null } } | null {
-  const card = notification.card;
-  if (action.href || !card || !notificationActions(notification).some((a) => a.id === action.id)) return null;
-  return {
-    url: `/${notification.workspace}/-/chat/api`,
-    body: { intent: "card_action", channel_id: card.channel_id, message_id: card.message_id, action_id: action.id, input },
-  };
+  return card.actions.filter((a) => !!a.id && !!a.label && !!a.href);
 }
 
 /** How long a card's notification stays in the panel's "Waiting on you". */

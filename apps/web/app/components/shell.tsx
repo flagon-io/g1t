@@ -1,14 +1,13 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorCog, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, SlidersHorizontal, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
-import { type Abilities, type ChatSidebarEntry, type InboxCounts, type WorkspaceAgent, type Membership, type RepoMirror, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
+import { type Abilities, type ChatSidebarEntry, type InboxCounts, type Membership, type RepoMirror, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
 
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
 import { NotificationsBell } from "./inbox";
 import { desktopBridge, useDesktopApp, useTitleBarSearch } from "../lib/notify-client";
-import { SpendPill } from "./spend";
 import { PinButton } from "./pin-button";
 import { Hint } from "./ui/hint";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
@@ -29,7 +28,7 @@ import {
   SidebarTrigger,
 } from "./ui/sidebar";
 import { StatusDot, useSiteStatus } from "./footer";
-import { Logo, MarkGlyph } from "./logo";
+import { Logo } from "./logo";
 import { SoonPill } from "./ui";
 import { Avatar } from "./ui/avatar";
 import { Skeleton } from "./ui/skeleton";
@@ -47,7 +46,6 @@ import {
 } from "./ui/dropdown-menu";
 import { type RoadmapItem, roadmapIn, roadmapItem } from "../lib/roadmap";
 import { type ModeKey, WORKSPACE_SETTINGS_GROUPS, type WorkspaceSettingsPage, homePagePath, modeOf, workspaceSettingsPage } from "../lib/workspace-nav";
-import { AgentsSidebar } from "./agents-mode";
 import { ChatSidebar } from "./chat/sidebar";
 import { FoliosSidebar } from "./folios/sidebar";
 import { Rail, ShortcutsDialog, WorkspaceSwitcher, sidebarKeyLabel } from "./rail";
@@ -101,7 +99,6 @@ export type ShellData = {
   } | null;
   /** Whether g1t charges nothing for now, while it is being built out. */
   free?: boolean;
-  /** What its agents have cost since the start of the month. */
   /** This month's usage: charged, or at cost while g1t is free. */
   monthUsageMicros: number | null;
   /** Whether new compute is paused (a spend spike or a hold), and whether the viewer can answer it. */
@@ -113,21 +110,8 @@ export type ShellData = {
    * starred and latest conversations. Null when chat did not answer in time.
    */
   chat?: { unread: number; mentions: number; starred?: ChatSidebarEntry[]; recent?: ChatSidebarEntry[] } | null;
-  /** The workspace's agents, g1t first, for the Agents sidebar; null when not known. */
-  agents?: ShellAgent[] | null;
   /** The apps this person pinned to their rail in the workspace (lib/apps.ts). */
   pins?: PinnableApp[];
-};
-
-/** An agent as the shell lists it. */
-export type ShellAgent = Pick<
-  WorkspaceAgent,
-  "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "role" | "status" | "title" | "builtin"
-> & {
-  look?: WorkspaceAgent["look"];
-  scope?: WorkspaceAgent["scope"];
-  /** The visible teams it is on (team memberships); absent when they couldn't be read. */
-  teams?: { slug: string; name: string }[];
 };
 
 /** Whether `pathname` is `to` or a page under it (`end`: only `to` itself), the query left aside. */
@@ -844,18 +828,18 @@ function RepoMenu({
         </SidebarLink>
         {/* A mirror that is not taken over lists none of these: its work happens on the remote. */}
         {shows.has("issues") && (
-          <SidebarLink to={`${base}/issues`} also={[`${base}/plans`, `${base}/milestones`, `${base}/labels`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
+          <SidebarLink to={`${base}/issues`} also={[`${base}/milestones`, `${base}/labels`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
             Issues
           </SidebarLink>
         )}
         {shows.has("pulls") && (
-          <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
+          <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`, `${base}/sessions`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
             Pull requests
           </SidebarLink>
         )}
-        {shows.has("agents") && (
-          <SidebarLink to={`${base}/agents`} also={[`${base}/sessions`, `${base}/memory`, ...soonPaths(base, "Agents")]} icon={<Bot size={15} />}>
-            Agents
+        {repo.member && (
+          <SidebarLink to={`${base}/memory`} icon={<Brain size={15} />}>
+            Memory
           </SidebarLink>
         )}
         {shows.has("actions") && (
@@ -905,7 +889,7 @@ function RepoMenu({
 
 /**
  * A project's settings, drilled into from its list: what is about running
- * it, then its agents, then its code and who can reach it. The way back
+ * it, then its sandboxes, then its code and who can reach it. The way back
  * leads to the project.
  */
 function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
@@ -913,7 +897,7 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
   // Each page shows to the roles that can use it, once the role is known.
   const shows = (page: string) => !repo.can || repo.can[SETTINGS_CAPABILITY[page] ?? "administer"];
   const running = shows("deployments");
-  const agents = shows("agents") || shows("guardrails");
+  const guarded = shows("guardrails");
   return (
     <nav aria-label={`${repo.namespace}/${repo.name} settings`} className={PANEL}>
       <BackRow to={base} label="Settings" context={`${repo.namespace}/${repo.name}`} />
@@ -937,15 +921,10 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
           </NavRows>
         </>
       )}
-      {agents && (
+      {guarded && (
         <>
           <Rule />
           <NavRows>
-            {shows("agents") && (
-              <SidebarLink to={`${base}/settings/agents`} icon={<Bot size={15} />}>
-                Agents
-              </SidebarLink>
-            )}
             {shows("guardrails") && (
               <SidebarLink to={`${base}/settings/guardrails`} icon={<ShieldCheck size={15} />}>
                 Guardrails
@@ -1172,8 +1151,7 @@ export function ModeHeader({ title, action }: { title: ReactNode; action?: React
 /**
  * Code's own list (beside the rail): only code. Its Overview (Mission
  * control's code panels), the projects, what spans them, and what is
- * coming. The workspace's people, money and settings are elsewhere;
- * agents, context and memory are Agents'.
+ * coming. The workspace's people, money and settings are elsewhere.
  */
 function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
   const { pathname } = useLocation();
@@ -1197,6 +1175,9 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
         </SidebarLink>
         <SidebarLink to={`/${slug}/-/packages`} icon={<Package size={15} />} current={at("packages")}>
           Packages
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/memory`} icon={<Brain size={15} />} current={at("memory")}>
+          Memory
         </SidebarLink>
         {INSIGHTS && (
           <SidebarSoonLink to={`/${slug}/-/insights`} icon={<TrendingUp size={15} />} about={INSIGHTS.summary} current={at("insights")}>
@@ -1234,9 +1215,7 @@ const WORKSPACE_PAGE_ICONS: Record<string, ReactNode> = {
   permissions: <ShieldCheck size={15} />,
   tokens: <KeyRound size={15} />,
   "personal-access-tokens": <UserRoundKey size={15} />,
-  spend: <Coins size={15} />,
   usage: <BarChart3 size={15} />,
-  gateway: <Network size={15} />,
   billing: <CreditCard size={15} />,
   runners: <ServerCog size={15} />,
   repositories: <BookMarked size={15} />,
@@ -1245,7 +1224,6 @@ const WORKSPACE_PAGE_ICONS: Record<string, ReactNode> = {
   webhooks: <Webhook size={15} />,
   deployments: <Rocket size={15} />,
   projects: <Layers size={15} />,
-  "agent-settings": <Bot size={15} />,
   "chat-settings": <MessagesSquare size={15} />,
   emoji: <Smile size={15} />,
   "artifact-settings": <Shapes size={15} />,
@@ -1289,7 +1267,7 @@ function FoldingGroup({ title, current, children }: { title: string; current: bo
 /**
  * The Workspace mode's sidebar: the workspace's settings area, every page
  * one click away. Its overview, then the groups in lib/workspace-nav.ts
- * (General, Access, Money, Compute, Code, Agents, Chat, Artifacts,
+ * (General, Access, Money, Compute, Code, Chat, Artifacts,
  * Security, Integrations), each folding, the one you are in held open.
  * Pages only owners open are left out for members, and a group with none
  * left goes with them; a page that is coming is a Soon row, not a link.
@@ -1339,8 +1317,7 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
 }
 
 /**
- * People's sidebar: everyone in the workspace (its people; agents are
- * under Agents) and its teams, which agents can be on. Who belongs, and
+ * People's sidebar: everyone in the workspace and its teams. Who belongs, and
  * inviting people, is the workspace's: Workspace mode's Access group.
  */
 function PeopleSidebar({ slug }: { slug: string }) {
@@ -1442,7 +1419,6 @@ const SECTIONS: Record<string, string> = {
   pulls: "Pull requests",
   queue: "Merge queue",
   commits: "Commits",
-  plans: "Outcomes",
   actions: "Workflows",
   soon: "Soon",
   deployments: "Deployments",
@@ -1463,10 +1439,7 @@ const SECTIONS: Record<string, string> = {
   teams: "Teams",
   tokens: "Access tokens",
   "personal-access-tokens": "Personal access tokens",
-  spend: "Spend",
-  receipts: "Receipts",
   usage: "Usage",
-  gateway: "AI Gateway",
   billing: "Billing and plans",
   integrations: "Integrations",
   webhooks: "Webhooks",
@@ -1477,8 +1450,6 @@ const SECTIONS: Record<string, string> = {
   audit: "Audit log",
   tree: "Files",
   blob: "Files",
-  agents: "Agents",
-  context: "Context",
   memory: "Memory",
   security: "Security",
   packages: "Packages",
@@ -1492,7 +1463,6 @@ const SECTIONS: Record<string, string> = {
   artifacts: "Artifacts",
   home: "Home",
   apps: "Apps",
-  customize: "Customize",
   "code-access": "Code access",
   overview: "Overview",
   workspace: "Workspace",
@@ -1557,15 +1527,8 @@ function Breadcrumbs({
     } else if (third) {
       // The workspace's settings pages each stand alone: General, Members, Permissions.
       trail.push({ label: third === "settings" ? "General" : (SECTIONS[third] ?? third), to: page });
-      // Customize names its tab (Customize / Plugins), Agents its templates, and Members its invitations.
-      const tabs: Record<string, string> =
-        third === "customize"
-          ? { skills: "Skills", connectors: "Connectors", plugins: "Plugins", marketplaces: "Marketplaces", requests: "Requests" }
-          : third === "agents"
-            ? { templates: "Templates" }
-            : third === "members"
-              ? { invitations: "Invitations" }
-              : {};
+      // Members names its invitations.
+      const tabs: Record<string, string> = third === "members" ? { invitations: "Invitations" } : {};
       const tab = fourth ? tabs[fourth] : undefined;
       if (tab) trail.push({ label: tab, to: `${page}/${fourth}` });
     }
@@ -1689,12 +1652,9 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       ? [
           { label: "Home", to: homePagePath(ws.slug), icon: <House size={15} /> },
           { label: "Chat", to: `/${ws.slug}/-/chat`, icon: <MessagesSquare size={15} /> },
-          { label: "Agents", to: `/${ws.slug}/-/agents`, icon: <Sparkles size={15} /> },
           ...(hasCodeAccess(ws) ? [{ label: "Code overview", to: `/${ws.slug}/-/overview`, icon: <Code2 size={15} /> }] : []),
           { label: "Artifacts", to: `/${ws.slug}/-/artifacts`, icon: <Shapes size={15} /> },
           { label: "Apps", hint: "Everything installed that you can use", to: `/${ws.slug}/-/apps`, icon: <LayoutGrid size={15} /> },
-          { label: "Customize", hint: "Skills, connectors and plugins", to: `/${ws.slug}/-/customize`, icon: <SlidersHorizontal size={15} /> },
-          { label: "Agent templates", hint: "Starting points for a new agent", to: `/${ws.slug}/-/agents/templates`, icon: <Bot size={15} /> },
           { label: "Workspace", hint: "Billing, policies, settings", to: `/${ws.slug}/-/workspace`, icon: <Building2 size={15} /> },
         ]
       : []),
@@ -1717,14 +1677,10 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       { label: "Code", hint: name, to: `${base}/code`, icon: <Code2 size={15} /> },
       { label: "Issues", hint: name, to: `${base}/issues`, icon: <CircleDot size={15} /> },
       { label: "New issue", hint: name, to: `${base}/issues/new`, icon: <Plus size={15} /> },
-      ...(repo.member
-        ? [{ label: `Put an agent on ${repo.name}`, hint: name, to: `${base}/issues/new?agent=1`, icon: <Sparkles size={15} /> }]
-        : []),
       { label: "Pull requests", hint: name, to: `${base}/pulls`, icon: <GitPullRequest size={15} /> },
       { label: "Commits", hint: name, to: `${base}/commits`, icon: <History size={15} /> },
       ...(repo.member
         ? [
-            { label: "Plan work", hint: name, to: `${base}/plans`, icon: <ListTree size={15} /> },
             { label: "Deployments", hint: name, to: `${base}/deployments`, icon: <Rocket size={15} /> },
             { label: "Secrets and variables", hint: name, to: `${base}/settings/secrets`, icon: <Lock size={15} /> },
             { label: "Project settings", hint: name, to: `${base}/settings`, icon: <Settings size={15} /> },
@@ -1738,9 +1694,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       { label: displayName(membership), hint: `Workspace · ${membership.slug}`, to: `/${membership.slug}`, icon: <Avatar name={membership.slug} image={membership.avatar} size={15} square /> },
       { label: "All projects", hint: membership.slug, to: `/${membership.slug}/-/projects`, icon: <LayoutGrid size={15} /> },
       { label: "People", hint: membership.slug, to: `/${membership.slug}/-/people`, icon: <Users size={15} /> },
-      { label: "Spend", hint: `${membership.slug} · Budgets and receipts`, to: `/${membership.slug}/-/spend`, icon: <Coins size={15} /> },
       { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
-      { label: "AI Gateway", hint: `${membership.slug} Â· Usage`, to: `/${membership.slug}/-/gateway`, icon: <Network size={15} /> },
       { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
       { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
       { label: "Integrations", hint: membership.slug, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },
@@ -1759,16 +1713,6 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       hint: `${listed.namespace} · Project`,
       to: `/${listed.namespace}/${listed.name}`,
       icon: <Box size={15} />,
-    });
-  }
-  // "Put an agent on …": one per project, after the projects themselves.
-  for (const listed of shell.repos) {
-    if (repo && listed.namespace === repo.namespace && listed.name === repo.name) continue;
-    commands.push({
-      label: `Put an agent on ${listed.title ?? listed.name}`,
-      hint: `${listed.namespace}/${listed.name}`,
-      to: `/${listed.namespace}/${listed.name}/issues/new?agent=1`,
-      icon: <Sparkles size={15} />,
     });
   }
   return commands;
@@ -1832,24 +1776,6 @@ export function Progress() {
 }
 
 /**
- * The top bar's way to g1t: the direct message with the workspace's
- * orchestrator, opened or made. The one tinted control in the bar: the
- * lavender pixel 1 bare beside its words, on a wash of the accent.
- */
-function AskG1tButton({ slug }: { slug: string }) {
-  return (
-    <Hint label="Ask g1t">
-      <Button asChild variant="soft" size="bar" className="gap-2 max-md:ring-0 lg:px-3">
-        <Link to={`/${slug}/-/chat?agent=g1t`} aria-label="Ask g1t">
-          <MarkGlyph className="h-3.5" />
-          <span className="max-lg:hidden">Ask g1t</span>
-        </Link>
-      </Button>
-    </Hint>
-  );
-}
-
-/**
  * Which sidebar sits beside the page: each mode's own, or none. Home and
  * Apps are pages at full width, and so are g1t's public pages, such as a
  * profile, which are no workspace's. Without a workspace, only your own
@@ -1862,13 +1788,12 @@ function sidebarFor(mode: ModeKey, workspace: boolean): Panel | null {
 }
 
 /** The sidebars that sit beside the page, one per mode that has one. */
-type Panel = "chat" | "artifacts" | "agents" | "code" | "notifications" | "people" | "workspace" | "account";
+type Panel = "chat" | "artifacts" | "code" | "notifications" | "people" | "workspace" | "account";
 
 /** Each sidebar's name, for the button that opens it on a phone. */
 const MODE_MENU: Record<Panel, string> = {
   chat: "Chat",
   artifacts: "Artifacts",
-  agents: "Agents",
   code: "Code",
   notifications: "Notifications",
   people: "People",
@@ -1940,7 +1865,7 @@ function useSidebarKey(): string {
  * against it with a hairline between, which folds away with Ctrl B and is
  * a drawer below 1024px; and the page, flat against the sidebar and
  * filling the rest of the window, with its top bar across the top and a
- * line under it: the sidebar's toggle, where you are, search, Ask g1t and
+ * line under it: the sidebar's toggle, where you are, search, the bell and
  * Create new. On a phone the rail is a bar along the bottom and the page
  * fills the window above it, flat as well. Only for someone signed in; without a workspace yet, there
  * is no rail. The rail and the sidebar are drawn from the sidebar kit
@@ -1981,7 +1906,6 @@ export function AppShell({
   const ws = shell.workspace;
   const mode = modeOf(going ?? pathname, ws?.slug ?? null);
   const panel = sidebarFor(mode, ws != null);
-  const code = ws ? hasCodeAccess(ws) : false;
   const { sidebar: chatSidebar } = useChatSidebar();
   // Notify: the feed socket's live counts (lib/notify-client.ts) once it has them; the page's until then.
   const live = useLiveBadges(ws?.slug);
@@ -2019,8 +1943,6 @@ export function AppShell({
         return <ChatSidebar slug={ws.slug} />;
       case "artifacts":
         return <FoliosSidebar slug={ws.slug} />;
-      case "agents":
-        return <AgentsSidebar slug={ws.slug} shellAgents={shell.agents ?? null} code={code} owner={ws.role === "owner"} />;
       case "notifications":
         return <NotificationsSidebar counts={shell.inbox ?? null} />;
       case "people":
@@ -2116,7 +2038,7 @@ export function AppShell({
               </span>
             )}
             <Breadcrumbs pathname={pathname} missing={missing} repo={shell.repo} workspace={ws?.slug ?? null} />
-            {/* Search, then what's yours (spend, Ask g1t), then the bell and Create new: one height, one rhythm. */}
+            {/* Search, then the bell and Create new: one height, one rhythm. */}
             <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
               {/* With the sidebar open, search is at its top. */}
               {!titleSearch && (
@@ -2124,13 +2046,6 @@ export function AppShell({
                   <SearchButton place="bar" onClick={() => setPalette(true)} />
                 </span>
               )}
-              {/* Your spend this month, or the workspace's for owners and billing managers; on a phone it is on Spend. */}
-              {ws && (
-                <span className="flex max-md:hidden">
-                  <SpendPill slug={ws.slug} mayWorkspace={ws.role === "owner" || !!ws.org_roles?.includes("billing_manager")} />
-                </span>
-              )}
-              {ws && <AskG1tButton slug={ws.slug} />}
               <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5 max-md:hidden" />
               {/* On a phone, Notifications is in the bottom bar. */}
               <span className="flex max-md:hidden">
@@ -2175,14 +2090,6 @@ function CreateMenu({ shell }: { shell: ShellData }) {
                 New issue
               </Link>
             </DropdownMenuItem>
-            {shell.repo.member && (
-              <DropdownMenuItem asChild>
-                <Link to={`/${shell.repo.namespace}/${shell.repo.name}/plans`}>
-                  <ListTree />
-                  Plan work
-                </Link>
-              </DropdownMenuItem>
-            )}
             <DropdownMenuSeparator />
           </>
         )}

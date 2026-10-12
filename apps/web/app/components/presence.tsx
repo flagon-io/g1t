@@ -3,9 +3,6 @@
  * avatar (active, away, notifications paused), the emoji after their name,
  * and, for yourself, the menu and dialog that set them. Live from the feed
  * socket (lib/notify-client.ts); the rules are in lib/presence.ts.
- *
- * Agents keep their own dots (idle, working, out of budget: chat/marks.tsx);
- * nothing here draws one for an agent.
  */
 import { BellOff, BellRing, Moon, Smile, Sun, X } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
@@ -86,7 +83,7 @@ export function PresenceDot({ entry, size = 10, ring = "var(--color-bg)", classN
 
 /**
  * An avatar with the person's dot in its corner. `person` names them by
- * id or username; agents and anyone unknown get the avatar alone.
+ * id or username; anyone unknown gets the avatar alone.
  */
 export function WithPresence({
   person,

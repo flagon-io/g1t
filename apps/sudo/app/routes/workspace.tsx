@@ -535,10 +535,7 @@ function PlanSection({ entitlements: e, unavailable }: { entitlements: Entitleme
     ["Card check", e.trialVerified ? "Done" : "Not yet"],
     ["Trial left", usd(e.trialMicrosLeft)],
     ["First month", e.firstMonth ? "Yes" : "No"],
-    ["Agents at once", String(e.maxConcurrentAgents)],
     ["Longest run", e.maxRunMinutes ? `${e.maxRunMinutes} min` : "The guardrails'"],
-    ["Run cap", usd(e.runCapMicros)],
-    ["Issue cap", usd(e.issueCapMicros)],
     ["Ceiling", e.ceilingMicros >= 1e15 ? "None" : usd(e.ceilingMicros)],
     ["Not yet paid", usd(e.exposureMicros)],
     ["Held by reservations", usd(e.heldMicros ?? 0)],
@@ -589,7 +586,7 @@ function PlanSection({ entitlements: e, unavailable }: { entitlements: Entitleme
           </div>
         ))}
       </dl>
-      <p className="mt-3 text-xs text-faint">Agents at once, the run and issue caps, and holds are set under Plan, pools and caps below.</p>
+      <p className="mt-3 text-xs text-faint">Holds are set under Plan, pools and caps below.</p>
     </Section>
   );
 }

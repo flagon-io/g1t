@@ -7,11 +7,9 @@ import {
   agentsClient,
   billingClient,
   chatClient,
-  contextClient,
   deploymentsClient,
   docsClient,
   foliosClient,
-  memoryReviewClient,
   mirrorsClient,
   packagesClient,
   projectsClient,
@@ -26,8 +24,6 @@ import {
   securitySuiteClient,
   webhooksClient,
   workClient,
-  skillLibraryClient,
-  workspaceAgentsClient,
 } from "@g1t/contracts";
 import { telemetryClient } from "@g1t/contracts/telemetry";
 
@@ -48,11 +44,9 @@ const ACTIONS = instrumented("actions", env.ACTIONS);
 const DEPLOYMENTS = instrumented("deployments", env.DEPLOYMENTS);
 const PROJECTS = instrumented("projects", env.PROJECTS);
 const SECURITY = instrumented("security", env.SECURITY);
-const CONTEXT = instrumented("context", env.CONTEXT);
 const SEARCH = instrumented("search", env.SEARCH);
 const PACKAGES = instrumented("packages", env.PACKAGES);
 const CHAT = instrumented("chat", env.CHAT);
-const AGENTS = instrumented("agents", env.AGENTS);
 const ARTIFACTS = instrumented("artifacts", env.ARTIFACTS);
 const TELEMETRY = env.TELEMETRY ? instrumented("telemetry", env.TELEMETRY) : null;
 
@@ -77,24 +71,16 @@ export const security = securityClient(SECURITY);
 export const securitySuite = securitySuiteClient(SECURITY);
 /** Security advisories and private vulnerability reports: methods of the security service. */
 export const advisories = advisoriesClient(SECURITY);
-/** Agent runs, sessions and memory: methods of the work service. */
+/** Memory and pull request sessions: methods of the work service. */
 export const agents = agentsClient(WORK);
-/** What agents may do in a sandbox: methods of the work service. */
+/** The network a sandbox may reach: methods of the work service. */
 export const guardrails = guardrailsClient(WORK);
-/** The context hub: catalog, search and scorecards. */
-export const context = contextClient(CONTEXT);
 /** Search across all of g1t, and Explore. */
 export const search = searchClient(SEARCH);
 /** The workspace's registries: container images, and more to come. */
 export const packages = packagesClient(PACKAGES);
-/** Memory candidates and their review: methods of the work service. */
-export const memoryReview = memoryReviewClient(WORK);
-/** Channels, direct messages and threads, where people and agents talk. */
+/** Channels, direct messages and threads, where people talk. */
 export const chat = chatClient(CHAT);
-/** The workspace's own agents: who they are, their limits and their desks. */
-export const workspaceAgents = workspaceAgentsClient(AGENTS);
-/** The workspace's skill library: skills, their versions and where they are attached (the agents service). */
-export const skillLibrary = skillLibraryClient(AGENTS);
 /** The artifacts service's spaces (Artifacts' spaces) and projects' docs. Its old pages are no longer read. */
 export const docs = docsClient(ARTIFACTS);
 /** Artifacts (folios): docs, and later slides, designs and dashboards, kept by the artifacts service. */

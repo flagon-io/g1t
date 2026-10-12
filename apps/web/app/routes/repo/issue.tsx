@@ -1,5 +1,4 @@
-import { env } from "cloudflare:workers";
-import { Bot, ExternalLink, GitCommitHorizontal, GitMerge, Sparkles } from "lucide-react";
+import { Bot, ExternalLink, GitCommitHorizontal, GitMerge } from "lucide-react";
 import { Form, Link, redirect } from "react-router";
 
 import { type Pull, PROVIDERS, workOwner } from "@g1t/contracts";
@@ -7,15 +6,12 @@ import { type Pull, PROVIDERS, workOwner } from "@g1t/contracts";
 import type { Route } from "./+types/issue";
 import { excerpt, page } from "../../lib/meta";
 import { Markdown } from "../../components/markdown";
-import { AgentStepLine } from "../../components/agents";
 import {
   CopyLine,
   EmptyState,
-  ComputeNote,
   ErrorText,
   Input,
   SubmitButton,
-  Textarea,
   TimeAgo,
 } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
@@ -35,13 +31,10 @@ import {
 } from "../../components/work";
 import { notFound } from "../../lib/not-found.server";
 import { openedBy } from "../../lib/opened-by";
-import { computeNoteFor } from "../../lib/compute.server";
-import { agents, identity, inbox, integrations, work } from "../../lib/services.server";
+import { identity, inbox, integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
-import { useMirrorReason } from "../../components/mirror";
-import { Hint } from "../../components/ui/hint";
 import { useRefreshWhile } from "../../lib/refresh";
 import { DetailsDisclosure, detailsSummary } from "../../components/details-disclosure";
 import { repoPages } from "../../lib/repo-live";
@@ -68,31 +61,23 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
-  // At once: only the plan's note waits for the viewer's role. Putting an
-  // agent on it needs Write: Read cannot spend compute.
   const access = accessTo(context, params);
-  const [{ can }, found, labels, milestones, agentsEnabled, members, links, computeNote, subscription, active, teams] = await Promise.all([
+  const [{ can }, found, labels, milestones, members, links, subscription, teams] = await Promise.all([
     access,
     work.getIssue(path, number, viewer),
     work.listLabels(path, viewer),
     // Open ones to choose from, and the one it is in, with its progress.
     work.listMilestones(path, viewer),
-    env.RUNNER.enabled(viewer, path),
     // A member picks assignees from the workspace's people.
     roleIn(viewer, params.owner) ? identity.listMembers(params.owner, viewer) : null,
     // What it is tied to outside g1t. Shown only once the issue is known visible.
     integrations.links(path, number).catch(() => []),
-    // Before a member assigns g1t: whether the workspace's plan lets it start.
-    access.then(({ can }) => (can.run ? computeNoteFor(params.owner, "agent") : null)),
     // Whether the viewer hears of it, for the sidebar's Notifications.
     viewer
       ? repoFor(context, params).then((repo) =>
           repo.ok ? inbox.subscription(viewer, { repoId: repo.value.id, number }).catch(() => null) : null,
         )
       : null,
-    // The project's agents at work, for the line under the pull request
-    // one is on for this issue: with the page, not after it.
-    agents.listRuns(viewer, { repo: path, active: true, limit: 50 }).catch(() => null),
     // The teams a member can mention, for the comment box.
     roleIn(viewer, params.owner) ? identity.listTeams(viewer, params.owner).catch(() => null) : null,
   ]);
@@ -108,12 +93,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     viewer,
     labels: labels.ok ? labels.value : [],
     milestones: milestones.ok ? milestones.value : [],
-    agentsEnabled,
-    computeNote,
     links,
     subscription,
-    // As the project's agents.json has them; left out, the line fetches them.
-    activeRuns: active?.ok ? { runs: active.value, member: can.run } : undefined,
     members: members?.ok ? members.value.map((member) => member.username) : [],
     handles: teams?.ok ? teams.value.map((team) => `@${team.workspace}/${team.slug}`) : [],
     // The author can close and reopen their own issue, and whoever g1t's
@@ -134,22 +115,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // What each form needs; closing your own issue is checked by work.
   // Labels: its author may use the repository's on their own issue, and
   // work says so; anyone else, and every milestone, needs Triage.
-  const needed =
-    form.get("action") === "run-hosted"
-      ? "run"
-      : form.get("action") === "assign" || form.get("action") === "milestone"
-        ? "triage"
-        : null;
+  const needed = form.get("action") === "assign" || form.get("action") === "milestone" ? "triage" : null;
   const refused = needed ? await refusal(context, params, needed) : null;
   if (refused) return { error: refused, action: String(form.get("action")) };
 
   switch (form.get("action")) {
-    case "run-hosted": {
-      const result = await env.RUNNER.run(user, path, number, {
-        instructions: String(form.get("instructions") ?? ""),
-      });
-      return result.ok ? null : { error: result.error.message, action: "run-hosted" };
-    }
     case "open-pull": {
       const result = await work.openPull(user, path, {
         issue: number,
@@ -275,32 +245,18 @@ function PullRow({ pull, base }: { pull: Pull; base: string }) {
 }
 
 export default function IssuePage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { issue, pulls, comments, viewer, labels, agentsEnabled, members, canManage, can } = loaderData;
-  // A mirror runs no agents until someone takes over.
-  const mirrorBlocked = useMirrorReason();
-
-  // Follow agents at work without a manual reload.
+  const { issue, pulls, comments, viewer, labels, members, canManage, can } = loaderData;
+  // Follow pull requests at work without a manual reload.
   const running = pulls.some(
     (pull) =>
       pull.status === "draft" ||
       pull.checkStatus === "queued" ||
       pull.checkStatus === "running",
   );
-  // The pull request g1t's agent has in progress for this issue, if any.
-  const assigned = [...pulls]
-    .reverse()
-    .find(
-      (pull) =>
-        pull.agent === "g1t" &&
-        pull.runtime === "hosted" &&
-        (pull.status === "draft" || pull.status === "open"),
-    );
-  useRefreshWhile(Boolean(running || assigned));
+  useRefreshWhile(running);
   // Comments, changes and its pull requests, as they happen; one reading at its end follows them.
   useRepoLive({ match: repoPages.issue(issue.number, pulls.map((pull) => pull.number)), followBottom: true });
 
-  // A refusal to start g1t shows by its button; every other error below the discussion.
-  const runError = actionData && "action" in actionData && actionData.action === "run-hosted";
   const base = `/${params.owner}/${params.repo}`;
   const open = issue.state === "open";
   const reference = `${params.owner}/${params.repo}#${issue.number}`;
@@ -383,7 +339,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         <div className="mt-3">
           {pulls.length === 0 ? (
             <EmptyState title="Nobody has worked on this yet">
-              Put g1t on it, or point your own agent at{" "}
+              Point your own agent at{" "}
               <code className="font-mono">{reference}</code>.
             </EmptyState>
           ) : (
@@ -428,7 +384,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         </div>
         <div className="mt-2">
           {/* A refused comment edit says so under the comment. */}
-          {!runError && !(actionData && "comment" in actionData) && <ErrorText>{actionData?.error}</ErrorText>}
+          {!(actionData && "comment" in actionData) && <ErrorText>{actionData?.error}</ErrorText>}
         </div>
       </div>
 
@@ -471,27 +427,6 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         <section>
           <h3 className="text-sm font-medium">Assignees</h3>
           <ul className="mt-2 space-y-1.5 text-sm">
-            {open && assigned && (
-              <li>
-                <Link
-                  to={`${base}/pull/${assigned.number}`}
-                  className="flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/5 px-2.5 py-2 transition-colors hover:border-accent/60"
-                >
-                  <Sparkles size={15} className="shrink-0 text-accent" />
-                  <span className="min-w-0 grow">
-                    <span className="block font-mono text-xs font-medium">g1t</span>
-                    <span className="block truncate text-xs text-muted">
-                      {assigned.status === "draft"
-                        ? "Making the change"
-                        : "Seeing it through checks and review"}{" "}
-                      · #{assigned.number}
-                    </span>
-                    <AgentStepLine owner={params.owner} repo={params.repo} number={assigned.number} runs={loaderData.activeRuns} />
-                  </span>
-                  <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
-                </Link>
-              </li>
-            )}
             {issue.assignees.map((name) => (
               <li key={name} className="flex items-center gap-2 px-1">
                 <Avatar name={name} size={20} />
@@ -500,42 +435,6 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 </span>
               </li>
             ))}
-            {open && issue.queued && !assigned && (
-              <Card asChild radius="lg" className="flex items-center gap-2 px-2.5 py-2">
-                <li>
-                  <Sparkles size={15} className="shrink-0 text-faint" />
-                  <span className="min-w-0 grow">
-                    <span className="block font-mono text-xs font-medium">g1t</span>
-                    <span className="block text-xs text-muted">
-                      {issue.blockedBy.length > 0
-                        ? "Queued. Starts when what this depends on has merged."
-                        : "Queued. Starts as soon as there is room."}
-                    </span>
-                  </span>
-                </li>
-              </Card>
-            )}
-            {!open && resolver && resolver.agent === "g1t" && (
-              <li>
-                <Link
-                  to={`${base}/pull/${resolver.number}`}
-                  className="flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-2 transition-colors hover:border-line-strong"
-                >
-                  <Sparkles size={15} className="shrink-0 text-accent" />
-                  <span className="min-w-0 grow">
-                    <span className="block font-mono text-xs font-medium">g1t</span>
-                    <span className="block truncate text-xs text-muted">
-                      Resolved it with #{resolver.number}
-                    </span>
-                  </span>
-                </Link>
-              </li>
-            )}
-            {issue.assignees.length === 0 &&
-              !(open && (assigned || issue.queued)) &&
-              !(!open && resolver?.agent === "g1t") && (
-                <li className="px-1 text-xs text-faint">No one yet.</li>
-              )}
           </ul>
           {issue.blockedBy.length > 0 && (
             <p className="mt-3 text-xs text-muted">
@@ -553,58 +452,6 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
               ))}
               {open ? ", which has to merge first." : "."}
             </p>
-          )}
-
-          {open && agentsEnabled && can.run && !assigned && !issue.queued && (
-            <Form method="post" className="mt-3 space-y-2">
-              <input type="hidden" name="action" value="run-hosted" />
-              <div className="*:w-full [&_button]:w-full">
-                <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
-                  <SubmitButton variant="accent" match={{ action: "run-hosted" }} pending="Starting a sandbox…" disabled={mirrorBlocked != null}>
-                    <Sparkles size={14} />
-                    Assign to g1t
-                  </SubmitButton>
-                </Hint>
-              </div>
-              <details>
-                <summary className="cursor-pointer text-xs text-faint hover:text-fg">
-                  Add guidance for this run
-                </summary>
-                <div className="mt-2">
-                  <Textarea
-                    name="instructions"
-                    rows={2}
-                    placeholder="On top of the issue's description"
-                  />
-                </div>
-              </details>
-              <p className="text-xs text-muted">
-                It opens a pull request and sees it through checks, a review by another
-                agent and fixes. You get it back ready to merge.
-              </p>
-              <ComputeNote note={loaderData.computeNote} />
-              {runError && <ErrorText>{actionData.error}</ErrorText>}
-            </Form>
-          )}
-
-          {open && !agentsEnabled && can.run && !assigned && !issue.queued && (
-            // Where g1t's agent would be, and what makes it appear.
-            <Card tone="plain" radius="lg" className="mt-3 border-dashed p-3 text-sm">
-              <p className="flex items-center gap-1.5 font-medium">
-                <Sparkles size={14} className="text-accent" />
-                g1t
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                Connect a model provider and g1t can take this issue: it opens a pull request and sees it
-                through checks, review and fixes. Agents run on a paid workspace, or on the free trial.
-              </p>
-              <Link
-                to={`/${params.owner}/-/integrations/models`}
-                className="mt-2 inline-block text-xs text-accent hover:underline"
-              >
-                Connect a model
-              </Link>
-            </Card>
           )}
 
           {viewer && can.triage && open && (

@@ -6,6 +6,7 @@ import { PRODUCTS } from "@g1t/contracts";
 import type { Route } from "./+types/usage";
 import { UsageFilterBar, UsageSkeleton } from "../../components/usage";
 import { page } from "../../lib/meta";
+import { offeredProducts } from "../../lib/usage";
 import { billing } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { USAGE_API, UsageView, readFilters } from "../workspace/usage";
@@ -39,7 +40,7 @@ export default function ProjectUsage({ loaderData }: Route.ComponentProps) {
       <Suspense
         fallback={
           <UsageSkeleton>
-            <UsageFilterBar filters={filters} products={[...PRODUCTS]} projects={[]} report={null} apiHref={USAGE_API} fixedProject={project} />
+            <UsageFilterBar filters={filters} products={offeredProducts(PRODUCTS)} projects={[]} report={null} apiHref={USAGE_API} fixedProject={project} />
           </UsageSkeleton>
         }
       >

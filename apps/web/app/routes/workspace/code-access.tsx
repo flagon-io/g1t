@@ -41,7 +41,7 @@ export default function CodeAccess({ loaderData, params }: Route.ComponentProps)
         ) : (
           <>This is part of Code in {params.owner}.</>
         )}{" "}
-        Your membership includes Chat, Artifacts, Agents and Notifications. An owner can turn on Code access for you.
+        Your membership includes Chat, Artifacts and Notifications. An owner can turn on Code access for you.
       </p>
       {owners.length > 0 && (
         <p className="mt-4 text-sm text-muted">
@@ -71,7 +71,6 @@ export default function CodeAccess({ loaderData, params }: Route.ComponentProps)
           Home
         </Link>
       </div>
-      <p className="mt-6 text-xs text-faint">Agents can still explain how things work and what changed; they never show source code.</p>
     </div>
   );
 }

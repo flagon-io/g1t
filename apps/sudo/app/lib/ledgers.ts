@@ -67,8 +67,6 @@ const ENTERPRISE = /^ent_[a-z0-9_-]{1,80}$/;
  */
 export function accountPath(account: string | null | undefined): string | null {
   const id = (account ?? "").trim().toLowerCase();
-  // The model catalogue's changes (billing's catalogue.rs).
-  if (id === "models") return "/agents";
   // Shared invite links (identity's shared_invites.rs): `invites` is a reserved name, never a workspace's.
   if (id === SHARED_INVITES_ACCOUNT) return "/invites?tab=shared";
   const status = /^(incident|maintenance):([a-z0-9-]{1,64})$/.exec(id);
@@ -84,7 +82,8 @@ export const SHARED_INVITES_ACCOUNT = "ws_invites";
 /** What to call an account: a workspace by its slug, an enterprise by its name when known. */
 export function accountName(account: string, names: Map<string, string> = new Map()): string {
   if (names.has(account)) return names.get(account) as string;
-  if (account === "models") return "Agents & models";
+  // The retired model catalogue, in older entries.
+  if (account === "models") return "Model catalogue (retired)";
   if (account === SHARED_INVITES_ACCOUNT) return "Shared invite links";
   if (account.startsWith("incident:")) return "Incident";
   if (account.startsWith("maintenance:")) return "Maintenance";
@@ -149,7 +148,7 @@ export const AUDIT_ACTIONS: Record<string, string> = {
   maintenance_cancelled: "Maintenance cancelled",
   credit_revoked: "Credit revoked",
   credit_expired: "Credit expired",
-  // The model catalogue (Agents & models).
+  // The model catalogue, retired with g1t's own agents: older entries still name these.
   models_discovered: "Models found or gone",
   model_approved: "Model approved",
   model_retired: "Model retired",

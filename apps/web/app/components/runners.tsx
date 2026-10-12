@@ -4,7 +4,7 @@ import { Form, Link } from "react-router";
 
 import { DESKTOP_LABEL, type RegistrationToken, RUNNER_DOWNLOADS, RUNNER_FILES, RUNNER_IMAGE, type Runner, type RunnerGroup, type RunnerIsolation } from "@g1t/contracts";
 
-import { agentRunHref, workflowRunHref } from "../lib/runners";
+import { sandboxRunHref, workflowRunHref } from "../lib/runners";
 import type { RunnersAction, RunnersData } from "../lib/runners.server";
 import { CopyLine, EmptyState, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
 import { Badge, type BadgeTone } from "./ui/badge";
@@ -24,10 +24,10 @@ export const STATUS: Record<Runner["status"], { dot: string; text: string; label
   offline: { dot: "bg-faint", text: "text-muted", label: "Offline" },
 };
 
-/** Where a runner's current work is: its workflow run, or the agent run it is. */
+/** Where a runner's current work is: its workflow run, or the repository a sandbox run is for. */
 function workHref(work: NonNullable<Runner["work"]>): string | null {
   if (!work.runId || !work.repo) return null;
-  return work.kind === "workflow" ? workflowRunHref(work.repo, work.runId) : agentRunHref(work.repo, work.runId);
+  return work.kind === "workflow" ? workflowRunHref(work.repo, work.runId) : sandboxRunHref(work.repo);
 }
 
 export const OS_NAMES: Record<Runner["os"], string> = { linux: "Linux", macos: "macOS", windows: "Windows" };
@@ -113,7 +113,7 @@ export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean 
         </div>
         {runner.work && (
           <p className="mt-1.5 truncate text-xs text-muted">
-            {runner.work.kind === "workflow" ? "Running " : "Agent work: "}
+            {runner.work.kind === "workflow" ? "Running " : "Sandbox run: "}
             {href ? (
               <Link to={href} className="text-fg hover:underline">
                 {runner.work.name}
@@ -415,12 +415,12 @@ export function RunnerSettingsForm({ data, manage, scope }: { data: RunnersData;
               Run g1t's work on self-hosted runners
             </span>
             <span className="mt-1 block text-sm text-muted">
-              Agent runs, checks, reviews and the merge queue run on your runners with these labels instead of g1t&apos;s sandboxes. The machine time is
-              free; the model is paid as before, through g1t&apos;s model proxy, or by your own provider if you connected one. Agent work needs Docker, or a
+              Checks, merge checks and the merge queue run on your runners with these labels instead of g1t&apos;s sandboxes. The machine time is
+              free. Sandbox runs need Docker, or a
               Linux runner.
             </span>
             <span className="mt-3 block max-w-sm">
-              <Input name="agentLabels" defaultValue={settings.agentLabels.join(", ")} disabled={!manage} aria-label="Labels for agent work" />
+              <Input name="agentLabels" defaultValue={settings.agentLabels.join(", ")} disabled={!manage} aria-label="Labels for sandbox runs" />
             </span>
           </span>
           <Switch name="agents" checked={agents} onCheckedChange={setAgents} disabled={!manage} aria-label="Run g1t's work on self-hosted runners" />
@@ -440,7 +440,7 @@ export function RunnerSettingsForm({ data, manage, scope }: { data: RunnersData;
         <Switch name="forks" checked={forks} onCheckedChange={setForks} disabled={!manage} />
       </label>
       <p className="text-xs text-faint">
-        g1t&apos;s network guardrails are not enforced on your own machines: a job or an agent there reaches whatever the machine can.
+        g1t&apos;s network guardrails are not enforced on your own machines: a job there reaches whatever the machine can.
       </p>
       {manage && (
         <div className="flex flex-wrap gap-3">

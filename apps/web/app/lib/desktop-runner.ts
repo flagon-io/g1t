@@ -20,7 +20,7 @@ import { useEffect, useState } from "react";
 
 import type { DesktopBackend, DesktopCapability, DesktopCapabilityState, DesktopDiagnosis, DesktopJob, DesktopReport, DesktopUpdate, Runner } from "@g1t/contracts";
 
-import { agentRunHref, workflowRunHref } from "./runners.ts";
+import { sandboxRunHref, workflowRunHref } from "./runners.ts";
 
 /** A fix, as a button: its id is the app's (`runner_control`). */
 export type DesktopRunnerAction = { id: string; label: string };
@@ -244,8 +244,8 @@ export function jobHref(capability: Pick<DesktopCapability, "job" | "runner">, r
   const job = capability.job;
   if (!job) return null;
   const work = capability.runner ? runners.find((runner) => runner.name === capability.runner)?.work : null;
-  if (work?.runId && work.repo) return work.kind === "workflow" ? workflowRunHref(work.repo, work.runId) : agentRunHref(work.repo, work.runId);
-  return job.kind === "agent" ? `/${job.repo}/agents` : `/${job.repo}/actions`;
+  if (work?.runId && work.repo) return work.kind === "workflow" ? workflowRunHref(work.repo, work.runId) : sandboxRunHref(work.repo);
+  return job.kind === "agent" ? sandboxRunHref(job.repo) : `/${job.repo}/actions`;
 }
 
 /** The words for how a desktop runs jobs, as its settings say them. */

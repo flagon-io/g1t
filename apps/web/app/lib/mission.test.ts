@@ -14,9 +14,7 @@ import {
   pushItem,
   actorIds,
   ageBuckets,
-  agentHours,
   dailyBuckets,
-  digestParts,
   firstPassRate,
   formatSpan,
   greetingFor,
@@ -32,7 +30,6 @@ import {
   rankNeeds,
   readCookie,
   sparkPoints,
-  splitRequest,
   stuckMinutes,
   waitedFor,
 } from "./mission.ts";
@@ -81,16 +78,6 @@ test("greetings follow the hour, in the viewer's zone", () => {
   assert.equal(hourIn(NOW, "Not/AZone"), 18);
 });
 
-test("the composer's first line is the title", () => {
-  assert.deepEqual(splitRequest("  Fix the login redirect  "), { title: "Fix the login redirect", body: "" });
-  assert.deepEqual(splitRequest("Fix it\n\nIt loops after signing in."), { title: "Fix it", body: "It loops after signing in." });
-  const long = "word ".repeat(60).trim();
-  const split = splitRequest(long, 40);
-  assert.ok(split.title.length <= 40);
-  assert.ok(split.title.endsWith("…"));
-  assert.equal(split.body, long);
-});
-
 const repo = { namespace: "acme", name: "api" };
 const item = (id: string, at: number, actor: string | null, verb: ActivityItem["verb"], number: number | null, other = repo): ActivityItem => ({
   id,
@@ -101,7 +88,7 @@ const item = (id: string, at: number, actor: string | null, verb: ActivityItem["
   number,
 });
 
-test("one agent's burst in one project reads as one line", () => {
+test("one person's burst in one project reads as one line", () => {
   const groups = groupActivity([
     item("1", NOW, "g1t", "landed", 4),
     item("2", NOW - 5 * MIN, "g1t", "started", 5),
@@ -137,27 +124,14 @@ test("needs are ranked by urgency, then by how long they waited", () => {
     need("d", "deploy", NOW),
     need("r2", "review", NOW - DAY),
     need("r2", "review", NOW - DAY),
-    need("l", "limit", NOW),
   ]);
-  assert.deepEqual(ranked.map((n) => n.key), ["l", "d", "r2", "r1"]);
+  assert.deepEqual(ranked.map((n) => n.key), ["d", "r2", "r1"]);
 });
 
-test("a running agent quiet for ten minutes is stuck", () => {
+test("a running run quiet for ten minutes is stuck", () => {
   assert.equal(stuckMinutes({ status: "running", updatedAt: new Date(NOW - 14 * MIN).toISOString() }, NOW), 14);
   assert.equal(stuckMinutes({ status: "running", updatedAt: new Date(NOW - 2 * MIN).toISOString() }, NOW), null);
   assert.equal(stuckMinutes({ status: "queued", updatedAt: new Date(NOW - HOUR).toISOString() }, NOW), null);
-});
-
-test("the digest says what moved, the urgent parts toned", () => {
-  const parts = digestParts({ landed: 3, reviews: 1, opened: 0, deploys: 2, failedDeploys: 1, stuck: 12 });
-  assert.deepEqual(parts.map((p) => p.text), [
-    "3 changes landed",
-    "1 pull request needs your review",
-    "an agent has been quiet for 12 min",
-    "1 deploy failed",
-    "2 deploys went out",
-  ]);
-  assert.deepEqual(digestParts({ landed: 0, reviews: 0, opened: 0, deploys: 0, failedDeploys: 0, stuck: null }), []);
 });
 
 test("daily buckets put each point on its day, oldest first", () => {
@@ -204,20 +178,6 @@ test("issue to merge pairs a merge with the issue it resolved", () => {
     [{ repo: "a", issue: 1, at: 400 }, { repo: "a", issue: null, at: 500 }, { repo: "c", issue: 1, at: 900 }],
   );
   assert.deepEqual(spans, [300]);
-});
-
-test("agent hours count only agents, clipped to the window", () => {
-  const hours = agentHours(
-    [
-      { kind: "implement", startedAt: new Date(NOW - 2 * HOUR).toISOString(), finishedAt: new Date(NOW - HOUR).toISOString() },
-      { kind: "review", startedAt: new Date(NOW - 30 * MIN).toISOString(), finishedAt: null },
-      { kind: "checks", startedAt: new Date(NOW - 5 * HOUR).toISOString(), finishedAt: null },
-      { kind: "implement", startedAt: new Date(NOW - 9 * DAY).toISOString(), finishedAt: new Date(NOW - 7 * DAY + HOUR).toISOString() },
-    ],
-    NOW - 7 * DAY,
-    NOW,
-  );
-  assert.equal(hours, 2.5);
 });
 
 test("sparkline points span the box, zero on the floor", () => {

@@ -1,24 +1,15 @@
-/**
- * The audit log's entries, as the workspace's Audit log page, an agent
- * run's page and a pull request's Agent panel show them.
- */
+/** The audit log's entries, as the workspace's Audit log page shows them. */
 
 import { ShieldAlert, ShieldCheck } from "lucide-react";
-import { useEffect } from "react";
-import { Link, useFetcher } from "react-router";
+import { Link } from "react-router";
 
 import type { AuditEntry } from "@g1t/contracts";
 
-import { actionLabel, actorLabel, ruleLabel, targetLabel } from "../lib/audit";
+import { actionLabel, ruleLabel, targetLabel } from "../lib/audit";
 import { TimeAgo } from "./ui";
 import { Avatar } from "./ui/avatar";
 import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
-import { Loading, SkeletonRows } from "./ui/skeleton";
-
-function clock(at: string): string {
-  return new Date(at).toISOString().slice(11, 19);
-}
 
 /** Allowed or denied, and by which rule. */
 export function OutcomeMark({ entry }: { entry: AuditEntry }) {
@@ -37,7 +28,7 @@ export function OutcomeMark({ entry }: { entry: AuditEntry }) {
   );
 }
 
-/** Who acted, with an agent shown as working for someone. */
+/** Who acted, with whoever acted for someone (an app, or an old agent) shown as working for them. */
 export function ActorLine({ entry }: { entry: AuditEntry }) {
   return (
     <span className="flex min-w-0 items-center gap-2">
@@ -79,11 +70,6 @@ export function AuditTable({ entries, base }: { entries: AuditEntry[]; base: str
                 </Hint>
                 <span>{entry.surface.toUpperCase()}</span>
                 {entry.result && entry.result !== "ok" && <span>result: {entry.result}</span>}
-                {entry.runId && entry.repo && (
-                  <Link to={`/${entry.repo}/agents/runs/${entry.runId}`} className="hover:text-fg">
-                    {entry.runKind ?? "agent"} run
-                  </Link>
-                )}
                 {entry.runId && (
                   <Link to={`${base}?run=${encodeURIComponent(entry.runId)}`} className="hover:text-fg">
                     everything this run did
@@ -113,93 +99,5 @@ export function AuditTable({ entries, base }: { entries: AuditEntry[]; base: str
         ))}
       </ol>
     </Card>
-  );
-}
-
-/**
- * What an agent's run did, oldest first: every call it made and every git
- * request, allowed or refused. `entries` come from the run's audit log.
- */
-export function WhatItDid({ entries, compact = false }: { entries: AuditEntry[]; compact?: boolean }) {
-  if (entries.length === 0) {
-    return (
-      <p className="mt-3 text-sm text-muted">
-        Nothing recorded yet. Every call this run makes with its credentials, and every clone and push, is listed here.
-      </p>
-    );
-  }
-  const who = entries.find((entry) => entry.onBehalfOf);
-  const denied = entries.filter((entry) => entry.outcome === "denied").length;
-  const shown = compact ? entries.slice(-8) : entries;
-  return (
-    <div className="mt-3">
-      <p className="text-xs text-muted">
-        {who ? actorLabel(who) : entries[0].actor} · {entries.length} {entries.length === 1 ? "action" : "actions"}
-        {denied > 0 && <span className="text-danger"> · {denied} refused</span>}
-        {compact && entries.length > shown.length && ` · the latest ${shown.length}`}
-      </p>
-      <Card asChild divided className="mt-2">
-        <ol>
-          {shown.map((entry) => (
-            <li key={entry.id} className="flex items-start gap-3 px-4 py-2 text-sm">
-              <time dateTime={entry.time} className="shrink-0 font-mono text-xs leading-5 text-faint" suppressHydrationWarning>
-                {clock(entry.time)}
-              </time>
-              <div className="min-w-0 grow">
-                <p className="flex min-w-0 flex-wrap items-center gap-x-2 font-mono text-xs leading-5">
-                  <span className="text-fg/85">{actionLabel(entry.action)}</span>
-                  <span className="truncate text-muted">{targetLabel(entry)}</span>
-                </p>
-                {entry.outcome === "denied" && (
-                  <p className="text-xs text-danger">
-                    {entry.message ?? "Refused."} <span className="text-faint">({ruleLabel(entry.rule)})</span>
-                  </p>
-                )}
-              </div>
-              <OutcomeMark entry={entry} />
-            </li>
-          ))}
-        </ol>
-      </Card>
-    </div>
-  );
-}
-
-/**
- * What the runs on a pull request did, fetched from the project's
- * `audit.json`, for the Agent panel. Shown to members only.
- */
-export function RunAudit({ owner, repo, runIds, live }: { owner: string; repo: string; runIds: string[]; live: boolean }) {
-  const fetcher = useFetcher<{ entries: AuditEntry[] }>();
-  const search = new URLSearchParams(runIds.map((id) => ["run", id])).toString();
-  const url = `/${owner}/${repo}/audit.json?${search}`;
-  const { load } = fetcher;
-  useEffect(() => {
-    if (runIds.length > 0) load(url);
-  }, [load, url, runIds.length]);
-  useEffect(() => {
-    if (!live) return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") load(url);
-    }, 8000);
-    return () => clearInterval(timer);
-  }, [live, load, url]);
-  const entries = fetcher.data?.entries;
-  if (runIds.length === 0) return null;
-  // There from the start, so the panel does not grow when the log arrives.
-  return (
-    <details className="mt-3 group">
-      <summary className="cursor-pointer text-xs text-muted hover:text-fg">What it did</summary>
-      {entries ? (
-        <WhatItDid entries={entries} compact />
-      ) : (
-        <Loading className="mt-3 overflow-hidden rounded-xl border border-line bg-surface">
-          <SkeletonRows rows={3} rowClassName="h-9 px-4" />
-        </Loading>
-      )}
-      <Link to={`/${owner}/-/audit?project=${encodeURIComponent(repo)}&kind=agent`} className="mt-2 inline-block text-xs text-muted hover:text-fg">
-        Open the audit log
-      </Link>
-    </details>
   );
 }

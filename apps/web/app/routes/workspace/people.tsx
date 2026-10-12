@@ -1,4 +1,4 @@
-import { Bot, Search, UserPlus } from "lucide-react";
+import { Search, UserPlus } from "lucide-react";
 import { Link, data, useSearchParams, type ShouldRevalidateFunctionArgs } from "react-router";
 
 import type { Route } from "./+types/people";
@@ -16,10 +16,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `People · ${params.owner} · g1t` });
 }
 
-/**
- * The workspace's people. Its agents are not here: they are listed under
- * Agents, and a team's page lists the agents on it with its people.
- */
+/** The workspace's people. */
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   // Who is in a workspace is its members' business.
@@ -103,17 +100,6 @@ export default function PeopleDirectoryPage({ loaderData }: Route.ComponentProps
           ))}
         </ul>
       )}
-
-      <p className="flex items-start gap-2 text-xs text-faint">
-        <Bot size={14} className="mt-px shrink-0" />
-        <span>
-          Agents aren&apos;t listed here. The workspace&apos;s agents are under{" "}
-          <Link to={`/${slug}/-/agents`} className="text-muted hover:text-fg">
-            Agents
-          </Link>
-          , and a <Link to={`/${slug}/-/teams`} className="text-muted hover:text-fg">team</Link> lists the agents on it with its people.
-        </span>
-      </p>
     </div>
   );
 }

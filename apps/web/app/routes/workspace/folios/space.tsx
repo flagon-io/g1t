@@ -56,7 +56,6 @@ export default function SpacePage({ loaderData, params }: Route.ComponentProps) 
           <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
             <span className="rounded-full px-2 py-0.5 ring-1 ring-line">{spaceKindLabel(space.kind)}</span>
             <span>{who}</span>
-            <span>Agents here: {space.agent_mode === "edit" ? "edit directly" : "suggest changes"}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">

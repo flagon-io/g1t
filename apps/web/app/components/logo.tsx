@@ -46,7 +46,7 @@ export function Mark({ className, tight = false }: { className?: string; tight?:
 }
 
 /**
- * The 1 set beside type in a control, such as Ask g1t: whole cells, so at
+ * The 1 set beside type in a control: whole cells, so at
  * 14px tall each one lands on 2px (4 on a sharp screen) and every square
  * stays sharp, lavender on its own with nothing around it.
  */

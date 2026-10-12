@@ -148,7 +148,7 @@ test("a kind of job's work links to its run when the runner says which", () => {
   const runners = [{ name: "build-box-linux", work: { kind: "workflow" as const, id: "job_1", name: "build", repo: "acme/web", runId: "run_9", startedAt: null } }];
   assert.equal(jobHref(capability, runners), "/acme/web/actions/runs/run_9");
   assert.equal(jobHref(capability, []), "/acme/web/actions");
-  assert.equal(jobHref({ runner: null, job: { kind: "agent", name: "fix", repo: "acme/web" } }, runners), "/acme/web/agents");
+  assert.equal(jobHref({ runner: null, job: { kind: "agent", name: "fix", repo: "acme/web" } }, runners), "/acme/web/pulls");
   assert.equal(jobHref({ runner: "x", job: null }, runners), null);
 });
 

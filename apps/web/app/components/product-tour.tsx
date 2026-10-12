@@ -2,8 +2,8 @@
  * The landing page's product tour: g1t browsing itself. A faithful app
  * frame (rail, sidebars, the real colours) plays one story on a loop, with
  * a soft cursor that moves and clicks: the pull request going green and
- * merging, the request in #web it came from and the ship note, the agent's
- * sessions, the docs page.
+ * merging, the session its author's coding agent recorded onto it, the
+ * people in #web hearing it shipped, and the docs page.
  *
  * The frame is a pure function of time (lib/tour.ts). One rAF loop drives
  * the clock and re-renders only when the frame changes; the step pills'
@@ -13,24 +13,22 @@
  * per step, chosen with the pills.
  *
  * It is an honest miniature of the app: the same rail (the workspace on
- * the top bar's line, then Home, Code, Chat, Docs, Agents and Notifications,
- * with names), each mode's sidebar with its real sections and words, the
- * same top bar (where you are, Explore, Docs, Ask g1t, the inbox and +),
- * which Chat gives up to the conversation's own header as the app does,
- * and the app's own cards. Parts of the story are not built yet (g1t
- * splitting a request between colleagues, and Docs); the line under the
- * frame says so as they play, and the caption under the steps.
+ * the top bar's line, then Home, Chat, Code and Artifacts, with names),
+ * each mode's sidebar with its real sections and words, the same top bar
+ * (where you are, Explore, Docs, the inbox and +), which Chat gives up to
+ * the conversation's own header as the app does, and the app's own cards.
+ * The coding agent is one people bring: its commits carry its mark, as
+ * components/coding-agent.tsx draws it, and its session is the pull
+ * request's Session tab. Everything the tour shows works today.
  */
 import {
   Activity,
-  ArrowRight,
   AtSign,
   BarChart3,
   Bell,
   BookOpen,
   Bot,
   Box,
-  Brain,
   Building2,
   Check,
   ChevronDown,
@@ -39,14 +37,15 @@ import {
   CircleHelp,
   Code2,
   Compass,
-  CornerDownRight,
+  FileDiff,
   FileText,
+  GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
   Hash,
   House,
+  MessageSquare,
   MessagesSquare,
-  Network,
   Paperclip,
   PlayCircle,
   Plus,
@@ -56,18 +55,19 @@ import {
   Settings,
   ShieldCheck,
   Shapes,
-  Sparkles,
   SquarePen,
+  User,
+  Wrench,
 } from "lucide-react";
 import { type CSSProperties, Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { codingAgentById } from "@g1t/contracts/coding-agents";
+
 import { cn } from "../lib/cn";
-import { ASK, CHECKS, type CursorTarget, type Frame, LOOP_MS, PILLS, STEPS, STILLS, type Scene, frameAt, pillAt, pillProgress, sameFrame } from "../lib/tour";
-import { AgentAvatar } from "./agent-avatar";
-import { G1tMark } from "./orchestrator";
+import { CHECKS, type CursorTarget, type Frame, LOOP_MS, PILLS, SESSION, type SessionEntry, STILLS, type Scene, frameAt, pillAt, pillProgress, sameFrame } from "../lib/tour";
+import { AgentBadge, AgentMark } from "./coding-agent";
 
 import { Avatar } from "./ui/avatar";
-import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 
 /** The frame's design size; it scales to fit, keeping its aspect. */
@@ -122,7 +122,7 @@ function useTourClock(): Clock {
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (motion.matches) {
       setReduced(true);
-      const next = frameAt(STILLS.chat);
+      const next = frameAt(STILLS.code);
       shown.current = next;
       setFrame(next);
       return;
@@ -188,29 +188,27 @@ function pillOf(frame: Frame): number {
   return Math.max(0, PILLS.findIndex((pill) => pill.scene === frame.scene));
 }
 
-/** What the line under the frame says about the moment: working today, or a preview. */
-function honesty(frame: Frame): { today: boolean; label: string } {
-  if (frame.scene === "docs") return { today: false, label: "Docs in Artifacts work today; an agent updating one after a merge on its own is coming soon" };
-  if (frame.scene === "agents") return { today: true, label: "Sessions work today" };
-  if (frame.scene === "code") return { today: true, label: "Works today" };
-  if (frame.handoff && !frame.shipped) return { today: false, label: "g1t splitting work between colleagues: coming soon" };
-  return { today: true, label: "Works today" };
-}
+/** What the line under the frame says about the moment. Everything in the tour works today. */
+const HONESTY: Record<Scene, string> = {
+  code: "Works today",
+  session: "Works today: recorded by your coding agent through MCP",
+  chat: "Works today",
+  docs: "Works today",
+};
 
-/** The line under the frame: today, or soon. Not part of the app, so it sits outside it. */
+/** The line under the frame. Not part of the app, so it sits outside it. */
 function HonestyNote({ frame, className }: { frame: Frame; className?: string }) {
-  const note = honesty(frame);
+  const label = HONESTY[frame.scene];
   return (
     <span
-      key={note.label}
+      key={label}
       className={cn(
-        "tour-fade inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1",
-        note.today ? "bg-success/10 text-success ring-success/25" : "bg-raised text-muted ring-line-strong",
+        "tour-fade inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success ring-1 ring-success/25",
         className,
       )}
     >
-      <span className={cn("size-1.5 rounded-full", note.today ? "bg-success" : "bg-faint")} />
-      {note.label}
+      <span className="size-1.5 rounded-full bg-success" />
+      {label}
     </span>
   );
 }
@@ -219,25 +217,26 @@ function HonestyNote({ frame, className }: { frame: Frame; className?: string })
 /* Small parts                                                         */
 /* ------------------------------------------------------------------ */
 
-/** The people in the story; everyone else is an agent. */
-const PEOPLE: Record<string, string> = { Priya: "Priya Shah", Dana: "Dana Ruiz", Alex: "Alex Lee" };
+/** The people in the story. */
+const PEOPLE: Record<string, string> = { Priya: "Priya Shah", Dana: "Dana Ruiz", Alex: "Alex Lee", Jordan: "Jordan Kim" };
 
-/** The agents in the story: a human name, a title, and a pixel creature of their own. */
-const AGENTS: Record<string, { title: string; team: string }> = {
-  g1t: { title: "Orchestrator", team: "" },
-  Otto: { title: "Software Engineer", team: "Engineering" },
-  Margo: { title: "QA Engineer", team: "QA" },
-  Inky: { title: "Technical Writer", team: "Docs" },
-  Sam: { title: "Support Specialist", team: "Customer Support" },
-  Dot: { title: "Product Manager", team: "Product" },
-  David: { title: "Sales Operations", team: "Sales" },
-  Bruno: { title: "Operations Engineer", team: "Operations" },
-};
+/** The coding agent Priya brought: known by the address on its commits, not an account on g1t. */
+const CLAUDE = codingAgentById("claude")!;
 
-/** A face: an agent's own creature (g1t keeps its pixel 1), or a person's avatar, as the app draws them. */
+/** A person's avatar, as the app draws it. */
 function Face({ who, size = 28 }: { who: string; size?: number }) {
-  if (!PEOPLE[who]) return <AgentAvatar agent={{ handle: who.toLowerCase(), name: who, builtin: who === "g1t" }} size={size} />;
   return <Avatar name={who.toLowerCase()} size={size} />;
+}
+
+/** The coding agent's mark, its name and its badge, as commits and sessions show them. */
+function WithAgent() {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <AgentMark agent={CLAUDE} size={14} />
+      <span className="text-fg-soft">{CLAUDE.name}</span>
+      <AgentBadge agent={CLAUDE} />
+    </span>
+  );
 }
 
 /** A person's presence, as the app shows it on their avatar: active, or away. */
@@ -248,22 +247,6 @@ function PresenceDot({ away, ring = "var(--tour-side)" }: { away?: boolean; ring
       style={{ boxShadow: `0 0 0 1.5px ${ring}${away ? ", inset 0 0 0 1.5px var(--color-faint)" : ""}` }}
     />
   );
-}
-
-/** An agent's status dot, as chat/marks.tsx draws it: working glows green, idle is quiet. */
-function AgentDot({ working }: { working: boolean }) {
-  return (
-    <span
-      className={cn(
-        "size-1.5 shrink-0 rounded-full transition-colors duration-500",
-        working ? "bg-success shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-success)_18%,transparent)]" : "bg-faint/70",
-      )}
-    />
-  );
-}
-
-function AgentTag() {
-  return <span className="rounded bg-accent/15 px-1 py-px font-mono text-[9px] tracking-wide text-accent uppercase">Agent</span>;
 }
 
 /** Text with @mentions, #channels and #numbers picked out, as chat shows them. */
@@ -284,16 +267,13 @@ function Rich({ text }: { text: string }) {
   );
 }
 
-function Message({ who, role, time, children, enter }: { who: string; role?: string; time: string; children: ReactNode; enter?: boolean }) {
-  const agent = !PEOPLE[who];
+function Message({ who, time, children, enter }: { who: string; time: string; children: ReactNode; enter?: boolean }) {
   return (
     <div className={cn("flex gap-3 px-5 py-2", enter && "tour-in")}>
       <Face who={who} />
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-baseline gap-x-1.5 text-[13px]">
           <span className="font-semibold text-fg">{PEOPLE[who] ?? who}</span>
-          {agent && <AgentTag />}
-          {(role ?? AGENTS[who]?.title) && <span className="text-[11px] text-faint">{role ?? AGENTS[who]?.title}</span>}
           <span className="text-[11px] text-faint">{time}</span>
         </p>
         <div className="mt-0.5 space-y-2 text-[13px] leading-[1.55] text-fg-soft">{children}</div>
@@ -302,59 +282,16 @@ function Message({ who, role, time, children, enter }: { who: string; role?: str
   );
 }
 
-function Dots() {
-  return (
-    <span className="inline-flex items-center gap-1" aria-hidden="true">
-      {[0, 1, 2].map((i) => (
-        <span key={i} className="tour-dot size-1.5 rounded-full bg-faint" style={{ animationDelay: `${i * 160}ms` }} />
-      ))}
-    </span>
-  );
-}
-
-/**
- * The session's card in #web, drawn as chat draws an agent session's card
- * (components/chat/card.tsx, CardBox): it changes in place as the
- * session moves, wherever the story is.
- */
-function TaskCard({ frame }: { frame: Frame }) {
-  const done = frame.cardMerged;
-  const cost = STEPS[frame.steps - 1]?.cost ?? 0;
-  return (
-    <Card className="mt-1.5 flex max-w-[26rem] items-start gap-3 px-3.5 py-3">
-      <span className={cn("mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors", done ? "bg-raised text-muted" : "bg-accent/10 text-accent")}>
-        <Bot size={16} />
-      </span>
-      <span className="min-w-0 grow">
-        <span className="line-clamp-2 text-[13px] font-medium text-fg">CSV export times out for big accounts</span>
-        <span className="mt-0.5 block truncate font-mono text-[11px] text-muted tabular-nums">
-          @otto · {frame.steps} of {STEPS.length} steps · ${cost.toFixed(2)}
-        </span>
-      </span>
-      <Badge key={done ? "done" : "working"} tone={done ? "success" : "accent"} className="tour-pop mt-0.5">
-        {!done && (
-          <span aria-hidden="true" className="relative flex size-1.5">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-60 motion-reduce:animate-none" />
-            <span className="relative inline-flex size-1.5 rounded-full bg-current" />
-          </span>
-        )}
-        {done ? "Done" : "Working"}
-      </Badge>
-    </Card>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /* The app frame                                                       */
 /* ------------------------------------------------------------------ */
 
 /** The rail's modes, in the app's order (components/rail.tsx), with its icons. */
-const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scene?: Scene; badge?: number }[] = [
+const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scenes?: Scene[]; badge?: number }[] = [
   { key: "home", icon: <House size={15} />, label: "Home" },
-  { key: "code", icon: <Code2 size={15} />, label: "Code", target: "rail-code", scene: "code" },
-  { key: "chat", icon: <MessagesSquare size={15} />, label: "Chat", target: "rail-chat", scene: "chat", badge: 3 },
-  { key: "artifacts", icon: <Shapes size={15} />, label: "Artifacts", target: "rail-docs", scene: "docs" },
-  { key: "agents", icon: <Sparkles size={15} />, label: "Agents", target: "rail-agents", scene: "agents" },
+  { key: "chat", icon: <MessagesSquare size={15} />, label: "Chat", target: "rail-chat", scenes: ["chat"], badge: 3 },
+  { key: "code", icon: <Code2 size={15} />, label: "Code", target: "rail-code", scenes: ["code", "session"] },
+  { key: "artifacts", icon: <Shapes size={15} />, label: "Artifacts", target: "rail-docs", scenes: ["docs"] },
   { key: "inbox", icon: <Bell size={15} />, label: "Notifications", badge: 2 },
 ];
 
@@ -394,7 +331,7 @@ function Rail({ scene }: { scene: Scene }) {
       </div>
       <div className="mt-2.5 flex w-full flex-col items-center gap-1.5 px-1">
         {RAIL.map((item) => (
-          <RailItem key={item.key} icon={item.icon} label={item.label} on={item.scene === scene} target={item.target} badge={item.badge} />
+          <RailItem key={item.key} icon={item.icon} label={item.label} on={!!item.scenes?.includes(scene)} target={item.target} badge={item.badge} />
         ))}
       </div>
       <div className="mt-auto flex w-full flex-col items-center gap-1.5 px-1">
@@ -411,8 +348,8 @@ function Rail({ scene }: { scene: Scene }) {
 
 /**
  * The top bar, as the app has it (components/shell.tsx): where you are,
- * then Explore, Docs, Ask g1t, the inbox and the + menu. Chat has none on
- * a computer: the conversation's header takes its line.
+ * then Explore, Docs, the inbox and the + menu. Chat has none on a
+ * computer: the conversation's header takes its line.
  */
 function TopBar({ crumbs }: { crumbs: { label: string; mono?: boolean }[] }) {
   return (
@@ -428,10 +365,6 @@ function TopBar({ crumbs }: { crumbs: { label: string; mono?: boolean }[] }) {
       <span className="ml-auto flex items-center gap-1 text-[12px]">
         <span className="px-1.5 text-muted">Explore</span>
         <span className="px-1.5 text-muted">Docs</span>
-        <span className="flex h-7 items-center gap-1.5 rounded-md border border-line px-2 text-fg/90">
-          <G1tMark size={14} />
-          Ask g1t
-        </span>
         <span className="relative flex size-7 items-center justify-center text-muted">
           <Bell size={14} />
           <span className="absolute top-1 right-1 size-1.5 rounded-full bg-accent" />
@@ -447,13 +380,10 @@ function TopBar({ crumbs }: { crumbs: { label: string; mono?: boolean }[] }) {
 }
 
 /** A mode's sidebar heading (ModeHeader): on the top bar's line, with what it makes. */
-function SideHead({ children, action, soon }: { children: ReactNode; action?: ReactNode; soon?: boolean }) {
+function SideHead({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-line pr-2 pl-3.5">
-      <span className="flex items-center gap-2 text-[13px] font-semibold text-fg">
-        {children}
-        {soon && <Soon />}
-      </span>
+      <span className="flex items-center gap-2 text-[13px] font-semibold text-fg">{children}</span>
       {action && <span className="flex size-6 items-center justify-center text-faint">{action}</span>}
     </div>
   );
@@ -490,22 +420,12 @@ function SideSearch({ children, keys }: { children: ReactNode; keys?: boolean })
 
 /* Chat ---------------------------------------------------------------- */
 
-function ChatSide({ frame }: { frame: Frame }) {
-  // Otto works from the handoff until the merge; everyone else is idle.
-  const ottoBusy = frame.handoff && !frame.merged;
-  const margoBusy = frame.consult && !frame.approved;
-  // As the app has it: direct messages with people and agents alike, the
-  // latest first; then the agents not talked to yet.
-  const dms: { who: string; away?: boolean; status?: string; working?: boolean }[] = [
-    { who: "g1t" },
+function ChatSide() {
+  // As the app has it: direct messages with people, the latest first.
+  const dms: { who: string; away?: boolean; status?: string }[] = [
     { who: "Dana" },
-    { who: "Margo", working: margoBusy },
+    { who: "Jordan" },
     { who: "Alex", away: true, status: "🗓️" },
-  ];
-  const agents: { who: string; working: boolean }[] = [
-    { who: "Otto", working: ottoBusy },
-    { who: "Inky", working: frame.docUpdated },
-    { who: "Sam", working: frame.shipped && !frame.sam },
   ];
   return (
     <>
@@ -538,33 +458,15 @@ function ChatSide({ frame }: { frame: Frame }) {
           <span className="text-[10.5px]">3</span>
         </div>
         <SideLabel>Direct messages</SideLabel>
-        {dms.map((dm) => {
-          const agent = dm.who in AGENTS;
-          return (
-            <SideRow key={dm.who}>
-              <span className="relative flex">
-                <Face who={dm.who} size={16} />
-                {!agent && <PresenceDot away={dm.away} />}
-                {agent && dm.working && <PresenceDot />}
-              </span>
-              <span className="min-w-0 flex-1 truncate">
-                {agent ? dm.who : PEOPLE[dm.who]}
-                {agent && <span className="text-faint"> · {dm.who === "g1t" ? "orchestrator" : AGENTS[dm.who].title}</span>}
-                {dm.status && <span className="ml-1.5 text-[11px]">{dm.status}</span>}
-              </span>
-            </SideRow>
-          );
-        })}
-        <SideLabel>Agents</SideLabel>
-        {agents.map((agent) => (
-          <SideRow key={agent.who}>
+        {dms.map((dm) => (
+          <SideRow key={dm.who}>
             <span className="relative flex">
-              <Face who={agent.who} size={16} />
-              {agent.working && <PresenceDot />}
+              <Face who={dm.who} size={16} />
+              <PresenceDot away={dm.away} />
             </span>
             <span className="min-w-0 flex-1 truncate">
-              {agent.who}
-              <span className="text-faint"> · {AGENTS[agent.who].title}</span>
+              {PEOPLE[dm.who]}
+              {dm.status && <span className="ml-1.5 text-[11px]">{dm.status}</span>}
             </span>
           </SideRow>
         ))}
@@ -574,7 +476,6 @@ function ChatSide({ frame }: { frame: Frame }) {
 }
 
 function ChatMain({ frame }: { frame: Frame }) {
-  const typing = ASK.slice(0, frame.typed);
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-5">
@@ -583,8 +484,8 @@ function ChatMain({ frame }: { frame: Frame }) {
         <span aria-hidden="true" className="h-3.5 w-px bg-line" />
         <span className="truncate text-xs text-muted">The web app, its releases and its bugs</span>
         <span className="ml-auto flex -space-x-1.5" aria-hidden="true">
-          {["Priya", "g1t", "Otto", "Margo", "Dana"].map((who) => (
-            <span key={who} className="rounded-lg ring-2 ring-surface">
+          {["Priya", "Dana", "Jordan", "Alex"].map((who) => (
+            <span key={who} className="rounded-full ring-2 ring-surface">
               <Face who={who} size={20} />
             </span>
           ))}
@@ -596,296 +497,41 @@ function ChatMain({ frame }: { frame: Frame }) {
           Today
           <span className="h-px flex-1 bg-line" />
         </div>
-        <Message who="Priya" time="09:02">
+        <Message who="Jordan" time="09:02">
           <p>Morning! Thursday&apos;s release closes Wednesday night, so anything for it needs to land by then.</p>
         </Message>
         <Message who="Dana" time="09:12">
           <p>Two enterprise customers hit the CSV export timeout again this morning. Both have over 100k rows.</p>
         </Message>
-        {frame.sent && (
-          <Message who="Priya" time="09:15" enter>
-            <p>
-              <Rich text={ASK} />
-            </p>
-          </Message>
-        )}
-        {frame.g1tTyping && (
-          <div className="tour-in flex items-center gap-3 px-5 py-2 text-[12px] text-faint">
-            <Face who="g1t" size={28} />
-            <Dots />
-            g1t is typing
-          </div>
-        )}
-        {frame.handoff && (
-          <Message who="g1t" time="09:15" enter>
-            <p>
-              <Rich text="On it. @otto will make the fix and @margo will review it. I'll post here when it ships." />
-            </p>
-            <TaskCard frame={frame} />
-          </Message>
-        )}
+        <Message who="Priya" time="09:15">
+          <p>
+            <Rich text="I'll take it, @dana. I'll post here when it ships." />
+          </p>
+        </Message>
         {frame.shipped && (
-          <Message who="g1t" time="09:41" enter>
+          <Message who="Priya" time="09:41" enter>
             <p>
-              <Rich text="Shipped. A 200,000-row export now finishes in about 3 s. @sam, can you let #support know?" />
+              <Rich text="Shipped in #431. A 200,000-row export now finishes in about 3 s. @dana, can you let your two customers know?" />
             </p>
           </Message>
         )}
-        {frame.sam && (
-          <Message who="Sam" time="09:42" enter>
+        {frame.told && (
+          <Message who="Dana" time="09:42" enter>
             <p>
-              <Rich text="Done. Told #support, and Dana's two customers can export again." />
+              <Rich text="Done. Both can export again, and I told #support." />
             </p>
           </Message>
         )}
       </div>
       <div className="px-5 pt-1 pb-4">
-        <div
-          data-tour="composer"
-          className={cn(
-            "flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 text-[13px] ring-1 transition-shadow duration-300",
-            frame.typed > 0 ? "ring-accent/50 shadow-[0_0_0_3px_rgb(182_168_255/0.08)]" : "ring-line",
-          )}
-        >
-          <span className="min-w-0 flex-1 truncate">
-            {frame.typed > 0 ? (
-              <span className="text-fg">
-                {typing}
-                <span className="tour-caret ml-px inline-block h-[14px] w-px translate-y-[2px] bg-accent" />
-              </span>
-            ) : (
-              <span className="text-faint">Message #web</span>
-            )}
-          </span>
+        <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 text-[13px] ring-1 ring-line">
+          <span className="min-w-0 flex-1 truncate text-faint">Message #web</span>
           <AtSign size={15} className="text-faint" />
           <Paperclip size={15} className="text-faint" />
-          <span
-            data-tour="send"
-            className={cn(
-              "flex size-7 items-center justify-center rounded-md transition-colors duration-300",
-              frame.typed === ASK.length ? "bg-accent text-bg" : "text-faint",
-            )}
-          >
+          <span className="flex size-7 items-center justify-center rounded-md text-faint">
             <SendHorizontal size={14} />
           </span>
         </div>
-      </div>
-    </div>
-  );
-}
-
-/* Agents -------------------------------------------------------------- */
-
-/** The specialists the demo workspace hired, from the role templates, by team (agents-mode.tsx, orgChart). */
-const SPECIALISTS: { who: string; working?: boolean }[] = [
-  { who: "Otto", working: true },
-  { who: "Margo" },
-  { who: "Inky" },
-  { who: "Sam" },
-  { who: "Dot" },
-];
-
-/** Agents mode's sidebar, as the app has it: the fleet's pages, g1t, then the specialists by team. */
-function AgentsSide({ frame }: { frame: Frame }) {
-  const link = (icon: ReactNode, label: string, on = false) => (
-    <SideRow on={on}>
-      <span className="text-faint">{icon}</span>
-      {label}
-    </SideRow>
-  );
-  return (
-    <>
-      <SideHead action={<Plus size={14} />}>Agents</SideHead>
-      <div className="px-2 pt-2.5">
-        {link(<Activity size={13} />, "Overview")}
-        {link(<Network size={13} />, "Context")}
-        {link(<Brain size={13} />, "Memory")}
-        <SideLabel fold={false}>Orchestrator</SideLabel>
-        <AgentRow who="g1t" line="Orchestrator" />
-        <p className="mt-2.5 px-2 text-[10px] leading-snug text-faint">Specialists are colleagues hired into a role. g1t hands them work.</p>
-        {SPECIALISTS.map((agent) => {
-          const working = agent.who === "Otto" ? !frame.merged : agent.who === "Margo" ? frame.consult && !frame.approved : false;
-          return (
-            <Fragment key={agent.who}>
-              <SideLabel>{AGENTS[agent.who].team} · 1</SideLabel>
-              <AgentRow who={agent.who} line={working ? `Working · ${AGENTS[agent.who].title}` : AGENTS[agent.who].title} working={working} on={agent.who === "Otto"} />
-            </Fragment>
-          );
-        })}
-        <div className="mt-2 flex h-7 items-center gap-2 rounded-md border border-dashed border-line px-2 text-[12px] text-muted">
-          <Plus size={13} />
-          New agent
-        </div>
-      </div>
-    </>
-  );
-}
-
-/** One agent in Agents mode's sidebar: its face and status, name, and what it is doing. */
-function AgentRow({ who, line, working = false, on = false }: { who: string; line: string; working?: boolean; on?: boolean }) {
-  return (
-    <div className={cn("flex h-9 items-center gap-2 rounded-md px-2", on && "bg-raised")}>
-      <span className="relative shrink-0">
-        <Face who={who} size={20} />
-        {who !== "g1t" && (
-          <span className="absolute -right-0.5 -bottom-0.5 flex rounded-full ring-[1.5px] ring-[var(--tour-side)]">
-            <AgentDot working={working} />
-          </span>
-        )}
-      </span>
-      <span className="min-w-0 flex-1 leading-tight">
-        <span className="block truncate text-[12px] font-medium text-fg">{who}</span>
-        <span className="block truncate text-[10px] text-faint">{line}</span>
-      </span>
-    </div>
-  );
-}
-
-const FILES: { path: string; from: number }[] = [
-  { path: "services/export/csv.py", from: 3 },
-  { path: "services/export/query.py", from: 3 },
-  { path: "tests/test_export.py", from: 4 },
-];
-
-/** A colleague brought into the session, in the open: a line anyone can open. */
-function Consult({ frame, compact }: { frame: Frame; compact?: boolean }) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-2.5 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[12px] transition-[opacity,transform] duration-500",
-        frame.consult ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
-      )}
-    >
-      <span className="flex -space-x-1">
-        <Face who="Otto" size={18} />
-        <Face who="Margo" size={18} />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-muted">
-        <span className="text-fg-soft">Otto brought in Margo</span> · Helper session
-        {!compact && <span className="text-faint">: &ldquo;Is 1,000 a safe batch size for the 200k test?&rdquo;</span>}
-      </span>
-      <CornerDownRight size={13} className="shrink-0 text-faint" />
-    </div>
-  );
-}
-
-/** The quiet tag on parts of the story that are not built yet. */
-function Soon() {
-  return (
-    <span className="shrink-0 rounded-full bg-raised px-1.5 py-0.5 font-mono text-[9px] tracking-wide whitespace-nowrap text-muted uppercase ring-1 ring-line-strong">
-      Coming soon
-    </span>
-  );
-}
-
-function AgentsMain({ frame }: { frame: Frame }) {
-  const cost = STEPS[frame.steps - 1]?.cost ?? 0;
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 px-5 pt-4 pb-3">
-        <span className="relative">
-          <Face who="Otto" size={36} />
-          <span className="absolute -right-0.5 -bottom-0.5 flex rounded-full ring-2 ring-bg">
-            <AgentDot working={!frame.merged} />
-          </span>
-        </span>
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-semibold text-fg">
-            Otto <AgentTag />
-          </p>
-          <p className="text-xs text-muted">
-            <span className="font-mono">@otto</span> · Software Engineer, Engineering
-          </p>
-        </div>
-        <span className="ml-auto flex h-7 items-center gap-1.5 rounded-md bg-accent px-2.5 text-[11.5px] font-medium text-bg">
-          <MessagesSquare size={12} />
-          Message
-        </span>
-      </div>
-      <div className="flex gap-5 border-b border-line px-5 text-[12px]">
-        {["Sessions", "Memory", "Routines", "Spend", "Profile"].map((tab) => (
-          <span key={tab} className={cn("py-2", tab === "Sessions" ? "border-b-2 border-accent text-fg" : "text-faint")}>
-            {tab}
-          </span>
-        ))}
-      </div>
-      <div className="flex-1 space-y-3 overflow-hidden px-5 py-4">
-        <Card>
-          <div className="flex items-start gap-3 px-4 pt-3.5 pb-3">
-            <div className="min-w-0 flex-1">
-              <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-fg">
-                CSV export times out for big accounts
-                <span className="inline-flex h-4 items-center rounded-[5px] bg-raised px-1.5 text-[10px] font-medium text-muted ring-1 ring-line ring-inset">Chat</span>
-                <Badge key={frame.merged ? "done" : "working"} tone={frame.merged ? "success" : "accent"} className="tour-pop">
-                  {frame.merged ? "Done" : "Working"}
-                </Badge>
-              </p>
-              <p className="mt-0.5 text-[11px] text-faint">
-                asked by @priya through @g1t · <span className="text-fg-soft">#web</span> · {frame.steps * 3} steps
-              </p>
-            </div>
-            <div className="w-32 text-right">
-              <p className="text-[12px] text-fg tabular-nums">
-                ${cost.toFixed(2)} <span className="text-faint">of $5.00</span>
-              </p>
-              <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-line">
-                <span
-                  className="block h-full origin-left rounded-full bg-accent transition-transform duration-700"
-                  style={{ transform: `scaleX(${cost / 5})` }}
-                />
-              </span>
-            </div>
-          </div>
-          <ol className="space-y-1.5 border-t border-line px-4 py-3">
-            {STEPS.map((step, index) => {
-              const done = index < frame.steps;
-              const now = index === frame.steps;
-              return (
-                <li key={step.text} className={cn("flex items-center gap-2.5 text-[12.5px] transition-colors duration-300", done ? "text-fg-soft" : now ? "text-fg" : "text-faint")}>
-                  <span className="flex size-4 shrink-0 items-center justify-center">
-                    {done ? (
-                      <span className="tour-pop flex size-4 items-center justify-center rounded-full bg-success/15 text-success">
-                        <Check size={10} strokeWidth={3} />
-                      </span>
-                    ) : now ? (
-                      <span className="tour-spin size-3.5 rounded-full border-2 border-accent/25 border-t-accent" />
-                    ) : (
-                      <span className="size-1.5 rounded-full bg-line-strong" />
-                    )}
-                  </span>
-                  {step.text}
-                </li>
-              );
-            })}
-          </ol>
-          <div className="flex items-center gap-2 border-t border-line px-4 py-2.5">
-            <span className="text-[11px] text-faint">Files</span>
-            <span className="flex min-h-[20px] flex-1 flex-wrap gap-1.5">
-              {FILES.filter((file) => frame.steps >= file.from).map((file) => (
-                <span key={file.path} className="tour-pop rounded bg-raised px-1.5 py-0.5 font-mono text-[10.5px] text-muted ring-1 ring-line">
-                  {file.path}
-                </span>
-              ))}
-            </span>
-            <span
-              data-tour="task-pull"
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium transition-opacity duration-500",
-                frame.steps >= STEPS.length ? "bg-accent/15 text-accent opacity-100" : "text-faint opacity-0",
-              )}
-            >
-              <GitPullRequest size={13} />
-              Pull request #431
-              <ArrowRight size={12} />
-            </span>
-          </div>
-        </Card>
-        <Consult frame={frame} />
-        <Card className="flex items-center gap-3 px-4 py-3 text-[12px] text-muted">
-          <span className="text-fg-soft">Upgrade the date library across the web app</span>
-          <Badge>Queued</Badge>
-          <span className="ml-auto text-faint">Routine · Mondays</span>
-        </Card>
       </div>
     </div>
   );
@@ -924,17 +570,10 @@ function CodeSide() {
         {row(<Code2 size={13} />, "Code")}
         {row(<CircleDot size={13} />, "Issues", "12")}
         {row(<GitPullRequest size={13} />, "Pull requests", "3", true)}
-        {row(<Bot size={13} />, "Agents")}
         {row(<PlayCircle size={13} />, "Workflows")}
         <div className="mx-2 my-2 h-px bg-line" />
         {row(<Rocket size={13} />, "Deployments")}
-        <SideRow>
-          <span className="text-faint">
-            <Activity size={13} />
-          </span>
-          <span className="flex-1">Observability</span>
-          <span className="rounded-full px-1.5 text-[9px] text-faint ring-1 ring-line">Soon</span>
-        </SideRow>
+        {row(<Activity size={13} />, "Observability")}
         {row(<ShieldCheck size={13} />, "Security")}
         {row(<BarChart3 size={13} />, "Insights")}
         <div className="mx-2 my-2 h-px bg-line" />
@@ -954,35 +593,70 @@ const DIFF: { sign: " " | "-" | "+"; text: string }[] = [
   { sign: "+", text: "        yield writer.flush()" },
 ];
 
+/**
+ * The pull request's header and tabs, as routes/repo/pull.tsx has them:
+ * its title, state and author (with the coding agent on its commits), then
+ * Conversation, Session and Files changed.
+ */
+function PullHead({ frame, tab }: { frame: Frame; tab: "conversation" | "session" }) {
+  const tabs: { key: string; icon: ReactNode; label: string; count?: number; target?: CursorTarget }[] = [
+    { key: "conversation", icon: <MessageSquare size={13} />, label: "Conversation", count: 2 },
+    { key: "session", icon: <MessagesSquare size={13} />, label: "Session", target: "pr-session" },
+    { key: "changes", icon: <FileDiff size={13} />, label: "Files changed", count: 3 },
+  ];
+  return (
+    <div className="px-5 pt-4">
+      <p className="text-[15px] font-semibold text-fg">
+        Stream CSV exports in batches <span className="font-normal text-faint">#431</span>
+      </p>
+      <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
+        <span
+          key={frame.merged ? "merged" : "open"}
+          className={cn(
+            "tour-pop flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+            frame.merged ? "bg-merged/15 text-merged" : "bg-success/15 text-success",
+          )}
+        >
+          {frame.merged ? <GitMerge size={11} /> : <GitPullRequest size={11} />}
+          {frame.merged ? "Merged" : "Open"}
+        </span>
+        <span className="text-fg-soft">{PEOPLE.Priya}</span> wants to merge into <span className="font-mono text-[11px] text-fg-soft">main</span> · with
+        <WithAgent />
+      </p>
+      <div className="mt-3 flex items-end gap-1 border-b border-line text-[12px]">
+        {tabs.map((item) => {
+          const on = item.key === tab;
+          return (
+            <span
+              key={item.key}
+              data-tour={item.target}
+              className={cn("-mb-px flex items-center gap-1.5 border-b-2 px-2.5 pb-2", on ? "border-accent font-medium text-fg" : "border-transparent text-muted")}
+            >
+              {item.icon}
+              {item.label}
+              {item.count ? <span className="rounded-full bg-raised px-1.5 text-[10px] text-muted tabular-nums ring-1 ring-line">{item.count}</span> : null}
+            </span>
+          );
+        })}
+        <span className="ml-auto pb-2 font-mono text-[11px]">
+          <span className="text-success">+41</span> <span className="text-danger">−12</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function CodeMain({ frame }: { frame: Frame }) {
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-line px-5 pt-4 pb-3">
-        <p className="text-[15px] font-semibold text-fg">
-          Stream CSV exports in batches <span className="font-normal text-faint">#431</span>
-        </p>
-        <p className="mt-1.5 flex items-center gap-2 text-[12px] text-muted">
-          <span
-            key={frame.merged ? "merged" : "open"}
-            className={cn(
-              "tour-pop flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
-              frame.merged ? "bg-merged/15 text-merged" : "bg-success/15 text-success",
-            )}
-          >
-            {frame.merged ? <GitMerge size={11} /> : <GitPullRequest size={11} />}
-            {frame.merged ? "Merged" : "Open"}
-          </span>
-          <span className="text-fg-soft">@otto</span> wants to merge into <span className="font-mono text-[11px] text-fg-soft">main</span> · fixes the
-          request from <span className="text-accent">#web</span>
-        </p>
-      </div>
+      <PullHead frame={frame} tab="conversation" />
       <div className="grid min-h-0 flex-1 grid-cols-[1fr_15rem] gap-4 px-5 py-4">
         <div className="min-w-0 space-y-3">
           <div className="flex gap-3 text-[12.5px] leading-[1.6] text-fg-soft">
-            <Face who="Otto" size={24} />
+            <Face who="Priya" size={24} />
             <p>
               Exports loaded every row before sending the first byte, so big accounts hit the 60 s limit. Rows now stream in
-              batches of 1,000. A 200,000-row account takes 3.1 s.
+              batches of 1,000. A 200,000-row account takes 3.1 s. Fixes the timeout Dana reported in <span className="text-accent">#web</span>.
             </p>
           </div>
           <Card className="overflow-hidden">
@@ -1016,9 +690,9 @@ function CodeMain({ frame }: { frame: Frame }) {
               frame.approved ? "bg-success/5 text-fg-soft opacity-100 ring-success/25" : "opacity-0 ring-line",
             )}
           >
-            <Face who="Margo" size={22} />
+            <Face who="Dana" size={22} />
             <span>
-              <span className="text-fg">@margo</span> approved: batching keeps memory flat, and the 200k-row test covers it.
+              <span className="text-fg">{PEOPLE.Dana}</span> approved: tried it on the preview with a 200k-row account. Done in seconds.
             </span>
             <Check size={14} className="ml-auto shrink-0 text-success" />
           </div>
@@ -1074,6 +748,63 @@ function CodeMain({ frame }: { frame: Frame }) {
   );
 }
 
+/** One entry of the session, on the timeline's rail, as the pull request's Session tab draws it. */
+function SessionLine({ entry, shown }: { entry: SessionEntry; shown: boolean }) {
+  const Icon = entry.kind === "prompt" ? User : entry.kind === "tool" ? Wrench : Bot;
+  return (
+    <li className={cn("relative pl-9 transition-[opacity,transform] duration-500", shown ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0")}>
+      <span
+        className={cn(
+          "absolute top-0 left-0 flex size-6 items-center justify-center rounded-full border bg-bg",
+          entry.kind === "prompt" ? "border-accent/50 text-accent" : "border-line text-faint",
+        )}
+      >
+        <Icon size={12} />
+      </span>
+      {entry.kind === "tool" ? (
+        <Card className="flex items-center gap-2 px-3 py-1.5">
+          <span className="font-mono text-[11px] text-accent">{entry.tool}</span>
+          <span className="truncate font-mono text-[11px] text-muted">{entry.text}</span>
+        </Card>
+      ) : (
+        <div>
+          <p className="text-[11px] font-medium text-faint">{entry.kind === "prompt" ? "Prompt" : CLAUDE.name}</p>
+          {entry.kind === "prompt" ? (
+            <Card className="mt-1 px-3 py-2 text-[12.5px] leading-[1.55] text-fg-soft">{entry.text}</Card>
+          ) : (
+            <p className="mt-0.5 text-[12.5px] leading-[1.55] text-fg-soft">{entry.text}</p>
+          )}
+        </div>
+      )}
+      {entry.commit && (
+        <p className="mt-1 flex items-center gap-1 font-mono text-[11px] text-faint">
+          <GitCommitHorizontal size={12} />
+          {entry.commit}
+        </p>
+      )}
+    </li>
+  );
+}
+
+/** The pull request's Session tab: what the coding agent was asked, read, ran and decided, recorded as it worked. */
+function SessionMain({ frame }: { frame: Frame }) {
+  return (
+    <div className="flex h-full flex-col">
+      <PullHead frame={frame} tab="session" />
+      <div className="min-h-0 flex-1 overflow-hidden px-5 py-4">
+        <p className="mb-3 flex items-center gap-1.5 text-[11.5px] text-muted">
+          Recorded by <WithAgent /> for {PEOPLE.Priya} through g1t&apos;s MCP server · {SESSION.length} entries
+        </p>
+        <ol className="space-y-3">
+          {SESSION.map((entry, index) => (
+            <SessionLine key={index} entry={entry} shown={index < frame.entries} />
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
 /* Docs ---------------------------------------------------------------- */
 
 /** Docs' sidebar: search, then each space's pages. */
@@ -1104,13 +835,13 @@ function DocsSide() {
   );
 }
 
-function DocsMain({ frame }: { frame: Frame; tag?: boolean }) {
+function DocsMain({ frame }: { frame: Frame }) {
   return (
     <div className="relative h-full px-10 py-7">
       <p className="text-[11px] text-faint">Product / Exporting data</p>
       <h3 className="mt-2 text-[22px] font-semibold tracking-tight text-fg">Exporting data</h3>
       <p className="mt-1.5 flex items-center gap-2 text-[11px] text-faint">
-        Owned by <span className="text-fg-soft">@inky</span> ·{" "}
+        Owned by <span className="text-fg-soft">{PEOPLE.Dana}</span> ·{" "}
         <span key={frame.docUpdated ? "now" : "then"} className="tour-fade">
           {frame.docUpdated ? "updated just now from #431" : "updated 3 weeks ago"}
         </span>
@@ -1142,9 +873,9 @@ function DocsMain({ frame }: { frame: Frame; tag?: boolean }) {
             frame.docUpdated ? "opacity-100" : "opacity-0",
           )}
         >
-          <Face who="Inky" size={18} />
+          <Face who="Dana" size={18} />
           <span>
-            Updated by <span className="text-fg">@inky</span> after <span className="text-accent">#431</span> merged
+            Updated by <span className="text-fg">{PEOPLE.Dana}</span> after <span className="text-accent">#431</span> merged
           </span>
         </div>
         <p className="pt-3 text-[14px] font-semibold text-fg">Scheduled exports</p>
@@ -1168,9 +899,7 @@ function Cursor({ frame, canvas, scale }: { frame: Frame; canvas: React.RefObjec
       return;
     }
     const rect = target.getBoundingClientRect();
-    // The composer is clicked towards its right, clear of the words being typed; everything else in its middle.
-    const across = frame.cursor === "composer" ? 0.82 : 0.5;
-    setAt({ x: (rect.left - box.left + rect.width * across) / scale, y: (rect.top - box.top + rect.height * 0.55) / scale });
+    setAt({ x: (rect.left - box.left + rect.width * 0.5) / scale, y: (rect.top - box.top + rect.height * 0.55) / scale });
   }, [frame.cursor, scale, canvas]);
   if (!at) return null;
   return (
@@ -1200,17 +929,17 @@ function Cursor({ frame, canvas, scale }: { frame: Frame; canvas: React.RefObjec
 /* Desktop ------------------------------------------------------------- */
 
 const SIDES: Record<Scene, (props: { frame: Frame }) => ReactNode> = {
-  chat: ChatSide,
-  agents: AgentsSide,
   code: CodeSide,
+  session: CodeSide,
+  chat: ChatSide,
   docs: DocsSide,
 };
 
 /** Where each page is, as the top bar's trail says it; Chat has no top bar on a computer. */
 const CRUMBS: Record<Scene, { label: string; mono?: boolean }[] | null> = {
   chat: null,
-  agents: [{ label: "acme", mono: true }, { label: "Agents" }],
   code: [{ label: "acme", mono: true }, { label: "web", mono: true }, { label: "Pull request #431" }],
+  session: [{ label: "acme", mono: true }, { label: "web", mono: true }, { label: "Pull request #431" }],
   docs: [{ label: "acme", mono: true }, { label: "Docs" }],
 };
 
@@ -1231,10 +960,10 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const scenes: Scene[] = ["code", "chat", "agents", "docs"];
+  const scenes: Scene[] = ["code", "session", "chat", "docs"];
   const mains: Record<Scene, ReactNode> = {
     chat: <ChatMain frame={frame} />,
-    agents: <AgentsMain frame={frame} />,
+    session: <SessionMain frame={frame} />,
     code: <CodeMain frame={frame} />,
     docs: <DocsMain frame={frame} />,
   };
@@ -1280,23 +1009,22 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
 /* Phone --------------------------------------------------------------- */
 
 const MODE: Record<Scene, { icon: ReactNode; label: string }> = {
-  chat: { icon: <Hash size={14} />, label: "web" },
-  agents: { icon: <Sparkles size={14} />, label: "Otto · Sessions" },
   code: { icon: <GitPullRequest size={14} />, label: "Pull request #431" },
+  session: { icon: <MessagesSquare size={14} />, label: "#431 · Session" },
+  chat: { icon: <Hash size={14} />, label: "web" },
   docs: { icon: <BookOpen size={14} />, label: "Exporting data" },
 };
 
 /** The phone's tab bar, as the app has it (components/mobile.tsx). */
-const TABS: { scene: Scene | null; icon: ReactNode; label: string }[] = [
-  { scene: null, icon: <House size={16} />, label: "Home" },
-  { scene: "code", icon: <Code2 size={16} />, label: "Code" },
-  { scene: "chat", icon: <MessagesSquare size={16} />, label: "Chat" },
-  { scene: "agents", icon: <Sparkles size={16} />, label: "Agents" },
-  { scene: null, icon: <Bell size={16} />, label: "Notifications" },
+const TABS: { scenes: Scene[]; icon: ReactNode; label: string }[] = [
+  { scenes: [], icon: <House size={16} />, label: "Home" },
+  { scenes: ["chat"], icon: <MessagesSquare size={16} />, label: "Chat" },
+  { scenes: [], icon: <Bell size={16} />, label: "Notifications" },
+  { scenes: ["code", "session"], icon: <Code2 size={16} />, label: "Code" },
 ];
 
 function Phone({ frame }: { frame: Frame }) {
-  const scenes: Scene[] = ["code", "chat", "agents", "docs"];
+  const scenes: Scene[] = ["code", "session", "chat", "docs"];
   return (
     <div className="relative flex h-[34rem] w-full flex-col overflow-hidden rounded-2xl bg-bg text-left text-fg shadow-2xl shadow-black/50 ring-1 ring-line scheme-dark">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
@@ -1315,12 +1043,12 @@ function Phone({ frame }: { frame: Frame }) {
               aria-hidden={!on}
               className={cn("absolute inset-0 transition-opacity duration-500", on ? "opacity-100" : "pointer-events-none opacity-0")}
             >
-              {scene === "chat" && <PhoneChat frame={frame} />}
-              {scene === "agents" && <PhoneAgents frame={frame} />}
               {scene === "code" && <PhoneCode frame={frame} />}
+              {scene === "session" && <PhoneSession frame={frame} />}
+              {scene === "chat" && <PhoneChat frame={frame} />}
               {scene === "docs" && (
                 <div className="origin-top-left scale-[0.86]" style={{ width: "116%" }}>
-                  <DocsMain frame={frame} tag={false} />
+                  <DocsMain frame={frame} />
                 </div>
               )}
             </div>
@@ -1329,9 +1057,9 @@ function Phone({ frame }: { frame: Frame }) {
       </div>
       {/* Inside a conversation the tab bar steps aside, as it does on a phone. */}
       {frame.scene !== "chat" && (
-        <div className="grid h-12 shrink-0 grid-cols-5 border-t border-line bg-[#0b0b0d]">
+        <div className="grid h-12 shrink-0 grid-cols-4 border-t border-line bg-[#0b0b0d]">
           {TABS.map((tab) => {
-            const on = tab.scene === frame.scene;
+            const on = tab.scenes.includes(frame.scene);
             return (
               <span key={tab.label} className="flex flex-col items-center justify-center gap-0.5">
                 <span className={cn("flex h-6 w-10 items-center justify-center rounded-full", on ? "bg-[#2c2c33] text-fg" : "text-muted")}>{tab.icon}</span>
@@ -1349,128 +1077,50 @@ function PhoneChat({ frame }: { frame: Frame }) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_2.5rem)] [&>div]:px-3">
-        <Message who="Priya" time="09:02">
-          <p>Morning! Thursday&apos;s release closes Wednesday night.</p>
-        </Message>
         <Message who="Dana" time="09:12">
           <p>Two enterprise customers hit the CSV export timeout again this morning.</p>
         </Message>
-        {frame.sent && (
-          <Message who="Priya" time="09:15" enter>
-            <p>
-              <Rich text={ASK} />
-            </p>
-          </Message>
-        )}
-        {frame.g1tTyping && (
-          <div className="tour-in flex items-center gap-3 py-2 text-[12px] text-faint">
-            <Face who="g1t" />
-            <Dots />
-          </div>
-        )}
-        {frame.handoff && (
-          <Message who="g1t" time="09:15" enter>
-            <p>
-              <Rich text="On it. @otto will fix it and @margo will review." />
-            </p>
-            <TaskCard frame={frame} />
-          </Message>
-        )}
+        <Message who="Priya" time="09:15">
+          <p>
+            <Rich text="I'll take it, @dana." />
+          </p>
+        </Message>
         {frame.shipped && (
-          <Message who="g1t" time="09:41" enter>
+          <Message who="Priya" time="09:41" enter>
             <p>
-              <Rich text="Shipped. @sam, can you tell #support?" />
+              <Rich text="Shipped in #431. @dana, can you tell your customers?" />
             </p>
           </Message>
         )}
-        {frame.sam && (
-          <Message who="Sam" time="09:42" enter>
+        {frame.told && (
+          <Message who="Dana" time="09:42" enter>
             <p>
-              <Rich text="Done. Told #support." />
+              <Rich text="Done. Both can export again." />
             </p>
           </Message>
         )}
       </div>
       <div className="px-3 pt-1 pb-3">
-        <div className={cn("flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 text-[13px] ring-1", frame.typed > 0 ? "ring-accent/50" : "ring-line")}>
-          <span className="min-w-0 flex-1 truncate">
-            {frame.typed > 0 ? (
-              <span className="text-fg">
-                {ASK.slice(Math.max(0, frame.typed - 34), frame.typed)}
-                <span className="tour-caret ml-px inline-block h-[14px] w-px translate-y-[2px] bg-accent" />
-              </span>
-            ) : (
-              <span className="text-faint">Message #web</span>
-            )}
-          </span>
-          <SendHorizontal size={15} className={frame.typed === ASK.length ? "text-accent" : "text-faint"} />
+        <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 text-[13px] ring-1 ring-line">
+          <span className="min-w-0 flex-1 truncate text-faint">Message #web</span>
+          <SendHorizontal size={15} className="text-faint" />
         </div>
       </div>
     </div>
   );
 }
 
-function PhoneAgents({ frame }: { frame: Frame }) {
-  const cost = STEPS[frame.steps - 1]?.cost ?? 0;
+function PhoneSession({ frame }: { frame: Frame }) {
   return (
-    <div className="space-y-3 px-3 py-4">
-      <div className="flex items-center gap-3">
-        <Face who="Otto" size={32} />
-        <div>
-          <p className="flex items-center gap-2 text-sm font-semibold text-fg">
-            Otto <AgentTag />
-          </p>
-          <p className="text-[11px] text-muted">{frame.merged ? "Shipped #431" : "Working"} · ${cost.toFixed(2)} of $5</p>
-        </div>
-      </div>
-      <Card>
-        <p className="border-b border-line px-3.5 py-2.5 text-[13px] font-medium text-fg">CSV export times out for big accounts</p>
-        <ol className="space-y-2 px-3.5 py-3">
-          {STEPS.map((step, index) => {
-            const done = index < frame.steps;
-            const now = index === frame.steps;
-            return (
-              <li key={step.text} className={cn("flex items-start gap-2.5 text-[12.5px]", done ? "text-fg-soft" : now ? "text-fg" : "text-faint")}>
-                <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-                  {done ? (
-                    <span className="tour-pop flex size-4 items-center justify-center rounded-full bg-success/15 text-success">
-                      <Check size={10} strokeWidth={3} />
-                    </span>
-                  ) : now ? (
-                    <span className="tour-spin size-3.5 rounded-full border-2 border-accent/25 border-t-accent" />
-                  ) : (
-                    <span className="size-1.5 rounded-full bg-line-strong" />
-                  )}
-                </span>
-                {step.text}
-              </li>
-            );
-          })}
-        </ol>
-        <div className="flex flex-wrap gap-1.5 border-t border-line px-3.5 py-2.5">
-          {FILES.filter((file) => frame.steps >= file.from).map((file) => (
-            <span key={file.path} className="tour-pop rounded bg-raised px-1.5 py-0.5 font-mono text-[10px] text-muted ring-1 ring-line">
-              {file.path}
-            </span>
-          ))}
-          <span className="min-h-[18px]" />
-        </div>
-      </Card>
-      <div
-        className={cn(
-          "flex items-center gap-2 rounded-xl bg-accent/10 px-3.5 py-2.5 text-[12px] font-medium text-accent ring-1 ring-accent/25 transition-opacity duration-500",
-          frame.steps >= STEPS.length ? "opacity-100" : "opacity-0",
-        )}
-      >
-        <GitPullRequest size={13} />
-        Pull request #431 opened
-        <ArrowRight size={12} className="ml-auto" />
-      </div>
-      <Consult frame={frame} compact />
-      <div className="flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-[11.5px] text-faint ring-dashed">
-        <span className="rounded bg-raised px-1.5 py-0.5 text-[9.5px] uppercase">Queued</span>
-        Upgrade the date library
-      </div>
+    <div className="h-full space-y-3 overflow-hidden px-3 py-4">
+      <p className="flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+        Recorded by <WithAgent /> through MCP
+      </p>
+      <ol className="space-y-3">
+        {SESSION.map((entry, index) => (
+          <SessionLine key={index} entry={entry} shown={index < frame.entries} />
+        ))}
+      </ol>
     </div>
   );
 }
@@ -1482,8 +1132,11 @@ function PhoneCode({ frame }: { frame: Frame }) {
         Stream CSV exports in batches <span className="font-normal text-faint">#431</span>
       </p>
       <p className="text-[12px] leading-[1.6] text-muted">
-        <span className="text-fg-soft">@otto</span> wants to merge into <span className="font-mono text-[11px] text-fg-soft">main</span>. Rows now
+        <span className="text-fg-soft">{PEOPLE.Priya}</span> wants to merge into <span className="font-mono text-[11px] text-fg-soft">main</span>. Rows now
         stream in batches of 1,000; a 200,000-row account takes 3.1 s.
+      </p>
+      <p className="flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+        Commits with <WithAgent />
       </p>
       <Card>
         <ul className="space-y-2 px-3.5 py-3">
@@ -1518,7 +1171,7 @@ function PhoneCode({ frame }: { frame: Frame }) {
         )}
       >
         <GitMerge size={13} />
-        {frame.merged ? "Merged · deploying" : frame.approved ? "Approved by @margo" : "Waiting on checks and review"}
+        {frame.merged ? "Merged · deploying" : frame.approved ? `Approved by ${PEOPLE.Dana}` : "Waiting on checks and review"}
       </div>
     </div>
   );
@@ -1534,17 +1187,10 @@ const STYLES = `
 @keyframes tour-pop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: none; } }
 .tour-fade { animation: tour-fade 400ms ease-out both; }
 @keyframes tour-fade { from { opacity: 0; } to { opacity: 1; } }
-.tour-dot { animation: tour-dot 1.1s ease-in-out infinite; }
-@keyframes tour-dot { 0%, 60%, 100% { opacity: .35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
-.tour-caret { animation: tour-caret 1s steps(1) infinite; }
-@keyframes tour-caret { 50% { opacity: 0; } }
 .tour-spin { animation: tour-spin .9s linear infinite; }
 @keyframes tour-spin { to { transform: rotate(360deg); } }
-.tour-pulse { animation: tour-pulse 1.6s ease-in-out infinite; }
-@keyframes tour-pulse { 50% { opacity: .35; } }
-.ring-dashed { box-shadow: none; outline: 1px dashed var(--g1t-line-strong); outline-offset: -1px; }
 @media (prefers-reduced-motion: reduce) {
-  .tour-in, .tour-pop, .tour-fade, .tour-dot, .tour-caret, .tour-spin, .tour-pulse { animation: none; }
+  .tour-in, .tour-pop, .tour-fade, .tour-spin { animation: none; }
 }
 `;
 
@@ -1560,7 +1206,7 @@ export function ProductTour({ className }: { className?: string }) {
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div
         role="img"
-        aria-label="A tour of g1t: a person asks g1t in a channel to fix a slow export, an agent works the task, the pull request passes its checks and merges, g1t says it shipped, and the docs page updates."
+        aria-label="A tour of g1t: a pull request passes its checks, is approved and is merged by the merge queue, its session from the coding agent that helped write it is replayed, the team hears it shipped in a channel, and the docs page is updated."
         onMouseEnter={() => clock.hover(true)}
         onMouseLeave={() => clock.hover(false)}
       >
@@ -1599,21 +1245,14 @@ export function ProductTour({ className }: { className?: string }) {
               />
               <span className="relative flex items-center justify-center gap-1.5">
                 {pill.label}
-                {pill.soon && (
-                  <>
-                    <span className="hidden text-[10px] font-normal text-faint sm:inline">soon</span>
-                    <span className="size-1 rounded-full bg-faint sm:hidden" aria-label="coming soon" />
-                  </>
-                )}
               </span>
             </button>
           );
         })}
       </div>
       <p className="mx-auto mt-3 max-w-xl text-center text-xs leading-5 text-faint text-balance">
-        Chat, agents and their sessions (colleagues brought in included), pull requests, checks and the merge queue work
-        today, and so does Docs. g1t splitting one request between colleagues on its own, and an agent updating a page after a merge by itself, are coming soon. Otto, Margo and the others are
-        agents this workspace hired from role templates; only @g1t comes built in.
+        Everything here works today. Priya wrote the fix with Claude Code, connected to g1t through its MCP server: the
+        commits carry its mark, and the session it recorded stays on the pull request.
       </p>
     </div>
   );

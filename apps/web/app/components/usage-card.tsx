@@ -71,7 +71,7 @@ export function UsageCard({ slug, glance, owner }: { slug: string; glance: Usage
               : glance.kind === "comped"
                 ? "At price, with a 100% discount: nothing is charged to this workspace."
                 : glance.kind === "forge"
-                  ? "The forge is free. Agents, workflows and deployments need the plan or the trial."
+                  ? "The forge is free. Workflows and deployments need the plan or the trial."
                   : "Charged so far, from the 1st."}
           </p>
 

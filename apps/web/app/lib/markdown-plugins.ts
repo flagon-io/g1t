@@ -65,7 +65,7 @@ export function rehypeAlerts() {
  * which staff made an alias of Flagon, Inc.'s workspace: mentioning g1t
  * always means the agent.
  */
-export const G1T_MENTION_HREF = "https://docs.g1t.sh/guides/working-with-g1t/";
+export const G1T_MENTION_HREF = "https://docs.g1t.sh/";
 
 /** `owner/repo#12`, `#12`, `@workspace/team`, `@name` and commit hashes, in one pass. */
 const REFERENCE =

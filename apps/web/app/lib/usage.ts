@@ -4,22 +4,24 @@
  * units, and the CSV export. Pure, so it can be tested.
  *
  * Every figure is usage at price (`UsageReport.totals.priceMicros`), the
- * one number mission control, the agent fleet, Usage and Billing all show:
+ * one number Home, Usage and Billing all show:
  * what was charged, plus what included usage, credit or a discount paid.
  */
 
 import type { MeterLine, UsageDay, UsageReport, UsageTotals } from "@g1t/contracts";
 
 import { MICROS_PER_DOLLAR, money } from "./money.ts";
-import { monthSpan } from "./spend.ts";
 
 const DAY_MS = 86_400_000;
 
+/** This month so far, in UTC days: the range Home and Usage read for "this month". */
+export function monthSpan(now: Date): { from: string; until: string } {
+  return { from: day(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))), until: day(now) };
+}
+
 /** The product families in order, with their names and colors (the chart's categorical slots, validated against the dark surface). */
 export const PRODUCT_STYLE: { key: string; label: string; color: string }[] = [
-  { key: "agent", label: "Agent", color: "#3987e5" },
   { key: "sandboxes", label: "Sandboxes", color: "#d95926" },
-  { key: "gateway", label: "AI Gateway", color: "#199e70" },
   { key: "deployments", label: "Deployments", color: "#c98500" },
   { key: "git_storage", label: "Git & storage", color: "#d55181" },
   { key: "packages", label: "Packages", color: "#008300" },
@@ -27,8 +29,17 @@ export const PRODUCT_STYLE: { key: string; label: string; color: string }[] = [
   { key: "search", label: "Search", color: "#e66767" },
 ];
 
+/** A product's name and color; one no longer offered (older usage) reads in grey under its own key. */
 export function productStyle(key: string): { key: string; label: string; color: string } {
-  return PRODUCT_STYLE.find((p) => p.key === key) ?? { key, label: key, color: "#86868e" };
+  return PRODUCT_STYLE.find((p) => p.key === key) ?? { key, label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " "), color: "#86868e" };
+}
+
+/** Products no longer offered: older usage may still name them, but the filters do not. */
+const RETIRED_PRODUCTS: ReadonlySet<string> = new Set(["agent", "gateway"]);
+
+/** The products the filters offer. */
+export function offeredProducts<T extends { key: string }>(products: readonly T[]): T[] {
+  return products.filter((product) => !RETIRED_PRODUCTS.has(product.key));
 }
 
 /** The periods the page offers. Billing cycles are calendar months (UTC). */
@@ -76,7 +87,7 @@ export function resolveRange(
     const days = Number(period.slice(0, -1));
     return { period, from: day(new Date(today.getTime() - (days - 1) * DAY_MS)), until: day(today) };
   }
-  // This month is the one range Spend and the top bar read too (`spend.ts` `monthSpan`).
+  // This month is the one range Home reads too (`monthSpan`).
   return { period: "cycle", ...monthSpan(today) };
 }
 

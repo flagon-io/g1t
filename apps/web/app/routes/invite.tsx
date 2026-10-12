@@ -21,7 +21,7 @@ import { rememberWorkspace } from "../lib/workspace-choice";
 export function meta(args: Route.MetaArgs) {
   return page(args, {
     title: "You're invited · g1t",
-    description: "An invite to g1t, one workspace where a team and its agents talk, work and ship.",
+    description: "An invite to g1t, where a team and the coding agents it already uses ship code.",
   });
 }
 

@@ -15,7 +15,7 @@ export type RoadmapItem = {
    * Where it lives: a project page whose tabs it joins, or the workspace,
    * for what spans projects (Insights).
    */
-  section: "Code" | "Issues" | "Agents" | "Deployments" | "Observability" | "Security" | "Insights" | "Workspace";
+  section: "Code" | "Issues" | "Deployments" | "Observability" | "Security" | "Insights" | "Workspace";
   /** One line, for the menu's tooltip and the page's lead. */
   summary: string;
   /** Why it matters, in two or three sentences. */
@@ -32,36 +32,17 @@ export const ROADMAP: RoadmapItem[] = [
     key: "insights",
     title: "Insights",
     section: "Workspace",
-    summary: "How the whole workspace delivers: lead time, reviews, what agents do and what it costs, across every project.",
+    summary: "How the whole workspace delivers: lead time, reviews and what it costs, across every project.",
     why: "Each project will have its own numbers. The workspace's put them side by side, so you can see which projects ship steadily, where work waits, and where the money goes.",
     plans: [
       "Delivery metrics for every project, side by side",
       "Where work waits: review, the merge queue, checks",
-      "Agents' share of merged changes, and how often it lands first time",
       "Cost by project, by kind of work and per merged change",
     ],
   },
   // --- Code ---------------------------------------------------------------
   // Nothing: code is not docs. Docs is its own workspace mode, filterable
   // by project there, and a project never gets a Docs tab.
-
-  // --- Agents -------------------------------------------------------------
-  // At work, Sessions and Memory are built (see project-nav.ts), and so is
-  // the workspace's Agents overview.
-  {
-    key: "playbooks",
-    title: "Playbooks",
-    section: "Agents",
-    summary: "How agents should work here: conventions, commands and checks.",
-    why: "Every project has its own way of doing things. Today every agent run already reads the repository's AGENTS.md and CLAUDE.md, at the root and in the directories it touches, and reviews read .g1t/review.md, all from the default branch. Playbooks build on those files with structure g1t can act on, not just read.",
-    plans: [
-      "Instructions per kind of work: fixes, features, reviews, upgrades",
-      "Commands to build and test that g1t runs before every change, not just tells the agent about",
-      "Paths agents may not touch without a person, enforced on push",
-      "Learned from reviews: what people corrected becomes a proposed rule",
-    ],
-    today: { label: "Instructions, on Agents", path: "agents" },
-  },
 
   // --- Deployments ----------------------------------------------------------
   {
@@ -84,7 +65,7 @@ export const ROADMAP: RoadmapItem[] = [
     section: "Deployments",
     summary: "Turn features on per environment or per user, without a deploy.",
     why: "Ship code dark and turn it on when ready, for some users first, at the edge, with no deploy.",
-    plans: ["Flags read at the edge by deployed apps", "Rollouts by percentage, user or environment", "Flags cleaned up by agents when fully on"],
+    plans: ["Flags read at the edge by deployed apps", "Rollouts by percentage, user or environment", "Reminders to clean up flags once fully on"],
     today: { label: "Deployments", path: "deployments" },
   },
 
@@ -132,17 +113,9 @@ export const ROADMAP: RoadmapItem[] = [
     key: "costs",
     title: "Costs",
     section: "Insights",
-    summary: "What the project costs, by agent run, sandbox, build and app.",
+    summary: "What the project costs, by workflow run, sandbox, build and app.",
     why: "Usage is charged by the workspace; here it is broken down for one project, so you can see what each part of the work costs.",
     plans: ["Cost by kind of work and by issue", "Cost per merged change", "Budgets per project"],
-  },
-  {
-    key: "impact",
-    title: "Agent impact",
-    section: "Insights",
-    summary: "How much of the work agents do, and how well.",
-    why: "The share of changes agents author, how often their work lands first time, and where people still step in.",
-    plans: ["Agents' share of merged changes", "First-time pass rate of checks and reviews", "Where people correct agents most"],
   },
 ];
 

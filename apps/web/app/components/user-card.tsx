@@ -5,7 +5,6 @@ import { Link, useParams } from "react-router";
 import { shownUsername } from "@g1t/contracts";
 
 import { type Card, type UserCard as UserCardData, cardHref, committedLabel } from "../lib/hovercard";
-import { G1T_MENTION_HREF } from "../lib/markdown-plugins";
 import { localTime } from "../lib/time-zone";
 
 import { Avatar } from "./ui/avatar";
@@ -152,16 +151,13 @@ function G1tCard() {
             <span className="font-mono font-semibold">g1t</span>
             <span className="rounded border border-line px-1 text-[0.625rem] leading-[1.35] font-medium text-muted">bot</span>
           </p>
-          <p className="mt-0.5 text-xs text-muted">g1t's agent</p>
+          <p className="mt-0.5 text-xs text-muted">g1t itself</p>
         </div>
       </div>
       <p className="leading-relaxed text-fg/90">
-        Mention <span className="font-medium text-accent">@g1t</span> in a comment or assign it an issue, and it opens a
-        pull request and sees it through.
+        What g1t does on its own shows under this name: merges from the merge queue, automatic merges your settings allow,
+        and security updates.
       </p>
-      <a href={G1T_MENTION_HREF} className="inline-block text-[0.8125rem] text-accent hover:underline">
-        Working with g1t
-      </a>
     </div>
   );
 }

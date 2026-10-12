@@ -1,11 +1,11 @@
 import { Suspense } from "react";
-import { Await, Link, data } from "react-router";
+import { Await, data } from "react-router";
 
 import { PRODUCTS, type UsageReport } from "@g1t/contracts";
 
 import type { Route } from "./+types/usage";
 import { Breakdown, IncludedAndCredit, UsageChart, UsageFilterBar, type UsageFilters, UsageSkeleton } from "../../components/usage";
-import { columns, defaultGrain, type Grain, type GroupBy, resolveRange } from "../../lib/usage";
+import { columns, defaultGrain, type Grain, type GroupBy, offeredProducts, resolveRange } from "../../lib/usage";
 import { page } from "../../lib/meta";
 import { billing } from "../../lib/services.server";
 import { getViewer, managesBilling, roleIn } from "../../lib/session.server";
@@ -81,7 +81,7 @@ export function UsageView({
   const bar = (
     <UsageFilterBar
       filters={filters}
-      products={[...PRODUCTS]}
+      products={offeredProducts(PRODUCTS)}
       projects={report?.projects ?? filters.projects}
       report={report}
       apiHref={USAGE_API}
@@ -114,16 +114,6 @@ export function UsageView({
         Every amount is usage at price: what was charged, plus what included usage, credit or a discount paid for it, to the cent; under a
         cent reads &lt;$0.01. Storage, git operations, scans and search are metered through the month and counted in it as they go; they
         are charged when it closes, on the same terms as the rest.
-        {!fixedProject && (
-          <>
-            {" "}
-            Each request your own code sent through the AI Gateway is listed on{" "}
-            <Link to={`/${slug}/-/gateway`} className="hover:text-fg hover:underline">
-              AI Gateway
-            </Link>
-            .
-          </>
-        )}
       </p>
     </div>
   );
@@ -135,7 +125,7 @@ export default function UsagePage({ loaderData }: Route.ComponentProps) {
     <Suspense
       fallback={
         <UsageSkeleton>
-          <UsageFilterBar filters={filters} products={[...PRODUCTS]} projects={filters.projects} report={null} apiHref={USAGE_API} />
+          <UsageFilterBar filters={filters} products={offeredProducts(PRODUCTS)} projects={filters.projects} report={null} apiHref={USAGE_API} />
         </UsageSkeleton>
       }
     >

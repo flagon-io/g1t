@@ -4,12 +4,14 @@
  * actions, work and billing services' own answers. Pure, so it can be
  * tested; the reads are in ./runners.server.ts.
  *
- * - **On g1t's cloud now** is the workspace's agent runs that are running
+ * - **On g1t's cloud now** is the workspace's sandbox runs (checks, the
+ *   merge queue, merge checks) that are running
  *   (from the work service) and not handed to one of its own runners
  *   (`runner_activity`'s `handed_over`), and its workflow jobs running in
  *   g1t's sandboxes (`cloud_jobs`).
  * - **This month** is billing's usage report from the first of the month:
- *   agent sandbox time and sandbox time are g1t's cloud, at price;
+ *   sandbox time is g1t's cloud, at price (older months may also name
+ *   agent sandbox time);
  *   self-hosted runner time is the workspace's own, at $0.
  */
 import type { AgentRun, MeterLine, Price, RunnerActivity, UsageReport } from "@g1t/contracts";
@@ -20,7 +22,7 @@ export type CloudWork = {
   id: string;
   /** What it is: a pull request's title, a job's name. */
   title: string;
-  /** The run's kind for an agent (`implement`, `checks`…); the job's workflow run for a job. */
+  /** The run's kind for a sandbox run (`checks`, `queue`…); the job's workflow run for a job. */
   detail: string;
   /** `owner/name`. */
   repo: string;
@@ -30,7 +32,7 @@ export type CloudWork = {
 
 export type CloudNow = {
   running: CloudWork[];
-  /** Agent runs and workflow jobs waiting to start in g1t's sandboxes. */
+  /** Sandbox runs and workflow jobs waiting to start in g1t's sandboxes. */
   queued: number;
   /** A list reached its limit: there may be more than shown. */
   more: boolean;
@@ -43,7 +45,7 @@ export type OwnWaiting = { tasks: number; jobs: number };
 export type RunnerCost = {
   from: string;
   until: string;
-  /** g1t's cloud: agent sandbox time and sandbox time. */
+  /** g1t's cloud: sandbox time. */
   cloudSeconds: number;
   /** At price, before what paid for it. */
   cloudMicros: number;
@@ -56,7 +58,7 @@ export type RunnerCost = {
 /** A price for time on g1t's cloud, per minute, from the price book. */
 export type CloudPrice = { meter: string; title: string; unit: string; perMinuteMicros: number };
 
-/** Billing's meters for machine time (`METERS` in services/billing/src/report.rs). */
+/** Billing's meters for machine time (`METERS` in services/billing/src/report.rs); `agent_sandbox` is in older months' reports. */
 export const CLOUD_METERS = ["agent_sandbox", "sandbox"] as const;
 export const OWN_METER = "self_hosted";
 
@@ -64,9 +66,9 @@ export const OWN_METER = "self_hosted";
 const PRICE_PARTS = ["sandbox_base_second", "sandbox_cpu_second"] as const;
 const PRICE_WHOLE = "sandbox_second";
 
-/** The repository page of an agent run. */
-export function agentRunHref(repo: string, runId: string): string {
-  return `/${repo}/agents/runs/${runId}`;
+/** Where a sandbox run (checks, the merge queue) shows: its pull request, else the repository's pull requests. */
+export function sandboxRunHref(repo: string, number?: number | null): string {
+  return number != null ? `/${repo}/pull/${number}` : `/${repo}/pulls`;
 }
 
 /** The page of a workflow run. */
@@ -77,7 +79,7 @@ export function workflowRunHref(repo: string, runId: string): string {
 const repoName = (run: Pick<AgentRun, "repo">) => `${run.repo.namespace}/${run.repo.name}`;
 
 /**
- * What runs on g1t's cloud now. `runs` are the workspace's active agent
+ * What runs on g1t's cloud now. `runs` are the workspace's active sandbox
  * runs (null when the work service did not answer); `activity` is the
  * actions service's (null when it did not). Null when neither answered.
  */
@@ -94,7 +96,7 @@ export function cloudNow(runs: AgentRun[] | null, activity: RunnerActivity | nul
         title: run.title ?? (run.number != null ? `#${run.number}` : repoName(run)),
         detail: run.kind,
         repo: repoName(run),
-        href: agentRunHref(repoName(run), run.id),
+        href: sandboxRunHref(repoName(run), run.number),
         startedAt: run.startedAt ?? run.createdAt,
       })),
     ...(activity?.cloud_jobs ?? []).map((job) => ({
@@ -112,7 +114,7 @@ export function cloudNow(runs: AgentRun[] | null, activity: RunnerActivity | nul
   return { running, queued, more };
 }
 
-/** What waits for one of the workspace's own runners: agent work not yet taken, and workflow jobs. */
+/** What waits for one of the workspace's own runners: sandbox runs not yet taken, and workflow jobs. */
 export function ownWaiting(activity: RunnerActivity | null): OwnWaiting | null {
   if (!activity) return null;
   return { tasks: activity.handed_over.filter((task) => task.status === "queued").length, jobs: activity.self_hosted_jobs_queued };

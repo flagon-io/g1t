@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, Boxes, Cloud, Cpu, Laptop, Plus, ServerCog, Workflow } from "lucide-react";
+import { ArrowRight, Bot, Cloud, Laptop, Plus, ServerCog, Workflow } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -10,16 +10,10 @@ import type { RunnersAction, RunnersPageData } from "../lib/runners.server";
 import { DesktopRunners } from "./desktop-runners";
 import { Groups, NewRunner, RunnerRow, RunnerSettingsForm, STATUS } from "./runners";
 import { EmptyState, ErrorText, TimeAgo } from "./ui";
-import { Badge } from "./ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** The most of what runs on g1t's cloud the card lists before saying how many more. */
 const CLOUD_SHOWN = 6;
-
-/** A small label that something is coming. */
-function Coming() {
-  return <span className="shrink-0 rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">Coming</span>;
-}
 
 function Section({ id, title, about, action, children }: { id?: string; title: string; about?: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
@@ -80,7 +74,7 @@ function PlaceCard({ icon, title, tag, about, headline, children }: { icon: Reac
 
 function kindLabel(work: CloudWork): string {
   if (work.kind === "workflow") return "Workflow job";
-  return RUN_KIND_LABEL[work.detail as RunKind] ?? "Agent run";
+  return RUN_KIND_LABEL[work.detail as RunKind] ?? "Sandbox run";
 }
 
 function CloudList({ data }: { data: RunnersPageData }) {
@@ -89,7 +83,7 @@ function CloudList({ data }: { data: RunnersPageData }) {
   if (cloud.running.length === 0) {
     return (
       <p className="px-5 py-4 text-sm text-muted">
-        Nothing is running here now. A sandbox starts for each agent run or job and stops when it ends{cloud.queued > 0 ? `; ${cloud.queued} waiting to start` : ""}.
+        Nothing is running here now. A sandbox starts for each run or job and stops when it ends{cloud.queued > 0 ? `; ${cloud.queued} waiting to start` : ""}.
       </p>
     );
   }
@@ -156,7 +150,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
         <div className="min-w-0">
           <h1 className="text-[1.75rem] leading-tight font-semibold tracking-tight">Runners</h1>
           <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted">
-            The machines your agents and workflow jobs run on. g1t&apos;s cloud needs nothing set up; your own runners are any machine with{" "}
+            The machines your workflow jobs, checks and merge queue run on. g1t&apos;s cloud needs nothing set up; your own runners are any machine with{" "}
             <code className="font-mono text-fg-soft">g1t-runner</code> on it, and time on them is free.
           </p>
         </div>
@@ -181,7 +175,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
           icon={<Cloud size={15} />}
           title="g1t cloud"
           tag={<span className="rounded-full bg-raised px-2 py-0.5 text-xs text-fg-soft">Managed by g1t</span>}
-          about="A fresh sandbox for every agent run and workflow job, stopped when it ends; workspace agents keep a computer that sleeps when idle. Billed by the second at the price below."
+          about="A fresh sandbox for every run and workflow job, stopped when it ends. Billed by the second at the price below."
           headline={
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-semibold tracking-tight tabular-nums">{running ?? "–"}</span>
@@ -189,7 +183,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
             </div>
           }
         >
-          <Figure label="This month" hint="Agent sandbox time and sandbox time on your usage, at price, from the first of the month.">
+          <Figure label="This month" hint="Sandbox time on your usage, at price, from the first of the month.">
             {cost ? (
               <>
                 {machineTime(cost.cloudSeconds)} · {money(cost.cloudMicros)}
@@ -212,11 +206,6 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
           ) : (
             <Figure label="Price">
               <Unknown what="Billing" />
-            </Figure>
-          )}
-          {data.agentCap != null && (
-            <Figure label="Agent runs at once" hint="Your plan's cap on agent runs at the same time.">
-              up to {data.agentCap}
             </Figure>
           )}
         </PlaceCard>
@@ -252,7 +241,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
               ) : (
                 [
                   data.waiting.jobs > 0 ? `${data.waiting.jobs} ${data.waiting.jobs === 1 ? "job" : "jobs"}` : null,
-                  data.waiting.tasks > 0 ? `${data.waiting.tasks} agent ${data.waiting.tasks === 1 ? "run" : "runs"}` : null,
+                  data.waiting.tasks > 0 ? `${data.waiting.tasks} sandbox ${data.waiting.tasks === 1 ? "run" : "runs"}` : null,
                 ]
                   .filter(Boolean)
                   .join(", ")
@@ -261,14 +250,14 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
               <Unknown what="Actions" />
             )}
           </Figure>
-          <Figure label="Takes agent work">
+          <Figure label="Takes sandbox runs">
             {data.settings ? (data.settings.agentsOnSelfHosted ? `Yes, labelled ${data.settings.agentLabels.join(", ")}` : "No") : "–"}
           </Figure>
         </PlaceCard>
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-2">
-        <Section title="On g1t cloud now" about="Agent runs and workflow jobs in g1t's sandboxes.">
+        <Section title="On g1t cloud now" about="Sandbox runs and workflow jobs in g1t's sandboxes.">
           <div className="rounded-2xl border border-line bg-surface">
             <CloudList data={data} />
           </div>
@@ -293,7 +282,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
             <a href="#add" className="underline underline-offset-2">
               Add one
             </a>{" "}
-            to run jobs and agents on your hardware. It connects out to g1t; nothing needs to reach the machine.
+            to run jobs on your hardware. It connects out to g1t; nothing needs to reach the machine.
           </EmptyState>
         ) : (
           <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
@@ -319,10 +308,10 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
             <code className="font-mono text-fg-soft">g1t-4core</code> and other Linux labels run on g1t cloud;{" "}
             <code className="font-mono text-fg-soft">self-hosted</code> and your own labels run on your runners.
           </WhereCard>
-          <WhereCard icon={<Bot size={15} />} title="Agents">
+          <WhereCard icon={<Bot size={15} />} title="Checks and the merge queue">
             {data.settings?.agentsOnSelfHosted
-              ? `Agent runs, checks, reviews and the merge queue run on your runners labelled ${data.settings.agentLabels.join(", ")}.`
-              : "Agent runs, checks, reviews and the merge queue run on g1t cloud. Switch them to your runners below."}
+              ? `Checks, merge checks and the merge queue run on your runners labelled ${data.settings.agentLabels.join(", ")}.`
+              : "Checks, merge checks and the merge queue run on g1t cloud. Switch them to your runners below."}
           </WhereCard>
           <WhereCard icon={<Laptop size={15} />} title="Your desktop">
             The g1t desktop app runs a runner while it&apos;s open, sandboxed and labelled <code className="font-mono text-fg-soft">desktop</code>, for jobs that ask for{" "}
@@ -349,17 +338,6 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
         <Groups groups={data.groups} repositories={data.repositories} manage action={action} />
       </Section>
 
-      <Section title="Agents' computers and more">
-        <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
-          <ComingRow icon={<Cpu size={15} />} title="Sessions that persist" live>
-            Each workspace agent has a computer of its own on g1t cloud: its home, clones, caches and notes stay between sessions, and it sleeps when idle. Its page is the
-            agent&apos;s Computer tab. Pinning it to one of your runners is coming.
-          </ComingRow>
-          <ComingRow icon={<Boxes size={15} />} title="An official agent image">
-            One image with git, Node and the agent&apos;s tools, so agent work runs on any runner with Docker without an image of your own.
-          </ComingRow>
-        </ul>
-      </Section>
     </div>
   );
 }
@@ -373,22 +351,6 @@ function WhereCard({ icon, title, children }: { icon: ReactNode; title: string; 
       </h3>
       <p className="mt-2 text-sm leading-relaxed text-muted">{children}</p>
     </div>
-  );
-}
-
-/** One thing runners do or will do: live, or marked Coming. */
-function ComingRow({ icon, title, live = false, children }: { icon: ReactNode; title: string; live?: boolean; children: ReactNode }) {
-  return (
-    <li className="flex items-start gap-3 px-4 py-3">
-      <span className="mt-0.5 text-muted">{icon}</span>
-      <div className="min-w-0 grow">
-        <p className="flex items-center gap-2 text-sm font-medium">
-          {title}
-          {live ? <Badge tone="success">Live</Badge> : <Coming />}
-        </p>
-        <p className="mt-0.5 text-sm text-muted">{children}</p>
-      </div>
-    </li>
   );
 }
 

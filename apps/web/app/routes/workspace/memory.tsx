@@ -40,8 +40,8 @@ export default function WorkspaceMemory({ loaderData, params }: Route.ComponentP
         <Card className="p-4">
           <p className="font-medium">In a project: true of its code</p>
           <p className="mt-1 text-muted">
-            How to build and test it, its conventions and its traps. Each project keeps its own under
-            Agents, Memory.
+            How to build and test it, its conventions and its traps. Each project keeps its own on
+            its Memory page.
           </p>
         </Card>
       </div>
@@ -58,7 +58,7 @@ export default function WorkspaceMemory({ loaderData, params }: Route.ComponentP
             memories={workspace}
             action={action}
             editable
-            empty="Nothing yet. Agents add what holds across projects as they learn it, and so can you."
+            empty="Nothing yet. Agents add what holds across projects with remember, and so can you."
           />
         </div>
       </section>

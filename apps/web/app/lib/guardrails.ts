@@ -54,6 +54,9 @@ function amount(value: FormDataEntryValue | null): number | null {
   return Number.isFinite(number) ? number : Number.NaN;
 }
 
+/** The kinds of run that still use a sandbox: checks, the merge queue and merge checks. */
+export const SANDBOX_RUN_KINDS = ["checks", "queue", "mergecheck"] as const satisfies readonly RunKind[];
+
 /** What one level's form says, as the settings that level keeps. */
 export function settingsFromForm(
   form: FormData,

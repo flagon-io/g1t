@@ -208,7 +208,7 @@ export function Linked({ text }: { text: string }) {
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
   if (typeof children !== "string") return <p className="text-sm text-danger">{children}</p>;
-  // Waiting for a free agent slot is not an error: it starts by itself.
+  // Waiting for a free slot is not an error: it starts by itself.
   return (
     <p className={`text-sm ${isWaitingMessage(children) ? "text-muted" : "text-danger"}`}>
       <Linked text={children} />
@@ -218,7 +218,7 @@ export function ErrorText({ children }: { children: ReactNode }) {
 
 /**
  * What a workspace's plan says before someone tries to start compute it
- * would refuse ("Agents need a paid workspace or the free trial"), with
+ * would refuse ("Workflows need a paid workspace or the free trial"), with
  * where to fix it.
  */
 export function ComputeNote({ note }: { note: string | null | undefined }) {

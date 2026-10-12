@@ -8,8 +8,6 @@ import { requireUser, roleIn } from "../../lib/session.server";
 import { Card } from "../../components/ui/card";
 import { Skeleton, SkeletonCard, SkeletonLine, SkeletonStat } from "../../components/ui/skeleton";
 
-export { action } from "../home";
-
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Overview · Code · ${params.owner} · g1t` });
 }
@@ -22,9 +20,8 @@ export function headers({ loaderHeaders }: Route.HeadersArgs) {
 }
 
 /**
- * Code's Overview: what was Mission control's code panels, for this
- * workspace. What needs you, what waits on agents and what landed, the
- * week's numbers, and the ways to start work.
+ * Code's Overview, for this workspace: what needs you and what landed,
+ * the week's numbers, activity, and a way to open an issue.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
@@ -47,18 +44,18 @@ export function shouldRevalidate({ currentUrl, nextUrl, formMethod, formAction, 
 /** Loaded once the browser is idle (components/shell.tsx), so the skeleton below is rarely seen. */
 const MissionControl = lazy(() => import("../../components/mission-control"));
 
-export default function CodeOverview({ loaderData, actionData }: Route.ComponentProps) {
+export default function CodeOverview({ loaderData }: Route.ComponentProps) {
   return (
     <Suspense fallback={<MissionControlSkeleton />}>
-      <MissionControl loaderData={loaderData} delegated={actionData ?? null} variant="code" />
+      <MissionControl loaderData={loaderData} />
     </Suspense>
   );
 }
 
 /**
- * Mission control's outline while its code arrives, piece for piece as
- * components/mission-control.tsx lays it out: the greeting, the Agent box,
- * the actions under it, the stats, then the work list beside the week. Each
+ * The Overview's outline while its code arrives, piece for piece as
+ * components/mission-control.tsx lays it out: the title, the actions
+ * under it, the stats, then the work list beside the week. Each
  * piece has the padding and line heights of the real one, so nothing moves
  * when it arrives.
  */
@@ -77,31 +74,13 @@ export function MissionControlSkeleton() {
           <SkeletonLine className="w-2/3 sm:hidden" barClassName="h-3.5" />
         </div>
       </header>
-      {/* The Agent box (components/ask-composer.tsx), then the actions under it. */}
-      <div className="space-y-3">
-        <Card>
-          <SkeletonLine className="mx-4 mt-3 w-36 text-sm" />
-          <div className="px-4 pt-3.5 pb-2 text-sm">
-            <SkeletonLine className="w-[30rem] max-w-full" />
-            <span className="block h-[1lh]" />
-          </div>
-          <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
-            <Skeleton className="h-8 w-[4.5rem] rounded-md" />
-            <Skeleton className="h-8 w-[9.5rem] rounded-md" />
-            <Skeleton className="size-8 rounded-md" />
-            <Skeleton className="size-8 rounded-md" />
-            <Skeleton className="ml-auto size-8 rounded-md" />
-          </div>
-        </Card>
-        <div className="flex flex-wrap items-center gap-2">
-          <Skeleton className="h-[38px] w-60 rounded-md" />
-          <Skeleton className="h-[38px] w-28 rounded-md" />
-          <Skeleton className="h-[38px] w-44 rounded-md" />
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Skeleton className="h-[38px] w-28 rounded-md" />
+        <Skeleton className="h-[38px] w-44 rounded-md" />
       </div>
-      <Card tone="plain" className="grid grid-cols-2 gap-px overflow-hidden bg-line lg:grid-cols-5">
-        {Array.from({ length: 5 }, (_, index) => (
-          <SkeletonStat key={index} className={index === 4 ? "col-span-2 lg:col-span-1" : undefined} />
+      <Card tone="plain" className="grid grid-cols-2 gap-px overflow-hidden bg-line lg:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <SkeletonStat key={index} />
         ))}
       </Card>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[minmax(0,1fr)_23rem]">

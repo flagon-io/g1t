@@ -1,8 +1,6 @@
-import { Bell, Building2, Code2, House, LayoutGrid, Lock, MessagesSquare, Pin, Search, Shapes, SlidersHorizontal, Sparkles, Users } from "lucide-react";
+import { Bell, Building2, Code2, House, LayoutGrid, Lock, MessagesSquare, Pin, Plug, Search, Shapes, Users } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useFetchers } from "react-router";
-
-import { customizePath } from "@g1t/contracts/customize";
 
 import { ConnectorMark } from "./connectors";
 import { Card } from "./ui/card";
@@ -17,7 +15,6 @@ export function appIcon(key: BuiltinApp, size = 18): ReactNode {
     home: <House size={size} />,
     chat: <MessagesSquare size={size} />,
     notifications: <Bell size={size} />,
-    agents: <Sparkles size={size} />,
     code: <Code2 size={size} />,
     artifacts: <Shapes size={size} />,
     people: <Users size={size} />,
@@ -148,18 +145,18 @@ export function AppTile({
   );
 }
 
-/** When nothing is installed: what Apps are, and the way to Customize. */
+/** When nothing is installed: what Apps are, and the way to Integrations. */
 export function NoApps({ slug, onOpen, compact = false }: { slug: string; onOpen?: () => void; compact?: boolean }) {
   return (
     <div className={cn("flex flex-col items-center text-center", compact ? "px-4 py-6" : "rounded-xl border border-dashed border-line px-6 py-12")}>
       <span className="flex size-10 items-center justify-center rounded-xl bg-raised text-muted ring-1 ring-line">
-        <SlidersHorizontal size={18} />
+        <Plug size={18} />
       </span>
       <p className="mt-3 text-sm font-medium">No apps installed yet</p>
-      <p className="mt-1 max-w-xs text-[0.8125rem] text-muted">Apps come from Customize: the plugins your workspace installs, and the connectors and integrations it connects. Each one you can use shows here.</p>
-      <Link to={customizePath("", slug)} onClick={onOpen} className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[0.8125rem] font-medium text-bg hover:bg-fg-hover">
-        <SlidersHorizontal size={14} />
-        Customize
+      <p className="mt-1 max-w-xs text-[0.8125rem] text-muted">Apps are the integrations your workspace connects. Each one you can use shows here.</p>
+      <Link to={`/${slug}/-/integrations`} onClick={onOpen} className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[0.8125rem] font-medium text-bg hover:bg-fg-hover">
+        <Plug size={14} />
+        Integrations
       </Link>
     </div>
   );
@@ -168,7 +165,7 @@ export function NoApps({ slug, onOpen, compact = false }: { slug: string; onOpen
 /**
  * The Apps launcher's body: a search, every app the workspace installed
  * that the person can use (read from the Apps page as it opens), and the
- * way to all of them and to Customize.
+ * way to all of them and to Integrations.
  */
 export function AppsLauncher({ slug, pins, onToggle, onClose }: { slug: string; pins: PinnableApp[]; onToggle: (app: PinnableApp) => void; onClose: () => void }) {
   const [query, setQuery] = useState("");
@@ -235,12 +232,12 @@ export function AppsLauncher({ slug, pins, onToggle, onClose }: { slug: string; 
           All apps
         </Link>
         <Link
-          to={customizePath("", slug)}
+          to={`/${slug}/-/integrations`}
           onClick={onClose}
           className="flex h-8 items-center gap-1.5 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-line hover:text-fg"
         >
-          <SlidersHorizontal size={14} />
-          Customize
+          <Plug size={14} />
+          Integrations
         </Link>
       </div>
     </div>

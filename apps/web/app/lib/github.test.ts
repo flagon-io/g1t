@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { connectorsFor } from "@g1t/contracts/connectors";
 
 import {
   INSTALL_COOKIE,
@@ -18,7 +17,6 @@ import {
   setupChoices,
   stateMatches,
 } from "./github.ts";
-import { connectorsDirectory } from "./customize.ts";
 
 test("the state must come back exactly as it was given", () => {
   const state = newState();
@@ -96,14 +94,10 @@ test("the setup page offers only workspaces the person owns, saying which have i
   );
 });
 
-test("once an installation is recorded, Customize and Integrations say GitHub is connected", () => {
+test("once an installation is recorded, Integrations says GitHub is connected", () => {
   assert.equal(githubConnected([]), null);
   const state = githubConnected([{ account: "flagon-io", suspended: false }]);
   assert.deepEqual(state, { detail: "On flagon-io", problem: null, manage: null });
-  const { integrations } = connectorsDirectory(connectorsFor("workspace"), [], { github: state! }, {}, "flagon-io");
-  const github = integrations.find((entry) => entry.view.id === "github");
-  assert.equal(github?.state?.detail, "On flagon-io");
-  assert.equal(integrations[0]!.view.id, "github", "connected ones come first");
   assert.equal(
     githubConnected([
       { account: "a", suspended: false },

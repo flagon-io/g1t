@@ -136,9 +136,10 @@ test("allowances: the plan without its price, pool shares, and staff's overrides
         plan: true,
         ossRepoMicros: 5_000_000,
         trialMicros: 2_500_000,
-        maxConcurrentAgents: 20,
-        runCapMicros: 25_000_000,
-        issueCapMicros: 500_000_000,
+        // Retired with g1t's own agents: always cleared, whatever an old form sends.
+        maxConcurrentAgents: null,
+        runCapMicros: null,
+        issueCapMicros: null,
         auditRetentionDays: 365,
         hold: "Card disputed; waiting on the bank",
       },
@@ -146,12 +147,6 @@ test("allowances: the plan without its price, pool shares, and staff's overrides
   );
   assert.equal(parseAllowances(form({ oss: "lots" })).ok, false);
   assert.equal(parseAllowances(form({ trial: "5000" })).ok, false);
-  assert.equal(parseAllowances(form({ agents: "0" })).ok, false);
-  assert.equal(parseAllowances(form({ agents: "101" })).ok, false);
-  assert.equal(parseAllowances(form({ agents: "2.5" })).ok, false);
-  assert.equal(parseAllowances(form({ runCap: "0.05" })).ok, false);
-  assert.equal(parseAllowances(form({ runCap: "1000.01" })).ok, false);
-  assert.equal(parseAllowances(form({ issueCap: "10000.01" })).ok, false);
   // Audit log days: shorter or longer than the plan's, up to 400.
   assert.equal((parseAllowances(form({ auditDays: "3" })) as { value: { auditRetentionDays: number } }).value.auditRetentionDays, 3);
   assert.equal((parseAllowances(form({ auditDays: "400" })) as { value: { auditRetentionDays: number } }).value.auditRetentionDays, 400);

@@ -1,11 +1,11 @@
-import { Bot, ChevronRight, KeyRound, MapPin, MessageSquare, Pencil, UsersRound, Wallet } from "lucide-react";
+import { ChevronRight, KeyRound, MapPin, MessageSquare, Pencil, UsersRound } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Form, Link, data, redirect, useNavigation } from "react-router";
 
 import type { DirectoryPerson } from "@g1t/contracts";
 
 import type { Route } from "./+types/person";
-import { AgentLink, AgentPersonFace, Coming, LocalTime, PersonFace, TeamKindMark } from "../../../components/people";
+import { Coming, LocalTime, PersonFace } from "../../../components/people";
 import { PresenceSummary } from "../../../components/presence";
 import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../../components/ui";
 import { Badge } from "../../../components/ui/badge";
@@ -13,18 +13,9 @@ import { Button } from "../../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
 import { channelPath } from "../../../lib/chat";
 import { page } from "../../../lib/meta";
-import {
-  agentsOn,
-  codeAccessWords,
-  leads,
-  ownsFromText,
-  peopleAgent,
-  personName,
-  teamsOfPerson,
-} from "../../../lib/people";
+import { codeAccessWords, leads, ownsFromText, personName, teamsOfPerson } from "../../../lib/people";
 import { teamPath } from "../../../lib/teams";
-import { money } from "../../../lib/money";
-import { chat, identity, workspaceAgents } from "../../../lib/services.server";
+import { chat, identity } from "../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../../lib/session.server";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
@@ -35,28 +26,19 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const [directory, agents, budgets] = await Promise.all([
-    identity.peopleDirectory(viewer, params.owner).then(unwrap),
-    workspaceAgents.list(params.owner, viewer!).catch(() => null),
-    // Owners see everyone's; anyone else only their own.
-    workspaceAgents.personBudgets(params.owner, viewer!).catch(() => null),
-  ]);
+  const directory = unwrap(await identity.peopleDirectory(viewer, params.owner));
   const username = params.username.toLowerCase();
   const person = directory.people.find((p) => p.username === username);
   if (!person) throw data(null, { status: 404 });
-  const all = agents?.ok ? agents.value.map(peopleAgent) : [];
   const teams = teamsOfPerson(directory.teams, username);
   const self = viewer?.username.toLowerCase() === username;
-  const budget = budgets?.ok ? (budgets.value.people.find((p) => p.username === username) ?? null) : null;
   return {
     slug: params.owner.toLowerCase(),
     person,
     teams,
-    agents: all,
     base: directory.base_permission,
     canManage: directory.can_manage,
     self,
-    spend: budget && (self || directory.can_manage) ? { spent: budget.spent_micros, budget: budget.monthly_micros } : null,
   };
 }
 
@@ -85,10 +67,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function PersonProfile({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, person, teams, agents, base, canManage, self, spend } = loaderData;
-  const teamAgents = teams.flatMap((team) => agentsOn(team, agents).map((agent) => ({ agent, team })));
-  const seen = new Set<string>();
-  const uniqueAgents = teamAgents.filter(({ agent }) => (seen.has(agent.id) ? false : (seen.add(agent.id), true)));
+  const { slug, person, teams, base, canManage, self } = loaderData;
   const access = codeAccessWords(person, base, teams);
   const mayEdit = self || canManage;
   const navigation = useNavigation();
@@ -167,7 +146,6 @@ export default function PersonProfile({ loaderData, actionData }: Route.Componen
                 const role = team.people.find((p) => p.username === person.username)?.role;
                 return (
                   <li key={team.slug} className="flex flex-wrap items-center gap-2">
-                    <TeamKindMark people={team.people.length} agents={agentsOn(team, agents).length} />
                     <Link to={teamPath(slug, team.slug)} className="font-medium hover:text-accent">
                       {team.name}
                     </Link>
@@ -179,25 +157,6 @@ export default function PersonProfile({ loaderData, actionData }: Route.Componen
             </ul>
           ) : (
             <Quiet>Not on a team yet.</Quiet>
-          )}
-        </Card>
-
-        <Card icon={<Bot size={14} />} title="Agents on their teams">
-          {uniqueAgents.length ? (
-            <ul className="space-y-2">
-              {uniqueAgents.map(({ agent, team }) => (
-                <li key={agent.id} className="flex items-center gap-2.5 text-sm">
-                  <AgentPersonFace agent={agent} size={24} ring="var(--color-surface)" />
-                  <span className="min-w-0 grow truncate">
-                    <AgentLink workspace={slug} agent={agent} className="font-medium" />
-                    <span className="text-muted"> · {agent.title || agent.role}</span>
-                  </span>
-                  <span className="shrink-0 text-xs text-faint">{team.name}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Quiet>{teams.length ? "Their teams are people only." : "None yet."}</Quiet>
           )}
         </Card>
 
@@ -218,17 +177,6 @@ export default function PersonProfile({ loaderData, actionData }: Route.Componen
               </dt>
               <dd className="mt-0.5 text-muted">Who can read and write the workspace's files comes with Storage.</dd>
             </div>
-            {spend && (
-              <div>
-                <dt className="flex items-center gap-1.5 text-xs text-faint">
-                  <Wallet size={12} /> Agents' spend for them this month
-                </dt>
-                <dd className="mt-0.5 tabular-nums">
-                  {money(spend.spent)}
-                  {spend.budget != null && <span className="text-muted"> of {money(spend.budget)}</span>}
-                </dd>
-              </div>
-            )}
           </dl>
         </Card>
       </div>
@@ -275,14 +223,14 @@ function EditProfile({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit {personName(person)}'s profile</DialogTitle>
-            <DialogDescription>Shown in the directory, and told to the agents on their teams.</DialogDescription>
+            <DialogDescription>Shown in the directory and on their profile.</DialogDescription>
           </DialogHeader>
           <Form method="post" className="space-y-4">
             <input type="hidden" name="intent" value="profile" />
             <Field label="Title" hint="Their job here, such as Staff Engineer.">
               <Input name="title" defaultValue={person.title ?? ""} maxLength={80} placeholder="Staff Engineer" />
             </Field>
-            <Field label="What they own" hint="One per line: a product, a process, an account. Agents ask them about these.">
+            <Field label="What they own" hint="One per line: a product, a process, an account.">
               <Textarea name="owns" defaultValue={person.owns.join("\n")} rows={3} placeholder={"storefront\nthe release process"} />
             </Field>
             {actionData?.intent === "profile" && <ErrorText>{actionData.error}</ErrorText>}

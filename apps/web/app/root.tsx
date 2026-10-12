@@ -38,8 +38,7 @@ import { frameOf } from "./lib/chrome";
 import { DOCK_COOKIE, SIDEBAR_COOKIE, pinsToShow, sidebarClosed } from "./lib/apps";
 import { savedPins } from "./lib/dock.server";
 import { StandaloneFrame } from "./components/standalone";
-import { billing, chat, identity, inbox, projects, workspaceAgents } from "./lib/services.server";
-import { teamsByAgent } from "./lib/people";
+import { billing, chat, identity, inbox, projects } from "./lib/services.server";
 import { unreadTotals } from "./lib/chat";
 import { countsFor, readableRepos } from "./lib/access.server";
 import { shortCache } from "./lib/cache.server";
@@ -187,7 +186,7 @@ async function shellFor(
   // something (lib/cache.server.ts).
   const kept = <T,>(what: string, load: () => Promise<T>) =>
     workspace ? shortCache(`shell:${what}:${user.id}:${workspace.slug}`, SHELL_TTL_MS, load) : Promise.resolve(null);
-  const [listed, counts, status, usage, limit, entitlements, shared, unread, shortcuts, chatUnread, teamAgents, dockPins] = await Promise.all([
+  const [listed, counts, status, usage, limit, entitlements, shared, unread, shortcuts, chatUnread, dockPins] = await Promise.all([
     // Every project, for the palette and the count; the sidebar lists only
     // the person's pinned and recent ones (lib/pins.ts).
     workspace ? workspaceProjects(workspace.slug, user) : Promise.resolve(null),
@@ -205,8 +204,6 @@ async function shellFor(
     workspace ? projects.shortcuts(workspace.slug, user).catch(() => null) : Promise.resolve(null),
     // The rail's Chat badge: never kept, and never waited on for long.
     workspace ? chatUnreadFor(workspace.slug, user) : Promise.resolve(null),
-    // Home's Recent and the Agents sidebar, on every page: never waited on for long.
-    workspace ? agentsFor(workspace.slug, user) : Promise.resolve(null),
     // The rail's pins, kept with the account so every device shows the same
     // rail; never kept here, so a pin shows the moment it is made. Null
     // falls back to the cookie (lib/dock.server.ts).
@@ -247,7 +244,6 @@ async function shellFor(
     shared,
     inbox: unread,
     chat: chatUnread,
-    agents: teamAgents,
     pins: dockPins ?? undefined,
     // While g1t is free every charge is zero, so usage is shown at cost.
     // Usage at price, the one figure every page shows.
@@ -276,36 +272,6 @@ async function chatUnreadFor(slug: string, user: User): Promise<ShellData["chat"
         starred: entries.filter((e) => e.starred).slice(0, SHELL_CONVERSATIONS),
         recent: latest.slice(0, SHELL_CONVERSATIONS),
       };
-    })
-    .catch(() => null);
-  return Promise.race([read, timeout]);
-}
-
-/** The workspace's agents, as the shell lists them; null when the agents service is slow or down. */
-async function agentsFor(slug: string, user: User): Promise<ShellData["agents"]> {
-  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), CHAT_BADGE_WAIT_MS));
-  // The workspace's agents and the person's own personal ones, for "Yours",
-  // with the teams each is on, for the Agents sidebar's groups.
-  const read = Promise.all([workspaceAgents.list(slug, user, { personal: "mine" }), identity.teamAgentIndex(slug).catch(() => null)])
-    .then(([result, index]) => {
-      if (!result.ok) return null;
-      const teams = index ? teamsByAgent(index) : null;
-      return result.value
-        .filter((agent) => !agent.archived_at)
-        .map((agent) => ({
-          id: agent.id,
-          handle: agent.handle,
-          display_name: agent.display_name,
-          avatar: agent.avatar,
-          avatar_seed: agent.avatar_seed,
-          look: agent.look ?? null,
-          role: agent.role,
-          title: agent.title,
-          status: agent.status,
-          builtin: agent.builtin === true,
-          scope: agent.scope,
-          ...(teams ? { teams: teams[agent.id] ?? [] } : {}),
-        }));
     })
     .catch(() => null);
   return Promise.race([read, timeout]);

@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { AgentPill, MemberAvatar } from "./marks";
+import { MemberAvatar } from "./marks";
 import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -199,7 +199,7 @@ function useToolbarShown(): [boolean, (shown: boolean) => void] {
  * leave it), in a code block a line (three times to leave it), and
  * Ctrl+Enter sends from anywhere. Markdown typed inline becomes its
  * formatting; the bar above the text does the same with a click. `@`
- * offers the workspace's people and agents and `:` its emoji (Up and Down
+ * offers the workspace's people and `:` its emoji (Up and Down
  * to move, Tab or Enter to take one, Escape to dismiss). What is sent is
  * Markdown. A draft is kept per conversation while the tab is open.
  */
@@ -542,7 +542,6 @@ export default function ChatEditor({ draftKey, placeholder, people, onSend, onTy
                 <span className="font-medium text-fg">{person.display_name}</span>
                 <span className="ml-1.5 text-faint">@{shownHandle(person)}</span>
               </span>
-              {person.kind === "agent" && <AgentPill />}
             </li>
           ))}
         </ul>

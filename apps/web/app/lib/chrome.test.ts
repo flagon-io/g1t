@@ -60,7 +60,7 @@ test("a visitor gets the public frame everywhere else", () => {
 
 test("a project's menu hides member-only pages from everyone else", () => {
   const visitor = projectPages(false);
-  assert.deepEqual(visitor.slice(0, 5), ["code", "issues", "pulls", "agents", "actions"]);
+  assert.deepEqual(visitor.slice(0, 4), ["code", "issues", "pulls", "actions"]);
   for (const page of ["security", "settings"] as const) {
     assert.ok(!visitor.includes(page), page);
     assert.ok(projectPages(true).includes(page), page);
@@ -93,13 +93,10 @@ test("a page a mirror does not offer stands behind the read-only note, by its na
   assert.deepEqual(hiddenOnMirror("issues/new", standby), { page: "issues", what: "issues" });
   assert.deepEqual(hiddenOnMirror("pulls", standby), { page: "pulls", what: "pull requests" });
   assert.deepEqual(hiddenOnMirror("queue", standby), { page: "pulls", what: "pull requests" });
-  assert.deepEqual(hiddenOnMirror("agents/runs/9", standby), { page: "agents", what: "agents" });
-  assert.deepEqual(hiddenOnMirror("sessions", standby), { page: "agents", what: "agents" });
-  assert.deepEqual(hiddenOnMirror("memory", standby), { page: "agents", what: "agents" });
+  assert.deepEqual(hiddenOnMirror("sessions", standby), { page: "pulls", what: "pull requests" });
   assert.deepEqual(hiddenOnMirror("deployments/d1", standby), { page: "deployments", what: "deployments" });
   assert.deepEqual(hiddenOnMirror("labels", standby), { page: "issues", what: "issues" });
   assert.deepEqual(hiddenOnMirror("milestones/2", standby), { page: "issues", what: "issues" });
-  assert.deepEqual(hiddenOnMirror("plans", standby), { page: "issues", what: "issues" });
   assert.deepEqual(hiddenOnMirror("actions", standby), { page: "actions", what: "workflows" });
   assert.deepEqual(hiddenOnMirror("releases/new", standby), { page: "code", what: "releases" });
   // What a read-only copy still shows.
@@ -122,13 +119,13 @@ test("the phone's project strip lights the page a path is under", () => {
   assert.equal(projectPageAt("milestones"), "issues");
   assert.equal(projectPageAt("pull/3/files"), "pulls");
   assert.equal(projectPageAt("queue"), "pulls");
-  assert.equal(projectPageAt("sessions/abc"), "agents");
+  assert.equal(projectPageAt("sessions/12"), "pulls");
+  assert.equal(projectPageAt("memory"), "code");
   assert.equal(projectPageAt("actions/runs/9"), "actions");
   assert.equal(projectPageAt("security/secret-scanning"), "security");
   assert.equal(projectPageAt("stargazers"), "insights");
   assert.equal(projectPageAt("settings/branches"), "settings");
   assert.equal(projectPageAt("soon/uptime", { uptime: "observability" }), "observability");
   assert.equal(projectPageAt("observability/logs"), "observability");
-  assert.equal(projectPageAt("soon/playbooks", { playbooks: "agents" }), "agents");
   assert.equal(projectPageAt("pulse"), null);
 });

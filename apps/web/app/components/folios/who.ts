@@ -1,11 +1,11 @@
 /**
- * Names and faces for member keys (`user:<id>`, `agent:<id>`): comment
- * authors and history. Asked of the site once per key per tab.
+ * Names and faces for member keys (`user:<id>`, and `agent:<id>` on what
+ * an agent wrote before agents were removed): comment authors and history. Asked of the site once per key per tab.
  */
-import type { AgentLook, Result } from "@g1t/contracts";
+import type { Result } from "@g1t/contracts";
 
 /** Someone by member key, as the site names them. */
-export type Who = { key: string; kind: "user" | "agent"; id: string; name: string; display_name: string; avatar: string | null; avatar_seed: string | null; look?: AgentLook | null };
+export type Who = { key: string; kind: "user" | "agent"; id: string; name: string; display_name: string; avatar: string | null; avatar_seed: string | null };
 
 const known = new Map<string, Who>();
 

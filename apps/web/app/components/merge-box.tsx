@@ -15,19 +15,16 @@ import {
   History,
   LoaderCircle,
   RotateCw,
-  Sparkles,
   Terminal,
   TriangleAlert,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Form, Link } from "react-router";
 
-import type { CheckResult, CheckRun, CommitStatus, Job, Mergeable, PullBranchUpdate, Pull, RequiredCheck } from "@g1t/contracts";
+import type { CheckResult, CheckRun, CommitStatus, Job, Mergeable, Pull, RequiredCheck } from "@g1t/contracts";
 
 import { useAddresses } from "../lib/addresses";
-import { catchUpPhase, catchUpRun, catchUpTitle, catchUpWhy } from "../lib/catch-up";
 import { duration } from "./actions";
-import { Elapsed, type Live, useRuns } from "./agents";
 import { CopyLine, ErrorText, SubmitButton, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -644,8 +641,8 @@ export function commandLineSteps(
 }
 
 /**
- * The branch conflicts with its target: which files, and three ways out —
- * g1t, the browser (soon), or the command line.
+ * The branch conflicts with its target: which files, and the ways out:
+ * the browser (soon), or the command line.
  */
 export function ConflictsSection({
   conflicts,
@@ -654,8 +651,6 @@ export function ConflictsSection({
   repo,
   defaultBranch,
   changesUrl,
-  canResolve,
-  resolving,
   error,
 }: {
   conflicts: string[];
@@ -665,10 +660,6 @@ export function ConflictsSection({
   defaultBranch: string;
   /** Where the pull request's changes are shown, to link each file. */
   changesUrl: string;
-  /** Whether the viewer may have g1t resolve them. */
-  canResolve: boolean;
-  /** Whether asking for it is on its way. */
-  resolving: boolean;
   error?: string | null;
 }) {
   const { site } = useAddresses();
@@ -701,15 +692,6 @@ export function ConflictsSection({
             </>
           )}
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {canResolve && (
-              <Form method="post">
-                <input type="hidden" name="action" value="update" />
-                <Button type="submit" disabled={resolving}>
-                  {resolving ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  {resolving ? "Starting g1t…" : "Resolve with g1t"}
-                </Button>
-              </Form>
-            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 {/* A disabled button gets no pointer events; the span carries the tooltip. */}
@@ -721,8 +703,7 @@ export function ConflictsSection({
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                An editor for conflicts in the browser is coming. Until then, have g1t resolve them, or use the
-                command line.
+                An editor for conflicts in the browser is coming. Until then, use the command line.
               </TooltipContent>
             </Tooltip>
           </div>
@@ -803,109 +784,4 @@ export function MergeabilityRow({
     );
   }
   return null;
-}
-
-/**
- * A catch-up handed to a sandbox, while it lasts: who is doing what, the
- * run's live step, and how long it has taken. It ends with the pull request
- * up to date (and this disappears), or with a plain failure and a way to
- * try again. It never spins on with no end.
- */
-export function CatchUpProgress({
-  owner,
-  repo,
-  number,
-  defaultBranch,
-  behind,
-  update,
-  startedAt,
-  retrying,
-  runs: initial,
-}: {
-  owner: string;
-  repo: string;
-  number: number;
-  defaultBranch: string;
-  behind: boolean;
-  update: Extract<PullBranchUpdate, { outcome: "needs_agent" }>;
-  /** When it was asked for, in ms since the epoch. */
-  startedAt: number;
-  /** Whether a retry is on its way. */
-  retrying: boolean;
-  /** The pull request's latest runs, from the page's loader. */
-  runs?: Live | null;
-}) {
-  // The page revalidates while this is working, which reloads the runs too.
-  const data = useRuns(owner, repo, { number: String(number), limit: "5" }, initial);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 5000);
-    return () => clearInterval(timer);
-  }, []);
-  const run = catchUpRun(data?.runs ?? [], startedAt);
-  const phase = catchUpPhase({ behind, run, startedAt, now });
-  if (phase === "done") return null;
-  const session = `/${owner}/${repo}/sessions/${number}`;
-  if (phase !== "working") {
-    return (
-      <div className="flex gap-3 px-4 py-3 text-sm">
-        <TriangleAlert size={16} className={`mt-0.5 shrink-0 ${phase === "failed" ? "text-danger" : "text-warn"}`} />
-        <div className="min-w-0">
-          <p className="font-medium">
-            {phase === "failed"
-              ? `Catching up with ${defaultBranch} failed`
-              : `Catching up with ${defaultBranch} is taking longer than it should`}
-          </p>
-          <p className="mt-0.5 text-muted">
-            {phase === "failed"
-              ? `${run?.error ? `${run.error} ` : ""}Nothing was pushed, so the pull request is as it was.`
-              : "It usually takes about a minute. It may still finish; this page updates if it does."}{" "}
-            <Link to={session} className="text-fg hover:underline">
-              See the session
-            </Link>
-            .
-          </p>
-          <Form method="post" className="mt-2">
-            <input type="hidden" name="action" value="update" />
-            <Button variant="outline" type="submit" disabled={retrying}>
-              {retrying ? <LoaderCircle size={14} className="animate-spin" /> : <RotateCw size={14} />}
-              {retrying ? "Trying again…" : "Try again"}
-            </Button>
-          </Form>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="flex gap-3 px-4 py-3 text-sm">
-      <LoaderCircle size={16} className="mt-0.5 shrink-0 animate-spin text-accent" />
-      <div className="min-w-0 grow">
-        <p className="font-medium">{catchUpTitle(update.reason, defaultBranch)}</p>
-        <p className="mt-0.5 text-muted">
-          {catchUpWhy(update, defaultBranch)} This usually takes about a minute; the pull request updates here when it
-          is pushed.
-        </p>
-        {update.paths.length > 0 && (
-          <Hint label={update.paths.join(", ")}>
-            <p className="mt-1 truncate font-mono text-xs text-faint">
-              {update.paths.slice(0, 5).join(", ")}
-              {update.paths.length > 5 && ` and ${update.paths.length - 5} more`}
-            </p>
-          </Hint>
-        )}
-        <Hint label={run?.step}>
-          <p className="mt-2 truncate rounded-lg bg-bg px-3 py-2 font-mono text-xs text-fg/85 ring-1 ring-line">
-            <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-accent align-middle" />
-            {run?.step ?? (run ? "Starting a sandbox…" : "Waiting for a sandbox…")}
-          </p>
-        </Hint>
-        <p className="mt-2 flex flex-wrap items-center gap-x-3 text-xs text-muted">
-          <Elapsed from={new Date(startedAt).toISOString()} />
-          <Link to={session} className="hover:text-fg">
-            Watch the session
-          </Link>
-        </p>
-      </div>
-    </div>
-  );
 }

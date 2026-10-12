@@ -1,5 +1,4 @@
-import { env } from "cloudflare:workers";
-import { Bot, CircleDot, ExternalLink } from "lucide-react";
+import { CircleDot, ExternalLink } from "lucide-react";
 import { Form, Link, redirect } from "react-router";
 
 import type { ErrorGroup } from "@g1t/contracts";
@@ -9,10 +8,8 @@ import { FilterBar, ObservabilityHeader, useLoadingView } from "../../components
 import { EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
-import { Checkbox } from "../../components/ui/checkbox";
 import { refusal } from "../../lib/access.server";
 import { cn } from "../../lib/cn";
-import { issuePath, notStarted } from "../../lib/delegate";
 import { page } from "../../lib/meta";
 import { count, errorIssue, viewHref } from "../../lib/observability";
 import { observed, soft } from "../../lib/observability.server";
@@ -33,7 +30,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     soft(service.errors({ project_id: projectId, ...filter, deployment_id: null, state }), "errors"),
     soft(service.facets({ project_id: projectId }), "facets"),
   ]);
-  return { view, groups, facets, state, can: { triage: access.can.triage, issue: access.can.participate, run: access.can.run } };
+  return { view, groups, facets, state, can: { triage: access.can.triage, issue: access.can.participate } };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -50,27 +47,17 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return { notice: intent === "open" ? "Open again." : intent === "resolved" ? "Resolved. It opens again if it happens again." : "Ignored." };
   }
   if (intent === "issue") {
-    const agent = form.get("agent") === "on";
-    const refused = await refusal(context, params, agent ? "run" : "participate");
+    const refused = await refusal(context, params, "participate");
     if (refused) return { error: refused, fingerprint };
     const group = (await service.errors({ project_id: projectId })).find((g) => g.fingerprint === fingerprint);
     if (!group) return { error: "That error is no longer kept.", fingerprint };
     const url = new URL(request.url);
     const { title, body } = errorIssue(group, `${url.origin}/${params.owner}/${params.repo}/observability`);
     const path = { namespace: repo.namespace, name: repo.name };
-    // With g1t on it, it opens and the agent starts in one step, as a new issue's "Assign g1t" does.
-    if (agent) {
-      const delegated = await env.RUNNER.delegate(user, path, { title, body, labels: ["bug"] });
-      if (!delegated.ok) return { error: delegated.error.message, fingerprint };
-      await service.setError({ project_id: projectId, fingerprint, issue_number: delegated.value.issue.number });
-      const refusedStart = notStarted(delegated.value.agent, path, delegated.value.issue.number);
-      if (refusedStart) return { error: refusedStart.message, fingerprint };
-      throw redirect(issuePath(path, delegated.value.issue.number));
-    }
     const opened = await work.openIssue(user, path, { title, body, labels: ["bug"] });
     if (!opened.ok) return { error: opened.error.message, fingerprint };
     await service.setError({ project_id: projectId, fingerprint, issue_number: opened.value.number });
-    throw redirect(issuePath(path, opened.value.number));
+    throw redirect(`/${path.namespace}/${path.name}/issues/${opened.value.number}`);
   }
   return { error: "Unknown request.", fingerprint };
 }
@@ -86,7 +73,7 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
     <div className="mx-auto max-w-6xl">
       <ObservabilityHeader
         title="Errors"
-        about="Exceptions, grouped: the same error thrown a thousand times is one row. Each can become an issue, with g1t on it if you like, carrying the stack and the request it came from."
+        about="Exceptions, grouped: the same error thrown a thousand times is one row. Each can become an issue, carrying the stack and the request it came from."
       />
       <FilterBar path={path} view={view} environments={facets?.environments ?? []} services={facets?.services ?? []}>
         <nav className="flex rounded-md border border-line p-0.5 text-sm" aria-label="State">
@@ -175,13 +162,6 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
                           <SubmitButton name="intent" value="issue" size="sm" variant="outline">
                             Make an issue
                           </SubmitButton>
-                          {can.run && (
-                            <label className="flex items-center gap-1.5 text-xs text-muted">
-                              <Checkbox name="agent" defaultChecked />
-                              <Bot size={13} />
-                              Assign g1t
-                            </label>
-                          )}
                         </Form>
                       )}
                       {can.triage && (

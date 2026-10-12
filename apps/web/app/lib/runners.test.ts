@@ -11,7 +11,7 @@ function run(id: string, status: AgentRun["status"], over: Partial<AgentRun> = {
     repo: { namespace: "acme", name: "web" },
     number: 12,
     title: "Fix the flaky checkout test",
-    kind: "implement",
+    kind: "checks",
     agent: "g1t",
     model: null,
     status,
@@ -40,16 +40,16 @@ const activity: RunnerActivity = {
   self_hosted_jobs_queued: 3,
 };
 
-test("g1t cloud is the running agent runs not handed to the workspace's runners, and the jobs in g1t's sandboxes", () => {
+test("g1t cloud is the running sandbox runs not handed to the workspace's runners, and the jobs in g1t's sandboxes", () => {
   const now = cloudNow([run("run_a", "running"), run("run_mine", "running"), run("run_q", "queued")], activity, 200, 100)!;
   assert.deepEqual(
     now.running.map((work) => [work.kind, work.id, work.href]),
     [
       ["workflow", "job_1", "/acme/web/actions/runs/wr_1"],
-      ["agent", "run_a", "/acme/web/agents/runs/run_a"],
+      ["agent", "run_a", "/acme/web/pull/12"],
     ],
   );
-  // One queued agent run and two queued jobs.
+  // One queued sandbox run and two queued jobs.
   assert.equal(now.queued, 3);
   assert.equal(now.more, false);
 });

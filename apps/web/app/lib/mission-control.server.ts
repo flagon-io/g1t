@@ -1,24 +1,10 @@
 /**
- * Mission control's data: what needs the viewer, what waits on agents, what
- * landed, and the week, across a workspace's projects. Code's Overview
+ * Code's Overview data: what needs the viewer, what landed, and the week,
+ * across a workspace's projects. Code's Overview
  * (routes/workspace/code-overview.tsx) shows all of it; Home
  * (routes/workspace/home.tsx) takes what needs you from it.
  */
-import { env } from "cloudflare:workers";
-
-import {
-  type Confidence,
-  type G1tEvent,
-  type Lifecycle,
-  type Pull,
-  type Repo,
-  type RepoPath,
-  type User,
-  type Viewer,
-  REPO_ROLE_LABELS,
-  isActiveRun,
-  workOwner,
-} from "@g1t/contracts";
+import { type G1tEvent, type Pull, type Repo, type RepoPath, type User, type Viewer, REPO_ROLE_LABELS, workOwner } from "@g1t/contracts";
 
 import { WORKSPACE_COOKIE, chosenWorkspace } from "./workspace-choice";
 import {
@@ -26,62 +12,40 @@ import {
   type Need,
   TIME,
   actorIds,
-  agentHours,
-  dailyBuckets,
   eventItem,
   FEED_EVENT_TYPES,
-  greetingFor,
   groupActivity,
-  hourIn,
-  isAgent,
   nameActor,
   rankNeeds,
   readCookie,
-  stuckMinutes,
   waitedFor,
 } from "./mission";
 import { G1T_COMMIT_EMAILS, normalizeEmail } from "./commit-people";
 import {
   type Fact,
   type Merged,
-  placePushes,
   type NeedRow,
   type QuickAction,
-  RUN_LABEL,
-  confidenceAsk,
   dateLine,
   dayKey,
+  historyCovers,
   landedToday,
-  needPathKey,
+  placePushes,
   pullFacts,
   reachesBack,
   reasonFor,
   summaryLine,
-  waitingRows,
   weekOf,
-  historyCovers,
   who,
   whyFor,
-  withConfidence,
 } from "./mission-control";
 import { needsYou } from "./inbox";
-import {
-  agents,
-  billing,
-  deployments,
-  events as eventLog,
-  identity,
-  inbox,
-  projects as projectsApi,
-  repos as reposApi,
-  work,
-} from "./services.server";
+import { deployments, events as eventLog, identity, inbox, projects as projectsApi, repos as reposApi, work } from "./services.server";
 import { roleIn } from "./session.server";
 import { runners } from "./runners.server";
 import { readableRepos } from "./access.server";
-import { microsOf, money } from "./money";
 
-/** The viewer's time zone, which mission control sets, so the greeting fits their day. */
+/** The viewer's time zone, which the page sets, so the date fits their day. */
 const TZ_COOKIE = "g1t_tz";
 /** The most projects whose pull requests and events are read for the page. */
 const MAX_PROJECTS = 10;
@@ -93,16 +57,12 @@ const INBOX_READ = 50;
 const INBOX_SHOWN = 4;
 
 /** Where a need came from, so its row can say what is known about it. */
-type Extra = Partial<Pick<NeedRow, "repo" | "ref" | "by" | "for" | "facts" | "quick" | "link" | "open">> & {
-  /** How sure g1t is of the agent's change, for a pull request. */
-  confidence?: Confidence | null;
-};
+type Extra = Partial<Pick<NeedRow, "repo" | "ref" | "by" | "facts" | "quick" | "link" | "open">>;
 
-/** What the composer said back, when the issue opened but the agent did not start, or nothing opened. */
 /**
  * Push events read per project, a page at a time, back two weeks. Pushes
- * to every branch are in the log, so a fixed count (it was 40) lost a busy
- * week's earlier days to agents' branches.
+ * to every branch are in the log, so a fixed count lost a busy week's
+ * earlier days to other branches.
  */
 const PUSH_PAGE = 200;
 const PUSH_PAGES = 5;
@@ -118,7 +78,7 @@ const HISTORY_READ = 1000;
 
 /**
  * The commits people pushed straight to a project's default branch in the
- * last two weeks, each with when its push landed. Merges and agents'
+ * last two weeks, each with when its push landed. Merges and g1t's own
  * commits are left out: pull requests count those.
  */
 async function directCommits(repo: Repo, viewer: Viewer): Promise<{ hash: string; at: string }[]> {
@@ -147,11 +107,8 @@ async function directCommits(repo: Repo, viewer: Viewer): Promise<{ hash: string
   return placePushes(history.value, pushes, (commit) => G1T_COMMIT_EMAILS.has(normalizeEmail(commit.author.email)));
 }
 
-
 export async function loadMissionControl(viewer: User, request: Request, workspace: string | null) {
-
   const now = Date.now();
-  const weekAgo = now - 7 * TIME.DAY;
   const started = Date.now();
   const times: Record<string, number> = {};
   // Each call is timed, and one that fails leaves its section empty rather
@@ -160,7 +117,7 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
     promise.then(
       (value) => ((times[name] = Date.now() - started), value),
       (error) => {
-        console.warn(`home: ${name} failed`, error);
+        console.warn(`overview: ${name} failed`, error);
         times[name] = Date.now() - started;
         return null;
       },
@@ -216,23 +173,16 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
     );
   });
 
-  const [repos, perRepo, active, models, profile, runs, overview, usage, projectList, memories, invitations, tokens, myTokens, unread] = await Promise.all([
+  const [repos, perRepo, active, profile, overview, projectList, invitations, unread] = await Promise.all([
     reposP,
     soft("projects", perRepoP),
     soft("pulls", work.listActivePulls(viewer)),
-    slug ? soft("models", env.RUNNER.modelAccess(slug)) : null,
     soft("profile", identity.profile(username)),
-    slug ? soft("runs", agents.listRuns(viewer, { workspace: slug, limit: 150 })) : null,
     slug ? soft("deploys", deployments.overview(slug, viewer)) : null,
-    slug ? soft("usage", billing.usage(slug, viewer, new Date(weekAgo - TIME.DAY).toISOString())) : null,
     slug ? soft("projectList", projectsApi.list(slug, viewer)) : null,
-    slug ? soft("memories", agents.listMemories(viewer, slug, null)) : null,
     // Repositories someone has invited the viewer to.
     soft("invitations", identity.myRepoInvitations(viewer)),
-    // Model tokens over the last six weeks: the workspace's, and yours.
-    slug ? soft("tokens", billing.tokenUsage(slug, viewer)) : null,
-    slug ? soft("my_tokens", billing.tokenUsage(slug, viewer, { person: username })) : null,
-    // What in their inbox is unread: an agent waiting on them, or a failure, goes on the Needs you card.
+    // What in their inbox is unread: a failure or a warning goes on the Needs you card.
     soft("inbox", inbox.list(viewer, { unread: true, limit: INBOX_READ })),
   ]);
 
@@ -247,20 +197,14 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
 
   const activeList = (active ?? []).flatMap((item) => {
     const repo = known.get(item.pull.repoId);
-    return repo ? [{ ...item, repo }] : [];
+    return repo ? [{ pull: item.pull, repo }] : [];
   });
-  const runList = okOr(runs ?? null) ?? [];
-  const liveRuns = runList.filter((run) => isActiveRun(run.status));
   const overviewList = okOr(overview ?? null);
   const projectsOk = okOr(projectList ?? null);
-  const runsOn = (repo: RepoPath, number: number) =>
-    runList.filter(
-      (run) => run.number === number && `${run.repo.namespace}/${run.repo.name}`.toLowerCase() === `${repo.namespace}/${repo.name}`.toLowerCase(),
-    );
 
   const lower = username.toLowerCase();
   const openPulls = (perRepo ?? []).flatMap(({ repo, pulls }) => (pulls ?? []).map((pull) => ({ pull, repo })));
-  // Never your own, nor one g1t made for you.
+  // Never your own.
   const reviewRequested = openPulls.filter(
     ({ pull }) =>
       pull.status === "open" &&
@@ -271,36 +215,21 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
   // --- Needs you ------------------------------------------------------------
   const needs: Need[] = [];
   const extras = new Map<string, Extra>();
-  /** What every pull request's row shares: where it is, who is on it, what is known. */
-  const pullExtra = (pull: Pull, repo: Repo, lifecycle: Lifecycle | null): Extra => {
+  /** What every pull request's row shares: where it is, who opened it, what is known. */
+  const pullExtra = (pull: Pull, repo: Repo): Extra => {
     const base = `/${repo.namespace}/${repo.name}`;
-    const agentWork = isAgent(pull.agent);
     return {
       repo: pathOf(repo),
       ref: `#${pull.number}`,
-      by: agentWork ? who(pull.agent) : who(pull.author.username),
-      for: agentWork ? workOwner(pull).username : null,
-      facts: pullFacts({
-        checkStatus: pull.checkStatus,
-        files: pull.files,
-        lifecycle,
-        runs: runsOn(repo, pull.number),
-        confidence: pull.confidence,
-      }),
+      by: who(workOwner(pull).username),
+      facts: pullFacts({ checkStatus: pull.checkStatus, files: pull.files }),
       open: pull.issue != null ? `${base}/issues/${pull.issue}` : `${base}/pull/${pull.number}?tab=changes`,
-      confidence: pull.confidence ?? null,
     };
   };
   const pullAction = (repo: Repo, pull: Pull, quick: Omit<QuickAction, "to">): QuickAction => ({
     ...quick,
     to: `/${repo.namespace}/${repo.name}/pull/${pull.number}`,
   });
-  const approve = (repo: Repo, pull: Pull) =>
-    pullAction(repo, pull, {
-      label: isAgent(pull.agent) ? "Approve the agent's change" : "Approve the change",
-      fields: { action: "comment", verdict: "approve", body: "" },
-      done: "Approved",
-    });
 
   for (const invitation of invitations ?? []) {
     if (invitation.status !== "pending") continue;
@@ -356,65 +285,21 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
       });
     }
   }
-  for (const { pull, lifecycle, repo } of activeList) {
-    const where = `${repo.namespace}/${repo.name}#${pull.number}`;
-    const to = `/${repo.namespace}/${repo.name}/pull/${pull.number}`;
+  for (const { pull, repo } of activeList) {
+    // Taken out of the merge queue: its change failed combined with what was ahead.
+    if (pull.status !== "open" || pull.checkStatus !== "failed") continue;
     const key = `pull:${pull.id}`;
-    const extra = pullExtra(pull, repo, lifecycle);
-    // Held for its low confidence: the ask says so in a sentence of its own.
-    const lowConfidence = pull.confidence?.level === "low" ? pull.confidence : null;
-    if (lifecycle?.stage === "needs_you") {
-      const held = lowConfidence != null && /confidence in this change is low/i.test(lifecycle.detail);
-      const conflict = !held && /conflict/i.test(lifecycle.detail);
-      const need: Need = {
-        key,
-        kind: conflict ? "conflict" : "stalled",
-        title: pull.title,
-        detail: held && lowConfidence ? confidenceAsk(lowConfidence) : lifecycle.detail,
-        to,
-        action: conflict ? "Resolve" : "Decide",
-        at: Date.parse(pull.updatedAt),
-        where,
-      };
-      needs.push(need);
-      const reason = held ? "low_confidence" : reasonFor(need);
-      extras.set(key, {
-        ...extra,
-        quick:
-          reason === "needs_review" || reason === "low_confidence"
-            ? approve(repo, pull)
-            : /required checks? .*still fails?\b/i.test(lifecycle.detail)
-              ? pullAction(repo, pull, { label: "Re-run failed jobs", fields: { action: "rerun-failed" }, done: "Re-running" })
-              : null,
-        link: reason === "outside_guardrails" ? { label: "Raise the cap", to: `/${repo.namespace}/${repo.name}/settings/guardrails` } : null,
-      });
-    } else if (lifecycle?.stage === "ready") {
-      needs.push({
-        key,
-        kind: "ready",
-        title: pull.title,
-        // The ask first: a list cuts the sentence short, and "it lands" alone reads as stuck.
-        detail: lowConfidence ? confidenceAsk(lowConfidence) : "Waiting for you to merge it. It was approved and its required checks passed.",
-        to,
-        action: "Merge",
-        at: Date.parse(pull.updatedAt),
-        where,
-      });
-      extras.set(key, {
-        ...extra,
-        quick: pullAction(repo, pull, {
-          label: isAgent(pull.agent) ? "Merge the agent's change" : "Merge it",
-          fields: { action: "merge" },
-          done: "Merging",
-        }),
-        // This repository leaves landing an agent's change to a person; say where that is changed.
-        link: isAgent(pull.agent) ? { label: "Merge automatically when ready", to: `/${repo.namespace}/${repo.name}/settings/branches` } : null,
-      });
-    } else if (!lifecycle && pull.status === "open" && pull.checkStatus === "failed") {
-      // Taken out of the merge queue: its change failed combined with what was ahead.
-      needs.push({ key, kind: "checks", title: pull.title, detail: "It failed in the merge queue. Push a fix, then merge it again.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
-      extras.set(key, { ...extra, quick: null });
-    }
+    needs.push({
+      key,
+      kind: "checks",
+      title: pull.title,
+      detail: "It failed in the merge queue. Push a fix, then merge it again.",
+      to: `/${repo.namespace}/${repo.name}/pull/${pull.number}`,
+      action: "See checks",
+      at: Date.parse(pull.updatedAt),
+      where: `${repo.namespace}/${repo.name}#${pull.number}`,
+    });
+    extras.set(key, { ...pullExtra(pull, repo), quick: null });
   }
   for (const { pull, repo } of reviewRequested) {
     const key = `review:${pull.id}`;
@@ -428,7 +313,10 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
       at: Date.parse(pull.updatedAt),
       where: `${repo.namespace}/${repo.name}#${pull.number}`,
     });
-    extras.set(key, { ...pullExtra(pull, repo, null), quick: approve(repo, pull) });
+    extras.set(key, {
+      ...pullExtra(pull, repo),
+      quick: pullAction(repo, pull, { label: "Approve the change", fields: { action: "comment", verdict: "approve", body: "" }, done: "Approved" }),
+    });
   }
   for (const job of (await stuckJobsP) ?? []) {
     const key = `runner:${job.id}`;
@@ -454,37 +342,10 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
       ...(namespace && roleIn(viewer, namespace) === "owner" ? { link: { label: "Runners", to: `/${namespace}/-/runners` } } : {}),
     });
   }
-  for (const run of liveRuns) {
-    const minutes = stuckMinutes(run, now);
-    if (minutes == null) continue;
-    const key = `run:${run.id}`;
-    needs.push({
-      key,
-      kind: "stuck",
-      title: run.title ?? `${run.agent}'s run`,
-      detail: `${run.agent} has reported nothing for ${waitedFor(minutes)}${run.step ? `. Last: ${run.step}` : ""}.`,
-      to: `/${run.repo.namespace}/${run.repo.name}/agents/runs/${run.id}`,
-      action: "Look",
-      at: Date.parse(run.updatedAt),
-      where: `${run.repo.namespace}/${run.repo.name}${run.number != null ? `#${run.number}` : ""}`,
-    });
-    extras.set(key, {
-      repo: run.repo,
-      ref: run.number != null ? `#${run.number}` : null,
-      by: who(run.agent),
-      facts: [
-        { label: "Run", value: RUN_LABEL[run.kind], tone: null },
-        { label: "Quiet for", value: waitedFor(minutes), tone: "warn" },
-        { label: "Steps so far", value: String(run.stepCount), tone: null },
-        ...(run.costUsd != null ? [{ label: "Cost so far", value: money(microsOf(run.costUsd)), tone: null }] : []),
-      ],
-      open: run.number != null ? `/${run.repo.namespace}/${run.repo.name}/pull/${run.number}` : undefined,
-    });
-  }
 
   const needRows: NeedRow[] = rankNeeds(needs).map((need) => {
     const extra = extras.get(need.key) ?? {};
-    const reason = withConfidence(reasonFor(need), extra.confidence);
+    const reason = reasonFor(need);
     return {
       key: need.key,
       reason,
@@ -493,56 +354,28 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
       title: need.title,
       ask: need.detail,
       by: extra.by ?? null,
-      for: extra.for ?? null,
       at: need.at,
       to: need.to,
       open: extra.open ?? need.to,
       facts: extra.facts ?? [],
-      why: whyFor(reason, need, extra.confidence),
+      why: whyFor(reason, need),
       quick: extra.quick ?? null,
       link: extra.link ?? null,
     };
-  });
-
-  // --- Waiting on agents ----------------------------------------------------
-  const needKeys = new Set(
-    needRows.flatMap((row) => (row.repo && row.ref ? [needPathKey(row.repo, Number(row.ref.slice(1)))] : [])),
-  );
-  const waiting = waitingRows({
-    active: activeList.filter(({ repo }) => inWorkspace(repo)).map(({ pull, lifecycle, repo }) => ({ pull, lifecycle, repo: pathOf(repo) })),
-    live: liveRuns,
-    drafts: openPulls.filter(({ pull }) => pull.status === "draft").map(({ pull, repo }) => ({ ...pull, repo: pathOf(repo) })),
-    needKeys,
   });
 
   // --- Landed ---------------------------------------------------------------
   const merged: Merged[] = (perRepo ?? []).flatMap(({ repo, closed }) =>
     (closed ?? []).flatMap((pull) =>
       pull.status === "merged" && pull.mergedAt
-        ? [
-            {
-              repo: pathOf(repo),
-              number: pull.number,
-              title: pull.title,
-              agent: pull.agent,
-              // Who wrote it, not who merged it: a person's change that g1t
-              // auto-merged is still theirs.
-              authoredByAgent: pull.author.kind === "agent" || isAgent(pull.author.username),
-              mergedBy: pull.mergedBy,
-              mergedAt: pull.mergedAt,
-              files: pull.files,
-            },
-          ]
+        ? [{ repo: pathOf(repo), number: pull.number, title: pull.title, mergedBy: pull.mergedBy, mergedAt: pull.mergedAt, files: pull.files }]
         : [],
     ),
   );
   const twoWeeksAgo = now - 14 * TIME.DAY;
   const complete = perRepo != null && perRepo.every(({ closed }) => closed != null && reachesBack(closed, twoWeeksAgo, PULL_PAGE));
-  // A person's commits pushed straight to the default branch are their own
-  // changes too, on the day they landed.
-  const direct = (perRepo ?? []).flatMap(({ direct }) =>
-    direct.map((commit) => ({ mergedAt: commit.at, mergedBy: null, authoredByAgent: false })),
-  );
+  // Commits pushed straight to the default branch are changes too, on the day they landed.
+  const direct = (perRepo ?? []).flatMap(({ direct }) => direct.map((commit) => ({ mergedAt: commit.at })));
   const week = weekOf([...merged, ...direct], now, tz, complete);
   const landed = landedToday(merged, now, tz);
 
@@ -557,22 +390,6 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
       const item = eventItem(event, pathOf(repo));
       if (item) items.push(item);
     }
-  }
-  // Production deploys come from the log too (deployment_status.created),
-  // wherever they ran: g1t.page, g1t Actions or the API.
-  for (const memory of okOr(memories ?? null)?.workspace ?? []) {
-    const repo = memory.repo ?? memory.source.repo;
-    if (!repo || !slug) continue;
-    items.push({
-      id: `memory:${memory.id}`,
-      at: Date.parse(memory.createdAt),
-      repo,
-      actor: memory.createdBy,
-      verb: "learned",
-      number: null,
-      text: memory.text.length > 90 ? `${memory.text.slice(0, 88)}…` : memory.text,
-      to: `/${slug}/-/memory`,
-    });
   }
   // The log names people by account id: their usernames, in one lookup.
   const ids = actorIds(items.map((item) => item.actor));
@@ -590,16 +407,11 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
   }
 
   // --- The strip ------------------------------------------------------------
-  const usageOk = okOr(usage ?? null);
-  const costPoints = usageOk
-    ? usageOk.byDay.map((slice) => ({ at: Date.parse(`${slice.key.split("/")[0]}T12:00:00Z`), value: slice.micros / 1_000_000 }))
-    : runList.filter((run) => run.costUsd != null).map((run) => ({ at: Date.parse(run.createdAt), value: run.costUsd ?? 0 }));
-  const weekCost = dailyBuckets(costPoints, 7, now).reduce((sum, v) => sum + v, 0);
   const month = dayKey(now, tz).slice(0, 7);
   const projectCount = projectsOk?.length ?? (perRepo != null ? perRepo.length : null);
   const projectsThisMonth = projectsOk ? projectsOk.filter((project) => dayKey(Date.parse(project.createdAt), tz).slice(0, 7) === month).length : null;
+  const openCount = perRepo != null ? openPulls.filter(({ pull }) => pull.status === "open" || pull.status === "draft").length : null;
 
-  const models_ = models ?? null;
   times.total = Date.now() - started;
   const serverTiming = Object.entries(times)
     .map(([name, ms]) => `${name};dur=${ms}`)
@@ -610,45 +422,27 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
       signedIn: true as const,
       viewer,
       name: profile?.name?.trim() || username,
-      greeting: greetingFor(hourIn(now, tz)),
       date: dateLine(now, tz),
-      summary: summaryLine({
-        total: week.total,
-        byAgents: week.byAgents,
-        agentChanges: week.agentChanges,
-        people: week.people,
-        live: liveRuns.length,
-        needs: needRows.length,
-      }),
+      summary: summaryLine({ total: week.total, needs: needRows.length }),
       workspace: slug,
       repos: repoList.filter((repo) => inWorkspace(repo)).map(pathOf),
-      canRunAgents: models_ == null || models_.hosted || models_.own != null,
       needs: needRows,
-      waiting,
       landed,
-      liveTotal: liveRuns.length,
-      runsLoaded: runs != null && runs.ok,
       perRepoLoaded: perRepo != null,
       stats: {
         projects: projectCount,
         projectsThisMonth,
-        agentHours: agentHours(runList, weekAgo, now),
-        weekCost,
+        openPulls: openCount,
       },
       week,
-      tokens: { workspace: okOr(tokens), mine: okOr(myTokens) },
       groups,
       titles: shownTitles,
       inboxNeeds: needsYou(unread?.items ?? [], INBOX_SHOWN),
-      // A run that is going makes the page worth refreshing on its own.
-      changing:
-        liveRuns.length > 0 ||
-        activeList.some((item) => item.lifecycle && item.lifecycle.stage !== "needs_you" && item.lifecycle.stage !== "ready"),
     },
   };
 }
 
-/** What Mission control's panels take. */
+/** What Code's Overview takes. */
 export type Loaded = Awaited<ReturnType<typeof loadMissionControl>>["value"];
 
 /** The cookie that holds the viewer's time zone. */

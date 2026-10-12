@@ -12,7 +12,6 @@ import {
   Moon,
   Settings,
   Smile,
-  SlidersHorizontal,
   Sun,
 } from "lucide-react";
 import { Dialog as Primitive } from "radix-ui";
@@ -122,7 +121,7 @@ type Tab = { key: ModeKey; label: string; badge?: { count: number; loud: boolean
 /**
  * The bottom bar of a phone, flat along the bottom edge under a rule, as
  * the rail stands flat beside the page on a computer: Home, Chat,
- * Notifications, Agents and Code (for a member with Code access), each
+ * Notifications and Code (for a member with Code access), each
  * with what is unread, and More. The tab you are in has the rail's own
  * mark: its icon on the sidebar's accent. It steps aside while the keyboard is up
  * and inside a conversation. The tab you are in, tapped again, opens its
@@ -153,7 +152,6 @@ export function BottomBar({
     { key: "home", label: "Home" },
     { key: "chat", label: "Chat", badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 } },
     { key: "notifications", label: "Notifications", badge: { count: unread.notifications, loud: true } },
-    { key: "agents", label: "Agents" },
     ...(code ? [{ key: "code" as const, label: "Code" }] : []),
   ];
   const inTabs = tabs.some((tab) => tab.key === mode);
@@ -257,7 +255,7 @@ function MoreTile({ to, icon, label, onClick, disabled, note }: { to?: string; i
 
 /**
  * More, from the bottom bar: a flat panel standing on it, with g1t's
- * mark at its top and a grid of big tiles: all apps, Customize,
+ * mark at its top and a grid of big tiles: all apps,
  * your pinned apps, Artifacts, People, Workspace, and "You and
  * help", which opens your account's sheet.
  */
@@ -283,7 +281,6 @@ function MoreSheet({ open, onOpenChange, user, workspace, pins }: { open: boolea
             </div>
             <div className="grid grid-cols-4 gap-1.5">
               <MoreTile to={`/${slug}/-/apps`} icon={<LayoutGrid size={20} />} label="All apps" />
-              <MoreTile to={`/${slug}/-/customize`} icon={<SlidersHorizontal size={20} />} label="Customize" />
               {shown.map((app) => (
                 <MoreTile key={app.key} to={app.to} icon={app.icon(26)} label={app.name} />
               ))}
@@ -511,7 +508,6 @@ export function AccountSheet({ open, onOpenChange, user }: { open: boolean; onOp
 const SOON_UNDER: Partial<Record<RoadmapItem["section"], ProjectPage>> = {
   Code: "code",
   Issues: "issues",
-  Agents: "agents",
   Deployments: "deployments",
   Observability: "observability",
   Security: "security",

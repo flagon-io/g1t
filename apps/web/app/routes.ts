@@ -100,10 +100,8 @@ export default [
     index("routes/workspace/overview.tsx"),
     // Its pages, each in the sidebar: Overview (above), Projects, People, Insights; Teams and Packages below.
     route("-/projects", "routes/workspace/projects.tsx"),
-    // People mode: the directory of people and each one's profile. Agents
-    // are not in it; an agent's old People address redirects to its page in Agents.
+    // People mode: the directory of people and each one's profile.
     route("-/people", "routes/workspace/people.tsx"),
-    route("-/people/agents/:handle", "routes/workspace/people/agent.tsx"),
     route("-/people/:username", "routes/workspace/people/person.tsx"),
     // Workspace mode's Access: who is a member and their roles, the invitations sent, and who may do what.
     route("-/members", "routes/workspace/members.tsx"),
@@ -131,12 +129,7 @@ export default [
     route("-/tokens/:id", "routes/workspace/token.tsx"),
     // Its rules for members' personal access tokens, and approving them.
     route("-/personal-access-tokens", "routes/workspace/personal-access-tokens.tsx"),
-    // Spend, the front of its money: where it went, budgets, receipts; and the top bar's pill.
-    route("-/spend", "routes/workspace/spend.tsx"),
-    route("-/spend/pill", "routes/workspace/spend-pill.ts"),
-    route("-/spend/receipts/:id", "routes/workspace/spend-receipt.tsx"),
     route("-/usage", "routes/workspace/usage.tsx"),
-    route("-/gateway", "routes/workspace/gateway.tsx"),
     route("-/billing", "routes/workspace/billing.tsx"),
     route("-/billing/entries", "routes/workspace/statement-entries.ts"),
     route("-/billing/statement.csv", "routes/workspace/statement-csv.ts"),
@@ -156,35 +149,6 @@ export default [
     // What members may do in chat: channels, emoji, default channels.
     route("-/settings/chat", "routes/workspace/chat-settings.tsx"),
     route("-/repositories", "routes/workspace/repositories.tsx"),
-    // Agents mode: the overview (budget, sessions, roster, spend) first, then
-    // each of the workspace's own agents and its sessions.
-    // `new` is no agent's handle.
-    route("-/agents", "routes/workspace/agents/layout.tsx", [
-      index("routes/workspace/agents.tsx"),
-      route("new", "routes/workspace/agents/new.tsx"),
-      // Templates: starting points for a new agent, each configured once started.
-      route("templates", "routes/workspace/agents/templates.tsx"),
-      route("templates/:template", "routes/workspace/agents/template.tsx"),
-      // The skill library is Customize's Skills tab now; each skill's page, the editor and import stay here.
-      route("skills", "routes/workspace/moved.ts", { id: "routes/workspace/moved-agents-skills" }),
-      route("skills/new", "routes/workspace/agents/skill-edit.tsx", { id: "routes/workspace/agents/skill-new" }),
-      route("skills/import", "routes/workspace/agents/skill-import.tsx"),
-      route("skills/:name", "routes/workspace/agents/skill.tsx"),
-      route("skills/:name/edit", "routes/workspace/agents/skill-edit.tsx"),
-      route(":handle", "routes/workspace/agents/agent.tsx", [
-        index("routes/workspace/agents/sessions.tsx"),
-        route("sessions/:id", "routes/workspace/agents/session.tsx"),
-        route("skills", "routes/workspace/agents/skills.tsx"),
-        route("abilities", "routes/workspace/agents/abilities.tsx"),
-        // Its own computer: state, disk and the commands it ran.
-        route("computer", "routes/workspace/agents/computer.tsx"),
-        route("memory", "routes/workspace/agents/memory.tsx"),
-        route("routines", "routes/workspace/agents/routines.tsx"),
-        route("spend", "routes/workspace/agents/spend.tsx"),
-        route("activity", "routes/workspace/agents/activity.tsx"),
-        route("profile", "routes/workspace/agents/profile.tsx"),
-      ]),
-    ]),
     // Chat mode: channels by name, direct messages by id, and what the page
     // calls as it runs: the live socket and the JSON for sending and reading.
     route("-/chat/live", "routes/workspace/chat/live.ts"),
@@ -229,29 +193,9 @@ export default [
     route("-/home/seen", "routes/workspace/home-seen.ts"),
     route("-/today", "routes/workspace/moved.ts", { id: "routes/workspace/moved-today" }),
     route("-/apps", "routes/workspace/apps.tsx"),
-    // Customize: Skills, Connectors and Plugins, each with Yours and
-    // Discover; anyone browses, owners add, everyone else asks (`requests`
-    // takes the asking and the answers; every other form posts to its page).
-    // `new` and `callback` are no connector's id.
-    route("-/customize", "routes/workspace/customize/layout.tsx", [
-      index("routes/workspace/customize/index.ts"),
-      route("skills", "routes/workspace/customize/skills.tsx"),
-      route("connectors", "routes/workspace/customize/connectors.tsx"),
-      route("connectors/new", "routes/workspace/customize/connector-new.tsx"),
-      route("connectors/callback", "routes/workspace/customize/connector-callback.ts"),
-      route("connectors/:id", "routes/workspace/customize/connector.tsx"),
-      route("plugins", "routes/workspace/customize/plugins.tsx"),
-      route("plugins/:ref", "routes/workspace/customize/plugin.tsx"),
-      route("marketplaces", "routes/workspace/customize/marketplaces.tsx"),
-      route("requests", "routes/workspace/customize/requests.tsx"),
-    ]),
-    // The Marketplace became Customize; its addresses lead there (lib/workspace-nav.ts MOVED).
-    route("-/marketplace", "routes/workspace/moved.ts", { id: "routes/workspace/moved-marketplace" }),
-    route("-/marketplace/*", "routes/workspace/moved.ts", { id: "routes/workspace/moved-marketplace-under" }),
     // What Code's pages say to a member without Code.
     route("-/code-access", "routes/workspace/code-access.tsx"),
     route("-/memory", "routes/workspace/memory.tsx"),
-    route("-/context", "routes/workspace/context.tsx"),
     route("-/security", "routes/workspace/security.tsx"),
     route("-/security/patterns", "routes/workspace/security-patterns.tsx"),
     route("-/security/bypass-requests", "routes/workspace/security-bypass.tsx"),
@@ -266,12 +210,8 @@ export default [
   ]),
   // Why a line is the way it is, fetched by the blame view.
   route(":owner/:repo/why/:hash", "routes/repo/why.ts"),
-  // A project's agent runs as JSON, and stopping or messaging one.
-  route(":owner/:repo/agents.json", "routes/repo/agents-live.ts"),
   // Its branch names, for changing the branch a pull request merges into.
   route(":owner/:repo/branches.json", "routes/repo/branch-names.ts"),
-  // What a project's agent runs did, from the audit log, for the Agent panel.
-  route(":owner/:repo/audit.json", "routes/repo/audit-live.ts"),
   // An invitation to a repository, answered by someone who cannot see it yet.
   route(":owner/:repo/invitations", "routes/repo/invitations.tsx"),
   // The Files page's About as JSON, asked again while it is first worked out.
@@ -321,9 +261,7 @@ export default [
     route("pulls/new", "routes/repo/pull-new.tsx"),
     route("pull/:number", "routes/repo/pull.tsx"),
     route("queue", "routes/repo/queue.tsx"),
-    route("agents", "routes/repo/agents.tsx"),
     route("usage", "routes/repo/usage.tsx"),
-    route("agents/runs/:id", "routes/repo/agents-run.tsx"),
     route("sessions", "routes/repo/sessions.tsx"),
     route("sessions/:number", "routes/repo/session.tsx"),
     route("memory", "routes/repo/memory.tsx"),
@@ -371,8 +309,6 @@ export default [
     route("security/advisories/:id/edit", "routes/repo/security-advisory-edit.tsx"),
     route("security/reports", "routes/repo/security-reports.tsx"),
     route("security/report", "routes/repo/security-report.tsx"),
-    route("plans", "routes/repo/plans.tsx"),
-    route("plans/:id", "routes/repo/plan.tsx"),
     route("settings", "routes/repo/settings.tsx"),
     route("settings/repository", "routes/repo/settings-repository.tsx"),
     route("settings/mirroring", "routes/repo/settings-mirroring.tsx"),
@@ -389,7 +325,6 @@ export default [
     route("settings/deployments", "routes/repo/settings-deployments.tsx"),
     route("settings/domains", "routes/repo/settings-domains.tsx"),
     route("settings/guardrails", "routes/repo/settings-guardrails.tsx"),
-    route("settings/agents", "routes/repo/settings-agents.tsx"),
     // What the project will have: one page for each Soon in its menu.
     route("soon/:feature", "routes/repo/soon.tsx"),
   ]),

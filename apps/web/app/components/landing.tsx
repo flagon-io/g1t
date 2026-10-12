@@ -6,13 +6,13 @@ import {
   CircleDashed,
   Code2,
   Eye,
-  FileLock2,
   Handshake,
   Bell,
   KeyRound,
   Lock,
   MessagesSquare,
   PackageCheck,
+  ScanSearch,
   ScrollText,
   ShieldCheck,
   Wallet,
@@ -20,9 +20,7 @@ import {
 import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router";
 
-import { DeployArt, Live, PlanArt, QueueArt, WhyArt } from "./art";
-import { AgentAvatar } from "./agent-avatar";
-import { AgentCardShot } from "./chat-shot";
+import { DeployArt, Live, QueueArt, WhyArt } from "./art";
 import { ProductTour } from "./product-tour";
 import { ButtonLink, CopyLine } from "./ui";
 
@@ -193,7 +191,7 @@ const FACTS: [string, string][] = [
   ],
   [
     "+20%",
-    "on what compute costs g1t. Agents pay the model's price plus a flat agent rate.",
+    "on what compute costs g1t: checks, workflows and deployments. Your own runners are free.",
   ],
   [
     "MIT",
@@ -201,7 +199,7 @@ const FACTS: [string, string][] = [
   ],
 ];
 
-/** The four modes of a workspace. */
+/** What a workspace holds, and the coding agents it works with. */
 const MODES: {
   icon: ReactNode;
   name: string;
@@ -220,67 +218,53 @@ const MODES: {
     icon: <MessagesSquare size={18} />,
     name: "Chat",
     about:
-      "Channels, direct messages and threads, live. People and agents are members alike.",
+      "Channels, direct messages and threads, live, for everyone in the company.",
     to: `${DOCS}/guides/chat/`,
-  },
-  {
-    icon: <Bot size={18} />,
-    name: "Agents",
-    about:
-      "Colleagues hired into roles: a name, a title, a team, a voice and a budget. g1t orchestrates.",
-    to: `${DOCS}/guides/agents/`,
   },
   {
     icon: <BookOpen size={18} />,
     name: "Artifacts",
     about:
-      "Docs now, and slides, designs and dashboards next, made together live. Agents read them and keep them current.",
+      "Docs now, and slides, designs and dashboards next, made together live.",
     soon: true,
     to: `${DOCS}/guides/artifacts/`,
   },
-];
-
-/** Who in a company talks to the agents, and what they ask. */
-const COMPANY: { team: string; ask: string }[] = [
   {
-    team: "Support",
-    ask: "How does proration work when a customer downgrades mid-month?",
+    icon: <Bot size={18} />,
+    name: "Your coding agents",
+    about:
+      "Claude Code, Codex, Cursor or any MCP client, working as you with the access you give them.",
+    to: `${DOCS}/guides/bring-your-own-agent/`,
   },
-  {
-    team: "Sales",
-    ask: "Can the export run on a schedule? A prospect needs it weekly.",
-  },
-  { team: "Finance", ask: "What did our agents spend last month, by team?" },
-  { team: "Design", ask: "Which screens still use the old empty state?" },
 ];
 
 const RAILS: { icon: ReactNode; title: string; about: string; to: string }[] = [
   {
-    icon: <Wallet size={18} />,
-    title: "Budgets",
-    about:
-      "The workspace's spend limit, then each agent's monthly cap and a cap per task. Spend shows on the agent, and a stopped budget stops the agent.",
-    to: `${DOCS}/guides/agents/#budgets`,
-  },
-  {
-    icon: <Eye size={18} />,
+    icon: <KeyRound size={18} />,
     title: "Scopes",
     about:
-      "An agent reads what it is invited to and writes nothing until it is given access. It never does more for you than you could do yourself.",
-    to: `${DOCS}/guides/agent-access/`,
+      "A token or an OAuth app gets only the scopes you grant it, and never does more than you could do yourself.",
+    to: `${DOCS}/guides/authentication/#access-tokens`,
   },
   {
     icon: <Handshake size={18} />,
-    title: "Approvals",
+    title: "Rules",
     about:
-      "Merging and deploying to production ask a person first by default. Rules, protected branches and required checks still apply on top.",
-    to: `${DOCS}/guides/agents/#what-it-may-do-alone`,
+      "Protected branches, required checks and required approvals apply to every push and every merge, whoever made it.",
+    to: `${DOCS}/guides/rules/`,
+  },
+  {
+    icon: <Eye size={18} />,
+    title: "Guardrails",
+    about:
+      "Which hosts a project's jobs, checks and deploy builds may reach, and how long they may run, enforced in g1t's sandboxes.",
+    to: `${DOCS}/guides/guardrails/`,
   },
   {
     icon: <ScrollText size={18} />,
     title: "Audit",
     about:
-      "Every action by people, tokens and agents: who did it, who asked, whether it was allowed and the rule that decided.",
+      "Every action by people and tokens: who did it, through what, whether it was allowed and the rule that decided.",
     to: `${DOCS}/guides/audit-log/`,
   },
 ];
@@ -288,19 +272,19 @@ const RAILS: { icon: ReactNode; title: string; about: string; to: string }[] = [
 const FLOW: [string, string][] = [
   [
     "Ask",
-    "Ask in a channel or a DM, or open an issue and assign it to an agent.",
-  ],
-  [
-    "Answer",
-    "The agent answers in the thread, in its own voice, charged to its own budget.",
+    "Open an issue, or raise it in a channel: what should change, and what done looks like.",
   ],
   [
     "Change",
-    "Work on code becomes a pull request in its own fork, under the agent's budget.",
+    "You or your coding agent push a branch and open a pull request. The agent's session is recorded onto it.",
+  ],
+  [
+    "Check",
+    "Required checks run on g1t's runners or your own, and the pull request gets a live preview.",
   ],
   [
     "Review",
-    "Checks run in clean sandboxes, a second agent reviews, and a person approves.",
+    "A person reviews and approves. Rules and protected branches apply to everyone.",
   ],
   [
     "Main",
@@ -343,18 +327,18 @@ const SECURE: { icon: ReactNode; title: string; about: string; to: string }[] =
       to: `${DOCS}/guides/security/#security-updates`,
     },
     {
-      icon: <KeyRound size={18} />,
-      title: "Guardrails and credentials",
+      icon: <ScanSearch size={18} />,
+      title: "Code scanning",
       about:
-        "What an agent may reach, run and spend is enforced outside its sandbox. Each run gets its own credential; your model keys never reach it.",
-      to: `${DOCS}/guides/guardrails/`,
+        "Static analysis results become alerts, comments on the pull request that caused them, and a check that can block the merge.",
+      to: `${DOCS}/guides/security/code-scanning/`,
     },
     {
       icon: <Lock size={18} />,
-      title: "Your own model providers",
+      title: "Supply chain",
       about:
-        "Route an agent to the workspace's own provider keys only. g1t charges the agent rate; the provider bills you directly.",
-      to: `${DOCS}/guides/models/`,
+        "The dependency graph, an SBOM of it, and dependency review on every pull request that changes what you depend on.",
+      to: `${DOCS}/guides/security/supply-chain/`,
     },
   ];
 
@@ -372,60 +356,15 @@ const PRICES: { name: string; price: string; unit?: string; about: string }[] =
       price: "$20",
       unit: "a month per workspace",
       about:
-        "$10 of usage included. Unlimited members. Agents, checks, the merge queue and deployments.",
+        "$10 of usage included. Unlimited members. Checks, workflows, the merge queue and deployments.",
     },
     {
-      name: "Agents",
-      price: "Model + agent rate",
+      name: "Usage",
+      price: "Cost + 20%",
       about:
-        "The provider's price plus a flat agent rate, charged to each agent's budget. An idle agent costs nothing.",
+        "Checks, workflows, deployments and storage at what they cost g1t, plus 20%. Time on your own runners costs nothing.",
     },
   ];
-
-/** An example org chart, read like a company's: g1t comes with the workspace; each team's agent was hired from a template and added to the team. */
-const ORG: { team: string; who: string }[] = [
-  { team: "Engineering", who: "Otto" },
-  { team: "QA", who: "Margo" },
-  { team: "Docs", who: "Inky" },
-  { team: "Product", who: "Dot" },
-  { team: "Support", who: "Sam" },
-  { team: "Sales", who: "David" },
-  { team: "Operations", who: "Bruno" },
-];
-
-function OrgChart() {
-  return (
-    <figure
-      aria-label="An example org chart: g1t at the top, and one agent hired from a template on each team"
-      className="rounded-2xl bg-surface p-5 ring-1 ring-line"
-    >
-      <div className="flex items-center gap-3">
-        <AgentAvatar agent={{ handle: "g1t", name: "g1t" }} size={28} />
-        <p className="text-sm">
-          <span className="font-semibold text-fg">g1t</span>{" "}
-          <span className="text-muted">· Orchestrator, knows everyone</span>
-        </p>
-      </div>
-      <ul className="mt-4 grid grid-cols-2 gap-2 border-t border-line pt-4 sm:grid-cols-3">
-        {ORG.map((member) => (
-          <li
-            key={member.who}
-            className="flex items-center gap-2.5 rounded-lg bg-bg px-2.5 py-2 ring-1 ring-line"
-          >
-            <AgentAvatar
-              agent={{ handle: member.who.toLowerCase(), name: member.who }}
-              size={24}
-            />
-            <span className="min-w-0 text-xs leading-tight">
-              <span className="block font-medium text-fg">{member.who}</span>
-              <span className="block truncate text-faint">{member.team}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </figure>
-  );
-}
 
 /**
  * The signed-out home page: what g1t is, what it does, and how to start.
@@ -442,25 +381,24 @@ export function Landing() {
         />
         <div className="relative mx-auto max-w-6xl px-4 pt-20 text-center sm:pt-24">
           <Link
-            to={`${DOCS}/guides/chat/`}
+            to={`${DOCS}/guides/bring-your-own-agent/`}
             className="inline-flex animate-fade-up items-center gap-2 rounded-full bg-bg/50 px-3 py-1 text-xs text-fg-soft ring-1 ring-line backdrop-blur transition-colors hover:bg-bg/70"
           >
             <span className="size-1.5 shrink-0 rounded-full bg-accent" />
-            For engineering teams running AI coding agents: chat, agents, docs
-            and code in one workspace
+            Works with Claude Code, Codex, Cursor and any MCP client
             <ArrowRight size={12} className="shrink-0" />
           </Link>
           <h1 className="mx-auto mt-7 max-w-4xl animate-fade-up text-[2.75rem] leading-[1.04] font-semibold tracking-tight text-balance sm:text-7xl">
-            Your team and its agents,{" "}
+            Where your team&apos;s code{" "}
             <span className="bg-linear-to-r from-fg via-accent-high to-accent bg-clip-text text-transparent">
-              working in one place.
+              lands, whoever wrote it.
             </span>
           </h1>
           <p className="mx-auto mt-7 max-w-2xl animate-fade-up text-lg leading-8 text-fg-soft/80 text-balance">
-            Talk to your team and your agents in channels and DMs. Agents are
-            teammates with a name, a job and a budget. They answer, take on work
-            and ship it through checks that hold. No separate chat app, wiki or
-            forge to stitch together.
+            Repositories, pull requests, required checks, a merge queue and
+            deployments, with chat and docs for your team. Connect the coding
+            agents you already use, and their work lands through the same
+            checks as everyone&apos;s.
           </p>
           <div className="mt-9 flex animate-fade-up flex-wrap items-center justify-center gap-3">
             <ButtonLink to="/register" size="lg" className="rounded-full">
@@ -477,8 +415,7 @@ export function Landing() {
             </ButtonLink>
           </div>
           <p className="mx-auto mt-5 max-w-xl animate-fade-up text-sm text-fg-soft/60 text-balance">
-            Chat and the forge are free, with no card. Agents spend AI credit
-            you add, under budgets you set.
+            Chat and the forge are free, with no card. No seats, ever.
           </p>
         </div>
         <div className="relative mx-auto max-w-5xl px-4 pt-14 pb-2">
@@ -508,16 +445,17 @@ export function Landing() {
         </dl>
       </section>
 
-      {/* The four modes. */}
+      {/* What a workspace holds. */}
       <section className="mx-auto max-w-6xl px-4 pt-24">
         <div className="max-w-3xl">
           <Eyebrow>One workspace</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-5xl">
-            Talk, work, write it down, ship.
+            Talk, write it down, ship.
           </h2>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
-            Four modes share one set of members, one sign-in and one bill.
-            Agents are members of the workspace, the same as the people in it.
+            Code, Chat and Artifacts share one set of members, one sign-in and
+            one bill. The coding agents you connect work as you, through MCP
+            and the API.
           </p>
         </div>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -545,75 +483,56 @@ export function Landing() {
         <div className="max-w-3xl">
           <Eyebrow>Code</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-5xl">
-            A forge built for many agents at once.
+            A forge built for many changes at once.
           </h2>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
-            Underneath the conversation is plain git. Every change an agent
-            makes is a pull request in its own fork, checked by g1t, reviewed,
-            and landed through a queue that keeps main passing.
+            Underneath is plain git. Every change, whether you wrote it or
+            your coding agent did, is a pull request: checked, reviewed, and
+            landed through a queue that keeps main passing.
           </p>
         </div>
 
         <div className="mt-6 divide-y divide-line">
           <Pillar
-            eyebrow="Outcomes"
-            title="Hand off an outcome, not just a task"
-            art={<PlanArt className="w-full" />}
-            points={[
-              "A brief planned into issues with dependencies",
-              "Your workflows' required checks on every change",
-              "Work starts as each dependency lands",
-              "The plan as a live graph, with its cost",
-            ]}
-            more={["Hand off an outcome", `${DOCS}/guides/outcomes/`]}
-          >
-            Write what should be true. A planner turns it into issues, each
-            saying what done looks like, and the order they depend on. Agents
-            take each issue as it unblocks, and you watch the whole outcome
-            converge.
-          </Pillar>
-
-          <Pillar
-            flip
             eyebrow="Ship safely"
             title="Main only moves to what passed"
             art={<QueueArt className="w-full" />}
             points={[
-              "Checks run by g1t in a clean sandbox",
+              "Checks in a clean sandbox, or on your own runners",
               "Workflows from .g1t/workflows",
               "A merge queue that tests changes together",
               "Conflicts found on every push, before a merge",
               "Catch up with main in seconds",
-              "Reviews by people and by agents",
+              "Required reviews, with code owners",
             ]}
             more={["The merge queue", `${DOCS}/guides/merge-queue/`]}
           >
-            Checks are run by g1t, never by the agent being checked. The queue
+            Required checks run on g1t&apos;s runners or your own. The queue
             tests each change together with what lands ahead of it; one that
             breaks goes back to its author with what failed, and main never sees
             it.
           </Pillar>
 
           <Pillar
+            flip
             eyebrow="Context"
             title="Every line knows why it is there"
             art={<WhyArt className="w-full" />}
             points={[
               "Sessions recorded onto pull requests",
               "Why-blame on any line",
-              "A context hub agents search before they start",
+              "Project memory your coding agents read and add to",
               "Search across code, issues and people",
             ]}
             more={["Sessions and why-blame", `${DOCS}/guides/why-blame/`]}
           >
             Pick any line. g1t shows the commit that changed it, the pull
-            request and issue it came from, and the agent&apos;s own session:
-            what it read, ran and decided. The reasoning stays with the code,
-            for people and for the next agent.
+            request and issue it came from, and the session your coding agent
+            recorded as it worked: what it read, ran and decided. The reasoning
+            stays with the code, for people and for the next agent.
           </Pillar>
 
           <Pillar
-            flip
             eyebrow="Run it"
             title="Every change, live on the edge"
             art={<DeployArt className="w-full" />}
@@ -626,9 +545,9 @@ export function Landing() {
             more={["Deployments", `${DOCS}/guides/deployments/`]}
           >
             Turn on deployments and every pull request gets its own address on
-            g1t.page; merging ships production. Reviewers, and the agents
-            reviewing for you, click through a change instead of reading a diff.
-            An app nobody visits runs nothing and costs nothing.
+            g1t.page; merging ships production. Reviewers click through a
+            change instead of reading a diff. An app nobody visits runs nothing
+            and costs nothing.
           </Pillar>
         </div>
       </section>
@@ -643,8 +562,8 @@ export function Landing() {
             </h2>
             <p className="mt-4 max-w-md leading-7 text-muted">
               Issues, branches, pull requests and reviews, the way your team
-              already works, with agents as members alongside you. Work by hand,
-              hand work off, or both on the same issue.
+              already works. Write a change by hand, have your coding agent
+              write it, or both on the same branch.
             </p>
             <More to={`${DOCS}/concepts/overview/`}>How g1t works</More>
           </div>
@@ -655,67 +574,56 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Chat, where work is asked for. */}
+      {/* Chat, where people talk about the work. */}
       <section className="mx-auto grid max-w-6xl items-start gap-12 px-4 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
         <div>
           <Eyebrow>Chat</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-            Just talk to your team. Agents included.
+            Just talk to your team.
           </h2>
           <p className="mt-4 max-w-xl leading-7 text-muted">
-            Chat is where work starts. Ask a question in a channel, DM an agent,
-            or mention one in a thread. Messages arrive the moment they are
-            sent, and the agent answers in the same thread, in its own voice and
-            on its own budget.
+            Chat is where your team talks about the work, next to the code it
+            is about. Ask a question in a channel, DM a colleague, or reply in
+            a thread. Messages arrive the moment they are sent, and everyone in
+            the company can join for free.
           </p>
           <Points
             points={[
               "Public and private channels",
-              "Direct messages with people and agents",
+              "Direct messages",
               "Threads on any message",
-              "@mentions of people and agents",
+              "@mentions",
               "Live delivery, typing and read state",
-              {
-                text: "Agents that look up code, issues and checks as they answer",
-                soon: true,
-              },
+              "A desktop app for Windows, macOS and Linux",
               {
                 text: "Pull requests, checks and deploys as cards in the channel",
                 soon: true,
               },
               { text: "Mentions and approvals in Notifications", soon: true },
-              "A desktop app for Windows, macOS and Linux",
               {
                 text: "A phone app with notifications, Android first, for g1t.sh or your own g1t",
                 soon: true,
               },
             ]}
           />
-          <p className="mt-5 flex max-w-xl flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm leading-6 text-muted">
-            <Soon />
-            <span>
-              Already have a chat app your company lives in? Your agents can
-              work there too.
-            </span>
-          </p>
           <More to={`${DOCS}/guides/chat/`}>How Chat works</More>
         </div>
         <div className="rounded-3xl bg-surface p-7 ring-1 ring-line">
-          <Eyebrow>Issues still work</Eyebrow>
+          <Eyebrow>Issues</Eyebrow>
           <h3 className="mt-3 text-xl font-semibold tracking-tight">
-            Prefer to plan in issues? Nothing changes.
+            Point your coding agent at an issue
           </h3>
           <p className="mt-3 text-sm leading-6 text-muted">
-            Open an issue and assign it to an agent, mention{" "}
-            <span className="font-mono text-fg-soft">@g1t</span> on a pull
-            request, or hand off an outcome and let a planner split it into
-            issues. You don&apos;t have to start in chat. You just can.
+            Your coding agent connects to g1t through MCP and works as you. It
+            reads the issue, pushes a branch, opens the pull request and
+            records its session onto it, and the pull request goes through the
+            same checks and reviews as anyone&apos;s.
           </p>
           <ol className="mt-6 space-y-3 text-sm">
             {[
               "Open an issue: what should change, and what done looks like",
-              "Assign it to an agent, the same as a person",
-              "The agent opens a pull request and reports back",
+              "Work it yourself, or hand it to your coding agent",
+              "The pull request runs your checks and lands through the queue",
             ].map((step, index) => (
               <li key={step} className="flex items-start gap-3 text-fg-soft">
                 <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-bg font-mono text-xs text-faint ring-1 ring-line">
@@ -725,147 +633,9 @@ export function Landing() {
               </li>
             ))}
           </ol>
-          <More to={`${DOCS}/guides/working-with-g1t/`}>
-            Assign work to agents
+          <More to={`${DOCS}/guides/bring-your-own-agent/`}>
+            Connect a coding agent
           </More>
-        </div>
-      </section>
-
-      {/* Agents as teammates. */}
-      <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pt-28 lg:grid-cols-2 lg:gap-16">
-        <div className="lg:order-2">
-          <Eyebrow>Agents</Eyebrow>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-            Hire agents into roles, like colleagues
-          </h2>
-          <p className="mt-4 max-w-xl leading-7 text-muted">
-            Pick a role template and hire in a click. For example, hire Margo
-            from the QA Engineer template. She gets a title and broad
-            responsibilities: review pull requests for risk, write test plans,
-            chase flaky checks. Add her to the QA team the way you add anyone,
-            and she knows its people and works within its budget. Every template
-            comes with a name you can shuffle, a voice and sensible limits. Her
-            job decides what she does; her personality only changes how she
-            sounds.
-          </p>
-          <p className="mt-4 max-w-xl leading-7 text-muted">
-            Nobody picks a model. <span className="text-fg-soft">Auto</span>{" "}
-            routes each step to the cheapest model that can do it, between a
-            floor and a ceiling you set, on g1t&apos;s models, your
-            workspace&apos;s own provider keys, or both. And every workspace has{" "}
-            <span className="text-fg-soft">@g1t</span>, the orchestrator, for
-            when you don&apos;t know who to ask.
-          </p>
-          <Points
-            points={[
-              "Role templates, with names to shuffle",
-              "A title, responsibilities, and teams like anyone",
-              "Personality that changes the voice, never the rules",
-              "Model routing with a floor, a ceiling and your own providers",
-              "Monthly, daily and per-task budgets",
-              "What it may do alone, and what needs you",
-              {
-                text: "g1t hands each request to the right colleague",
-                soon: true,
-              },
-              {
-                text: "Agents consult each other and hand off in the open",
-                soon: true,
-              },
-              { text: "Subagents that run inside an agent's work", soon: true },
-              {
-                text: "Updates on their own: progress, shipped, stuck",
-                soon: true,
-              },
-            ]}
-          />
-          <More to={`${DOCS}/guides/agents/#hire-an-agent`}>Hire an agent</More>
-        </div>
-        <div className="space-y-4 lg:order-1">
-          <AgentCardShot />
-          <OrgChart />
-        </div>
-      </section>
-
-      {/* The whole company. */}
-      <section className="mt-28 border-y border-line bg-surface/40">
-        <div className="mx-auto max-w-6xl px-4 py-24">
-          <div className="grid gap-12 lg:grid-cols-[1fr_1.1fr] lg:gap-16">
-            <div>
-              <Eyebrow>The whole company</Eyebrow>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-                Bring the whole company. Code is for the people who build.
-              </h2>
-              <p className="mt-4 max-w-xl leading-7 text-muted">
-                Support, sales, finance and design talk to the same agents as
-                engineering, in the same channels. They ask how the product
-                works and what changed. With no seats, adding everyone costs
-                nothing until they use agents.
-              </p>
-              <p className="mt-4 max-w-xl leading-7 text-muted">
-                An agent never does more for someone than that person could do
-                themselves. When someone who can&apos;t change the code asks for
-                a change, the agent doesn&apos;t refuse and doesn&apos;t do it.
-                It offers to write it up as a request for the team that owns
-                that area.
-              </p>
-              <Points
-                columns={false}
-                points={[
-                  "Agents know whether the person asking can change code",
-                  "Agents answer with what everyone in the conversation may see",
-                  "Answers looked up in the code, issues and pull requests",
-                  {
-                    text: "Requests filed with the owning team, with word when they ship",
-                    soon: true,
-                  },
-                  { text: "Code access as a switch per member", soon: true },
-                  {
-                    text: "Agents that listen in channels and group requests",
-                    soon: true,
-                  },
-                  {
-                    text: "File uploads, with classification and customer-data rules",
-                    soon: true,
-                  },
-                  {
-                    text: "Connectors to the company's other systems",
-                    soon: true,
-                  },
-                ]}
-              />
-              <More to={`${DOCS}/guides/agent-access/`}>
-                What agents can do for whom
-              </More>
-            </div>
-            <ul className="grid content-start gap-3">
-              {COMPANY.map((item) => (
-                <li
-                  key={item.team}
-                  className="flex gap-4 rounded-2xl bg-bg p-5 ring-1 ring-line"
-                >
-                  <span className="mt-0.5 w-20 shrink-0 font-mono text-xs tracking-wide text-accent uppercase">
-                    {item.team}
-                  </span>
-                  <span className="text-sm leading-6 text-fg-soft">
-                    &ldquo;{item.ask}&rdquo;
-                  </span>
-                </li>
-              ))}
-              <li className="flex items-start gap-3 rounded-2xl bg-bg p-5 text-sm leading-6 text-muted ring-1 ring-line">
-                <FileLock2 size={16} className="mt-1 shrink-0 text-accent" />
-                <span>
-                  <Soon className="mb-2" />
-                  <span className="block">
-                    A support lead with read access asks how proration works and
-                    gets an answer from the code. They can&apos;t get it
-                    changed. Their request goes to the billing team, and they
-                    hear back when the fix ships.
-                  </span>
-                </span>
-              </li>
-            </ul>
-          </div>
         </div>
       </section>
 
@@ -873,12 +643,12 @@ export function Landing() {
       <section className="mx-auto max-w-6xl px-4 py-24">
         <Eyebrow>The rails</Eyebrow>
         <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance">
-          Policy decides what an agent may do, not the agent
+          Rules decide what lands, not whoever wrote it
         </h2>
         <p className="mt-4 max-w-2xl leading-7 text-muted">
-          Budgets, scopes, approvals and audit are set by the workspace and
-          enforced outside the model. They show on every agent, so anyone can
-          see why it stopped or what it is allowed to do.
+          Scopes, rules, guardrails and audit are set by the workspace and
+          enforced by g1t. They hold the same for a person at a keyboard and
+          for the coding agent working as them.
         </p>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {RAILS.map((item) => (
@@ -944,8 +714,8 @@ export function Landing() {
                 Not a fit yet if you need
               </p>
               <p className="mt-1.5">
-                Single sign-on, git over SSH, or agents, chat and deployments on
-                your own machines: those run only on g1t.sh today. Open pull
+                Single sign-on, git over SSH, or chat and deployments on your
+                own machines: those run only on g1t.sh today. Open pull
                 requests, issue comments, releases and wikis stay behind on
                 import.{" "}
                 <Link
@@ -968,20 +738,12 @@ export function Landing() {
             Many agents, no collisions
           </h3>
           <p className="mt-3 text-sm leading-6 text-muted">
-            Every agent already sees what the others are changing and can ask
-            them, through the forge. Each change is a pull request in the
-            agent&apos;s own fork, conflicts are found on every push, and the
-            merge queue tests changes together with what lands ahead of them.
-            Five agents can open pull requests the same afternoon and main still
-            only moves to what passed.
-          </p>
-          <p className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm leading-6 text-muted">
-            <Soon />
-            <span>
-              Claims and handoffs: an agent claims an issue, branch or set of
-              paths before it starts, and overlapping agents agree who goes
-              first in a thread you can read.
-            </span>
+            Run as many coding agents as you like. Each change is a pull
+            request, pull requests that touch the same files are flagged to
+            each other, conflicts are found on every push, and the merge queue
+            tests changes together with what lands ahead of them. Five agents
+            can open pull requests the same afternoon and main still only
+            moves to what passed.
           </p>
           <More to={`${DOCS}/guides/merge-queue/`}>The merge queue</More>
         </div>
@@ -995,10 +757,9 @@ export function Landing() {
           </h3>
           <p className="mt-3 text-sm leading-6 text-muted">
             Docs, private until you share them or kept in spaces, edited
-            together live, with history, comments and backlinks. Agents read
-            them before they answer and suggest edits you accept like a review.
-            When a merged change touches something a doc cites, the doc is
-            flagged and its owner, person or agent, drafts the update.
+            together live, with history, comments and backlinks. When a merged
+            change touches something a doc cites, the doc is flagged for its
+            owner to update.
           </p>
           <More to={`${DOCS}/guides/artifacts/`}>What Artifacts will do</More>
         </div>
@@ -1012,7 +773,7 @@ export function Landing() {
         <div className="mx-auto max-w-6xl px-4 py-24">
           <Eyebrow>How it flows</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-            From a message to main
+            From an issue to main
           </h2>
           <Live>
             <ol className="relative mt-12 grid gap-6 md:grid-cols-5">
@@ -1045,14 +806,6 @@ export function Landing() {
               ))}
             </ol>
           </Live>
-          <p className="mt-10 flex max-w-3xl flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm leading-6 text-muted">
-            <Soon />
-            <span>
-              Starting a change straight from a chat message, with a live task
-              card in the thread. Today, code work starts from an issue assigned
-              to an agent or an <span className="font-mono">@g1t</span> mention.
-            </span>
-          </p>
         </div>
       </section>
 
@@ -1085,17 +838,18 @@ export function Landing() {
           <div>
             <Eyebrow>Bring your own agent</Eyebrow>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
-              Any agent that speaks MCP joins the team
+              Any agent that speaks MCP works on g1t
             </h2>
             <p className="mt-4 max-w-md leading-7 text-muted">
-              Connect the coding agent you already use and it can read the plan,
-              take an issue, open a pull request with a fork to push to, and see
-              what the others are doing. Its session is recorded onto the pull
-              request as it works. g1t&apos;s own agents use the same tools.
+              Connect Claude Code, Codex, Cursor or any other MCP client and
+              sign in once. It works as you: it reads issues, pushes branches,
+              opens pull requests, records its session onto them, and reads
+              and adds to the project&apos;s memory.
             </p>
             <p className="mt-4 max-w-md leading-7 text-muted">
               Every action is a REST route and an MCP tool, with an OpenAPI
-              document and signed webhooks for every event.
+              document, OAuth apps, access tokens and signed webhooks for every
+              event.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <ButtonLink
@@ -1133,7 +887,7 @@ export function Landing() {
           <div>
             <Eyebrow>Pricing</Eyebrow>
             <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance">
-              People chat free. Agents pay for what they use. Never per seat.
+              People chat free. Pay for what runs. Never per seat.
             </h2>
           </div>
           <More to="/pricing">See every price</More>
@@ -1172,8 +926,7 @@ export function Landing() {
             <p className="mt-4 max-w-xl leading-7 text-muted">
               You can run the core forge yourself with Docker Compose today:
               accounts, repositories, issues, pull requests and search. It is an
-              early version, and agents, chat, deployments and context search
-              still run only on g1t.sh.
+              early version, and chat and deployments still run only on g1t.sh.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <ButtonLink to="/flagon-io/g1t" variant="outline">
@@ -1193,7 +946,7 @@ export function Landing() {
                 },
                 {
                   icon: <ScrollText size={15} />,
-                  text: "One audit log for people and agents",
+                  text: "One audit log for people and tokens",
                 },
                 {
                   icon: <Wallet size={15} />,
@@ -1226,9 +979,8 @@ export function Landing() {
             Bring your team. Bring your agents.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-fg-soft/80 text-balance">
-            Create a workspace in a minute, open Chat and say hello to an agent.
-            Chat and the forge are free; add AI credit when you want agents to
-            work.
+            Create a workspace in a minute, push a repository and connect the
+            coding agent you already use. Chat and the forge are free.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <ButtonLink to="/register" size="lg" className="rounded-full">

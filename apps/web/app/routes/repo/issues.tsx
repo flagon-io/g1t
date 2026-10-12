@@ -1,15 +1,11 @@
-import { env } from "cloudflare:workers";
-import { GitPullRequest, MessageSquare, Milestone as MilestoneIcon, Plus, Sparkles, Tag } from "lucide-react";
-import { useEffect, useRef } from "react";
-import { Form, Link, useLocation, useRouteLoaderData } from "react-router";
+import { GitPullRequest, MessageSquare, Milestone as MilestoneIcon, Plus, Tag } from "lucide-react";
+import { Link, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/issues";
 import { page } from "../../lib/meta";
-import { ButtonLink, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
-import { Badge } from "../../components/ui/badge";
+import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
-import { Checkbox } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { mirrorReason, type MirroredRepo } from "../../lib/mirror";
 import {
@@ -20,16 +16,10 @@ import {
 } from "../../components/work";
 import { FilterMenu, LabelChip, Swatch } from "../../components/labels";
 import { colorsOf, listFilters, withFilter } from "../../lib/labels";
-import { computeNoteFor } from "../../lib/compute.server";
-import { isWaitingMessage } from "../../lib/compute";
 import { work } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
-import { accessTo, refusal, requireWritableRepo } from "../../lib/access.server";
+import { getViewer, unwrap } from "../../lib/session.server";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
-
-/** As many sandboxes as one request may start. */
-const MAX_ASSIGNED_AT_ONCE = 10;
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Issues · ${params.owner}/${params.repo} · g1t` });
@@ -40,17 +30,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   // `?label=bug&milestone=3`, or `label:bug milestone:3` written in `q`.
   const { state, label, milestone } = listFilters(new URL(request.url).searchParams);
-  // Assigning agents needs Write: Read cannot spend compute. All at once:
-  // only the plan's note waits for the viewer's role.
-  const access = accessTo(context, params);
-  const [{ can }, issues, labels, milestones, agentsEnabled, computeNote] = await Promise.all([
-    access,
-    work.listIssues(path, viewer, { state, label: label || undefined, milestone: milestone ?? undefined }),
+  const [issues, labels, milestones] = await Promise.all([    work.listIssues(path, viewer, { state, label: label || undefined, milestone: milestone ?? undefined }),
     work.listLabels(path, viewer),
     work.listMilestones(path, viewer, "open"),
-    env.RUNNER.enabled(viewer, path),
-    // Before a member assigns: whether the workspace's plan lets agents start.
-    access.then(({ can }) => (can.run ? computeNoteFor(params.owner, "agent") : null)),
   ]);
   return {
     issues: unwrap(issues),
@@ -59,51 +41,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     state,
     label,
     milestone,
-    agentsEnabled: agentsEnabled && can.run,
-    computeNote,
   } as const;
 }
 
-/** Assigns each selected issue to g1t, one run of its own each. */
-export async function action({ request, params, context }: Route.ActionArgs) {
-  assertSameOrigin(request);
-  const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
-  const path = { namespace: params.owner, name: params.repo };
-  const numbers = (await request.formData())
-    .getAll("issue")
-    .map(Number)
-    .filter((number) => Number.isInteger(number) && number > 0);
-  if (numbers.length === 0) return { error: "Select the issues to assign first." };
-  const denied = await refusal(context, params, "run");
-  if (denied) return { error: denied };
-  if (numbers.length > MAX_ASSIGNED_AT_ONCE) {
-    return { error: `Assign at most ${MAX_ASSIGNED_AT_ONCE} issues at a time.` };
-  }
-  const results = await Promise.all(
-    numbers.map((number) => env.RUNNER.run(user, path, number)),
-  );
-  // Over the workspace's agents-at-once cap, the rest wait in the queue.
-  const waiting = results.filter((result) => !result.ok && isWaitingMessage(result.error.message)).length;
-  const refused = results.find((result) => !result.ok && !isWaitingMessage(result.error.message));
-  const started = results.filter((result) => result.ok).length;
-  return {
-    started,
-    waiting,
-    error:
-      refused && !refused.ok
-        ? `${started} of ${numbers.length} assigned. ${refused.error.message}`
-        : null,
-  };
-}
-
-export default function Issues({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { issues, labels, milestones, state, label, milestone, agentsEnabled } = loaderData;
+export default function Issues({ loaderData, params }: Route.ComponentProps) {
+  const { issues, labels, milestones, state, label, milestone } = loaderData;
   // Issues opened, commented on and closed show as it happens.
   useRepoLive({ match: repoPages.issues() });
   const repo = `/${params.owner}/${params.repo}`;
   const base = `${repo}/issues`;
-  const assignable = agentsEnabled && state === "open" && issues.length > 0;
   const current = new URLSearchParams(useLocation().search);
   const colors = colorsOf(labels);
   const milestoneTitle = milestones.find((m) => m.number === milestone)?.title ?? (milestone ? `#${milestone}` : null);
@@ -118,11 +64,6 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
   const archived = Boolean(layout?.repo?.archivedAt);
   // A mirror takes no new issues until someone takes over: the button says why.
   const mirrorBlocked = mirrorReason(layout?.repo);
-  // Handed over: the ticks are cleared. Refused: they stay, to try again.
-  const form = useRef<HTMLFormElement>(null);
-  useEffect(() => {
-    if (actionData && !actionData.error) form.current?.reset();
-  }, [actionData]);
   return (
     <div>
       <StateTabs
@@ -194,42 +135,7 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
           </Link>
         </span>
       </div>
-      <Form ref={form} method="post" className="mt-4">
-        {assignable && (
-          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-accent/30 bg-accent/5 px-4 py-2.5">
-            <Sparkles size={15} className="shrink-0 text-accent" />
-            <p className="min-w-0 grow text-sm text-muted">
-              Tick the issues to hand over. g1t takes each one in a run of its own,
-              and they all work at once.
-            </p>
-            <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
-              <SubmitButton variant="accent" pending="Starting sandboxes…" disabled={mirrorBlocked != null}>
-                Assign to g1t
-              </SubmitButton>
-            </Hint>
-            {loaderData.computeNote && (
-              <div className="basis-full">
-                <ComputeNote note={loaderData.computeNote} />
-              </div>
-            )}
-          </div>
-        )}
-        {actionData?.error ? (
-          <div className="mb-3">
-            <ErrorText>{actionData.error}</ErrorText>
-          </div>
-        ) : (
-          actionData?.started != null && (
-            <p className="mb-3 text-sm text-muted">
-              {actionData.started}{" "}
-              {actionData.started === 1 ? "agent is" : "agents are"} starting. Each
-              issue shows its pull request as it appears.
-              {actionData.waiting
-                ? ` ${actionData.waiting} more ${actionData.waiting === 1 ? "waits" : "wait"} for a free slot and start by themselves.`
-                : ""}
-            </p>
-          )
-        )}
+      <div className="mt-4">
         {issues.length === 0 ? (
           <EmptyState
             title={
@@ -241,23 +147,13 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
             }
           >
             An issue says what should change: a bug, a feature, a question.
-            Agents and people open pull requests against it.
+            People and their coding agents open pull requests against it.
           </EmptyState>
         ) : (
           <Card asChild tone="plain" divided className="overflow-hidden">
             <ul>
               {issues.map((issue) => (
                 <li key={issue.id} className="flex items-start transition-colors hover:bg-surface">
-                  {assignable && (
-                    <Checkbox
-                      name="issue"
-                      value={String(issue.number)}
-                      // Already being worked on: nothing more to hand over.
-                      disabled={issue.agent != null || issue.queued}
-                      aria-label={`Select issue #${issue.number}`}
-                      className="mt-4 ml-4 disabled:opacity-30"
-                    />
-                  )}
                   <Link
                     prefetch="intent"
                     to={`${base}/${issue.number}`}
@@ -274,13 +170,6 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
                         ))}
                         {issue.state === "open" && issue.agent && (
                           <Assignee agent={issue.agent} />
-                        )}
-                        {issue.state === "open" && issue.queued && !issue.agent && (
-                          <Badge size="md" className="py-px">
-                            queued for g1t
-                            {issue.blockedBy.length > 0 &&
-                              `, after ${issue.blockedBy.map((number) => `#${number}`).join(", ")}`}
-                          </Badge>
                         )}
                       </span>
                       <span className="mt-0.5 block text-xs text-faint">
@@ -322,7 +211,7 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
             </ul>
           </Card>
         )}
-      </Form>
+      </div>
     </div>
   );
 }

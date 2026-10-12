@@ -1,25 +1,14 @@
 /**
  * Guardrails: the form a workspace sets its defaults with and a project its
- * overrides, and what a run shows of its caps.
+ * overrides: the network a sandbox may reach, and how long its runs may take.
  */
-import { Clock, Coins, ShieldCheck } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Form } from "react-router";
 
-import {
-  type AgentRun,
-  type GuardrailSettings,
-  type Guardrails,
-  type GuardrailsView,
-  RUN_KINDS,
-  RUN_KIND_LABEL,
-  isActiveRun,
-} from "@g1t/contracts";
+import { type GuardrailSettings, type Guardrails, type GuardrailsView, RUN_KIND_LABEL } from "@g1t/contracts";
 
-import { formatCap, tri, workflowDomainLine } from "../lib/guardrails";
-import { formatCost } from "./agents";
+import { SANDBOX_RUN_KINDS, tri, workflowDomainLine } from "../lib/guardrails";
 import { ErrorText, Input, SubmitButton, TimeAgo } from "./ui";
-import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 import { CheckboxOption } from "./ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -111,7 +100,6 @@ export function GuardrailsForm({
   const [registryMode, setRegistryMode] = useState(own.registries ? "custom" : "inherit");
   const shownRegistries = own.registries ?? base.registries;
   const inheritedDomains = level === "project" ? view.inherited.domains : [];
-  const inheritedDeny = level === "project" ? view.inherited.deny : [];
   const inheritedWorkflowDomains = level === "project" ? (view.inherited.workflowDomains ?? []) : [];
   return (
     // Keyed to the last change, so after a save the fields show what was kept, as it was tidied.
@@ -140,7 +128,7 @@ export function GuardrailsForm({
           <Card className="p-4">
             <p className="text-sm font-medium">Always allowed</p>
             <p className="mt-1 text-sm text-muted">
-              g1t's own hosts, for cloning, pushing, reporting and the model: <Hosts hosts={view.g1tHosts} />
+              g1t's own hosts, for cloning, pushing and reporting: <Hosts hosts={view.g1tHosts} />
             </p>
           </Card>
           <Card className="p-4">
@@ -200,7 +188,7 @@ export function GuardrailsForm({
               Workflow-only domains
             </label>
             <p className="mt-1 text-sm text-muted">
-              Hosts that only workflow jobs may reach, never agents, such as the API a deploy uploads to. One
+              Hosts that only workflow jobs may reach, such as the API a deploy uploads to. One
               per line: the domain, then the workflows and the environments it is for, each comma-separated;
               leave either out for any. Only jobs of runs that are not pull requests from forks get them.
               {level === "project" && " These add to the workspace's."}
@@ -222,81 +210,12 @@ export function GuardrailsForm({
           </Card>
         </Section>
 
-        <Section
-          title="Commands"
-          about={
-            <>
-              What the agent's harness refuses to run. A refused command is not run; the agent is told why, and
-              the run shows it as a step.
-            </>
-          }
-        >
-          {view.rules.map((rule) => (
-            <TriSelect
-              key={rule.id}
-              name={`rule:${rule.id}`}
-              value={own.rules?.[rule.id]}
-              inherited={base.rules[rule.id] ?? true}
-              parent={parent}
-              labels={["On", "Off"]}
-              title={rule.title}
-            >
-              {rule.about}
-            </TriSelect>
-          ))}
-          <Card className="p-4">
-            <label htmlFor="guardrail-deny" className="text-sm font-medium">
-              Also refuse
-            </label>
-            <p className="mt-1 text-sm text-muted">
-              One rule per line, as <span className="font-mono text-xs">Bash(terraform apply:*)</span>,{" "}
-              <span className="font-mono text-xs">Edit(//etc/**)</span> or{" "}
-              <span className="font-mono text-xs">WebFetch</span>. Plain text is the start of a shell command.
-              {level === "project" && " These add to the workspace's."}
-            </p>
-            <Textarea
-              id="guardrail-deny"
-              name="deny"
-              className="mt-3 font-mono text-xs"
-              rows={4}
-              defaultValue={(own.deny ?? []).join("\n")}
-              placeholder="Bash(terraform apply:*)"
-            />
-            {inheritedDeny.length > 0 && (
-              <p className="mt-2 text-xs text-faint">
-                From the workspace: <span className="font-mono">{inheritedDeny.join(", ")}</span>
-              </p>
-            )}
-          </Card>
-        </Section>
-
-        <Section
-          title="Caps"
-          about="How much one run may cost and how long it may take. A run that reaches either is stopped, and its pull request waits for you."
-        >
-          <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
-            <div className="min-w-0 grow">
-              <label htmlFor="guardrail-budget" className="text-sm font-medium">
-                Cost per run, in US dollars
-              </label>
-              <p className="mt-1 text-sm text-muted">
-                Empty: as {parent} ({formatCap(base.budgetUsd)}). 0: no cap here. The workspace's spend cap per run, under Billing, applies as well, and a run stops at the lower of the two.
-              </p>
-            </div>
-            <Input
-              id="guardrail-budget"
-              name="budgetUsd"
-              inputMode="decimal"
-              className="w-full shrink-0 sm:w-32"
-              defaultValue={own.budgetUsd == null ? "" : String(own.budgetUsd)}
-              placeholder={base.budgetUsd == null ? "0" : base.budgetUsd.toFixed(2)}
-            />
-          </Card>
+        <Section title="Time limits" about="How long one run may take. A run that reaches it is stopped.">
           <Card className="p-4">
             <p className="text-sm font-medium">Time per run, in minutes</p>
             <p className="mt-1 text-sm text-muted">Empty: as {parent}, shown faded.</p>
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {RUN_KINDS.map((kind) => (
+              {SANDBOX_RUN_KINDS.map((kind) => (
                 <label key={kind} className="flex flex-col gap-1 text-xs text-muted">
                   {RUN_KIND_LABEL[kind]}
                   <Input
@@ -333,84 +252,5 @@ export function GuardrailsForm({
         </p>
       )}
     </Form>
-  );
-}
-
-/** Minutes since `from`, ticking while the run goes on. */
-function useMinutes(from: string | null, to: string | null): number | null {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!from || to) return;
-    const timer = setInterval(() => setNow(Date.now()), 5000);
-    return () => clearInterval(timer);
-  }, [from, to]);
-  if (!from) return null;
-  return ((to ? new Date(to).getTime() : now) - new Date(from).getTime()) / 60000;
-}
-
-function Meter({ share, tone }: { share: number | null; tone: string }) {
-  if (share == null) return null;
-  return (
-    <span className="mt-2 block h-1 overflow-hidden rounded-full bg-line" aria-hidden>
-      <span className={`block h-full rounded-full ${tone}`} style={{ width: `${Math.round(share * 100)}%` }} />
-    </span>
-  );
-}
-
-/** A run's caps: spent and elapsed against them, and whether one stopped it. */
-export function RunCaps({ run, member }: { run: AgentRun; member: boolean }) {
-  const active = isActiveRun(run.status);
-  const minutes = useMinutes(run.startedAt ?? (active ? run.createdAt : null), run.finishedAt);
-  if (run.timeCapMinutes == null && run.budgetUsd == null && !run.halted) return null;
-  const cap = run.timeCapMinutes ?? null;
-  const timeShare = cap && minutes != null ? Math.min(1, minutes / cap) : null;
-  const spent = formatCost(run.costUsd);
-  const budget = run.budgetUsd ?? null;
-  const costShare = budget && run.costUsd != null ? Math.min(1, run.costUsd / budget) : null;
-  return (
-    <Card asChild className="mt-6 p-4">
-      <section>
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <ShieldCheck size={15} className="text-accent" />
-          Guardrails
-          {run.halted && (
-            <Badge tone="warn" size="md" className="ml-auto">
-              {run.halted === "abuse"
-                ? "Stopped: unusual CPU use"
-                : `Stopped at its ${run.halted === "budget" ? "cost" : "time"} cap`}
-            </Badge>
-          )}
-        </div>
-        <div className="mt-3 grid gap-4 text-sm sm:grid-cols-2">
-          {cap != null && (
-            <div>
-              <p className="flex items-center gap-1.5 text-muted">
-                <Clock size={13} />
-                <span className="tabular-nums text-fg" suppressHydrationWarning>
-                  {minutes == null ? "—" : `${Math.floor(minutes)}m`}
-                </span>
-                of {cap}m
-              </p>
-              <Meter share={timeShare} tone={timeShare != null && timeShare > 0.85 ? "bg-warn" : "bg-success"} />
-            </div>
-          )}
-          {member && (
-            <div>
-              <p className="flex items-center gap-1.5 text-muted">
-                <Coins size={13} />
-                {spent ? <span className="tabular-nums text-fg">{spent}</span> : <span>Spend</span>}
-                of {formatCap(budget)}
-              </p>
-              <Meter share={costShare} tone={costShare != null && costShare > 0.85 ? "bg-warn" : "bg-success"} />
-              {active && !spent && budget != null && (
-                <p className="mt-1.5 text-xs text-faint">
-                  The agent stops itself at the cap. What it spent is reported when the run ends.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      </section>
-    </Card>
   );
 }

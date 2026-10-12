@@ -258,7 +258,7 @@ export function requestStatus(request: LimitRequest): string {
   return "Waiting for an answer";
 }
 
-/** What each kind of agent work is called, and its colour, on Usage and the workspace's overview. */
+/** What each kind of work is called, and its colour, on Usage and the workspace's overview; the agent kinds are in older months. */
 export const USAGE_TASKS: Record<string, { label: string; color: string }> = {
   implement: { label: "Making changes", color: "var(--color-merged)" },
   review: { label: "Reviews", color: "var(--color-info)" },

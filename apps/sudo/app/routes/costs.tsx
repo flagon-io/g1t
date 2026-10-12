@@ -26,7 +26,7 @@ export const action = ({ request, context }: Route.ActionArgs) => costsAction(re
 export default function Costs({ loaderData, actionData }: Route.ComponentProps) {
   const { range, report, error, done } = loaderData;
   const failed = actionData && "error" in actionData ? (actionData as CostsActionResult) : null;
-  const description = `What g1t cost to run (Cloudflare's bill and the model providers') against what workspaces paid, with what g1t gave away on purpose kept apart. Prices are cost plus ${MARKUP_PERCENT}%, a ${percentLabel(marginOnPrice(MARKUP_PERCENT))} margin: every margin here is a share of the price, not of the cost. The bill itself, drift and the price book are on Bill & pricing.`;
+  const description = `What g1t cost to run (Cloudflare's bill) against what workspaces paid, with what g1t gave away on purpose kept apart. Prices are cost plus ${MARKUP_PERCENT}%, a ${percentLabel(marginOnPrice(MARKUP_PERCENT))} margin: every margin here is a share of the price, not of the cost. The bill itself, drift and the price book are on Bill & pricing.`;
   if (!report) {
     return (
       <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
@@ -229,7 +229,6 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
   const spent = paid.totalMicros;
   const net = moneyIn - spent;
   const givenParts = givenBy(o);
-  const gateway = o.gatewayCostMicros ?? 0;
   const rows: { title: string; note: string; in: number | null; cost: number; result: number | null; tone?: "danger" | "warn" | "muted" }[] = [
     {
       title: "Usage sold",
@@ -298,7 +297,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
         <Stat
           label="Who g1t paid"
           value={usd(paid.totalMicros, { cents: true })}
-          hint={`Cloudflare's usage ${usd(paid.cloudflareMicros, { cents: true })} and subscriptions ${usd(paid.subscriptionsMicros, { cents: true })}, model providers ${usd(paid.modelsMicros, { cents: true })}${gateway > 0 && Math.abs(gateway - paid.modelsMicros) >= 10_000 ? ` (AI Gateway priced them at ${usd(gateway, { cents: true })}; see Drift)` : ""}; the cost in All in`}
+          hint={`Cloudflare's usage ${usd(paid.cloudflareMicros, { cents: true })} and subscriptions ${usd(paid.subscriptionsMicros, { cents: true })}${paid.modelsMicros > 0 ? `, model providers ${usd(paid.modelsMicros, { cents: true })} (from before agents were retired)` : ""}; the cost in All in`}
         />
         <Stat
           label="Proposals waiting"
@@ -393,7 +392,7 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
       className="mt-6"
       id="spend"
       title="g1t's own spend"
-      description="What g1t pays for itself this calendar month, today included: accounts on a 100% discount, the trial and open-source pools, free workspaces' overruns, and usage charged without real money behind it. Each is what the work cost g1t, never its price, counted as each charge settled: the model providers' cost, and the price book's cost of sandboxes and builds. Two caps hold it: each 100%-discount account's monthly budget, and a daily breaker on all of it that pauses new hosted-model agent runs g1t would pay for."
+      description="What g1t pays for itself this calendar month, today included: accounts on a 100% discount, the trial and open-source pools, free workspaces' overruns, and usage charged without real money behind it. Each is what the work cost g1t, never its price, counted as each charge settled: the price book's cost of sandboxes and builds. Two caps hold it: each 100%-discount account's monthly budget, and a daily breaker on all of it that pauses new work g1t would pay for."
     >
       <div className="grid gap-3 lg:grid-cols-2">
         <CapMeter
@@ -403,7 +402,7 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
           hint={
             caps.tripped ? (
               <span className="text-danger">
-                Breaker open{caps.trippedAt ? <> since <When at={caps.trippedAt} time /></> : null}: new hosted-model runs g1t pays for wait until 00:00 UTC.
+                Breaker open{caps.trippedAt ? <> since <When at={caps.trippedAt} time /></> : null}: new work g1t pays for waits until 00:00 UTC.
               </span>
             ) : caps.liftedBy ? (
               <>

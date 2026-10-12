@@ -1,11 +1,10 @@
-import { History, Loader2 } from "lucide-react";
+import { History } from "lucide-react";
 import { Form, Link, useSubmit } from "react-router";
 
-import { type PullStatus, RUN_KINDS, RUN_KIND_LABEL, type RunKind } from "@g1t/contracts";
+import type { PullStatus } from "@g1t/contracts";
 
 import type { Route } from "./+types/sessions";
 import { page } from "../../lib/meta";
-import { KindLabel, formatCost, useLiveRefresh } from "../../components/agents";
 import { EmptyState, TimeAgo } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
@@ -27,11 +26,9 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const query = new URL(request.url).searchParams;
-  const kind = query.get("kind") as RunKind | null;
   const outcome = query.get("outcome") as PullStatus | null;
   const number = Number(String(query.get("pr") ?? "").replace("#", ""));
   const filter = {
-    kind: kind && RUN_KINDS.includes(kind) ? kind : undefined,
     outcome: outcome && outcome in OUTCOMES ? outcome : undefined,
     number: number > 0 ? number : undefined,
   };
@@ -43,8 +40,7 @@ export default function Sessions({ loaderData, params }: Route.ComponentProps) {
   const { sessions, filter } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const submit = useSubmit();
-  useLiveRefresh(sessions.some((session) => session.active));
-  const filtered = filter.kind || filter.outcome || filter.number;
+  const filtered = filter.outcome || filter.number;
   return (
     <div className="max-w-4xl">
       <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
@@ -52,32 +48,13 @@ export default function Sessions({ loaderData, params }: Route.ComponentProps) {
         Sessions
       </h2>
       <p className="mt-1.5 max-w-2xl text-sm text-muted">
-        Every recorded session on this project: the prompt an agent was given, what it said, the
-        tools it ran and what came back, for each pull request. g1t records its own as it
-        works; your own agents record theirs with record_session.
+        Every recorded session on this project, for each pull request: the prompt a coding agent
+        was given, what it said, the tools it ran and what came back. Agents record theirs with
+        the MCP server's record_session.
       </p>
 
       {/* Each choice applies at once; the number applies on Enter. */}
       <Form method="get" className="mt-6 flex flex-wrap items-center gap-2">
-        <div className="w-44">
-          <Select
-            name="kind"
-            defaultValue={filter.kind ?? "any"}
-            onValueChange={(value) => submit({ ...current(filter), kind: value === "any" ? "" : value }, { method: "get" })}
-          >
-            <SelectTrigger size="sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any">Any kind of run</SelectItem>
-              {RUN_KINDS.map((kind) => (
-                <SelectItem key={kind} value={kind}>
-                  {RUN_KIND_LABEL[kind]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
         <div className="w-44">
           <Select
             name="outcome"
@@ -118,8 +95,8 @@ export default function Sessions({ loaderData, params }: Route.ComponentProps) {
         <div className="mt-6">
           <EmptyState title={filtered ? "No session matches" : "No sessions yet"}>
             {filtered
-              ? "Try another kind of run or outcome."
-              : "A session is recorded when an agent works on a pull request here."}
+              ? "Try another outcome or pull request."
+              : "A session shows here once a coding agent records one on a pull request with record_session."}
           </EmptyState>
         </div>
       ) : (
@@ -132,23 +109,12 @@ export default function Sessions({ loaderData, params }: Route.ComponentProps) {
                   <Link to={`${base}/sessions/${session.number}`} prefetch="intent" className="min-w-0 grow font-medium hover:text-accent">
                     {session.title} <span className="font-normal text-faint">#{session.number}</span>
                   </Link>
-                  {session.active && (
-                    <span className="inline-flex items-center gap-1 text-xs text-accent">
-                      <Loader2 size={11} className="animate-spin" />
-                      at work
-                    </span>
-                  )}
                   <span className="text-xs text-muted">{OUTCOMES[session.status]}</span>
                 </div>
                 {session.prompt && <p className="mt-1.5 line-clamp-1 text-sm text-muted">{session.prompt}</p>}
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
-                  {session.kinds.map((kind) => (
-                    <KindLabel key={kind} kind={kind} />
-                  ))}
                   <span>{session.entries} entries</span>
                   <span>{session.tools} tool calls</span>
-                  {session.runs > 0 && <span>{session.runs} {session.runs === 1 ? "run" : "runs"}</span>}
-                  {formatCost(session.costUsd) && <span>{formatCost(session.costUsd)}</span>}
                   <span className="grow" />
                   <span>
                     <TimeAgo at={session.lastAt} />
@@ -164,9 +130,8 @@ export default function Sessions({ loaderData, params }: Route.ComponentProps) {
 }
 
 /** The filters as they stand, for changing one of them. */
-function current(filter: { kind?: string; outcome?: string; number?: number }): Record<string, string> {
+function current(filter: { outcome?: string; number?: number }): Record<string, string> {
   return {
-    kind: filter.kind ?? "",
     outcome: filter.outcome ?? "",
     pr: filter.number ? String(filter.number) : "",
   };

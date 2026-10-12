@@ -1,4 +1,4 @@
-import { AtSign, BellRing, CornerDownLeft, GitPullRequest, Hourglass, Bell, MessageCircle, MessagesSquare, ShieldAlert, X } from "lucide-react";
+import { AtSign, BellRing, CornerDownLeft, GitPullRequest, Bell, MessageCircle, MessagesSquare, ShieldAlert, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import type { FeedNotification, NotificationKind } from "@g1t/contracts";
@@ -11,12 +11,12 @@ import { TOAST_GUESS, TOAST_MS, canQuickReply, hiddenToFit, notificationActions,
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 
-const KIND: Record<NotificationKind, { label: string; icon: ReactNode }> = {
+/** How each kind reads; an old kind this does not know (an agent's "waiting on you") reads as a notification. */
+const KIND: Partial<Record<NotificationKind, { label: string; icon: ReactNode }>> = {
   dm: { label: "Direct message", icon: <MessageCircle /> },
   mention: { label: "Mentioned you", icon: <AtSign /> },
   thread_reply: { label: "Replied in a thread", icon: <MessagesSquare /> },
   inbox: { label: "Notifications", icon: <Bell /> },
-  agent_waiting: { label: "Waiting on you", icon: <Hourglass /> },
   approval: { label: "Needs your review", icon: <GitPullRequest /> },
   security: { label: "Security alert", icon: <ShieldAlert /> },
 };
@@ -26,7 +26,7 @@ const DESKTOP_MARGIN = 84;
 const PHONE_MARGIN = 112;
 
 /** Said to you, so drawn in the accent. */
-const LOUD: ReadonlySet<NotificationKind> = new Set(["dm", "mention", "agent_waiting", "approval", "security"]);
+const LOUD: ReadonlySet<NotificationKind> = new Set(["dm", "mention", "approval", "security"]);
 
 // The toast's entrance (up from the corner on a computer, down from the top
 // on a phone) and its timer, a line that empties over TOAST_MS. Paused while
@@ -45,10 +45,7 @@ function ActorAvatar({ notification }: { notification: FeedNotification }) {
   const { actor } = notification;
   if (actor.kind === "user" || actor.kind === "agent") {
     return (
-      <MemberAvatar
-        member={{ kind: actor.kind, id: actor.id, name: actor.name, avatar: actor.avatar ?? null, avatar_seed: actor.avatar_seed ?? null, look: actor.look ?? null }}
-        size={32}
-      />
+<MemberAvatar member={{ kind: actor.kind, id: actor.id, name: actor.name, avatar: actor.avatar ?? null }} size={32} />
     );
   }
   return <Avatar name={actor.name} system={actor.id === "g1t"} square size={32} />;
@@ -113,7 +110,7 @@ function QuickReply({ notification, onSent }: { notification: FeedNotification; 
 }
 
 function ToastCard({ notification, paused }: { notification: FeedNotification; paused: boolean }) {
-  const kind = KIND[notification.kind];
+  const kind = KIND[notification.kind] ?? { label: "Notifications", icon: <Bell /> };
   const loud = LOUD.has(notification.kind);
   // A card's actions (Approve more, Stop, File issue…): more time to decide.
   const card = notificationActions(notification).length > 0;

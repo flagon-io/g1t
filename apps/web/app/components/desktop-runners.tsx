@@ -186,7 +186,7 @@ function KindCard({ capability, here, runners, update }: { capability: DesktopRu
       {capability.about && <p className="text-sm text-muted">{capability.about}</p>}
       {capability.job && (
         <div className="rounded-lg bg-raised px-3 py-2 text-sm">
-          <span className="block text-[0.6875rem] font-medium tracking-wide text-muted uppercase">{capability.job.kind === "agent" ? "Agent work" : "Running"}</span>
+          <span className="block text-[0.6875rem] font-medium tracking-wide text-muted uppercase">{capability.job.kind === "agent" ? "Sandbox run" : "Running"}</span>
           {href ? (
             <Link to={href} className="font-medium text-fg underline-offset-4 hover:underline">
               {capability.job.name}

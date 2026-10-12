@@ -98,8 +98,8 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
           <CopyLine prompt text={`git push ${remote} my-change`} />
         </div>
         <p className="mt-4 text-sm text-muted">
-          Agents do not need a branch. Open an issue and assign agents to it,
-          and each gets a pull request with its own fork.
+          A coding agent connected through the MCP server does not need a branch: it can
+          open a draft pull request for an issue and get a fork of its own to push to.
         </p>
       </div>
     );
@@ -157,7 +157,7 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
         <SubmitButton name="intent" value="draft" match={{ intent: "draft" }} variant="outline" pending="Opening…" disabled={mirrorBlocked != null}>
           Open as draft
         </SubmitButton>
-        <span className="text-xs text-faint">A draft can't merge, and agents' review routines wait, until you mark it ready.</span>
+        <span className="text-xs text-faint">A draft can't merge until you mark it ready.</span>
       </div>
     </Form>
   );

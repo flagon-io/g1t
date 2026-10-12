@@ -32,7 +32,7 @@ export function NoChannels() {
   const { owner = "" } = useParams();
   return (
     <Panel icon={<MessagesSquare size={20} />} title="Start the first conversation">
-      <p>Channels keep a topic in one place. Direct messages are for one person, a few, or an agent.</p>
+      <p>Channels keep a topic in one place. Direct messages are for one person or a few.</p>
       <div className="mt-5 flex justify-center gap-2">
         <CreateChannelButton slug={owner.toLowerCase()} variant="button" />
         <NewMessageButton slug={owner.toLowerCase()} variant="button" />

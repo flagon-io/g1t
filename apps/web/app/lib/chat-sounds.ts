@@ -10,12 +10,11 @@
  *
  * - `mention` for a message that @mentions you, `direct` for a direct
  *   message, `message` for a message in a conversation you have open while
- *   the window is not in front or you are in another conversation, and
- *   `agent_done` when an agent posts a card saying it finished something.
+ *   the window is not in front or you are in another conversation.
  * - Never for your own messages, never in a muted conversation, never
  *   while Do not disturb is on, and never for the conversation you are
  *   looking at in a window that is in front: what is on screen is silent.
- * - Agents' messages count like people's.
+ * - An old agent's message (agents no longer exist) counts like a person's.
  * - At most one sound every 1.5 seconds, and never twice for one message,
  *   however many ways it arrives (its conversation's socket and your feed).
  */
@@ -45,7 +44,7 @@ export type SoundContext = {
 /**
  * Something that arrived: a message over the open conversation's socket,
  * or a notification over the feed (which only carries what is for you: a
- * DM, a mention, a reply in your thread, an agent waiting on you).
+ * DM, a mention, a reply in your thread).
  */
 export type Arrival =
   | { source: "chat"; message: ChatMessage; channelKind: "channel" | "dm" }
@@ -65,15 +64,6 @@ export function mentionsMe(body: string, username: string): boolean {
   return pattern.test(outsideCode);
 }
 
-/** States a card shows when the agent's work is done, as agents' cards word them. */
-const FINISHED = /^(done|finished|complete|completed|filed|merged|shipped|ready|passed)\b/i;
-
-/** Whether a message is an agent's card saying it finished something. */
-export function finishedCard(message: Pick<ChatMessage, "kind" | "author" | "card">): boolean {
-  if (message.kind !== "card" || message.author.kind !== "agent" || !message.card) return false;
-  return FINISHED.test(message.card.state ?? "") || FINISHED.test(message.card.detail ?? "");
-}
-
 /** What a feed notification's kind sounds like; null for what has no sound (inbox items have the bell). */
 export function cueForNotificationKind(kind: FeedNotification["kind"]): SoundCue | null {
   switch (kind) {
@@ -85,8 +75,6 @@ export function cueForNotificationKind(kind: FeedNotification["kind"]): SoundCue
       return "mention";
     case "thread_reply":
       return "message";
-    case "agent_waiting":
-      return "agent_done";
     default:
       return null;
   }
@@ -120,8 +108,7 @@ export function cueFor(arrival: Arrival, ctx: SoundContext): SoundCue | null {
   if (arrival.source === "chat") {
     const { message } = arrival;
     if (message.deleted_at) return null;
-    if (finishedCard(message)) cue = "agent_done";
-    else if (ctx.me && mentionsMe(message.body, ctx.me.username)) cue = "mention";
+    if (ctx.me && mentionsMe(message.body, ctx.me.username)) cue = "mention";
     else cue = arrival.channelKind === "dm" ? "direct" : "message";
   } else {
     cue = cueForNotificationKind(arrival.notification.kind);

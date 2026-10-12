@@ -15,7 +15,7 @@ const LEVELS: { level: NotifyLevel; label: string; detail: string }[] = [
   {
     level: "dms_mentions",
     label: "Direct messages, mentions and replies",
-    detail: "Messages to you, @mentions, replies in your threads, and agents or reviews waiting on you.",
+    detail: "Messages to you, @mentions, replies in your threads, and reviews waiting on you.",
   },
   { level: "none", label: "Nothing", detail: "No pop-ups or browser notifications. Counts still update." },
 ];

@@ -1,11 +1,9 @@
 import { data } from "react-router";
 
-import { RUN_KINDS } from "@g1t/contracts";
-
 import type { Route } from "./+types/guardrails";
 import { GuardrailsForm } from "../../components/guardrails";
 import { usePending } from "../../components/ui";
-import { settingsFromForm } from "../../lib/guardrails";
+import { SANDBOX_RUN_KINDS, settingsFromForm } from "../../lib/guardrails";
 import { page } from "../../lib/meta";
 import { guardrails } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
@@ -31,7 +29,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const settings = settingsFromForm(form, {
     registries: current.value.registries.map((registry) => registry.id),
     rules: current.value.rules.map((rule) => rule.id),
-    kinds: RUN_KINDS,
+    kinds: SANDBOX_RUN_KINDS,
   });
   const saved = await guardrails.updateGuardrails(user, params.owner, null, settings);
   return saved.ok ? { saved: true, error: null } : { saved: false, error: saved.error.message };

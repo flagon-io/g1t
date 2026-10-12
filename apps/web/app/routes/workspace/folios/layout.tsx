@@ -34,12 +34,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
   const role = roleIn(viewer, params.owner);
   if (!role) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
-  const [sidebar, { people, agents }] = await Promise.all([
+  const [sidebar, people] = await Promise.all([
     folios
       .sidebar(slug, viewer)
       .then((r) => (r.ok ? r.value : null))
       .catch(() => null),
-    workspacePeople(slug, viewer).catch(() => ({ people: [], agents: [] })),
+    workspacePeople(slug, viewer).catch(() => []),
   ]);
   const self = people.find((p) => p.name === viewer.username.toLowerCase());
   const zone = readCookie(request.headers.get("cookie"), "g1t_tz");
@@ -53,10 +53,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
       avatar: viewer.avatar ?? null,
     },
     sidebar,
-    mentionables: [
-      ...people.map((p): DocMentionable => ({ kind: "user", id: p.name, name: p.name, display_name: p.display_name, avatar: p.avatar })),
-      ...agents.map((a): DocMentionable => ({ kind: "agent", id: a.id, name: a.handle, display_name: a.display_name, avatar: a.avatar, avatar_seed: a.avatar_seed ?? null, look: a.look ?? null })),
-    ],
+    mentionables: people.map((p): DocMentionable => ({ kind: "user", id: p.name, name: p.name, display_name: p.display_name, avatar: p.avatar })),
     zone: zone && knownTimeZone(zone) ? zone : null,
   };
 }

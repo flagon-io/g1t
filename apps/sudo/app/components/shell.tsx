@@ -8,7 +8,6 @@
  */
 import {
   Activity,
-  Bot,
   Building2,
   Boxes,
   ChevronRight,
@@ -61,7 +60,6 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   usage: Gauge,
   stripe: CreditCard,
   costs: Cloud,
-  agents: Bot,
   abuse: ShieldAlert,
   incidents: Siren,
   inbox: Inbox,

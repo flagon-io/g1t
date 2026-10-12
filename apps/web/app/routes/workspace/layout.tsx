@@ -53,7 +53,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   settings: { title: "General", about: "The workspace's name, icon, address and description, two-factor authentication, where its data lives, and deleting it." },
   people: {
     title: "People",
-    about: "Everyone in the workspace, people and agents, in one directory: who they are, what they own, the teams they're on and who's around.",
+    about: "Everyone in the workspace, in one directory: who they are, what they own, the teams they're on and who's around.",
   },
   members: {
     title: "Members",
@@ -65,7 +65,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   permissions: {
     title: "Permissions",
-    about: "Who may do what in the workspace, part by part: repositories, teams, chat, artifacts, agents, deployments and packages. Owners only.",
+    about: "Who may do what in the workspace, part by part: repositories, teams, chat, artifacts, deployments and packages. Owners only.",
   },
   projects: {
     title: "Projects",
@@ -73,7 +73,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   teams: {
     title: "Teams",
-    about: "People, agents, or both, with a lead, a channel, roles on repositories and a budget for their agents. Everyone on a team, agents included, knows who their teammates are.",
+    about: "People with a lead, a channel and roles on repositories. Everyone on a team knows who their teammates are.",
   },
   repositories: {
     title: "Repositories",
@@ -81,7 +81,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   tokens: {
     title: "Access tokens",
-    about: "Tokens that belong to the workspace, not a person: for CI, integrations and agents that work for the whole team. Each has the permissions an owner gives it, in all of the workspace's repositories or the ones chosen.",
+    about: "Tokens that belong to the workspace, not a person: for CI, integrations and coding agents that work for the whole team. Each has the permissions an owner gives it, in all of the workspace's repositories or the ones chosen.",
   },
   "personal-access-tokens": {
     title: "Personal access tokens",
@@ -91,31 +91,19 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Packages",
     about: "What the workspace publishes and installs, beside its code: container images, npm, Composer, Go, Cargo, Maven, NuGet and RubyGems, with the same members, roles and tokens.",
   },
-  usage: { title: "Usage", about: "What the workspace's agents cost, run by run, by repository, pull request and model." },
-  gateway: {
-    title: "AI Gateway",
-    about: "Your own code's model requests, sent with the workspace's access tokens: each one's model, tokens, cost and status.",
-  },
-  billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit and caps, prepaying, and every charge." },
-  agents: {
-    title: "Agents",
-    about: "The workspace's agents together: what they are working on now, what waits on you, and where this month's agent budget went.",
-  },
+  usage: { title: "Usage", about: "What the workspace used and what it cost, by product, project and day." },
+  billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit, prepaying, and every charge." },
   memory: {
     title: "Workspace memory",
-    about: "What holds across all of the workspace's projects, given to every agent in every one of them, beside each project's own memory.",
-  },
-  context: {
-    title: "Context",
-    about: "Everything the workspace builds and runs, and what it knows: a catalog built from its projects, memory with a review queue, one search over all of it, and a scorecard for each project.",
+    about: "What holds across all of the workspace's projects, beside each project's own memory. Coding agents read it with the MCP server's recall.",
   },
   audit: {
     title: "Audit log",
-    about: "Every action agents took with their run credentials, and every change people and tokens made: by whom, on whose behalf, to what, and whether it was allowed.",
+    about: "Every change people, tokens and g1t's own runs made: by whom, on whose behalf, to what, and whether it was allowed.",
   },
   guardrails: {
     title: "Guardrails",
-    about: "What agents may reach, run, spend and take in every project's sandboxes. Each project can override these under its settings.",
+    about: "What every project's sandboxes may reach, and how long their runs may take. Each project can override these under its settings.",
   },
   webhooks: {
     title: "Webhooks",
@@ -132,7 +120,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   integrations: {
     title: "Integrations",
     about:
-      "The tools your team works with, connected once for everyone in the workspace and its agents. Secrets are sealed when saved, and agents never see them.",
+      "The tools your team works with, connected once for everyone in the workspace. Secrets are sealed when saved, and never shown again.",
   },
 };
 
@@ -194,10 +182,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
         {titled && (
-          // A phone's Agents tab opens on its list of agents (agents/layout.tsx); the fleet's heading would sit above it.
-          <div className={key === "agents" ? "max-md:hidden" : undefined}>
-            <PageHeader title={heading.title} about={heading.about} />
-          </div>
+          <PageHeader title={heading.title} about={heading.about} />
         )}
         {next ? <WorkspacePageSkeleton page={next} /> : <Outlet />}
       </div>
@@ -211,7 +196,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
           {welcome && (
             <div className="mb-6">
               <WelcomeBanner title={`You're in ${workspace.name}`}>
-                You joined as a {role}. Its projects, issues and agents are all here.
+                You joined as a {role}. Its projects, issues and people are all here.
               </WelcomeBanner>
             </div>
           )}

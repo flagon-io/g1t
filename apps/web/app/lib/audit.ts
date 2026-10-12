@@ -37,7 +37,6 @@ export function retainedSince(since: string | null | undefined, days: number, no
 /** The filters a page's address can carry. */
 export type AuditFilters = {
   actor: string;
-  agent: string;
   action: string;
   project: string;
   outcome: "" | AuditOutcome;
@@ -51,7 +50,8 @@ export type AuditFilters = {
 };
 
 const OUTCOMES: AuditOutcome[] = ["allowed", "denied"];
-const KINDS: ActorKind[] = ["person", "agent", "workspace"];
+// `agent` rows (g1t's own agents, before they were removed) still render, but are no longer a filter.
+const KINDS: ActorKind[] = ["person", "workspace"];
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 function clean(value: string | null, max = 120): string {
@@ -67,7 +67,6 @@ export function parseFilters(params: URLSearchParams): AuditFilters {
   };
   return {
     actor: clean(params.get("actor")),
-    agent: clean(params.get("agent")),
     action: clean(params.get("action")),
     project: clean(params.get("project")),
     outcome: OUTCOMES.includes(outcome as AuditOutcome) ? (outcome as AuditOutcome) : "",
@@ -98,7 +97,7 @@ export function toQuery(
     workspace,
     visibility,
     actor: filters.actor || null,
-    agent: filters.agent || null,
+    agent: null,
     action: filters.action || null,
     repo: project,
     outcome: filters.outcome || null,
@@ -187,7 +186,7 @@ export function exportName(workspace: string, format: "csv" | "json", now: Date)
 
 /** Plain words for the rule that decided an entry. */
 export function ruleLabel(rule: string): string {
-  if (rule === "never") return "never allowed for agents";
+  if (rule === "never") return "never allowed for agents (an old entry)";
   if (rule === "scope:operation") return "not in the run's scope";
   if (rule === "scope:repository") return "outside the run's repository";
   if (rule === "scope:pull") return "outside the run's pull request";

@@ -170,7 +170,7 @@ export function StatementView({
       <div className="mt-3">
         {statement.groups.length === 0 ? (
           <EmptyState title={`Nothing in ${monthLabel(statement.month)}`}>
-            Agent runs, sandbox time, deployments and payments appear here, a line per kind each day.
+            Sandbox time, deployments and payments appear here, a line per kind each day.
           </EmptyState>
         ) : (
           <Card tone="plain" className="overflow-hidden">

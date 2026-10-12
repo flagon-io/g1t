@@ -10,8 +10,7 @@ import { ButtonLink, EmptyState, notACredential } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { filterTeams, splitTeams } from "../../lib/teams";
-import { agentsOn } from "../../lib/people";
-import { identity, workspaceAgents } from "../../lib/services.server";
+import { identity } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -23,19 +22,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // A workspace's teams are its members' business.
   const role = roleIn(viewer, params.owner);
   if (!role) throw data(null, { status: 404 });
-  const [teams, workspace, directory, agents] = await Promise.all([
+  const [teams, workspace] = await Promise.all([
     identity.listTeams(viewer, params.owner).then(unwrap),
     identity.getWorkspace(params.owner).catch(() => null),
-    // Which agents are on each team: its agent members that are still here.
-    identity.peopleDirectory(viewer, params.owner).catch(() => null),
-    workspaceAgents.list(params.owner, viewer!).catch(() => null),
   ]);
-  const listed = agents?.ok ? agents.value : [];
-  const agentCounts = Object.fromEntries(
-    (directory?.ok ? directory.value.teams : []).map((team) => [team.slug, agentsOn(team, listed).length]),
-  );
   // Who may create one is the workspace's to say (its settings).
-  return { teams, agentCounts, slug: params.owner.toLowerCase(), canCreate: mayCreateTeams(workspace?.teamCreation, role) };
+  return { teams, slug: params.owner.toLowerCase(), canCreate: mayCreateTeams(workspace?.teamCreation, role) };
 }
 
 /** Searching changes only the address: the list is already here. */
@@ -45,7 +37,7 @@ export function shouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShoul
 }
 
 export default function WorkspaceTeams({ loaderData }: Route.ComponentProps) {
-  const { teams, agentCounts, slug, canCreate } = loaderData;
+  const { teams, slug, canCreate } = loaderData;
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
   const { mine, others } = splitTeams(filterTeams(teams, query));
@@ -90,7 +82,7 @@ export default function WorkspaceTeams({ loaderData }: Route.ComponentProps) {
 
       {teams.length === 0 ? (
         <EmptyState title="No teams yet">
-          A team brings people and agents together: a lead, a channel, roles on repositories and a budget for its agents.
+          A team brings people together: a lead, a channel, and roles on repositories.
           Mention it as <span className="font-mono text-fg">@{slug}/team</span>, or ask it to review a pull request.
         </EmptyState>
       ) : mine.length + others.length === 0 ? (
@@ -104,15 +96,15 @@ export default function WorkspaceTeams({ loaderData }: Route.ComponentProps) {
         </Card>
       ) : (
         <>
-          {mine.length > 0 && <TeamList title="Your teams" teams={mine} agents={agentCounts} />}
-          {others.length > 0 && <TeamList title={mine.length > 0 ? "Other teams" : "All teams"} teams={others} agents={agentCounts} />}
+          {mine.length > 0 && <TeamList title="Your teams" teams={mine} />}
+          {others.length > 0 && <TeamList title={mine.length > 0 ? "Other teams" : "All teams"} teams={others} />}
         </>
       )}
     </div>
   );
 }
 
-function TeamList({ title, teams, agents }: { title: string; teams: Team[]; agents: Record<string, number> }) {
+function TeamList({ title, teams }: { title: string; teams: Team[] }) {
   return (
     <section aria-label={title}>
       <h2 className="mb-3 text-sm font-medium text-muted">
@@ -121,7 +113,7 @@ function TeamList({ title, teams, agents }: { title: string; teams: Team[]; agen
       <Card asChild tone="plain" divided className="overflow-hidden">
         <ul>
           {teams.map((team) => (
-            <TeamRow key={team.id} team={team} agents={agents[team.slug]} />
+            <TeamRow key={team.id} team={team} />
           ))}
         </ul>
       </Card>

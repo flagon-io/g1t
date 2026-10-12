@@ -4,7 +4,6 @@ import {
   ChevronLeft,
   Copy,
   Ellipsis,
-  FileText,
   Link2,
   Pencil,
   Trash2,
@@ -38,17 +37,15 @@ import { CardBox, CardToasts, showToast } from "./card";
 import { Composer } from "./composer";
 import { type LiveState, useChatLive } from "./live";
 import { AgentPill, MemberAvatar } from "./marks";
-import { AgentAvatar } from "../agent-avatar";
 import { PersonStatusEmoji, PersonStatusLine, PresenceSummary, WithPresence } from "../presence";
 import { CardContext, MemberCard, type PersonCard, personCard } from "./profile-card";
 
 import { localTime } from "../../lib/time-zone";
 import { BottomSheet, SheetRow, useBack, useSwipeBack } from "../mobile";
 import { MessageText, type TextContext } from "./text";
-import { WriteUpDialog } from "./write-up";
 import { FolioUnfurls } from "../folios/unfurl";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
-import { threadLink, writeUpAgents } from "../../lib/write-up";
+import { threadLink } from "../../lib/write-up";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,17 +66,11 @@ import {
   type Mentionable,
   type ShownMessage,
   type Typer,
-  WORKING_AFTER_MS,
-  agentsAmong,
-  archivedAgentLine,
-  archivedAgentWhen,
-  archivedAgentsDm,
   channelPath,
-  dmPlaceholder,
-  isMixed,
+  formerAgentDm,
+  formerAgentLine,
   mentionNames,
   mergeMessages,
-  mixedNotice,
   shownHandle,
   shownName,
   timeline,
@@ -148,8 +139,8 @@ export function ChannelView({ data }: { data: Loaded }) {
   // The message the open thread is under, as its page says, for when it is
   // further back than the conversation has loaded (a long-running session's card).
   const [threadRoot, setThreadRoot] = useState<ShownMessage | null>(null);
-  // Who is typing, until when, and since when (so an agent still at it after a while is said to be working).
-  const [typing, setTyping] = useState<Map<string, { member: MemberProfile; until: number; since: number }>>(new Map());
+  // Who is typing, and until when.
+  const [typing, setTyping] = useState<Map<string, { member: MemberProfile; until: number }>>(new Map());
   const [joined, setJoined] = useState(data.joined);
   const [members, setMembers] = useState<ChannelMember[]>(data.members);
   // The channel as it is now: renamed, its topic changed, archived, live.
@@ -210,13 +201,12 @@ export function ChannelView({ data }: { data: Loaded }) {
     return () => viewingConversation(null);
   }, [data.channel.id]);
   const everyoneElse = members.filter((m) => !(m.member.kind === "user" && m.member.id === me?.id)).map((m) => m.member);
-  // An agent deleted for good is no longer in the conversation, unless it was only ever the two of you: then it is who the conversation was with.
-  const stillHere = everyoneElse.filter((m) => m.deleted !== true);
+  // An old agent (agents no longer exist) is not in the conversation any more, unless it was only ever the two of you: then it is who the conversation was with.
+  const stillHere = everyoneElse.filter((m) => m.kind !== "agent");
   const others = stillHere.length > 0 ? stillHere : everyoneElse;
   const isDm = data.channel.kind === "dm";
-  // A direct message with one archived agent opens read-only: a note stands where the composer was (lib/chat.ts).
-  const archivedAgent = isDm && others.length === 1 ? archivedAgentsDm({ channel: data.channel, others }) : null;
-  const owner = chatData?.role === "owner";
+  // An old direct message with an agent alone opens read-only: a note stands where the composer was (lib/chat.ts).
+  const formerAgent = isDm ? formerAgentDm({ channel: data.channel, others }) : null;
 
   // The details panel: open by default on a wide screen, as last left.
   useEffect(() => {
@@ -238,27 +228,20 @@ export function ChannelView({ data }: { data: Loaded }) {
     });
 
   const people = useMemo<Mentionable[]>(
-    () => [
-      // A personal agent is never mentioned: it answers only in its own DM.
-      ...(chatData?.agents ?? [])
-        .filter((agent) => agent.scope !== "personal")
-        .map((agent) => ({ kind: "agent" as const, name: agent.handle, display_name: agent.display_name, avatar: agent.avatar, role: agent.role })),
-      ...(chatData?.people ?? []).filter((p) => p.name !== me?.username),
-    ],
+    () => (chatData?.people ?? []).filter((p) => p.name !== me?.username),
     [chatData, me?.username],
   );
   const context = useMemo<TextContext>(
     () => ({
       slug,
       me: me?.username ?? null,
-      agents: new Set((chatData?.agents ?? []).map((a) => a.handle.toLowerCase())),
       // `@ana` reads as the name people know: everyone in the workspace, the viewer too.
       names: mentionNames([...people, ...(me ? [{ kind: "user" as const, name: me.username, display_username: me.display_username, display_name: me.display_name, avatar: me.avatar }] : [])]),
       channels: new Set((sidebar?.entries ?? []).filter((e) => e.channel.kind === "channel").map((e) => e.channel.name ?? "")),
       project,
       codeLink: code ? undefined : (href: string) => (/^\/[^/]+\/(?!-\/)[^/]+/.test(href) ? codeAccessPath(slug, href) : href),
     }),
-    [slug, me, people, chatData?.agents, sidebar?.entries, project, code],
+    [slug, me, people, sidebar?.entries, project, code],
   );
 
   // Keeps the newest message in view while the reader is at the bottom.
@@ -365,11 +348,7 @@ export function ChannelView({ data }: { data: Loaded }) {
       } else if (event.type === "typing") {
         if (event.channel_id !== data.channel.id) return;
         if (event.member.kind === "user" && event.member.id === me?.id) return;
-        setTyping((now) => {
-          const key = `${event.member.kind}:${event.member.id}`;
-          // An agent working on a long reply says it is typing again every few seconds: one stretch, from its first.
-          return new Map(now).set(key, { member: event.member, until: new Date(event.until).getTime(), since: now.get(key)?.since ?? Date.now() });
-        });
+        setTyping((now) => new Map(now).set(`${event.member.kind}:${event.member.id}`, { member: event.member, until: new Date(event.until).getTime() }));
       } else if (event.type === "channel.updated") {
         // Renamed, a new topic, archived or back: everyone looking sees it at once.
         if (event.channel.id !== data.channel.id) return;
@@ -545,9 +524,7 @@ export function ChannelView({ data }: { data: Loaded }) {
     setParams(next, { preventScrollReset: true, replace: !!threadId && !!id });
   };
 
-  // A thread's link, to copy and to cite; and "Write this up as an artifact",
-  // which asks an agent, in the thread and as the person, for a doc about it.
-  const [writeUp, setWriteUp] = useState<string | null>(null);
+  // A thread's link, to copy and to cite.
   const linkToThread = (root: string) => threadLink(window.location.origin, channelPath(slug, channel), root);
   const copyThreadLink = (root: string) => {
     const done = navigator.clipboard?.writeText(linkToThread(root));
@@ -557,21 +534,6 @@ export function ChannelView({ data }: { data: Loaded }) {
       () => showToast(false, "Couldn't copy the link here."),
     );
   };
-  const writers = useMemo(() => writeUpAgents(members.map((m) => m.member)), [members]);
-  const askForWriteUp = async (body: string): Promise<string | null> => {
-    const root = writeUp;
-    if (!root) return null;
-    // The thread open already: posted as any reply is, shown at once.
-    if (root === threadId) {
-      void post(body, root);
-      return null;
-    }
-    const saved = await send<ChatMessage>({ intent: "post", channel_id: data.channel.id, body, thread_root: root });
-    if (!saved.ok) return saved.error.message;
-    openThread(root);
-    return null;
-  };
-
   const updateChannel = useCallback(
     async (change: ChannelChange): Promise<Result<unknown>> => {
       const done = await send<{ channel: Channel }>({ intent: "update_channel", channel_id: data.channel.id, ...change });
@@ -633,24 +595,18 @@ export function ChannelView({ data }: { data: Loaded }) {
   const typers = [...typing.values()];
   const name = channel.name ?? "";
   const archived = channel.kind === "channel" && !!channel.archived_at;
-  // A mixed direct message names each member and says which are agents.
-  const placeholder = isDm
-    ? isMixed(others)
-      ? dmPlaceholder(others)
-      : `Message ${others.map(shownName).join(", ") || "yourself"}`
-    : `Message #${name}. @ a teammate or an agent`;
+  const placeholder = isDm ? `Message ${others.map(shownName).join(", ") || "yourself"}` : `Message #${name}. @ a teammate`;
   const rootMessage = threadId ? (messages.find((m) => m.id === threadId) ?? (threadRoot?.id === threadId ? threadRoot : null)) : null;
   const cardContext = useMemo(
     () => ({
       slug,
-      agents: chatData?.agents ?? [],
       onViewProfile: (username: string) => {
         if (threadId) openThread(null);
         setProfile(username);
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [slug, chatData?.agents, threadId],
+    [slug, threadId],
   );
 
   return (
@@ -719,7 +675,6 @@ export function ChannelView({ data }: { data: Loaded }) {
                   onCopyLink={() => copyThreadLink(row.message.id)}
                   onEdit={mine(row.message) ? () => setEditing({ id: row.message.id, body: row.message.body, inline: true }) : undefined}
                   editor={editing?.inline && editing.id === row.message.id ? editor(editing) : undefined}
-                  onWriteUp={joined && !archived ? () => setWriteUp(row.message.id) : undefined}
                   threadOpen={row.message.id === threadId}
                 />
               ),
@@ -749,35 +704,10 @@ export function ChannelView({ data }: { data: Loaded }) {
                   </Button>
                 )}
               </Card>
-            ) : archivedAgent ? (
-              <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <p className="flex items-start gap-2 text-sm text-muted">
-                  <Archive size={15} className="mt-0.5 shrink-0 text-faint" />
-                  <span>
-                    {archivedAgent.deleted ? (
-                      <>{shownName(archivedAgent)} was deleted for good. Everything it said here stays to read.</>
-                    ) : (
-                      <>
-                        {archivedAgentLine(archivedAgent)} Everything said here stays to read.{" "}
-                        {owner ? (
-                          <>
-                            Restore it, or delete it for good, under <span className="font-medium text-fg">Archived</span> on the Agents page.
-                          </>
-                        ) : (
-                          "An owner can restore it from the Agents page."
-                        )}
-                      </>
-                    )}
-                  </span>
-                </p>
-                {owner && !archivedAgent.deleted && (
-                  <Button asChild variant="outline" className="px-3 text-fg/90 hover:bg-raised">
-                    <Link to={`/${slug}/-/agents#archived`}>
-                      <ArchiveRestore size={15} />
-                      Restore under Agents
-                    </Link>
-                  </Button>
-                )}
+            ) : formerAgent ? (
+              <Card className="flex items-start gap-2 px-4 py-3 text-sm text-muted">
+                <Archive size={15} className="mt-0.5 shrink-0 text-faint" />
+                <span>{formerAgentLine(formerAgent)}</span>
               </Card>
             ) : joined ? (
               <Composer draftKey={data.channel.id} placeholder={placeholder} people={people} onSend={(body) => void post(body, null)} onTyping={onTyping} autoFocus />
@@ -803,7 +733,7 @@ export function ChannelView({ data }: { data: Loaded }) {
           title="Thread"
           subtitle={isDm ? undefined : `#${name}`}
           onClose={() => openThread(null)}
-          menu={<ThreadMenu onCopyLink={() => copyThreadLink(threadId)} onWriteUp={joined && !archived ? () => setWriteUp(threadId) : undefined} />}
+          menu={<ThreadMenu onCopyLink={() => copyThreadLink(threadId)} />}
         >
           <ThreadPanel
             root={rootMessage}
@@ -846,7 +776,6 @@ export function ChannelView({ data }: { data: Loaded }) {
         onClose={() => setActions(null)}
         onThread={(id) => openThread(id)}
         onCopyLink={(message) => copyThreadLink(message.thread_root ?? message.id)}
-        onWriteUp={joined && !archived ? (message) => setWriteUp(message.thread_root ?? message.id) : undefined}
         onEdit={(message) => setEditing({ id: message.id, body: message.body })}
         onDelete={async (message) => {
           // Gone at once; back if the service refuses.
@@ -854,15 +783,6 @@ export function ChannelView({ data }: { data: Loaded }) {
           const done = await send({ intent: "remove", channel_id: data.channel.id, id: message.id });
           if (!done.ok) setMessages((now) => now.map((m) => (m.id === message.id ? { ...m, deleted_at: null } : m)));
         }}
-      />
-      <WriteUpDialog
-        open={writeUp != null}
-        onOpenChange={(open) => !open && setWriteUp(null)}
-        slug={slug}
-        agents={writers}
-        link={writeUp && typeof window !== "undefined" ? linkToThread(writeUp) : ""}
-        shared={channel.kind === "dm" || channel.private}
-        onSend={askForWriteUp}
       />
       <BottomSheet open={editing != null && !editing.inline} onOpenChange={(open) => !open && setEditing(null)} title="Edit message">
         {editing && !editing.inline && (
@@ -905,7 +825,6 @@ function ChannelHeader({
 }) {
   const channel = data.channel;
   const agentDm = channel.kind === "dm" && others.length === 1 && others[0]!.kind === "agent" ? others[0]! : null;
-  const mixed = channel.kind === "dm" && isMixed(others);
   return (
     <header data-page-head className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4 sm:px-5 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] max-md:gap-2 max-md:pt-[env(safe-area-inset-top)] max-md:pl-1.5">
       <Button variant="ghost" size="icon-bar" onClick={onBack} aria-label="Back to conversations" className="rounded-full md:hidden">
@@ -960,20 +879,7 @@ function ChannelHeader({
               <h1 className="flex min-w-0 items-center gap-1.5 text-[0.9375rem] leading-tight font-semibold">
                 <span className="truncate">{others.map(shownName).join(", ") || "Just you"}</span>
                 {agentDm && <AgentPill deleted={agentDm.deleted === true} />}
-                {agentDm?.archived_at && (
-                  <Badge tone="neutral" className="shrink-0">
-                    <Archive size={11} />
-                    Archived
-                  </Badge>
-                )}
               </h1>
-              {agentDm?.archived_at ? (
-                <p className="truncate text-xs leading-tight text-muted">{archivedAgentWhen(agentDm)}</p>
-              ) : (
-                agentDm &&
-                (titleOf(agentDm) ?? agentDm.role) && <p className="truncate text-xs leading-tight text-muted">{titleOf(agentDm) ?? agentDm.role}</p>
-              )}
-              {mixed && <MixedChip agents={agentsAmong(others)} />}
               {/* One person: their status under their name, as their card has it. */}
               {!agentDm && others.length === 1 && others[0]!.kind === "user" && <PersonStatusLine person={{ id: others[0]!.id, username: others[0]!.name }} className="truncate text-xs leading-tight text-muted" />}
             </div>
@@ -1036,7 +942,6 @@ function ConversationStart({ data, others }: { data: Loaded; others: MemberProfi
   const channel = data.channel;
   if (channel.kind === "dm") {
     const agent = others.length === 1 && others[0]!.kind === "agent" ? others[0]! : null;
-    const mixed = isMixed(others);
     return (
       <div className="px-2 pb-6 sm:px-3">
         <div className="flex -space-x-2">
@@ -1049,24 +954,8 @@ function ConversationStart({ data, others }: { data: Loaded; others: MemberProfi
         <h2 className="mt-3 flex items-center gap-2 text-xl font-semibold tracking-tight">
           {others.map(shownName).join(", ") || "Just you"}
           {agent && <AgentPill deleted={agent.deleted === true} />}
-          {mixed && (
-            <Badge tone="accent" size="md" className="font-normal">
-              with an agent
-            </Badge>
-          )}
         </h2>
-        <p className="mt-1 max-w-xl text-sm text-muted">
-          {agent?.deleted
-            ? "This agent was deleted. What it said stays here to read."
-            : agent?.archived_at
-              ? archivedAgentLine(agent)
-              : agent
-            ? `${agent.role ? `${agent.role}. ` : ""}Ask a question or give it a job: it answers here, and opens a task when the work needs one.`
-            : mixed
-              ? "A conversation between people and an agent. Everyone here, the agent too, reads every message."
-              : "This is the start of your conversation."}
-        </p>
-        {mixed && <MixedNotice channelId={channel.id} others={others} />}
+        <p className="mt-1 max-w-xl text-sm text-muted">{agent ? formerAgentLine(agent) : "This is the start of your conversation."}</p>
       </div>
     );
   }
@@ -1078,72 +967,6 @@ function ConversationStart({ data, others }: { data: Loaded; others: MemberProfi
       <h2 className="mt-3 text-xl font-semibold tracking-tight">Welcome to #{channel.name}</h2>
       <p className="mt-1 max-w-xl text-sm text-muted">{channel.topic ?? "This is the very beginning of the channel."}</p>
     </div>
-  );
-}
-
-/**
- * The chip a mixed direct message carries in its header, always: each agent
- * in it by face and handle, said to be an agent, so a person writing to a
- * colleague never forgets who else reads along.
- */
-function MixedChip({ agents }: { agents: MemberProfile[] }) {
-  const handles = agents.map((a) => `@${shownHandle(a)}`);
-  const list = handles.length <= 2 ? handles.join(" and ") : `${handles.slice(0, -1).join(", ")} and ${handles[handles.length - 1]}`;
-  return (
-    <Badge tone="accent" size="md" className="mt-0.5 max-w-full gap-1.5 pl-1 font-normal">
-      <span className="flex shrink-0 -space-x-1">
-        {agents.slice(0, 3).map((a) => (
-          <AgentAvatar key={a.id} agent={a} size={16} ring="var(--color-bg)" />
-        ))}
-      </span>
-      <span className="truncate">
-        {list}, {agents.length === 1 ? "agent" : "agents"}
-        <span className="max-md:hidden">, {agents.length === 1 ? "is" : "are"} in this conversation</span>
-      </span>
-    </Badge>
-  );
-}
-
-const MIXED_SEEN_KEY = (channelId: string) => `g1t:chat-mixed-seen:${channelId}`;
-
-/**
- * The one-line notice above a mixed conversation's first message, the
- * first time a person opens it on this device: who the agents are and
- * that they read everything and can act on it. Dismissed, it stays away.
- */
-function MixedNotice({ channelId, others }: { channelId: string; others: MemberProfile[] }) {
-  const [seen, setSeen] = useState(true);
-  useEffect(() => {
-    try {
-      setSeen(localStorage.getItem(MIXED_SEEN_KEY(channelId)) === "1");
-    } catch {
-      setSeen(false);
-    }
-  }, [channelId]);
-  const dismiss = () => {
-    setSeen(true);
-    try {
-      localStorage.setItem(MIXED_SEEN_KEY(channelId), "1");
-    } catch {
-      // Not kept: it shows again next time, which is fine.
-    }
-  };
-  const words = mixedNotice(others);
-  if (seen || !words) return null;
-  return (
-    <Card tone="bg" radius="lg" className="mt-4 flex max-w-xl items-center gap-2.5 py-2 pr-1.5 pl-3 text-sm text-fg-soft" role="note">
-      <span className="flex shrink-0 -space-x-1">
-        {agentsAmong(others).slice(0, 3).map((a) => (
-          <AgentAvatar key={a.id} agent={a} size={20} ring="var(--color-bg)" />
-        ))}
-      </span>
-      <span className="min-w-0 grow">{words}</span>
-      <Hint label="Got it">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Dismiss" onClick={dismiss} className="shrink-0 text-faint">
-          <X size={14} />
-        </Button>
-      </Hint>
-    </Card>
   );
 }
 
@@ -1259,10 +1082,6 @@ function ProfilePanel({
   );
 }
 
-/** An agent's title ("QA Engineer"), when the chat service sends it with the member. */
-function titleOf(member: MemberProfile): string | null {
-  return (member as MemberProfile & { title?: string | null }).title ?? null;
-}
 
 /** A long press (half a second, without moving) on a touch screen. */
 function useLongPress(onLongPress?: () => void) {
@@ -1298,7 +1117,6 @@ function MessageActions({
   onClose,
   onThread,
   onCopyLink,
-  onWriteUp,
   onEdit,
   onDelete,
 }: {
@@ -1307,8 +1125,6 @@ function MessageActions({
   onClose: () => void;
   onThread: (id: string) => void;
   onCopyLink: (message: ShownMessage) => void;
-  /** Absent where the person cannot post (not joined, archived). */
-  onWriteUp?: (message: ShownMessage) => void;
   onEdit: (message: ShownMessage) => void;
   onDelete: (message: ShownMessage) => void;
 }) {
@@ -1337,11 +1153,6 @@ function MessageActions({
           {!message.pending && (
             <SheetRow icon={<Link2 />} onClick={act(() => onCopyLink(message))}>
               Copy link to thread
-            </SheetRow>
-          )}
-          {!message.pending && onWriteUp && (
-            <SheetRow icon={<FileText />} onClick={act(() => onWriteUp(message))}>
-              Write this up as an artifact
             </SheetRow>
           )}
           {mine && message.kind === "text" && (
@@ -1376,7 +1187,6 @@ function MessageRow({
   onRetry,
   onLongPress,
   onCopyLink,
-  onWriteUp,
   threadOpen,
   inThread,
   onEdit,
@@ -1387,9 +1197,8 @@ function MessageRow({
   editor?: ReactNode;
   /** A phone: a long press opens the message's actions. */
   onLongPress?: () => void;
-  /** The hover toolbar's "⋯": copy the link to its thread, write it up in Docs. */
+  /** The hover toolbar's "⋯": copy the link to its thread. */
   onCopyLink?: () => void;
-  onWriteUp?: () => void;
   message: ShownMessage;
   head: boolean;
   zone: string | undefined;
@@ -1444,14 +1253,7 @@ function MessageRow({
           {editor ? <div className="py-1">{editor}</div> : message.body && <MessageText body={message.body} context={context} />}
           {!editor && message.body && !message.pending && <FolioUnfurls slug={slug} body={message.body} />}
           {message.card && (
-            <CardBox
-              card={message.card}
-              slug={slug}
-              code={code}
-              channelId={message.channel_id}
-              messageId={message.id}
-              inert={!!message.pending || !!message.deleted_at}
-            />
+            <CardBox card={message.card} slug={slug} code={code} />
           )}
           {message.edited_at && <span className="text-[0.6875rem] text-faint"> (edited)</span>}
         </div>
@@ -1496,7 +1298,7 @@ function MessageRow({
               <MessageSquareText size={15} />
             </Button>
           </Hint>
-          {onCopyLink && <MoreActions onCopyLink={onCopyLink} onWriteUp={onWriteUp} onEdit={onEdit} />}
+          {onCopyLink && <MoreActions onCopyLink={onCopyLink} onEdit={onEdit} />}
         </Card>
       )}
     </article>
@@ -1504,7 +1306,7 @@ function MessageRow({
 }
 
 /** A message's "⋯" in its hover toolbar. */
-function MoreActions({ onCopyLink, onWriteUp, onEdit }: { onCopyLink: () => void; onWriteUp?: () => void; onEdit?: () => void }) {
+function MoreActions({ onCopyLink, onEdit }: { onCopyLink: () => void; onEdit?: () => void }) {
   return (
     <DropdownMenu>
       <Hint label="More actions">
@@ -1522,31 +1324,23 @@ function MoreActions({ onCopyLink, onWriteUp, onEdit }: { onCopyLink: () => void
             Edit message
           </DropdownMenuItem>
         )}
-        <ThreadMenuItems onCopyLink={onCopyLink} onWriteUp={onWriteUp} />
+        <ThreadMenuItems onCopyLink={onCopyLink} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function ThreadMenuItems({ onCopyLink, onWriteUp }: { onCopyLink: () => void; onWriteUp?: () => void }) {
+function ThreadMenuItems({ onCopyLink }: { onCopyLink: () => void }) {
   return (
-    <>
-      <DropdownMenuItem onSelect={onCopyLink}>
-        <Link2 />
-        Copy link to thread
-      </DropdownMenuItem>
-      {onWriteUp && (
-        <DropdownMenuItem onSelect={onWriteUp}>
-          <FileText />
-          Write this up as an artifact
-        </DropdownMenuItem>
-      )}
-    </>
+    <DropdownMenuItem onSelect={onCopyLink}>
+      <Link2 />
+      Copy link to thread
+    </DropdownMenuItem>
   );
 }
 
 /** The thread panel's "⋯", in its header. */
-function ThreadMenu({ onCopyLink, onWriteUp }: { onCopyLink: () => void; onWriteUp?: () => void }) {
+function ThreadMenu({ onCopyLink }: { onCopyLink: () => void }) {
   return (
     <DropdownMenu>
       <Hint label="Thread actions">
@@ -1557,27 +1351,15 @@ function ThreadMenu({ onCopyLink, onWriteUp }: { onCopyLink: () => void; onWrite
         </DropdownMenuTrigger>
       </Hint>
       <DropdownMenuContent align="end">
-        <ThreadMenuItems onCopyLink={onCopyLink} onWriteUp={onWriteUp} />
+        <ThreadMenuItems onCopyLink={onCopyLink} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-/**
- * "reviewer is typing…", for whoever is; "Mike is still working on it…"
- * for an agent that has been at a reply a while (`typingLabel`). The line
- * redraws itself the moment the first of them crosses that mark.
- */
+/** "Ana is typing…", for whoever is (`typingLabel`). */
 function TypingLine({ typers }: { typers: Typer[] }) {
-  const [, redraw] = useState(0);
-  const now = Date.now();
-  useEffect(() => {
-    const waits = typers.map((t) => t.since + WORKING_AFTER_MS - now).filter((wait) => wait > 0);
-    if (!waits.length) return;
-    const timer = setTimeout(() => redraw((n) => n + 1), Math.min(...waits));
-    return () => clearTimeout(timer);
-  }, [typers, now]);
-  const label = typingLabel(typers, now);
+  const label = typingLabel(typers);
   return (
     <div aria-live="polite" className="flex h-6 items-center gap-1.5 px-1 text-xs text-muted">
       {label && (
@@ -1871,29 +1653,10 @@ function InfoPanel({
   onUpdate: (change: ChannelChange) => Promise<Result<unknown>>;
 }) {
   const channel = data.channel;
-  const agents = members.filter((m) => m.member.kind === "agent");
   const humans = members.filter((m) => m.member.kind === "user");
   return (
     <div className="min-h-0 grow overflow-y-auto p-4 [scrollbar-width:thin]">
       {channel.kind === "channel" && <ChannelAbout channel={channel} joined={joined} canManage={canManage} onUpdate={onUpdate} />}
-      {agents.length > 0 && (
-        <section className="mt-5">
-          <h3 className="mb-2 px-1 text-xs font-medium text-faint">Agents · {agents.length}</h3>
-          <div className="flex flex-wrap gap-1.5">
-            {agents.map(({ member }) => (
-              <Hint key={member.id} label={member.role ?? undefined}>
-                <MemberCard
-                  member={member}
-                  className="flex h-7 items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 pr-2.5 pl-1 text-[0.8125rem] font-medium text-accent transition-colors hover:bg-accent/15"
-                >
-                  <MemberAvatar member={member} size={20} />
-                  {shownName(member)}
-                </MemberCard>
-              </Hint>
-            ))}
-          </div>
-        </section>
-      )}
       <section className="mt-5">
         <div className="mb-1 flex items-center justify-between px-1">
           <h3 className="text-xs font-medium text-faint">People · {humans.length}</h3>
@@ -1919,7 +1682,7 @@ function InfoPanel({
   );
 }
 
-/** Adding a person or an agent to the channel. An invite lets them read; it never grants write. */
+/** Adding a person to the channel. An invite lets them read; it never grants write. */
 function AddMember({
   slug,
   channelId,
@@ -1937,7 +1700,6 @@ function AddMember({
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const send = useChatSend(slug);
-  const chatData = useChatData();
   const inside = new Set(members.map((m) => `${m.member.kind}:${m.member.name.toLowerCase()}`));
   const q = query.trim().toLowerCase().replace(/^@/, "");
   const options = people
@@ -1945,14 +1707,12 @@ function AddMember({
     .filter((p) => !q || p.name.toLowerCase().includes(q) || p.display_name.toLowerCase().includes(q))
     .slice(0, 8);
   const add = async (person: Mentionable) => {
-    const agent = person.kind === "agent" ? chatData?.agents.find((a) => a.handle === person.name) : null;
-    const key = agent ? `agent:${agent.id}` : `user:${person.name}`;
     setError(null);
-    const done = await send({ intent: "invite", channel_id: channelId, member: key });
+    const done = await send({ intent: "invite", channel_id: channelId, member: `user:${person.name}` });
     if (!done.ok) return setError(done.error.message);
     onAdded({
       channel_id: channelId,
-      member: { kind: person.kind, id: agent?.id ?? person.name, name: person.name, display_username: person.display_username ?? null, display_name: person.display_name, avatar: person.avatar, role: person.role ?? null },
+      member: { kind: "user", id: person.name, name: person.name, display_username: person.display_username ?? null, display_name: person.display_name, avatar: person.avatar, role: null },
       role: "member",
       starred: false,
       muted: false,
@@ -1974,8 +1734,8 @@ function AddMember({
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Add a person or an agent"
-          aria-label="Add a person or an agent"
+          placeholder="Add a person"
+          aria-label="Add a person"
           autoComplete="off"
           data-1p-ignore
           className="mb-1 h-8 w-full rounded-md border border-line bg-bg px-2.5 text-sm outline-none placeholder:text-faint focus:border-accent-dim"
@@ -1990,13 +1750,9 @@ function AddMember({
           >
             <MemberAvatar member={person} size={20} />
             <span className="min-w-0 grow truncate">{person.display_name}</span>
-            {person.kind === "agent" && <AgentPill />}
           </button>
         ))}
         {error && <p className="px-2 pt-1 text-xs text-danger">{error}</p>}
-        <p className="border-t border-line px-2 pt-1.5 pb-0.5 text-[0.6875rem] leading-snug text-faint">
-          Adding an agent lets it read this channel. It never grants it write access.
-        </p>
       </PopoverContent>
     </Popover>
   );

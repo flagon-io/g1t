@@ -7,11 +7,8 @@ import { env } from "cloudflare:workers";
 
 import {
   type ActivityDigest,
-  type AgentSession,
-  type AgentsOverview,
   type ChatActivity,
   type Deployment,
-  type InstallRequests,
   MAX_DIGEST_REPOS,
   type Memory,
   type ProjectDeploys,
@@ -19,13 +16,12 @@ import {
   type RepoPath,
   type User,
   type WorkflowRun,
-  type WorkspaceAgent,
   notifyClient,
 } from "@g1t/contracts";
 
-import { type CodePull, type CodeWork, G1T_ACTOR, type RepoRef, type SessionWork, type Span, type Spend, deployActorKey, pullKey, spanMonths, spendIn } from "./home";
-import { monthSpan, spentMicros } from "./spend";
-import { actions, agents, billing, chat, deployments, events, identity, repos, work, workspaceAgents } from "./services.server";
+import { type CodePull, type CodeWork, G1T_ACTOR, type RepoRef, type Span, type Spend, deployActorKey, spanMonths, spendIn } from "./home";
+import { monthSpan } from "./usage";
+import { actions, agents, billing, chat, deployments, events, identity, repos, work } from "./services.server";
 
 /** Pull requests read per project and list: `LIST_PAGE` in services/work. */
 const PULL_PAGE = 100;
@@ -37,9 +33,6 @@ const MAX_DEPLOY_PROJECTS = 20;
 const MAX_WORKFLOW_PROJECTS = 10;
 /** Runs read per project: enough to find the ones not finished. */
 const WORKFLOW_RUNS = 20;
-/** Revise runs and sessions read: the services' most in one list. */
-const RUN_PAGE = 200;
-const SESSION_PAGE = 200;
 /** The most member keys named in one lookup. */
 const MAX_NAMES = 200;
 const DAY = 24 * 60 * 60 * 1000;
@@ -87,13 +80,11 @@ export function repoRefs(list: Repo[] | null): Record<string, RepoRef> {
 
 /**
  * The workspace's projects' pull requests, open and recently merged or
- * closed, any author's, with how many times each agent's was sent back to
- * revise. `complete` when every list reaches back to `reach`. Null when
- * Code did not answer.
+ * closed, any author's. `complete` when every list reaches back to
+ * `reach`. Null when Code did not answer.
  */
 export async function loadCodeWork(viewer: User, slug: string, reach: number, owned: Repo[] | null): Promise<CodeWork | null> {
-  const runs = await agents.listRuns(viewer, { workspace: slug, kind: "revise", limit: RUN_PAGE }).catch(warn("revise runs"));
-  if (!owned || !runs?.ok) return null;
+  if (!owned) return null;
   const chosen = owned.slice(0, MAX_PROJECTS);
   const byId = new Map<string, Repo>(chosen.map((repo) => [repo.id, repo]));
   const batch = chosen.length > 0 ? await work.pullsForRepos([...byId.keys()], viewer, PULL_PAGE).catch(warn("pull requests")) : [];
@@ -125,14 +116,7 @@ export async function loadCodeWork(viewer: User, slug: string, reach: number, ow
       }
     }
   }
-  const revisions: Record<string, number> = {};
-  for (const run of runs.value) {
-    if (run.number == null) continue;
-    const key = pullKey(run.repo, run.number);
-    revisions[key] = (revisions[key] ?? 0) + 1;
-  }
-  if (runs.value.length >= RUN_PAGE && Date.parse(runs.value[runs.value.length - 1].createdAt) > reach) complete = false;
-  return { pulls, revisions, complete };
+  return { pulls, complete };
 }
 
 /**
@@ -184,21 +168,16 @@ export function actorKeys(activity: ActivityDigest | null, chatActivity: ChatAct
 
 /**
  * The names behind member keys: people's usernames from identity (one
- * lookup for them all), agents' handles from the workspace's agents, g1t
- * as itself. A key identity does not know is left out, and shows as
- * "someone".
+ * lookup for them all), g1t as itself. A key identity does not know, and
+ * an agent of older rows, is left out, and shows as "someone".
  */
-export async function loadNames(keys: string[], agentsList: Pick<WorkspaceAgent, "id" | "handle">[] | null): Promise<Record<string, string>> {
+export async function loadNames(keys: string[]): Promise<Record<string, string>> {
   const names: Record<string, string> = {};
   const userIds: string[] = [];
-  const byAgentId = new Map((agentsList ?? []).map((agent) => [agent.id, agent.handle]));
   for (const key of keys.slice(0, MAX_NAMES)) {
     if (key === G1T_ACTOR || key === "user:g1t" || key.startsWith("user:wsp_")) names[key] = "g1t";
-    else if (key.startsWith("agent:") || key.startsWith("user:agt_")) {
-      // An agent, by its own id: under `agent:` as events name it, or under `user:` from older ones.
-      const handle = byAgentId.get(key.replace(/^(agent|user):/, ""));
-      if (handle) names[key] = handle;
-    } else if (key.startsWith("user:")) userIds.push(key.slice("user:".length));
+    else if (key.startsWith("agent:") || key.startsWith("user:agt_")) continue;
+    else if (key.startsWith("user:")) userIds.push(key.slice("user:".length));
   }
   if (userIds.length > 0) {
     const found = await identity.usernames(userIds).catch(warn("usernames"));
@@ -236,28 +215,6 @@ export async function loadWorkflowRuns(
   return { projects, complete: projects.length === active.length };
 }
 
-/** The workspace's newest sessions; `complete` when the list reaches back before `from`. */
-export async function loadSessions(viewer: User, slug: string, from: number): Promise<SessionWork | null> {
-  const listed = await workspaceAgents.sessions(slug, viewer, { limit: SESSION_PAGE }).catch(warn("sessions"));
-  if (!listed?.ok) return null;
-  const sessions: AgentSession[] = listed.value;
-  const oldest = sessions.at(-1);
-  const complete = sessions.length < SESSION_PAGE || (oldest != null && Date.parse(oldest.created_at) < from);
-  return { sessions, complete };
-}
-
-/** The agents overview: sessions waiting on the viewer, live ones, and the workspace's budget alert. */
-export async function loadAgentsOverview(viewer: User, slug: string): Promise<AgentsOverview | null> {
-  const overview = await workspaceAgents.overview(slug, viewer).catch(warn("agents overview"));
-  return overview?.ok ? overview.value : null;
-}
-
-/** Install requests as the viewer sees them; only an owner's (`can_resolve`) are anyone else's. */
-export async function loadInstallRequests(viewer: User, slug: string): Promise<InstallRequests | null> {
-  const requests = await workspaceAgents.installRequests(slug, viewer).catch(warn("install requests"));
-  return requests?.ok ? requests.value : null;
-}
-
 /** The workspace's memory, for the decisions recorded in it. */
 export async function loadMemories(viewer: User, slug: string): Promise<Memory[] | null> {
   const memories = await agents.listMemories(viewer, slug, null).catch(warn("memories"));
@@ -292,8 +249,8 @@ export async function loadDeploys(
 
 /**
  * The span's spend from the statements of the months it touches, and the
- * month so far from the usage report the top bar, Spend and Usage read
- * (`spend.ts` `monthSpan`, `spentMicros`), so Home's figure is theirs. Null
+ * month so far from the usage report Usage reads (`usage.ts` `monthSpan`,
+ * at price), so Home's figure is Usage's. Null
  * when billing did not answer; the month alone null when only it did not.
  */
 export async function loadSpend(viewer: User, slug: string, span: Pick<Span, "from" | "now">): Promise<Spend | null> {
@@ -302,7 +259,7 @@ export async function loadSpend(viewer: User, slug: string, span: Pick<Span, "fr
     Promise.all(months.map((month) => billing.statement(slug, viewer, month, "day").catch(warn(`statement ${month}`)))),
     billing
       .usageReport(slug, viewer, monthSpan(new Date(span.now)))
-      .then((result) => (result.ok ? spentMicros(result.value) : null))
+      .then((result) => (result.ok ? result.value.totals.priceMicros : null))
       .catch(warn("month usage")),
   ]);
   if (statements.some((statement) => !statement?.ok)) return null;

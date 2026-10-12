@@ -1,5 +1,5 @@
 /**
- * Apps: what the workspace added in Customize that you can use, the ones
+ * Apps: the integrations the workspace connected that you can use, the ones
  * pinned to your rail first. Built-in apps are always in the
  * rail, and their own pages are in their sidebars; Apps are only what was
  * added. Pins are yours alone, per workspace, kept with your account so
@@ -7,11 +7,8 @@
  * cookie for when the account's cannot be read (lib/apps.ts). The pin
  * buttons post here, and the launcher reads its list from here.
  */
-import { SlidersHorizontal } from "lucide-react";
+import { Plug } from "lucide-react";
 import { data } from "react-router";
-
-import type { Result } from "@g1t/contracts";
-import { customizePath } from "@g1t/contracts/customize";
 
 import type { Route } from "./+types/apps";
 import { AppTile, NoApps, useAppPins } from "../../components/apps";
@@ -19,7 +16,6 @@ import { ButtonLink } from "../../components/ui";
 import { DOCK_COOKIE, type InstalledAppData, appData, appPinFromForm, dockCookie, installedApps, pinsToShow, withPin, writeDock } from "../../lib/apps";
 import { connectedStates } from "../../lib/connected.server";
 import { savePins, savedPins } from "../../lib/dock.server";
-import { workspaceAgents } from "../../lib/services.server";
 import { page } from "../../lib/meta";
 import { readCookie } from "../../lib/mission";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
@@ -34,19 +30,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const slug = params.owner.toLowerCase();
   const membership = viewer?.workspaces?.find((m) => m.slug === slug);
   if (!viewer || !membership) throw data(null, { status: 404 });
-  // What Customize added; a service that doesn't answer counts as nothing added.
-  const read = <T,>(call: Promise<Result<T[]>>): Promise<T[]> => call.then((result) => (result.ok ? result.value : [])).catch(() => []);
-  const [connected, installs, connectors, saved] = await Promise.all([
-    connectedStates(slug, viewer).catch(() => null),
-    read(workspaceAgents.pluginInstalls(slug, viewer)),
-    read(workspaceAgents.connectors(slug, viewer)),
-    savedPins(viewer, slug),
-  ]);
+  const [connected, saved] = await Promise.all([connectedStates(slug, viewer).catch(() => null), savedPins(viewer, slug)]);
   return {
     slug,
     name: membership.name?.trim() || slug,
     /** Null when what is installed could not be read. */
-    apps: connected ? installedApps(connected, installs, connectors).map((app) => appData(app, slug)) : (null as InstalledAppData[] | null),
+    apps: connected ? installedApps(connected).map((app) => appData(app, slug)) : (null as InstalledAppData[] | null),
     pins: pinsToShow(saved, readCookie(request.headers.get("cookie"), DOCK_COOKIE), slug),
   };
 }
@@ -80,12 +69,12 @@ export default function Apps({ loaderData }: Route.ComponentProps) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Apps</h1>
           <p className="mt-1 max-w-xl text-sm text-muted">
-            What {name} added in Customize: plugins, connectors and integrations. Pin the ones you want in your rail: your rail is yours, and nobody else sees your pins.
+            The integrations {name} connected. Pin the ones you want in your rail: your rail is yours, and nobody else sees your pins.
           </p>
         </div>
-        <ButtonLink to={customizePath("", slug)} prefetch="intent" variant="outline">
-          <SlidersHorizontal size={15} />
-          Customize
+        <ButtonLink to={`/${slug}/-/integrations`} prefetch="intent" variant="outline">
+          <Plug size={15} />
+          Integrations
         </ButtonLink>
       </div>
 

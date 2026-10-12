@@ -1,7 +1,7 @@
 /**
  * Home's parts (routes/workspace/home.tsx): Where you're needed, Start
- * here, what happened in the span (what people and agents did, what
- * landed, builds, decisions, spend) and Running now. Each takes what
+ * here, what happened in the span (what people did, what landed, builds,
+ * decisions, spend) and Running now. Each takes what
  * lib/home.ts worked out and only draws it.
  */
 import {
@@ -9,20 +9,15 @@ import {
   ArrowRight,
   AtSign,
   Bell,
-  Bot,
-  CircleDollarSign,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
-  Hourglass,
   Lightbulb,
   Loader,
   Mail,
   Package,
   Rocket,
   Server,
-  Sparkles,
-  Store,
   Tag,
   User,
   Users,
@@ -43,21 +38,15 @@ import {
   type LandedChange,
   type RunningRow,
   type Span,
-  type SpanWork,
   type Spend,
   type Stake,
-  type TaskOutcome,
-  OUTCOME_LABEL,
-  SOURCE_LABEL,
   WINDOWS,
   listOf,
-  trendLabel,
   waited,
   whenShort,
 } from "../lib/home";
 import { cn } from "../lib/cn";
 import { money } from "../lib/money";
-import { type AgentLike, AgentAvatar } from "./agent-avatar";
 import { ButtonLink } from "./ui";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
@@ -141,17 +130,10 @@ export function WindowSwitch({ span }: { span: Pick<Span, "key"> }) {
 // --- Where you're needed ---------------------------------------------------------
 
 const ICON: Record<AttentionKind, ReactNode> = {
-  limit: <CircleDollarSign size={16} className="text-danger" />,
   deploy: <Rocket size={16} className="text-danger" />,
-  session_cap: <CircleDollarSign size={16} className="text-warn" />,
-  agent_budget: <CircleDollarSign size={16} className="text-danger" />,
   pull_blocked: <GitPullRequest size={16} className="text-warn" />,
-  ready: <GitMerge size={16} className="text-accent" />,
   review: <GitPullRequest size={16} className="text-info" />,
   invitation: <Mail size={16} className="text-info" />,
-  install_request: <Store size={16} className="text-info" />,
-  agent_waiting: <Sparkles size={16} className="text-warn" />,
-  stuck: <Hourglass size={16} className="text-warn" />,
   runner: <Server size={16} className="text-warn" />,
   notification: <Bell size={16} className="text-warn" />,
   chat: <AtSign size={16} className="text-accent" />,
@@ -210,7 +192,7 @@ export function NeedsList({ attention, now }: { attention: Attention; now: numbe
   return (
     <>
       {rows.length === 0 ? (
-        <Quiet>{missing.length > 0 ? "Nothing needs you in what could be read." : "Nothing needs you. Reviews, approvals and messages for you show here as soon as they arrive."}</Quiet>
+        <Quiet>{missing.length > 0 ? "Nothing needs you in what could be read." : "Nothing needs you. Reviews, invitations and messages for you show here as soon as they arrive."}</Quiet>
       ) : (
         <ul>
           {rows.slice(0, ROWS).map((row) => (
@@ -281,7 +263,7 @@ export function StartHere({ attention, now }: { attention: Attention; now: numbe
               <>
                 <dt className="text-muted">Owner</dt>
                 <dd className="flex min-w-0 items-center gap-1.5 text-fg-soft">
-                  {start.row.owner.agent ? <Bot size={12} className="shrink-0 text-accent" /> : <User size={12} className="shrink-0 text-muted" />}
+                  <User size={12} className="shrink-0 text-muted" />
                   <span className="truncate">{start.row.owner.agent ? `@${start.row.owner.name}` : start.row.owner.name}</span>
                 </dd>
               </>
@@ -322,48 +304,17 @@ export function StartHere({ attention, now }: { attention: Attention; now: numbe
   );
 }
 
-// --- The agents' work in the span -----------------------------------------------
-
-/** Each outcome's mark: status colours, always beside a label in the legend. */
-const MARK: Record<TaskOutcome, string> = {
-  accepted: "bg-success",
-  fixed: "bg-warn",
-  finished: "bg-info",
-  dropped: "bg-danger",
-};
-
-const percent = (value: number) => `${Math.round(value * 100)}%`;
-
-function Stat({ label, value, mark }: { label: string; value: number; mark?: string }) {
-  return (
-    <div className="min-w-0">
-      <div className="flex items-center gap-1.5 text-xs text-muted">
-        {mark && <span className={`size-2 shrink-0 rounded-[2px] ${mark}`} aria-hidden />}
-        <span className="truncate">{label}</span>
-      </div>
-      <div className="mt-1 text-xl font-semibold text-fg tabular-nums">{value.toLocaleString("en-US")}</div>
-    </div>
-  );
-}
+// --- What people did in the span ------------------------------------------------
 
 /** "in the span" said the way the span is: "since you were last here", "in the last 24 hours". */
 function inSpan(span: Pick<Span, "key" | "note" | "words">): string {
   return span.key === "last" && span.note == null ? "since you were last here" : span.words.charAt(0).toLowerCase() + span.words.slice(1);
 }
 
-/** The faces of a column's most active, with a tooltip naming each, and how many more there were. */
+/** The faces of the most active, with a tooltip naming each, and how many more there were. */
 const FACES = 5;
 
-/** An agent's face by its member key, from the workspace's agents; g1t wears its mark. */
-function faceOf(actor: DigestActor, faces: AgentLike[]): ReactNode {
-  if (actor.kind === "agent") {
-    const agent = faces.find((face) => `agent:${face.id}` === actor.key);
-    return <AgentAvatar agent={agent ?? { handle: actor.name, builtin: actor.name === "g1t" }} size={22} />;
-  }
-  return <Avatar name={actor.name} size={22} />;
-}
-
-function Faces({ actors, faces }: { actors: DigestActor[]; faces: AgentLike[] }) {
+function Faces({ actors }: { actors: DigestActor[] }) {
   if (actors.length === 0) return null;
   const shown = actors.slice(0, FACES);
   const more = actors.length - shown.length;
@@ -374,10 +325,12 @@ function Faces({ actors, faces }: { actors: DigestActor[]; faces: AgentLike[] })
           <li key={actor.key} className="rounded-full ring-2 ring-surface">
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="block">{faceOf(actor, faces)}</span>
+                <span className="block">
+                  <Avatar name={actor.name} size={22} />
+                </span>
               </TooltipTrigger>
               <TooltipContent>
-                {actor.kind === "agent" ? `@${actor.name}` : actor.name} · {actor.count.toLocaleString("en-US")} {actor.count === 1 ? "thing" : "things"}
+                {actor.name} · {actor.count.toLocaleString("en-US")} {actor.count === 1 ? "thing" : "things"}
               </TooltipContent>
             </Tooltip>
           </li>
@@ -388,7 +341,7 @@ function Faces({ actors, faces }: { actors: DigestActor[]; faces: AgentLike[] })
   );
 }
 
-/** One column's lines: each what was done, with its count in the words, linked to where it is listed. */
+/** The lines: each what was done, with its count in the words, linked to where it is listed. */
 function Lines({ column }: { column: DigestColumn }) {
   return (
     <ul className="mt-3 space-y-1.5">
@@ -408,117 +361,28 @@ function Lines({ column }: { column: DigestColumn }) {
   );
 }
 
-/** The agents' acceptance, in a compact row: the counts, the share accepted first time and its trend, and a mark per task. */
-function Acceptance({ work, span }: { work: SpanWork; span: Pick<Span, "key" | "note" | "words"> }) {
-  const { counts, rate, before, tasks } = work;
-  const trend = trendLabel(rate, before);
-  const up = rate && before ? Math.round(rate.value * 100) - Math.round(before.value * 100) : 0;
-  // Without Code, nothing is reviewed: no accepted or fixed to count.
-  const reviewed = work.code === "read";
-  const shown = (Object.keys(MARK) as TaskOutcome[]).filter((o) => counts[o] > 0 || (reviewed && (o === "accepted" || o === "fixed")));
-  return (
-    <div className="mt-4 border-t border-line pt-4">
-      <div className="grid grid-cols-3 gap-3">
-        {reviewed ? (
-          <>
-            <Stat label="Accepted first time" value={counts.accepted} mark={MARK.accepted} />
-            <Stat label="Fixed after review" value={counts.fixed} mark={MARK.fixed} />
-          </>
-        ) : (
-          <>
-            <Stat label="Sessions finished" value={counts.finished} mark={MARK.finished} />
-            <Stat label="Tasks settled" value={tasks.length} />
-          </>
-        )}
-        <Stat label="Didn't finish" value={counts.dropped} mark={MARK.dropped} />
-      </div>
-      {reviewed && (
-        <p className="mt-2 text-xs text-muted">
-          {rate ? (
-            <>
-              <span className="font-medium text-fg">{percent(rate.value)}</span> of {rate.of.toLocaleString("en-US")} agent {rate.of === 1 ? "pull request" : "pull requests"} accepted first time
-              {trend && <span className={cn("ml-1.5 font-medium", up > 0 ? "text-success" : up < 0 ? "text-warn" : "text-muted")}>{trend}</span>}
-            </>
-          ) : (
-            <>
-              No agent pull request merged or closed {inSpan(span)}.{before ? ` The 7 days before: ${percent(before.value)} of ${before.of}.` : ""}
-            </>
-          )}
-        </p>
-      )}
-      {tasks.length > 0 && (
-        <ul className="mt-3 flex flex-wrap gap-0.75" aria-label="Agent work that settled, one mark per task, in the order they settled">
-          {tasks.map((task) => (
-            <li key={task.key}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {task.to ? (
-                    <Link to={task.to} aria-label={`${task.title ?? "A session"}: ${OUTCOME_LABEL[task.outcome]}`} className={`block h-4 w-2 rounded-xs ${MARK[task.outcome]} transition-opacity hover:opacity-70`} />
-                  ) : (
-                    <span className={`block h-4 w-2 rounded-xs ${MARK[task.outcome]}`} />
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>
-                  <span className="block font-medium">{task.title ?? "A session in a conversation you're not in"}</span>
-                  <span className="text-muted">
-                    {OUTCOME_LABEL[task.outcome]} · {SOURCE_LABEL[task.source]}
-                  </span>
-                </TooltipContent>
-              </Tooltip>
-            </li>
-          ))}
-        </ul>
-      )}
-      {tasks.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.6875rem] text-muted">
-          {shown.map((outcome) => (
-            <span key={outcome} className="inline-flex items-center gap-1">
-              <span className={`size-1.5 rounded-xs ${MARK[outcome]}`} aria-hidden />
-              {OUTCOME_LABEL[outcome]} <span className="text-fg-soft tabular-nums">{counts[outcome]}</span>
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /**
- * What people did and what agents did in the span, side by side: lines
- * with counts linked to where each thing is listed, the most active faces,
- * and in the Agents column how their work was received. Each column says
- * when it is empty, and which part didn't answer.
+ * What people did in the span: lines with counts linked to where each
+ * thing is listed, and the most active faces. It says when it is empty,
+ * and which part didn't answer.
  */
-export function PeopleAgentsCard({
-  digest,
-  work,
-  span,
-  faces,
-  code,
-}: {
-  digest: Digest | null;
-  work: SpanWork | null;
-  span: Pick<Span, "key" | "note" | "words">;
-  faces: AgentLike[];
-  code: boolean;
-}) {
+export function PeopleCard({ digest, span, code }: { digest: Digest | null; span: Pick<Span, "key" | "note" | "words">; code: boolean }) {
   const when = inSpan(span);
   if (!digest) {
     return (
       <section className="rounded-2xl border border-line bg-surface p-5">
-        <p className="text-sm text-muted">What happened couldn&apos;t be read right now. It shows here once Code, Chat and Agents answer.</p>
+        <p className="text-sm text-muted">What happened couldn&apos;t be read right now. It shows here once Code and Chat answer.</p>
       </section>
     );
   }
-  const missing = (names: string[]) => names.filter((name) => digest.missing.includes(name));
-  const peopleMissing = missing(["Code", "Chat"]);
-  const agentsMissing = missing(["Code", "Chat", "Agents"]);
-  const column = (title: string, icon: ReactNode, col: DigestColumn, silent: string[], empty: string, children?: ReactNode) => (
-    <div className="min-w-0 p-5">
+  const silent = digest.missing.filter((name) => name === "Code" || name === "Chat");
+  const col = digest.people;
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-5" aria-label="What people did">
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold text-fg">
-          {icon}
-          {title}
+          <Users size={15} className="text-muted" />
+          People
         </h3>
         {col.actors.length > 0 && (
           <Badge tone="neutral" size="md" className="tabular-nums">
@@ -526,79 +390,42 @@ export function PeopleAgentsCard({
           </Badge>
         )}
         <span className="ml-auto">
-          <Faces actors={col.actors} faces={faces} />
+          <Faces actors={col.actors} />
         </span>
       </div>
-      {col.lines.length > 0 ? <Lines column={col} /> : <p className="mt-3 text-sm text-muted">{silent.length > 0 ? `Nothing from what could be read ${when}.` : empty}</p>}
+      {col.lines.length > 0 ? (
+        <Lines column={col} />
+      ) : (
+        <p className="mt-3 text-sm text-muted">
+          {silent.length > 0
+            ? `Nothing from what could be read ${when}.`
+            : code
+              ? `Nobody pushed, opened, merged, reviewed, edited a doc or said anything ${when}.`
+              : `Nobody edited a doc or said anything ${when}.`}
+        </p>
+      )}
       {silent.length > 0 && (
         <p className="mt-3 flex items-center gap-1.5 text-xs text-faint">
           <AlertTriangle size={12} className="shrink-0" />
           {listOf(silent)} didn&apos;t answer, so {silent.length === 1 ? "its part" : "their parts"} {silent.length === 1 ? "isn't" : "aren't"} counted.
         </p>
       )}
-      {children}
-    </div>
-  );
-  return (
-    <section className="grid overflow-hidden rounded-2xl border border-line bg-surface md:grid-cols-2 md:divide-x md:divide-line" aria-label="What people and agents did">
-      <div className="border-b border-line md:border-b-0">
-        {column(
-          "People",
-          <Users size={15} className="text-muted" />,
-          digest.people,
-          peopleMissing,
-          code ? `Nobody pushed, opened, merged, reviewed, edited a doc or said anything ${when}.` : `Nobody edited a doc or said anything ${when}.`,
-        )}
-      </div>
-      <div>
-        {column(
-          "Agents",
-          <Bot size={15} className="text-accent" />,
-          digest.agents,
-          agentsMissing,
-          `No agent settled a task, pushed, opened a pull request or replied ${when}.`,
-          <>
-            {work && (work.tasks.length > 0 || work.code === "read") && <Acceptance work={work} span={span} />}
-            {work?.partial && <p className="mt-3 text-xs text-faint">A list was cut short, so some agent work may be missing.</p>}
-          </>,
-        )}
-      </div>
-      {digest.partial && !work?.partial && <p className="border-t border-line px-5 py-2.5 text-xs text-faint md:col-span-2">More happened than Home reads at once, so some counts are low.</p>}
+      {digest.partial && <p className="mt-3 text-xs text-faint">More happened than Home reads at once, so some counts are low.</p>}
     </section>
   );
 }
 
 export function SpanSkeleton() {
   return (
-    <section className="grid rounded-2xl border border-line bg-surface md:grid-cols-2 md:divide-x md:divide-line" aria-busy="true">
-      {[0, 1].map((column) => (
-        <div key={column} className={cn("space-y-3 p-5", column === 0 && "border-b border-line md:border-b-0")}>
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-3.5 w-20" />
-            <Skeleton className="h-5 w-24 rounded-full" />
-          </div>
-          <Skeleton className="h-3.5 w-3/4" />
-          <Skeleton className="h-3.5 w-1/2" />
-          <Skeleton className="h-3.5 w-2/3" />
-        </div>
-      ))}
+    <section className="space-y-3 rounded-2xl border border-line bg-surface p-5" aria-busy="true">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-3.5 w-20" />
+        <Skeleton className="h-5 w-24 rounded-full" />
+      </div>
+      <Skeleton className="h-3.5 w-3/4" />
+      <Skeleton className="h-3.5 w-1/2" />
+      <Skeleton className="h-3.5 w-2/3" />
     </section>
-  );
-}
-
-export function Sources({ work }: { work: SpanWork | null }) {
-  if (!work || work.sources.length === 0) return null;
-  return (
-    <Card title="Where the work came from">
-      <ul className="flex flex-wrap gap-2 px-5 pb-5">
-        {work.sources.map(({ source, count }) => (
-          <li key={source} className="inline-flex items-center gap-2 rounded-lg border border-line bg-raised/40 px-2.5 py-1.5 text-xs">
-            <span className="text-muted">{SOURCE_LABEL[source]}</span>
-            <span className="font-semibold text-fg tabular-nums">{count.toLocaleString("en-US")}</span>
-          </li>
-        ))}
-      </ul>
-    </Card>
   );
 }
 
@@ -634,12 +461,12 @@ function Folded<T>({ items, render }: { items: T[]; render: (item: T) => ReactNo
 
 const rowClass = "flex items-center gap-3 border-t border-line px-5 py-2.5 first:border-t-0";
 
-const LANDED_ICON: Record<LandedChange["kind"], (agent: boolean) => ReactNode> = {
-  merge: (agent) => <GitMerge size={15} className={cn("shrink-0", agent ? "text-accent" : "text-success")} />,
-  push: (agent) => <GitCommitHorizontal size={15} className={cn("shrink-0", agent ? "text-accent" : "text-success")} />,
-  deploy: () => <Rocket size={15} className="shrink-0 text-success" />,
-  release: () => <Tag size={15} className="shrink-0 text-info" />,
-  package: () => <Package size={15} className="shrink-0 text-info" />,
+const LANDED_ICON: Record<LandedChange["kind"], ReactNode> = {
+  merge: <GitMerge size={15} className="shrink-0 text-success" />,
+  push: <GitCommitHorizontal size={15} className="shrink-0 text-success" />,
+  deploy: <Rocket size={15} className="shrink-0 text-success" />,
+  release: <Tag size={15} className="shrink-0 text-info" />,
+  package: <Package size={15} className="shrink-0 text-info" />,
 };
 
 /** A few words on the card's line: how many of each kind landed. */
@@ -654,8 +481,6 @@ function landedHint(landed: LandedChange[]): string {
   if (pushes > 0) parts.push(`${pushes.toLocaleString("en-US")} pushed direct`);
   if (deploys > 0) parts.push(`${deploys.toLocaleString("en-US")} ${deploys === 1 ? "deploy" : "deploys"}`);
   if (published > 0) parts.push(`${published.toLocaleString("en-US")} published`);
-  const agents = landed.filter((change) => change.agent).length;
-  parts.push(`${agents.toLocaleString("en-US")} by agents`);
   return parts.join(" · ");
 }
 
@@ -677,7 +502,7 @@ export function LandedCard({ landed, missing, code, now, tz }: { landed: LandedC
           items={landed}
           render={(change) => (
             <li key={change.key} className={rowClass}>
-              {LANDED_ICON[change.kind](change.agent)}
+              {LANDED_ICON[change.kind]}
               <div className="min-w-0 grow">
                 <Link to={change.to} className="block truncate text-sm text-fg hover:underline">
                   {change.title}
@@ -729,26 +554,15 @@ export function DeploysCard({ deploys, complete, code, now, tz }: { deploys: Dep
   );
 }
 
-export function DecisionsCard({
-  decisions,
-  read,
-  now,
-  tz,
-}: {
-  decisions: DecisionRow[] | null;
-  read: { memories: boolean; requests: boolean } | null;
-  now: number;
-  tz: string | null;
-}) {
+export function DecisionsCard({ decisions, now, tz }: { decisions: DecisionRow[] | null; now: number; tz: string | null }) {
   if (!decisions || decisions.length === 0) return null;
-  const missing = [...(read && !read.memories ? ["Memory"] : []), ...(read && !read.requests ? ["Customize's requests"] : [])];
   return (
-    <Card title="Decisions" hint="Recorded in the workspace's memory, and requests answered">
+    <Card title="Decisions" hint="Recorded in the workspace's memory">
       <Folded
         items={decisions}
         render={(row) => (
           <li key={row.key} className={rowClass}>
-            {row.kind === "memory" ? <Lightbulb size={15} className="shrink-0 text-warn" /> : <Store size={15} className="shrink-0 text-info" />}
+            <Lightbulb size={15} className="shrink-0 text-warn" />
             <div className="min-w-0 grow">
               <Link to={row.to} className="line-clamp-2 text-sm text-fg hover:underline">
                 {row.text}
@@ -759,7 +573,6 @@ export function DecisionsCard({
           </li>
         )}
       />
-      <Missing names={missing} what="every decision" />
     </Card>
   );
 }
@@ -767,11 +580,10 @@ export function DecisionsCard({
 // --- Spend in the span ------------------------------------------------------------
 
 /**
- * Each kind of charge keeps its colour, whatever its rank: models one,
- * sandboxes and runners another, hosting a third, storage and the rest grey.
+ * Each kind of charge keeps its colour, whatever its rank: sandboxes and
+ * runners one, hosting another, storage and the rest grey.
  */
 function kindColour(kind: string): string {
-  if (/agent|model|gateway/i.test(kind)) return "bg-accent";
   if (/sandbox|runner/i.test(kind)) return "bg-info";
   if (/deploy|domain/i.test(kind)) return "bg-fg-soft";
   if (/storage|git|cache|package/i.test(kind)) return "bg-muted";
@@ -835,8 +647,6 @@ export function SpendSkeleton() {
 // --- Running now -------------------------------------------------------------------
 
 const RUNNING_ICON: Record<RunningRow["kind"], ReactNode> = {
-  session: <Sparkles size={15} className="text-accent" />,
-  change: <GitPullRequest size={15} className="text-info" />,
   workflow: <Workflow size={15} className="text-info" />,
   deploy: <Rocket size={15} className="text-info" />,
 };
@@ -845,7 +655,7 @@ export function RunningList({ rows, missing, now }: { rows: RunningRow[]; missin
   return (
     <>
       {rows.length === 0 ? (
-        <Quiet>{missing.length > 0 ? "Nothing is running in what could be read." : "Nothing is running. Agent sessions, agents' changes, workflow runs and builds show here while they go."}</Quiet>
+        <Quiet>{missing.length > 0 ? "Nothing is running in what could be read." : "Nothing is running. Workflow runs and builds show here while they go."}</Quiet>
       ) : (
         <Folded
           items={rows}

@@ -5,7 +5,6 @@ import type { SessionEntry } from "@g1t/contracts";
 
 import type { Route } from "./+types/session";
 import { page } from "../../lib/meta";
-import { RunCard, formatCost, useLiveRefresh } from "../../components/agents";
 import { TimeAgo } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
 import { Button } from "../../components/ui/button";
@@ -13,7 +12,6 @@ import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { agents } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
-import { accessTo } from "../../lib/access.server";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   return page(args, {
@@ -24,7 +22,7 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const session = await agents.getSession(viewer, { namespace: params.owner, name: params.repo }, Number(params.number));
-  return { session: unwrap(session), member: (await accessTo(context, params)).can.run };
+  return { session: unwrap(session) };
 }
 
 function Entry({ entry }: { entry: SessionEntry }) {
@@ -87,11 +85,9 @@ function Entry({ entry }: { entry: SessionEntry }) {
 }
 
 export default function SessionPage({ loaderData, params }: Route.ComponentProps) {
-  const { session, member } = loaderData;
-  const { pull, entries, runs } = session;
+  const { session } = loaderData;
+  const { pull, entries } = session;
   const base = `/${params.owner}/${params.repo}`;
-  const live = runs.some((run) => run.status === "queued" || run.status === "running");
-  useLiveRefresh(live);
   const [search, setSearch] = useSearchParams();
   const quiet = search.get("results") !== "1";
   const shown = quiet ? entries.filter((entry) => entry.kind !== "tool_result") : entries;
@@ -112,19 +108,7 @@ export default function SessionPage({ loaderData, params }: Route.ComponentProps
       </div>
       <p className="mt-1.5 text-sm text-muted">
         {pull.agent} · {pull.status} · {entries.length} entries · {tools} tool calls
-        {formatCost(session.costUsd) && ` · ${formatCost(session.costUsd)} over ${runs.length} ${runs.length === 1 ? "run" : "runs"}`}
       </p>
-
-      {runs.length > 0 && (
-        <section className="mt-8">
-          <h3 className="text-sm font-medium">Runs</h3>
-          <ul className="mt-3 space-y-3">
-            {runs.map((run) => (
-              <RunCard key={run.id} run={run} member={member} />
-            ))}
-          </ul>
-        </section>
-      )}
 
       <section className="mt-8">
         <div className="flex items-baseline justify-between">

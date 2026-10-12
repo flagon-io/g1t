@@ -30,13 +30,10 @@ test("old addresses go to where their pages are now", () => {
   // Code's Overview lives at -/overview now: not an old address.
   assert.equal(workspaceRedirect("/acme/-/overview"), null);
   assert.equal(workspaceRedirect("/acme/-/soon/teams"), "/acme/-/teams");
-  // Agent templates were the Marketplace's Agents tab.
-  assert.equal(workspaceRedirect("/acme/-/marketplace/agents"), "/acme/-/agents/templates");
-  assert.equal(workspaceRedirect("/acme/-/marketplace/agents/qa.data", "?_routes=x"), "/acme/-/agents/templates/qa");
-  assert.equal(workspaceRedirect("/acme/-/marketplace/agentsx"), null);
-  // The Marketplace is Customize now (lib/customize.test.ts has the rest).
-  assert.equal(workspaceRedirect("/acme/-/marketplace/extensions"), "/acme/-/customize/plugins");
-  assert.equal(workspaceRedirect("/acme/-/marketplace/extensions/mail/more"), null);
+  // The Marketplace, Customize and Agents are gone: their old addresses lead nowhere.
+  assert.equal(workspaceRedirect("/acme/-/marketplace/agents"), null);
+  assert.equal(workspaceRedirect("/acme/-/marketplace/extensions"), null);
+  assert.equal(workspaceRedirect("/acme/-/agents/skills"), null);
   assert.equal(workspaceRedirect("/acme/-/soon/insights", "?x=1"), "/acme/-/insights?x=1");
   assert.equal(workspaceRedirect("/acme/-/soon/uptime"), null);
   assert.equal(workspaceRedirect("/acme/-/people"), null);
@@ -89,10 +86,9 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/settings/emails", "acme"), "account");
   assert.equal(modeOf("/acme/-/chat/general", "acme"), "chat");
   assert.equal(modeOf("/acme/-/chat/dm/c1.data", "acme"), "chat");
-  assert.equal(modeOf("/acme/-/agents", "acme"), "agents");
-  assert.equal(modeOf("/acme/-/agents/ship/profile", "acme"), "agents");
-  assert.equal(modeOf("/acme/-/context", "acme"), "agents");
-  assert.equal(modeOf("/acme/-/memory", "acme"), "agents");
+  // Agents mode is gone: its old addresses fall to Code's not-found page; Memory is Code's.
+  assert.equal(modeOf("/acme/-/agents", "acme"), "code");
+  assert.equal(modeOf("/acme/-/memory", "acme"), "code");
   assert.equal(modeOf("/acme/-/artifacts", "acme"), "artifacts");
   assert.equal(modeOf("/acme/-/artifacts/spaces/general", "acme"), "artifacts");
   // Docs mode is gone: its old addresses are nobody's mode, so they fall to Code's not-found page.
@@ -104,8 +100,6 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/acme/-/people", "acme"), "people");
   assert.equal(modeOf("/acme/-/teams/web", "acme"), "people");
   assert.equal(modeOf("/acme/-/people/ana", "acme"), "people");
-  // An agent's old People address (it redirects to Agents) is still read as People's until it does.
-  assert.equal(modeOf("/acme/-/people/agents/margo", "acme"), "people");
   // Members, invitations and permissions are the workspace's settings.
   assert.equal(modeOf("/acme/-/members", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/members/invitations", "acme"), "workspace");
@@ -125,7 +119,6 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeHome("code", "acme"), "/acme/-/overview");
   assert.equal(modeHome("workspace", "acme"), "/acme/-/workspace");
   assert.equal(homePath("acme"), "/acme/-/home");
-  assert.equal(homePath("acme", "?agent=new"), "/acme/-/overview?agent=new");
   assert.equal(homePath("acme", "?tab=landed&_routes=x"), "/acme/-/overview?tab=landed");
 });
 
@@ -138,7 +131,7 @@ test("Workspace mode's sidebar knows which group and page an address is", async 
   assert.deepEqual(workspaceSettingsPage("/acme/-/permissions", "acme"), { group: "access", page: "permissions" });
   assert.deepEqual(workspaceSettingsPage("/acme/-/rules/rs_1", "acme"), { group: "security", page: "rules" });
   assert.deepEqual(workspaceSettingsPage("/acme/-/security/settings", "acme"), { group: "security", page: "security-settings" });
-  assert.deepEqual(workspaceSettingsPage("/acme/-/spend/receipts/r1", "acme"), { group: "money", page: "spend" });
+  assert.deepEqual(workspaceSettingsPage("/acme/-/usage", "acme"), { group: "money", page: "usage" });
   // The overview, Code's security page and another workspace are no settings page.
   assert.equal(workspaceSettingsPage("/acme/-/workspace", "acme"), null);
   assert.equal(workspaceSettingsPage("/acme/-/security", "acme"), null);

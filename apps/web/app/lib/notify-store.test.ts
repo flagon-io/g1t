@@ -10,7 +10,6 @@ import {
   WAITING_MS,
   addRecent,
   addToast,
-  cardActionRequest,
   notificationActions,
   waitingCards,
   attentionCount,
@@ -179,22 +178,14 @@ const capCard = {
   actions: [
     { id: "approve", label: "Approve more", style: "primary" as const, input: { kind: "money" as const, label: "New cap" } },
     { id: "stop", label: "Stop", style: "danger" as const, confirm: "Stop this session?" },
-    { id: "open", label: "Open", href: "/acme/-/agents/g1t/sessions/ses_1" },
+    { id: "open", label: "Open", href: "/acme/web/pull/4" },
   ],
 };
 
-test("a card's notification offers its actions and presses them as the card does", () => {
+test("a card's notification offers its links alone: nothing answers its other buttons", () => {
   const n = note("approval:ses_1:2000000", { kind: "approval", channel_id: null, card: capCard });
-  assert.deepEqual(notificationActions(n).map((a) => a.id), ["approve", "stop", "open"]);
+  assert.deepEqual(notificationActions(n).map((a) => a.id), ["open"]);
   assert.deepEqual(notificationActions(note("m1")), []);
-  assert.deepEqual(cardActionRequest(n, capCard.actions[0]!, "5.00"), {
-    url: "/acme/-/chat/api",
-    body: { intent: "card_action", channel_id: "chn_9", message_id: "msg_card", action_id: "approve", input: "5.00" },
-  });
-  // A link opens its page; an action the card does not offer is not sent.
-  assert.equal(cardActionRequest(n, capCard.actions[2]!, null), null);
-  assert.equal(cardActionRequest(n, { id: "merge", label: "Merge" }, null), null);
-  assert.equal(cardActionRequest(note("m1"), capCard.actions[1]!, null), null);
 });
 
 test("recent notifications are kept newest first, once each", () => {
@@ -209,8 +200,8 @@ test("the panel waits on the newest notification per card, for a day, until it i
   const now = Date.parse("2026-10-09T12:00:00Z");
   const older = note("approval:ses_1:1000000", { kind: "approval", card: capCard, created_at: "2026-10-09T10:00:00Z" });
   const newer = note("approval:ses_1:2000000", { kind: "approval", card: capCard, created_at: "2026-10-09T11:00:00Z" });
-  const draft = note("msg_d", { kind: "agent_waiting", workspace: "side", card: { ...capCard, message_id: "msg_draft" }, created_at: "2026-10-09T11:30:00Z" });
-  const stale = note("msg_s", { kind: "agent_waiting", card: { ...capCard, message_id: "msg_stale" }, created_at: new Date(now - WAITING_MS - 1).toISOString() });
+  const draft = note("msg_d", { kind: "approval", workspace: "side", card: { ...capCard, message_id: "msg_draft" }, created_at: "2026-10-09T11:30:00Z" });
+  const stale = note("msg_s", { kind: "approval", card: { ...capCard, message_id: "msg_stale" }, created_at: new Date(now - WAITING_MS - 1).toISOString() });
   const recent = addRecent([], [older, newer, draft, stale, note("plain")]);
   assert.deepEqual(waitingCards(recent, new Set(), now).map((n) => n.id), ["msg_d", "approval:ses_1:2000000"]);
   assert.deepEqual(waitingCards(recent, new Set(), now, "Acme").map((n) => n.id), ["approval:ses_1:2000000"]);

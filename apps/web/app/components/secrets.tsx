@@ -92,8 +92,8 @@ export function SecretsPanel({
       <Card asChild radius="lg" className="mt-4 px-4 py-2.5 text-xs text-muted">
         <p>
           Built in: workflows get <code className="text-fg">secrets.G1T_TOKEN</code>, the workspace's own token for
-          the run, with <code className="text-fg">secrets.GITHUB_TOKEN</code> as its alias. Agents
-          and the merge queue never read secrets or variables, and runs for people outside the workspace get no secrets.
+          the run, with <code className="text-fg">secrets.GITHUB_TOKEN</code> as its alias. The merge
+          queue never reads secrets or variables, and runs for people outside the workspace get no secrets.
         </p>
       </Card>
 

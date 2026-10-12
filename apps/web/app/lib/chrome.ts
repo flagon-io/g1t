@@ -65,7 +65,6 @@ export type ProjectPage =
   | "code"
   | "issues"
   | "pulls"
-  | "agents"
   | "actions"
   | "deployments"
   | "observability"
@@ -87,7 +86,6 @@ export const PAGE_AREA: Record<ProjectPage, RepoArea> = {
   code: "code",
   issues: "issues",
   pulls: "pulls",
-  agents: "agents",
   actions: "workflows",
   deployments: "deployments",
   // Logs and traces are of something running here.
@@ -104,7 +102,7 @@ export const PAGE_AREA: Record<ProjectPage, RepoArea> = {
  * everyone who can see the project sees the rest. A mirror lists only what
  * it offers now (`mirror`, the repository's, once its page has loaded): a
  * standby mirror is a read-only copy, so Code, Security, Insights and
- * Settings, no Issues, Pull requests, Agents or Deployments, and Workflows
+ * Settings, no Issues, Pull requests or Deployments, and Workflows
  * only when they run here.
  */
 export function projectPages(member: boolean, can?: Partial<Abilities>, mirror?: RepoMirror | null): ProjectPage[] {
@@ -112,7 +110,6 @@ export function projectPages(member: boolean, can?: Partial<Abilities>, mirror?:
     "code",
     "issues",
     "pulls",
-    "agents",
     "actions",
     // A public repository's deployments and build logs are for anyone, as its code is.
     "deployments",
@@ -150,10 +147,9 @@ export function hiddenOnMirror(rest: string, mirror: RepoMirror | null | undefin
  * project at which each is the current one.
  */
 export const PROJECT_PAGE_LINKS: Record<ProjectPage, { label: string; path: string; also: string[]; soon?: boolean }> = {
-  code: { label: "Code", path: "code", also: ["tree", "blob", "commits", "commit", "branches", "tags", "releases", "compare"] },
-  issues: { label: "Issues", path: "issues", also: ["plans", "milestones", "labels"] },
-  pulls: { label: "Pull requests", path: "pulls", also: ["pull", "queue"] },
-  agents: { label: "Agents", path: "agents", also: ["sessions", "memory"] },
+  code: { label: "Code", path: "code", also: ["tree", "blob", "commits", "commit", "branches", "tags", "releases", "compare", "memory"] },
+  issues: { label: "Issues", path: "issues", also: ["milestones", "labels"] },
+  pulls: { label: "Pull requests", path: "pulls", also: ["pull", "queue", "sessions"] },
   actions: { label: "Workflows", path: "actions", also: [] },
   deployments: { label: "Deployments", path: "deployments", also: [] },
   observability: { label: "Observability", path: "observability", also: [] },

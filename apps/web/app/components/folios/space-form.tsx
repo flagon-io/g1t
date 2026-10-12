@@ -1,9 +1,10 @@
 /**
  * A space's settings, as a new space asks for them and its settings page
  * changes them: name, icon, address, who it is for, what they may do,
- * how agents change what is in it, and the projects it is about.
+ * and the projects it is about. Its agent mode, which only g1t's own
+ * agents read, is kept as it was.
  */
-import { DOC_AGENT_MODE_LABELS, DOC_ROLE_LABELS, DOC_SPACE_KIND_LABELS, type DocAgentMode, type DocRole, type DocSpace, type DocSpaceKind } from "@g1t/contracts";
+import { DOC_ROLE_LABELS, DOC_SPACE_KIND_LABELS, type DocAgentMode, type DocRole, type DocSpace, type DocSpaceKind } from "@g1t/contracts";
 import { type FormEvent, useState } from "react";
 
 import { ErrorText } from "../ui";
@@ -108,19 +109,6 @@ export function SpaceForm({
           <SelectField aria-label="What they can do" value={v.default_role} onValueChange={(r) => set("default_role", r as DocRole)} options={roles} className="h-9 w-full" />
         </Row>
       )}
-      <Row label="Agents in this space" hint="An agent never does more than the person it works for. With Suggest, its changes wait for a person to accept them.">
-        <SelectField
-          aria-label="Agents in this space"
-          value={v.agent_mode}
-          onValueChange={(m) => set("agent_mode", m as DocAgentMode)}
-          options={(["suggest", "edit"] as DocAgentMode[]).map((m) => ({
-            value: m,
-            label: DOC_AGENT_MODE_LABELS[m],
-            description: m === "suggest" ? "Tracked changes you accept or reject (recommended)" : "Agents edit directly; every edit is in the history",
-          }))}
-          className="h-9 w-full"
-        />
-      </Row>
       <Row label="Projects" hint="owner/name, comma separated. Artifacts can be filtered by project.">
         <input aria-label="Projects" value={v.projects} onChange={(e) => set("projects", e.target.value)} placeholder="acme/web, acme/api" className={`${FIELD} font-mono`} />
       </Row>

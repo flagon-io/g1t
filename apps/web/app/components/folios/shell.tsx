@@ -89,7 +89,7 @@ export function FolioHeader({
           {others.slice(0, 5).map((p) => (
             <Hint key={p.key} label={`${p.name}${p.kind === "agent" ? " (agent)" : ""}`}>
               <span className="rounded-full ring-2" style={{ ["--tw-ring-color" as string]: p.color }}>
-                <Face who={{ kind: p.kind, id: p.key.slice(p.key.indexOf(":") + 1), name: p.name, avatar: p.avatar, avatar_seed: null }} size={24} />
+                <Face who={{ kind: p.kind, id: p.key.slice(p.key.indexOf(":") + 1), name: p.name, avatar: p.avatar }} size={24} />
               </span>
             </Hint>
           ))}

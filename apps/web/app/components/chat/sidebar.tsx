@@ -1,22 +1,19 @@
-import { BellOff, Bot, ChevronDown, Compass, Hash, Lock, Pin, PinOff, Plus, Search } from "lucide-react";
+import { BellOff, ChevronDown, Compass, Hash, Lock, Pin, PinOff, Search } from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type ReactNode, useEffect, useState } from "react";
-import { Link, NavLink, useFetcher, useLocation, useNavigate } from "react-router";
+import { NavLink, useFetcher, useLocation, useNavigate } from "react-router";
 
-import type { ChatSidebarEntry, WorkspaceAgent } from "@g1t/contracts";
+import type { ChatSidebarEntry } from "@g1t/contracts";
 
 import { conversationCache } from "./conversation-cache";
 import { CreateChannelButton, NewMessageButton, useChatData, useChatSend, useChatSidebar } from "./actions";
 import { DndMenu } from "./dnd-menu";
-import { MemberAvatar, PairAvatar, StatusDot, statusLabel } from "./marks";
-import { AgentAvatar } from "../agent-avatar";
+import { MemberAvatar } from "./marks";
 import { PersonStatusEmoji } from "../presence";
-import { isOrchestrator } from "../orchestrator";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { Skeleton } from "../ui/skeleton";
-import { type ChatFilter, agentDmOf, agentsAmong, agentsToTalkTo, archivedAgentsDm, channelPath, filterEntries, mixedDm, sections } from "../../lib/chat";
+import { type ChatFilter, agentsOnlyDm, channelPath, filterEntries, sections } from "../../lib/chat";
 import { feedConnected } from "../../lib/notify-client";
 import { FALLBACK_REFRESH_MS } from "../../lib/notify-store";
 import { setMutedConversations } from "../../lib/sound-events";
@@ -45,13 +42,8 @@ function Count({ entry }: { entry: ChatSidebarEntry | undefined }) {
 
 /**
  * Chat mode's sidebar: what you pinned, the channels (and a way to browse
- * the rest), then direct messages in two buckets so it is always clear who
- * is on the other side: People, your conversations with people, the latest
- * first (a conversation with a person and an agent in it is here, marked
- * as such), and Agents, your conversations with agents alone, the latest
- * first, then the agents you have not talked to yet, g1t first: one click
- * opens a conversation with any of them. Sections fold, and stay folded on
- * this device. All, Unread and Mentions filter every section. It refreshes
+ * the rest), then direct messages, the latest first. Sections fold, and
+ * stay folded on this device. All, Unread and Mentions filter every section. It refreshes
  * itself while the tab is shown, so unread counts move without a reload.
  */
 export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: boolean }) {
@@ -60,7 +52,6 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
   const send = useChatSend(slug);
   const [filter, setFilter] = useState<ChatFilter>("all");
   const [query, setQuery] = useState("");
-  const [opening, setOpening] = useState<string | null>(null);
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
@@ -86,19 +77,11 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
     if (sidebar) setMutedConversations(sidebar.entries.filter((e) => e.muted).map((e) => e.channel.id));
   }, [sidebar]);
   const entries = (sidebar?.entries ?? []).map((e) => (pins.has(e.channel.id) ? { ...e, starred: pins.get(e.channel.id)! } : e));
-  // The open conversation stays listed even when it is one with an archived agent, which Jump to otherwise finds.
+  // The open conversation stays listed even when it is an old one with an agent alone, which Jump to otherwise finds.
   const currentId = entries.find((e) => pathname === channelPath(slug, e.channel) || pathname.startsWith(`${channelPath(slug, e.channel)}/`))?.channel.id ?? null;
   const shown = filterEntries(entries, filter, query, currentId);
-  const { pinned, channels, people, agents: agentConversations } = sections(shown);
-  const { agentDms } = sections(entries);
+  const { pinned, channels, dms } = sections(shown);
   const loading = !data;
-  const owner = data?.role === "owner";
-
-  // The agents you have not talked to yet, g1t first: one click opens a
-  // conversation, which then lists under Direct messages like anyone's.
-  // Nothing of theirs is unread, so Unread and Mentions leave them out.
-  // An archived agent is never offered (lib/chat.ts `agentsToTalkTo`).
-  const agents = filter !== "all" ? [] : agentsToTalkTo(data?.agents ?? [], agentDms, query);
 
   // Folded sections, remembered per workspace on this device. A folded
   // section still shows what is unread and the conversation open now.
@@ -116,17 +99,6 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
     return pathname === to || pathname.startsWith(`${to}/`) || (!entry.muted && (entry.unread > 0 || entry.mentions > 0));
   };
 
-  /** The direct message with an agent: opened, or made on first use. */
-  const openAgent = async (agent: WorkspaceAgent, pin = false) => {
-    const had = agentDms.get(agent.id);
-    if (had && !pin) return navigate(channelPath(slug, had.channel));
-    setOpening(agent.id);
-    const opened = had ? { ok: true as const, value: { channel: had.channel, to: channelPath(slug, had.channel) } } : await send<{ channel: ChatSidebarEntry["channel"]; to: string }>({ intent: "dm", members: [`agent:${agent.id}`] });
-    if (opened.ok && pin) await send({ intent: "preferences", channel_id: opened.value.channel.id, starred: !had?.starred });
-    setOpening(null);
-    if (opened.ok && !pin) navigate(opened.value.to);
-    if (pin) refresh();
-  };
   const togglePin = async (entry: ChatSidebarEntry) => {
     const next = !entry.starred;
     setPins((now) => new Map(now).set(entry.channel.id, next));
@@ -140,7 +112,7 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
   };
 
   const conversation = (entry: ChatSidebarEntry) => (
-    <ConversationRow key={entry.channel.id} entry={entry} slug={slug} pathname={pathname} agents={data?.agents ?? []} onPin={() => void togglePin(entry)} />
+    <ConversationRow key={entry.channel.id} entry={entry} slug={slug} pathname={pathname} onPin={() => void togglePin(entry)} />
   );
 
   return (
@@ -164,11 +136,11 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
-                  const first = [...pinned, ...channels, ...people, ...agentConversations][0];
+                  const first = [...pinned, ...channels, ...dms][0];
                   if (first) {
                     navigate(channelPath(slug, first.channel));
                     setQuery("");
-                  } else if (agents[0]) void openAgent(agents[0]);
+                  }
                 } else if (event.key === "Escape") setQuery("");
               }}
               placeholder="Jump to channel or person"
@@ -232,55 +204,16 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
             </Section>
             <Section
               id="people"
-              title="People"
+              title="Direct messages"
               folded={folded}
               onFold={fold}
               action={<NewMessageButton slug={slug} />}
-              keep={people.filter(keepShown).map(conversation)}
+              keep={dms.filter(keepShown).map(conversation)}
             >
-              {people.map(conversation)}
-              {people.length === 0 && filter === "all" && !query && <Empty>Message a teammate.</Empty>}
+              {dms.map(conversation)}
+              {dms.length === 0 && filter === "all" && !query && <Empty>Message a teammate.</Empty>}
             </Section>
-            {(agentConversations.length > 0 || agents.length > 0 || (filter === "all" && !query)) && (
-              <Section
-                id="agents"
-                title="Agents"
-                folded={folded}
-                onFold={fold}
-                action={
-                  owner ? (
-                    <Hint label="New agent">
-                      <Link
-                        to={`/${slug}/-/agents/new`}
-                        aria-label="New agent"
-                        className="flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
-                      >
-                        <Plus size={14} />
-                      </Link>
-                    </Hint>
-                  ) : null
-                }
-                keep={agentConversations.filter(keepShown).map(conversation)}
-              >
-                {agentConversations.map(conversation)}
-                {agentConversations.length === 0 && agents.length === 0 && filter === "all" && !query && <Empty>Message an agent.</Empty>}
-                {agents.map((agent) => (
-                  <AgentRow
-                    key={agent.id}
-                    agent={agent}
-                    busy={opening === agent.id}
-                    onOpen={() => void openAgent(agent)}
-                    onPin={() => void openAgent(agent, true)}
-                  />
-                ))}
-                {filter === "all" && !query && (
-                  <ExtraRow to={`/${slug}/-/agents`} icon={<Bot size={15} />}>
-                    {(data?.agents ?? []).length === 0 ? (owner ? "Hire an agent" : "No agents yet") : "All agents"}
-                  </ExtraRow>
-                )}
-              </Section>
-            )}
-            {shown.length === 0 && agents.length === 0 && (filter !== "all" || query) && (
+            {shown.length === 0 && (filter !== "all" || query) && (
               <p className="px-2 py-2 text-xs text-faint">{query ? "Nothing matches." : filter === "unread" ? "You're all caught up." : "No mentions."}</p>
             )}
           </>
@@ -448,32 +381,23 @@ function ConversationRow({
   entry,
   slug,
   pathname,
-  agents,
   onPin,
 }: {
   entry: ChatSidebarEntry;
   slug: string;
   pathname: string;
-  agents: WorkspaceAgent[];
   onPin: () => void;
 }) {
   const to = channelPath(slug, entry.channel);
   const current = pathname === to || pathname.startsWith(`${to}/`);
   const prefetch = usePrefetchConversation(to);
   const unread = !entry.muted && (entry.unread > 0 || entry.mentions > 0);
-  const agentId = agentDmOf(entry);
-  const agent = agentId ? agents.find((a) => a.id === agentId) : null;
-  const other = entry.others[0];
-  const g1t = agent ? isOrchestrator(agent) : false;
-  // A person and an agent together: both faces, the agent's marked, and the word.
-  const mixed = mixedDm(entry);
-  // With an archived agent (lib/chat.ts): still here to read, dimmed, and said to be archived in place of its title.
-  const archived = archivedAgentsDm(entry);
-  const icon = agent ? (
-    <AgentFace agent={agent} g1t={g1t} />
-  ) : mixed ? (
-    <PairAvatar person={entry.others.find((m) => m.kind === "user")!} agent={agentsAmong(entry.others)[0]!} size={20} ring="var(--chat-sidebar-bg)" />
-  ) : entry.channel.kind === "dm" && other ? (
+  // People first: an old agent (agents no longer exist) shows only when nobody else is there.
+  const other = entry.others.find((m) => m.kind === "user") ?? entry.others[0];
+  // An old conversation with an agent alone (lib/chat.ts): still here to read, dimmed.
+  const former = agentsOnlyDm(entry);
+  const icon =
+    entry.channel.kind === "dm" && other ? (
     // One person: their dot, cut out of the sidebar behind it.
     <MemberAvatar member={other} size={18} presence={entry.others.length === 1} ring="var(--chat-sidebar-bg)" />
   ) : entry.channel.private ? (
@@ -489,76 +413,21 @@ function ConversationRow({
           {...prefetch}
           aria-current={current ? "page" : undefined}
           className={`${ROW} ${
-            current ? "bg-sidebar-accent text-fg" : unread ? "text-fg hover:bg-sidebar-accent/60" : entry.muted || archived ? "text-faint hover:bg-sidebar-accent/60 hover:text-muted" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"
+            current ? "bg-sidebar-accent text-fg" : unread ? "text-fg hover:bg-sidebar-accent/60" : entry.muted || former ? "text-faint hover:bg-sidebar-accent/60 hover:text-muted" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"
           }`}
         >
-          <span className={`flex shrink-0 justify-center ${mixed ? "w-7" : "w-4.5"} ${current || unread ? "text-muted" : "text-faint"} ${archived ? "opacity-60" : ""}`}>{icon}</span>
+          <span className={`flex w-4.5 shrink-0 justify-center ${current || unread ? "text-muted" : "text-faint"} ${former ? "opacity-60" : ""}`}>{icon}</span>
           <span className={`min-w-0 grow truncate ${unread ? "font-semibold" : current ? "font-medium" : ""}`}>
-            {agent ? agent.display_name : entry.title}
-            {agent && <span className="ml-1.5 text-[0.6875rem] font-normal text-faint">{g1t ? "orchestrator" : agent.title}</span>}
+            {entry.title}
             {entry.channel.kind === "dm" && other?.kind === "user" && entry.others.length === 1 && (
               <PersonStatusEmoji person={{ id: other.id, username: other.name }} size={13} className="ml-1.5 align-[-2px]" inert />
             )}
           </span>
-          {archived && (
-            <Badge tone="neutral" className="shrink-0 px-1.5 font-normal">
-              {archived.deleted ? "Deleted" : "Archived"}
-            </Badge>
-          )}
-          {mixed && (
-            <Badge tone="accent" className="shrink-0 px-1.5 font-normal">
-              with an agent
-            </Badge>
-          )}
           {entry.muted && <BellOff size={12} className="shrink-0 text-faint" aria-label="Muted" />}
           <Count entry={entry} />
         </NavLink>
       </RowMenu>
       <PinButton pinned={entry.starred} onPin={onPin} label={entry.title} />
-    </li>
-  );
-}
-
-/**
- * An agent's face in a row, the agent marker ringed in the sidebar's own
- * colour; any but g1t carries its status in the other corner.
- */
-function AgentFace({ agent, g1t }: { agent: WorkspaceAgent; g1t: boolean }) {
-  return (
-    <span className="relative inline-flex shrink-0">
-      <AgentAvatar agent={{ ...agent, builtin: g1t }} size={18} ring="var(--chat-sidebar-bg)" />
-      {!g1t && agent.status !== "idle" && (
-        <span className="absolute -top-1 -right-1 flex rounded-full p-[2px]" style={{ background: "var(--chat-sidebar-bg)" }}>
-          <StatusDot status={agent.status} className="size-[7px] shadow-none" />
-        </span>
-      )}
-    </span>
-  );
-}
-
-/** An agent you have not talked to yet: its face, name and title. Opening it starts your conversation. */
-function AgentRow({ agent, busy, onOpen, onPin }: { agent: WorkspaceAgent; busy: boolean; onOpen: () => void; onPin: () => void }) {
-  const g1t = isOrchestrator(agent);
-  return (
-    <li className="group/row relative">
-      <RowMenu pinned={false} onPin={onPin}>
-        <button
-          type="button"
-          onClick={onOpen}
-          aria-busy={busy || undefined}
-          aria-label={`Message ${agent.display_name}, ${g1t ? "orchestrator" : agent.title}${g1t ? "" : `, ${statusLabel(agent.status).toLowerCase()}`}`}
-          className={`${ROW} w-full text-left text-muted hover:bg-sidebar-accent/60 hover:text-fg ${busy ? "opacity-60" : ""}`}
-        >
-          <span className="flex w-4.5 shrink-0 justify-center">
-            <AgentFace agent={agent} g1t={g1t} />
-          </span>
-          <span className="min-w-0 grow truncate">
-            {agent.display_name}
-            <span className="ml-1.5 text-[0.6875rem] text-faint">{g1t ? "orchestrator" : agent.title}</span>
-          </span>
-        </button>
-      </RowMenu>
-      <PinButton pinned={false} onPin={onPin} label={agent.display_name} />
     </li>
   );
 }

@@ -2,21 +2,16 @@ import { Clock, MapPin, MessageSquare, UserRound, Users } from "lucide-react";
 import { type ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
-import { type WorkspaceAgent, shownUsername } from "@g1t/contracts";
+import { shownUsername } from "@g1t/contracts";
 
 import { useChatSend } from "./actions";
-import { AgentPill, StatusDot, statusLabel } from "./marks";
-import { AgentAvatar } from "../agent-avatar";
 import { BottomSheet } from "../mobile";
 import { PresenceSummary, WithPresence } from "../presence";
-import { isOrchestrator } from "../orchestrator";
 
-import { ButtonLink } from "../ui";
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Skeleton } from "../ui/skeleton";
-import { wholeDollars } from "../../lib/money";
 import type { UserCard } from "../../lib/hovercard";
 import { localTime } from "../../lib/time-zone";
 
@@ -26,7 +21,6 @@ export type PersonCard = UserCard & { teams: { slug: string; name: string }[] };
 /** What a card needs from the conversation it opens in. */
 export type CardContextValue = {
   slug: string;
-  agents: WorkspaceAgent[];
   /** Opens the profile panel beside the conversation, in place of its details. */
   onViewProfile: (username: string) => void;
 };
@@ -153,63 +147,12 @@ function PersonBody({ username, display, avatar, ctx, open, close }: { username:
   );
 }
 
-function AgentBody({ agent, ctx }: { agent: WorkspaceAgent; ctx: CardContextValue }) {
-  const message = useMessage(ctx.slug);
-  const g1t = isOrchestrator(agent);
-  const cap = agent.budget.monthly_micros;
-  const share = cap ? Math.min(1, agent.spent_month_micros / cap) : null;
-  return (
-    <div className="w-full">
-      <div className="flex items-start gap-3.5">
-        <AgentAvatar agent={agent} size={56} />
-        <div className="min-w-0 pt-1">
-          <p className="flex items-center gap-2 text-base font-semibold">
-            <span className="truncate">{agent.display_name}</span>
-            <AgentPill />
-          </p>
-          <p className="truncate text-xs text-muted">{g1t ? "Orchestrator" : agent.title || agent.role}</p>
-        </div>
-      </div>
-      <div className="mt-3 space-y-2 text-[0.8125rem] text-muted">
-        <p className="flex items-center gap-2">
-          <StatusDot status={agent.status} />
-          {statusLabel(agent.status)}
-          {agent.status === "working" ? <span className="text-faint">· on a task now</span> : null}
-        </p>
-        {!g1t && agent.responsibilities.length > 0 && <p className="line-clamp-2 text-fg-soft">{agent.responsibilities.slice(0, 2).join(" · ")}</p>}
-        {cap != null && share != null && (
-          <div>
-            <p className="flex justify-between text-xs">
-              <span>This month</span>
-              <span className="tabular-nums">
-                {wholeDollars(agent.spent_month_micros)} of {wholeDollars(cap)}
-              </span>
-            </p>
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line">
-              <div className={`h-full rounded-full ${share >= 1 ? "bg-danger" : share >= 0.8 ? "bg-warn" : "bg-accent"}`} style={{ width: `${Math.max(2, share * 100)}%` }} />
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="mt-4 flex gap-2">
-        <Button type="button" disabled={message.busy} onClick={() => void message.open(`agent:${agent.id}`)} variant="accent" className="grow rounded-lg max-md:h-11">
-          <MessageSquare size={15} />
-          {message.busy ? "Opening…" : "Message"}
-        </Button>
-        <ButtonLink to={`/${ctx.slug}/-/agents/${agent.handle}`} variant="outline" className="grow rounded-lg max-md:h-11">
-          Profile
-        </ButtonLink>
-      </div>
-    </div>
-  );
-}
-
 /**
  * A name or avatar that opens the member's card: a popover beside it, or a
- * sheet from the bottom on a phone. People get Message and View profile
- * (a panel beside the conversation); agents get Message and Profile.
- * Hovering or focusing it reads the card ahead. Outside a conversation it
- * is a plain link.
+ * sheet from the bottom on a phone: Message and View profile (a panel
+ * beside the conversation). Hovering or focusing it reads the card ahead.
+ * Outside a conversation it is a plain link; an old agent's name (agents
+ * no longer exist) is plain text.
  */
 export function MemberCard({
   member,
@@ -225,25 +168,24 @@ export function MemberCard({
   const ctx = useContext(CardContext);
   const [open, setOpen] = useState(false);
   const [sheet, setSheet] = useState(false);
-  const agent =
-    member.kind === "agent" ? (ctx?.agents.find((a) => a.id === member.id || a.handle === member.name.toLowerCase()) ?? null) : null;
-  const href = member.kind === "agent" ? `/${ctx?.slug ?? ""}/-/agents/${member.name}` : `/u/${member.name}`;
-  if (!ctx || (member.kind === "agent" && !agent)) {
+  if (member.kind === "agent") {
     return (
-      <Link to={href} className={className} aria-label={label}>
+      <span className={className} aria-label={label}>
+        {children}
+      </span>
+    );
+  }
+  if (!ctx) {
+    return (
+      <Link to={`/u/${member.name}`} className={className} aria-label={label}>
         {children}
       </Link>
     );
   }
-  const prefetch = () => {
-    if (member.kind === "user") void personCard(ctx.slug, member.name);
-  };
-  const body = (close: () => void, isOpen: boolean) =>
-    agent ? (
-      <AgentBody agent={agent} ctx={ctx} />
-    ) : (
-      <PersonBody username={member.name} display={member.display_name ?? member.name} avatar={member.avatar ?? null} ctx={ctx} open={isOpen} close={close} />
-    );
+  const prefetch = () => void personCard(ctx.slug, member.name);
+  const body = (close: () => void, isOpen: boolean) => (
+    <PersonBody username={member.name} display={member.display_name ?? member.name} avatar={member.avatar ?? null} ctx={ctx} open={isOpen} close={close} />
+  );
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>

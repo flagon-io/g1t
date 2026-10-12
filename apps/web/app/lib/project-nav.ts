@@ -55,19 +55,8 @@ export const SECTIONS: Section[] = [
     area: "issues",
     tabs: [
       { label: "Issues", path: "issues" },
-      { label: "Outcomes", path: "plans" },
       { label: "Milestones", path: "milestones" },
       ...soon("Issues"),
-    ],
-  },
-  {
-    key: "Agents",
-    area: "agents",
-    tabs: [
-      { label: "At work", path: "agents" },
-      { label: "Sessions", path: "sessions" },
-      { label: "Memory", path: "memory" },
-      ...soon("Agents"),
     ],
   },
   {
@@ -123,6 +112,7 @@ export const PULLS: Section = {
   tabs: [
     { label: "Pull requests", path: "pulls", also: ["pull"] },
     { label: "Merge queue", path: "queue" },
+    { label: "Sessions", path: "sessions" },
   ],
 };
 

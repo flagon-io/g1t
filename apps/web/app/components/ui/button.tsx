@@ -13,7 +13,7 @@ import { cn } from "../../lib/cn";
 // the main action; `accent` the lavender one, for the one action a page
 // is for; `outline` a bordered quiet one; `secondary` a raised one;
 // `ghost` bare until hovered, for icons and toolbars; `soft` the accent as
-// a wash, the one tinted control in a row, such as Ask g1t; `destructive`
+// a wash, the one tinted control in a row; `destructive`
 // for what cannot be undone; `link` words alone.
 //
 // Sizes: `default` 36px, `sm` 32px, `xs` 28px, `lg` 40px; the icon sizes

@@ -89,10 +89,10 @@ test("forms ask for one mark on one item, or read for every item", () => {
   assert.equal(markFromForm(form({ intent: "done" }), NOW), null);
 });
 
-test("what needs you puts a waiting agent before a failure, and leaves out the rest", () => {
+test("what needs you puts what waits on you before a failure, and leaves out the rest", () => {
   const item = (id: string, severity: InboxItem["severity"], createdAt: string, readAt: string | null = null): InboxItem => ({
     id,
-    reason: "agent",
+    reason: "review_requested",
     severity,
     title: id,
     body: "",
@@ -135,13 +135,13 @@ test("every tab says something when it is empty", () => {
 });
 
 test("every reason has words, a filter and an email choice", () => {
-  const reasons = Object.keys(REASON_LABEL);
-  assert.equal(reasons.length, 12);
+  // Every reason has words, an old item's `agent` too; it is no longer sent, so it is neither a filter nor an email choice.
+  assert.equal(Object.keys(REASON_LABEL).length, 12);
+  const reasons = Object.keys(REASON_LABEL).filter((reason) => reason !== "agent");
   assert.deepEqual(REASON_FILTERS.slice(1).map((entry) => entry.reason), reasons);
   assert.equal(REASON_FILTERS[0].label, "Any reason");
   assert.equal(REASON_FILTERS.find((entry) => entry.reason === "review_requested")?.label, "Review requested");
-  // Every reason someone can be told for can be emailed, but a security
-  // alert, which nothing sends yet.
+  // Every reason someone can be told for can be emailed.
   assert.deepEqual(
     EMAIL_REASONS.map((entry) => entry.reason).sort(),
     reasons.sort(),

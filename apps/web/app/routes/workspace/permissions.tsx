@@ -1,4 +1,4 @@
-import { Bot, Code2, MessagesSquare, Rocket, Shapes, UsersRound } from "lucide-react";
+import { Code2, MessagesSquare, Rocket, Shapes, UsersRound } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Form, Link, data, useNavigation } from "react-router";
 
@@ -22,7 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { SwitchCard } from "../../components/ui/switch";
-import { chat, identity, workspaceAgents } from "../../lib/services.server";
+import { chat, identity } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -32,27 +32,22 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 /**
  * Permissions: who may do what in the workspace, in one place, a section
  * for each part of g1t. What exists today saves through the service that
- * owns it (identity for repositories and teams, chat for channels, agents
- * for personal agents); what does not yet is shown as it will be, marked
+ * owns it (identity for repositories and teams, chat for channels); what
+ * does not yet is shown as it will be, marked
  * Soon, with the rule that holds today. Owners only.
  */
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   if (roleIn(viewer, params.owner) !== "owner" || !viewer) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
-  const [workspace, policy, chatSettings] = await Promise.all([
-    identity.getWorkspace(params.owner),
-    workspaceAgents.policy(slug, viewer).catch(() => null),
-    chat.chatSettings(slug, viewer).catch(() => null),
-  ]);
+  const [workspace, chatSettings] = await Promise.all([identity.getWorkspace(params.owner), chat.chatSettings(slug, viewer).catch(() => null)]);
   if (!workspace) throw data(null, { status: 404 });
   return {
     slug,
     base: workspace.basePermission ?? DEFAULT_BASE_PERMISSION,
     privileges: { ...DEFAULT_MEMBER_PRIVILEGES, ...pickPrivileges(workspace) },
     teamCreation: workspace.teamCreation ?? "members",
-    // Null when the service did not answer: the section says so and takes no change.
-    membersCreateAgents: policy?.ok ? policy.value.members_create_agents : null,
+    // Null when chat did not answer: the section says so and takes no change.
     channels: chatSettings?.ok ? { public: chatSettings.value.settings.public_channels, private: chatSettings.value.settings.private_channels } : null,
   };
 }
@@ -63,7 +58,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const slug = params.owner.toLowerCase();
-  // Each section saves on its own; identity, chat and agents check the owner again.
+  // Each section saves on its own; identity and chat check the owner again.
   if (intent === "base-permission") {
     const base = String(form.get("base") ?? "");
     if (!(BASE_PERMISSIONS as readonly string[]).includes(base)) return { intent, error: "Choose a base permission." };
@@ -90,14 +85,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       return { intent, error: "Chat didn't answer. Try again in a moment." };
     }
   }
-  if (intent === "personal-agents") {
-    try {
-      const result = await workspaceAgents.setPolicy(slug, user, { members_create_agents: form.get("members_create_agents") === "on" });
-      return result.ok ? { intent, saved: true } : { intent, error: result.error.message };
-    } catch {
-      return { intent, error: "Agents didn't answer. Try again in a moment." };
-    }
-  }
   return { intent, error: "Unknown request." };
 }
 
@@ -105,7 +92,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 const BASE_MEANS: Record<BasePermission, string> = {
   none: "Members see only public repositories and the ones they are given a role on.",
   read: "Members can see and clone every repository, open issues and pull requests, and comment.",
-  write: "Members can see every repository, manage its issues and pull requests, push, merge, and put agents to work.",
+  write: "Members can see every repository, manage its issues and pull requests, push and merge.",
   admin: "Members can do everything on every repository, including its settings, webhooks, secrets and who has access. Only owners transfer or delete one.",
 };
 
@@ -239,7 +226,7 @@ const MEMBERS_OR_OWNERS = [
 ];
 
 export default function WorkspacePermissions({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { slug, base, privileges, teamCreation, membersCreateAgents, channels } = loaderData;
+  const { slug, base, privileges, teamCreation, channels } = loaderData;
   return (
     <div className="max-w-3xl space-y-6">
       <Part icon={<Code2 />} title="Code" about="What members may do with the workspace's repositories, beyond the role each repository gives them. Owners always can do all of it.">
@@ -257,7 +244,7 @@ export default function WorkspacePermissions({ loaderData, actionData, params }:
         <TeamCreationSetting key={teamCreation} setting={teamCreation} answer={actionData} />
       </Part>
 
-      <Part icon={<MessagesSquare />} title="Chat" about="Who may open channels and bring agents into conversations. What a channel's own members may do, its default channels and emoji are on Chat settings.">
+      <Part icon={<MessagesSquare />} title="Chat" about="Who may open channels. What a channel's own members may do, its default channels and emoji are on Chat settings.">
         {channels ? (
           <ChannelsSetting key={`${channels.public}:${channels.private}`} channels={channels} slug={slug} answer={actionData} />
         ) : (
@@ -265,18 +252,6 @@ export default function WorkspacePermissions({ loaderData, actionData, params }:
             <p className="text-sm text-muted">Chat didn't answer. Reload to try again.</p>
           </Setting>
         )}
-        <Stub
-          title="Who can add agents to a conversation"
-          about="Who may invite a workspace agent into a channel or a group message."
-          today="any member of a channel can invite an agent to it, the way they invite a person; a personal agent is never invited anywhere."
-          control={<LockedChoice name="agents_in_channels" options={MEMBERS_OR_OWNERS} value="members" />}
-        />
-        <Stub
-          title="Who can message agents directly"
-          about="Who may open a direct message with a workspace agent."
-          today="every member can message any workspace agent directly."
-          control={<LockedChoice name="agent_dms" options={MEMBERS_OR_OWNERS} value="members" />}
-        />
       </Part>
 
       <Part icon={<Shapes />} title="Artifacts" about="Who may make the places documents live, and how a new one is shared.">
@@ -289,7 +264,7 @@ export default function WorkspacePermissions({ loaderData, actionData, params }:
         <Stub
           title="Default sharing"
           about="Who a new artifact is shared with before its author chooses."
-          today="a new artifact is its author's, shared with the people, agents and teams they add, or opened to the workspace from its Share menu."
+          today="a new artifact is its author's, shared with the people and teams they add, or opened to the workspace from its Share menu."
           control={
             <LockedChoice
               name="default_sharing"
@@ -300,28 +275,6 @@ export default function WorkspacePermissions({ loaderData, actionData, params }:
               value="author"
             />
           }
-        />
-      </Part>
-
-      <Part icon={<Bot />} title="Agents" about="Who may bring agents into the workspace and give them money to spend.">
-        {membersCreateAgents == null ? (
-          <Setting title="Personal agents" about="Whether members who are not owners may create agents of their own.">
-            <p className="text-sm text-muted">Agents didn't answer. Reload to try again.</p>
-          </Setting>
-        ) : (
-          <PersonalAgentsSetting key={String(membersCreateAgents)} on={membersCreateAgents} slug={slug} answer={actionData} />
-        )}
-        <Stub
-          title="Who can create workspace agents"
-          about="Who may create an agent everyone in the workspace talks to and pays for."
-          today="owners create workspace agents; a member's personal agent can be promoted to one by an owner."
-          control={<LockedChoice name="workspace_agents" options={[{ value: "owners", label: "Owners only", description: "The rule today." }, { value: "members", label: "Any member" }]} value="owners" />}
-        />
-        <Stub
-          title="Who can raise budgets"
-          about="Who may raise the workspace's agent budget, a person's or a team's."
-          today={`owners raise the agent budget and each person's; a team's maintainers raise their team's. Budgets are set on the Agents overview and under Spend.`}
-          control={<LockedChoice name="raise_budgets" options={[{ value: "owners", label: "Owners and team maintainers", description: "The rule today." }, { value: "members", label: "Any member, their own" }]} value="owners" />}
         />
       </Part>
 
@@ -454,35 +407,6 @@ function ChannelsSetting({ channels, slug, answer }: { channels: { public: ChatA
           </div>
         </div>
         <SaveRow intent="chat-channels" changed={changed} answer={answer} />
-      </Form>
-    </Setting>
-  );
-}
-
-/** Whether members create personal agents: on unless an owner turns it off. */
-function PersonalAgentsSetting({ on, slug, answer }: { on: boolean; slug: string; answer: Answer }) {
-  const [checked, setChecked] = useState(on);
-  return (
-    <Setting
-      title="Personal agents"
-      about={
-        <>
-          A member's own agent: only they talk to it, in their direct message with it, and it spends from their budget. Owners can promote one to a workspace agent from its profile; budgets are on the{" "}
-          <Link to={`/${slug}/-/agents`} className="underline underline-offset-4 hover:text-fg">
-            Agents overview
-          </Link>
-          .
-        </>
-      }
-    >
-      <Form method="post" className="space-y-3">
-        <input type="hidden" name="intent" value="personal-agents" />
-        <SwitchCard title="Members can create personal agents" name="members_create_agents" checked={checked} onCheckedChange={setChecked}>
-          {checked
-            ? "On: anyone in the workspace can describe an agent and make it theirs. Owners always can."
-            : "Off: only owners create agents. Personal agents members already have keep working."}
-        </SwitchCard>
-        <SaveRow intent="personal-agents" changed={checked !== on} answer={answer} />
       </Form>
     </Setting>
   );

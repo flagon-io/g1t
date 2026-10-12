@@ -1,6 +1,7 @@
 /**
- * Memory, as a project's and a workspace's pages show it: what agents and
- * people learned, each with where it came from, to pin, edit or forget.
+ * Memory, as a project's and a workspace's pages show it: what coding agents
+ * (with the MCP server's remember) and people saved, each with where it came
+ * from, to pin, edit or forget.
  * Both pages post to their own action with the intents in `memoryAction`.
  */
 import { Bot, Brain, Pencil, Pin, PinOff, Trash2, User } from "lucide-react";
@@ -96,13 +97,7 @@ function Source({ memory }: { memory: Memory }) {
   return (
     <span className="inline-flex items-center gap-1">
       <Bot size={11} />
-      {source.runId && repo ? (
-        <Link to={`/${repo.namespace}/${repo.name}/agents/runs/${source.runId}`} className="hover:text-fg">
-          {memory.createdBy}'s run
-        </Link>
-      ) : (
-        memory.createdBy
-      )}
+      {memory.createdBy}
       {where}
     </span>
   );
@@ -122,7 +117,7 @@ function EditMemory({ memory, action }: { memory: Memory; action: string }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit memory</DialogTitle>
-          <DialogDescription>Agents get the new wording from their next run on.</DialogDescription>
+          <DialogDescription>Agents that recall it get the new wording from now on.</DialogDescription>
         </DialogHeader>
         <fetcher.Form method="post" action={action} className="space-y-3">
           <input type="hidden" name="intent" value="update" />
@@ -164,13 +159,13 @@ function MemoryItem({ memory, action, editable }: { memory: Memory; action: stri
           <span>
             added <TimeAgo at={memory.createdAt} />
           </span>
-          <span>{memory.lastUsedAt ? <>given to an agent <TimeAgo at={memory.lastUsedAt} /></> : "not given to an agent yet"}</span>
+          <span>{memory.lastUsedAt ? <>recalled <TimeAgo at={memory.lastUsedAt} /></> : "not recalled yet"}</span>
         </p>
         {fetcher.data?.error && <p className="mt-1.5 text-xs text-danger">{fetcher.data.error}</p>}
       </div>
       {editable && (
         <div className="flex shrink-0 items-start gap-0.5">
-          <Hint label={pinned ? "Unpin" : "Pin: given to every agent first"}>
+          <Hint label={pinned ? "Unpin" : "Pin: recalled first"}>
             <Button
               type="button"
               aria-label={pinned ? "Unpin" : "Pin"}
@@ -192,7 +187,7 @@ function MemoryItem({ memory, action, editable }: { memory: Memory; action: stri
               <AlertDialogHeader>
                 <AlertDialogTitle>Forget this?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  No agent is given it again. This cannot be undone.
+                  No agent recalls it again. This cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

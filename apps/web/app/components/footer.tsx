@@ -82,8 +82,6 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
       ["Pricing", "/pricing"],
       ["Download", "/download"],
       ["Chat", "https://docs.g1t.sh/guides/chat/"],
-      ["Agents", "https://docs.g1t.sh/guides/agents/"],
-      ["Working with g1t", "https://docs.g1t.sh/guides/working-with-g1t/"],
       ["Bring your own agent", "https://docs.g1t.sh/guides/bring-your-own-agent/"],
       ["Integrations", "https://docs.g1t.sh/guides/integrations/"],
     ],
@@ -117,7 +115,7 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
 ];
 
 /** What the footer says under the logo. */
-const TAGLINE = "Your team and its agents, working in one place.";
+const TAGLINE = "Where your team and its coding agents ship code.";
 
 /** The icons under it: g1t's accounts elsewhere (lib/legal), then its source. */
 const ICON_LINKS: { label: string; url: string; icon: React.ReactNode }[] = [

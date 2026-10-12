@@ -263,7 +263,7 @@ export function starterDescription(stacks: Stack[], defaultBranch: string): stri
   const found = stacks.length > 0 ? `g1t found ${stacks.map(stackLabel).join(", ")} at the root and wrote a job for each.` : "g1t could not tell how this project is built, so the job is a placeholder: replace its last step with the commands that build and test it.";
   return [
     `Adds \`${STARTER_PATH}\`, a workflow named **${STARTER_CHECK}** that runs on every pull request, on pushes to \`${defaultBranch}\`, and on the merge queue. ${found}`,
-    "Its runs are this repository's checks: they show on every pull request, whoever opened it, and an agent whose change fails them is sent back with what the failing jobs printed.",
+    "Its runs are this repository's checks: they show on every pull request, whoever or whatever opened it.",
     `Once this has run, require **${STARTER_CHECK}** in Settings, Branches and merging, so that nothing merges into \`${defaultBranch}\` unless it passes.`,
   ].join("\n\n");
 }

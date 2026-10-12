@@ -15,7 +15,7 @@ test("a mirror has tabs only for the pages it offers", () => {
   // Code and Security read the same whoever leads.
   assert.deepEqual(labels(tabsFor("commits", true, can, mirror("standby"))), labels(tabsFor("commits", true, can, null)));
   assert.deepEqual(labels(tabsFor("security/vulnerabilities", true, can, mirror("standby"))), labels(tabsFor("security/vulnerabilities", true, can, null)));
-  // Issues, Agents and the pull requests' tabs come with a takeover.
+  // Issues and the pull requests' tabs (with their sessions) come with a takeover.
   assert.equal(tabsFor("issues", true, can, mirror("standby")), null);
   assert.equal(tabsFor("sessions", true, can, mirror("ci")), null);
   assert.equal(tabsFor("queue", true, can, mirror("handing_back")), null);

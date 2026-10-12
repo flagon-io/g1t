@@ -10,11 +10,10 @@ import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { CheckBadge } from "../../components/checks";
 import { ChangeSize, PullIcon, StateTabs } from "../../components/work";
-import { AgentBadge, useActiveRuns } from "../../components/agents";
 import { FilterMenu, LabelChip, Swatch } from "../../components/labels";
 import { colorsOf, listFilters, withFilter } from "../../lib/labels";
-import { accessTo, repoFor } from "../../lib/access.server";
-import { agents, work } from "../../lib/services.server";
+import { repoFor } from "../../lib/access.server";
+import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
@@ -28,15 +27,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   // `?label=bug&milestone=3&base=release`, or the same written in `q`.
   const { state, label, milestone, base } = listFilters(new URL(request.url).searchParams);
-  // Which an agent is working on, beside the list, so its badges come with it.
-  const [pulls, active, { can }, labels, milestones, repo] = await Promise.all([
+  const [pulls, labels, milestones, repo] = await Promise.all([
     work.listPulls(path, viewer, state, {
       label: label || undefined,
       milestone: milestone ?? undefined,
       base: base || undefined,
     }),
-    agents.listRuns(viewer, { repo: path, active: true, limit: 100 }).catch(() => null),
-    accessTo(context, params),
     work.listLabels(path, viewer),
     work.listMilestones(path, viewer, "open"),
     // The layout looks it up in this request too.
@@ -51,19 +47,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     labels: labels.ok ? labels.value : [],
     milestones: milestones.ok ? milestones.value : [],
     defaultBranch: repo.ok ? repo.value.defaultBranch : null,
-    // As the project's agents.json has them; left out, the list fetches them.
-    active: active?.ok ? { runs: active.value, member: can.run } : undefined,
   } as const;
 }
 
 export default function Pulls({ loaderData, params }: Route.ComponentProps) {
-  const { pulls, state, active, labels, milestones, label, milestone, defaultBranch } = loaderData;
+  const { pulls, state, labels, milestones, label, milestone, defaultBranch } = loaderData;
   // Pull requests opened, updated, reviewed, checked, merged and closed show as it happens.
   useRepoLive({ match: repoPages.pulls() });
   const base = `/${params.owner}/${params.repo}`;
   const list = `${base}/pulls`;
-  // Which pull requests an agent is working on this minute, and at what.
-  const working = useActiveRuns(params.owner, params.repo, active);
   const current = new URLSearchParams(useLocation().search);
   const colors = colorsOf(labels);
   const milestoneTitle = milestones.find((m) => m.number === milestone)?.title ?? (milestone ? `#${milestone}` : null);
@@ -162,9 +154,8 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
                   : "No closed pull requests"
             }
           >
-            A pull request proposes a change. Assign agents to an issue and
-            each opens one in its own fork, or push a branch and open one
-            yourself.
+            A pull request proposes a change. Push a branch and open one, or
+            have your coding agent open one for an issue.
           </EmptyState>
         ) : (
           <Card asChild tone="plain" divided className="overflow-hidden">
@@ -190,7 +181,6 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
                         {(pull.labels ?? []).map((name) => (
                           <LabelChip key={name} name={name} color={colors[name]} />
                         ))}
-                        <AgentBadge run={working.get(pull.number)} />
                       </span>
                       <span className="mt-0.5 block text-xs text-faint">
                         #{pull.number} opened <TimeAgo at={pull.createdAt} /> by{" "}

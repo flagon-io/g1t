@@ -1,11 +1,14 @@
 /**
  * The arithmetic behind mission control and a project's overview: when the
- * viewer was last here, what moved since, how a burst of one agent's work
+ * viewer was last here, what moved since, how a burst of one person's work
  * reads as one line, the week's pulse, and where each pull request stands
  * in its way to landing. Pure, so it is tested on its own; it imports only
  * types.
  */
-import type { AgentRun, G1tEvent, Pull, QueueEntry, RepoPath } from "@g1t/contracts";
+import type { G1tEvent, Pull, QueueEntry, RepoPath } from "@g1t/contracts";
+
+/** A run as the arithmetic here reads it: its kind, status and times. */
+type RunLike = { kind: string; status: string; updatedAt: string };
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -68,24 +71,9 @@ export function hourIn(now: number, timeZone: string | null): number {
   }
 }
 
-/** What the composer's text makes: its first line the title, all of it the body when there is more. */
-export function splitRequest(text: string, max = 200): { title: string; body: string } {
-  const trimmed = text.trim();
-  const [first = "", ...rest] = trimmed.split(/\r?\n/);
-  let title = first.trim();
-  if (title.length > max) {
-    const cut = title.slice(0, max - 1);
-    const space = cut.lastIndexOf(" ");
-    title = `${(space > max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
-  }
-  const more = rest.join("\n").trim();
-  // A shortened title loses words, so the body keeps all of it.
-  return { title, body: title !== first.trim() ? trimmed : more };
-}
-
 // --- Activity ---------------------------------------------------------------
 
-/** Accounts that are g1t's own agents and machinery. */
+/** Accounts that are g1t's own machinery, as older rows name them: shown as g1t. */
 export function isAgent(name: string | null | undefined): boolean {
   return name === "g1t" || (name ?? "").endsWith("-agent");
 }
@@ -101,11 +89,9 @@ export type Verb =
   | "approved"
   | "changes_requested"
   | "commented"
-  | "asked"
   | "deployed"
   | "deploy_failed"
-  | "pushed"
-  | "learned";
+  | "pushed";
 
 /**
  * The event types `eventItem` makes a line of. Ask the log for these only:
@@ -122,7 +108,6 @@ export const FEED_EVENT_TYPES = [
   "checks.completed",
   "review.completed",
   "comment.created",
-  "agent.asked",
   "deployment_status.created",
 ] as const satisfies readonly G1tEvent["type"][];
 
@@ -139,7 +124,7 @@ export type ActivityItem = {
   verb: Verb;
   /** The issue or pull request it was about. */
   number: number | null;
-  /** For a memory: what was learned. For a deploy: where. */
+  /** For a push: the commit. */
   text?: string;
   /** Where the line links, when it is not an issue or pull request. */
   to?: string;
@@ -173,8 +158,6 @@ export function eventItem(event: G1tEvent, repo: RepoPath): ActivityItem | null 
         return { ...base, verb: event.data.verdict === "approve" ? "approved" : "changes_requested", number: event.data.number };
       }
       return { ...base, verb: "commented", number: event.data.number };
-    case "agent.asked":
-      return { ...base, verb: "asked", number: event.data.number };
     case "deployment_status.created": {
       // Production, once it is up or has failed: g1t.page builds, g1t
       // Actions jobs and deployments reported through the API alike.
@@ -296,7 +279,7 @@ export function groupActivity(items: ActivityItem[], window = 45 * MINUTE): Acti
 
 // --- Needs you --------------------------------------------------------------
 
-export type NeedKind = "limit" | "deploy" | "invitation" | "stalled" | "conflict" | "review" | "stuck" | "runner" | "checks" | "ready";
+export type NeedKind = "deploy" | "invitation" | "stalled" | "conflict" | "review" | "stuck" | "runner" | "checks" | "ready";
 
 /** Something waiting on the viewer, with where to act on it. */
 export type Need = {
@@ -312,7 +295,6 @@ export type Need = {
 };
 
 const NEED_RANK: Record<NeedKind, number> = {
-  limit: 0,
   deploy: 1,
   invitation: 1.5,
   conflict: 2,
@@ -341,38 +323,10 @@ export function waitedFor(minutes: number): string {
 }
 
 /** Whether a run has gone quiet: running with no new step for `quiet`. */
-export function stuckMinutes(run: Pick<AgentRun, "status" | "updatedAt">, now: number, quiet = 10 * MINUTE): number | null {
+export function stuckMinutes(run: Pick<RunLike, "status" | "updatedAt">, now: number, quiet = 10 * MINUTE): number | null {
   if (run.status !== "running") return null;
   const idle = now - Date.parse(run.updatedAt);
   return idle >= quiet ? Math.floor(idle / MINUTE) : null;
-}
-
-// --- Digest -----------------------------------------------------------------
-
-export type DigestCounts = {
-  landed: number;
-  reviews: number;
-  opened: number;
-  deploys: number;
-  failedDeploys: number;
-  /** The longest an agent has been quiet, in minutes; null when none is. */
-  stuck: number | null;
-};
-
-export type DigestPart = { text: string; tone: "fg" | "warn" | "danger" | "accent"; anchor: string };
-
-const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-/** What moved since the viewer was last here, as the pieces of a sentence. */
-export function digestParts(c: DigestCounts): DigestPart[] {
-  const parts: DigestPart[] = [];
-  if (c.landed > 0) parts.push({ text: `${count(c.landed, "change", "changes")} landed`, tone: "accent", anchor: "activity" });
-  if (c.reviews > 0) parts.push({ text: `${count(c.reviews, "pull request needs", "pull requests need")} your review`, tone: "warn", anchor: "your-pulls" });
-  if (c.stuck != null) parts.push({ text: `an agent has been quiet for ${waitedFor(c.stuck)}`, tone: "warn", anchor: "live" });
-  if (c.failedDeploys > 0) parts.push({ text: `${count(c.failedDeploys, "deploy", "deploys")} failed`, tone: "danger", anchor: "needs-you" });
-  if (c.deploys > 0) parts.push({ text: `${count(c.deploys, "deploy", "deploys")} went out`, tone: "fg", anchor: "projects" });
-  if (c.opened > 0) parts.push({ text: `${count(c.opened, "issue was", "issues were")} opened`, tone: "fg", anchor: "activity" });
-  return parts;
 }
 
 // --- Pulse ------------------------------------------------------------------
@@ -446,18 +400,6 @@ export function issueToMerge(
   return spans;
 }
 
-/** Hours agents spent at work since `since`, counting runs still going up to `now`. */
-export function agentHours(runs: Pick<AgentRun, "kind" | "startedAt" | "finishedAt">[], since: number, now: number): number {
-  let ms = 0;
-  for (const run of runs) {
-    if (!run.startedAt || run.kind === "checks" || run.kind === "queue" || run.kind === "mergecheck") continue;
-    const start = Math.max(Date.parse(run.startedAt), since);
-    const end = run.finishedAt ? Date.parse(run.finishedAt) : now;
-    if (end > start) ms += end - start;
-  }
-  return ms / HOUR;
-}
-
 /** "3h", "2d 4h", "40m": a span in the largest units that read well. */
 export function formatSpan(ms: number | null): string {
   if (ms == null) return "—";
@@ -503,7 +445,7 @@ export const PIPELINE: { stage: PipelineStage; label: string }[] = [
  */
 export function pipelineStage(
   pull: Pick<Pull, "status" | "checkStatus" | "number">,
-  run: Pick<AgentRun, "kind"> | undefined,
+  run: Pick<RunLike, "kind"> | undefined,
   queued: Set<number>,
   lifecycle?: { stage: string } | null,
 ): PipelineStage {

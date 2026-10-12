@@ -1,11 +1,11 @@
-import { Bot, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { type ComponentProps, type KeyboardEvent, useId, useRef, useState } from "react";
 
-import { AGENT_MENTION as AGENT_HANDLE, type MentionMatch, mentionSuggestions } from "../lib/mention";
+import { type MentionMatch, mentionSuggestions } from "../lib/mention";
 import { Textarea } from "./ui";
 
 /**
- * A comment box that offers to complete `@g1t`, and the teams in `handles`
+ * A comment box that offers to complete the teams in `handles`
  * (`@acme/backend`): Up and Down move through the suggestions, Tab or Enter
  * takes one, Escape dismisses them.
  */
@@ -100,11 +100,7 @@ export function MentionTextarea({ handles, ...props }: ComponentProps<"textarea"
                 index === active ? "bg-line" : ""
               }`}
             >
-              {handle === AGENT_HANDLE ? (
-                <Bot size={12} className="shrink-0 text-accent" />
-              ) : (
-                <Users size={12} className="shrink-0 text-faint" />
-              )}
+              <Users size={12} className="shrink-0 text-faint" />
               <span className="min-w-0 truncate">{handle}</span>
               {index === active && <span className="ml-auto pl-3 font-sans text-faint">Tab</span>}
             </li>

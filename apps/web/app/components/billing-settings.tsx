@@ -1,18 +1,18 @@
 /**
  * Billing settings' newer sections: the plan at a glance with the upcoming
- * invoice, prepaid AI credit with auto-reload, the budget's alerts, the
+ * invoice, the budget's alerts, the
  * payment method (kept on Stripe), add-ons, invoice details and the
  * invoices. Cards and payment methods are handled on Stripe's own page:
  * g1t has no card form. Each form posts to the billing route's action with
  * an `intent`.
  */
-import { ArrowUpRight, Bell, Bot, CreditCard, FileText, Mail, Plus, ReceiptText, Sparkles } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { ArrowUpRight, Bell, CreditCard, FileText, Mail, ReceiptText, Sparkles } from "lucide-react";
+import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 
-import type { AiCredit, BillingDetails, FeatureState, Limit, UsageReport } from "@g1t/contracts";
+import type { BillingDetails, FeatureState, Limit, UsageReport } from "@g1t/contracts";
 
-import { PLUS_TAX, type PlanStatus, cardFeeCents, feeAndTax } from "../lib/billing";
+import { PLUS_TAX, type PlanStatus } from "../lib/billing";
 import { money, wholeDollars } from "../lib/money";
 import { Card } from "./billing";
 import { ErrorText, SubmitButton } from "./ui";
@@ -22,28 +22,6 @@ import { Skeleton } from "./ui/skeleton";
 
 const FIELD =
   "w-full rounded-md border border-line bg-bg px-2.5 py-1.5 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim";
-
-function Dollar({ name, defaultValue, label, className }: { name: string; defaultValue?: string; label: string; className?: string }) {
-  return (
-    <span className={`flex items-center rounded-md border border-line bg-bg px-2 focus-within:border-accent-dim ${className ?? ""}`}>
-      <span className="text-sm text-muted">$</span>
-      <input
-        name={name}
-        inputMode="decimal"
-        aria-label={label}
-        defaultValue={defaultValue}
-        autoComplete="off"
-        data-1p-ignore
-        data-lpignore="true"
-        className="w-20 bg-transparent px-1 py-1.5 text-sm tabular-nums outline-none"
-      />
-    </span>
-  );
-}
-
-function whole(micros: number): string {
-  return String(Math.round(micros / 1_000_000));
-}
 
 // --- The plan ---------------------------------------------------------------------------------
 
@@ -97,7 +75,7 @@ export function PlanSummary({
       about={
         on
           ? `Billing period ${period}. One price for the workspace, never per seat.`
-          : "The forge is free: repositories, issues, pull requests, reviews, search and the audit log. Agents, checks, workflows and deployments need the plan, or the trial."
+          : "The forge is free: repositories, issues, pull requests, reviews, search and the audit log. Checks, workflows and deployments need the plan, or the trial."
       }
       aside={
         <p className="shrink-0 sm:text-right">
@@ -196,163 +174,12 @@ export function PlanSummary({
       )}
       {(status.kind === "free" || status.kind === "trial") && (
         <p className="mt-3 text-xs text-faint">
-          Starting the plan gives $5 of AI credit, once. Your first month starts at a {wholeDollars(100_000_000)} limit on usage past
+          Your first month starts at a {wholeDollars(100_000_000)} limit on usage past
           what is included, so a stolen card cannot run up a bill.
         </p>
       )}
       <ErrorText>{error}</ErrorText>
     </Card>
-  );
-}
-
-// --- AI credit ----------------------------------------------------------------------------------
-
-/** Prepaid AI credit: the balance, buying more, and auto-reload. */
-export function AiCreditCard({ credit, owner, enabled, staff, error }: { credit: AiCredit; owner: boolean; enabled: boolean; staff: boolean; error?: string }) {
-  const rate = credit.agentRateMicros;
-  const fee = credit.cardFee;
-  // What is chosen, so the fee shows before Stripe's page does.
-  const [chosenCents, setChosenCents] = useState(2_500);
-  const chosenFee = cardFeeCents(chosenCents, fee);
-  const stripeFee = `Stripe's ${(fee.percentMicros / 10_000).toFixed(1)}% + ${money(fee.fixedCents * 10_000)}`;
-  const feeText = !fee.on
-    ? `${feeAndTax(0)}.`
-    : chosenCents > 0
-      ? `On $${(chosenCents / 100).toLocaleString("en-US")}: ${feeAndTax(chosenFee).replace(/^C/, "c")} (the fee is ${stripeFee}, its own line at checkout).`
-      : `A card processing fee (${stripeFee}) is its own line at checkout, ${PLUS_TAX}.`;
-  const choose = (form: HTMLFormElement) => {
-    const data = new FormData(form);
-    const amount = String(data.get("amount") ?? "");
-    const dollarsChosen = amount === "custom" ? Number(String(data.get("custom") ?? "").replace(/[$,\s]/g, "")) : Number(amount);
-    setChosenCents(Number.isFinite(dollarsChosen) && dollarsChosen > 0 ? Math.round(dollarsChosen * 100) : 0);
-  };
-  return (
-    <Card
-      id="ai-credit"
-      tone={credit.blocked ? "warn" : "plain"}
-      icon={<Bot size={16} />}
-      title="AI credit"
-      about={
-        credit.freeViaDiscount
-          ? "Agent and AI Gateway usage is free for this workspace under its discount: shown at its price, then the discount."
-          : credit.postpaid
-            ? "This workspace's enterprise is invoiced for Agent and AI Gateway usage after use: no credit needed."
-            : `Prepaid credit for Agent and AI Gateway usage, spent before anything else. Models at the provider's price${credit.modelMarkupPercent ? ` plus ${credit.modelMarkupPercent}%` : ""}, plus the agent rate${rate > 0 ? ` (${money(rate)} per million tokens)` : ""}. Credit expires ${credit.expiresDays === 365 ? "1 year" : `${credit.expiresDays} days`} after purchase.`
-      }
-      aside={
-        <p className="shrink-0 sm:text-right">
-          <span className="text-2xl font-semibold tabular-nums tracking-tight">{money(credit.balanceMicros)}</span>
-          <span className="block text-xs text-faint">
-            {credit.givenMicros > 0 ? `${money(credit.purchasedMicros)} bought, ${money(credit.givenMicros)} from g1t` : "left"}
-          </span>
-        </p>
-      }
-    >
-      {credit.blocked && (
-        <p className="mt-3 rounded-lg border border-warn/40 bg-warn/5 px-3 py-2 text-sm">
-          Out of AI credit, with this month's included usage used: new runs on g1t's models wait until you buy credit or turn on
-          auto-reload. Runs on your own model provider keep going.
-        </p>
-      )}
-      {!credit.freeViaDiscount && !credit.postpaid && (
-        <>
-          {credit.canBuy && owner && enabled ? (
-            <Form method="post" className="mt-4" onChange={(event) => choose(event.currentTarget)}>
-              <input type="hidden" name="intent" value="buy-ai-credit" />
-              <fieldset className="flex flex-wrap items-center gap-2">
-                <legend className="mb-2 text-xs text-muted">Buy AI credit</legend>
-                {credit.presetsCents.map((cents) => (
-                  <label key={cents} className="cursor-pointer">
-                    <input type="radio" name="amount" value={String(cents / 100)} defaultChecked={cents === 2_500} className="peer sr-only" />
-                    <span className="inline-block rounded-md border border-line px-3 py-1.5 text-sm tabular-nums peer-checked:border-accent peer-checked:bg-accent/10 peer-focus-visible:ring-2 peer-focus-visible:ring-accent-dim">
-                      ${cents / 100}
-                    </span>
-                  </label>
-                ))}
-                <label className="cursor-pointer">
-                  <input type="radio" name="amount" value="custom" className="peer sr-only" />
-                  <span className="inline-block rounded-md border border-line px-3 py-1.5 text-sm peer-checked:border-accent peer-checked:bg-accent/10">Custom</span>
-                </label>
-                <Dollar name="custom" label="Custom amount in dollars" />
-                <SubmitButton variant="accent" match={{ intent: "buy-ai-credit" }} pending="Opening Stripe…">
-                  <Plus size={14} /> Buy AI credit
-                </SubmitButton>
-              </fieldset>
-              <p className="mt-2 text-xs text-faint">
-                ${credit.minCents / 100} to ${(credit.maxCents / 100).toLocaleString("en-US")}, on Stripe's page. {feeText}
-                {staff ? " Test mode: card 4242 4242 4242 4242." : ""}
-              </p>
-            </Form>
-          ) : !credit.canBuy ? (
-            <p className="mt-4 text-sm text-muted">AI credit is for workspaces on the g1t plan. Starting the plan comes with $5 of it.</p>
-          ) : (
-            <p className="mt-4 text-sm text-muted">An owner buys AI credit.</p>
-          )}
-          {credit.canBuy && <AutoReload credit={credit} owner={owner && enabled} />}
-        </>
-      )}
-      {credit.grants.length > 0 && (
-        <details className="mt-4">
-          <summary className="cursor-pointer text-xs text-muted hover:text-fg">Purchases and grants</summary>
-          <ul className="mt-2 divide-y divide-line/60 text-sm">
-            {credit.grants.map((grant) => (
-              <li key={grant.id} className="flex flex-wrap justify-between gap-2 py-1.5">
-                <span className="min-w-0">
-                  {grant.kind === "purchased" ? "Bought" : grant.source === "upgrade" ? "For starting the plan" : "From g1t"}{" "}
-                  <span className="text-faint">· {new Date(grant.createdAt).toLocaleDateString()}{grant.expiresAt ? `, expires ${new Date(grant.expiresAt).toLocaleDateString()}` : ""}</span>
-                </span>
-                <span className="tabular-nums">
-                  {money(grant.leftMicros)} <span className="text-faint">of {money(grant.amountMicros)}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-      <ErrorText>{error}</ErrorText>
-    </Card>
-  );
-}
-
-function AutoReload({ credit, owner }: { credit: AiCredit; owner: boolean }) {
-  const r = credit.reload;
-  return (
-    <div className="mt-5 rounded-lg border border-line bg-bg/40 p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-sm font-medium">Auto-reload</p>
-        <span className={`rounded-full px-2 py-0.5 text-xs ${r.enabled ? "bg-success/15 text-success" : "border border-line text-muted"}`}>{r.enabled ? "On" : "Off"}</span>
-      </div>
-      {r.failedAt && (
-        <p className="mt-2 text-sm text-danger">
-          Turned off on {new Date(r.failedAt).toLocaleDateString()}: {r.error ?? "the card was declined"}. Update the card on Stripe, then turn it on again.
-        </p>
-      )}
-      {owner ? (
-        <Form method="post" className="mt-3 space-y-3 text-sm">
-          <input type="hidden" name="intent" value="ai-reload" />
-          <label className="flex cursor-pointer items-center gap-2">
-            <Checkbox name="enabled" defaultChecked={r.enabled} />
-            Reload from the saved card
-          </label>
-          <div className="flex flex-wrap items-center gap-2 text-muted">
-            When AI credit falls below <Dollar name="threshold" label="Threshold in dollars" defaultValue={whole(r.thresholdMicros)} />
-            reload it to <Dollar name="target" label="Target in dollars" defaultValue={whole(r.targetMicros)} />
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-muted">
-            At most <Dollar name="monthly" label="Monthly maximum in dollars" defaultValue={whole(r.monthlyMaxMicros)} /> a month
-            {(r.reloadedMicros ?? 0) > 0 && <span className="text-faint">· {money(r.reloadedMicros ?? 0)} reloaded this month</span>}
-          </div>
-          <SubmitButton variant="outline" match={{ intent: "ai-reload" }} pending="Saving…">
-            Save auto-reload
-          </SubmitButton>
-          <p className="text-xs text-faint">A reload that cannot be charged turns auto-reload off and tells the owners by email.</p>
-        </Form>
-      ) : (
-        <p className="mt-2 text-sm text-muted">
-          {r.enabled ? `Below ${money(r.thresholdMicros)}, back to ${money(r.targetMicros)}, at most ${money(r.monthlyMaxMicros)} a month.` : "Off."}
-        </p>
-      )}
-    </div>
   );
 }
 
@@ -455,7 +282,7 @@ export function PaymentMethodCard({ details, owner, enabled, staff, error }: { d
             <span className="text-xs text-faint">default</span>
           </p>
         ) : (
-          <p className="text-muted">No payment method yet. Starting the plan or buying AI credit saves the card you pay with.</p>
+          <p className="text-muted">No payment method yet. Starting the plan saves the card you pay with.</p>
         )}
         {details?.unavailable && <p className="mt-2 text-xs text-warn">{details.unavailable}</p>}
         {staff && <p className="mt-2 text-xs text-faint">Test mode: card 4242 4242 4242 4242, any future date and code.</p>}
@@ -656,7 +483,7 @@ export function InvoicesCard({ details }: { details: BillingDetails | null }) {
     <section id="invoices" className="mb-6 scroll-mt-20 overflow-hidden rounded-xl border border-line bg-surface">
       <div className="px-5 pt-5">
         <h2 className="font-medium">Invoices</h2>
-        <p className="mt-1 text-sm text-muted">The plan, add-ons, AI credit and each month's usage, as Stripe sent them.</p>
+        <p className="mt-1 text-sm text-muted">The plan, add-ons and each month's usage, as Stripe sent them.</p>
       </div>
       {invoices.length === 0 ? (
         <p className="px-5 py-5 text-sm text-faint">No invoices yet.</p>

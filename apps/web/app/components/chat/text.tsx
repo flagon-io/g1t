@@ -17,8 +17,6 @@ export type TextContext = {
   slug: string;
   /** The viewer's username: a mention of them stands out more. */
   me: string | null;
-  /** Handles of the workspace's agents: their mentions go to the agent. */
-  agents: ReadonlySet<string>;
   /**
    * Who each lowercased handle is (`mentionNames`): a mention shows as
    * `@Ana Lima`, the name people know. The text keeps `@ana`.
@@ -64,10 +62,9 @@ function SpanView({ span, context }: { span: Span; context: TextContext }): Reac
     case "mention": {
       const name = span.name.toLowerCase();
       const self = context.me != null && name === context.me.toLowerCase();
-      const agent = context.agents.has(name);
-      const to = agent ? `/${context.slug}/-/agents/${name}` : name.includes("/") ? `/${context.slug}/-/teams/${name.split("/")[1]}` : `/u/${name}`;
+      const to = name.includes("/") ? `/${context.slug}/-/teams/${name.split("/")[1]}` : `/u/${name}`;
       const pill = `${PILL} transition-colors ${self ? "bg-warn/20 text-warn hover:bg-warn/30" : "bg-accent/15 text-accent hover:bg-accent/25"}`;
-      // A person or an agent: their card. A team: its page.
+      // A person: their card. A team: its page.
       if (name.includes("/")) {
         return (
           <Link to={to} className={pill}>
@@ -77,7 +74,7 @@ function SpanView({ span, context }: { span: Span; context: TextContext }): Reac
       }
       const shown = context.names?.get(name);
       return (
-        <MemberCard member={{ kind: agent ? "agent" : "user", name, display_name: shown }} className={`inline ${pill}`}>
+        <MemberCard member={{ kind: "user", name, display_name: shown }} className={`inline ${pill}`}>
           @{shown ?? span.name}
         </MemberCard>
       );

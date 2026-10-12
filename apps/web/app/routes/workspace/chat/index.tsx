@@ -10,7 +10,6 @@ import { channelPath } from "../../../lib/chat";
 import { LAST_CHAT_COOKIE, sidebarOrNull } from "../../../lib/chat.server";
 import { readCookie } from "../../../lib/mission";
 import { page } from "../../../lib/meta";
-import { chat, workspaceAgents } from "../../../lib/services.server";
 import { requireUser } from "../../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -24,15 +23,6 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   const slug = params.owner.toLowerCase();
-  // `?agent=<handle>`: the direct message with that agent, opened or made
-  // (the top bar's Ask g1t, and links to an agent from anywhere).
-  const asked = new URL(request.url).searchParams.get("agent");
-  if (asked) {
-    const listed = await workspaceAgents.list(slug, viewer, { personal: "mine" }).catch(() => null);
-    const agent = listed?.ok ? listed.value.find((a) => a.handle === asked.toLowerCase()) : null;
-    const dm = agent ? await chat.openDm(slug, viewer, [{ kind: "agent", id: agent.id }]).catch(() => null) : null;
-    if (dm?.ok) throw redirect(channelPath(slug, dm.value));
-  }
   // A phone opens on the list of conversations; a wider screen on one.
   const phone = isPhone(request.headers);
   const last = readCookie(request.headers.get("cookie"), LAST_CHAT_COOKIE);

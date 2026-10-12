@@ -48,7 +48,7 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
 
   if (intent === "allowances") {
     // The plan without its price, the account's share of g1t's pools, and staff's overrides.
-    const values = fields(form, "plan", "oss", "trial", "agents", "runCap", "issueCap", "hold", "note");
+    const values = fields(form, "plan", "oss", "trial", "hold", "note");
     if (subject.kind === "workspace" && subject.billedTo) {
       return failed("allowances", `This workspace is on ${subject.billedTo.name}. Set its plan and pools on the enterprise.`, values);
     }

@@ -55,8 +55,6 @@ type Sent = {
   message_id?: string;
   emoji?: string;
   archived?: boolean;
-  action_id?: string;
-  input?: string | null;
 };
 
 export async function action({ params, context, request }: Route.ActionArgs) {
@@ -83,11 +81,6 @@ export async function action({ params, context, request }: Route.ActionArgs) {
         return chat.react(slug, channel, viewer, sent.message_id ?? "", sent.emoji ?? "");
       case "unreact":
         return chat.unreact(slug, channel, viewer, sent.message_id ?? "", sent.emoji ?? "");
-      case "card_action": {
-        // A button on a card; chat checks the viewer reads the conversation, its owner does the rest.
-        const input = typeof sent.input === "string" ? sent.input : null;
-        return chat.cardAction(slug, channel, viewer, sent.message_id ?? "", sent.action_id ?? "", input);
-      }
       case "preferences":
         return chat.setPreferences(slug, channel, viewer, { starred: sent.starred, muted: sent.muted });
       case "join":
@@ -96,7 +89,9 @@ export async function action({ params, context, request }: Route.ActionArgs) {
         return chat.leave(slug, channel, viewer);
       case "invite": {
         const [member] = await principalsFrom(slug, viewer, [sent.member ?? ""]);
-        const principal = member ?? parsePrincipalKey(sent.member ?? "");
+        // A person by username, or by the account id chat names them with; only people are added.
+        const parsed = parsePrincipalKey(sent.member ?? "");
+        const principal = member ?? (parsed?.kind === "user" ? parsed : null);
         if (!principal) return { ok: false, error: { code: "invalid", message: "Choose someone to add." } };
         return chat.invite(slug, channel, viewer, principal);
       }

@@ -7,7 +7,6 @@ import { MICROS_PER_DOLLAR, type WorkspaceInvoice } from "@g1t/contracts";
 import type { Route } from "./+types/billing";
 import {
   Alerts,
-  CapsCard,
   CreditsCard,
   OverageCard,
   PrepayCard,
@@ -19,7 +18,6 @@ import {
 } from "../../components/billing";
 import {
   AddOns,
-  AiCreditCard,
   BudgetAlerts,
   InvoiceDetailsCard,
   InvoicesCard,
@@ -30,10 +28,7 @@ import {
 import { StatementView } from "../../components/statement";
 import {
   cardCheckResult,
-  parseAiPurchase,
-  parseAiReload,
   parseBudgetAlerts,
-  parseCaps,
   parseInvoiceDetails,
   parseLimitRequest,
   parsePrepay,
@@ -52,14 +47,11 @@ const DEFAULT_TRIAL_MICROS = 5_000_000;
 
 /** What a change says once it is done (`?done=`). */
 const DONE: Record<string, string> = {
-  subscribed: "The g1t plan is on, with $5 of AI credit to start.",
+  subscribed: "The g1t plan is on.",
   prepaid: "Payment received. Your prepaid balance and what you can use went up by as much.",
-  ai_credit: "AI credit bought. It is ready for Agent and AI Gateway usage.",
-  ai_reload: "Auto-reload saved.",
   budget: "Budget alerts saved.",
   details: "Invoice details saved on Stripe.",
   limit: "Spend limit saved.",
-  caps: "Caps saved. They apply to runs that start from now on.",
   requested: "Sent. g1t answers within one business day, here and by email.",
   told: "Thanks. g1t looks at it and answers within one business day, here and by email.",
   keep: "Compute is running again for 24 hours, unless spending doubles again first.",
@@ -90,11 +82,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     const checked = await billing.confirmCardCheck(slug, viewer, cardCheck);
     throw redirect(checked.ok ? `${here}?checked=1#trial` : `${here}?problem=${encodeURIComponent(checked.error.message)}#trial`);
   }
-  const aiCredit = url.searchParams.get("ai_credit");
-  if (aiCredit) {
-    const bought = await billing.confirmAiCredit(slug, viewer, aiCredit);
-    throw redirect(bought.ok ? `${here}?done=ai_credit#ai-credit` : `${here}?problem=${encodeURIComponent(bought.error.message)}#ai-credit`);
-  }
   const session = url.searchParams.get("session");
   if (session) {
     if (url.searchParams.get("plan")) {
@@ -119,7 +106,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     .billingDetails(slug, viewer)
     .then((result) => (result.ok ? result.value : null))
     .catch(() => null);
-  const [account, statement, features, limit, invoices, entitlements, requests, book, credits, ai, report] = await Promise.all([
+  const [account, statement, features, limit, invoices, entitlements, requests, book, credits, fees, report] = await Promise.all([
     billing.account(slug, viewer),
     billing.statement(slug, viewer, url.searchParams.get("month"), group),
     billing.features(slug, viewer),
@@ -129,13 +116,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     billing.limitRequests(slug, viewer).catch(() => null),
     billing.prices().catch(() => null),
     billing.credits(slug, viewer).catch(() => null),
+    // Only for the card processing fee Prepay shows before you pay.
     billing.aiCredit(slug, viewer).catch(() => null),
     billing.usageReport(slug, viewer, { from: monthStart, until: today }).catch(() => null),
   ]);
   const featureStates = unwrap(features);
   const trialMicros = book?.free?.trialWorkspaceMicros ?? DEFAULT_TRIAL_MICROS;
   const done = url.searchParams.get("done");
-  // Credit from g1t for everything; AI credit has its own card.
+  // Credit from g1t for everything; grants scoped to models belong to usage no longer offered.
   const general = credits?.ok ? credits.value.grants.filter((grant) => grant.scope !== "models") : [];
   return {
     slug,
@@ -153,7 +141,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     entitlements,
     requests: requests?.ok ? requests.value : [],
     credits: general.length > 0 && credits?.ok ? { ...credits.value, grants: general } : null,
-    ai: ai?.ok ? ai.value : null,
+    cardFee: fees?.ok ? fees.value.cardFee : null,
     report: report?.ok ? report.value : null,
     details,
     trialMicros,
@@ -205,20 +193,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       if (!started.ok) return fail("trial", started.error.message);
       throw redirect(started.value.url);
     }
-    case "buy-ai-credit": {
-      const parsed = parseAiPurchase({ amount: form.get("amount"), custom: form.get("custom") });
-      if (!parsed.ok) return fail("ai", parsed.error);
-      const started = await billing.buyAiCredit(user, slug, parsed.value.amountCents, here);
-      if (!started.ok) return fail("ai", started.error.message);
-      throw redirect(started.value.url);
-    }
-    case "ai-reload": {
-      const parsed = parseAiReload({ enabled: form.get("enabled"), threshold: form.get("threshold"), target: form.get("target"), monthly: form.get("monthly") });
-      if (!parsed.ok) return fail("ai", parsed.error);
-      const set = await billing.setAiReload(user, slug, parsed.value);
-      if (!set.ok) return fail("ai", set.error.message);
-      throw done("ai_reload", "#ai-credit");
-    }
     case "budget": {
       const parsed = parseBudgetAlerts({ alerts: form.getAll("alert"), pause: form.get("pause"), webhook: form.get("webhook") });
       if (!parsed.ok) return fail("budget", parsed.error);
@@ -260,13 +234,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       if (!sent.ok) return fail(section, sent.error.message);
       throw done(section === "overage" ? "told" : "requested", `#${section}`);
     }
-    case "caps": {
-      const parsed = parseCaps({ run: form.get("run"), issue: form.get("issue") });
-      if (!parsed.ok) return fail("caps", parsed.error);
-      const set = await billing.setCaps(user, slug, parsed.value);
-      if (!set.ok) return fail("caps", set.error.message);
-      throw done("caps", "#caps");
-    }
     case "spike": {
       const keep = String(form.get("decision")) === "keep";
       const answered = await billing.confirmSpike(user, slug, keep);
@@ -286,7 +253,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, staff, account, statement, group, plan, securityPlan, limit, invoices, entitlements, requests, credits, ai, report, details, trialMicros, notice, problem } =
+  const { slug, role, staff, account, statement, group, plan, securityPlan, limit, invoices, entitlements, requests, credits, cardFee, report, details, trialMicros, notice, problem } =
     loaderData;
   const { status } = account;
   const owner = role === "owner" || loaderData.managesBilling;
@@ -310,7 +277,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           <div className="mb-6 rounded-xl border border-accent/30 bg-accent/5 p-5">
             <h2 className="font-medium">Free while g1t is being built out</h2>
             <p className="mt-1.5 max-w-2xl text-sm text-muted">
-              Runs are recorded with what they cost, so Usage shows what you use, but nothing is charged for now. We will say so well
+              Usage is recorded with what it costs, so Usage shows what you use, but nothing is charged for now. We will say so well
               before anything is.
             </p>
           </div>
@@ -348,8 +315,6 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           <Await resolve={details}>{(loaded) => summary(loaded)}</Await>
         </Suspense>
 
-        {ai && status.enabled && <AiCreditCard credit={ai} owner={owner} enabled={status.enabled} staff={staff} error={err("ai")} />}
-
         {free && status.enabled && (
           <TrialCard entitlements={entitlements} trialMicros={trialMicros} owner={owner} enabled={status.enabled} error={err("trial")} />
         )}
@@ -359,15 +324,11 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
             <SpendLimitCard limit={limit} owner={owner} error={err("limit")} />
             <BudgetAlerts limit={limit} owner={owner} error={err("budget")} />
             <RaiseCard requests={requests} owner={owner} error={err("raise")} />
-            <PrepayCard prepaidMicros={prepaid} owner={owner} live={status.live || !staff} cardFee={ai?.cardFee ?? null} error={err("prepay")} />
+            <PrepayCard prepaidMicros={prepaid} owner={owner} live={status.live || !staff} cardFee={cardFee} error={err("prepay")} />
           </>
         )}
 
         {credits && <CreditsCard credits={credits} />}
-
-        {entitlements && (paying || standing.kind === "trial" || standing.kind === "comped" || standing.kind === "enterprise") && (
-          <CapsCard entitlements={entitlements} owner={owner} error={err("caps")} />
-        )}
 
         {paying && <OverageCard requests={requests} owner={owner} error={err("overage")} />}
 
@@ -402,20 +363,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
                 included. Usage is charged at what it costs g1t plus {account.marginPercent}%, from the first second, after what is
                 included.
               </li>
-              <li>
-                Agent runs: the model at the provider's price{ai && ai.modelMarkupPercent ? ` plus ${ai.modelMarkupPercent}%` : ", with no markup"}, plus
-                g1t's agent rate per million tokens{ai && ai.agentRateMicros > 0 ? ` (${money(ai.agentRateMicros, { precise: true })})` : ""}. AI Gateway: the
-                provider's price, free of markup while in beta.
-              </li>
-              <li>AI usage draws on prepaid AI credit first; at $0, new runs on g1t's models wait for more credit or auto-reload.</li>
               <li>Credit from g1t comes off what you owe, the soonest-expiring first.</li>
-              <li>
-                With your own model provider, connected under{" "}
-                <Link to={`/${slug}/-/integrations`} className="text-fg hover:underline">
-                  Integrations
-                </Link>
-                , the provider bills you for the model, and a run here is charged only its sandbox time.
-              </li>
               <li>
                 Each month closes with an itemised invoice. No card is charged less than{" "}
                 {wholeDollars(entitlements?.minChargeMicros ?? 5 * MICROS_PER_DOLLAR)}; less carries over.
@@ -428,7 +376,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
                 Card payments carry Stripe's card processing fee as their own line, shown before you pay. Bank transfers and invoiced
                 billing have none.
               </li>
-              <li>No seats: add as many people and agents as you like, once the workspace is on the plan.</li>
+              <li>No seats: add as many people as you like, once the workspace is on the plan.</li>
             </ul>
             <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
               <Link to={`/${slug}/-/usage`} className="flex items-center gap-2 text-muted hover:text-fg">

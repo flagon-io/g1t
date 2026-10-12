@@ -26,7 +26,7 @@ export function linkPaths(message: string): Piece[] {
   return pieces;
 }
 
-/** How a run waiting for a free agent slot says so (`WAITING_PREFIX`). */
+/** How a run waiting for a free slot says so (`WAITING_PREFIX`). */
 export function isWaitingMessage(message: string): boolean {
   return message.startsWith("Waiting for a free slot");
 }

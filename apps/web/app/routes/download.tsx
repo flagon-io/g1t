@@ -130,7 +130,7 @@ function size(bytes: number): string {
 }
 
 const WHAT: { icon: ReactNode; title: string; text: string }[] = [
-  { icon: <Bell size={16} />, title: "Notifications from your system", text: "A message to you, a mention, or an agent finished, while the window is behind another; the icon carries a badge until you have looked." },
+  { icon: <Bell size={16} />, title: "Notifications from your system", text: "A message to you, a mention, or a review requested, while the window is behind another; the icon carries a badge until you have looked." },
   { icon: <Link2 size={16} />, title: "g1t:// links", text: "A g1t:// link opens the page in the app, from anywhere on your computer. Links to other sites open in your browser." },
   { icon: <RefreshCw size={16} />, title: "Updates install themselves", text: "The app downloads a new version in the background, signed by g1t, and asks only to restart. Everything you see is the site itself, so most changes need no update at all." },
   { icon: <Server size={16} />, title: "Your own g1t", text: "Running g1t yourself? The tray's \u201cUse another g1t\u201d points the app at your server, and the phone app below works with it too." },
@@ -150,7 +150,7 @@ export default function DownloadPage() {
       <p className="text-sm font-medium text-accent">Desktop and phone apps</p>
       <h1 className="mt-2 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">g1t on your desktop, and in your pocket</h1>
       <p className="mt-3 max-w-2xl text-muted">
-        The whole of g1t in a window of its own: chat, agents, artifacts and code, for Windows, macOS and Linux, with notifications
+        The whole of g1t in a window of its own: chat, artifacts and code, for Windows, macOS and Linux, with notifications
         from your system and updates that install themselves.
         {release && (
           <>
@@ -276,7 +276,7 @@ export default function DownloadPage() {
 }
 
 /**
- * The phone app: Chat with people and agents, live, and notifications on
+ * The phone app: Chat with people, live, and notifications on
  * the phone. Not in Google Play or the App Store yet (both wait on
  * Flagon's D-U-N-S number), so the Android app is offered here as an APK,
  * with how to install it and why it is not in a store. On a g1t of your
@@ -296,7 +296,7 @@ function PhoneApp({ site, hosted, mobile, android }: { site: string; hosted: boo
         On your phone
       </h2>
       <p className="mt-1 max-w-2xl text-sm text-muted">
-        Chat with your team and its agents, live, with notifications for messages to you, mentions, replies and agents waiting on you;
+        Chat with your team, live, with notifications for messages to you, mentions and replies;
         review and approve pull requests on the way. Android first, with iOS to follow.
       </p>
 

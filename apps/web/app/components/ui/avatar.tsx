@@ -1,26 +1,23 @@
 import { Bot, User } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { useRouteLoaderData } from "react-router";
 
-import type { AgentLook } from "@g1t/contracts";
-import { lookFromSeed } from "@g1t/contracts/agent-look";
-
 import { usercontentFrom } from "../../lib/addresses";
-import { AgentFace, type FaceState, faceColorCss } from "../agent-face";
 import { Mark } from "../logo";
 
 // shadcn/ui's avatar, as g1t draws one: an uploaded picture, or a letter
-// whose colour is stable for a given name; an agent's bot face, with the
-// agent marker in its corner. It is one element rather than Radix's
-// root/image/fallback so the server renders the letter at once and
-// nothing jumps; an image that fails to load falls back to the letter.
+// whose colour is stable for a given name; an agent's (an old message's
+// author, or g1t's own), with the agent marker in its corner. It is one
+// element rather than Radix's root/image/fallback so the server renders
+// the letter at once and nothing jumps; an image that fails to load falls
+// back to the letter.
 
 const AVATAR_HUES = [82, 200, 262, 28, 330, 160];
 
 /**
- * g1t itself: its agent, as reviewer, assignee and commit author, and the
- * system, as the author of security updates, the issues it opens and merges
- * from the queue. One name, `g1t`.
+ * g1t itself: the system, as the author of security updates, the issues it
+ * opens and merges from the queue, and on older rows as reviewer, assignee
+ * and commit author. One name, `g1t`.
  */
 export function isSystemName(name: string | null | undefined): boolean {
   return name === "g1t";
@@ -35,25 +32,16 @@ export function avatarUrl(avatar: string, usercontent = ""): string {
   return `${usercontent}/avatars/${avatar}`;
 }
 
-/** What an agent's avatar is drawn from: its chosen face, else its seed's. */
-export type AvatarAgent = {
-  look?: AgentLook | null;
-  /** What draws the face when there is no look, and times its blink; the name when left out. */
-  seed?: string | null;
-  /** What the face is doing (components/agent-face.tsx). */
-  state?: FaceState;
-};
-
 /**
  * An uploaded avatar if there is one, else a letter avatar whose colour is
  * stable for a given name. People are round; a workspace is `square`. An
  * image that fails to load falls back to the letter.
  *
- * With `agent`, it is an agent's: its uploaded picture, g1t's own mark, or
- * its bot face (components/agent-face.tsx), on a squircle tile so it reads
- * apart from people's round letters at any size, and from 16 px up the
- * agent marker in its corner. It then names itself to a screen reader,
- * "Margo, agent", where a person's avatar is decoration beside their name.
+ * With `agent`, it is an agent's: g1t's own mark, its uploaded picture, or
+ * its initial on a squircle tile so it reads apart from people's round
+ * letters at any size, and from 16 px up the agent marker in its corner.
+ * It then names itself to a screen reader, "Margo, agent", where a
+ * person's avatar is decoration beside their name.
  */
 export function Avatar({
   name,
@@ -71,8 +59,8 @@ export function Avatar({
   image?: string | null;
   /** g1t itself (a user of kind `system`), whatever the name. */
   system?: boolean;
-  /** An agent's avatar: `true` draws the face its name seeds, an object the look or seed it has. */
-  agent?: boolean | AvatarAgent;
+  /** An agent's avatar: g1t's mark, its picture or its initial, with the agent marker. */
+  agent?: boolean;
   /** The colour behind the avatar, for the agent marker's ring; the page's by default. */
   ring?: string;
 }) {
@@ -80,8 +68,6 @@ export function Avatar({
   const usercontent = usercontentFrom(useRouteLoaderData("root"));
   const g1t = system || isSystemName(name);
   if (agent) {
-    const own = typeof agent === "object" ? agent : {};
-    const seed = own.seed || name || "agent";
     const radius = Math.round(size * 0.26);
     const face = g1t ? (
       <span
@@ -103,9 +89,12 @@ export function Avatar({
         style={{ width: size, height: size, borderRadius: radius }}
       />
     ) : (
-      <AgentTile size={size} radius={radius} color={faceColorCss((own.look ?? lookFromSeed(seed)).color)}>
-        <AgentFace look={own.look ?? null} seed={seed} size={size} state={own.state} />
-      </AgentTile>
+      <span
+        className="inline-flex shrink-0 items-center justify-center bg-raised font-mono font-semibold text-muted uppercase ring-1 ring-line-strong ring-inset"
+        style={{ width: size, height: size, borderRadius: radius, fontSize: size * 0.5 }}
+      >
+        {name[0] ?? "?"}
+      </span>
     );
     return (
       <span role="img" aria-label={`${name}, agent`} className="relative inline-flex shrink-0 align-middle">
@@ -172,28 +161,6 @@ export function Avatar({
       }}
     >
       {name[0]}
-    </span>
-  );
-}
-
-/**
- * The tile an agent's face sits on: a squircle in a wash of the face's own
- * colour, so a round-headed bot still reads as an agent beside a person's
- * round letter.
- */
-function AgentTile({ size, radius, color, children }: { size: number; radius: number; color: string; children: ReactNode }) {
-  return (
-    <span
-      className="inline-flex shrink-0 items-center justify-center overflow-visible"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: radius,
-        background: `color-mix(in oklab, ${color} 20%, transparent)`,
-        boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${color} 40%, transparent)`,
-      }}
-    >
-      {children}
     </span>
   );
 }

@@ -201,7 +201,7 @@ function Bar({ used, of, tone = "accent" }: { used: number; of: number; tone?: "
  * at price, what a discount, included usage and credit took off, and what
  * is charged.
  */
-export function IncludedAndCredit({ report, billingHref, owner }: { report: UsageReport; billingHref: string; owner: boolean }) {
+export function IncludedAndCredit({ report, billingHref }: { report: UsageReport; billingHref: string; owner?: boolean }) {
   const lines = receipt(report.totals, report.discountPercent);
   const free = report.plan === "free";
   const fullDiscount = (report.discountPercent ?? 0) >= 100;
@@ -234,26 +234,13 @@ export function IncludedAndCredit({ report, billingHref, owner }: { report: Usag
         <div className="bg-surface p-4">
           <p className="text-sm text-muted">Credit</p>
           {fullDiscount ? (
-            <p className="mt-1 text-sm">AI usage is free under the {report.discountPercent}% discount: nothing to buy.</p>
+            <p className="mt-1 text-sm">Usage is free under the {report.discountPercent}% discount.</p>
           ) : (
             <dl className="mt-1 space-y-1 text-sm">
               <div className="flex justify-between gap-3">
-                <dt className="text-muted">AI credit</dt>
-                <dd className="font-medium tabular-nums">{money(report.aiCreditMicros)}</dd>
+                <dt className="text-muted">Credit from g1t</dt>
+                <dd className="font-medium tabular-nums">{money(report.creditMicros)}</dd>
               </div>
-              {report.creditMicros > 0 && (
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted">Credit from g1t</dt>
-                  <dd className="tabular-nums">{money(report.creditMicros)}</dd>
-                </div>
-              )}
-              {owner && report.plan === "paid" && (
-                <dd>
-                  <Link to={`${billingHref}#ai-credit`} className="text-xs text-fg-soft underline-offset-2 hover:underline">
-                    Buy AI credit or turn on auto-reload
-                  </Link>
-                </dd>
-              )}
             </dl>
           )}
         </div>
@@ -660,12 +647,6 @@ export function Breakdown({
                 {product.features && product.features.length > 0 && (
                   <p className="px-4 pt-2 text-xs text-faint">
                     {product.features.map((f) => `${f.label}${f.count ? ` (${f.count})` : ""} ${money(f.micros)}`).join(" · ")}
-                  </p>
-                )}
-                {product.key === "agent" && report.models && report.models.length > 0 && (
-                  <p className="px-4 pt-1 text-xs text-faint">
-                    Tokens by model:{" "}
-                    {report.models.map((m) => `${m.model} ${quantity(m.input + m.output + m.cacheRead + m.cacheWrite, "tokens")}`).join(" · ")}
                   </p>
                 )}
                 <ul className="divide-y divide-line/60">

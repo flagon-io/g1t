@@ -10,7 +10,7 @@ import { AddCiPrompt } from "../../components/add-ci";
 import { CodeownersReportPanel, CodeownersReportSkeleton } from "../../components/codeowners";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { EnforcementBadge } from "../../components/rules";
-import { SettingChoice as Choice, SettingsSection as Section, SettingToggle as Toggle } from "../../components/settings-section";
+import { SettingsSection as Section, SettingToggle as Toggle } from "../../components/settings-section";
 import { ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { actions, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
@@ -22,7 +22,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Maintain and up: it shows the rules and changes only how agents work; to anyone without a role here the page does not exist.
+  // Maintain and up: it shows the rules and changes only how ready pull requests merge; to anyone without a role here the page does not exist.
   const { access } = await requireInsider(context, params, "manage_settings");
   const path = { namespace: params.owner, name: params.repo };
   const [repo, settings, seen, workflows] = await Promise.all([
@@ -50,12 +50,6 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   };
 }
 
-/** A whole number from a form field, kept within `min` and `max`. */
-function count(value: FormDataEntryValue | null, min: number, max: number): number {
-  const number = Math.trunc(Number(value));
-  return Number.isFinite(number) ? Math.min(Math.max(number, min), max) : min;
-}
-
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
@@ -64,16 +58,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const on = (name: string) => form.get(name) === "on";
   // Branch protection is the repository's rulesets' (Settings → Rules):
-  // what it holds is sent back as it is, so only how g1t's agents work
-  // changes here.
+  // what it holds is sent back as it is, so only auto-merge changes here.
   const current = await work.getSettings(path, user);
   if (!current.ok) return { saved: false, error: current.error.message };
   const settings = await work.updateSettings(user, path, {
     ...current.value,
     autoMerge: on("autoMerge"),
-    agentReview: on("agentReview"),
-    maxRevisions: count(form.get("maxRevisions"), 0, 5),
-    holdLowConfidence: on("holdLowConfidence"),
   });
   return settings.ok ? { saved: true, error: null } : { saved: false, error: settings.error.message };
 }
@@ -97,7 +87,7 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
       <div className="max-w-4xl space-y-8">
         <Section
           title="Branch protection"
-          about={`What holds for ${branch} and every other branch is set by rulesets: for people and agents alike, and across the workspace.`}
+          about={`What holds for ${branch} and every other branch is set by rulesets, across the workspace.`}
         >
           <Link
             to={`${base}/settings/rules`}
@@ -138,44 +128,13 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
         <Form method="post">
           <fieldset disabled={archived} className="min-w-0 space-y-8">
             <Section
-              title="g1t"
-              about="What happens to a pull request g1t makes, from the moment it is ready. Its checks are the same workflows, and the branch's rules hold."
+              title="Merging"
+              about="What happens to a pull request once it is ready. The branch's rules hold."
             >
-              <Toggle name="agentReview" on={settings.agentReview} title="Review by a second agent">
-                A different agent reads each change and posts comments on lines, a summary and a verdict. If it asks for
-                changes, the author is sent back to make them. With this off, review is left to people.
-              </Toggle>
-              <Choice
-                name="maxRevisions"
-                value={settings.maxRevisions}
-                title="Revisions before asking you"
-                options={[
-                  [0, "None"],
-                  [1, "1"],
-                  [2, "2"],
-                  [3, "3"],
-                  [5, "5"],
-                ]}
-              >
-                How many times an agent is sent back to fix a failed check, with what its jobs printed, or to address a
-                review, before g1t stops and the pull request says it needs you. After that, only a required check that
-                still fails holds it.
-              </Choice>
               <Toggle name="autoMerge" on={settings.autoMerge} title="Merge automatically when ready">
-                A pull request g1t made lands without anyone pressing merge once every rule of its branch is met, its
-                required checks included. A ruleset can turn this off for some branches, or ask for a confidence first
-                (Agent auto-merge). With this off, it waits for a member. Pull requests from people and from other agents
-                always wait.
-              </Toggle>
-              <Toggle
-                name="holdLowConfidence"
-                on={settings.holdLowConfidence}
-                title="Ask a person before merging low-confidence changes"
-              >
-                g1t rates how sure it is of each change an agent finishes, from its required checks, revisions, review,
-                tests, size and guardrails. One it rates low waits for a member to approve it, instead of merging by itself
-                or joining the queue, and shows on Mission control as needing you. A Confidence threshold rule asks for
-                more, branch by branch.
+                A ready pull request lands without anyone pressing merge once every rule of its branch is met, its
+                required checks included. A ruleset can turn this off for some branches. With this off, it waits for a
+                member to merge it.
               </Toggle>
               <Link
                 to={`${base}/settings/guardrails`}
@@ -185,7 +144,7 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
                 <span className="min-w-0 grow">
                   <span className="block text-sm font-medium">Guardrails</span>
                   <span className="mt-0.5 block text-sm text-muted">
-                    What agents may reach, run and spend while they work on this repository.
+                    What this repository's sandboxes may reach, and how long their runs may take.
                   </span>
                 </span>
                 <ChevronRight size={16} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />

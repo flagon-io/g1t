@@ -43,14 +43,11 @@
 		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
 		{ "binding": "PROJECTS", "service": "g1t-projects" },
 		{ "binding": "SECURITY", "service": "g1t-security" },
-		{ "binding": "CONTEXT", "service": "g1t-context" },
 		{ "binding": "SEARCH", "service": "g1t-search" },
 		// Chat: channels, direct messages and the live socket (services/chat).
 		{ "binding": "CHAT", "service": "g1t-chat" },
 		// Artifacts: spaces, artifacts, each one's live socket, and files in them (services/artifacts).
 		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" },
-		// The workspace's own agents: definitions, templates, desks (services/agents).
-		{ "binding": "AGENTS", "service": "g1t-agents" },
 		// Live notifications, counts and browser push: each tab's feed socket (services/notify).
 		{ "binding": "NOTIFY", "service": "g1t-notify" },
 		// Observability: each project's requests, logs, traces, metrics and errors, and its live tail (services/telemetry).

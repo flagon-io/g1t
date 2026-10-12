@@ -220,7 +220,7 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
             <span className="min-w-0 grow">
               <span className="block text-sm font-medium">Branches and merging</span>
               <span className="mt-0.5 block text-sm text-muted">
-                Protection for {repo.defaultBranch}, required approvals, the merge queue and what agents do.
+                Protection for {repo.defaultBranch}, required approvals and the merge queue.
               </span>
             </span>
             <ChevronRight size={16} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
@@ -541,7 +541,7 @@ function ArchiveAction({ full, archived, error }: { full: string; archived: bool
           }
         >
           {archived
-            ? "It is archived and read-only. Unarchiving lets pushes, merges, agents and workflows work again."
+            ? "It is archived and read-only. Unarchiving lets pushes, merges and workflows work again."
             : "Make it read-only: everything stays where it is and can be read, and nothing changes it."}
         </DangerAction>
       )}
@@ -550,13 +550,13 @@ function ArchiveAction({ full, archived, error }: { full: string; archived: bool
         <>
           <li>Pushes and merges are accepted again.</li>
           <li>Issues and pull requests unlock.</li>
-          <li>Agents and workflows run again.</li>
+          <li>Workflows run again.</li>
         </>
       ) : (
         <>
-          <li>Pushes and merges are refused, for members and agents alike.</li>
+          <li>Pushes and merges are refused, for everyone.</li>
           <li>Issues and pull requests are locked. They stay readable.</li>
-          <li>Agents and workflows do not run.</li>
+          <li>Workflows do not run.</li>
           <li>Its deployments keep serving, and anyone who could see it still can.</li>
         </>
       )}

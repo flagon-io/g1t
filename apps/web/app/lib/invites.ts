@@ -185,7 +185,7 @@ export function invitePageCopy(
 ): { before: string; place: string | null; after: string; about: string } {
   const from = invite.invitedBy ? `@${invite.invitedBy.username}` : "The g1t team";
   const signingUp = !signedIn && !invite.hasAccount && invite.kind === "account";
-  const g1t = "g1t is one workspace where a team and its agents talk, work and ship";
+  const g1t = "g1t is where a team and the coding agents it already uses ship code";
   if (invite.workspace) {
     const name = invite.workspace.name;
     return {
@@ -211,7 +211,7 @@ export function invitePageCopy(
     before: `${from} invited you to g1t`,
     place: null,
     after: "",
-    about: `${g1t}: chat with people and agents, give agents a job and a budget, and land code through checks that hold. This invite lets you make an account. It does not add you to anyone's workspace: your account starts with a workspace of its own.`,
+    about: `${g1t}: repositories, pull requests and checks that hold, a merge queue and deployments, with chat for the team. This invite lets you make an account. It does not add you to anyone's workspace: your account starts with a workspace of its own.`,
   };
 }
 

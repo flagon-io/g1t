@@ -7,7 +7,7 @@
  * Message bodies are never HTML: they are parsed here into a small tree
  * that React renders as text, so nothing anyone writes can run.
  */
-import type { ChatMessage, ChatSidebarEntry, MemberProfile, Principal, WorkspaceAgent } from "@g1t/contracts";
+import type { ChatMessage, ChatSidebarEntry, MemberProfile, Principal } from "@g1t/contracts";
 
 /** Two messages from the same author this close together share one header. */
 export const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -93,17 +93,15 @@ export function mergeMessages(current: ShownMessage[], incoming: ShownMessage[])
     .sort((a, b) => (a.pending === b.pending ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.pending ? 1 : -1));
 }
 
-/** Someone who can be mentioned: a person by username, an agent by handle. */
+/** Someone who can be mentioned: a person, by username. */
 export type Mentionable = {
-  kind: "user" | "agent";
+  kind: "user";
   /** What follows the `@`: lowercased, as it is kept. */
   name: string;
   /** A person's username as they wrote it, when that differs from `name`. */
   display_username?: string | null;
   display_name: string;
   avatar: string | null;
-  /** An agent's role, shown beside it. */
-  role?: string | null;
 };
 
 export type MentionQuery = { start: number; typed: string; options: Mentionable[] };
@@ -150,174 +148,65 @@ export function onlyEmoji(text: string): boolean {
 
 export type ChatFilter = "all" | "unread" | "mentions";
 
-/** The sidebar's rows that pass the filter and the "Jump to" text. */
 /**
  * The conversations the sidebar lists, by filter and by what is typed in
- * Jump to. A direct message with archived or deleted agents alone is not
- * listed on its own: it is found by typing the agent's name, and stays
- * while it is the conversation that is open (`current`, its channel id).
+ * Jump to. An old direct message with agents alone (agents no longer
+ * exist) is not listed on its own: it is found by typing the agent's
+ * name, and stays while it is the conversation that is open (`current`,
+ * its channel id).
  */
 export function filterEntries(entries: ChatSidebarEntry[], filter: ChatFilter, query: string, current: string | null = null): ChatSidebarEntry[] {
   const q = query.trim().toLowerCase().replace(/^[#@]/, "");
   return entries.filter((entry) => {
     if (filter === "unread" && entry.unread === 0 && entry.mentions === 0) return false;
     if (filter === "mentions" && entry.mentions === 0) return false;
-    if (!q) return entry.channel.id === current || !archivedAgentsDm(entry);
+    if (!q) return entry.channel.id === current || !agentsOnlyDm(entry);
     if (entry.title.toLowerCase().includes(q)) return true;
     return entry.others.some((member) => member.name.toLowerCase().includes(q) || member.display_name.toLowerCase().includes(q));
   });
 }
 
-/** The agent a conversation is a direct message with, when it is with one agent alone; else null. */
-export function agentDmOf(entry: ChatSidebarEntry): string | null {
-  const only = entry.others.length === 1 ? entry.others[0]! : null;
-  return entry.channel.kind === "dm" && only?.kind === "agent" ? only.id : null;
-}
-
-type Members = Pick<MemberProfile, "kind">[];
-
-/** Whether a direct message is with agents alone (one or several, nobody else). */
+/** Whether a direct message is with agents alone (one or several, nobody else): an old one, read-only now. */
 export function agentsOnlyDm(entry: { channel: { kind: "channel" | "dm" }; others: readonly Pick<MemberProfile, "kind">[] }): boolean {
   return entry.channel.kind === "dm" && entry.others.length > 0 && entry.others.every((member) => member.kind === "agent");
 }
 
 /**
- * Whether a direct message is mixed: at least one person besides you and
- * at least one agent in it. Such a conversation lists under People (a
- * person is in it) and says, everywhere it shows, that an agent is too.
+ * The agent an old direct message was with, when the conversation is with
+ * agents alone: it opens read-only, a note where the composer was. Null for
+ * any other conversation, since a person is there to talk to.
  */
-export function mixedDm(entry: Pick<ChatSidebarEntry, "channel" | "others">): boolean {
-  return entry.channel.kind === "dm" && isMixed(entry.others);
-}
-
-/** Whether the others in a conversation are a person or more and an agent or more. */
-export function isMixed(others: Members): boolean {
-  return others.some((member) => member.kind === "agent") && others.some((member) => member.kind === "user");
-}
-
-/** The agents among a conversation's other members. */
-export function agentsAmong<M extends Pick<MemberProfile, "kind">>(others: readonly M[]): M[] {
-  return others.filter((member) => member.kind === "agent");
-}
-
-/**
- * The composer's placeholder in a direct message: "Message @mike and @sam
- * (agent)", each agent said to be one, so nobody writes to a person and
- * reaches a bot unawares. A conversation with yourself alone is for notes.
- */
-export function dmPlaceholder(others: readonly Pick<MemberProfile, "kind" | "name" | "display_username">[]): string {
-  if (others.length === 0) return "Message yourself";
-  const names = others.map((member) => `@${shownHandle(member)}${member.kind === "agent" ? " (agent)" : ""}`);
-  const list = names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  return `Message ${list}`;
-}
-
-/**
- * The one-line notice above a mixed conversation's first message, the
- * first time a person opens it: who the agents are and that they read and
- * can act on what is said.
- */
-export function mixedNotice(others: readonly Pick<MemberProfile, "kind" | "name" | "display_name" | "display_username">[]): string {
-  const agents = agentsAmong(others).map(shownName);
-  if (agents.length === 0) return "";
-  if (agents.length === 1) return `${agents[0]} is an agent and reads everything here; it can act on what you say.`;
-  const list = `${agents.slice(0, -1).join(", ")} and ${agents[agents.length - 1]}`;
-  return `${list} are agents and read everything here; they can act on what you say.`;
+export function formerAgentDm<M extends Pick<MemberProfile, "kind">>(entry: { channel: { kind: "channel" | "dm" }; others: readonly M[] }): M | null {
+  return agentsOnlyDm(entry) ? (entry.others[0] ?? null) : null;
 }
 
 /**
  * The sidebar's sections, in the order they show: what is pinned (the
- * `starred` preference), channels, then direct messages in two buckets,
- * each the latest first: People, every conversation with a person in it
- * (a mixed one too, since a person is in it), and Agents, conversations
- * with agents alone. `agentDms` finds the direct message with each agent
- * on its own, by agent id, so the Agents section lists only the agents
- * you have not talked to yet.
+ * `starred` preference), channels by name, then direct messages, the
+ * latest first.
  */
 export function sections(entries: ChatSidebarEntry[]): {
   pinned: ChatSidebarEntry[];
   channels: ChatSidebarEntry[];
-  agentDms: Map<string, ChatSidebarEntry>;
-  people: ChatSidebarEntry[];
-  agents: ChatSidebarEntry[];
+  dms: ChatSidebarEntry[];
 } {
   const byName = (a: ChatSidebarEntry, b: ChatSidebarEntry) => a.title.localeCompare(b.title);
   // Direct messages: the latest conversation first, as people scan them.
   const byRecent = (a: ChatSidebarEntry, b: ChatSidebarEntry) =>
     (b.channel.last_message_at ?? b.channel.created_at).localeCompare(a.channel.last_message_at ?? a.channel.created_at);
-  const agentDms = new Map<string, ChatSidebarEntry>();
-  for (const entry of entries) {
-    const agent = agentDmOf(entry);
-    if (agent) agentDms.set(agent, entry);
-  }
-  const dms = entries.filter((e) => !e.starred && e.channel.kind === "dm");
   return {
     pinned: entries.filter((e) => e.starred).sort(byName),
     channels: entries.filter((e) => !e.starred && e.channel.kind === "channel").sort(byName),
-    agentDms,
-    people: dms.filter((e) => !agentsOnlyDm(e)).sort(byRecent),
-    agents: dms.filter(agentsOnlyDm).sort(byRecent),
+    dms: entries.filter((e) => !e.starred && e.channel.kind === "dm").sort(byRecent),
   };
 }
 
 /**
- * The archived (or deleted) agent a direct message is with, when the
- * conversation is with agents alone and every one of them is archived or
- * deleted for good (docs.g1t.sh/guides/chat/, "Archived and deleted
- * agents"): the row is dimmed and says Archived (or Deleted, when the
- * agent returned is `deleted`), and a conversation with one agent opens
- * read-only. Null for any other conversation, a mixed one included, since
- * a person is still there to talk to.
+ * What an old conversation with an agent says in place of its composer:
+ * agents no longer exist, so it is kept to read.
  */
-export function archivedAgentsDm<M extends Pick<MemberProfile, "kind" | "archived_at" | "deleted">>(entry: { channel: { kind: "channel" | "dm" }; others: readonly M[] }): M | null {
-  if (!agentsOnlyDm(entry)) return null;
-  return entry.others.every((member) => !!member.archived_at || member.deleted === true) ? (entry.others[0] ?? null) : null;
-}
-
-/**
- * The agents you have not talked to yet, for the sidebar's Agents section:
- * live ones (an archived agent is never offered, though its old conversation
- * stays listed), with no direct message yet, g1t first, then by name,
- * narrowed by what is typed in Jump to (handle, name or role).
- */
-export function agentsToTalkTo<A extends Pick<WorkspaceAgent, "id" | "handle" | "display_name" | "role" | "builtin" | "archived_at">>(agents: readonly A[], agentDms: ReadonlyMap<string, unknown>, query = ""): A[] {
-  const q = query.trim().toLowerCase().replace(/^@/, "");
-  return agents
-    .filter((agent) => !agent.archived_at && !agentDms.has(agent.id))
-    .sort((a, b) => Number(!!b.builtin) - Number(!!a.builtin) || a.display_name.localeCompare(b.display_name))
-    .filter((agent) => !q || agent.handle.includes(q) || agent.display_name.toLowerCase().includes(q) || agent.role.toLowerCase().includes(q));
-}
-
-/**
- * What an archived agent's conversation says in place of its composer:
- * who archived it and when, as far as that is known.
- */
-export function archivedAgentLine(agent: Pick<MemberProfile, "name" | "display_name" | "display_username" | "archived_at" | "archived_by">, now: Date = new Date()): string {
-  return `${shownName(agent)} was ${archivedAgentWhen(agent, now).replace(/^A/, "a")}. It no longer answers here.`;
-}
-
-/** "Archived 2 days ago by @ana": under an archived agent's name, where its title was. */
-export function archivedAgentWhen(agent: Pick<MemberProfile, "archived_at" | "archived_by">, now: Date = new Date()): string {
-  const when = agent.archived_at ? ` ${timeSince(agent.archived_at, now)}` : "";
-  const by = agent.archived_by ? ` by @${agent.archived_by}` : "";
-  return `Archived${when}${by}`;
-}
-
-/** "3 days ago", "2 hours ago", "just now": for a line of prose. */
-export function timeSince(at: string, now: Date = new Date()): string {
-  const elapsed = Math.max(0, now.getTime() - new Date(at).getTime());
-  const units: [string, number][] = [
-    ["day", 86_400_000],
-    ["hour", 3_600_000],
-    ["minute", 60_000],
-  ];
-  for (const [unit, size] of units) {
-    if (elapsed >= size) {
-      const n = Math.floor(elapsed / size);
-      return `${n} ${unit}${n === 1 ? "" : "s"} ago`;
-    }
-  }
-  return "just now";
+export function formerAgentLine(agent: Pick<MemberProfile, "name" | "display_name"> & { display_username?: string | null }): string {
+  return `${shownName(agent)} was an agent and no longer answers here. Everything said here stays to read.`;
 }
 
 /** Where a conversation is, under the workspace. */
@@ -350,14 +239,14 @@ export function channelName(typed: string): string {
 /** Paths under `-/chat/` that are pages, not channels: never a channel's name. */
 export const RESERVED_CHANNEL_NAMES = ["dm", "browse", "live", "api", "new"] as const;
 
-/** A principal as a form field carries it: `user:<username>` or `agent:<id>`. */
+/** A principal as a form field carries it: `user:<username>`. */
 export function principalField(kind: Principal["kind"], key: string): string {
   return `${kind}:${key}`;
 }
 
 /**
  * A member's handle as it shows after `@`: a person's username in its
- * chosen case, an agent's handle. The same rule as `memberHandle` in
+ * chosen case (an old agent's handle). The same rule as `memberHandle` in
  * @g1t/contracts, kept here so this file stays pure for its tests.
  */
 export function shownHandle(member: { name: string; display_username?: string | null }): string {
@@ -377,7 +266,7 @@ export function shownName(member: Pick<MemberProfile, "display_name" | "name"> &
 
 /**
  * Who each lowercased handle is, for drawing `@name` as the name people
- * know: the workspace's people and agents.
+ * know: the workspace's people.
  */
 export function mentionNames(people: readonly Mentionable[]): Map<string, string> {
   const names = new Map<string, string>();
@@ -385,42 +274,15 @@ export function mentionNames(people: readonly Mentionable[]): Map<string, string
   return names;
 }
 
-/** What an agent working on a reply says it is doing: one phrase per agent, so each sounds like itself. */
-const AGENT_DOING = ["is reading the thread", "is thinking it through", "is looking into it", "is reading the diff", "is checking the details", "is drafting a reply"];
+/** Someone shown as typing. */
+export type Typer = { member: Pick<MemberProfile, "display_name" | "name"> & { display_username?: string | null } };
 
-export function agentDoing(id: string): string {
-  let hash = 0;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
-  return AGENT_DOING[Math.abs(hash) % AGENT_DOING.length]!;
-}
-
-/**
- * After this long shown as typing, an agent is said to be still working
- * instead: a reply that reads code, consults a colleague or starts a
- * session takes a minute or more, and it keeps saying so the whole time.
- */
-export const WORKING_AFTER_MS = 10_000;
-
-/** Someone shown as typing, and since when (the first typing event for them, kept across the ones that follow). */
-export type Typer = { member: Pick<MemberProfile, "kind" | "id" | "display_name" | "name"> & { display_username?: string | null }; since: number };
-
-/**
- * The typing line: who, and what they are doing. A person is typing. An
- * agent is doing what its phrase says, then, past `WORKING_AFTER_MS`,
- * still working on it; several agents are on it together, and a mix of
- * people and agents are typing. Null when nobody is.
- */
-export function typingLabel(typers: readonly Typer[], now: number): { who: string; doing: string } | null {
+/** The typing line: who, and that they are typing. Null when nobody is. */
+export function typingLabel(typers: readonly Typer[]): { who: string; doing: string } | null {
   if (!typers.length) return null;
   const names = typers.map((t) => shownName(t.member));
-  const agents = typers.every((t) => t.member.kind === "agent");
-  const who = names.length === 1 ? names[0]! : names.length === 2 ? `${names[0]} and ${names[1]}` : agents ? "Several agents" : "Several people";
-  const long = typers.some((t) => now - t.since >= WORKING_AFTER_MS);
-  if (typers.length === 1) {
-    const [one] = typers;
-    return { who, doing: one!.member.kind === "agent" ? (long ? "is still working on it" : agentDoing(one!.member.id)) : "is typing" };
-  }
-  return { who, doing: agents ? (long ? "are still working on it" : "are on it") : "are typing" };
+  const who = names.length === 1 ? names[0]! : names.length === 2 ? `${names[0]} and ${names[1]}` : "Several people";
+  return { who, doing: typers.length === 1 ? "is typing" : "are typing" };
 }
 
 /** Reconnect delays for the live socket: doubling from one second to thirty, with jitter. */

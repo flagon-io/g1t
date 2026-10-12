@@ -63,11 +63,12 @@ test("each call gets the time its work needs", () => {
   assert.equal(deadlineFor("security", "overview", false), SLOW_READ_DEADLINE_MS);
   assert.equal(deadlineFor("repos", "blame", false), SLOW_READ_DEADLINE_MS);
   assert.equal(deadlineFor("integrations", "github_import", true), LONG_DEADLINE_MS);
-  assert.equal(deadlineFor("agents", "computer_sleep", true), LONG_DEADLINE_MS);
+  assert.equal(deadlineFor("security", "rescan", true), LONG_DEADLINE_MS);
 });
 
 test("a long method of one service is not long in another", () => {
-  assert.equal(deadlineFor("agents", "draft", true), LONG_DEADLINE_MS);
+  assert.equal(deadlineFor("security", "rescan", true), LONG_DEADLINE_MS);
+  assert.equal(deadlineFor("work", "rescan", true), WRITE_DEADLINE_MS);
   assert.equal(deadlineFor("work", "draft", true), WRITE_DEADLINE_MS);
   assert.equal(deadlineFor("identity", "overview", false), READ_DEADLINE_MS);
 });

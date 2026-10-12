@@ -1,7 +1,7 @@
 /**
  * The billing page's sections: the spend-spike banner (also in the app
  * shell), alerts, the g1t plan, the trial, the spend limit and its range,
- * Raise my limit, credits from g1t, Prepay, the run and issue caps, and "Spent more than you
+ * Raise my limit, credits from g1t, Prepay, and "Spent more than you
  * meant to?". Each posts to the billing route's action with an `intent`.
  */
 import { ArrowUpRight, CreditCard, Gauge, Gift, Landmark, ShieldCheck, Sparkles } from "lucide-react";
@@ -11,7 +11,6 @@ import { Form } from "react-router";
 import type { Credits, Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, UsageAlert } from "@g1t/contracts";
 
 import {
-  CAPS,
   CREDIT_KIND,
   PLUS_TAX,
   PREPAY,
@@ -222,7 +221,7 @@ export function PlanCard({
       }
       about={
         on
-          ? "Everything on g1t for the workspace: agents, checks, workflows, the merge queue, deployments and semantic search."
+          ? "Everything on g1t for the workspace: checks, workflows, the merge queue, deployments and semantic search."
           : "The forge is free: repositories, issues, pull requests, reviews, search and the audit log. Anything that runs compute needs the plan, or the trial."
       }
       aside={
@@ -358,7 +357,7 @@ function MonthUsage({
           ? "What this workspace's usage comes to at price. Its 100% discount takes all of it off."
           : on
             ? `Drawn from the included usage first, then charged up to your spend limit. Projects, previews and repositories are never charged, and the first ${freeStorage} of private storage and ${freeGit} git operations a month are free. App traffic, custom domains, storage and git operations are counted through the month and charged when it closes, after the included usage and any discount, like the rest.`
-            : `The forge is free: ${freeStorage} of private storage and ${freeGit} git operations a month. Agents run from the trial, and checks, workflows and the merge queue on public repositories from the open-source pool; together they pay part of this total: Usage shows what was charged.`}
+            : `The forge is free: ${freeStorage} of private storage and ${freeGit} git operations a month. Checks, workflows and the merge queue run from the trial, and on public repositories from the open-source pool; together they pay part of this total: Usage shows what was charged.`}
       </p>
     </div>
   );
@@ -389,7 +388,7 @@ export function TrialCard({
       about={
         verified
           ? left > 0
-            ? "Your trial pays for agents, checks and workflows until it is used. It is given once per workspace."
+            ? "Your trial pays for checks, workflows and deployments until it is used. It is given once per workspace."
             : "This workspace has no trial left. Start the plan to keep going."
           : "Once per workspace, after a card check: Stripe saves and verifies the card with 3-D Secure and charges nothing. The trial needs a credit or debit card; prepaid cards can still pay for the plan."
       }
@@ -566,7 +565,7 @@ export function RaiseCard({ requests, owner, error }: { requests: LimitRequest[]
     <Card
       id="raise"
       title="Raise my limit"
-      about="Ask g1t for a higher limit than you can set yourself. A person reads it and answers within one business day, in the app and by email. Nothing about price is negotiated."
+      about="Ask for a higher limit than you can set yourself. A person at g1t reads it and answers within one business day, in the app and by email. Nothing about price is negotiated."
     >
       {owner && !waiting && (
         <Form method="post" className="mt-4 space-y-3">
@@ -588,7 +587,7 @@ export function RaiseCard({ requests, owner, error }: { requests: LimitRequest[]
               name="reason"
               rows={2}
               maxLength={2000}
-              placeholder="A launch next week: agents on 40 issues across three projects."
+              placeholder="A launch next week: builds and previews across three projects."
               className={`${CONTROL} w-full`}
             />
           </label>
@@ -714,60 +713,6 @@ export function PrepayCard({
   );
 }
 
-// --- Caps -----------------------------------------------------------------------
-
-export function CapsCard({ entitlements, owner, error }: { entitlements: Entitlements; owner: boolean; error?: string }) {
-  return (
-    <Card
-      id="caps"
-      title="Caps on agents"
-      about={
-        <>
-          The most one agent run may spend, and the most the agents on one issue may spend in all, so an agent stuck in a loop stops on
-          its own. Blank goes back to {wholeDollars(CAPS.run.default)} and {wholeDollars(CAPS.issue.default)}. A cap g1t set for this
-          workspace wins.
-        </>
-      }
-    >
-      <dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:max-w-md">
-        <div>
-          <dt className="text-xs text-muted">Per run</dt>
-          <dd className="mt-0.5 text-lg font-semibold tabular-nums">{wholeDollars(entitlements.runCapMicros)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-muted">Per issue</dt>
-          <dd className="mt-0.5 text-lg font-semibold tabular-nums">{wholeDollars(entitlements.issueCapMicros)}</dd>
-        </div>
-      </dl>
-      {owner && (
-        <Form method="post" className="mt-4 flex flex-wrap items-end gap-4">
-          <input type="hidden" name="intent" value="caps" />
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-muted">
-              Per run ({wholeDollars(CAPS.run.min)} to {wholeDollars(CAPS.run.max)})
-            </span>
-            <DollarInput name="run" label="Run cap in dollars" defaultValue={String(entitlements.runCapMicros / 1_000_000)} />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-muted">
-              Per issue ({wholeDollars(CAPS.issue.min)} to {wholeDollars(CAPS.issue.max)})
-            </span>
-            <DollarInput name="issue" label="Issue cap in dollars" defaultValue={String(entitlements.issueCapMicros / 1_000_000)} />
-          </label>
-          <SubmitButton variant="outline" match={{ intent: "caps" }} pending="Saving…">
-            Save caps
-          </SubmitButton>
-        </Form>
-      )}
-      <ErrorText>{error}</ErrorText>
-      <p className="mt-3 text-xs text-faint">
-        {entitlements.maxConcurrentAgents} agents at a time{entitlements.maxRunMinutes ? `, ${entitlements.maxRunMinutes} minutes a run` : ""}
-        {entitlements.firstMonth ? " in the first month" : ""}.
-      </p>
-    </Card>
-  );
-}
-
 // --- Overage -----------------------------------------------------------------------
 
 export function OverageCard({ requests, owner, error }: { requests: LimitRequest[]; owner: boolean; error?: string }) {
@@ -788,7 +733,7 @@ export function OverageCard({ requests, owner, error }: { requests: LimitRequest
             rows={2}
             maxLength={2000}
             aria-label="What happened"
-            placeholder="An agent kept retrying a failing check on Tuesday night."
+            placeholder="A workflow kept retrying a failing check on Tuesday night."
             className={`${CONTROL} w-full`}
           />
           <SubmitButton variant="outline" match={{ intent: "request", kind: "overage" }} pending="Sending…">

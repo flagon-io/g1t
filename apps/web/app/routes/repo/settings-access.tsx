@@ -340,7 +340,7 @@ function roleLine(role: RepoRole): string {
   return {
     read: "they can see and clone it, open issues and pull requests, and comment.",
     triage: "they can also apply labels and milestones, and assign, close and reopen issues and pull requests.",
-    write: "they can also push, merge, manage labels and milestones, see security alerts and put agents to work.",
+    write: "they can also push, merge, manage labels and milestones, see security alerts and run workflows.",
     maintain: "they can also change its settings and topics.",
     admin: "they can do everything, including branch protection, webhooks, secrets, deployments and who has access.",
   }[role];

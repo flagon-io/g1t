@@ -20,7 +20,6 @@ export type NavIcon =
   | "usage"
   | "stripe"
   | "costs"
-  | "agents"
   | "abuse"
   | "incidents"
   | "inbox"
@@ -195,7 +194,7 @@ export const NAV: NavGroup[] = [
         about: "What customers used, sliced by meter, model, repository and day.",
         soon: {
           summary: [
-            "What customers used, across every workspace, sliced any way: by meter, model, repository, task and day. It answers the questions that come up in a sales call or a cost review: who uses the most sandbox time, which model costs most, what a customer's agents spend per pull request.",
+            "What customers used, across every workspace, sliced any way: by meter, repository and day. It answers the questions that come up in a sales call or a cost review: who uses the most sandbox time, and what a customer spends per pull request.",
             "Billing records every run and sandbox second with its cost and charge already. This puts it in front of the people who need it, without a query.",
           ],
           plans: [
@@ -218,12 +217,6 @@ export const NAV: NavGroup[] = [
         to: "/costs",
         icon: "costs",
         about: "Where g1t's money goes, with what it gave away kept apart; on Bill & pricing, Cloudflare's bill, drift and the price book.",
-      },
-      {
-        label: "Agents & models",
-        to: "/agents",
-        icon: "agents",
-        about: "Every model g1t can use, new ones to approve, and which model each tier and job uses by default.",
       },
       {
         label: "Abuse & fraud",

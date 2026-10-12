@@ -53,7 +53,7 @@ const SOURCES: { id: Source | "mirror"; title: string; text: string; icon: React
   {
     id: "empty",
     title: "Start empty",
-    text: "A new repository on g1t. Push to it, or hand an agent the first issue.",
+    text: "A new repository on g1t. Push to it, or hand your coding agent the first issue.",
     icon: <Sparkles />,
   },
   {

@@ -57,9 +57,7 @@ export const WORKSPACE_SETTINGS_GROUPS: readonly WorkspaceSettingsGroup[] = [
     key: "money",
     title: "Money",
     pages: [
-      { key: "spend", label: "Spend", path: "spend" },
       { key: "usage", label: "Usage", path: "usage" },
-      { key: "gateway", label: "AI Gateway", path: "gateway" },
       { key: "billing", label: "Billing and plans", path: "billing" },
     ],
   },
@@ -86,19 +84,7 @@ export const WORKSPACE_SETTINGS_GROUPS: readonly WorkspaceSettingsGroup[] = [
         key: "projects",
         label: "Project defaults",
         path: "soon/projects",
-        soon: "What a new project starts with: its visibility, branch rules, merge method and the agents on it.",
-      },
-    ],
-  },
-  {
-    key: "agents",
-    title: "Agents",
-    pages: [
-      {
-        key: "agent-settings",
-        label: "Agent settings",
-        path: "soon/agent-settings",
-        soon: "Budgets and the models agents may use are on the Agents overview today; who may create agents is under Permissions.",
+        soon: "What a new project starts with: its visibility, branch rules and merge method.",
       },
     ],
   },
@@ -191,34 +177,11 @@ const MOVED: Record<string, string> = {
   today: "-/home",
   "soon/teams": "-/teams",
   "soon/insights": "-/insights",
-  // The Marketplace became Customize: extensions are plugins, integrations connectors.
-  marketplace: "-/customize",
-  "marketplace/extensions": "-/customize/plugins",
-  "marketplace/integrations": "-/customize/connectors",
-  "marketplace/requests": "-/customize/requests",
-  // The skill library is Customize's Skills tab; each skill's page stays under Agents.
-  "agents/skills": "-/customize/skills?view=yours",
-};
-
-/** Workspace pages that moved with everything under them, by their old name under `-/`: the rest of the path follows. */
-const MOVED_UNDER: Record<string, string> = {
-  // Agent templates were the Marketplace's Agents tab.
-  "marketplace/agents": "-/agents/templates",
-};
-
-/** Pages whose one child moved to a new shape: an extension's page is its plugin's in g1t's marketplace, an integration's the directory entry on Connectors. */
-const MOVED_CHILD: Record<string, (id: string) => string> = {
-  "marketplace/extensions": (id) => `-/customize/plugins/${encodeURIComponent(`${id}@g1t`)}`,
-  "marketplace/integrations": (id) => `-/customize/connectors?directory=${encodeURIComponent(id)}`,
 };
 
 /** Where the page `rest` (under `-/`) is now, or null when it has not moved. */
 function movedTo(rest: string): string | null {
-  if (MOVED[rest] !== undefined) return MOVED[rest]!;
-  const under = Object.keys(MOVED_UNDER).find((from) => rest === from || rest.startsWith(`${from}/`));
-  if (under) return `${MOVED_UNDER[under]}${rest.slice(under.length)}`;
-  const parent = Object.keys(MOVED_CHILD).find((from) => rest.startsWith(`${from}/`) && !rest.slice(from.length + 1).includes("/"));
-  return parent ? MOVED_CHILD[parent]!(rest.slice(parent.length + 1)) : null;
+  return MOVED[rest] ?? null;
 }
 
 /** `to` with `search` merged into any query of its own, as a path under the workspace. */
@@ -280,7 +243,7 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 
 /**
  * The rail's modes. Home is the front page;
- * Chat, Agents, Code and Artifacts are where work happens; Notifications
+ * Chat, Code and Artifacts are where work happens; Notifications
  * spans them; People is who belongs; Workspace is the workspace itself,
  * its settings area: who has access, money, policies and how each part is
  * set up; Apps is everything installed that you
@@ -293,7 +256,6 @@ export type ModeKey =
   | "home"
   | "chat"
   | "notifications"
-  | "agents"
   | "code"
   | "artifacts"
   | "people"
@@ -307,20 +269,13 @@ const PAGE_MODES: Record<string, ModeKey> = {
   home: "home",
   chat: "chat",
   artifacts: "artifacts",
-  agents: "agents",
-  context: "agents",
-  memory: "agents",
   apps: "apps",
-  customize: "apps",
-  marketplace: "apps",
   people: "people",
   members: "workspace",
   permissions: "workspace",
   teams: "people",
   workspace: "workspace",
-  spend: "workspace",
   usage: "workspace",
-  gateway: "workspace",
   billing: "workspace",
   integrations: "workspace",
   guardrails: "workspace",
@@ -374,8 +329,6 @@ export function modeHome(mode: ModeKey, slug: string): string {
       return `/${slug}/-/chat`;
     case "artifacts":
       return `/${slug}/-/artifacts`;
-    case "agents":
-      return `/${slug}/-/agents`;
     case "code":
       return `/${slug}/-/overview`;
     case "people":
@@ -399,14 +352,14 @@ export function homePagePath(slug: string): string {
 /**
  * Where g1t's front door (`/`) and a workspace's own address lead someone
  * in the workspace `slug`: Home, or Code's Overview when the query asks
- * for its panels (a tab, or `?agent=new` to put an agent on something).
+ * for its panels (a tab or a sort).
  */
 export function homePath(slug: string, search = ""): string {
   const params = new URLSearchParams(search);
   params.delete("_routes");
   params.delete("index");
   const query = params.toString();
-  if (params.has("agent") || params.has("tab") || params.has("sort")) return `/${slug}/-/overview?${query}`;
+  if (params.has("tab") || params.has("sort")) return `/${slug}/-/overview?${query}`;
   return homePagePath(slug);
 }
 
@@ -416,7 +369,7 @@ export function codeAccessPath(slug: string, from?: string): string {
 }
 
 /** The workspace pages under `-/` that are Code's: closed to a member without Code access. */
-const CODE_PAGES = new Set(["overview", "projects", "repositories", "packages", "security", "rules", "runners", "actions", "context", "memory", "insights", "soon"]);
+const CODE_PAGES = new Set(["overview", "projects", "repositories", "packages", "security", "rules", "runners", "actions", "memory", "insights", "soon"]);
 
 /**
  * Where a member without Code access goes instead of `pathname`, or null

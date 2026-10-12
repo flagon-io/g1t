@@ -4,9 +4,6 @@ import { useFetcher, useNavigate, useRouteLoaderData } from "react-router";
 
 import type { ChatSidebar, Result } from "@g1t/contracts";
 
-import { AgentPill } from "./marks";
-import { AgentAvatar } from "../agent-avatar";
-
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -168,7 +165,7 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create a channel</DialogTitle>
-            <DialogDescription>A place for one topic: a project, a team, a launch. Invite people and agents once it's made.</DialogDescription>
+            <DialogDescription>A place for one topic: a project, a team, a launch. Invite people once it's made.</DialogDescription>
           </DialogHeader>
           <form
             className="grid gap-4"
@@ -217,12 +214,12 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
                   </span>
                   <span className="mt-0.5 block text-xs text-muted">
                     {!may.public
-                      ? "Only workspace owners can create public channels here, so this one is private: only people and agents you invite can find and read it."
+                      ? "Only workspace owners can create public channels here, so this one is private: only people you invite can find and read it."
                       : !may.private
                         ? "Only workspace owners can create private channels here, so this one is public: anyone in the workspace can find, read and join it."
                         : isPrivate
-                          ? "Only people and agents you invite can find and read it."
-                          : "Anyone in the workspace can find, read and join it. Turn on to keep it to the people and agents you invite."}
+                          ? "Only people you invite can find and read it."
+                          : "Anyone in the workspace can find, read and join it. Turn on to keep it to the people you invite."}
                   </span>
                 </span>
                 <Switch checked={isPrivate} onCheckedChange={setSecret} disabled={!may.public || !may.private} aria-label="Private" />
@@ -249,10 +246,10 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
 }
 
 /** Someone a new message can go to. */
-type Pickable = { key: string; kind: "user" | "agent"; name: string; handle: string; display: string; avatar: string | null; role?: string | null };
+type Pickable = { key: string; name: string; handle: string; display: string; avatar: string | null };
 
 /**
- * A new direct message: choose people, agents or both, then open the
+ * A new direct message: choose one person or a few, then open the
  * conversation between you (the same one each time for the same people).
  */
 export function NewMessageButton({ slug, variant = "icon", children }: { slug: string; variant?: "icon" | "button" | "fab"; children?: ReactNode }) {
@@ -303,21 +300,9 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
   const navigate = useNavigate();
   const everyone = useMemo<Pickable[]>(() => {
     const me = data?.me.username.toLowerCase();
-    return [
-      // A personal agent is only in its own DM, opened from the sidebar, never with others.
-      ...(data?.agents ?? []).filter((agent) => agent.scope !== "personal").map((agent) => ({
-        key: `agent:${agent.id}`,
-        kind: "agent" as const,
-        name: agent.handle,
-        handle: agent.handle,
-        display: agent.display_name,
-        avatar: agent.avatar,
-        role: agent.role,
-      })),
-      ...(data?.people ?? [])
-        .filter((person) => person.name.toLowerCase() !== me)
-        .map((person) => ({ key: `user:${person.name}`, kind: "user" as const, name: person.name, handle: shownHandle(person), display: shownName(person), avatar: person.avatar })),
-    ];
+    return (data?.people ?? [])
+      .filter((person) => person.name.toLowerCase() !== me)
+      .map((person) => ({ key: `user:${person.name}`, name: person.name, handle: shownHandle(person), display: shownName(person), avatar: person.avatar }));
   }, [data]);
   const q = query.trim().toLowerCase().replace(/^@/, "");
   const picked = new Set(chosen.map((p) => p.key));
@@ -344,12 +329,12 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
     <div className="flex max-h-[min(36rem,calc(100dvh-2rem))] flex-col">
       <div className="border-b border-line px-5 pt-5 pb-4">
         <DialogTitle>New message</DialogTitle>
-        <DialogDescription className="mt-1">To one person, a few, or an agent. Agents answer in the conversation.</DialogDescription>
+        <DialogDescription className="mt-1">To one person or a few.</DialogDescription>
         <div className="mt-4 flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-line bg-bg px-2 py-1.5 focus-within:border-accent-dim">
           <span className="pl-1 text-sm text-faint">To:</span>
           {chosen.map((person) => (
             <span key={person.key} className="flex h-6 items-center gap-1.5 rounded-md bg-raised pr-1 pl-1 text-[0.8125rem]">
-              {person.kind === "agent" ? <AgentAvatar agent={{ id: person.key.slice(6), handle: person.name, avatar: person.avatar }} size={16} /> : <Avatar name={person.name} image={person.avatar} size={16} />}
+              <Avatar name={person.name} image={person.avatar} size={16} />
               {person.display}
               <Button
                 type="button"
@@ -393,7 +378,7 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
           />
         </div>
       </div>
-      <ul role="listbox" aria-label="People and agents" className="min-h-0 grow overflow-y-auto p-1.5">
+      <ul role="listbox" aria-label="People" className="min-h-0 grow overflow-y-auto p-1.5">
         {options.length === 0 && (
           <li className="flex items-center gap-2 px-3 py-6 text-sm text-muted">
             <Search size={14} />
@@ -409,16 +394,12 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
             onClick={() => take(person)}
             className={`flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 ${index === active ? "bg-raised" : ""}`}
           >
-            {person.kind === "agent" ? <AgentAvatar agent={{ id: person.key.slice(6), handle: person.name, avatar: person.avatar }} size={28} /> : <Avatar name={person.name} image={person.avatar} size={28} />}
+            <Avatar name={person.name} image={person.avatar} size={28} />
             <span className="min-w-0 grow">
               <span className="flex items-center gap-1.5 text-sm font-medium">
                 <span className="truncate">{person.display}</span>
-                {person.kind === "agent" && <AgentPill />}
               </span>
-              <span className="block truncate text-xs text-faint">
-                @{person.handle}
-                {person.role ? ` · ${person.role}` : ""}
-              </span>
+              <span className="block truncate text-xs text-faint">@{person.handle}</span>
             </span>
             {index === active && <Check size={14} className="text-faint" />}
           </li>

@@ -10,12 +10,9 @@
 import type {
   ActivityDigest,
   ActorCount,
-  AgentSession,
-  AgentSessionKind,
   ChatActivity,
   Deployment,
   InboxItem,
-  InstallRequest,
   Memory,
   ProjectDeploys,
   Pull,
@@ -24,8 +21,6 @@ import type {
   Statement,
   WorkflowRun,
 } from "@g1t/contracts";
-
-import { money } from "./money.ts";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -165,46 +160,7 @@ export function within(at: number | string | null | undefined, span: Pick<Span, 
   return Number.isFinite(ms) && ms >= span.from && ms <= span.now;
 }
 
-// --- Agent work in the span ---------------------------------------------------
-
-/**
- * How one piece of agent work that settled in the span went:
- * - `accepted`: an agent's pull request merged without the agent being sent back to revise it.
- * - `fixed`: an agent's pull request merged after one or more revisions.
- * - `finished`: an agent session that finished. Sessions are not reviewed, so they are never `accepted`.
- * - `dropped`: an agent's pull request closed without merging, or a session that failed or was stopped.
- * Work still going is not here: it is under Running now.
- */
-export type TaskOutcome = "accepted" | "fixed" | "finished" | "dropped";
-
-/** Where a task came from. */
-export type TaskSource = "chat" | "schedule" | "colleague" | "code";
-
-export const OUTCOME_LABEL: Record<TaskOutcome, string> = {
-  accepted: "Accepted first time",
-  fixed: "Fixed after review",
-  finished: "Sessions finished",
-  dropped: "Didn't finish",
-};
-
-export const SOURCE_LABEL: Record<TaskSource, string> = {
-  chat: "Chat",
-  schedule: "Schedules",
-  colleague: "Another agent",
-  code: "Code",
-};
-
-/** One mark on the strip. */
-export type WorkTask = {
-  key: string;
-  outcome: TaskOutcome;
-  source: TaskSource;
-  /** Null for a session in a conversation the viewer is not in. */
-  title: string | null;
-  to: string | null;
-  /** When it settled: the strip's order. */
-  at: number;
-};
+// --- Code read for the span -----------------------------------------------------
 
 /** A pull request with where it is: what Home reads from Code. */
 export type CodePull = Pick<Pull, "number" | "title" | "status" | "mergedAt" | "createdAt" | "updatedAt"> & {
@@ -214,166 +170,30 @@ export type CodePull = Pick<Pull, "number" | "title" | "status" | "mergedAt" | "
   mergedBy?: string | null;
 };
 
-/** Whether a pull request is an agent's change: g1t made it, or an agent account opened it. */
+/** Whether a pull request was opened by g1t itself, as older ones were: shown as `@g1t`. */
 export function isAgentPull(pull: { author: { username: string; kind?: string } }): boolean {
   const name = pull.author.username;
   return pull.author.kind === "agent" || name === "g1t" || name.endsWith("-agent");
 }
 
-/** `acme/web#12`, lowercase: how a pull request and its runs are matched. */
+/** `acme/web#12`, lowercase: how a pull request is matched. */
 export function pullKey(repo: RepoPath, number: number): string {
   return `${repo.namespace}/${repo.name}#${number}`.toLowerCase();
 }
 
-/**
- * How an agent's pull request settled in the span, or null when it did not
- * settle in it. `revisions` counts its `revise` runs: each time g1t sent
- * the agent back for failed checks or a review.
- */
-export function pullOutcome(pull: CodePull, revisions: number, span: Pick<Span, "from" | "now">): TaskOutcome | null {
-  if (pull.status === "merged") return within(pull.mergedAt, span) ? (revisions > 0 ? "fixed" : "accepted") : null;
-  if (pull.status === "closed") return within(pull.updatedAt, span) ? "dropped" : null;
-  return null;
-}
-
-const LIVE: ReadonlySet<string> = new Set(["queued", "working", "waiting", "needs_approval"]);
-
-/**
- * How a session settled in the span, or null. Only a session at the root
- * of its tree counts: the subagents and colleagues it brought in are part
- * of its task.
- */
-export function sessionOutcome(
-  session: Pick<AgentSession, "parent_id" | "status" | "updated_at" | "finished_at">,
-  span: Pick<Span, "from" | "now">,
-): TaskOutcome | null {
-  if (session.parent_id || LIVE.has(session.status)) return null;
-  if (!within(session.finished_at ?? session.updated_at, span)) return null;
-  return session.status === "done" ? "finished" : "dropped";
-}
-
-export function sessionSource(kind: AgentSessionKind): TaskSource {
-  return kind === "routine" ? "schedule" : kind === "chat" ? "chat" : "colleague";
-}
-
-/** The agents' work that settled in the span, and how the 7 days before it compare. */
-export type SpanWork = {
-  tasks: WorkTask[];
-  counts: Record<TaskOutcome, number>;
-  /** Tasks by where they came from, most first; only sources with any. */
-  sources: { source: TaskSource; count: number }[];
-  /**
-   * Accepted first time: of the agents' pull requests that merged or closed
-   * in the span, the share that merged without a revision. Null with none.
-   */
-  rate: { value: number; of: number } | null;
-  /** The same share over the 7 days before the span; null when there were none, or they could not all be read. */
-  before: { value: number; of: number } | null;
-  /** Whether Code was read: false for a member without Code access, or when Code did not answer. */
-  code: "read" | "no_access" | "unavailable";
-  /** Whether sessions were read. */
-  sessions: "read" | "unavailable";
-  /** True when a list was cut short before the start of the span, so some work may be missing. */
-  partial: boolean;
-};
-
 export type CodeWork = {
   pulls: CodePull[];
-  /** `revise` runs per pull request (`pullKey`). */
-  revisions: Record<string, number>;
   /** Whether every list read reached back to 7 days before the span. */
   complete: boolean;
 };
 
-export type SessionWork = { sessions: AgentSession[]; complete: boolean };
-
-/** Accepted first time over a set of settled outcomes: null when no pull request settled. */
-export function acceptance(outcomes: TaskOutcome[]): { value: number; of: number } | null {
-  const settled = outcomes.filter((o) => o === "accepted" || o === "fixed" || o === "dropped");
-  if (settled.length === 0) return null;
-  return { value: settled.filter((o) => o === "accepted").length / settled.length, of: settled.length };
-}
-
-export function spanWork(input: {
-  span: Pick<Span, "from" | "now">;
-  slug: string;
-  code: CodeWork | null | "no_access";
-  sessions: SessionWork | null;
-}): SpanWork {
-  const { span, slug } = input;
-  const tasks: WorkTask[] = [];
-  let before: SpanWork["before"] = null;
-  const code = input.code;
-  if (code && code !== "no_access") {
-    const prior = { from: span.from - 7 * DAY, now: span.from - 1 };
-    const earlier: TaskOutcome[] = [];
-    for (const pull of code.pulls) {
-      if (!isAgentPull(pull)) continue;
-      const revisions = code.revisions[pullKey(pull.repo, pull.number)] ?? 0;
-      const to = `/${pull.repo.namespace}/${pull.repo.name}/pull/${pull.number}`;
-      const outcome = pullOutcome(pull, revisions, span);
-      if (outcome) {
-        const at = Date.parse(pull.status === "merged" && pull.mergedAt ? pull.mergedAt : pull.updatedAt);
-        tasks.push({ key: `pull:${pullKey(pull.repo, pull.number)}`, outcome, source: "code", title: pull.title, to, at });
-        continue;
-      }
-      const then = pullOutcome(pull, revisions, prior);
-      if (then) earlier.push(then);
-    }
-    before = code.complete ? acceptance(earlier) : null;
-  }
-  for (const session of input.sessions?.sessions ?? []) {
-    const outcome = sessionOutcome(session, span);
-    if (!outcome) continue;
-    tasks.push({
-      key: `session:${session.id}`,
-      outcome,
-      source: sessionSource(session.kind),
-      title: session.visible ? session.title : null,
-      to: `/${slug}/-/agents/${session.agent_handle}/sessions/${session.id}`,
-      at: Date.parse(session.finished_at ?? session.updated_at),
-    });
-  }
-  // In the order they settled.
-  tasks.sort((a, b) => a.at - b.at || a.key.localeCompare(b.key));
-  const counts: Record<TaskOutcome, number> = { accepted: 0, fixed: 0, finished: 0, dropped: 0 };
-  const bySource = new Map<TaskSource, number>();
-  for (const task of tasks) {
-    counts[task.outcome]++;
-    bySource.set(task.source, (bySource.get(task.source) ?? 0) + 1);
-  }
-  const sourceOrder: TaskSource[] = ["chat", "code", "schedule", "colleague"];
-  return {
-    tasks,
-    counts,
-    sources: [...bySource]
-      .map(([source, count]) => ({ source, count }))
-      .sort((a, b) => b.count - a.count || sourceOrder.indexOf(a.source) - sourceOrder.indexOf(b.source)),
-    rate: acceptance(tasks.filter((t) => t.source === "code").map((t) => t.outcome)),
-    before,
-    code: code === "no_access" ? "no_access" : code ? "read" : "unavailable",
-    sessions: input.sessions ? "read" : "unavailable",
-    partial: (code != null && code !== "no_access" && !code.complete) || (input.sessions != null && !input.sessions.complete),
-  };
-}
-
-/** The change in percentage points from the 7 days before, rounded: "+6 pts vs the 7 days before", "Same as the 7 days before". */
-export function trendLabel(rate: { value: number } | null, before: { value: number } | null): string | null {
-  if (!rate || !before) return null;
-  const points = Math.round(rate.value * 100) - Math.round(before.value * 100);
-  if (points === 0) return "Same as the 7 days before";
-  return `${points > 0 ? "+" : "−"}${Math.abs(points)} pts vs the 7 days before`;
-}
-
-// --- People and agents in the span -----------------------------------------------
+// --- People in the span -----------------------------------------------------------
 
 /**
  * Who an actor is. Actors are member keys, as the events and chat services
- * return them: `user:<id>` for an account, `agent:<id>` for one of the
- * workspace's agents acting as itself, `""` for nobody (a push a mirror
- * copied in). An agent is one of the workspace's agents, or g1t itself;
- * everyone else is a person. `agents` names more keys that are agents'
- * (accounts of kind `agent`), when known.
+ * return them: `user:<id>` for an account, `agent:<id>` for an agent of
+ * older rows, `""` for nobody (a push a mirror copied in). g1t itself and
+ * older agents are not people; everyone else is.
  */
 export type ActorKind = "person" | "agent";
 
@@ -385,15 +205,16 @@ export function actorKind(key: string, agents?: ReadonlySet<string>): ActorKind 
 }
 
 /**
- * A member key that names a robot under `user:`: an agent by its own id,
- * or g1t's upkeep as the workspace or as `g1t`. Events normalise these
- * (services/events digest), so this is the safety net for older ones.
+ * A member key that names a robot under `user:`: an agent of older rows by
+ * its own id, or g1t's upkeep as the workspace or as `g1t`. Events
+ * normalise these (services/events digest), so this is the safety net for
+ * older ones.
  */
 export function isRobotKey(key: string): boolean {
   return key.startsWith("user:agt_") || key.startsWith("user:wsp_") || key === "user:g1t";
 }
 
-/** Whether a username is an agent's: g1t, or an agent account. */
+/** Whether a username is g1t's own: g1t, or an agent account of older rows. */
 export function isAgentName(name: string | null | undefined): boolean {
   return name === "g1t" || (name != null && name.endsWith("-agent"));
 }
@@ -401,17 +222,16 @@ export function isAgentName(name: string | null | undefined): boolean {
 /** A repository as the digest's links and lines need it. */
 export type RepoRef = RepoPath & { defaultBranch: string };
 
-/** Someone who did something in the span: for the faces beside a column. */
+/** Someone who did something in the span: for the faces beside the card. */
 export type DigestActor = {
   key: string;
-  kind: ActorKind;
-  /** Their username or handle; `someone` when it could not be read. */
+  /** Their username; `someone` when it could not be read. */
   name: string;
   /** How many things they did, over every line: the order of the faces. */
   count: number;
 };
 
-/** One line of a column: what was done, with its count, and where that is listed. */
+/** One line: what was done, with its count, and where that is listed. */
 export type DigestLine = {
   key: string;
   text: string;
@@ -419,7 +239,6 @@ export type DigestLine = {
 };
 
 export type DigestColumn = {
-  kind: ActorKind;
   lines: DigestLine[];
   /** Most active first. */
   actors: DigestActor[];
@@ -433,12 +252,9 @@ export type DigestSummary = {
   commits: number;
   /** Pull requests people merged. */
   merged: number;
-  /** Agent tasks that settled well, and that did not. */
-  finished: number;
-  dropped: number;
   /** Messages people sent. */
   said: number;
-  /** Whether anything at all was counted, in either column. */
+  /** Whether anything at all was counted. */
   anything: boolean;
   /** Whether what people did could be read at all (events and chat both silent: no). */
   peopleRead: boolean;
@@ -446,9 +262,8 @@ export type DigestSummary = {
 
 export type Digest = {
   people: DigestColumn;
-  agents: DigestColumn;
   summary: DigestSummary;
-  /** Sources that did not answer, by name, for the card to say so: Code, Chat, Agents. */
+  /** Sources that did not answer, by name, for the card to say so: Code, Chat. */
   missing: string[];
   /** True when a source was cut short, so some counts are low. */
   partial: boolean;
@@ -462,12 +277,10 @@ export type DigestInput = {
   activity: ActivityDigest | null;
   /** Chat's; null when chat did not answer. */
   chat: ChatActivity | null;
-  /** Names for member keys: a username, or an agent's handle. */
+  /** Names for member keys: a username. */
   names: Record<string, string>;
-  /** Keys of accounts that are agents, beyond g1t and the workspace's agents. */
+  /** Keys of accounts that are not people, beyond g1t. */
   agentKeys?: ReadonlySet<string>;
-  /** The agents' tasks, for their column; null when neither Code nor Agents answered. */
-  work: SpanWork | null;
   code: boolean;
 };
 
@@ -476,12 +289,12 @@ const people = (n: number) => plural(n, "person", "people");
 /** `a, b and c`. */
 export const listOf = (names: string[]) => (names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
-/** What one kind did, from a tally: how many, and by whom (non-empty keys). */
-function part(counts: ActorCount[], kind: ActorKind, agents?: ReadonlySet<string>): { count: number; actors: Map<string, number> } {
+/** What people did, from a tally: how many, and by whom (non-empty keys). */
+function part(counts: ActorCount[], agents?: ReadonlySet<string>): { count: number; actors: Map<string, number> } {
   const actors = new Map<string, number>();
   let count = 0;
   for (const entry of counts) {
-    if (actorKind(entry.actor, agents) !== kind) continue;
+    if (actorKind(entry.actor, agents) !== "person") continue;
     count += entry.count;
     if (entry.actor) actors.set(entry.actor, (actors.get(entry.actor) ?? 0) + entry.count);
   }
@@ -496,29 +309,17 @@ function placeFor(slug: string, repos: Record<string, RepoRef>, repoIds: Iterabl
 }
 
 /**
- * One column: what people, or agents, did in the span, as lines with
- * counts and links, and who did it. Pure: everything comes from the
- * services' counts and the names looked up for them.
+ * What people did in the span, as lines with counts and links, and who
+ * did it. Pure: everything comes from the services' counts and the names
+ * looked up for them.
  */
-export function digestColumn(kind: ActorKind, input: DigestInput): DigestColumn {
-  const { slug, repos, activity, chat, names, agentKeys, work } = input;
+export function digestColumn(input: DigestInput): DigestColumn {
+  const { slug, repos, activity, chat, names, agentKeys } = input;
   const lines: DigestLine[] = [];
   const did = new Map<string, number>();
   const credit = (actors: Map<string, number>) => {
     for (const [key, n] of actors) did.set(key, (did.get(key) ?? 0) + n);
   };
-
-  // The agents' tasks come first in their column: what Home has always counted.
-  if (kind === "agent" && work) {
-    const { accepted, fixed, finished, dropped } = work.counts;
-    const done = accepted + fixed + finished;
-    if (done > 0 || dropped > 0) {
-      const text = done > 0 ? `finished ${plural(done, "task")}${dropped > 0 ? `, ${dropped.toLocaleString("en-US")} didn't finish` : ""}` : `finished none of ${plural(dropped, "task")}`;
-      lines.push({ key: "tasks", text, to: `/${slug}/-/agents` });
-    }
-    const sessions = work.tasks.filter((task) => task.source !== "code").length;
-    if (sessions > 0) lines.push({ key: "sessions", text: `ran ${plural(sessions, "session")}`, to: `/${slug}/-/agents` });
-  }
 
   if (activity) {
     // Pushes: commits, projects, and who.
@@ -529,7 +330,7 @@ export function digestColumn(kind: ActorKind, input: DigestInput): DigestColumn 
     for (const repo of activity.repos) {
       let any = false;
       for (const by of repo.pushes.by) {
-        if (actorKind(by.actor, agentKeys) !== kind) continue;
+        if (actorKind(by.actor, agentKeys) !== "person") continue;
         any = true;
         commits += by.commits;
         pushes += by.count;
@@ -539,12 +340,7 @@ export function digestColumn(kind: ActorKind, input: DigestInput): DigestColumn 
     }
     if (pushes > 0) {
       const where = `to ${plural(pushed.size, "project")}`;
-      const text =
-        kind === "person"
-          ? pushers.size > 0
-            ? `${people(pushers.size)} pushed ${plural(commits, "commit")} ${where}`
-            : `${plural(commits, "commit")} pushed ${where}`
-          : `pushed ${plural(commits, "commit")} ${where}`;
+      const text = pushers.size > 0 ? `${people(pushers.size)} pushed ${plural(commits, "commit")} ${where}` : `${plural(commits, "commit")} pushed ${where}`;
       lines.push({ key: "pushes", text, to: placeFor(slug, repos, pushed, "activity") });
       credit(pushers);
     }
@@ -553,7 +349,7 @@ export function digestColumn(kind: ActorKind, input: DigestInput): DigestColumn 
     const sum = (pick: (repo: RepoDigest) => ActorCount[]) => {
       const total = { count: 0, actors: new Map<string, number>(), repoIds: [] as string[] };
       for (const repo of activity.repos) {
-        const { count, actors } = part(pick(repo), kind, agentKeys);
+        const { count, actors } = part(pick(repo), agentKeys);
         if (count === 0) continue;
         total.count += count;
         total.repoIds.push(repo.repo_id);
@@ -615,12 +411,12 @@ export function digestColumn(kind: ActorKind, input: DigestInput): DigestColumn 
 
     // Artifacts: made, and whose content changed.
     if (activity.folios) {
-      const made = part(activity.folios.created, kind, agentKeys);
+      const made = part(activity.folios.created, agentKeys);
       const edited = new Set<string>();
       const editors = new Map<string, number>();
       let allDocs = true;
       for (const folio of activity.folios.edited) {
-        const mine = folio.authors.filter((author) => actorKind(author, agentKeys) === kind);
+        const mine = folio.authors.filter((author) => actorKind(author, agentKeys) === "person");
         if (mine.length === 0) continue;
         edited.add(folio.folio_id);
         if (folio.kind !== "doc") allDocs = false;
@@ -638,24 +434,22 @@ export function digestColumn(kind: ActorKind, input: DigestInput): DigestColumn 
     }
   }
 
-  // Chat: what each kind said.
+  // Chat: what people said.
   if (chat) {
     const said = part(
       chat.authors.map((author) => ({ actor: author.key, count: author.messages })),
-      kind,
       agentKeys,
     );
     if (said.count > 0) {
-      const text = kind === "person" ? `sent ${plural(said.count, "message")} in ${plural(chat.channels, "conversation")}` : `replied ${plural(said.count, "time")} in chat`;
-      lines.push({ key: "chat", text, to: `/${slug}/-/chat` });
+      lines.push({ key: "chat", text: `sent ${plural(said.count, "message")} in ${plural(chat.channels, "conversation")}`, to: `/${slug}/-/chat` });
       credit(said.actors);
     }
   }
 
   const actors: DigestActor[] = [...did]
-    .map(([key, count]) => ({ key, kind, name: names[key] ?? (key === G1T_ACTOR ? "g1t" : "someone"), count }))
+    .map(([key, count]) => ({ key, name: names[key] ?? "someone", count }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-  return { kind, lines, actors };
+  return { lines, actors };
 }
 
 /** A tally with one of each actor, for lists that name an actor per item. */
@@ -665,41 +459,34 @@ function tallyOf(actors: string[]): ActorCount[] {
   return [...counts].map(([actor, count]) => ({ actor, count }));
 }
 
-/** Both columns, what the sentence needs, and which sources were silent. */
+/** What people did, what the sentence needs, and which sources were silent. */
 export function digestOf(input: DigestInput): Digest {
-  const people = digestColumn("person", input);
-  const agents = digestColumn("agent", input);
+  const column = digestColumn(input);
   const missing: string[] = [];
   if (input.code && !input.activity) missing.push("Code");
   if (!input.chat) missing.push("Chat");
-  if (!input.work) missing.push("Agents");
   let commits = 0;
   let merged = 0;
   for (const repo of input.activity?.repos ?? []) {
     for (const by of repo.pushes.by) if (actorKind(by.actor, input.agentKeys) === "person") commits += by.commits;
-    merged += part(repo.pulls.merged, "person", input.agentKeys).count;
+    merged += part(repo.pulls.merged, input.agentKeys).count;
   }
   const said = part(
     (input.chat?.authors ?? []).map((author) => ({ actor: author.key, count: author.messages })),
-    "person",
     input.agentKeys,
   ).count;
-  const counts = input.work?.counts;
   return {
-    people,
-    agents,
+    people: column,
     summary: {
-      people: people.actors.length,
+      people: column.actors.length,
       commits,
       merged,
-      finished: counts ? counts.accepted + counts.fixed + counts.finished : 0,
-      dropped: counts?.dropped ?? 0,
       said,
-      anything: people.lines.length > 0 || agents.lines.length > 0,
+      anything: column.lines.length > 0,
       peopleRead: input.activity != null || input.chat != null,
     },
     missing,
-    partial: (input.activity != null && !input.activity.complete) || (input.work?.partial ?? false),
+    partial: input.activity != null && !input.activity.complete,
   };
 }
 
@@ -708,7 +495,7 @@ export function digestOf(input: DigestInput): Digest {
 /**
  * A change that landed: a pull request merged; commits pushed straight to
  * a default branch; a production build that went live; a release or a
- * package version published. By a person or an agent.
+ * package version published.
  */
 export type LandedChange = {
   key: string;
@@ -718,8 +505,6 @@ export type LandedChange = {
   detail: string;
   to: string;
   at: number;
-  /** An agent's doing, or a person's. */
-  agent: boolean;
 };
 
 /** Every pull request that merged in the span, newest first. */
@@ -736,7 +521,6 @@ export function landedIn(pulls: CodePull[], span: Pick<Span, "from" | "now">): L
         detail: `${pull.repo.name}#${pull.number} · by ${agent ? `@${pull.author.username}` : pull.author.username}${mergedBy}`,
         to: `/${pull.repo.namespace}/${pull.repo.name}/pull/${pull.number}`,
         at: Date.parse(pull.mergedAt!),
-        agent,
       };
     })
     .sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
@@ -773,7 +557,6 @@ export function landedFromActivity(activity: ActivityDigest | null, repos: Recor
         detail: `${path.name} · ${plural(direct.count, "push", "pushes")} by ${namesOf(by, names, agentKeys)}`,
         to: `/${path.namespace}/${path.name}/activity`,
         at: Date.parse(direct.last_at),
-        agent: by.length > 0 && by.every((key) => key && actorKind(key, agentKeys) === "agent"),
       });
     }
     for (const release of repo.releases) {
@@ -784,7 +567,6 @@ export function landedFromActivity(activity: ActivityDigest | null, repos: Recor
         detail: `${path.name} · released by ${namesOf([release.actor], names, agentKeys)}`,
         to: `/${path.namespace}/${path.name}/releases/tag/${encodeURIComponent(release.tag)}`,
         at: Date.parse(release.at),
-        agent: actorKind(release.actor, agentKeys) === "agent",
       });
     }
     for (const pkg of repo.packages) {
@@ -795,7 +577,6 @@ export function landedFromActivity(activity: ActivityDigest | null, repos: Recor
         detail: `${pkg.ecosystem} package · published by ${namesOf([pkg.actor], names, agentKeys)}`,
         to: `/${slug}/-/packages`,
         at: Date.parse(pkg.at),
-        agent: actorKind(pkg.actor, agentKeys) === "agent",
       });
     }
   }
@@ -813,7 +594,6 @@ export function landedDeploys(deploys: DeployRow[]): LandedChange[] {
       detail: `${row.commit} · by ${row.by ?? "someone"}`,
       to: row.to,
       at: row.at,
-      agent: row.agent,
     }));
 }
 
@@ -840,10 +620,8 @@ export type DeployRow = {
   branch: string | null;
   at: number;
   to: string;
-  /** Who made it, as a name (`@handle` for an agent); null when the deployment does not say. */
+  /** Who made it, as a name (`@g1t` for g1t itself); null when the deployment does not say. */
   by: string | null;
-  /** Whether an agent made it. */
-  agent: boolean;
 };
 
 /**
@@ -871,94 +649,46 @@ export function deploysIn(projects: { slug: string; deployments: Deployment[] }[
         at: Date.parse(ended!),
         to: `/${workspace}/${project.slug}/deployments/${deploy.id}`,
         by: key ? namesOf([key], names, agentKeys) : null,
-        agent: !!key && actorKind(key, agentKeys) === "agent",
       });
     }
   }
   return rows.sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
 }
 
-/** A decision made in the span: one an agent or a person recorded in the workspace's memory, or a request an owner answered. */
+/** A decision made in the span: one recorded in the workspace's memory. */
 export type DecisionRow = {
   key: string;
   text: string;
   by: string | null;
   at: number;
   to: string;
-  kind: "memory" | "request";
 };
 
-export function decisionsIn(
-  input: { memories: Memory[] | null; requests: InstallRequest[] | null },
-  slug: string,
-  span: Pick<Span, "from" | "now">,
-): DecisionRow[] {
+/** Decisions kept in the workspace's memory that were recorded in the span, newest first. */
+export function decisionsIn(memories: Memory[] | null, slug: string, span: Pick<Span, "from" | "now">): DecisionRow[] {
   const rows: DecisionRow[] = [];
-  for (const memory of input.memories ?? []) {
+  for (const memory of memories ?? []) {
     if (memory.kind !== "decision" || (memory.status != null && memory.status !== "kept") || !within(memory.createdAt, span)) continue;
-    rows.push({ key: `memory:${memory.id}`, text: memory.text, by: memory.createdBy, at: Date.parse(memory.createdAt), to: `/${slug}/-/memory`, kind: "memory" });
-  }
-  for (const request of input.requests ?? []) {
-    if (request.status === "open" || !within(request.resolved_at, span)) continue;
-    rows.push({
-      key: `request:${request.id}`,
-      text: `${request.status === "done" ? "Added" : "Turned down"} ${request.name}, which ${request.requested_by} asked for`,
-      by: request.resolved_by,
-      at: Date.parse(request.resolved_at!),
-      to: `/${slug}/-/customize/requests`,
-      kind: "request",
-    });
+    rows.push({ key: `memory:${memory.id}`, text: memory.text, by: memory.createdBy, at: Date.parse(memory.createdAt), to: `/${slug}/-/memory` });
   }
   return rows.sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
 }
 
 // --- Running now ----------------------------------------------------------------
 
-/** Something going right now: a session, an agent's change, a workflow run, a build. */
+/** Something going right now: a workflow run or a build. */
 export type RunningRow = {
   key: string;
-  kind: "session" | "change" | "workflow" | "deploy";
+  kind: "workflow" | "deploy";
   title: string;
   /** One line: who and where. */
   detail: string;
-  /** "Working", "Queued", "Building". */
+  /** "Running", "Queued", "Building". */
   status: string;
   /** Epoch ms: when it started. */
   at: number;
   to: string;
 };
-
-const SESSION_STATUS: Record<string, string> = { queued: "Queued", working: "Working", waiting: "Waiting on its helpers" };
-
-/** Live sessions at the root of their tree; one stopped at its cap waits on a person and is under Needs you instead. */
-export function runningSessions(sessions: AgentSession[], slug: string): RunningRow[] {
-  return sessions
-    .filter((session) => !session.parent_id && SESSION_STATUS[session.status])
-    .map((session) => ({
-      key: `session:${session.id}`,
-      kind: "session" as const,
-      title: session.visible ? session.title : "A session in a conversation you're not in",
-      detail: `@${session.agent_handle}${session.channel_name ? ` in #${session.channel_name}` : ""}`,
-      status: SESSION_STATUS[session.status]!,
-      at: Date.parse(session.created_at),
-      to: `/${slug}/-/agents/${session.agent_handle}/sessions/${session.id}`,
-    }));
-}
-
-/** Mission control's "waiting on agents" row, as Home reads it (lib/mission-control.ts `WaitingRow`). */
-export type AgentChange = { key: string; repo: RepoPath; ref: string | null; title: string; chip: string; by: { name: string } | null; at: number; to: string };
-
-export function runningChanges(changes: AgentChange[]): RunningRow[] {
-  return changes.map((change) => ({
-    key: `change:${change.key}`,
-    kind: "change" as const,
-    title: change.title,
-    detail: `${change.by ? `@${change.by.name} · ` : ""}${change.repo.namespace}/${change.repo.name}${change.ref ? ` ${change.ref}` : ""}`,
-    status: change.chip,
-    at: change.at,
-    to: change.to,
-  }));
-}
 
 /** Builds queued or going now, one per project (its newest). */
 export function runningDeploys(overview: ProjectDeploys[], slug: string): RunningRow[] {
@@ -1008,9 +738,9 @@ export function runningWorkflows(projects: { repo: RepoPath; runs: WorkflowRun[]
   );
 }
 
-/** Everything running, longest-going first within each kind: sessions, then changes, then workflow runs, then builds. */
+/** Everything running, longest-going first within each kind: workflow runs, then builds. */
 export function running(parts: RunningRow[][]): RunningRow[] {
-  const order = { session: 0, change: 1, workflow: 2, deploy: 3 } as const;
+  const order = { workflow: 0, deploy: 1 } as const;
   return parts.flat().sort((a, b) => order[a.kind] - order[b.kind] || a.at - b.at || a.key.localeCompare(b.key));
 }
 
@@ -1018,41 +748,20 @@ export function running(parts: RunningRow[][]): RunningRow[] {
 
 /**
  * What a row is. Tiers, most pressing first:
- * 0. production is down to an older build (`deploy`), or the workspace's agents used up its agent budget (`limit`);
- * 1. agent work that has stopped and can't go on without you;
- * 2. finished work waiting only for you (merge, review, an invitation, an agent asking, a request to add something);
- * 3. something stuck that may need a look;
+ * 0. production is down to an older build (`deploy`);
+ * 1. a change that can't land until someone acts on it (`pull_blocked`);
+ * 2. something waiting only for you (a review, an invitation);
+ * 3. a job waiting for a runner that is not there;
  * 4. an unread notification that is a warning or a failure;
  * 5. a mention or a direct message.
  */
-export type AttentionKind =
-  | "limit"
-  | "deploy"
-  | "session_cap"
-  | "agent_budget"
-  | "pull_blocked"
-  | "ready"
-  | "review"
-  | "invitation"
-  | "install_request"
-  | "agent_waiting"
-  | "stuck"
-  | "runner"
-  | "notification"
-  | "chat";
+export type AttentionKind = "deploy" | "pull_blocked" | "review" | "invitation" | "runner" | "notification" | "chat";
 
 export const TIER: Record<AttentionKind, number> = {
-  limit: 0,
   deploy: 0,
-  session_cap: 1,
-  agent_budget: 1,
   pull_blocked: 1,
-  ready: 2,
   review: 2,
   invitation: 2,
-  install_request: 2,
-  agent_waiting: 2,
-  stuck: 3,
   runner: 3,
   notification: 4,
   chat: 5,
@@ -1071,12 +780,12 @@ export type AttentionRow = {
   stake: Stake | null;
   /** The action, right there. */
   action: { label: string; to: string };
-  /** Who is on it: the agent, or the person who asked. */
+  /** Who is on it: the person who asked, or g1t on older rows. */
   owner: { name: string; agent: boolean } | null;
   /** Epoch ms: when it started waiting. */
   at: number;
   /** Where it came from, for a member without Code access never `code`. */
-  from: "code" | "agents" | "notifications" | "chat" | "customize";
+  from: "code" | "notifications" | "chat";
 };
 
 /**
@@ -1108,17 +817,10 @@ export function startHere(ranked: AttentionRow[]): { row: AttentionRow; why: str
 }
 
 const WHY: Record<AttentionKind, string> = {
-  limit: "Agents start nothing new past the workspace's agent budget, so everything else waits on it.",
-  install_request: "A member asked for it, and only an owner can add it or turn it down.",
   deploy: "Production is serving an older build until this is fixed, so it comes before anything else.",
-  session_cap: "An agent stopped at its spend cap and does nothing more until someone approves more.",
-  agent_budget: "An agent used up its budget and takes no new work until it is raised.",
-  pull_blocked: "An agent stopped on this change and won't go on until a person decides.",
-  ready: "The work is done and only waits for you to land it.",
+  pull_blocked: "This change can't land until someone fixes it.",
   review: "You were asked by name, so it waits for your verdict.",
   invitation: "It is addressed to you; no one else can answer it.",
-  agent_waiting: "An agent is waiting on you to go on.",
-  stuck: "A running agent has stopped reporting and may be stuck.",
   runner: "A job is waiting for a runner that is not there.",
   notification: "It is the most pressing unread notification.",
   chat: "Nothing else is waiting, and this is the oldest message for you.",
@@ -1126,7 +828,7 @@ const WHY: Record<AttentionKind, string> = {
 
 // --- Rows from each source ----------------------------------------------------
 
-/** Mission control's need row, as Home reads it (lib/mission-control.ts `NeedRow`). */
+/** A Code Overview need row, as Home reads it (lib/mission-control.ts `NeedRow`). */
 export type CodeNeed = {
   key: string;
   reason: string;
@@ -1135,7 +837,6 @@ export type CodeNeed = {
   title: string;
   ask: string;
   by: { name: string; agent: boolean } | null;
-  for: string | null;
   at: number;
   to: string;
   facts: { label: string; value: string; tone: string | null }[];
@@ -1146,13 +847,11 @@ const fact = (need: CodeNeed, label: string) => need.facts.find((f) => f.label =
 const REASON_STAKE: Record<string, Stake> = {
   blocking: { text: "Blocking", tone: "danger" },
   checks_failing: { text: "Checks failing", tone: "danger" },
-  outside_guardrails: { text: "Over a guardrail", tone: "warn" },
-  low_confidence: { text: "Low confidence", tone: "warn" },
   needs_review: { text: "Needs a verdict", tone: "warn" },
   stalled: { text: "Stalled", tone: "warn" },
 };
 
-/** A Code need (failed deploy, pull request, review, invitation, stuck run, runner) as a row. */
+/** A Code need (failed deploy, pull request, review, invitation, runner) as a row. */
 export function codeRow(need: CodeNeed): AttentionRow {
   const prefix = need.key.split(":")[0];
   const where = need.repo ? `${need.repo.namespace}/${need.repo.name}${need.ref ? ` ${need.ref}` : ""}` : null;
@@ -1175,95 +874,17 @@ export function codeRow(need: CodeNeed): AttentionRow {
     }
     case "runner":
       return { ...base, kind: "runner", stake: { text: `Waiting ${fact(need, "Waiting") ?? ""}`.trim(), tone: "warn" }, action: { label: "Look", to: need.to } };
-    case "run": {
-      const cost = fact(need, "Cost so far");
-      return {
-        ...base,
-        kind: "stuck",
-        stake: { text: cost ? `${cost} so far` : `Quiet ${fact(need, "Quiet for") ?? ""}`.trim(), tone: "warn" },
-        action: { label: "Look", to: need.to },
-      };
-    }
-    default: {
-      if (need.reason === "ready_to_merge") {
-        const files = fact(need, "Files changed");
-        return {
-          ...base,
-          kind: "ready",
-          stake: { text: files ? `${files} ${files === "1" ? "file" : "files"} to land` : "Ready to land", tone: "accent" },
-          action: { label: "Merge", to: need.to },
-        };
-      }
+    default:
       return {
         ...base,
         kind: "pull_blocked",
         stake: REASON_STAKE[need.reason] ?? { text: "Waiting on you", tone: "warn" },
-        action: { label: need.reason === "low_confidence" || need.reason === "needs_review" ? "Review" : "Decide", to: need.to },
+        action: { label: need.reason === "needs_review" ? "Review" : "Look", to: need.to },
       };
-    }
   }
-}
-
-/** A session stopped at its spend cap that the viewer may approve more for. */
-export function sessionCapRow(session: AgentSession, slug: string): AttentionRow {
-  const cap = session.cap_micros;
-  return {
-    key: `session:${session.id}`,
-    kind: "session_cap",
-    title: session.visible ? session.title : `A session of @${session.agent_handle}`,
-    detail: `@${session.agent_handle} stopped at its spend cap${session.channel_name ? ` in #${session.channel_name}` : ""}.`,
-    stake: { text: cap != null ? `${money(session.charged_micros)} of ${money(cap)} cap` : `${money(session.charged_micros)} spent`, tone: "warn" },
-    action: { label: "Approve more", to: `/${slug}/-/agents/${session.agent_handle}/sessions/${session.id}` },
-    owner: { name: session.agent_handle, agent: true },
-    at: Date.parse(session.updated_at),
-    from: "agents",
-  };
-}
-
-export type AgentLike = {
-  id: string;
-  handle: string;
-  display_name: string;
-  status: string;
-  spent_month_micros: number;
-  budget: { monthly_micros: number | null };
-  updated_at: string;
-};
-
-/** An agent out of budget (for those who may raise it), or waiting on someone. */
-export function agentRow(agent: AgentLike, slug: string): AttentionRow | null {
-  const base = {
-    key: `agent:${agent.id}`,
-    owner: { name: agent.handle, agent: true },
-    at: Date.parse(agent.updated_at),
-    from: "agents" as const,
-  };
-  if (agent.status === "out_of_budget") {
-    const budget = agent.budget.monthly_micros;
-    return {
-      ...base,
-      kind: "agent_budget",
-      title: `${agent.display_name} is out of budget`,
-      detail: `@${agent.handle} takes no new work this month until its budget is raised.`,
-      stake: { text: budget != null ? `${money(Math.max(0, budget - agent.spent_month_micros))} left` : "Budget used", tone: "danger" },
-      action: { label: "Raise the budget", to: `/${slug}/-/agents/${agent.handle}/spend` },
-    };
-  }
-  if (agent.status === "waiting") {
-    return {
-      ...base,
-      kind: "agent_waiting",
-      title: `${agent.display_name} is waiting`,
-      detail: `@${agent.handle} is waiting before it goes on.`,
-      stake: null,
-      action: { label: "Open", to: `/${slug}/-/agents/${agent.handle}` },
-    };
-  }
-  return null;
 }
 
 const NOTIFICATION_STAKE: Record<string, string> = {
-  agent: "Agent waiting",
   review_requested: "Review requested",
   assign: "Assigned to you",
   mention: "Mentioned",
@@ -1280,7 +901,8 @@ const NOTIFICATION_STAKE: Record<string, string> = {
 /**
  * An unread notification that is a warning (someone or something is
  * waiting) or a failure, in this workspace. A member without Code access
- * gets none about a repository.
+ * gets none about a repository. A reason this page does not know (older
+ * ones included) reads as a plain notification.
  */
 export function notificationRow(item: InboxItem, slug: string, code: boolean): AttentionRow | null {
   if (item.readAt != null || item.doneAt != null) return null;
@@ -1295,7 +917,7 @@ export function notificationRow(item: InboxItem, slug: string, code: boolean): A
     detail: item.body ? item.title : (item.repo ?? "A notification"),
     stake: { text: NOTIFICATION_STAKE[item.reason] ?? "Notification", tone: item.severity === "error" ? "danger" : "warn" },
     action: { label: "Open", to: item.url },
-    owner: item.actor ? { name: item.actor, agent: item.actor === "g1t" || item.actor.endsWith("-agent") } : null,
+    owner: item.actor ? { name: item.actor, agent: isAgentName(item.actor) } : null,
     at: Date.parse(item.updatedAt),
     from: "notifications",
   };
@@ -1331,42 +953,6 @@ export function chatRow(entry: ChatEntryLike, slug: string): AttentionRow | null
   };
 }
 
-/** A member's open request to add something in Customize, for an owner. */
-export function installRequestRow(request: InstallRequest, slug: string): AttentionRow | null {
-  if (request.status !== "open") return null;
-  return {
-    key: `request:${request.id}`,
-    kind: "install_request",
-    title: `${request.requested_by} asked to add ${request.name}`,
-    detail: request.note ? `“${request.note}”` : "A request to add it in Customize.",
-    stake: { text: "Only owners can add it", tone: null },
-    action: { label: "Review the request", to: `/${slug}/-/customize/requests` },
-    owner: { name: request.requested_by, agent: false },
-    at: Date.parse(request.requested_at),
-    from: "customize",
-  };
-}
-
-/**
- * The workspace's agents at 100% of its monthly agent budget, for those who
- * may raise it. `since` is when it was reached as far as is known: the
- * newest session that stopped at its cap, else the start of the month.
- */
-export function limitRow(input: { alert: number | null; spentMicros: number; since: number }, slug: string): AttentionRow | null {
-  if (input.alert == null || input.alert < 100) return null;
-  return {
-    key: "limit:agents",
-    kind: "limit",
-    title: "Agents used up the workspace's budget",
-    detail: `${money(input.spentMicros)} spent this month. Agents start nothing new until the budget is raised or the month turns.`,
-    stake: { text: "No new agent work", tone: "danger" },
-    action: { label: "Raise the budget", to: `/${slug}/-/spend` },
-    owner: null,
-    at: input.since,
-    from: "agents",
-  };
-}
-
 /** What Needs you and Start here show, and which sources did not answer. */
 export type Attention = {
   rows: AttentionRow[];
@@ -1379,13 +965,6 @@ export function attention(input: {
   slug: string;
   code: boolean;
   codeNeeds: CodeNeed[] | null;
-  capped: AgentSession[] | null;
-  agents: AgentLike[] | null;
-  canManage: boolean;
-  /** The workspace's agent budget, for those who may manage agents; null for anyone else. */
-  limit?: { alert: number | null; spentMicros: number; since: number } | null;
-  /** Install requests, when the viewer may answer them (an owner); null otherwise or when they couldn't be read. */
-  requests?: InstallRequest[] | null;
   notifications: InboxItem[] | null;
   chat: ChatEntryLike[] | null;
 }): Attention {
@@ -1395,25 +974,6 @@ export function attention(input: {
     if (input.codeNeeds) rows.push(...input.codeNeeds.map(codeRow));
     else missing.push("Code");
   }
-  if (input.limit && input.canManage) {
-    const row = limitRow(input.limit, input.slug);
-    if (row) rows.push(row);
-  }
-  for (const request of input.requests ?? []) {
-    const row = installRequestRow(request, input.slug);
-    if (row) rows.push(row);
-  }
-  if (input.capped) rows.push(...input.capped.map((session) => sessionCapRow(session, input.slug)));
-  if (input.agents) {
-    const cappedAgents = new Set((input.capped ?? []).map((s) => s.agent_handle));
-    for (const agent of input.agents) {
-      if (agent.status === "out_of_budget" && !input.canManage) continue;
-      if (agent.status === "waiting" && cappedAgents.has(agent.handle)) continue;
-      const row = agentRow(agent, input.slug);
-      if (row) rows.push(row);
-    }
-  }
-  if (input.capped == null || input.agents == null) missing.push("Agents");
   if (input.notifications) {
     for (const item of input.notifications) {
       const row = notificationRow(item, input.slug, input.code);
@@ -1474,8 +1034,8 @@ export function spanMonths(span: Pick<Span, "from" | "now">): string[] {
  * UTC days, so the span is counted from the start of the UTC day it began.
  * `statements` is the months of `spanMonths`, the current one last.
  * `monthMicros` is this month so far as billing's usage report counts it,
- * the month's usage not yet closed included: the figure the top bar's
- * pill, Spend and Usage show, so Home shows no other.
+ * the month's usage not yet closed included: the figure Usage
+ * shows, so Home shows no other.
  */
 export function spendIn(statements: Pick<Statement, "groups" | "totals">[], span: Pick<Span, "from" | "now">, monthMicros: number | null): Spend {
   const from = new Date(span.from).toISOString().slice(0, 10);
@@ -1509,21 +1069,19 @@ export function spendIn(statements: Pick<Statement, "groups" | "totals">[], span
 
 /**
  * The sentence under the heading, honest about what happened: "Since
- * Tuesday evening, 3 people pushed 41 commits and merged 5 changes, agents
- * finished 7 tasks, and 12 changes landed." What people did comes first
- * (commits and merges; else what they said), then the agents' tasks that
- * settled well (accepted, fixed, sessions finished), then everything that
- * landed. When nothing at all was counted: "Quiet since Tuesday evening:
- * nothing pushed, merged, deployed or said." When what people did could
- * not be read, it says so.
+ * Tuesday evening, 3 people pushed 41 commits and merged 5 changes, and
+ * 12 changes landed." What people did comes first (commits and merges;
+ * else what they said), then everything that landed. When nothing at all
+ * was counted: "Quiet since Tuesday evening: nothing pushed, merged,
+ * deployed or said." When what people did could not be read, it says so.
  */
 export function spanSentence(span: Pick<Span, "words">, digest: Pick<Digest, "summary"> | null, landed: number | null): string {
   const lead = span.words;
   if (!digest) return `${lead}, what happened couldn't be read.`;
-  const { people: count, commits, merged, finished, dropped, said, anything, peopleRead } = digest.summary;
+  const { people: count, commits, merged, said, anything, peopleRead } = digest.summary;
   const landedCount = landed ?? 0;
   if (!anything && landedCount === 0) {
-    if (!peopleRead) return `${lead}, what people did couldn't be read, and no agent task settled.`;
+    if (!peopleRead) return `${lead}, what people did couldn't be read.`;
     return `Quiet ${lead.charAt(0).toLowerCase()}${lead.slice(1)}: nothing pushed, merged, deployed or said.`;
   }
   const parts: string[] = [];
@@ -1536,11 +1094,9 @@ export function spanSentence(span: Pick<Span, "words">, digest: Pick<Digest, "su
     } else if (said > 0) parts.push(`${people(count)} sent ${plural(said, "message")}`);
     else parts.push(`${people(count)} ${count === 1 ? "was" : "were"} active`);
   }
-  if (finished > 0) parts.push(`agents finished ${plural(finished, "task")}`);
-  else if (dropped > 0) parts.push(`agents finished none of ${plural(dropped, "task")}`);
   if (landedCount > 0) parts.push(`${plural(landedCount, "change")} landed`);
   const tail = peopleRead ? "" : "; what people did couldn't be read";
-  if (parts.length === 0) return `${lead}, work went on, but nothing landed and no agent task finished${tail}.`;
+  if (parts.length === 0) return `${lead}, work went on, but nothing landed${tail}.`;
   const joined = parts.length > 2 ? `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}` : parts.join(" and ");
   return `${lead}, ${joined}${tail}.`;
 }

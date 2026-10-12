@@ -292,13 +292,10 @@ async function cite(viewer: User, repo: string, rawPath: string): Promise<Result
 /** Names and faces for member keys, as the workspace knows them. */
 async function who(slug: string, viewer: User, keys: string[]): Promise<Result<unknown>> {
   const userIds = keys.filter((k) => k.startsWith("user:")).map((k) => k.slice(5));
-  const agentIds = new Set(keys.filter((k) => k.startsWith("agent:")).map((k) => k.slice(6)));
-  const [names, { people, agents }] = await Promise.all([userIds.length ? identity.usernames(userIds).catch(() => ({}) as Record<string, string>) : Promise.resolve({} as Record<string, string>), workspacePeople(slug, viewer)]);
+  const [names, people] = await Promise.all([userIds.length ? identity.usernames(userIds).catch(() => ({}) as Record<string, string>) : Promise.resolve({} as Record<string, string>), workspacePeople(slug, viewer)]);
   const out = keys.map((key) => {
-    if (key.startsWith("agent:")) {
-      const agent = agentIds.has(key.slice(6)) ? agents.find((a) => a.id === key.slice(6)) : undefined;
-      return { key, kind: "agent", id: key.slice(6), name: agent?.handle ?? "agent", display_name: agent?.display_name ?? "Former agent", avatar: agent?.avatar ?? null, avatar_seed: agent?.avatar_seed ?? null, look: agent?.look ?? null };
-    }
+    // An old agent's (agents no longer exist): its comments and edits stay, under a plain name.
+    if (key.startsWith("agent:")) return { key, kind: "agent", id: key.slice(6), name: "agent", display_name: "A deleted agent", avatar: null, avatar_seed: null };
     const username = names[key.slice(5)]?.toLowerCase();
     const person = username ? people.find((p) => p.name === username) : undefined;
     return { key, kind: "user", id: key.slice(5), name: username ?? "ghost", display_name: person?.display_name ?? username ?? "Former member", avatar: person?.avatar ?? null, avatar_seed: null };

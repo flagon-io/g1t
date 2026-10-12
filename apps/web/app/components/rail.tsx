@@ -141,7 +141,7 @@ function shortcuts(palette: string, sidebar: string): [string, string][] {
     ["Esc", "Close a menu, dialog or panel"],
     ["Enter", "Send a message in Chat"],
     ["Shift Enter", "A new line in a message"],
-    ["@", "Mention a person or an agent"],
+    ["@", "Mention a person or a team"],
     ["↑ ↓ then Tab", "Choose a suggestion"],
     ["Alt ↑ ↓", "Move a pinned project in Code's sidebar"],
   ];
@@ -199,7 +199,7 @@ function AppsButton({ slug, pins, onToggle, current }: { slug: string; pins: Pin
 /**
  * The rail down the window's left edge: a narrow column of icons, each
  * named by the hint beside it. g1t's mark, which leads to Home; the
- * built-in apps (Home, Chat, Agents, Code and Artifacts) with what is
+ * built-in apps (Home, Chat, Code and Artifacts) with what is
  * unread on them (Notifications is the bell in the top bar, not a rail
  * app); the apps you pinned; the Apps launcher;
  * and at its foot People, Workspace and your account. The one you are in
@@ -235,8 +235,6 @@ export function Rail({
       badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 },
     },
     ...(code ? [{ key: "code" as const, label: "Code" }] : []),
-    // Agents comes after Code: it is where agents are configured, not where the work is.
-    { key: "agents", label: "Agents" },
     { key: "artifacts", label: "Artifacts" },
   ];
   const shown = pins.map((key) => pinnedApp(key, slug)).filter((app) => app != null);

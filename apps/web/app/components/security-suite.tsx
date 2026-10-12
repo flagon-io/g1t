@@ -2,10 +2,10 @@
  * The security suite's pieces, shared by a project's Security sections and
  * the workspace's: the activation prompt, filters, code scanning alerts,
  * the trend chart and coverage table, the custom pattern editor, and the
- * bypass and "Fix with g1t" forms. Each form posts an `intent` to the page
+ * bypass form. Each form posts an `intent` to the page
  * it is on.
  */
-import { Bot, CircleCheck, CircleDot, CircleSlash, FileCode2, Lock, ShieldCheck, Sparkles } from "lucide-react";
+import { Bot, CircleCheck, CircleDot, CircleSlash, FileCode2, Lock, ShieldCheck } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
@@ -27,7 +27,6 @@ import { ButtonLink, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
-import { Hint } from "./ui/hint";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
@@ -379,35 +378,6 @@ export function CoverageTable({ repos, owner }: { repos: RepoCoverage[]; owner: 
         </TableBody>
       </Table>
     </div>
-  );
-}
-
-/** "Fix with g1t": an issue for g1t, as the person asking. */
-export function FixWithG1t({ id, action, issue, base }: { id: string; action: string; issue: number | null; base: string }) {
-  const fetcher = useFetcher<{ ok: boolean; error?: string; issue?: number; message?: string | null }>();
-  const opened = fetcher.data?.issue ?? issue;
-  if (opened != null) {
-    return (
-      <Link to={`${base}/issues/${opened}`} className={`${SMALL_BUTTON} inline-flex items-center gap-1.5`}>
-        <Bot size={13} /> g1t is on #{opened}
-      </Link>
-    );
-  }
-  return (
-    <span className="flex flex-col items-end gap-1">
-      <Hint label="Opens an issue assigned to g1t; its run is charged as agent usage">
-        <button
-          type="button"
-          disabled={fetcher.state !== "idle"}
-          onClick={() => fetcher.submit({ intent: "fix", id }, { method: "post", action })}
-          className={`${SMALL_BUTTON} inline-flex items-center gap-1.5`}
-        >
-          <Sparkles size={13} />
-          {fetcher.state !== "idle" ? "Opening…" : "Fix with g1t"}
-        </button>
-      </Hint>
-      {fetcher.data?.error && <span className="text-xs text-danger">{fetcher.data.error}</span>}
-    </span>
   );
 }
 

@@ -6,17 +6,14 @@
  */
 import {
   ArrowRight,
-  Brain,
   CircleCheck,
   CircleDot,
   CircleSlash,
-  CreditCard,
   Eye,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
   Hand,
-  MessageCircleQuestion,
   MessageSquare,
   Play,
   Rocket,
@@ -111,12 +108,11 @@ export function Quiet({ children, action }: { children: ReactNode; action?: Reac
 // --- Needs you ----------------------------------------------------------------
 
 const NEED: Record<NeedKind, { icon: ReactNode; tone: string; label: string }> = {
-  limit: { icon: <CreditCard size={15} />, tone: "text-danger", label: "Usage" },
   deploy: { icon: <Rocket size={15} />, tone: "text-danger", label: "Production" },
   invitation: { icon: <UserPlus size={15} />, tone: "text-accent", label: "Invitation" },
   conflict: { icon: <Swords size={15} />, tone: "text-warn", label: "Conflict" },
   stalled: { icon: <Hand size={15} />, tone: "text-warn", label: "Stopped" },
-  stuck: { icon: <TimerOff size={15} />, tone: "text-warn", label: "Quiet agent" },
+  stuck: { icon: <TimerOff size={15} />, tone: "text-warn", label: "Quiet run" },
   runner: { icon: <TimerOff size={15} />, tone: "text-warn", label: "No runner" },
   review: { icon: <Eye size={15} />, tone: "text-info", label: "Review" },
   checks: { icon: <Terminal size={15} />, tone: "text-danger", label: "Checks" },
@@ -187,11 +183,9 @@ const VERB: Record<Verb, { icon: ReactNode; tone: string; text: (n: string) => s
   approved: { icon: <CircleCheck size={14} />, tone: "text-success", text: (n) => `approved ${n}` },
   changes_requested: { icon: <CircleSlash size={14} />, tone: "text-warn", text: (n) => `asked for changes on ${n}` },
   commented: { icon: <MessageSquare size={14} />, tone: "text-muted", text: (n) => `commented on ${n}` },
-  asked: { icon: <MessageCircleQuestion size={14} />, tone: "text-accent", text: (n) => `asked the agent on ${n}` },
   deployed: { icon: <Rocket size={14} />, tone: "text-success", text: () => "deployed production" },
   deploy_failed: { icon: <Rocket size={14} />, tone: "text-danger", text: () => "production build failed" },
   pushed: { icon: <GitCommitHorizontal size={14} />, tone: "text-muted", text: () => "pushed to the default branch" },
-  learned: { icon: <Brain size={14} />, tone: "text-accent", text: () => "learned" },
 };
 
 function Refs({ numbers, base }: { numbers: number[]; base: string }) {
@@ -222,15 +216,7 @@ function GroupLine({ group }: { group: ActivityGroup }) {
         return (
           <span key={part.verb}>
             {index > 0 && "; "}
-            {part.verb === "learned" ? (
-              <>
-                learned{" "}
-                <Link to={part.to ?? `${base}/memory`} className="text-fg-soft hover:text-fg">
-                  “{part.texts[0]}”
-                </Link>
-                {part.texts.length > 1 && ` and ${part.texts.length - 1} more`}
-              </>
-            ) : part.numbers.length > 0 ? (
+            {part.numbers.length > 0 ? (
               <>
                 {before}
                 <Refs numbers={part.numbers} base={base} />
@@ -250,8 +236,6 @@ function GroupLine({ group }: { group: ActivityGroup }) {
   );
 }
 
-type Who = "all" | "agents" | "people";
-
 /**
  * What moved across projects, newest first, a burst of one actor's work
  * as one line, filterable by project and by who did it.
@@ -268,7 +252,6 @@ export function ActivityFeed({
   empty: ReactNode;
 }) {
   const [project, setProject] = useState("all");
-  const [who, setWho] = useState<Who>("all");
   const [person, setPerson] = useState("all");
   const [more, setMore] = useState(false);
   const projects = useMemo(
@@ -282,29 +265,13 @@ export function ActivityFeed({
   const filtered = groups.filter(
     (g) =>
       (project === "all" || `${g.repo.namespace}/${g.repo.name}` === project) &&
-      (person === "all" || g.actor === person) &&
-      (who === "all" || (who === "agents" ? g.actor == null || isAgent(g.actor) : g.actor != null && !isAgent(g.actor))),
+      (person === "all" || g.actor === person),
   );
   const shown = more ? filtered : filtered.slice(0, limit);
   return (
     <div>
-      {groups.length > 0 && (
+      {((showRepo && projects.length > 1) || people.length > 1) && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Card tone="bg" radius="lg" className="inline-flex p-0.5 text-xs">
-            {(["all", "agents", "people"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setWho(value)}
-                className={cn(
-                  "rounded-md px-2.5 py-1 font-medium capitalize transition-colors",
-                  who === value ? "bg-raised text-fg" : "text-muted hover:text-fg",
-                )}
-              >
-                {value === "all" ? "Everyone" : value}
-              </button>
-            ))}
-          </Card>
           {showRepo && projects.length > 1 && (
             <Select value={project} onValueChange={setProject}>
               <SelectTrigger size="sm" className="w-auto max-w-56" aria-label="Project">

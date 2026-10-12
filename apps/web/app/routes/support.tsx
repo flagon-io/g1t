@@ -19,7 +19,7 @@ export function meta(args: Route.MetaArgs) {
 
 const DOCS: [string, string][] = [
   ["Quickstart", "https://docs.g1t.sh/quickstart/"],
-  ["Working with g1t", "https://docs.g1t.sh/guides/working-with-g1t/"],
+  ["Bring your own agent", "https://docs.g1t.sh/guides/bring-your-own-agent/"],
   ["Git", "https://docs.g1t.sh/guides/git/"],
   ["Accounts and sign-in", "https://docs.g1t.sh/guides/authentication/"],
   ["Usage and billing", "https://docs.g1t.sh/guides/usage-and-billing/"],
@@ -33,7 +33,7 @@ const MAILBOXES: { icon: ReactNode; title: string; address: string; about: strin
     icon: <LifeBuoy size={16} />,
     title: "Help with g1t",
     address: CONTACT.support,
-    about: "Accounts, workspaces, git, agents, deployments, something that doesn't work, or closing an account.",
+    about: "Accounts, workspaces, git, deployments, something that doesn't work, or closing an account.",
   },
   {
     icon: <Ticket size={16} />,
@@ -167,7 +167,7 @@ export default function Support() {
         <Section title="What to include">
           <ul className="list-disc space-y-1.5 pl-5 text-[0.9375rem] text-fg/90">
             <li>Your username, and the workspace and project, such as <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[0.85em]">g1t.sh/acme/web</code>.</li>
-            <li>A link to where it happened: the page, issue, pull request, agent run or workflow run.</li>
+            <li>A link to where it happened: the page, issue, pull request or workflow run.</li>
             <li>What you did, what you expected, and what happened instead, with any error message as text.</li>
             <li>When it happened, with your time zone.</li>
           </ul>

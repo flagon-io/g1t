@@ -8,7 +8,7 @@ export function meta(args: Route.MetaArgs) {
   return page(args, {
     title: "Security · g1t",
     description:
-      "How g1t protects your code, accounts and agents: per-run credentials, the audit log, guardrails, isolated sandboxes and push protection. And how to report a vulnerability.",
+      "How g1t protects your code and accounts: per-run credentials, the audit log, guardrails, isolated sandboxes and push protection. And how to report a vulnerability.",
   });
 }
 

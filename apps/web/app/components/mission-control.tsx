@@ -1,8 +1,8 @@
-import { ArrowDownWideNarrow, ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, ListTree, Plus, Sparkles } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, useFetcher, useLocation, useRouteLoaderData, useSearchParams } from "react-router";
 
-import { type ActivityGroup, type Verb, greetingFor, isAgent } from "../lib/mission";
+import { type ActivityGroup, type Verb, isAgent } from "../lib/mission";
 import {
   BLOCKING,
   type Fact,
@@ -13,7 +13,6 @@ import {
   type Reason,
   type Sort,
   type Tab,
-  type WaitingRow,
   type Week,
   type Who,
   change,
@@ -22,16 +21,12 @@ import {
   parseTab,
   signedPercent,
   sortRows,
-  whyFor,
 } from "../lib/mission-control";
 import { cn } from "../lib/cn";
-import { microsOf, money } from "../lib/money";
-import { AgentComposer, type ComposerResult } from "./agent-composer";
+import { money } from "../lib/money";
 import { InboxNeedsCard } from "./inbox";
 import type { ShellData } from "./shell";
-import { useLiveRefresh } from "./agents";
 import { Unavailable } from "./mission";
-import { TokenUsagePanel } from "./token-usage";
 import { SubmitButton, TimeAgo } from "./ui";
 import { Avatar } from "./ui/avatar";
 import { Card } from "./ui/card";
@@ -40,14 +35,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import type { Loaded } from "../lib/mission-control.server";
 
 /*
- * Mission control: the home page of someone signed in. It answers where
- * the viewer is needed, what agents are doing, and what landed without
- * them. It is a chunk of its own, loaded only for them, so the signed-out
- * home page does not carry it. routes/home.tsx loads its data;
+ * Code's Overview: where the viewer is needed in the workspace's code,
+ * what landed, and the week. It is a chunk of its own, loaded only for
+ * those signed in. routes/workspace/code-overview.tsx loads its data;
  * lib/mission-control.ts shapes it.
  */
 
-/** The viewer's time zone, set by the page itself, so the greeting fits their day. */
+/** The viewer's time zone, set by the page itself, so the date fits their day. */
 const TZ_COOKIE = "g1t_tz";
 /** Rows a tab shows before "See all". */
 const ROWS = 6;
@@ -60,12 +54,9 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString
 const CHIP_TONE: Record<Reason, string> = {
   blocking: "border-danger/35 bg-danger/10 text-danger",
   checks_failing: "border-danger/35 bg-danger/10 text-danger",
-  outside_guardrails: "border-warn/35 bg-warn/10 text-warn",
-  low_confidence: "border-warn/35 bg-warn/10 text-warn",
   stalled: "border-warn/35 bg-warn/10 text-warn",
-  asked_for_you: "border-accent/35 bg-accent/10 text-accent",
+  invited: "border-accent/35 bg-accent/10 text-accent",
   needs_review: "border-info/35 bg-info/10 text-info",
-  ready_to_merge: "border-success/35 bg-success/10 text-success",
 };
 
 function Chip({ children, tone }: { children: ReactNode; tone: string }) {
@@ -81,7 +72,7 @@ function Chip({ children, tone }: { children: ReactNode; tone: string }) {
   );
 }
 
-/** A person or an agent, by name, wearing the mark that tells them apart. */
+/** Someone, by name, with their avatar. */
 function Person({ who, size = 16, className }: { who: Who; size?: number; className?: string }) {
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
@@ -244,16 +235,10 @@ function NeedCard({ row, first }: { row: NeedRow; first: boolean }) {
             <Link to={row.to} className="font-medium text-fg hover:underline">
               {row.repo ? `${row.repo.name}${row.ref ?? ""}` : row.title}
             </Link>
-            {row.for && (
-              <>
-                {" "}
-                · started for <span className="text-fg-soft">{row.for}</span>
-              </>
-            )}
           </p>
         </div>
         <div className="min-w-0">
-          <Eyebrow>{row.by?.agent ? "What the agent already knows" : "What is known"}</Eyebrow>
+          <Eyebrow>What is known</Eyebrow>
           <div className="mt-2">
             <Facts facts={row.facts} />
           </div>
@@ -293,7 +278,7 @@ function NeedCard({ row, first }: { row: NeedRow; first: boolean }) {
   );
 }
 
-function WaitingCard({ row, first }: { row: WaitingRow; first: boolean }) {
+function LandedCard({ row, first }: { row: LandedRow; first: boolean }) {
   return (
     <Row
       open={first}
@@ -302,66 +287,15 @@ function WaitingCard({ row, first }: { row: WaitingRow; first: boolean }) {
       title={
         <>
           <span className="font-medium">{row.title}</span>
-          {row.ref && <span className="ml-1 font-mono text-xs text-faint">{row.ref}</span>}
-        </>
-      }
-      sub={row.detail}
-      chip={
-        <Chip tone="border-line-strong bg-raised text-muted">
-          {row.live && <span className="mr-1.5 size-1.5 animate-pulse rounded-full bg-success" />}
-          {row.chip}
-        </Chip>
-      }
-      at={row.at}
-    >
-      <Card tone="plain" className="grid gap-4 bg-bg/50 p-4 md:grid-cols-2 md:gap-6">
-        <div className="min-w-0">
-          <Eyebrow>{row.live ? "Doing now" : "Where it stands"}</Eyebrow>
-          <p className="mt-2 text-sm leading-6 text-fg-soft">{row.detail}</p>
-        </div>
-        <div className="min-w-0">
-          <Eyebrow>What is known</Eyebrow>
-          <div className="mt-2">
-            <Facts facts={row.facts} />
-          </div>
-        </div>
-      </Card>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Link
-          to={row.to}
-          prefetch="intent"
-          className="inline-flex items-center gap-1.5 rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium text-fg/90 hover:bg-raised hover:text-fg"
-        >
-          {row.to.includes("/runs/") ? "Watch the run" : "Open pull request"} <ArrowUpRight size={14} />
-        </Link>
-        {row.run && row.run !== row.to && (
-          <Link to={row.run} prefetch="intent" className="px-2 py-1.5 text-sm text-muted hover:text-fg">
-            Watch the run
-          </Link>
-        )}
-      </div>
-    </Row>
-  );
-}
-
-function LandedCard({ row, first }: { row: LandedRow; first: boolean }) {
-  return (
-    <Row
-      open={first}
-      repo={row.repo}
-      by={row.byAgents ? { name: row.agent, agent: isAgent(row.agent) } : row.by}
-      title={
-        <>
-          <span className="font-medium">{row.title}</span>
           <span className="ml-1 font-mono text-xs text-faint">{row.ref}</span>
         </>
       }
-      sub={row.byAgents ? "landed without a person" : `merged by ${row.by?.name ?? "a person"}`}
+      sub={row.automatic ? "merged automatically" : `merged by ${row.by?.name ?? "a person"}`}
       chip={
-        row.byAgents ? (
-          <Chip tone="border-accent/35 bg-accent/10 text-accent">By agents</Chip>
+        row.automatic ? (
+          <Chip tone="border-accent/35 bg-accent/10 text-accent">Auto-merged</Chip>
         ) : (
-          <Chip tone="border-warn/35 bg-warn/10 text-warn">Needed a person</Chip>
+          <Chip tone="border-line-strong bg-raised text-muted">Merged</Chip>
         )
       }
       at={row.at}
@@ -370,10 +304,9 @@ function LandedCard({ row, first }: { row: LandedRow; first: boolean }) {
         <div className="min-w-0">
           <Eyebrow>How it landed</Eyebrow>
           <p className="mt-2 text-sm leading-6 text-fg-soft">
-            {row.byAgents
-              ? `g1t merged it once everything the repository asks for was met, with no one pressing merge.`
+            {row.automatic
+              ? "g1t merged it once everything the repository asks for was met, with no one pressing merge."
               : `${row.by?.name ?? "A person"} merged it.`}
-            {row.agent && isAgent(row.agent) && ` ${row.agent} made the change.`}
           </p>
         </div>
         <div className="min-w-0">
@@ -428,9 +361,9 @@ function Stat({ label, value, hint, dot, title }: { label: string; value: string
 
 // --- This week ----------------------------------------------------------------------
 
-/** Seven days of landed changes, each split into what agents landed alone and what a person merged. */
+/** Seven days of landed changes: merged pull requests and commits pushed straight to a default branch. */
 function WeekChart({ week }: { week: Week }) {
-  const max = Math.max(1, ...week.days.map((d) => d.agents + d.assisted + d.people));
+  const max = Math.max(1, ...week.days.map((d) => d.count));
   const height = 112;
   const delta = change(week.total, week.previous);
   return (
@@ -455,53 +388,36 @@ function WeekChart({ week }: { week: Week }) {
       </div>
       {week.total === 0 ? (
         <Card asChild tone="plain" radius="lg" className="mt-4 border-dashed px-4 py-6 text-center text-sm leading-6 text-muted">
-          <p>
-            Nothing landed in the last 7 days. Each change that does shows here, by day: agents' changes that landed on their own, agents' that a person merged, and people's own.
-          </p>
+          <p>Nothing landed in the last 7 days. Each merged pull request and each push to a default branch shows here, by day.</p>
         </Card>
       ) : (
         <div className="relative mt-5" style={{ height: height + 20 }}>
           <div className="absolute inset-x-0 border-t border-line" style={{ top: height }} />
           <div className="absolute inset-x-0 top-0 flex items-end justify-between gap-1" style={{ height }}>
             {week.days.map((day, index) => {
-              const total = day.agents + day.assisted + day.people;
-              const bar = (n: number) => Math.max(3, Math.round((n / max) * (height - 4)));
-              // Top to bottom: agents alone, agents with a person, people.
-              const segments = [
-                { n: day.agents, tone: "bg-accent" },
-                { n: day.assisted, tone: "bg-warn" },
-                { n: day.people, tone: "bg-info" },
-              ].filter((segment) => segment.n > 0);
               const today = index === week.days.length - 1;
               return (
                 <div key={day.key} className="group relative flex h-full flex-1 flex-col items-center justify-end">
-                  {total > 0 && (
+                  {day.count > 0 && (
                     <span
                       className={cn(
                         "mb-1 text-[0.625rem] tabular-nums",
                         today ? "text-fg-soft" : "text-faint opacity-0 group-hover:opacity-100 max-md:hidden",
                       )}
                     >
-                      {total}
+                      {day.count}
                     </span>
                   )}
-                  <div className="flex w-full max-w-6 flex-col items-stretch gap-[2px]">
-                    {segments.map((segment, at) => (
-                      <span key={segment.tone} className={cn("block", segment.tone, at === 0 && "rounded-t")} style={{ height: bar(segment.n) }} />
-                    ))}
-                    {total === 0 && <span className="block h-[2px] rounded-full bg-line-strong" />}
+                  <div className="flex w-full max-w-6 flex-col items-stretch">
+                    {day.count > 0 ? (
+                      <span className="block rounded-t bg-accent" style={{ height: Math.max(3, Math.round((day.count / max) * (height - 4))) }} />
+                    ) : (
+                      <span className="block h-[2px] rounded-full bg-line-strong" />
+                    )}
                   </div>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 rounded-md border border-line-strong bg-raised px-2.5 py-1.5 text-xs whitespace-nowrap shadow-lg shadow-black/40 md:group-hover:block">
                     <p className="font-medium text-fg">{day.label}</p>
-                    <p className="mt-0.5 flex items-center gap-1.5 text-muted">
-                      <span className="size-1.5 rounded-full bg-accent" /> {day.agents} by agents on their own
-                    </p>
-                    <p className="flex items-center gap-1.5 text-muted">
-                      <span className="size-1.5 rounded-full bg-warn" /> {day.assisted} by agents, merged by a person
-                    </p>
-                    <p className="flex items-center gap-1.5 text-muted">
-                      <span className="size-1.5 rounded-full bg-info" /> {day.people} by people
-                    </p>
+                    <p className="mt-0.5 text-muted">{plural(day.count, "change")} landed</p>
                   </div>
                 </div>
               );
@@ -522,17 +438,6 @@ function WeekChart({ week }: { week: Week }) {
           </div>
         </div>
       )}
-      <div className={cn("mt-3 flex-wrap gap-x-4 gap-y-1 text-xs text-muted", week.total === 0 ? "hidden" : "flex")}>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-accent" /> Agents, on their own
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-warn" /> Agents, merged by a person
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-info" /> People
-        </span>
-      </div>
       {/* A table does not shrink to sr-only's 1px; its wrapper does. */}
       <div className="sr-only">
         <table>
@@ -540,18 +445,14 @@ function WeekChart({ week }: { week: Week }) {
           <thead>
             <tr>
               <th>Day</th>
-              <th>Agents, on their own</th>
-              <th>Agents, merged by a person</th>
-              <th>People</th>
+              <th>Changes</th>
             </tr>
           </thead>
           <tbody>
             {week.days.map((day) => (
               <tr key={day.key}>
                 <td>{day.key}</td>
-                <td>{day.agents}</td>
-                <td>{day.assisted}</td>
-                <td>{day.people}</td>
+                <td>{day.count}</td>
               </tr>
             ))}
           </tbody>
@@ -574,11 +475,9 @@ const VERB: Record<Verb, string> = {
   approved: "approved",
   changes_requested: "asked for changes on",
   commented: "commented on",
-  asked: "was asked about",
   deployed: "deployed production",
   deploy_failed: "production build failed",
   pushed: "pushed to the default branch",
-  learned: "learned",
 };
 
 /** One line of the feed: who, what, and the one thing it was about, by name. */
@@ -597,11 +496,7 @@ function FeedLine({ group, titles }: { group: ActivityGroup; titles: Record<stri
       </span>
       <span className="min-w-0 grow text-[0.8125rem] leading-5 text-muted">
         <span className={cn("font-medium", agent ? "text-accent" : "text-fg")}>{actor}</span> {VERB[part.verb]}{" "}
-        {part.verb === "learned" ? (
-          <Link to={part.to ?? `${base}/memory`} className="text-fg-soft hover:text-fg">
-            “{part.texts[0]}”
-          </Link>
-        ) : number != null ? (
+        {number != null ? (
           <Link to={`${base}/issues/${number}`} prefetch="intent" className="text-fg-soft hover:text-fg">
             <span className="font-mono text-xs">#{number}</span>
             {title && <> {title}</>}
@@ -622,32 +517,18 @@ function FeedLine({ group, titles }: { group: ActivityGroup; titles: Record<stri
 
 // --- The page -----------------------------------------------------------------------
 
-const TAB_LABEL: Record<Tab, string> = { needs: "Needs you", waiting: "Waiting on agents", landed: "Landed today" };
-const TAB_SHORT: Record<Tab, string> = { needs: "Needs you", waiting: "Waiting", landed: "Today" };
+const TAB_LABEL: Record<Tab, string> = { needs: "Needs you", landed: "Landed today" };
+const TAB_SHORT: Record<Tab, string> = { needs: "Needs you", landed: "Today" };
 const SORT_LABEL: Record<Sort, string> = { impact: "By impact", newest: "Newest" };
 
-export default function MissionControl({
-  loaderData,
-  delegated = null,
-  variant = "code",
-}: {
-  loaderData: Loaded;
-  delegated?: ComposerResult;
-  /** Code's Overview: its own title in place of the greeting, and the actions on their own (Home has the Agent box). */
-  variant?: "code";
-}) {
+export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
   const { pathname } = useLocation();
   const shell = useRouteLoaderData("root")?.shell as ShellData | null | undefined;
   const loaded: Loaded = loaderData;
   const [params] = useSearchParams();
-  // Agents are at work, so the page changes without anyone touching it.
-  useLiveRefresh(loaded.changing);
-  const [greeting, setGreeting] = useState(loaded.greeting);
   const [date, setDate] = useState(loaded.date);
   useEffect(() => {
-    // The greeting and date follow the viewer's own clock, and the server
-    // learns their zone for next time.
-    setGreeting(greetingFor(new Date().getHours()));
+    // The date follows the viewer's own clock, and the server learns their zone for next time.
     try {
       const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       setDate(dateLine(Date.now(), zone ?? null));
@@ -657,7 +538,7 @@ export default function MissionControl({
     }
   }, []);
 
-  const { viewer, repos, waiting, landed, liveTotal, week, groups, titles, stats, canRunAgents } = loaded;
+  const { viewer, repos, landed, week, groups, titles, stats } = loaded;
   const workspace = shell?.workspace?.slug ?? loaded.workspace ?? viewer.workspaces?.[0]?.slug ?? null;
 
   // The usage limit, as the sidebar knows it, heads the list when it bites.
@@ -667,24 +548,23 @@ export default function MissionControl({
         (() => {
           const detail =
             limit.state === "stopped"
-              ? "No new agent starts until the limit is raised or a card is added."
+              ? "Paid usage is paused until the limit is raised or a card is added."
               : `${dollars(limit.exposureMicros)} of ${dollars(limit.ceilingMicros ?? 0)} used. Add a card so work keeps going.`;
           return {
             key: "limit",
             reason: "blocking" as const,
             repo: null,
             ref: null,
-            title: limit.state === "stopped" ? "Agents are stopped: the usage limit was reached" : "Usage is nearing its limit",
+            title: limit.state === "stopped" ? "The usage limit was reached" : "Usage is nearing its limit",
             ask: detail,
             by: null,
-            for: null,
             at: Date.now(),
             to: `/${workspace}/-/billing`,
             open: `/${workspace}/-/billing`,
             facts: [
               { label: "Used", value: `${dollars(limit.exposureMicros)} of ${dollars(limit.ceilingMicros ?? 0)}`, tone: "warn" as const },
             ],
-            why: whyFor("blocking", { kind: "limit", detail }),
+            why: "Workflows, checks and deployments that are paid for stop at the workspace's usage limit. Only an owner can raise it or add a card.",
             quick: null,
             link: null,
           };
@@ -694,7 +574,7 @@ export default function MissionControl({
   const needs = [...limitRow, ...loaded.needs];
   const blocking = needs.filter((row) => BLOCKING.has(row.reason)).length;
 
-  const counts: Record<Tab, number> = { needs: needs.length, waiting: waiting.length, landed: landed.length };
+  const counts: Record<Tab, number> = { needs: needs.length, landed: landed.length };
   const tab = parseTab(params.get("tab")) ?? "needs";
   const sort = parseSort(params.get("sort"));
   const all = params.get("all") === "1";
@@ -711,46 +591,18 @@ export default function MissionControl({
 
   const noProjects = repos.length === 0;
 
-  const rows = tab === "needs" ? sortRows(needs, sort) : tab === "waiting" ? sortRows(waiting, sort) : sortRows(landed, sort);
+  const rows = tab === "needs" ? sortRows(needs, sort) : sortRows(landed, sort);
   const shown = all ? rows : rows.slice(0, ROWS);
-  // Of the agents' own changes only: people's work is not theirs to land.
-  const share = week.agentChanges > 0 ? week.byAgents / week.agentChanges : null;
   const delta = change(week.total, week.previous);
   const feed = everyActivity ? groups : groups.slice(0, 8);
 
-  // "Put an agent on it" first, with "New issue" beside it as before: one
-  // split control, the agent the main way in.
   const newIssue =
     repos.length > 0 ? (
-      <div className="flex items-stretch">
-        <AgentComposer
-          action={pathname}
-          repos={repos}
-          open={params.get("agent") === "new" || delegated != null}
-          result={delegated}
-          note={
-            canRunAgents ? null : (
-              <>
-                Agents need a model first.{" "}
-                {workspace && (
-                  <Link to={`/${workspace}/-/integrations/models`} className="font-medium text-fg hover:underline">
-                    Connect one
-                  </Link>
-                )}
-                . The issue still opens.
-              </>
-            )
-          }
-        >
-          <span className="inline-flex cursor-pointer items-center gap-1.5 rounded-l-md border border-line-strong bg-raised px-3 py-2 text-sm font-medium text-fg transition-colors hover:bg-line/60 group-open/composer:bg-line/60">
-            <Sparkles size={14} className="text-accent" /> Put an agent on it
-          </span>
-        </AgentComposer>
       <DropdownMenu>
-        <DropdownMenuTrigger className="-ml-px inline-flex items-center gap-1.5 rounded-r-md border border-line-strong px-3 py-2 text-sm font-medium text-fg/90 transition-colors hover:bg-raised hover:text-fg">
+        <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md border border-line-strong px-3 py-2 text-sm font-medium text-fg/90 transition-colors hover:bg-raised hover:text-fg">
           <Plus size={14} /> New issue
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+        <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
           <DropdownMenuLabel>In which project?</DropdownMenuLabel>
           {repos.map((repo) => (
             <DropdownMenuItem key={repo.name} asChild>
@@ -762,7 +614,6 @@ export default function MissionControl({
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
-      </div>
     ) : (
       <Link
         to={"/new"}
@@ -776,36 +627,15 @@ export default function MissionControl({
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 sm:py-10">
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="min-w-0">
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight" suppressHydrationWarning>
-            {variant === "code" ? "Overview" : `${greeting}, ${loaded.name}`}
-          </h1>
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight">Overview</h1>
           <p className="mt-1.5 text-sm text-muted" suppressHydrationWarning>
             <span className="text-fg-soft">{date}</span> · {loaded.summary}
           </p>
         </div>
       </header>
 
-      {/* The ways to start work. The Agent box itself is on Home. */}
       <section aria-label="Start work" className="flex flex-wrap items-center gap-2">
         {newIssue}
-        {repos.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md border border-line-strong px-3 py-2 text-sm font-medium text-fg/90 transition-colors hover:bg-raised hover:text-fg">
-              <ListTree size={14} /> Plan work
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
-              <DropdownMenuLabel>Plan in which project?</DropdownMenuLabel>
-              {repos.map((repo) => (
-                <DropdownMenuItem key={repo.name} asChild>
-                  <Link to={`/${repo.namespace}/${repo.name}/plans`}>
-                    <Avatar name={repo.name} size={18} square />
-                    {repo.name}
-                  </Link>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
         {needs.length > 0 && (
           <Link
             to={`${link({ tab: "needs", all: null })}#work`}
@@ -817,9 +647,8 @@ export default function MissionControl({
         )}
       </section>
 
-      <Card asChild tone="plain" className="grid grid-cols-2 gap-px overflow-hidden bg-line lg:grid-cols-5">
-        <section
-          aria-label="At a glance">
+      <Card asChild tone="plain" className="grid grid-cols-2 gap-px overflow-hidden bg-line lg:grid-cols-4">
+        <section aria-label="At a glance">
           <Stat
             label="Projects"
             value={stats.projects == null ? "—" : String(stats.projects)}
@@ -831,40 +660,18 @@ export default function MissionControl({
                   : "none new this month"
             }
           />
-          <Stat
-            label="Agents"
-            value={loaded.runsLoaded || !workspace ? String(liveTotal) : "—"}
-            dot={liveTotal > 0 ? "bg-success animate-pulse" : undefined}
-            hint={
-              liveTotal > 0
-                ? `live now · ${stats.agentHours < 10 ? stats.agentHours.toFixed(1) : Math.round(stats.agentHours)}h this week`
-                : stats.agentHours > 0
-                  ? `none live · ${stats.agentHours < 10 ? stats.agentHours.toFixed(1) : Math.round(stats.agentHours)}h this week`
-                  : "none live now"
-            }
-          />
+          <Stat label="Open pull requests" value={stats.openPulls == null ? "—" : String(stats.openPulls)} hint="drafts included" />
           <Stat
             label="Changes this week"
             value={loaded.perRepoLoaded ? String(week.total) : "—"}
-            hint={
-              delta != null ? `${signedPercent(delta)} vs last week` : week.previous === 0 ? "none the week before" : "merged pull requests"
-            }
+            hint={delta != null ? `${signedPercent(delta)} vs last week` : week.previous === 0 ? "none the week before" : "merges and direct pushes"}
           />
           <Stat
-            label="Landed without you"
-            dot="bg-accent"
-            value={share == null ? "—" : `${Math.round(share * 100)}%`}
-            hint={share == null ? "no agent changes yet" : `${week.byAgents} of ${week.agentChanges} agent changes`}
-            title="Of the changes agents wrote, those g1t merged by auto-merge or the merge queue, with no person pressing merge. People's own changes are not counted."
+            label="Needs you"
+            dot="bg-warn"
+            value={String(needs.length)}
+            hint={blocking > 0 ? `${blocking} blocking` : needs.length > 0 ? "nothing blocking" : "all clear"}
           />
-          <div className="col-span-2 lg:col-span-1">
-            <Stat
-              label="Needs you"
-              dot="bg-warn"
-              value={String(needs.length)}
-              hint={blocking > 0 ? `${blocking} blocking` : needs.length > 0 ? "nothing blocking" : "all clear"}
-            />
-          </div>
         </section>
       </Card>
 
@@ -873,7 +680,7 @@ export default function MissionControl({
           <section id="work">
             <div className="flex items-center gap-2 border-b border-line px-2 sm:px-3">
               <nav className="-mb-px flex min-w-0 grow gap-1 overflow-x-auto [scrollbar-width:none]" aria-label="Overview">
-                {(["needs", "waiting", "landed"] as const).map((value) => (
+                {(["needs", "landed"] as const).map((value) => (
                   <Link
                     key={value}
                     to={link({ tab: value, all: null })}
@@ -918,7 +725,7 @@ export default function MissionControl({
               </DropdownMenu>
             </div>
 
-            {!loaded.perRepoLoaded && tab !== "waiting" ? (
+            {!loaded.perRepoLoaded ? (
               <div className="p-4">
                 <Unavailable what={tab === "needs" ? "Some of what needs you" : "What landed"} />
               </div>
@@ -929,28 +736,20 @@ export default function MissionControl({
                 noProjects ? (
                   <Empty
                     action={
-                      <Link
-                        to={"/new"}
-                        className="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg-hover"
-                      >
+                      <Link to={"/new"} className="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg-hover">
                         Create or import a project
                       </Link>
                     }
                   >
                     <p className="font-medium text-fg">No projects yet</p>
-                    <p className="mt-1">
-                      Create a repository or import one. Assign its issues to g1t, and what needs you shows up here.
-                    </p>
+                    <p className="mt-1">Create a repository or import one. Reviews, failed deploys and invitations for you show up here.</p>
                   </Empty>
                 ) : (
                   <>
                     <Empty>
                       <p className="font-medium text-fg">Nothing needs you</p>
                       <p className="mt-1">
-                        Agents are handling everything.{" "}
-                        {landed.length > 0
-                          ? "Here's what they landed today."
-                          : "Reviews, stopped work and failed deploys show up here first."}
+                        {landed.length > 0 ? "Here's what landed today." : "Reviews, failed deploys and invitations show up here first."}
                       </p>
                     </Empty>
                     {landed.length > 0 && (
@@ -972,33 +771,13 @@ export default function MissionControl({
                 </List>
               ))}
 
-            {tab === "waiting" &&
-              (!loaded.runsLoaded && workspace ? (
-                <div className="p-4">
-                  <Unavailable what="Agent runs" />
-                </div>
-              ) : waiting.length === 0 ? (
-                <Empty>
-                  <p className="font-medium text-fg">No agent is at work right now</p>
-                  <p className="mt-1">Assign an issue to g1t and one starts on it in seconds. Its run shows here while it works.</p>
-                </Empty>
-              ) : (
-                <List>
-                  {(shown as WaitingRow[]).map((row, index) => (
-                    <WaitingCard key={row.key} row={row} first={index === 0} />
-                  ))}
-                </List>
-              ))}
-
             {tab === "landed" &&
               loaded.perRepoLoaded &&
               (landed.length === 0 ? (
                 <Empty>
                   <p className="font-medium text-fg">Nothing has landed today yet</p>
                   <p className="mt-1">
-                    {week.total > 0
-                      ? `${plural(week.total, "change")} landed in the last 7 days.`
-                      : "Merged pull requests show up here the moment they land."}
+                    {week.total > 0 ? `${plural(week.total, "change")} landed in the last 7 days.` : "Merged pull requests show up here the moment they land."}
                   </p>
                 </Empty>
               ) : (
@@ -1030,34 +809,10 @@ export default function MissionControl({
           <InboxNeedsCard items={loaderData.inboxNeeds.items} total={loaderData.inboxNeeds.total} />
           <Card asChild className="p-5">
             <section>
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold tracking-tight">This week</h2>
-                {workspace && (
-                  <Link to={`/${workspace}/-/agents`} className="text-xs text-muted hover:text-fg">
-                    Fleet
-                  </Link>
-                )}
-              </div>
+              <h2 className="text-base font-semibold tracking-tight">This week</h2>
               <div className="mt-4">{loaded.perRepoLoaded ? <WeekChart week={week} /> : <Unavailable what="The week" />}</div>
-              {workspace && stats.weekCost > 0 && (
-                <Link
-                  to={`/${workspace}/-/usage`}
-                  className="mt-4 flex items-center justify-between border-t border-line pt-3 text-xs text-muted hover:text-fg"
-                >
-                  <span>Usage at price this week: {money(microsOf(stats.weekCost))}</span>
-                  <ChevronRight size={12} />
-                </Link>
-              )}
             </section>
           </Card>
-
-          {workspace && (
-            <TokenUsagePanel
-              workspace={loaderData.tokens.workspace}
-              mine={loaderData.tokens.mine}
-              usageHref={`/${workspace}/-/usage`}
-            />
-          )}
 
           <Card asChild className="scroll-mt-20 p-5">
             <section id="activity">
@@ -1073,22 +828,12 @@ export default function MissionControl({
                   </Link>
                 )}
               </div>
-              <p className="mt-1 flex items-center gap-3 text-[0.6875rem] text-faint">
-                <span className="inline-flex items-center gap-1.5">
-                  <Avatar name="g1t" size={12} /> agents
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Avatar name={viewer.username} size={12} /> people
-                </span>
-              </p>
               {!loaded.perRepoLoaded ? (
                 <div className="mt-3">
                   <Unavailable what="Activity" />
                 </div>
               ) : feed.length === 0 ? (
-                <p className="mt-3 text-sm leading-6 text-muted">
-                  Nothing has moved yet. Merges, deploys, checks, reviews and what agents learn show up here.
-                </p>
+                <p className="mt-3 text-sm leading-6 text-muted">Nothing has moved yet. Merges, deploys, checks and reviews show up here.</p>
               ) : (
                 <ol className="mt-2 divide-y divide-line/70">
                   {feed.map((group) => (

@@ -2,13 +2,10 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
-  ChevronRight,
-  Cpu,
   Siren,
   Ticket,
   X,
 } from "lucide-react";
-import { env } from "cloudflare:workers";
 import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 
@@ -16,27 +13,19 @@ import {
   type Connection,
   type ConnectionConfig,
   type Delivery,
-  MODEL_TASKS,
-  type ModelRoute,
   type Provider,
-  type ProviderKind,
   PROVIDERS,
-  gatewayPatterns,
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/integrations";
 import { page } from "../../lib/meta";
-import { trialClosed } from "../../lib/trial";
-import { GatewayModelsField, MODEL_CATALOG, ModelCatalog, ModelProviderFields, ProviderMark, ProviderTiles, Routing } from "../../components/model-providers";
-import { parseGatewayModels } from "../../lib/gateway";
-import { integrationsSection, sectionKind } from "../../lib/integration-sections";
-import { money } from "../../lib/money";
+import { ProviderMark, ProviderTiles } from "../../components/connectors";
+import { type SectionKind, integrationsSection, sectionKind } from "../../lib/integration-sections";
 import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
-import { CheckboxOption } from "../../components/ui/checkbox";
 import { Combobox } from "../../components/ui/combobox";
-import { billing, integrations, repos } from "../../lib/services.server";
+import { integrations, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -53,14 +42,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const kind = sectionKind(params.section);
   if (!role || !kind) throw new Response(null, { status: 404 });
   const slug = params.owner.toLowerCase();
-  const [connections, listed, account, access, routes] = await Promise.all([
-    integrations.list(slug, viewer),
-    repos.list(viewer, { namespace: slug }),
-    billing.account(slug, viewer),
-    env.RUNNER.modelAccess(slug),
-    integrations.routes(slug, viewer),
-  ]);
-  const all = unwrap(connections);
+  const [connections, listed] = await Promise.all([integrations.list(slug, viewer), repos.list(viewer, { namespace: slug })]);
+  const all = unwrap(connections).filter((connection) => connection.kind !== "models");
   // What each alert source has sent lately, to see it is wired up.
   const deliveries: Record<string, Delivery[]> = {};
   await Promise.all(
@@ -79,13 +62,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     connections: all,
     deliveries,
     repos: listed.map((repo) => `${repo.namespace}/${repo.name}`),
-    adding: isProvider(adding) ? adding : null,
-    hostedOpen: access.hosted,
-    hostedPreview: access.preview,
-    trial: access.trial,
-    routes: routes.ok ? routes.value : [],
-    free: account.ok ? Boolean(account.value.status.free) : false,
-    marginPercent: account.ok ? account.value.marginPercent : 20,
+    adding: isProvider(adding) && PROVIDERS[adding].kind !== "models" ? adding : null,
   };
 }
 
@@ -99,7 +76,6 @@ function configFrom(form: FormData): ConnectionConfig {
   const keys = text(form, "keys");
   return {
     repo: text(form, "repo"),
-    assign: form.get("assign") === "on",
     label: text(form, "label"),
     writeBack: form.get("writeBack") !== "off",
     organization: text(form, "organization"),
@@ -108,9 +84,6 @@ function configFrom(form: FormData): ConnectionConfig {
     keys: keys ? keys.split(/[\s,]+/).filter(Boolean) : [],
     baseUrl: text(form, "baseUrl"),
     authHeader: text(form, "authHeader"),
-    model: text(form, "model"),
-    // Only a model provider's form has the field; empty means none.
-    gatewayModels: form.has("gatewayModels") ? parseGatewayModels(String(form.get("gatewayModels"))) : undefined,
   };
 }
 
@@ -129,33 +102,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const tested = await integrations.test(user, slug, id);
     return tested.ok ? { tested: { id, ...tested.value } } : { error: tested.error.message };
   }
-  if (intent === "routes") {
-    const routes: ModelRoute[] = [];
-    for (const task of MODEL_TASKS) {
-      const choice = String(form.get(`route-${task}`) ?? "");
-      if (!choice) continue;
-      if (choice === "g1t") routes.push({ task, connectionId: null, model: null });
-      else if (choice.startsWith("g1t::")) routes.push({ task, connectionId: null, model: choice.slice("g1t::".length) || null });
-      else {
-        const [connectionId, model] = choice.split("::");
-        routes.push({ task, connectionId, model: model || null });
-      }
-    }
-    const saved = await integrations.setRoutes(user, slug, routes);
-    return saved.ok ? { routed: true } : { error: saved.error.message };
-  }
-  if (intent === "gateway") {
-    // A model provider's AI Gateway models, and a new key if one was given:
-    // its other settings as they are.
-    const listed = await integrations.list(slug, user);
-    const connection = listed.ok ? listed.value.find((c) => c.id === id) : undefined;
-    if (!connection) return { error: listed.ok ? "No such integration." : listed.error.message };
-    const updated = await integrations.update(user, slug, id, {
-      config: { ...connection.config, gatewayModels: parseGatewayModels(String(form.get("gatewayModels") ?? "")) },
-      secret: text(form, "secret"),
-    });
-    return updated.ok ? { updated: id } : { error: updated.error.message };
-  }
   if (intent === "update") {
     const updated = await integrations.update(user, slug, id, {
       signingSecret: text(form, "signingSecret"),
@@ -164,7 +110,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return updated.ok ? { updated: id } : { error: updated.error.message };
   }
   const provider = String(form.get("provider") ?? "");
-  if (!isProvider(provider)) return { error: "Choose what to connect." };
+  if (!isProvider(provider) || PROVIDERS[provider].kind === "models") return { error: "Choose what to connect." };
   const connected = await integrations.connect(user, slug, {
     provider,
     name: text(form, "name"),
@@ -175,21 +121,16 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   return connected.ok ? { connected: connected.value } : { error: connected.error.message, provider };
 }
 
-const KIND_INFO: Record<ProviderKind, { title: string; icon: ReactNode; blurb: string }> = {
-  models: {
-    title: "Model providers",
-    icon: <Cpu size={16} />,
-    blurb: "Connect as many as you use, then choose which model does which work, and so who pays for it.",
-  },
+const KIND_INFO: Record<SectionKind, { title: string; icon: ReactNode; blurb: string }> = {
   alerts: {
     title: "Alerts",
     icon: <Siren size={16} />,
-    blurb: "Problems your monitoring finds become issues, and agents can start on them before anyone looks.",
+    blurb: "Problems your monitoring finds become issues, with what was seen.",
   },
   tracker: {
     title: "Trackers",
     icon: <Ticket size={16} />,
-    blurb: "Tickets agents can read when work mentions them, that people can import as issues, and that hear back when the work lands.",
+    blurb: "Tickets people can import as issues, and that hear back when the work lands.",
   },
 };
 
@@ -197,15 +138,13 @@ const PROVIDER_BLURB: Partial<Record<Provider, string>> = {
   sentry: "New errors open issues, with the stack trace. Resolved in Sentry when the fix merges.",
   datadog: "Monitors that trigger open issues. Recoveries are noted on them.",
   webhook: "Anything that can send signed JSON: PagerDuty, Grafana, your own scripts.",
-  jira: "Agents read TECH-1234 when work mentions it. Import tickets; they hear back.",
-  linear: "Agents read ENG-42 when work mentions it. Import issues; they hear back.",
+  jira: "Import tickets such as TECH-1234 as issues; they hear back when the work lands.",
+  linear: "Import issues such as ENG-42; they hear back when the work lands.",
 };
 
 export default function WorkspaceIntegrations({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, kind, connections, deliveries, repos: repoNames, adding, free, marginPercent, hostedOpen, hostedPreview, trial, routes } =
-    loaderData;
+  const { slug, role, kind, connections, deliveries, repos: repoNames, adding } = loaderData;
   const owner = role === "owner";
-  const modelConnections = connections.filter((connection) => connection.kind === "models");
   const justConnected = actionData && "connected" in actionData ? actionData.connected : null;
   const tested = (actionData && "tested" in actionData ? actionData.tested : null) ?? null;
   const error = (actionData && "error" in actionData ? actionData.error : null) ?? null;
@@ -220,69 +159,6 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
       <div className="mt-4">
         <ErrorText>{error}</ErrorText>
       </div>
-
-      {/* Models -------------------------------------------------------------- */}
-      {kind === "models" && (
-      <Section kind="models">
-        {!hostedOpen && modelConnections.length === 0 && (
-          <div className="mb-4 flex items-center gap-3 rounded-xl border border-warn/30 bg-warn/5 p-4">
-            <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-warn/10 text-warn ring-1 ring-warn/30">
-              <AlertTriangle size={16} />
-            </span>
-            <p className="text-sm text-muted">
-              <span className="font-medium text-fg">Choose how your agents reach a model.</span>{" "}
-              {hostedPreview
-                ? `During the preview, g1t's hosted models run only for a few invited workspaces, and ${slug} is not one of them yet.`
-                : (trialClosed(trial, slug) ?? `g1t's hosted models are not open to ${slug}.`)}{" "}
-              Connect a provider of your own below and your agents start at once, billed by that provider.
-            </p>
-          </div>
-        )}
-        <Connections list={modelConnections} owner={owner} tested={tested} updated={updated} deliveries={deliveries} />
-        {modelConnections.length === 0 && hostedOpen && (
-          <Card asChild className="flex items-center gap-2 px-4 py-3 text-sm text-muted">
-            <p>
-              <CheckCircle2 size={15} className="shrink-0 text-accent" />
-              {trial?.open
-                ? trial.granted
-                  ? `All work runs on g1t's models, paid by ${slug}'s trial credit first: ${money(Math.max(0, trial.limitMicros - trial.usedMicros))} of ${money(trial.limitMicros)} left. Connect a provider of your own for more, or to choose models.`
-                  : `All work runs on g1t's models. ${slug} gets ${money(trial.limitMicros)} of trial credit the first time its agents work. Connect a provider of your own for more, or to choose models.`
-                : free
-                  ? "All work runs on g1t's models, free while g1t is being built out. Connect a provider of your own to choose models and pay for them there."
-                  : "All work runs on g1t's models, charged to your AI credit at the provider's price plus the agent rate. Auto picks the model for each job; choose one per kind of work below, or connect a provider of your own and pay for its models there."}
-            </p>
-          </Card>
-        )}
-        {(modelConnections.length > 0 || hostedOpen) && (
-        <Routing
-          // Started again from what is saved whenever that changes, such as a provider disconnected.
-          key={JSON.stringify([routes, modelConnections.map((c) => c.id)])}
-          connections={modelConnections}
-          routes={routes}
-          hostedOpen={hostedOpen}
-          owner={owner}
-          saved={actionData != null && "routed" in actionData}
-        />
-        )}
-        <p className="mt-3 text-xs text-faint">
-          On your own providers, their bills are yours.{" "}
-          {free
-            ? `g1t charges nothing while it is being built out; once pricing starts, each run's sandbox time at cost plus ${marginPercent}%, and the agent rate on the tokens it used.`
-            : `g1t charges each run's sandbox time at cost plus ${marginPercent}%, and the agent rate on the tokens it used, shown on Usage as "Agent rate, your own model key".`}{" "}
-          Keys go only from g1t's model proxy to the provider: the agent's
-          sandbox holds a token that dies with the run.
-        </p>
-        {owner && <ModelCatalog slug={slug} adding={adding} />}
-        {adding && PROVIDERS[adding].kind === "models" && owner && (
-          <AddForm
-            provider={adding}
-            slug={slug}
-            repos={repoNames}
-            error={actionData && "provider" in actionData ? error : null}
-          />
-        )}
-      </Section>
-      )}
 
       {/* Alerts -------------------------------------------------------------- */}
       {kind === "alerts" && (
@@ -334,7 +210,7 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
 }
 
 /** One kind of connection's page: its heading, then what is connected and what to connect. */
-function Section({ kind, children }: { kind: ProviderKind; children: ReactNode }) {
+function Section({ kind, children }: { kind: SectionKind; children: ReactNode }) {
   const info = KIND_INFO[kind];
   return (
     <section className="mt-4">
@@ -409,16 +285,12 @@ function ConnectionRow({
   const facts = [
     PROVIDERS[connection.provider].label,
     config.repo && `issues in ${config.repo}`,
-    config.assign && "agents start at once",
     config.organization,
     host(config.site),
     host(config.baseUrl),
-    config.model && `default ${config.model}`,
-    connection.models.length > 0 && `${connection.models.length} models`,
     config.keys?.length ? config.keys.join(", ") : null,
     connection.secretHint && `key ${connection.secretHint}`,
   ].filter(Boolean);
-  const gateway = connection.kind === "models" ? gatewayPatterns(connection.provider, config) : null;
   const waitingForSecret = connection.provider === "sentry" && !deliveries.length && !connection.lastUsedAt;
   return (
     <div>
@@ -453,42 +325,6 @@ function ConnectionRow({
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
           {connection.lastError}
         </p>
-      )}
-      {gateway && (
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-          <span className="text-faint">AI Gateway</span>
-          {gateway.length === 0 ? (
-            <span>no models</span>
-          ) : (
-            gateway.map((pattern) => (
-              <code key={pattern} className="rounded border border-line bg-bg px-1.5 py-0.5 font-mono text-[0.75rem] text-fg">
-                {pattern}
-              </code>
-            ))
-          )}
-        </div>
-      )}
-      {owner && gateway && (
-        <details className="group mt-3" open={updated || undefined}>
-          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs text-muted hover:text-fg">
-            <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
-            Change its AI Gateway models or key
-          </summary>
-          <Form method="post" className="mt-3 max-w-2xl space-y-3">
-            <input type="hidden" name="intent" value="gateway" />
-            <input type="hidden" name="id" value={connection.id} />
-            <GatewayModelsField provider={connection.provider} value={gateway} />
-            <Field label="Replace the key" hint="Write-only: g1t never shows it again. Leave it empty to keep the key you have.">
-              <Input name="secret" type="password" placeholder={connection.secretHint ? `Now ${connection.secretHint}` : "Paste a key"} autoComplete="new-password" className="max-w-sm" />
-            </Field>
-            <div className="flex items-center gap-3">
-              <SubmitButton variant="outline" match={{ intent: "gateway", id: connection.id }} pending="Saving…">
-                Save
-              </SubmitButton>
-              {updated && <span className="text-sm text-success">Saved.</span>}
-            </div>
-          </Form>
-        </details>
       )}
       {connection.webhookUrl && (
         <div className="mt-3">
@@ -547,10 +383,10 @@ function ConnectionRow({
 
 /** What a provider is for, in a line. */
 function blurb(provider: Provider): string {
-  return PROVIDER_BLURB[provider] ?? MODEL_CATALOG[provider]?.blurb ?? "";
+  return PROVIDER_BLURB[provider] ?? "";
 }
 
-function Choices({ kind, slug, adding }: { kind: ProviderKind; slug: string; adding: Provider | null }) {
+function Choices({ kind, slug, adding }: { kind: SectionKind; slug: string; adding: Provider | null }) {
   const providers = (Object.keys(PROVIDERS) as Provider[]).filter((p) => PROVIDERS[p].kind === kind);
   return (
     <div className="mt-3">
@@ -579,21 +415,6 @@ function RepoField({ repos, required, hint }: { repos: string[]; required?: bool
   );
 }
 
-function AssignField() {
-  return (
-    <CheckboxOption
-      name="assign"
-      label={<span className="font-medium">Assign each new issue to g1t</span>}
-      description={
-        <span className="text-muted">
-          It opens a pull request, gets reviewed, and lands through your merge rules, before anyone has to look.
-          Agents run only where g1t is enabled.
-        </span>
-      }
-    />
-  );
-}
-
 function AddForm({
   provider,
   slug,
@@ -618,19 +439,16 @@ function AddForm({
         <Field label="Client secret" hint="You get this from Sentry after giving it this connection's address; you can add it on the next step.">
           <Input name="signingSecret" type="password" />
         </Field>
-        <AssignField />
       </>
     ),
     datadog: (
       <>
         <RepoField repos={repos} required hint="Where issues are opened." />
-        <AssignField />
       </>
     ),
     webhook: (
       <>
         <RepoField repos={repos} required hint="Where issues are opened." />
-        <AssignField />
       </>
     ),
     jira: (
@@ -681,7 +499,7 @@ function AddForm({
         </div>
         <Form method="post" className="mt-5 grid max-w-xl gap-4">
           <input type="hidden" name="provider" value={provider} />
-          {fields[provider] ?? <ModelProviderFields provider={provider} />}
+          {fields[provider]}
           <ErrorText>{error}</ErrorText>
           <div>
             <SubmitButton match={{ provider }} pending="Connecting…">
@@ -751,17 +569,7 @@ function Connected({ connected }: { connected: { connection: Connection; signing
       )}
       {connection.kind === "tracker" && (
         <p className="mt-2 text-sm text-muted">
-          Agents now read tickets that work mentions, and you can import one from any repository's new
-          issue page. Use Test to check the token.
-        </p>
-      )}
-      {connection.kind === "models" && (
-        <p className="mt-2 text-sm text-muted">
-          {connection.lastError
-            ? `It was saved, but the check failed: ${connection.lastError}`
-            : connection.models.length > 0
-              ? `It offers ${connection.models.length} models. Choose which work goes to it under “Which model does which work”.`
-              : "Choose which work goes to it under “Which model does which work”."}
+          You can import a ticket from any repository's new issue page. Use Test to check the token.
         </p>
       )}
     </div>

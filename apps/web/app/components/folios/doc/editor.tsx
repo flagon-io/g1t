@@ -13,7 +13,7 @@ import { RESTYjsThreadStore, withCollaboration } from "@blocknote/core/yjs";
 import { syntaxHighlighter } from "@blocknote/code-block";
 import { BlockNoteViewEditor, SuggestionMenuController, ThreadsSidebar, getDefaultReactSlashMenuItems, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
-import type { AgentLook, DocFile, DocRole, FolioSearchHit, FolioSuggestion, Result } from "@g1t/contracts";
+import type { DocFile, DocRole, FolioSearchHit, FolioSuggestion, Result } from "@g1t/contracts";
 import { AlertTriangle, AtSign, Calendar, CheckCircle2, FileCode2, FileText, GitPullRequest, Info, Link2, Sigma, Workflow } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -27,8 +27,8 @@ import type { FolioProvider } from "../provider";
 import type { Presence } from "../shell";
 import { whoAre } from "../who";
 
-/** Someone who can be mentioned: a person (by username) or an agent (by id). */
-export type DocMentionable = { kind: "user" | "agent"; id: string; name: string; display_name: string; avatar: string | null; avatar_seed?: string | null; look?: AgentLook | null };
+/** Someone who can be mentioned: a person, by username. */
+export type DocMentionable = { kind: "user"; id: string; name: string; display_name: string; avatar: string | null };
 
 export type DocEditorProps = {
   slug: string;
@@ -234,8 +234,8 @@ function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, sugges
       { title: "Embed from g1t", subtext: "An issue, pull request, channel, project or artifact, live", aliases: ["embed", "issue", "pull", "pr", "channel", "project"], group: "g1t", icon: <GitPullRequest size={18} />, onItemClick: insert({ type: "embed" }) },
       {
         title: "Mention",
-        subtext: "A person or an agent",
-        aliases: ["mention", "person", "agent", "@"],
+        subtext: "A person",
+        aliases: ["mention", "person", "@"],
         group: "g1t",
         icon: <AtSign size={18} />,
         onItemClick: () => editor.insertInlineContent("@" as never),
@@ -275,7 +275,7 @@ function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, sugges
       .slice(0, 8)
       .map((p) => ({
         title: p.display_name,
-        subtext: p.kind === "agent" ? `@${p.name} · agent` : `@${p.name}`,
+        subtext: `@${p.name}`,
         icon: <AtSign size={16} />,
         onItemClick: () => editor.insertInlineContent([{ type: "mention", props: { kind: p.kind, id: p.id, name: p.name, href: "" } }, " "] as never),
       }));

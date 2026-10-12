@@ -26,7 +26,6 @@ export function seesSettings(access: Pick<ViewerAccess, "can" | "insider"> | nul
 export const SETTINGS_CAPABILITY: Record<string, Capability> = {
   "": "manage_settings",
   repository: "manage_settings",
-  agents: "manage_settings",
   branches: "manage_settings",
   rules: "manage_protection",
   guardrails: "manage_protection",

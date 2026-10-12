@@ -3,7 +3,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   BookOpen,
-  Bot,
+  Plus,
   Brain,
   Globe,
   Tag,
@@ -13,7 +13,6 @@ import {
   GitMerge,
   Hand,
   HeartPulse,
-  Loader2,
   Lock,
   Package as PackageGlyph,
   Pin,
@@ -26,15 +25,12 @@ import { type ReactNode, Suspense } from "react";
 import { Await, Form, Link } from "react-router";
 
 import {
-  type AgentRun,
   type G1tEvent,
   type Memory,
   type PackageSummary,
   type Project,
   type Pull,
   type RepoMirror,
-  RUN_KIND_LABEL,
-  isActiveRun,
   workOwner,
 } from "@g1t/contracts";
 
@@ -42,7 +38,7 @@ import type { Route } from "./+types/overview";
 import { InlineMarkdown } from "../../components/inline-markdown";
 import { DeployLink, host, StatusDot } from "../../components/deploy";
 import { CheckBadge } from "../../components/checks";
-import { Elapsed, formatCost, useLiveRefresh } from "../../components/agents";
+import { useRefreshWhile } from "../../lib/refresh";
 import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable, percent } from "../../components/mission";
 import { type ActiveBranch, ActiveBranches } from "../../components/branches";
 import { PackageIcon } from "../../components/package-icon";
@@ -76,7 +72,6 @@ import {
   queuedNumbers,
   rankNeeds,
   runHealth,
-  stuckMinutes,
 } from "../../lib/mission";
 import { ECOSYSTEM_LABEL, installCommands } from "../../lib/packages";
 import {
@@ -214,7 +209,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     branchesP.catch(() => null),
     new Promise<"slow">((resolve) => setTimeout(() => resolve("slow"), crawler ? BRANCHES_WAIT_CRAWLER_MS : BRANCHES_WAIT_MS)),
   ]);
-  const [{ insider: member, can }, project, settings, list, open, closed, log, counts, runs, queue, issues, memories, recent, mine, packageList, tagList] = await Promise.all([
+  const [{ insider: member, can }, project, settings, list, open, closed, log, counts, queue, issues, memories, recent, mine, packageList, tagList] = await Promise.all([
     accessP,
     projectP,
     forMembers(() => deployments.settings(ref, viewer)),
@@ -224,7 +219,6 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     // With their people, in one identity call.
     soft(repos.log(path, viewer, null, COMMITS_SHOWN).then(async (found) => (found.ok ? { ok: true as const, value: await showCommits(found.value) } : found))),
     soft(countsFor(context, params)),
-    soft(agents.listRuns(viewer, { repo: path, limit: 60 })),
     soft(work.queue(path, viewer)),
     soft(work.listIssues(path, viewer, { state: "open" })),
     forMembers(() => agents.listMemories(viewer, params.owner, path)),
@@ -238,15 +232,11 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const ok = <T,>(result: { ok: true; value: T } | { ok: false } | null): T | null => (result?.ok ? result.value : null);
 
   const openPulls = ok(open) ?? [];
-  const runList = ok(runs) ?? [];
-  const live = runList.filter((run) => isActiveRun(run.status));
   const builds = ok(list)?.deployments ?? [];
   const landed = (ok(closed) ?? [])
     .filter((pull) => pull.status === "merged")
     .sort((a, b) => Date.parse(b.mergedAt ?? b.updatedAt) - Date.parse(a.mergedAt ?? a.updatedAt));
   const queued = queuedNumbers(ok(queue)?.active ?? []);
-  const runOn = new Map<number, AgentRun>();
-  for (const run of live) if (run.number != null && !runOn.has(run.number)) runOn.set(run.number, run);
   const lifecycleOf = new Map((mine ?? []).map((item) => [item.pull.number, item.lifecycle]));
 
   // --- The pipeline -----------------------------------------------------------
@@ -256,24 +246,17 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     agent: string;
     status: Pull["status"];
     checkStatus: Pull["checkStatus"];
-    step: string | null;
-    runKind: string | null;
-    runStarted: string | null;
     needsYou: boolean;
     at: string;
   };
   const columns: Record<PipelineStage, Card[]> = { working: [], checking: [], reviewing: [], queue: [], landed: [] };
   for (const pull of openPulls.slice(0, 40)) {
-    const run = runOn.get(pull.number);
-    columns[pipelineStage(pull, run, queued, lifecycleOf.get(pull.number))].push({
+    columns[pipelineStage(pull, undefined, queued, lifecycleOf.get(pull.number))].push({
       number: pull.number,
       title: pull.title,
       agent: pull.agent,
       status: pull.status,
       checkStatus: pull.checkStatus,
-      step: run?.step ?? null,
-      runKind: run ? RUN_KIND_LABEL[run.kind] : null,
-      runStarted: run ? (run.startedAt ?? run.createdAt) : null,
       needsYou: lifecycleOf.get(pull.number)?.stage === "needs_you",
       at: pull.updatedAt,
     });
@@ -285,9 +268,6 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
       agent: pull.agent,
       status: pull.status,
       checkStatus: pull.checkStatus,
-      step: null,
-      runKind: null,
-      runStarted: null,
       needsYou: false,
       at: pull.mergedAt ?? pull.updatedAt,
     });
@@ -325,25 +305,10 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     if (me && pull.status === "open" && owner.toLowerCase() !== me && pull.reviewers.some((name) => name.toLowerCase() === me)) {
       needs.push({ key: `review:${pull.number}`, kind: "review", title: pull.title, detail: `${owner} asked for your review.`, to, action: "Review", at: Date.parse(pull.updatedAt), where });
     }
-    if (member && pull.status === "open" && pull.checkStatus === "failed" && !runOn.has(pull.number) && !lifecycle) {
-      needs.push({ key: `checks:${pull.number}`, kind: "checks", title: pull.title, detail: "It failed in the merge queue and no agent is fixing it.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
+    if (member && pull.status === "open" && pull.checkStatus === "failed" && !lifecycle) {
+      needs.push({ key: `checks:${pull.number}`, kind: "checks", title: pull.title, detail: "Its checks failed.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
     }
   }
-  for (const run of live) {
-    const minutes = stuckMinutes(run, now);
-    if (minutes == null) continue;
-    needs.push({
-      key: `run:${run.id}`,
-      kind: "stuck",
-      title: run.title ?? `${run.agent}'s run`,
-      detail: `${run.agent} has reported nothing for ${minutes} min${run.step ? `. Last: ${run.step}` : ""}.`,
-      to: `${base}/agents/runs/${run.id}`,
-      action: "Look",
-      at: Date.parse(run.updatedAt),
-      where: run.number != null ? `#${run.number}` : null,
-    });
-  }
-
   // --- Activity and health -------------------------------------------------------
   const eventList: G1tEvent[] = recent ?? [];
   const logged: ActivityItem[] = projectFeed(eventList, path);
@@ -400,8 +365,6 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     languages: null as { name: string; share: number }[] | null,
     contributors: null as { username: string }[] | null,
     open: ok(counts) ?? { issues: openIssues?.length ?? 0, pulls: openPulls.length },
-    agentsLive: live.slice(0, 6),
-    runsLoaded: runs?.ok ?? false,
     pullsLoaded: open?.ok ?? false,
     columns,
     needs: rankNeeds(needs),
@@ -465,7 +428,7 @@ function PipelineCard({ card, base, stage }: { card: Card; base: string; stage: 
         to={`${base}/pull/${card.number}`}
         prefetch="intent"
         className={`block rounded-lg border bg-bg/60 p-2.5 transition-colors hover:border-line-strong hover:bg-raised ${
-          card.needsYou ? "border-warn/50" : card.step ? "border-accent/30" : "border-line"
+          card.needsYou ? "border-warn/50" : "border-line"
         }`}
       >
         <span className="line-clamp-2 text-[0.8125rem] leading-snug font-medium">{card.title}</span>
@@ -482,22 +445,10 @@ function PipelineCard({ card, base, stage }: { card: Card; base: string; stage: 
             </Hint>
           ) : stage === "landed" ? (
             <TimeAgo at={card.at} />
-          ) : card.runStarted ? (
-            <span className="inline-flex items-center gap-1 text-accent">
-              <Loader2 size={11} className="animate-spin" />
-              <Elapsed from={card.runStarted} />
-            </span>
           ) : (
             <CheckBadge status={card.checkStatus} />
           )}
         </span>
-        {card.step && (
-          <Hint label={card.step}>
-            <span className="mt-1.5 block truncate font-mono text-[0.6875rem] text-fg/70">
-              {card.runKind}: {card.step}
-            </span>
-          </Hint>
-        )}
       </Link>
     </li>
   );
@@ -740,7 +691,7 @@ function Overview({
   actionData: Route.ComponentProps["actionData"];
   params: Route.ComponentProps["params"];
 }) {
-  const { member, project, settings, builds, live, commit, open, agentsLive, columns, needs, landed, groups, health, knows, branches, library, checks } =
+  const { member, project, settings, builds, live, commit, open, columns, needs, landed, groups, health, knows, branches, library, checks } =
     loaderData;
   const base = `/${params.owner}/${params.repo}`;
   // What it is to its remotes, from the repository layout.
@@ -773,8 +724,8 @@ function Overview({
   const addImage = canChange ? `${base}/settings#production-image` : null;
   const elsewhereUrl = loaderData.deployment?.url ?? project?.productionUrl ?? null;
   const source = project?.source.kind === "hosted" ? project.source : null;
-  const moving = agentsLive.length > 0 || columns.working.length + columns.checking.length > 0;
-  useLiveRefresh(moving);
+  const moving = columns.working.length + columns.checking.length > 0;
+  useRefreshWhile(moving);
   // Pushes, checks, releases and deployments show as they happen.
   useRepoLive({ match: repoPages.files() });
   const ages = health.ages;
@@ -782,8 +733,7 @@ function Overview({
 
   // A mirror that is not taken over is a read-only copy (lib/mirror.ts
   // `offers`): what it is, where it comes from and what it holds, and
-  // nothing to start. Where it runs, Right now and the agents' panels
-  // come back with a takeover.
+  // nothing to start. Where it runs and Right now come back with a takeover.
   const readOnlyMirror = mirrorRepo?.mirror && !writable(mirrorRepo.mirror) ? mirrorRepo.mirror : null;
   if (readOnlyMirror) {
     return (
@@ -1027,52 +977,9 @@ function Overview({
 
       <Panel
         title="Right now"
-        icon={<span className={`block size-2 rounded-full ${agentsLive.length > 0 ? "animate-pulse bg-accent" : "bg-line-strong"}`} />}
-        count={agentsLive.length}
-        all={{ to: `${base}/agents`, label: "Agents" }}
+        icon={<span className={`block size-2 rounded-full ${moving ? "animate-pulse bg-accent" : "bg-line-strong"}`} />}
+        all={{ to: `${base}/pulls`, label: "Pull requests" }}
       >
-        {agentsLive.length > 0 && (
-          <ul className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {agentsLive.map((run) => (
-              <li key={run.id} className="min-w-0 rounded-xl border border-accent/30 bg-surface px-3.5 py-3">
-                <div className="flex items-center gap-2 text-sm">
-                  <Avatar name={run.agent} size={18} />
-                  <span className="font-medium">{run.agent}</span>
-                  <span className="text-xs text-muted">{RUN_KIND_LABEL[run.kind].toLowerCase()}</span>
-                  <span className="grow" />
-                  <span className="text-xs text-muted">
-                    <Elapsed from={run.startedAt ?? run.createdAt} />
-                  </span>
-                </div>
-                <Link
-                  to={run.number != null ? `${base}/pull/${run.number}` : `${base}/agents/runs/${run.id}`}
-                  className="mt-1 block truncate text-[0.8125rem] hover:text-accent"
-                >
-                  {run.title ?? "A run"} {run.number != null && <span className="text-faint">#{run.number}</span>}
-                </Link>
-                {run.step && (
-                  <Hint label={run.step}>
-                    <p className="mt-1 truncate font-mono text-[0.6875rem] text-fg/70">
-                      <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-accent align-middle" />
-                      {run.step}
-                    </p>
-                  </Hint>
-                )}
-                <p className="mt-1.5 flex items-center gap-3 text-[0.6875rem] text-faint">
-                  {formatCost(run.costUsd) && <span>{formatCost(run.costUsd)} so far</span>}
-                  <Link to={`${base}/agents/runs/${run.id}`} className="hover:text-fg">
-                    {run.stepCount} steps
-                  </Link>
-                  {run.number != null && (
-                    <Link to={`${base}/sessions/${run.number}`} className="hover:text-fg">
-                      Session
-                    </Link>
-                  )}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
         {!loaderData.pullsLoaded ? (
           <Unavailable what="Pull requests" />
         ) : Object.values(columns).every((c) => c.length === 0) ? (
@@ -1080,12 +987,12 @@ function Overview({
             action={
               member ? (
                 <Link to={`${base}/issues/new`} className="inline-flex items-center gap-1.5 rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg hover:bg-fg-hover">
-                  <Bot size={12} /> Open an issue for an agent
+                  <Plus size={12} /> New issue
                 </Link>
               ) : null
             }
           >
-            Nothing is moving. Open an issue and hand it to g1t, or push a branch and open a pull request.
+            Nothing is moving. Open an issue, or push a branch and open a pull request.
           </Quiet>
         ) : (
           <Pipeline columns={columns} base={base} />
@@ -1282,7 +1189,7 @@ function Overview({
                 <div className="flex items-center justify-between">
                   <h2 className="flex items-center gap-1.5 text-sm font-semibold">
                     <Brain size={14} className="text-accent" />
-                    What agents know here
+                    What this project remembers
                   </h2>
                   <Link to={`${base}/memory`} className="text-xs text-muted hover:text-fg">
                     Memory
@@ -1292,7 +1199,7 @@ function Overview({
                   <p className="mt-3 text-xs text-muted">Memory could not be loaded just now.</p>
                 ) : knows.length === 0 ? (
                   <p className="mt-3 text-xs leading-5 text-muted">
-                    Nothing yet. Agents note conventions, decisions and traps as they work, and every agent starting here reads them.
+                    Nothing yet. People and coding agents note conventions, decisions and traps here, and agents read them with recall.
                   </p>
                 ) : (
                   <ul className="mt-3 space-y-2.5">

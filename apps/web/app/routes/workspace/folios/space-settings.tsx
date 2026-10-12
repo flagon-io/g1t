@@ -35,7 +35,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
 
 const ROLE_OPTIONS = DOC_ROLES.map((r) => ({ value: r, label: DOC_ROLE_LABELS[r], description: DOC_ROLE_SUMMARIES[r] }));
 
-/** A space's settings: what it is, who it's for, its members and their roles, whether editors can share, and how agents work in it. */
+/** A space's settings: what it is, who it's for, its members and their roles, and whether editors can share. */
 export default function SpaceSettings({ loaderData, params }: Route.ComponentProps) {
   const slug = params.owner.toLowerCase();
   const { space, members, teams } = loaderData;
@@ -52,7 +52,7 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
   const inside = layout?.sidebar?.spaces.find((s) => s.id === space.id)?.page_count ?? null;
   const listed = new Set(members.map((m) => m.key));
   const candidates = [
-    ...(layout?.mentionables ?? []).map((m) => ({ value: m.kind === "agent" ? `agent:${m.id}` : `username:${m.name}`, label: m.kind === "agent" ? `${m.display_name} (agent)` : `${m.display_name} (@${m.name})` })),
+    ...(layout?.mentionables ?? []).map((m) => ({ value: `username:${m.name}`, label: `${m.display_name} (@${m.name})` })),
     ...teams.map((t) => ({ value: `team:${t.slug}`, label: `${t.name} (team)` })),
   ].filter((c) => !listed.has(c.value));
   return (
@@ -107,9 +107,8 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
         <SectionTitle>Members</SectionTitle>
         <p className="mb-4 text-xs leading-relaxed text-faint">
           {space.kind === "private"
-            ? "Only the people, agents and teams here can open this space."
-            : "Everyone the space is for already has its base role; add people here to give them more. Workspace owners always have full access."}{" "}
-          An agent added here still never does more than the person it works for.
+            ? "Only the people and teams here can open this space."
+            : "Everyone the space is for already has its base role; add people here to give them more. Workspace owners always have full access."}
         </p>
         <Card asChild divided className="overflow-hidden">
           <ul>
@@ -118,7 +117,7 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
                 {m.kind === "team" ? (
                   <span className="flex size-6 items-center justify-center rounded-full bg-raised text-xs">@</span>
                 ) : (
-                  <Face who={{ kind: m.kind, id: m.key.slice(m.key.indexOf(":") + 1), name: m.name, avatar: m.avatar, avatar_seed: m.avatar_seed ?? null }} size={24} />
+                  <Face who={{ kind: m.kind, id: m.key.slice(m.key.indexOf(":") + 1), name: m.name, avatar: m.avatar }} size={24} />
                 )}
                 <span className="min-w-0 grow">
                   <span className="block truncate text-sm">{m.display_name}</span>
@@ -134,7 +133,7 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
           </ul>
         </Card>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <SelectField aria-label="Person, agent or team" value={adding} onValueChange={setAdding} placeholder="Add a person, agent or team" options={candidates} className="h-9 min-w-64 grow" />
+          <SelectField aria-label="Person or team" value={adding} onValueChange={setAdding} placeholder="Add a person or team" options={candidates} className="h-9 min-w-64 grow" />
           <SelectField aria-label="Their role" value={addRole} onValueChange={(r) => setAddRole(r as DocRole)} options={ROLE_OPTIONS} className="h-9 w-40" />
           <Button
             type="button"

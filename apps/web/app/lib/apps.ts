@@ -1,22 +1,19 @@
 /**
- * The rail's built-in apps, the apps a workspace added in Customize, and
- * the ones each person pins to their rail.
+ * The rail's built-in apps, the apps a workspace added, and the ones each
+ * person pins to their rail.
  *
- * Built-in apps (Home, Chat, Notifications, Agents, Code, Artifacts,
- * People and Workspace) are always in the rail; their own pages (Projects,
- * Usage, Teams and the rest) are in their sidebars. Apps are what the
- * workspace added in Customize: the plugins it installed (each opening its
- * page), the connectors it connected, and the integrations it connected,
- * each opening where it is looked after. Each person pins the ones they
- * want.
+ * Built-in apps (Home, Chat, Notifications, Code, Artifacts, People and
+ * Workspace) are always in the rail; their own pages (Projects, Usage,
+ * Teams and the rest) are in their sidebars. Apps are the integrations
+ * the workspace connected, each opening where it is looked after. Each
+ * person pins the ones they want.
  *
  * An installed app's key says what it is: `int-<connector>` for an
- * integration (@g1t/contracts/connectors), `plg-<install>` for a plugin,
- * `con-<connector>` for a connector. Only integrations are pinned: they
- * are known from the catalog alone, so a pin can be read without asking a
- * service. A key that names nothing pinnable (a built-in page pinned
- * before Apps were Customize's, an extension from before plugins) is
- * dropped wherever pins are read.
+ * integration (@g1t/contracts/connectors). Integrations are known from the
+ * catalog alone, so a pin can be read without asking a service. A key that
+ * names nothing pinnable (a built-in page pinned before, a plugin or
+ * connector from before they were retired) is dropped wherever pins are
+ * read.
  *
  * Pins are each person's own, per workspace, in the order they set, and
  * kept with their account by the identity service (`dock_pins`), so the
@@ -26,13 +23,10 @@
  * with the account carry over from it until the first change.
  * No Workers or React imports, so it can be tested under Node.
  */
-import type { PluginInstall, WorkspaceConnector } from "@g1t/contracts";
 import { CONNECTORS, type Connector, connectorPath } from "@g1t/contracts/connectors";
 
-import { connectorPagePath, pluginPath } from "./customize.ts";
-
 /** The apps that are always in the rail. */
-export type BuiltinApp = "home" | "chat" | "notifications" | "agents" | "code" | "artifacts" | "people" | "workspace";
+export type BuiltinApp = "home" | "chat" | "notifications" | "code" | "artifacts" | "people" | "workspace";
 
 export type BuiltinInfo = {
   key: BuiltinApp;
@@ -50,7 +44,6 @@ export const BUILTINS: BuiltinInfo[] = [
   { key: "home", name: "Home", path: under("home") },
   { key: "chat", name: "Chat", path: under("chat") },
   { key: "notifications", name: "Notifications", path: () => "/notifications" },
-  { key: "agents", name: "Agents", path: under("agents") },
   { key: "code", name: "Code", path: under("overview"), code: true },
   { key: "artifacts", name: "Artifacts", path: under("artifacts") },
   { key: "people", name: "People", path: under("people") },
@@ -65,15 +58,15 @@ export function appOf(key: BuiltinApp): BuiltinInfo {
 /** An installed app's key, as pins and forms carry it: `int-sentry`. */
 export type PinnableApp = string;
 
-/** An app the workspace added in Customize. */
+/** An app the workspace added: an integration it connected. */
 export type InstalledApp = {
   key: PinnableApp;
   name: string;
   /** What it is, in a few words. */
   about: string;
-  /** The listing it was added from: `integration:sentry`, `plugin:pdf@anthropic-agent-skills`, `connector:con_…`. */
+  /** The listing it was added from: `integration:sentry`. */
   listing: string;
-  /** Where it is from, in a word or two: g1t, its marketplace, or Connector. */
+  /** Where it is from, in a word or two: g1t. */
   from: string;
   /** What draws its mark: a connector's id and name, and its provider when it has one. */
   connector: Pick<Connector, "id" | "name" | "provider">;
@@ -89,7 +82,7 @@ export type InstalledApp = {
 };
 
 /** Where an integration is looked after: its setup page, by kind, or its own page. */
-const SECTION_BY_CATEGORY: Partial<Record<Connector["category"], string>> = { ai: "models", monitoring: "alerts", issues: "trackers" };
+const SECTION_BY_CATEGORY: Partial<Record<Connector["category"], string>> = { monitoring: "alerts", issues: "trackers" };
 
 function integrationPath(connector: Connector): (slug: string) => string {
   const section = connector.provider ? SECTION_BY_CATEGORY[connector.category] : undefined;
@@ -115,6 +108,8 @@ export function installedAppOf(key: string): InstalledApp | null {
   if (key.length > MAX_KEY || !/^int-[a-z0-9][a-z0-9-]*$/.test(key)) return null;
   const connector = CONNECTORS.find((c) => c.id === key.slice(4));
   if (!connector || connector.status !== "available" || !connector.scopes.includes("workspace")) return null;
+  // Model providers were for g1t's own agents: no longer an app.
+  if (connector.provider && connector.category === "ai") return null;
   return {
     key,
     name: connector.name,
@@ -128,60 +123,23 @@ export function installedAppOf(key: string): InstalledApp | null {
   };
 }
 
-/** An installed plugin as an app: its page in Customize. Switched off (the kill switch), it isn't an app until it is on again. */
-export function pluginApp(install: Pick<PluginInstall, "id" | "ref" | "name" | "display_name" | "description" | "marketplace" | "enabled">): InstalledApp | null {
-  if (!install.enabled) return null;
-  const name = install.display_name ?? install.name;
-  return {
-    key: `plg-${install.id}`,
-    name,
-    about: install.description,
-    listing: `plugin:${install.ref}`,
-    from: install.marketplace,
-    connector: { id: install.ref, name, provider: undefined },
-    path: (slug) => pluginPath(slug, install.ref),
-    usable: true,
-    pinnable: false,
-  };
-}
-
-/** A workspace connector as an app: its page in Customize. */
-export function connectorApp(connector: Pick<WorkspaceConnector, "id" | "title" | "about" | "url">): InstalledApp {
-  return {
-    key: `con-${connector.id}`,
-    name: connector.title,
-    about: connector.about ?? connector.url,
-    listing: `connector:${connector.id}`,
-    from: "Connector",
-    connector: { id: connector.id, name: connector.title, provider: undefined },
-    path: (slug) => connectorPagePath(slug, connector.id),
-    usable: true,
-    pinnable: false,
-  };
-}
-
 /** Whether `key` names an app that can be pinned. */
 export function isPinnable(key: string): key is PinnableApp {
   return installedAppOf(key) != null;
 }
 
 /**
- * The apps the workspace added: its plugins that are on, its connectors,
- * and the integrations it has connected (by connector id,
- * lib/connected.server.ts) in catalog order. `manage`, when a connection
- * has one, is where its app opens.
+ * The apps the workspace added: the integrations it has connected (by
+ * connector id, lib/connected.server.ts) in catalog order. `manage`, when a
+ * connection has one, is where its app opens.
  */
-export function installedApps(
-  connected: Record<string, { manage: string | null }>,
-  installs: readonly Parameters<typeof pluginApp>[0][] = [],
-  connectors: readonly Parameters<typeof connectorApp>[0][] = [],
-): InstalledApp[] {
+export function installedApps(connected: Record<string, { manage: string | null }>): InstalledApp[] {
   const integrations = CONNECTORS.filter((connector) => connected[connector.id]).map((connector) => {
     const app = installedAppOf(integrationAppKey(connector.id));
     const manage = connected[connector.id]?.manage;
     return app && manage ? { ...app, path: () => manage } : app;
   });
-  return [...installs.map(pluginApp), ...connectors.map(connectorApp), ...integrations].filter((app): app is InstalledApp => app != null);
+  return integrations.filter((app): app is InstalledApp => app != null);
 }
 
 /** An app as a loader sends it: everything but its path, which is worked out for the workspace. */

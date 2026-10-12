@@ -6,7 +6,7 @@ import { SECRET_DISMISS_REASONS, dismissLabel, type DismissReason } from "@g1t/c
 import type { Route } from "./+types/security-secret";
 import { page } from "../../lib/meta";
 import { DismissDialog, ReopenButton } from "../../components/security";
-import { BypassForm, CARD, FixWithG1t } from "../../components/security-suite";
+import { BypassForm, CARD } from "../../components/security-suite";
 import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -38,8 +38,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const intent = String(form.get("intent") ?? "");
   const id = params.id;
   const comment = String(form.get("comment") ?? "").trim().slice(0, 500);
-  const capability = intent === "dismiss" || intent === "reopen" ? "security_alerts" : intent === "fix" ? "run" : "security_alerts";
-  const refused = await refusal(context, params, capability);
+  const refused = await refusal(context, params, "security_alerts");
   if (refused) return { ok: false, error: refused };
   if (intent === "dismiss") {
     const reason = String(form.get("reason") ?? "");
@@ -60,10 +59,6 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   if (intent === "validity") {
     const done = await securitySuite.checkValidity(user, repo, id);
     return done.ok ? { ok: true } : { ok: false, error: done.error.message };
-  }
-  if (intent === "fix") {
-    const done = await securitySuite.fixAlert(user, repo, id);
-    return done.ok ? { ok: true, issue: done.value.issue, message: done.value.message } : { ok: false, error: done.error.message };
   }
   return { ok: false, error: "Unknown action." };
 }
@@ -124,7 +119,6 @@ export default function SecretAlert({ loaderData, params }: Route.ComponentProps
         </div>
         {can.manage_integrations && (
           <div className="flex items-center gap-2">
-            {landed && secret.state === "open" && can.run && <FixWithG1t id={secret.id} action={action} issue={null} base={base} />}
             {secret.state === "open" ? (
               <DismissDialog id={secret.id} title={`Dismiss ${secret.label}`} detail={`${secret.path}:${secret.line} · ${secret.preview}`} reasons={SECRET_DISMISS_REASONS} action={action} />
             ) : (

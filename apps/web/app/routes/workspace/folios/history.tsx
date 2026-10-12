@@ -98,7 +98,7 @@ export default function FolioHistory({ loaderData, params }: Route.ComponentProp
       )}
       {versions.length === 0 ? (
         <div className="mt-6">
-          <EmptyState title="No versions yet">Versions are saved as people and agents edit.</EmptyState>
+          <EmptyState title="No versions yet">Versions are saved as people edit.</EmptyState>
         </div>
       ) : (
         <div className="mt-6 grid gap-4 md:grid-cols-[17rem_minmax(0,1fr)]">

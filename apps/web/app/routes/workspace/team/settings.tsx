@@ -12,10 +12,9 @@ import {
 
 import type { Route } from "./+types/settings";
 import { ConfirmDialog } from "../../../components/repo-lifecycle";
-import { useTeam, useTeamAgents } from "../../../components/teams";
+import { useTeam } from "../../../components/teams";
 import { Coming } from "../../../components/people";
 import { SelectField } from "../../../components/ui/select";
-import { budgetFromText } from "../../../lib/people";
 import { ErrorText, Field, Input, SubmitButton } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
@@ -26,7 +25,7 @@ import { RadioGroup, RadioOption } from "../../../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import { SwitchCard } from "../../../components/ui/switch";
 import { parentChoices, reviewAssignmentFromForm, teamChangesFromForm, teamPath } from "../../../lib/teams";
-import { chat, identity, workspaceAgents } from "../../../lib/services.server";
+import { chat, identity } from "../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../../lib/session.server";
 
 /** The parent select's value for "no parent". */
@@ -35,23 +34,14 @@ const NO_PARENT = "-";
 const NO_LEAD = "none";
 
 /**
- * Its lead, channel and budget. An agent made lead is added to the team
- * first if it isn't on it, as identity needs; a channel is found by its
- * name in Chat, as the viewer sees it.
+ * Its lead and channel. The lead is a person on the team; a channel is
+ * found by its name in Chat, as the viewer sees it.
  */
-async function saveLeadChannelBudget(form: FormData, workspace: string, slug: string, user: Parameters<typeof identity.updateTeam>[0]) {
+async function saveLeadChannel(form: FormData, workspace: string, slug: string, user: Parameters<typeof identity.updateTeam>[0]) {
   const intent = "people";
   const lead = String(form.get("lead") ?? NO_LEAD);
   const channel = String(form.get("channel") ?? "").trim().replace(/^#/, "").toLowerCase();
-  const budget = budgetFromText(String(form.get("budget") ?? ""));
-  if (budget === null) return { intent, error: "Give the budget in dollars, such as 150.", saved: false };
-  if (lead.startsWith("agent:")) {
-    const listed = await workspaceAgents.list(workspace, user).catch(() => null);
-    const agent = listed?.ok ? listed.value.find((a) => `agent:${a.id}` === lead) : null;
-    if (!agent) return { intent, error: "Choose one of the team's agents.", saved: false };
-    const added = await identity.setTeamAgent(user, workspace, slug, agent.id);
-    if (!added.ok) return { intent, error: added.error.message, saved: false };
-  }
+  if (lead !== NO_LEAD && !lead.startsWith("@")) return { intent, error: "Choose someone on the team.", saved: false };
   let channelId = "";
   let channelName = "";
   if (channel) {
@@ -64,7 +54,6 @@ async function saveLeadChannelBudget(form: FormData, workspace: string, slug: st
     lead: lead === NO_LEAD ? "" : lead,
     channel_id: channelId,
     channel_name: channelName,
-    budget_micros: budget,
   });
   return saved.ok ? { intent, error: null, saved: true } : { intent, error: saved.error.message, saved: false };
 }
@@ -76,7 +65,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   if (!team.can_manage) throw data(null, { status: 404 });
   const [all, members] = await Promise.all([
     identity.listTeams(viewer, params.owner).then((found) => (found.ok ? found.value : [])),
-    // Who can lead it: its own people (and its agents, from the layout).
+    // Who can lead it: its own people.
     identity.teamMembers(viewer, params.owner, params.team, false).then((found) => (found.ok ? found.value : [])),
   ]);
   const parents = parentChoices(all, team.slug).filter((other) => other.can_manage || other.slug === team.parent?.slug);
@@ -99,7 +88,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const saved = await identity.updateTeam(user, params.owner, params.team, { review_assignment: review });
     return saved.ok ? { intent, error: null, saved: true } : { intent, error: saved.error.message, saved: false };
   }
-  if (intent === "people") return saveLeadChannelBudget(form, params.owner, params.team, user);
+  if (intent === "people") return saveLeadChannel(form, params.owner, params.team, user);
   const changes = teamChangesFromForm(form);
   if (changes.parent === NO_PARENT) changes.parent = "";
   const saved = await identity.updateTeam(user, params.owner, params.team, changes);
@@ -111,9 +100,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function TeamSettings({ loaderData, actionData }: Route.ComponentProps) {
   const team = useTeam();
-  const { agents } = useTeamAgents();
   const { parents, people } = loaderData;
-  const leadValue = team.lead ? (team.lead.kind === "user" ? `@${team.lead.username}` : `agent:${team.lead.agent_id}`) : NO_LEAD;
+  // An old agent lead (agents no longer exist) shows as no lead.
+  const leadValue = team.lead?.kind === "user" ? `@${team.lead.username}` : NO_LEAD;
   const said = (intent: string) => (actionData?.intent === intent ? actionData : null);
   const [visibility, setVisibility] = useState<TeamVisibility>(team.visibility);
   const review = team.review_assignment;
@@ -183,12 +172,9 @@ export default function TeamSettings({ loaderData, actionData }: Route.Component
 
       <section aria-labelledby="lead" className="border-t border-line pt-8">
         <h2 id="lead" className="font-medium">
-          Lead, channel and budget
+          Lead and channel
         </h2>
-        <p className="mt-1 text-sm text-muted">
-          Everyone on {team.name}, agents included, is told who leads it and where it talks. Its budget caps what its agents spend
-          together in a month; each agent keeps its own budget too.
-        </p>
+        <p className="mt-1 text-sm text-muted">Who leads {team.name}, and where it talks.</p>
         <Form method="post" className="mt-4 space-y-5" key={`people-${team.updated_at}`}>
           <input type="hidden" name="intent" value="people" />
           <label className="block">
@@ -200,19 +186,13 @@ export default function TeamSettings({ loaderData, actionData }: Route.Component
               options={[
                 { value: NO_LEAD, label: "No lead" },
                 ...people.map((person) => ({ value: `@${person.username}`, label: person.name ? `${person.name} (@${person.username})` : `@${person.username}` })),
-                ...agents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.display_name}, an agent` })),
               ]}
             />
-            <span className="mt-1.5 block text-xs text-faint">Someone on the team. Agents page the lead first when a person is needed.</span>
+            <span className="mt-1.5 block text-xs text-faint">Someone on the team.</span>
           </label>
           <Field label="Channel" hint="The team's channel in Chat, by name. Leave it empty for none.">
             <span className="block sm:max-w-72">
               <Input name="channel" defaultValue={team.channel?.name ?? ""} placeholder="sales" />
-            </span>
-          </Field>
-          <Field label="Budget for its agents, a month" hint="In dollars. Empty or 0 for no team budget.">
-            <span className="block sm:max-w-40">
-              <Input name="budget" inputMode="decimal" defaultValue={team.budget_micros ? String(team.budget_micros / 1_000_000) : ""} placeholder="150" />
             </span>
           </Field>
           <div className="flex items-center gap-2 text-sm text-muted">

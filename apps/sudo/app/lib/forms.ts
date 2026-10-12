@@ -179,27 +179,21 @@ export function parseCredit(raw: string): Parsed<number> {
 
 /** The most staff can set an account's share of a pool to, against a slipped finger. */
 export const MAX_POOL_SHARE_MICROS = 1_000 * MICROS_PER_DOLLAR;
-/** The most agents at once staff can allow one account. */
-export const MAX_AGENTS_AT_ONCE = 100;
-/** Staff's overrides of the owners' caps: one run, and one issue's agents in all. */
-export const MAX_RUN_CAP_MICROS = 1_000 * MICROS_PER_DOLLAR;
-export const MAX_ISSUE_CAP_MICROS = 10_000 * MICROS_PER_DOLLAR;
 /**
  * The most days of audit log staff can give one account: billing's
  * AUDIT_MAX_DAYS. The events service deletes anything older for everyone.
  */
 export const MAX_AUDIT_DAYS = 400;
-/** The smallest cap: ten cents, as owners may set. */
-const MIN_CAP_MICROS = 100_000;
 const MAX_HOLD = 200;
 
 /**
  * Allowances from the plan-and-pools form: the g1t plan without its price,
  * the account's share of the open-source pool and of trials, and staff's
- * overrides of agents at once, the run cap, the issue cap and the days of
- * audit log kept. A blank amount means the default (for a cap, no
- * override; for the audit log, the plan's). A hold is a line saying why
- * new compute is held; blank is no hold.
+ * override of the days of audit log kept. A blank amount means the default
+ * (for the audit log, the plan's). A hold is a line saying why new compute
+ * is held; blank is no hold. The agent overrides (agents at once, the run
+ * and issue caps) are retired with g1t's own agents: they are always sent
+ * cleared.
  */
 export function parseAllowances(form: FormData): Parsed<Allowances> {
   const amount = (name: string, what: string, max: number, maxText: string, min = 0): Parsed<number | null> => {
@@ -215,20 +209,6 @@ export function parseAllowances(form: FormData): Parsed<Allowances> {
   if (!oss.ok) return oss;
   const trial = amount("trial", "The trial credit", MAX_POOL_SHARE_MICROS, "$1,000");
   if (!trial.ok) return trial;
-  const runCap = amount("runCap", "The run cap", MAX_RUN_CAP_MICROS, "$1,000", MIN_CAP_MICROS);
-  if (!runCap.ok) return runCap;
-  const issueCap = amount("issueCap", "The issue cap", MAX_ISSUE_CAP_MICROS, "$10,000", MIN_CAP_MICROS);
-  if (!issueCap.ok) return issueCap;
-
-  let maxConcurrentAgents: number | null = null;
-  const rawAgents = text(form, "agents");
-  if (rawAgents) {
-    if (!/^\d{1,3}$/.test(rawAgents) || Number(rawAgents) < 1 || Number(rawAgents) > MAX_AGENTS_AT_ONCE) {
-      return { ok: false, error: `Agents at once is a whole number from 1 to ${MAX_AGENTS_AT_ONCE}, or blank for the default.` };
-    }
-    maxConcurrentAgents = Number(rawAgents);
-  }
-
   let auditRetentionDays: number | null = null;
   const rawAudit = text(form, "auditDays");
   if (rawAudit) {
@@ -247,9 +227,9 @@ export function parseAllowances(form: FormData): Parsed<Allowances> {
       plan: text(form, "plan") === "on",
       ossRepoMicros: oss.value,
       trialMicros: trial.value,
-      maxConcurrentAgents,
-      runCapMicros: runCap.value,
-      issueCapMicros: issueCap.value,
+      maxConcurrentAgents: null,
+      runCapMicros: null,
+      issueCapMicros: null,
       auditRetentionDays,
       hold: hold || null,
     },

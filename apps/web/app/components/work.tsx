@@ -10,7 +10,6 @@ import { repoAt } from "../lib/markdown-plugins";
 import { Markdown } from "./markdown";
 import { IssueIcon, PullIcon } from "./work-icons";
 import { MentionTextarea } from "./mention-textarea";
-import { AgentAvatar } from "./agent-avatar";
 import { ErrorText, SubmitButton, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
 import {
@@ -262,11 +261,11 @@ export function TimelineItem({
 }: {
   author: string;
   /**
-   * Set when one of the workspace's agents wrote it, as itself: shown by
-   * its face and name with an Agent badge, linked to its page, and whom it
-   * acted for, in place of `author`.
+   * Set when one of the workspace's former agents wrote it, as itself:
+   * shown by its name with an Agent badge, and whom it acted for, in place
+   * of `author`.
    */
-  agent?: { ref: AgentRef; href: string | null; actingFor?: string | null };
+  agent?: { ref: AgentRef; actingFor?: string | null };
   /** What they did, after their name: "commented", "opened this". */
   action: ReactNode;
   at?: string;
@@ -278,7 +277,7 @@ export function TimelineItem({
 }) {
   const face = (size: number) =>
     agent ? (
-      <AgentAvatar agent={{ id: agent.ref.id, handle: agent.ref.handle, avatar_seed: agent.ref.avatarSeed, look: agent.ref.look }} size={size} />
+      <Avatar name={agent.ref.displayName} agent size={size} />
     ) : (
       <Avatar name={author} size={size} />
     );
@@ -286,13 +285,7 @@ export function TimelineItem({
     <div className="flex gap-3">
       <span className="mt-1 hidden shrink-0 sm:block">
         {agent ? (
-          agent.href ? (
-            <Link to={agent.href} aria-label={`${agent.ref.displayName}, an agent`}>
-              {face(32)}
-            </Link>
-          ) : (
-            face(32)
-          )
+          face(32)
         ) : (
           <PersonLink name={author} label={`${author}'s profile`}>
             {face(32)}
@@ -304,7 +297,7 @@ export function TimelineItem({
           <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-raised/40 px-4 py-2 text-sm text-muted">
             <span className="sm:hidden">{face(18)}</span>
             {agent ? (
-              <AgentName agent={agent.ref} href={agent.href} />
+              <AgentName agent={agent.ref} />
             ) : (
               <PersonLink name={author} className="font-medium text-fg hover:underline" />
             )}
@@ -340,32 +333,16 @@ export function TimelineItem({
   );
 }
 
-/** An agent's name, linked to its page when there is one, with an Agent badge. */
-function AgentName({ agent, href }: { agent: AgentRef; href: string | null }) {
-  const name = <span className="font-medium text-fg">{agent.displayName}</span>;
+/** A former agent's name, with an Agent badge. */
+function AgentName({ agent }: { agent: AgentRef }) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      {href ? (
-        <Link to={href} className="hover:underline">
-          {name}
-        </Link>
-      ) : (
-        name
-      )}
+      <span className="font-medium text-fg">{agent.displayName}</span>
       <Badge tone="accent" className="px-1.5 text-[0.625rem] leading-[1.35]">
         Agent
       </Badge>
     </span>
   );
-}
-
-/**
- * An agent's page, `/<workspace>/-/agents/<handle>`, from the repository's
- * path (`/acme/web`): its agents are its workspace's.
- */
-export function agentPage(base: string | undefined, handle: string): string | null {
-  const owner = base?.split("/").filter(Boolean)[0];
-  return owner ? `/${owner}/-/agents/${handle}` : null;
 }
 
 /** That an agent's review is advisory, and why it counts toward nothing. */
@@ -550,7 +527,6 @@ export function CommentList({
             agent={
               comment.agent && {
                 ref: comment.agent,
-                href: agentPage(base, comment.agent.handle),
                 actingFor: comment.actingFor?.username,
               }
             }
@@ -728,35 +704,6 @@ export function verdicts(comments: Comment[]): { reviewer: string; verdict: NonN
     if (comment.verdict && !comment.agent && !comment.advisory) latest.set(comment.author.username, comment.verdict);
   }
   return [...latest].map(([reviewer, verdict]) => ({ reviewer, verdict }));
-}
-
-/**
- * Each agent's latest review, advisory: shown beside people's verdicts but
- * never one of them. `verdict` is null for a review that only commented.
- */
-export function agentReviews(comments: Comment[]): { agent: AgentRef; verdict: Comment["verdict"] }[] {
-  const latest = new Map<string, { agent: AgentRef; verdict: Comment["verdict"] }>();
-  for (const comment of comments) {
-    if (comment.agent && comment.advisory) {
-      latest.delete(comment.agent.id);
-      latest.set(comment.agent.id, { agent: comment.agent, verdict: comment.verdict });
-    }
-  }
-  return [...latest.values()];
-}
-
-/** An agent's advisory review, in a pull request's summary of reviews. */
-export function AgentReviewLine({ agent, verdict, base }: { agent: AgentRef; verdict: Comment["verdict"]; base?: string }) {
-  const href = agentPage(base, agent.handle);
-  const said = verdict === "approve" ? "approved" : verdict === "request_changes" ? "requested changes" : "reviewed";
-  return (
-    <span className="flex items-center gap-1.5 text-muted">
-      <AgentAvatar agent={{ id: agent.id, handle: agent.handle, avatar_seed: agent.avatarSeed, look: agent.look }} size={16} />
-      <AgentName agent={agent} href={href} />
-      <span>{said}</span>
-      <AdvisoryChip />
-    </span>
-  );
 }
 
 /** `2 files  +12 −3`: the size of a pull request's change. */

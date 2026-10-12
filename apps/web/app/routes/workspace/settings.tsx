@@ -209,7 +209,7 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
       <section>
         <h2 className="font-medium">Permissions</h2>
         <p className="mt-1.5 text-xs text-faint">
-          Who may do what in {workspace.slug}: the base permission on its repositories, creating repositories and teams, channels, agents and more are
+          Who may do what in {workspace.slug}: the base permission on its repositories, creating repositories and teams, channels and more are
           under{" "}
           <Link to={`/${workspace.slug}/-/permissions`} className="text-muted underline underline-offset-4 hover:text-fg">
             Permissions

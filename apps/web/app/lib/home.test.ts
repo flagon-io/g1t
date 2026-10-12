@@ -1,15 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { ActivityDigest, ActorCount, AgentSession, ChatActivity, Deployment, InboxItem, InstallRequest, Memory, RepoDigest, WorkflowRun } from "@g1t/contracts";
+import type { ActivityDigest, ActorCount, ChatActivity, Deployment, InboxItem, Memory, RepoDigest, WorkflowRun } from "@g1t/contracts";
 
 import {
   type AttentionRow,
   type CodeNeed,
   type CodePull,
-  acceptance,
   actorKind,
-  agentRow,
   attention,
   chatRow,
   codeRow,
@@ -18,29 +16,22 @@ import {
   deploysIn,
   digestOf,
   duration,
-  installRequestRow,
   landed,
   landedDeploys,
   landedFromActivity,
   landedIn,
-  limitRow,
   notificationRow,
   parseWindow,
-  pullOutcome,
   rankAttention,
   running,
   runningDeploys,
-  runningSessions,
   runningWorkflows,
-  sessionOutcome,
   sinceWords,
   spanFor,
   spanMonths,
   spanSentence,
-  spanWork,
   spendIn,
   startHere,
-  trendLabel,
   waitingSentence,
 } from "./home.ts";
 
@@ -66,56 +57,14 @@ function pull(over: Partial<CodePull> = {}): CodePull {
   };
 }
 
-function session(over: Partial<AgentSession> = {}): AgentSession {
-  return {
-    id: "s1",
-    workspace_id: "w",
-    agent_id: "a",
-    agent_handle: "margo",
-    agent_name: "Margo",
-    agent_avatar_seed: "margo",
-    agent_look: null,
-    subagent: null,
-    kind: "chat",
-    parent_id: null,
-    root_id: "s1",
-    payer_agent_id: "a",
-    title: "Draft the launch notes",
-    goal: "",
-    status: "done",
-    status_note: null,
-    summary: null,
-    channel_id: "c",
-    channel_kind: "channel",
-    channel_name: "launch",
-    card_message_id: null,
-    asked_by: null,
-    asked_by_username: "bo",
-    routine_id: null,
-    steps: 3,
-    tool_calls: 2,
-    input_tokens: 0,
-    output_tokens: 0,
-    charged_micros: 400_000,
-    cap_micros: 2_000_000,
-    model: null,
-    outputs: [],
-    created_at: iso(NOW - 2 * HOUR),
-    updated_at: iso(NOW - HOUR),
-    finished_at: iso(NOW - HOUR),
-    visible: true,
-    ...over,
-  };
-}
 const need = (over: Partial<CodeNeed>): CodeNeed => ({
   key: "pull:p1",
-  reason: "ready_to_merge",
+  reason: "checks_failing",
   repo,
   ref: "#12",
   title: "Add retries",
-  ask: "Waiting for you to merge it.",
-  by: { name: "g1t", agent: true },
-  for: "bo",
+  ask: "It failed in the merge queue.",
+  by: { name: "bo", agent: false },
   at: NOW - 2 * HOUR,
   to: "/acme/web/pull/12",
   facts: [{ label: "Files changed", value: "4", tone: null }],
@@ -123,15 +72,15 @@ const need = (over: Partial<CodeNeed>): CodeNeed => ({
 });
 
 test("Code's needs become rows with what is at stake", () => {
-  const ready = codeRow(need({}));
-  assert.equal(ready.kind, "ready");
-  assert.equal(ready.stake?.text, "4 files to land");
-  assert.equal(ready.action.label, "Merge");
+  const failing = codeRow(need({}));
+  assert.equal(failing.kind, "pull_blocked");
+  assert.equal(failing.stake?.text, "Checks failing");
+  assert.equal(failing.action.label, "Look");
   const deploy = codeRow(need({ key: "deploy:site", reason: "blocking", facts: [{ label: "Production", value: "Serving the build before", tone: "good" }] }));
   assert.equal(deploy.kind, "deploy");
   assert.equal(deploy.stake?.text, "Production on an older build");
-  assert.equal(codeRow(need({ reason: "checks_failing" })).kind, "pull_blocked");
-  assert.equal(codeRow(need({ key: "run:r1", reason: "stalled", facts: [{ label: "Cost so far", value: "$1.20", tone: null }] })).stake?.text, "$1.20 so far");
+  assert.equal(codeRow(need({ key: "review:p2", reason: "needs_review", facts: [{ label: "Lines", value: "+10 −2", tone: null }] })).stake?.text, "+10 −2");
+  assert.equal(codeRow(need({ key: "runner:j1", reason: "stalled", facts: [{ label: "Waiting", value: "2 h", tone: "warn" }] })).stake?.text, "Waiting 2 h");
 });
 
 const row = (over: Partial<AttentionRow>): AttentionRow => ({
@@ -150,21 +99,21 @@ const row = (over: Partial<AttentionRow>): AttentionRow => ({
 test("Start here: the most pressing tier first, then what has waited longest", () => {
   const rows = [
     row({ key: "chat:old", kind: "chat", at: NOW - 5 * DAY, action: { label: "Reply", to: "/acme/-/chat/general" } }),
-    row({ key: "ready:new", kind: "ready", at: NOW - HOUR, action: { label: "Merge", to: "/acme/web/pull/2" } }),
-    row({ key: "ready:old", kind: "ready", at: NOW - 3 * HOUR, action: { label: "Merge", to: "/acme/web/pull/1" } }),
-    row({ key: "session:s", kind: "session_cap", at: NOW - 10 * 60_000, action: { label: "Approve more", to: "/acme/-/agents/margo/sessions/s" } }),
+    row({ key: "review:new", kind: "review", at: NOW - HOUR, action: { label: "Review", to: "/acme/web/pull/2" } }),
+    row({ key: "review:old", kind: "review", at: NOW - 3 * HOUR, action: { label: "Review", to: "/acme/web/pull/1" } }),
+    row({ key: "pull:p", kind: "pull_blocked", at: NOW - 10 * 60_000, action: { label: "Look", to: "/acme/web/pull/3" } }),
   ];
   const ranked = rankAttention(rows);
-  assert.deepEqual(ranked.map((r) => r.key), ["session:s", "ready:old", "ready:new", "chat:old"]);
+  assert.deepEqual(ranked.map((r) => r.key), ["pull:p", "review:old", "review:new", "chat:old"]);
   const start = startHere(ranked);
-  assert.equal(start?.row.key, "session:s");
-  assert.match(start?.why ?? "", /spend cap/);
+  assert.equal(start?.row.key, "pull:p");
+  assert.match(start?.why ?? "", /can't land/);
   // A failed production deploy beats everything.
   const withDeploy = rankAttention([...rows, row({ key: "deploy:site", kind: "deploy", at: NOW, action: { label: "See the build", to: "/acme/site/deployments/1" } })]);
   assert.equal(startHere(withDeploy)?.row.key, "deploy:site");
   // Ties in tier say so.
-  const two = startHere(rankAttention(rows.filter((r) => r.kind === "ready")));
-  assert.equal(two?.row.key, "ready:old");
+  const two = startHere(rankAttention(rows.filter((r) => r.kind === "review")));
+  assert.equal(two?.row.key, "review:old");
   assert.match(two?.why ?? "", /Of the 2 like it, it has waited longest/);
   assert.equal(startHere([]), null);
 });
@@ -201,7 +150,9 @@ const item = (over: Partial<InboxItem>): InboxItem => ({
 test("notifications: warnings and failures in this workspace; none about repositories without Code", () => {
   assert.equal(notificationRow(item({}), "acme", true)?.kind, "notification");
   assert.equal(notificationRow(item({}), "acme", false), null);
-  assert.equal(notificationRow(item({ repo: null, url: "/acme/-/agents/margo" }), "acme", false)?.kind, "notification");
+  assert.equal(notificationRow(item({ repo: null, url: "/acme/-/chat/general" }), "acme", false)?.kind, "notification");
+  // A reason this page does not know, older ones included, reads as a plain notification.
+  assert.equal(notificationRow(item({ reason: "agent" as string as InboxItem["reason"] }), "acme", true)?.stake?.text, "Notification");
   assert.equal(notificationRow(item({ severity: "info" }), "acme", true), null);
   assert.equal(notificationRow(item({ workspace: "other", repo: "other/web" }), "acme", true), null);
   assert.equal(notificationRow(item({ readAt: iso(NOW) }), "acme", true), null);
@@ -212,9 +163,6 @@ test("a notification about something already listed is left out", () => {
     slug: "acme",
     code: true,
     codeNeeds: [need({})],
-    capped: [],
-    agents: [],
-    canManage: false,
     notifications: [item({})],
     chat: [],
   });
@@ -227,23 +175,12 @@ test("without Code access no Code row is asked for or shown, and a silent source
     slug: "acme",
     code: false,
     codeNeeds: [need({})],
-    capped: null,
-    agents: null,
-    canManage: false,
-    notifications: [item({}), item({ id: "n2", repo: null, reason: "agent", severity: "warning", url: "/acme/-/agents/margo" })],
+    notifications: [item({}), item({ id: "n2", repo: null, reason: "mention", severity: "warning", url: "/acme/-/chat/general" })],
     chat: null,
   });
   assert.deepEqual(out.rows.map((r) => r.key), ["notification:n2"]);
   assert.equal(out.rows.some((r) => r.from === "code"), false);
-  assert.deepEqual(out.missing, ["Agents", "Chat"]);
-});
-
-test("an agent out of budget is listed only for those who may raise it", () => {
-  const agent = { id: "a1", handle: "margo", display_name: "Margo", status: "out_of_budget", spent_month_micros: 52_000_000, budget: { monthly_micros: 50_000_000 }, updated_at: iso(NOW) };
-  assert.equal(agentRow(agent, "acme")?.stake?.text, "$0.00 left");
-  const base = { slug: "acme", code: true, codeNeeds: [], capped: [], notifications: [], chat: [] };
-  assert.equal(attention({ ...base, agents: [agent], canManage: false }).rows.length, 0);
-  assert.equal(attention({ ...base, agents: [agent], canManage: true }).rows[0]?.kind, "agent_budget");
+  assert.deepEqual(out.missing, ["Chat"]);
 });
 
 test("chat: mentions anywhere and unread direct messages, never muted", () => {
@@ -317,82 +254,7 @@ test("the span: since your last visit, capped, or a fixed window", () => {
   assert.deepEqual([spanFor("7d", NOW, NOW - HOUR, LA).from, spanFor("7d", NOW, NOW - HOUR, LA).words], [NOW - 7 * DAY, "In the last 7 days"]);
 });
 
-test("an agent's pull request is accepted first time when it merged in the span with no revision", () => {
-  assert.equal(pullOutcome(pull(), 0, SPAN), "accepted");
-  assert.equal(pullOutcome(pull(), 2, SPAN), "fixed");
-  assert.equal(pullOutcome(pull({ mergedAt: iso(NOW - 4 * DAY) }), 0, SPAN), null);
-  assert.equal(pullOutcome(pull({ status: "closed", mergedAt: null }), 0, SPAN), "dropped");
-  // Still open is not settled: it is under Running now.
-  assert.equal(pullOutcome(pull({ status: "open", mergedAt: null }), 1, SPAN), null);
-});
-
-test("a session counts once, at the root of its tree, when it settled in the span", () => {
-  assert.equal(sessionOutcome(session(), SPAN), "finished");
-  assert.equal(sessionOutcome(session({ parent_id: "s0" }), SPAN), null);
-  assert.equal(sessionOutcome(session({ status: "failed" }), SPAN), "dropped");
-  assert.equal(sessionOutcome(session({ status: "stopped" }), SPAN), "dropped");
-  assert.equal(sessionOutcome(session({ status: "working", finished_at: null }), SPAN), null);
-  assert.equal(sessionOutcome(session({ finished_at: iso(NOW - 4 * DAY) }), SPAN), null);
-});
-
-test("accepted first time is accepted over every agent pull request that settled", () => {
-  assert.deepEqual(acceptance(["accepted", "accepted", "fixed", "dropped", "finished"]), { value: 0.5, of: 4 });
-  assert.equal(acceptance(["finished"]), null);
-});
-
-test("the span's work: pull requests and sessions, sources, and the 7 days before", () => {
-  const work = spanWork({
-    span: SPAN,
-    slug: "acme",
-    code: {
-      pulls: [
-        pull({ number: 1 }),
-        pull({ number: 2 }),
-        pull({ number: 3, status: "open", mergedAt: null }),
-        // A person's pull request is not agent work.
-        pull({ number: 4, author: { username: "bo", kind: "user" } }),
-        // The 7 days before the span: one accepted, one fixed.
-        pull({ number: 5, mergedAt: iso(NOW - 4 * DAY), updatedAt: iso(NOW - 4 * DAY) }),
-        pull({ number: 6, mergedAt: iso(NOW - 5 * DAY), updatedAt: iso(NOW - 5 * DAY) }),
-        // Older than that: not counted.
-        pull({ number: 7, mergedAt: iso(NOW - 11 * DAY), updatedAt: iso(NOW - 11 * DAY) }),
-      ],
-      revisions: { "acme/web#2": 1, "acme/web#6": 2 },
-      complete: true,
-    },
-    sessions: { sessions: [session(), session({ id: "s2", kind: "routine", status: "working", finished_at: null }), session({ id: "s3", parent_id: "s1" })], complete: true },
-  });
-  assert.equal(work.tasks.length, 3);
-  assert.deepEqual(work.counts, { accepted: 1, fixed: 1, finished: 1, dropped: 0 });
-  assert.deepEqual(work.rate, { value: 0.5, of: 2 });
-  assert.deepEqual(work.before, { value: 0.5, of: 2 });
-  assert.deepEqual(work.sources, [
-    { source: "code", count: 2 },
-    { source: "chat", count: 1 },
-  ]);
-  assert.equal(work.code, "read");
-  assert.equal(work.partial, false);
-});
-
-test("no trend when the 7 days before could not all be read, and none without Code", () => {
-  const partial = spanWork({ span: SPAN, slug: "acme", code: { pulls: [pull()], revisions: {}, complete: false }, sessions: null });
-  assert.equal(partial.before, null);
-  assert.equal(partial.partial, true);
-  assert.equal(partial.sessions, "unavailable");
-  const member = spanWork({ span: SPAN, slug: "acme", code: "no_access", sessions: { sessions: [session()], complete: true } });
-  assert.equal(member.code, "no_access");
-  assert.equal(member.rate, null);
-  assert.equal(member.tasks.every((t) => t.source !== "code"), true);
-});
-
-test("the trend is in whole points", () => {
-  assert.equal(trendLabel({ value: 0.89 }, { value: 0.83 }), "+6 pts vs the 7 days before");
-  assert.equal(trendLabel({ value: 0.5 }, { value: 0.75 }), "−25 pts vs the 7 days before");
-  assert.equal(trendLabel({ value: 0.5 }, { value: 0.5 }), "Same as the 7 days before");
-  assert.equal(trendLabel(null, { value: 0.5 }), null);
-});
-
-// --- People and agents ------------------------------------------------------------
+// --- People ------------------------------------------------------------
 
 const ANA = "user:usr_ana";
 const BO = "user:usr_bo";
@@ -422,9 +284,10 @@ const quietRepo = (repo_id: string): RepoDigest => ({
 
 /**
  * A day on a busy workspace: 3 people pushed 41 commits to 4 projects,
- * merged 5 pull requests and opened 2; agents (g1t and Margo) pushed 6,
- * opened 3 pull requests and reviewed 2; 2 production deploys went out;
- * 120 messages were sent, 15 of them Margo's; 7 docs were edited.
+ * merged 5 pull requests and opened 2; older agent rows (g1t and Margo)
+ * pushed 6, opened 3 pull requests and reviewed 2, and are not people;
+ * 2 production deploys went out; 120 messages were sent, 15 of them
+ * Margo's; 7 docs were edited.
  */
 function busyDay(): ActivityDigest {
   return {
@@ -497,21 +360,7 @@ const busyChat: ChatActivity = {
   ],
 };
 
-/** Seven agent tasks that settled well, and one that did not. */
-function busyWork() {
-  return spanWork({
-    span: SPAN,
-    slug: "acme",
-    code: {
-      pulls: [1, 2, 3, 4, 5].map((n) => pull({ number: n, mergedAt: iso(NOW - n * HOUR), updatedAt: iso(NOW - n * HOUR) })).concat(pull({ number: 6, status: "closed", mergedAt: null })),
-      revisions: { "acme/web#2": 1 },
-      complete: true,
-    },
-    sessions: { sessions: [session(), session({ id: "s2", kind: "routine" })], complete: true },
-  });
-}
-
-test("an actor is an agent when it is one of the workspace's agents or g1t; everyone else is a person", () => {
+test("an actor is not a person when it is g1t or an agent of older rows; everyone else is", () => {
   assert.equal(actorKind(MARGO), "agent");
   assert.equal(actorKind(G1T), "agent");
   assert.equal(actorKind("user:agt_01abc"), "agent", "an agent named by its own id under user: is still a robot");
@@ -523,7 +372,7 @@ test("an actor is an agent when it is one of the workspace's agents or g1t; ever
 });
 
 test("the digest: what people did, in lines with counts, and who", () => {
-  const digest = digestOf({ slug: "acme", repos: REPOS, activity: busyDay(), chat: busyChat, names: NAMES, work: busyWork(), code: true });
+  const digest = digestOf({ slug: "acme", repos: REPOS, activity: busyDay(), chat: busyChat, names: NAMES, code: true });
   assert.deepEqual(
     digest.people.lines.map((line) => [line.text, line.to]),
     [
@@ -540,64 +389,34 @@ test("the digest: what people did, in lines with counts, and who", () => {
   );
   // Faces: most active first, by name.
   assert.deepEqual(
-    digest.people.actors.map((actor) => [actor.name, actor.kind]),
-    [
-      ["ana", "person"],
-      ["bo", "person"],
-      ["cy", "person"],
-    ],
+    digest.people.actors.map((actor) => actor.name),
+    ["ana", "bo", "cy"],
   );
+  assert.deepEqual(digest.summary, { people: 3, commits: 41, merged: 5, said: 105, anything: true, peopleRead: true });
   assert.deepEqual(digest.missing, []);
   assert.equal(digest.partial, false);
 });
 
-test("the digest: what agents did, their tasks first, and g1t and the workspace's agents as agents", () => {
-  const digest = digestOf({ slug: "acme", repos: REPOS, activity: busyDay(), chat: busyChat, names: NAMES, work: busyWork(), code: true });
-  assert.deepEqual(
-    digest.agents.lines.map((line) => line.text),
-    [
-      "finished 7 tasks, 1 didn't finish",
-      "ran 2 sessions",
-      "pushed 6 commits to 2 projects",
-      "opened 3 pull requests",
-      "reviewed 2 pull requests",
-      "closed 1 issue",
-      "left 3 comments",
-      "published 1 package version",
-      "edited 2 docs",
-      "replied 15 times in chat",
-    ],
-  );
-  assert.deepEqual(
-    digest.agents.actors.map((actor) => [actor.name, actor.kind, actor.key]),
-    [
-      ["margo", "agent", MARGO],
-      ["g1t", "agent", G1T],
-    ],
-  );
-  assert.deepEqual(digest.summary, { people: 3, commits: 41, merged: 5, finished: 7, dropped: 1, said: 105, anything: true, peopleRead: true });
-});
-
 test("the digest says which part didn't answer, and counts what could be read", () => {
-  const noChat = digestOf({ slug: "acme", repos: REPOS, activity: busyDay(), chat: null, names: NAMES, work: busyWork(), code: true });
+  const noChat = digestOf({ slug: "acme", repos: REPOS, activity: busyDay(), chat: null, names: NAMES, code: true });
   assert.deepEqual(noChat.missing, ["Chat"]);
   assert.equal(noChat.people.lines.some((line) => line.key === "chat"), false);
-  const noCode = digestOf({ slug: "acme", repos: REPOS, activity: null, chat: busyChat, names: NAMES, work: null, code: true });
-  assert.deepEqual(noCode.missing, ["Code", "Agents"]);
+  const noCode = digestOf({ slug: "acme", repos: REPOS, activity: null, chat: busyChat, names: NAMES, code: true });
+  assert.deepEqual(noCode.missing, ["Code"]);
   assert.deepEqual(
     noCode.people.lines.map((line) => line.text),
     ["sent 105 messages in 5 conversations"],
   );
   assert.equal(noCode.summary.peopleRead, true);
   // Without Code access, events are read for artifacts only: no repositories, nothing missing.
-  const member = digestOf({ slug: "acme", repos: {}, activity: { ...busyDay(), repos: [] }, chat: busyChat, names: NAMES, work: busyWork(), code: false });
+  const member = digestOf({ slug: "acme", repos: {}, activity: { ...busyDay(), repos: [] }, chat: busyChat, names: NAMES, code: false });
   assert.deepEqual(member.missing, []);
   assert.deepEqual(
     member.people.lines.map((line) => line.key),
     ["docs", "chat"],
   );
   // A digest cut short says so.
-  const cut = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), complete: false }, chat: busyChat, names: NAMES, work: busyWork(), code: true });
+  const cut = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), complete: false }, chat: busyChat, names: NAMES, code: true });
   assert.equal(cut.partial, true);
   // Nobody named: a mirror's pushes are still commits.
   const mirror = digestOf({
@@ -606,7 +425,6 @@ test("the digest says which part didn't answer, and counts what could be read", 
     activity: { ...busyDay(), folios: null, repos: [{ ...quietRepo("rep_web"), pushes: { count: 2, commits: 7, branches: ["main"], by: [{ actor: "", count: 2, commits: 7 }], default_branch: { count: 2, commits: 7, by: [{ actor: "", count: 2, commits: 7 }], last_at: iso(NOW - HOUR) } } }] },
     chat: null,
     names: {},
-    work: null,
     code: true,
   });
   assert.deepEqual(
@@ -616,36 +434,33 @@ test("the digest says which part didn't answer, and counts what could be read", 
   assert.equal(mirror.summary.people, 0);
 });
 
-test("the sentence: people first, then the agents' tasks, then what landed; honest when quiet or unread", () => {
-  const digest = digestOf({ slug: "acme", repos: REPOS, activity: busyDay(), chat: busyChat, names: NAMES, work: busyWork(), code: true });
+test("the sentence: people first, then what landed; honest when quiet or unread", () => {
+  const digest = digestOf({ slug: "acme", repos: REPOS, activity: busyDay(), chat: busyChat, names: NAMES, code: true });
   assert.equal(
     spanSentence({ words: "Since Tuesday evening" }, digest, 12),
-    "Since Tuesday evening, 3 people pushed 41 commits and merged 5 changes, agents finished 7 tasks, and 12 changes landed.",
+    "Since Tuesday evening, 3 people pushed 41 commits and merged 5 changes and 12 changes landed.",
   );
-  const quiet = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), repos: [], folios: { created: [], edited: [], edited_count: 0 } }, chat: { ...busyChat, messages: 0, channels: 0, authors: [] }, names: {}, work: busyWork(), code: true });
-  quiet.summary.finished = 0;
-  quiet.summary.dropped = 0;
-  quiet.summary.anything = false;
+  const quiet = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), repos: [], folios: { created: [], edited: [], edited_count: 0 } }, chat: { ...busyChat, messages: 0, channels: 0, authors: [] }, names: {}, code: true });
   assert.equal(spanSentence({ words: "Since Tuesday evening" }, quiet, 0), "Quiet since Tuesday evening: nothing pushed, merged, deployed or said.");
   assert.equal(spanSentence({ words: "In the last 24 hours" }, quiet, 0), "Quiet in the last 24 hours: nothing pushed, merged, deployed or said.");
-  // Only agents' tasks and merges.
-  const agentsOnly = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), repos: [], folios: null }, chat: { ...busyChat, authors: [], messages: 0, channels: 0 }, names: {}, work: busyWork(), code: true });
-  assert.equal(spanSentence({ words: "Since this morning" }, agentsOnly, 5), "Since this morning, agents finished 7 tasks and 5 changes landed.");
+  // Only merges.
+  const mergesOnly = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), repos: [], folios: null }, chat: { ...busyChat, authors: [], messages: 0, channels: 0 }, names: {}, code: true });
+  assert.equal(spanSentence({ words: "Since this morning" }, mergesOnly, 5), "Since this morning, 5 changes landed.");
   // People only talked.
-  const talked = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), repos: [], folios: null }, chat: busyChat, names: NAMES, work: null, code: true });
+  const talked = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), repos: [], folios: null }, chat: busyChat, names: NAMES, code: true });
   assert.equal(spanSentence({ words: "Since an hour ago" }, talked, 0), "Since an hour ago, 3 people sent 105 messages.");
   // Neither events nor chat answered.
-  const unread = digestOf({ slug: "acme", repos: REPOS, activity: null, chat: null, names: {}, work: busyWork(), code: true });
-  assert.equal(spanSentence({ words: "Since this morning" }, unread, 5), "Since this morning, agents finished 7 tasks and 5 changes landed; what people did couldn't be read.");
-  const nothingRead = digestOf({ slug: "acme", repos: REPOS, activity: null, chat: null, names: {}, work: null, code: true });
-  assert.equal(spanSentence({ words: "Since this morning" }, nothingRead, 0), "Since this morning, what people did couldn't be read, and no agent task settled.");
+  const unread = digestOf({ slug: "acme", repos: REPOS, activity: null, chat: null, names: {}, code: true });
+  assert.equal(spanSentence({ words: "Since this morning" }, unread, 5), "Since this morning, 5 changes landed; what people did couldn't be read.");
+  const nothingRead = digestOf({ slug: "acme", repos: REPOS, activity: null, chat: null, names: {}, code: true });
+  assert.equal(spanSentence({ words: "Since this morning" }, nothingRead, 0), "Since this morning, what people did couldn't be read.");
   assert.equal(spanSentence({ words: "Since this morning" }, null, null), "Since this morning, what happened couldn't be read.");
   assert.equal(waitingSentence(0), "Nothing needs you right now.");
   assert.equal(waitingSentence(1), "1 thing needs you.");
   assert.equal(waitingSentence(8), "8 things need you.");
 });
 
-test("what landed: every merge in the span, a person's or an agent's, newest first", () => {
+test("what landed: every merge in the span, newest first, g1t's older ones as @g1t", () => {
   const merged = landedIn(
     [
       pull({ number: 1, mergedAt: iso(NOW - 2 * DAY), mergedBy: "bo" }),
@@ -655,30 +470,30 @@ test("what landed: every merge in the span, a person's or an agent's, newest fir
     ],
     SPAN,
   );
-  assert.deepEqual(merged.map((change) => [change.kind, change.title, change.detail, change.agent]), [
-    ["merge", "Fix the flaky test", "web#2 · by bo", false],
-    ["merge", "Fix the flaky test", "web#1 · by @g1t, merged by bo", true],
+  assert.deepEqual(merged.map((change) => [change.kind, change.title, change.detail]), [
+    ["merge", "Fix the flaky test", "web#2 · by bo"],
+    ["merge", "Fix the flaky test", "web#1 · by @g1t, merged by bo"],
   ]);
 });
 
 test("what landed, besides merges: direct pushes, releases, packages and production builds, newest first", () => {
   const fromActivity = landedFromActivity(busyDay(), REPOS, NAMES, "acme");
   assert.deepEqual(
-    fromActivity.map((change) => [change.kind, change.title, change.detail, change.to, change.agent]),
+    fromActivity.map((change) => [change.kind, change.title, change.detail, change.to]),
     [
-      ["push", "9 commits pushed to main", "web · 3 pushes by ana", "/acme/web/activity", false],
-      ["release", "v1.4.0 · Autumn", "web · released by ana", "/acme/web/releases/tag/v1.4.0", false],
-      ["push", "8 commits pushed to main", "api · 5 pushes by cy", "/acme/api/activity", false],
-      ["package", "api 1.4.0", "container package · published by @g1t", "/acme/-/packages", true],
-      ["push", "4 commits pushed to trunk", "cli · 3 pushes by ana and @margo", "/acme/cli/activity", false],
+      ["push", "9 commits pushed to main", "web · 3 pushes by ana", "/acme/web/activity"],
+      ["release", "v1.4.0 · Autumn", "web · released by ana", "/acme/web/releases/tag/v1.4.0"],
+      ["push", "8 commits pushed to main", "api · 5 pushes by cy", "/acme/api/activity"],
+      ["package", "api 1.4.0", "container package · published by @g1t", "/acme/-/packages"],
+      ["push", "4 commits pushed to trunk", "cli · 3 pushes by ana and @margo", "/acme/cli/activity"],
     ],
   );
   const builds = landedDeploys([
-    { key: "deploy:site:d1", project: "site", kind: "production", outcome: "live", commit: "abcdef1", branch: null, at: NOW - HOUR, to: "/acme/site/deployments/d1", by: "@g1t", agent: true },
-    { key: "deploy:site:d2", project: "site", kind: "preview", outcome: "live", commit: "abcdef2", branch: "fix", at: NOW - HOUR, to: "/acme/site/deployments/d2", by: "bo", agent: false },
-    { key: "deploy:site:d3", project: "site", kind: "production", outcome: "failed", commit: "abcdef3", branch: null, at: NOW - HOUR, to: "/acme/site/deployments/d3", by: "bo", agent: false },
+    { key: "deploy:site:d1", project: "site", kind: "production", outcome: "live", commit: "abcdef1", branch: null, at: NOW - HOUR, to: "/acme/site/deployments/d1", by: "@g1t" },
+    { key: "deploy:site:d2", project: "site", kind: "preview", outcome: "live", commit: "abcdef2", branch: "fix", at: NOW - HOUR, to: "/acme/site/deployments/d2", by: "bo" },
+    { key: "deploy:site:d3", project: "site", kind: "production", outcome: "failed", commit: "abcdef3", branch: null, at: NOW - HOUR, to: "/acme/site/deployments/d3", by: "bo" },
   ]);
-  assert.deepEqual(builds.map((change) => [change.kind, change.title, change.agent]), [["deploy", "Production of site went live", true]]);
+  assert.deepEqual(builds.map((change) => [change.kind, change.title]), [["deploy", "Production of site went live"]]);
   const all = landed([fromActivity, builds]);
   assert.deepEqual(
     all.map((change) => change.key),
@@ -729,27 +544,12 @@ test("builds that finished in the span: live or failed, never skipped", () => {
   ]);
   assert.equal(rows[0]!.to, "/acme/site/deployments/d1");
   assert.equal(rows[0]!.commit, "abcdef1");
-  // The maker is named, never shown as an id; an agent's by its handle; an id identity doesn't know as someone.
+  // The maker is named, never shown as an id; an older agent's by its handle; an id identity doesn't know as someone.
   assert.equal(rows[0]!.by, "bo");
-  assert.equal(rows[0]!.agent, false);
   const unknown = deploysIn([{ slug: "site", deployments: [deploy({ createdBy: "usr_zzz" })] }], "acme", SPAN);
   assert.equal(unknown[0]!.by, "someone");
   const robot = deploysIn([{ slug: "site", deployments: [deploy({ createdBy: "agt_01x" })] }], "acme", SPAN, { "user:agt_01x": "otto" });
-  assert.deepEqual([robot[0]!.by, robot[0]!.agent], ["@otto", true]);
-});
-
-const request = (over: Partial<InstallRequest>): InstallRequest => ({
-  id: "r1",
-  listing: "integration:sentry",
-  kind: "integration",
-  name: "Sentry",
-  note: "For the error alerts",
-  requested_by: "bo",
-  requested_at: iso(NOW - 2 * DAY),
-  status: "open",
-  resolved_by: null,
-  resolved_at: null,
-  ...over,
+  assert.equal(robot[0]!.by, "@otto");
 });
 
 const memory = (over: Partial<Memory>): Memory => ({
@@ -768,52 +568,18 @@ const memory = (over: Partial<Memory>): Memory => ({
   ...over,
 });
 
-test("decisions: kept decisions in memory and requests answered, in the span", () => {
+test("decisions: kept decisions in memory, in the span", () => {
   const rows = decisionsIn(
-    {
-      memories: [memory({}), memory({ id: "m2", kind: "fact" }), memory({ id: "m3", status: "candidate" }), memory({ id: "m4", createdAt: iso(NOW - 6 * DAY) })],
-      requests: [request({}), request({ id: "r2", status: "declined", resolved_by: "ada", resolved_at: iso(NOW - HOUR) })],
-    },
+    [memory({}), memory({ id: "m2", kind: "fact" }), memory({ id: "m3", status: "candidate" }), memory({ id: "m4", createdAt: iso(NOW - 6 * DAY) })],
     "acme",
     SPAN,
   );
-  assert.deepEqual(rows.map((row) => row.key), ["request:r2", "memory:m1"]);
-  assert.equal(rows[0]!.text, "Turned down Sentry, which bo asked for");
+  assert.deepEqual(rows.map((row) => row.key), ["memory:m1"]);
+  assert.equal(rows[0]!.to, "/acme/-/memory");
+  assert.deepEqual(decisionsIn(null, "acme", SPAN), []);
 });
 
-test("an open install request needs an owner; answered ones don't", () => {
-  assert.equal(installRequestRow(request({}), "acme")?.action.to, "/acme/-/customize/requests");
-  assert.equal(installRequestRow(request({ status: "done" }), "acme"), null);
-  const base = { slug: "acme", code: true, codeNeeds: [], capped: [], agents: [], canManage: true, notifications: [], chat: [] };
-  assert.equal(attention({ ...base, requests: [request({})] }).rows[0]?.kind, "install_request");
-  assert.equal(attention({ ...base, requests: null }).rows.length, 0);
-});
-
-test("the workspace's agent budget used up comes first, for those who may raise it", () => {
-  assert.equal(limitRow({ alert: 90, spentMicros: 1, since: NOW }, "acme"), null);
-  const limit = { alert: 100, spentMicros: 500_000_000, since: NOW - DAY };
-  assert.equal(limitRow(limit, "acme")?.action.to, "/acme/-/spend");
-  const base = { slug: "acme", code: true, codeNeeds: [need({})], capped: [], agents: [], notifications: [], chat: [], limit };
-  assert.equal(attention({ ...base, canManage: true }).start?.row.kind, "limit");
-  assert.equal(attention({ ...base, canManage: false }).rows.some((r) => r.kind === "limit"), false);
-});
-
-test("running now: live root sessions, agents' changes and builds going; a capped session is under Needs you", () => {
-  const sessions = runningSessions(
-    [
-      session({ id: "a", status: "working", finished_at: null, created_at: iso(NOW - HOUR) }),
-      session({ id: "b", status: "needs_approval", finished_at: null }),
-      session({ id: "c", status: "queued", finished_at: null, parent_id: "a" }),
-      session({ id: "d", status: "done" }),
-      session({ id: "e", status: "queued", finished_at: null, visible: false, created_at: iso(NOW - 2 * HOUR) }),
-    ],
-    "acme",
-  );
-  assert.deepEqual(sessions.map((row) => [row.key, row.status]), [
-    ["session:a", "Working"],
-    ["session:e", "Queued"],
-  ]);
-  assert.equal(sessions[1]!.title, "A session in a conversation you're not in");
+test("running now: workflow runs and builds going", () => {
   const builds = runningDeploys(
     [
       { slug: "site", enabled: true, production: null, previews: 0, latest: deploy({ status: "building", finishedAt: null }) },
@@ -854,8 +620,8 @@ test("running now: live root sessions, agents' changes and builds going; a cappe
       ["workflow:acme/web:run_4", "CI: Fix the flaky test", "acme/web main · by ana", "Needs approval", "/acme/web/actions/runs/run_4"],
     ],
   );
-  // Longest-going first within a kind: sessions, then changes, then workflow runs, then builds.
-  assert.deepEqual(running([builds, workflows.slice(0, 1), sessions]).map((row) => row.key), ["session:e", "session:a", "workflow:acme/web:run_1", "deploy:site:d1"]);
+  // Longest-going first within a kind: workflow runs, then builds.
+  assert.deepEqual(running([builds, workflows.slice(0, 1)]).map((row) => row.key), ["workflow:acme/web:run_1", "deploy:site:d1"]);
 });
 
 
@@ -868,8 +634,8 @@ test("the span's months: one, or the ones it crosses", () => {
 test("spend in the span: the UTC days it covers across months, at price, without money in", () => {
   const september = {
     groups: [
-      { key: "2026-09-29", label: "", chargedMicros: 0, lines: [{ kind: "Agent runs", count: 2, chargedMicros: 1_000_000, costMicros: 0 }] },
-      { key: "2026-09-20", label: "", chargedMicros: 0, lines: [{ kind: "Agent runs", count: 9, chargedMicros: 9_000_000, costMicros: 0 }] },
+      { key: "2026-09-29", label: "", chargedMicros: 0, lines: [{ kind: "Workflow minutes", count: 2, chargedMicros: 1_000_000, costMicros: 0 }] },
+      { key: "2026-09-20", label: "", chargedMicros: 0, lines: [{ kind: "Workflow minutes", count: 9, chargedMicros: 9_000_000, costMicros: 0 }] },
     ],
     totals: { chargedMicros: 10_000_000, paidMicros: 0, costMicros: 0, entries: 2 },
   };
@@ -880,7 +646,7 @@ test("spend in the span: the UTC days it covers across months, at price, without
         label: "2026-10-09",
         chargedMicros: 0,
         lines: [
-          { kind: "Agent runs", count: 12, chargedMicros: 3_000_000, costMicros: 2_500_000, priceMicros: 4_000_000 },
+          { kind: "Workflow minutes", count: 12, chargedMicros: 3_000_000, costMicros: 2_500_000, priceMicros: 4_000_000 },
           { kind: "Sandbox time", count: 12, chargedMicros: 600_000, costMicros: 500_000 },
           { kind: "Payments", count: 1, chargedMicros: -50_000_000, costMicros: 0, priceMicros: 0 },
         ],
@@ -892,7 +658,7 @@ test("spend in the span: the UTC days it covers across months, at price, without
   assert.deepEqual([spend.from, spend.to], ["2026-09-29", "2026-10-09"]);
   assert.equal(spend.totalMicros, 5_600_000);
   assert.deepEqual(spend.lines.map((l) => [l.kind, l.micros, l.count]), [
-    ["Agent runs", 5_000_000, 14],
+    ["Workflow minutes", 5_000_000, 14],
     ["Sandbox time", 600_000, 12],
   ]);
   // The month so far is billing's usage report, the top bar's figure, not the statement: it carries what is not yet closed.

@@ -1,11 +1,11 @@
-import { ArrowRight, Box, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { ArrowRight, Box, ShieldCheck, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, data } from "react-router";
 
 import type { Route } from "./+types/workspace-overview";
 
 import { UsageCard } from "../../components/usage-card";
-import { identity, workspaceAgents } from "../../lib/services.server";
+import { identity } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { usageFor } from "../../lib/workspace-usage.server";
 import { workspaceProjects } from "../../lib/workspace-projects.server";
@@ -22,8 +22,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 const MAX_FACES = 10;
 
 /**
- * The workspace at a glance, for every member: who is in it, its projects
- * and agents, and the month's usage against its plan. Each part is left out
+ * The workspace at a glance, for every member: who is in it, its
+ * projects, and the month's usage against its plan. Each part is left out
  * when its service does not answer.
  */
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -31,11 +31,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const slug = params.owner.toLowerCase();
   const role = roleIn(viewer, slug);
   if (!role) throw data(null, { status: 404 });
-  const [members, usage, projects, agents] = await Promise.all([
+  const [members, usage, projects] = await Promise.all([
     identity.listMembers(slug, viewer).catch(() => null),
     usageFor(slug, viewer),
     workspaceProjects(slug, viewer).catch(() => null),
-    workspaceAgents.list(slug, viewer!).catch(() => null),
   ]);
   return {
     slug,
@@ -43,7 +42,6 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     members: members?.ok ? members.value : null,
     usage,
     projects: projects?.ok ? projects.value.length : null,
-    agents: agents?.ok ? agents.value.filter((agent) => !agent.archived_at).length : null,
   };
 }
 
@@ -63,12 +61,11 @@ function Tile({ icon, label, value, to, action }: { icon: ReactNode; label: stri
 }
 
 export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) {
-  const { slug, role, members, usage, projects, agents } = loaderData;
+  const { slug, role, members, usage, projects } = loaderData;
   return (
     <div className="space-y-8">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Tile icon={<Users size={12} />} label="Members" value={members ? String(members.length) : "—"} to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`} action={role === "owner" ? "Manage people" : "See everyone"} />
-        <Tile icon={<Sparkles size={12} />} label="Agents" value={agents == null ? "—" : String(agents)} to={`/${slug}/-/agents`} action="Open Agents" />
         <Tile icon={<Box size={12} />} label="Projects" value={projects == null ? "—" : String(projects)} to={`/${slug}/-/projects`} action="Open Code" />
       </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -93,7 +90,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                 Policies
               </h2>
               <p className="mt-1.5 text-sm text-muted">
-                What agents may reach, run and spend, the rules every repository follows, and how the workspace&apos;s security is set up.
+                What sandboxes may reach, the rules every repository follows, and how the workspace&apos;s security is set up.
               </p>
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                 <Link to={`/${slug}/-/guardrails`} className="text-accent hover:underline">

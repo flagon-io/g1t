@@ -54,13 +54,11 @@ export type RunnersPageData = RunnersData & {
   cost: RunnerCost | null;
   /** A minute on g1t's cloud, from the price book; null when it has none. */
   prices: CloudPrice[] | null;
-  /** Agent runs at once on g1t's cloud the plan allows; null for no cap, or unknown. */
-  agentCap: number | null;
   /** People's computers with the desktop app, as each app last said; null when the actions service did not answer. */
   desktops: DesktopRunner[] | null;
 };
 
-/** Active agent runs read: the work service's most in one list. */
+/** Active sandbox runs read: the work service's most in one list. */
 const RUN_PAGE = 200;
 
 const warn = (what: string) => (error: unknown) => {
@@ -77,7 +75,7 @@ const warn = (what: string) => (error: unknown) => {
 export async function loadRunnersPage(workspace: string, actor: User, repositories: string[] = [], now = new Date()): Promise<RunnersPageData> {
   const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
   const until = now.toISOString().slice(0, 10);
-  const [base, activity, runs, report, book, entitlements, desktops] = await Promise.all([
+  const [base, activity, runs, report, book, desktops] = await Promise.all([
     loadRunners({ workspace }, actor, repositories),
     runners
       .activity(actor, workspace)
@@ -86,13 +84,12 @@ export async function loadRunnersPage(workspace: string, actor: User, repositori
     agents
       .listRuns(actor, { workspace, active: true, limit: RUN_PAGE })
       .then((result) => (result.ok ? result.value : null))
-      .catch(warn("agent runs")),
+      .catch(warn("sandbox runs")),
     billing
       .usageReport(workspace, actor, { from, until })
       .then((result) => (result.ok ? result.value : null))
       .catch(warn("usage report")),
     billing.prices().catch(warn("prices")),
-    billing.entitlements(workspace).catch(warn("entitlements")),
     runners
       .desktops(actor, workspace)
       .then((result) => (result.ok ? result.value : null))
@@ -104,7 +101,6 @@ export async function loadRunnersPage(workspace: string, actor: User, repositori
     waiting: ownWaiting(activity),
     cost: runnerCost(report),
     prices: cloudPrices(book?.prices ?? null),
-    agentCap: entitlements && entitlements.maxConcurrentAgents > 0 ? entitlements.maxConcurrentAgents : null,
     desktops,
   };
 }

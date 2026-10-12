@@ -14,9 +14,9 @@ export function meta(args: Route.MetaArgs) {
   const plan = args.loaderData?.book?.plans?.find((p) => p.feature === "plan") ?? DEFAULT_PLAN;
   return [
     ...page(args, {
-      title: `g1t pricing - $${plan.monthlyCents / 100} per workspace, never per seat, models at cost`,
+      title: `g1t pricing - $${plan.monthlyCents / 100} per workspace, never per seat, usage at cost plus 20%`,
       description:
-        "People chat free on every plan, and the forge is free. One plan, $20 a month per workspace with $10 of usage included. Models at the provider's price, plus a flat agent rate for what g1t runs around every model call; everything else g1t runs at cost plus 20%. Your own runners are free. No seats, ever.",
+        "People chat free on every plan, and the forge is free. One plan, $20 a month per workspace with $10 of usage included. Everything g1t runs is billed at cost plus 20%. Your own runners are free. No seats, ever.",
     }),
     application(plan.monthlyCents / 100),
     faqPage(FAQ),
@@ -46,7 +46,11 @@ function count(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-/** Price-book rows the table shows in rows of their own, or not at all. */
+/**
+ * Price-book rows the table shows in rows of their own, or not at all. The
+ * agent and model meters are retired: a price book that still lists them
+ * leaves them off the page.
+ */
 const SHOWN_APART = new Set([
   "app_month",
   "agent_models",
@@ -62,13 +66,9 @@ const SHOWN_APART = new Set([
   "security_activation",
 ]);
 
-/** How each kind of token counts toward the agent rate, from the price book: `input ×1, …`. */
-function tokenWeights(prices: { meter: string; costMicros: number }[]): string {
-  const weight = (kind: string) => {
-    const row = prices.find((p) => p.meter === `agent_token_weight_${kind}`);
-    return row ? Number((row.costMicros / 1_000_000).toFixed(3)) : 1;
-  };
-  return `input ×${weight("input")}, output ×${weight("output")}, cache reads ×${weight("cache_read")}, cache writes ×${weight("cache_write")}`;
+/** A retired meter: agents' models and tokens, and the AI Gateway. */
+function retired(meter: string): boolean {
+  return meter.startsWith("agent_") || meter === "gateway_models";
 }
 
 /** What the page says when billing cannot be reached: the published defaults. */
@@ -91,14 +91,14 @@ const DEFAULT_PLAN: FeaturePlan = {
   title: "g1t",
   monthlyCents: 2000,
   includes: [
-    "$10 of usage each month, used first: models at the provider's price with the g1t agent rate, everything else g1t runs at cost plus 20%",
+    "$10 of usage each month, used first: everything g1t runs at cost plus 20%",
     "Everyone in the workspace at one price, never per person",
     "Unlimited projects, previews and repositories",
-    "Agents, checks, workflows, the merge queue, deployments, semantic search, and Security and quality on private repositories",
+    "Checks, workflows, the merge queue, deployments, semantic search, and Security and quality on private repositories",
     "Usage past $10 is charged the same way, up to your spend limit",
   ],
   overage:
-    "Everything g1t runs is metered from the first unit at what it costs g1t plus 20%. Models are billed at the provider's price, with no markup, plus the g1t agent rate on their tokens, on your own model keys too. Your own runners cost nothing. Unused included usage does not roll over.",
+    "Everything g1t runs is metered from the first unit at what it costs g1t plus 20%. Your own runners cost nothing. Unused included usage does not roll over.",
 };
 
 /** How each part of a workspace is charged. */
@@ -109,27 +109,14 @@ const WORKSPACE_CHARGES: { what: string; how: string; soon?: boolean }[] = [
   },
   { what: "Docs", how: "Included on every plan, like chat: pages, live editing and history.", soon: true },
   {
-    what: "An agent replying in chat",
-    how: "The model provider's price, with no markup, plus the g1t agent rate on the tokens it used. Paid from the plan's included usage, then AI credit, and counted against that agent's budget.",
-  },
-  {
-    what: "An agent working on code",
-    how: "The same model price and agent rate, plus sandbox time at cost plus 20%. On your own runner, that time is free.",
-  },
-  {
-    what: "An agent on your own provider",
-    how: "Your provider bills you for the model directly. g1t charges the agent rate, for passing its calls through g1t's model gateway with your key kept secret.",
-  },
-  {
-    what: "How hard an agent works",
-    how: "Each agent has an effort setting, Auto, Low, Medium, High or Max, shown with what a typical task has cost at each level. Lower effort starts on a cheaper model, reasons less and takes fewer steps.",
+    what: "Your coding agents",
+    how: "Nothing from g1t. Coding agents you already use connect through the MCP server and the API with your access tokens; their models are billed by whoever runs them. What they start on g1t, such as checks and workflows, is charged like anyone else's.",
   },
   {
     what: "Files in chat and Docs",
     how: "The storage meter, at cost plus 20%, past what is free.",
     soon: true,
   },
-  { what: "An idle agent", how: "Nothing. An agent costs money only while it is answering or working." },
 ];
 
 const FAQ: { q: string; a: string }[] = [
@@ -138,32 +125,12 @@ const FAQ: { q: string; a: string }[] = [
     a: "No. Messages, channels, threads and live delivery are included on every plan, with no per-person price and no limit on history. A workspace on the plan can add as many people as it likes at the same price.",
   },
   {
-    q: "Who pays for an agent's reply?",
-    a: "The workspace the agent belongs to. Each reply is charged as the model's price plus the agent rate, and counts against that agent's monthly budget, whoever asked it.",
-  },
-  {
-    q: "What does an agent cost when nobody talks to it?",
-    a: "Nothing. Agents have no monthly fee. They are charged only for replies and work, so an agent you made and forgot costs nothing.",
-  },
-  {
-    q: "How do I stop an agent from spending too much?",
-    a: "Give it a monthly budget and a cap per task. At its budget it stops taking new work and says so in the channel. The workspace's spend limit and the per-run caps still apply above it.",
-  },
-  {
-    q: "How do I spend less without worse work?",
-    a: "Lower an agent's effort, or let Spend suggest it. Every week g1t checks each agent's finished sessions: when a cheaper effort level was accepted as often on the same agent's work, Spend shows the suggestion with the numbers and an Apply button. With too little history, it says so instead.",
-  },
-  {
-    q: "Why is there an agent rate on my own model keys?",
-    a: "Your agents' calls still go through g1t: its model gateway keeps your key out of every sandbox, routes each call, adds the context and passes it to your provider. The agent rate pays for running that. Your provider bills the model itself.",
-  },
-  {
-    q: "Can agents use our own model provider?",
-    a: "Yes. Connect a provider in Integrations and limit an agent to it. The provider bills you for the model; g1t charges the agent rate for your own model key only.",
+    q: "Does using my coding agent with g1t cost extra?",
+    a: "No. Claude Code, Codex, Cursor and other coding agents connect through g1t's MCP server and API with your access tokens, at no charge. Their models are billed by whoever runs them. What they start on g1t, such as checks and workflows, is charged like anything else.",
   },
   {
     q: "Does adding the whole company cost more?",
-    a: "No. There are no seats. People who only chat, and ask agents questions, cost nothing until their questions use an agent; then the agent's reply is charged like any other.",
+    a: "No. There are no seats. People who only chat cost nothing.",
   },
   {
     q: "What does moving from GitHub cost, and can we leave again?",
@@ -181,23 +148,23 @@ const ENTERPRISE_MAIL = "mailto:hey@flagon.io?subject=Enterprise%20billing%20for
 const HOW = [
   {
     title: "Our cost, passed through",
-    body: "Every sandbox second, build and app request costs g1t money at Cloudflare. Each is metered and charged at that cost plus 20%, from the first second and the first request. Models are charged at the provider's price with no markup, plus a flat agent rate per million tokens for what g1t runs around every model call, from prepaid AI credit. Use a little, pay a little.",
+    body: "Every sandbox second, build and app request costs g1t money at Cloudflare. Each is metered and charged at that cost plus 20%, from the first second and the first request. Use a little, pay a little.",
   },
   {
     title: "Prices follow costs, by themselves",
-    body: "Model runs are charged at what Cloudflare's AI Gateway priced each request at, so a provider's price change reaches you the same day. Every day, sandbox, build and app costs are checked against what Cloudflare billed g1t; when one moves, its price moves with it, and the change is listed below. The rest are Cloudflare's published prices, marked as such.",
+    body: "Every day, sandbox, build and app costs are checked against what Cloudflare billed g1t; when one moves, its price moves with it, and the change is listed below. The rest are Cloudflare's published prices, marked as such.",
   },
   {
     title: "The 20% is the overhead",
-    body: "It pays for running g1t and for building and keeping up the features you use. The same 20% on everything but models, whose overhead is the agent rate, and nothing bundled in.",
+    body: "It pays for running g1t and for building and keeping up the features you use. The same 20% on everything, and nothing bundled in.",
   },
   {
     title: "Your own runners are free",
-    body: "Agents, checks and workflows on your own hardware cost nothing here. On your own model keys, your provider bills the model and g1t charges only the agent rate.",
+    body: "Checks, workflows and the merge queue on your own hardware cost nothing here.",
   },
   {
     title: "No seats, ever",
-    body: "Once a workspace is on the plan, add as many people and agents as you like. It pays one flat price for the plan, and for what it uses past what the plan includes.",
+    body: "Once a workspace is on the plan, add as many people as you like. It pays one flat price for the plan, and for what it uses past what the plan includes.",
   },
   {
     title: "Prices exclude tax",
@@ -226,20 +193,14 @@ function rows(tier: Required<FreeTier>): Row[] {
       plan: "Included",
       note: "Pages, live editing and history, once Docs ships.",
     },
-    {
-      what: "Workspace agents",
-      free: "After a card check, from the trial",
-      plan: "From the plan's included usage, then AI credit, under each agent's budget",
-      note: "Replies and work are charged as model price plus the g1t agent rate. An idle agent costs nothing.",
-    },
-    {
+      {
       what: "The forge",
       free: "Free",
       plan: "Included",
       note: "Public and private repositories, issues, pull requests, reviews, protected branches, code owners, search and Explore.",
     },
     {
-      what: "Agents, checks, workflows, merge queue",
+      what: "Checks, workflows, merge queue",
       free: "After a card check: the trial, and the open-source pool for checks, workflows and the merge queue on public repositories",
       plan: "From the plan's included usage, then at cost plus 20%",
     },
@@ -315,44 +276,23 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
     .filter((p) => !SHOWN_APART.has(p.meter) && p.meter !== "security_activation" && p.costMicros > 0)
     .map((p) => p.markupPercent);
   const markup = runMarkups.length && Math.min(...runMarkups) === Math.max(...runMarkups) ? `${runMarkups[0]}%` : "20%";
-  const modelMarkup = book?.modelMarginPercent ?? 0;
-  const agentRate = book?.prices.find((p) => p.meter === "agent_tokens");
-  const agentRateComing = book?.changes.find((c) => c.meter === "agent_tokens" && c.effectiveAt);
-  const agentRateLine =
-    agentRate && agentRate.priceMicros > 0
-      ? `${money(agentRate.priceMicros)} per million tokens`
-      : agentRateComing
-        ? `$0, and ${money(agentRateComing.newCostMicros)} per million tokens from ${agentRateComing.effectiveAt!.slice(0, 10)}`
-        : "as listed under Usage below";
-  // The summary tile: the rate in force, or the one coming and its day ("from Oct 22").
-  const comingDay = agentRateComing
-    ? new Date(agentRateComing.effectiveAt!).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
-    : null;
-  const agentRateTile =
-    agentRate && agentRate.priceMicros > 0
-      ? `${money(agentRate.priceMicros)} per million tokens`
-      : agentRateComing
-        ? `${money(agentRateComing.newCostMicros)} per million tokens from ${comingDay}`
-        : "Per million tokens";
+  // Price changes, without the retired agent and model meters.
+  const changes = (book?.changes ?? []).filter((change) => !retired(change.meter));
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
       <p className="text-sm font-medium text-accent">Pricing</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Models at cost. What g1t runs, at cost plus {markup}.</h1>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">What g1t runs, at cost plus {markup}.</h1>
       <p className="mt-3 max-w-2xl text-muted">
-        People chatting and the forge are free for everyone. Models are billed at the provider&apos;s price
-        {modelMarkup ? ` plus ${modelMarkup}%` : ", with no markup"}. The agent rate pays for what g1t runs around every model
-        call: the model gateway, secrets, routing, context and pass-through to your own provider, so it applies on your own
-        keys too. Everything else g1t runs is billed at what it costs g1t plus {markup}. Your own runners are free, and there
-        are no seats. The numbers on this page are the live price book g1t charges from. Prices exclude tax, which is added
+        People chatting and the forge are free for everyone. Everything g1t runs is billed at what it costs g1t plus{" "}
+        {markup}. Your own runners are free, connecting your coding agents costs nothing, and there are no seats. The numbers on this page are the live price book g1t charges from. Prices exclude tax, which is added
         where it applies.
       </p>
-      <Card asChild tone="plain" className="mt-6 grid gap-px overflow-hidden bg-line text-sm sm:grid-cols-2 lg:grid-cols-5">
+      <Card asChild tone="plain" className="mt-6 grid gap-px overflow-hidden bg-line text-sm sm:grid-cols-2 lg:grid-cols-4">
         <ul>
           {[
-            ["Models", modelMarkup ? `Provider price + ${modelMarkup}%` : "The provider's price", "No markup on tokens"],
-            ["Agent rate", agentRateTile, "Gateway, secrets, routing and pass-through, on your own keys too"],
-            ["Everything else g1t runs", `At cost + ${markup}`, "Sandboxes, builds, hosting, storage, search and scans"],
-            ["Your own runners", "Free", "Agents, checks and workflows on your hardware"],
+            ["What g1t runs", `At cost + ${markup}`, "Sandboxes, builds, hosting, storage, search and scans"],
+            ["Your own runners", "Free", "Checks and workflows on your hardware"],
+            ["Your coding agents", "Free to connect", "Through the MCP server and the API"],
             ["People", "No seats", "Everyone in the workspace at one price"],
           ].map(([what, price, about]) => (
             <li key={what} className="bg-surface px-4 py-3">
@@ -385,8 +325,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           </p>
         </div>
         <p className="mt-2 text-sm text-muted">
-          The plan for a team whose agents do real work: unlimited members, agents, checks, the merge queue and
-          deployments.
+          The plan for a team that ships: unlimited members, checks, the merge queue and deployments.
         </p>
         <p className="mt-3 text-sm text-fg-soft">
           One price for the whole team: a 10-person team pays ${price} a month, not ${price} a person.
@@ -406,7 +345,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <div>
             <p className="font-medium">Where the ${price} goes</p>
             <p className="mt-1 text-muted">
-              $10 comes back to you as usage: agents, sandboxes, builds and deployments at cost plus 20%, used before
+              $10 comes back to you as usage: sandboxes, builds and deployments at cost plus 20%, used before
               anything else. The other $10 pays for running g1t, the free forge for everyone, and the people building it.
             </p>
           </div>
@@ -423,10 +362,9 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
       </section>
 
       <section id="workspace" className="mt-14">
-        <h2 className="text-xl font-semibold tracking-tight">Chat, Docs and agents</h2>
+        <h2 className="text-xl font-semibold tracking-tight">Chat, Docs and your coding agents</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted">
-          People talking costs g1t very little, so it is included. Agents use models, so they are charged for what they
-          use, to the agent that used it.
+          People talking costs g1t very little, so it is included. So is connecting the coding agents you already use.
         </p>
         <Card tone="plain" className="mt-4 overflow-hidden">
           <dl className="divide-y divide-line text-sm">
@@ -443,48 +381,6 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             ))}
           </dl>
         </Card>
-        <p className="mt-3 text-sm text-muted">
-          The agent rate today: {agentRateLine}. A chat reply is usually a few thousand tokens on a fast model, so most
-          replies cost a fraction of a cent. See{" "}
-          <a href="https://docs.g1t.sh/guides/agents/#what-an-agent-costs" className="text-accent hover:underline">
-            what an agent costs
-          </a>
-          .
-        </p>
-      </section>
-
-      <section id="spend-less" className="mt-14">
-        <h2 className="text-xl font-semibold tracking-tight">Help spending less</h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">Prices near cost are half of it. The other half is not spending more than the work needs.</p>
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <Card asChild className="p-5">
-            <section>
-              <h3 className="font-medium">Effort per agent</h3>
-              <p className="mt-1.5 text-sm text-muted">
-                Auto, Low, Medium, High or Max: how hard an agent works, from the model tier it starts on to how hard it reasons and how
-                many steps a session takes. Each level shows what a typical task has cost that agent.
-              </p>
-            </section>
-          </Card>
-          <Card asChild className="p-5">
-            <section>
-              <h3 className="font-medium">Suggestions checked against your work</h3>
-              <p className="mt-1.5 text-sm text-muted">
-                Every week, each agent&apos;s finished sessions are checked. A cheaper level is suggested only when its work was accepted
-                as often, with the numbers it rests on and an Apply button. With too little history, Spend says so instead.
-              </p>
-            </section>
-          </Card>
-          <Card asChild className="p-5">
-            <section>
-              <h3 className="font-medium">Budgets that hold</h3>
-              <p className="mt-1.5 text-sm text-muted">
-                Workspace, team, person, agent and task budgets are checked before work starts. An agent at its budget stops taking new
-                work and says so.
-              </p>
-            </section>
-          </Card>
-        </div>
       </section>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Free and the plan, side by side</h2>
@@ -537,13 +433,13 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
       </Card>
       <p className="mt-3 text-sm text-muted">
         Git operations cost g1t money too: Cloudflare charges g1t $0.15 per 1,000. {count(tier.gitOperationsIncluded)} a
-        month is far more than an active workspace uses; an agent run takes two to four.
+        month is far more than an active workspace uses.
       </p>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">No card, no compute</h2>
       <div className="mt-3 max-w-3xl space-y-3 text-sm text-muted">
         <p>
-          Agents, checks, workflows, the merge queue, deployments and semantic search run on g1t's machines. They need
+          Checks, workflows, the merge queue, deployments and semantic search run on g1t's machines. They need
           the plan, or a card check.
         </p>
         <p>
@@ -576,7 +472,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             <p className="mt-1.5 text-sm text-muted">
               Checks, workflows and the merge queue on public repositories, after a card check:{" "}
               {dollars(tier.ossPoolMicros)} a month in all, up to {dollars(tier.ossRepoMicros)} a month per repository.
-              Agents do not run from the pool. When the pool or a repository's share is used up, the work waits for the
+              When the pool or a repository's share is used up, the work waits for the
               month to turn, or the workspace pays as usual.
             </p>
           </section>
@@ -639,15 +535,6 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         </Card>
         <Card asChild className="p-4">
           <li>
-            <p className="font-medium">Caps per run and per issue</p>
-            <p className="mt-1 text-muted">
-              One agent run stops at $2 and the agents on one issue at $10 in all, so a run stuck in a loop stops on its own.
-              Owners change both on Billing.
-            </p>
-          </li>
-        </Card>
-        <Card asChild className="p-4">
-          <li>
             <p className="font-medium">Alerts at 50, 75, 90 and 100%</p>
             <p className="mt-1 text-muted">
               Of the plan's included usage, your spend limit and g1t's limit: in the app and by email.
@@ -702,59 +589,11 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            <tr>
-              <td className="px-4 py-3">
-                <p className="font-medium">Agent models</p>
-                <p className="text-xs text-faint">g1t's hosted models for agent runs, the cheapest that can do each job, paid from AI credit</p>
-              </td>
-              <td className="px-4 py-3 text-muted">What the provider charges, per request</td>
-              <td className="hidden px-4 py-3 tabular-nums sm:table-cell">{book?.modelMarginPercent ?? 0}%</td>
-              <td className="px-4 py-3 text-muted">{book?.modelMarginPercent ? `Cost + ${book.modelMarginPercent}%` : "The provider's price"}</td>
-            </tr>
             {(() => {
-              const rate = book?.prices.find((p) => p.meter === "agent_tokens");
-              const gateway = book?.prices.find((p) => p.meter === "gateway_models");
               const feePercent = book?.prices.find((p) => p.meter === "card_fee_percent");
               const feeFixed = book?.prices.find((p) => p.meter === "card_fee_fixed");
-              const coming = book?.changes.find((c) => c.meter === "agent_tokens" && c.effectiveAt);
-              const ownRate = book?.prices.find((p) => p.meter === "agent_tokens_own");
-              const ownComing = book?.changes.find((c) => c.meter === "agent_tokens_own" && c.effectiveAt);
               return (
                 <>
-                  <tr>
-                    <td className="px-4 py-3">
-                      <p className="font-medium">g1t agent rate</p>
-                      <p className="text-xs text-faint">The model gateway, secrets, routing, context and pass-through, on every token an agent run uses</p>
-                      <p className="text-xs text-faint">Tokens count by kind: {tokenWeights(book?.prices ?? [])}</p>
-                    </td>
-                    <td className="px-4 py-3 text-muted">A flat rate</td>
-                    <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
-                    <td className="px-4 py-3 font-mono text-xs tabular-nums">
-                      {rate && rate.priceMicros > 0 ? `${money(rate.priceMicros)} per million tokens` : coming ? `${money(coming.newCostMicros)} per million tokens from ${coming.effectiveAt!.slice(0, 10)}` : "$0.25 per million tokens"}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-3">
-                      <p className="font-medium">g1t agent rate, your own model key</p>
-                      <p className="text-xs text-faint">The same, on runs that pass through to your own provider; its models are billed by your provider, not g1t</p>
-                    </td>
-                    <td className="px-4 py-3 text-muted">A flat rate</td>
-                    <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
-                    <td className="px-4 py-3 font-mono text-xs tabular-nums">
-                      {ownRate && ownRate.priceMicros > 0 ? `${money(ownRate.priceMicros)} per million tokens` : ownComing ? `${money(ownComing.newCostMicros)} per million tokens from ${ownComing.effectiveAt!.slice(0, 10)}` : "$0.25 per million tokens"}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-3">
-                      <p className="font-medium">
-                        AI Gateway <span className="ml-1 rounded bg-accent/15 px-1.5 py-0.5 text-xs text-accent">Free during beta</span>
-                      </p>
-                      <p className="text-xs text-faint">Your own code calling Claude and open models through g1t, in Anthropic's or OpenAI's format, paid from AI credit; on your own providers, free</p>
-                    </td>
-                    <td className="px-4 py-3 text-muted">What the provider charges</td>
-                    <td className="hidden px-4 py-3 tabular-nums sm:table-cell">{gateway?.markupPercent ?? 0}%</td>
-                    <td className="px-4 py-3 text-muted">{gateway?.markupPercent ? `Cost + ${gateway.markupPercent}%` : "The provider's price"}</td>
-                  </tr>
                   {feePercent && feeFixed && (
                     <tr>
                       <td className="px-4 py-3">
@@ -776,7 +615,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             <tr>
               <td className="px-4 py-3">
                 <p className="font-medium">Your own runners</p>
-                <p className="text-xs text-faint">Agents, checks and workflows on your own hardware</p>
+                <p className="text-xs text-faint">Checks, workflows and the merge queue on your own hardware</p>
               </td>
               <td className="px-4 py-3 text-muted">Nothing</td>
               <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
@@ -849,10 +688,10 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
       </Card>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Price changes</h2>
-      {book && book.changes.length > 0 ? (
+      {book && changes.length > 0 ? (
         <Card asChild tone="plain" divided className="mt-4">
           <ul>
-            {book.changes.map((change) => {
+            {changes.map((change) => {
               const title = book.prices.find((p) => p.meter === change.meter)?.title ?? change.meter;
               // What you pay moved: the cost, the markup, or both.
               const before = change.oldCostMicros * (100 + (change.oldMarkupPercent ?? change.markupPercent));

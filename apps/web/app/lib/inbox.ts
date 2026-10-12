@@ -20,6 +20,7 @@ import type {
 
 // The contracts' lists, as types only, so this file runs under `node --test`.
 // Typed by the contract: a reason or kind added there must be added here.
+// `agent` (an agent waiting on you) is no longer sent, but old items carry it.
 const INBOX_REASONS: InboxReason[] = [
   "agent",
   "review_requested",
@@ -41,7 +42,7 @@ export type InboxTab = "all" | "needs" | "error" | "success" | "info";
 /** The tabs, in order, and the severity each shows. */
 export const INBOX_TABS: { tab: InboxTab; label: string; severity: InboxSeverity | null }[] = [
   { tab: "all", label: "All", severity: null },
-  // Warnings are what is waiting on a person: an agent, or a review asked of them.
+  // Warnings are what is waiting on a person: a review asked of them, say.
   { tab: "needs", label: "Needs you", severity: "warning" },
   { tab: "error", label: "Errors", severity: "error" },
   { tab: "success", label: "Success", severity: "success" },
@@ -87,11 +88,11 @@ export function emptyFor(tab: InboxTab, view: InboxView = "inbox"): { title: str
   if (view === "done") return { title: "Nothing done yet", detail: "Items you mark done move here." };
   switch (tab) {
     case "needs":
-      return { title: "Nothing needs you", detail: "When an agent is waiting on you, or someone asks for your review, it shows up here first." };
+      return { title: "Nothing needs you", detail: "When someone asks for your review, or something waits on you, it shows up here first." };
     case "error":
       return { title: "No failures", detail: "Failed checks and workflows on your work show up here." };
     case "success":
-      return { title: "Nothing new landed", detail: "Merges, approvals and finished agent work show up here." };
+      return { title: "Nothing new landed", detail: "Merges and approvals show up here." };
     case "info":
       return { title: "No mentions or comments", detail: "Mentions of you and comments on your work show up here." };
     default:
@@ -159,8 +160,8 @@ export function markFromForm(form: FormData, now: number): InboxMarkArgs | null 
 }
 
 /**
- * Mission control's Needs you card, from unread items: what an agent is
- * waiting on first, then failures, newest first within each; `max` of them,
+ * Mission control's Needs you card, from unread items: what is waiting on
+ * the person first, then failures, newest first within each; `max` of them,
  * and how many there are in all.
  */
 export function needsYou(items: InboxItem[], max: number): { items: InboxItem[]; total: number } {
@@ -200,7 +201,7 @@ export function inboxReason(value: string | null | undefined): InboxReason | nul
 /** The reason filter's choices, in the order reasons rank. */
 export const REASON_FILTERS: { reason: InboxReason | null; label: string }[] = [
   { reason: null, label: "Any reason" },
-  ...INBOX_REASONS.map((reason) => ({ reason, label: REASON_LABEL[reason].replace(/^./, (c) => c.toUpperCase()) })),
+  ...INBOX_REASONS.filter((reason) => reason !== "agent").map((reason) => ({ reason, label: REASON_LABEL[reason].replace(/^./, (c) => c.toUpperCase()) })),
 ];
 
 /** How much has happened on a thread, when more than one thing has: "3 updates". */
@@ -294,7 +295,6 @@ export function subscriptionFromForm(form: FormData): { subscribed: boolean | nu
 
 /** The reasons someone can be emailed for, in the settings' order, with what each is. */
 export const EMAIL_REASONS: { reason: InboxReason; label: string; detail: string }[] = [
-  { reason: "agent", label: "An agent is waiting on you", detail: "It asked you something, or stopped until you step in." },
   { reason: "review_requested", label: "You're asked to review", detail: "Someone asked for your review of a pull request." },
   { reason: "mention", label: "You're mentioned", detail: "Someone wrote your @username in a comment." },
   { reason: "team_mention", label: "Your team is mentioned", detail: "Someone wrote @workspace/team for a team you're in." },

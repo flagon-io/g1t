@@ -10,7 +10,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 }
 
 /**
- * Runners, in Workspace mode: the machines the workspace's agents and
+ * Runners, in Workspace mode: the machines the workspace's sandbox runs and
  * workflow jobs run on, g1t's cloud and its own side by side, with what
  * each is running, this month's time and how to add one. The workspace's
  * machines and their tokens are its owners'.

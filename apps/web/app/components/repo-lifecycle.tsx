@@ -142,7 +142,7 @@ export function ArchivedBanner({ base, owner, settings }: { base: string; owner:
           <span className="text-muted">
             {settings
               ? "It is read-only, so settings that change it are turned off until it is unarchived."
-              : "It is read-only: pushes and merges are refused, issues and pull requests are locked, and agents and workflows do not run. Its deployments keep serving."}
+              : "It is read-only: pushes and merges are refused, issues and pull requests are locked, and workflows do not run. Its deployments keep serving."}
           </span>
         </span>
       </p>

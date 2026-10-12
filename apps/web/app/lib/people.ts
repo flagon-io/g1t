@@ -1,36 +1,12 @@
 /**
- * People on the site: the directory (people only; agents are on their
- * teams and under Agents), profiles, and teams of any mix.
+ * People on the site: the directory, profiles, and teams. People only.
  * Types only from the contracts, so this file runs under `node --test`.
  */
-import type { DirectoryPerson, DirectoryTeam, PeopleDirectory, TeamLead, WorkspaceAgent } from "@g1t/contracts";
-
-/** An agent as People's pages need it. */
-export type PeopleAgent = Pick<
-  WorkspaceAgent,
-  "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "look" | "title" | "role" | "status" | "responsibilities" | "builtin" | "spent_month_micros"
->;
-
-/** Just what People's pages read of an agent, so loaders send no more. */
-export function peopleAgent(agent: PeopleAgent): PeopleAgent {
-  const { id, handle, display_name, avatar, avatar_seed, look, title, role, status, responsibilities, builtin, spent_month_micros } = agent;
-  return { id, handle, display_name, avatar, avatar_seed, look, title, role, status, responsibilities, builtin, spent_month_micros };
-}
+import type { DirectoryPerson, DirectoryTeam, PeopleDirectory, TeamLead } from "@g1t/contracts";
 
 /** Where a person's profile is. */
 export function personPath(workspace: string, username: string): string {
   return `/${workspace}/-/people/${username}`;
-}
-
-/** Where an agent's profile is: its page in Agents. People has none; its old address there redirects. */
-export function agentPath(workspace: string, handle: string): string {
-  return `/${workspace}/-/agents/${handle}`;
-}
-
-/** The agents on a team, in the order they were added, as found among `agents`. */
-export function agentsOn<A extends Pick<PeopleAgent, "id">>(team: Pick<DirectoryTeam, "agent_ids">, agents: readonly A[]): A[] {
-  const byId = new Map(agents.map((agent) => [agent.id, agent]));
-  return [...new Set(team.agent_ids)].map((id) => byId.get(id)).filter((agent): agent is A => !!agent);
 }
 
 /** The teams a person is on. */
@@ -38,54 +14,9 @@ export function teamsOfPerson<T extends Pick<DirectoryTeam, "people">>(teams: re
   return teams.filter((team) => team.people.some((person) => person.username === username));
 }
 
-/** The teams an agent is on: its memberships, as a person's are. */
-export function teamsOfAgent<T extends Pick<DirectoryTeam, "agent_ids">>(teams: readonly T[], agent: Pick<PeopleAgent, "id">): T[] {
-  return teams.filter((team) => team.agent_ids.includes(agent.id));
-}
-
-/** A team an agent is on, as the Agents sidebar groups by it. */
-export type AgentTeamRef = { slug: string; name: string };
-
-/** Each agent's teams, by agent id, from teams with the agents on them; the teams by name. */
-export function teamsByAgent(teams: readonly { slug: string; name: string; agent_ids: readonly string[] }[]): Record<string, AgentTeamRef[]> {
-  const out: Record<string, AgentTeamRef[]> = {};
-  for (const team of [...teams].sort((a, b) => a.name.localeCompare(b.name))) {
-    for (const id of new Set(team.agent_ids)) (out[id] ??= []).push({ slug: team.slug, name: team.name });
-  }
-  return out;
-}
-
-/** The label for agents on no team, wherever agents are grouped by team. */
-export const NO_TEAM = "Not on a team";
-
-/**
- * Agents grouped by the teams they are on, as the Agents sidebar shows
- * them: each team by name, an agent on two teams under both, and agents on
- * none last, under "Not on a team". Each group's agents by name.
- */
-export function groupByTeam<A extends { id: string; display_name: string }>(agents: readonly A[], teamsOf: Record<string, readonly AgentTeamRef[]>): { key: string; label: string; agents: A[] }[] {
-  const groups = new Map<string, { key: string; label: string; agents: A[] }>();
-  const none: A[] = [];
-  for (const agent of agents) {
-    const teams = teamsOf[agent.id] ?? [];
-    if (!teams.length) none.push(agent);
-    for (const team of teams) {
-      const group = groups.get(team.slug) ?? { key: team.slug, label: team.name, agents: [] };
-      if (!group.agents.includes(agent)) group.agents.push(agent);
-      groups.set(team.slug, group);
-    }
-  }
-  const byName = (a: A, b: A) => a.display_name.localeCompare(b.display_name);
-  const out = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label)).map((group) => ({ ...group, agents: group.agents.sort(byName) }));
-  if (none.length) out.push({ key: "", label: NO_TEAM, agents: none.sort(byName) });
-  return out;
-}
-
-/** Whether `lead` is this person or this agent. */
-export function leads(lead: TeamLead | null, who: { username: string } | { id: string }): boolean {
-  if (!lead) return false;
-  if ("username" in who) return lead.kind === "user" && lead.username === who.username;
-  return lead.kind === "agent" && lead.agent_id === who.id;
+/** Whether `lead` is this person. An old agent lead (agents no longer exist) is nobody's. */
+export function leads(lead: TeamLead | null, who: { username: string }): boolean {
+  return !!lead && lead.kind === "user" && lead.username === who.username;
 }
 
 /** A person's name as pages show it. */
@@ -107,9 +38,7 @@ export type DirectoryEntry = { person: DirectoryPerson; teams: DirectoryTeam[] }
 /**
  * The people matching `query`, in the directory's order (by name). A
  * person matches on their name, username, title, teams, what they own,
- * where they are and their bio. The directory is people only: the
- * workspace's agents are listed under Agents and on the teams they are
- * on, never here, so a query that would only match an agent finds no one.
+ * where they are and their bio.
  */
 export function directoryEntries(directory: PeopleDirectory, query: string): DirectoryEntry[] {
   const out: DirectoryEntry[] = [];
@@ -129,15 +58,6 @@ export function ownsFromText(text: string): string[] {
     .filter(Boolean);
 }
 
-/** A monthly budget in dollars from a form, as micro-dollars; 0 for none; null when it isn't a number. */
-export function budgetFromText(text: string): number | null {
-  const value = text.trim().replace(/^\$/, "").replace(/,/g, "");
-  if (!value) return 0;
-  const dollars = Number(value);
-  if (!Number.isFinite(dollars) || dollars < 0) return null;
-  return Math.round(dollars * 1_000_000);
-}
-
 /** The access to Code a member has, in words: their role, the base permission, and the teams that add to it. */
 export function codeAccessWords(
   person: Pick<DirectoryPerson, "role">,
@@ -155,31 +75,3 @@ export function codeAccessWords(
     .map((team) => `Roles on ${team.repos_count} ${team.repos_count === 1 ? "repository" : "repositories"} through ${team.name}`);
   return { summary, through };
 }
-
-/** The part of what an agent is told that is about one team: its heading and what follows, up to the next. */
-export function teamBlock(text: string | null, teamName: string): string | null {
-  if (!text) return null;
-  const blocks = text.split(/\n(?=### )/);
-  const found = blocks.find((block) => block.startsWith(`### ${teamName}\n`) || block.trim() === `### ${teamName}`);
-  return found ? found.trim() : null;
-}
-
-/** A team an agent is on, as its profile lists it. */
-export type AgentTeamRow = {
-  slug: string;
-  name: string;
-  people: number;
-  agents: number;
-  lead: boolean;
-  /** Whether the viewer may take it off (owners and the team's maintainers). */
-  can_manage: boolean;
-};
-
-export type AgentTeams = {
-  on: AgentTeamRow[];
-  /** Teams it isn't on that the viewer manages, to add it to. */
-  addable: { slug: string; name: string }[];
-};
-
-/** What adding an agent to a team, or taking it off, answers. */
-export type TeamChange = { intent: "join-team" | "leave-team"; team: string; error: string | null };

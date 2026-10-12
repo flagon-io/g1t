@@ -4,55 +4,34 @@
  * paused, resumed, jumped to a step, or shown still, and the server and
  * the first client render agree (t = 0).
  *
- * The story opens on the code: Otto's pull request #431 runs its checks,
- * is approved and is merged by the queue. Then where it came from: the
- * ask in #web, handed to @otto by g1t, now merged, and Sam telling
- * #support. Then Otto's sessions, the record of what he did and spent, and
- * last Inky's docs page picking up the change. Otto, Margo, Sam and Inky
- * are agents this workspace hired from role templates; only g1t is built in.
+ * The story is about the code. Priya's pull request #431 runs its checks,
+ * is approved by Dana and is merged by the queue, and production deploys.
+ * Then how it was made: the session Priya's coding agent recorded onto the
+ * pull request through g1t's MCP server. Then the people: #web, where Dana
+ * reported the bug and hears it shipped. Last, the docs page Dana updates.
  */
 
-export type Scene = "chat" | "agents" | "code" | "docs";
+export type Scene = "code" | "session" | "chat" | "docs";
 
 /** Where the soft cursor points: an element marked `data-tour="<target>"`. */
-export type CursorTarget =
-  | "composer"
-  | "send"
-  | "rail-agents"
-  | "rail-code"
-  | "rail-chat"
-  | "rail-docs"
-  | "task-pull"
-  | "idle";
+export type CursorTarget = "pr-session" | "rail-code" | "rail-chat" | "rail-docs" | "idle";
 
 export type Frame = {
   scene: Scene;
-  /** Characters of the person's message typed into the composer. */
-  typed: number;
-  /** The person's message has been sent. */
-  sent: boolean;
-  /** g1t shows as typing. */
-  g1tTyping: boolean;
-  /** g1t's handoff reply, with the task card. */
-  handoff: boolean;
-  /** Builder's steps done, 0 to STEPS.length. */
-  steps: number;
   /** Checks passed on the pull request, 0 to CHECKS.length. */
   checks: number;
   /** The diff is shown on the pull request. */
   diff: boolean;
-  /** @reviewer approved. */
+  /** Dana approved. */
   approved: boolean;
   /** The merge queue merged it. */
   merged: boolean;
-  /** The task card in #web says merged and deploying. */
-  cardMerged: boolean;
-  /** g1t posted that it shipped. */
+  /** Entries of the recorded session shown, 0 to SESSION.length. */
+  entries: number;
+  /** Priya posted in #web that it shipped. */
   shipped: boolean;
-  /** Sam says the support team has been told, in #support. */
-  sam: boolean;
-  /** Otto consulted Margo, shown as a collapsed line on the task. */
-  consult: boolean;
+  /** Dana says support has been told, in #web. */
+  told: boolean;
   /** The docs page shows the changed line. */
   docUpdated: boolean;
   cursor: CursorTarget;
@@ -62,15 +41,16 @@ export type Frame = {
   cursorShown: boolean;
 };
 
-/** What the person types into #web. */
-export const ASK = "@g1t the CSV export times out for big accounts. Can we get it fixed before Thursday?";
+/** One entry of the session the coding agent recorded onto the pull request. */
+export type SessionEntry = { kind: "prompt" | "message" | "tool"; text: string; tool?: string; commit?: string };
 
-export const STEPS: { text: string; cost: number }[] = [
-  { text: "Read the export job and the two reports in #web", cost: 0.04 },
-  { text: "Found it: every row loads before the first byte is sent", cost: 0.11 },
-  { text: "Streamed rows in batches of 1,000", cost: 0.19 },
-  { text: "Tested a 200,000-row account: 3.1 s, was 61 s", cost: 0.27 },
-  { text: "Opened pull request #431", cost: 0.31 },
+/** The session Priya's coding agent recorded onto #431 as it worked. */
+export const SESSION: SessionEntry[] = [
+  { kind: "prompt", text: "Big accounts time out on CSV export (Dana's report in #web). Find out why and fix it." },
+  { kind: "tool", tool: "read", text: "services/export/csv.py" },
+  { kind: "message", text: "Every row loads before the first byte is sent, so accounts over 100k rows hit the 60 s limit." },
+  { kind: "tool", tool: "bash", text: "pytest tests/test_export.py -k big_account → 3.1 s, was 61 s" },
+  { kind: "message", text: "Rows now stream in batches of 1,000. Opened #431.", commit: "3f9c2a1" },
 ];
 
 export const CHECKS = ["build", "test", "lint", "preview"];
@@ -83,31 +63,29 @@ export const BEAT = {
   diff: 1300,
   approved: 3900,
   merged: 5000,
-  railChatClick: 6300,
-  chat: 6450,
-  cardMerged: 7100,
-  shipped: 8400,
-  sam: 9600,
-  railAgentsClick: 11000,
-  agents: 11150,
-  railDocsClick: 15000,
-  docs: 15150,
-  docUpdated: 16300,
-  end: 21000,
+  sessionClick: 6300,
+  session: 6450,
+  entry0: 6700,
+  entryGap: 500,
+  railChatClick: 10000,
+  chat: 10150,
+  shipped: 11000,
+  told: 12200,
+  railDocsClick: 14000,
+  docs: 14150,
+  docUpdated: 15300,
+  end: 20000,
 } as const;
 
 /** The whole loop, in ms. */
 export const LOOP_MS = BEAT.end;
 
 /** The step pills under the frame: where each starts, for jumping to it. */
-export const PILLS: { scene: Scene; label: string; start: number; soon: boolean }[] = [
-  { scene: "code", label: "Code", start: 0, soon: false },
-  { scene: "chat", label: "Chat", start: BEAT.chat, soon: false },
-  // Sessions, colleagues brought in, spend against a cap: built.
-  { scene: "agents", label: "Agents", start: BEAT.agents, soon: false },
-  // Docs in Artifacts are built; an agent keeping one current after a merge
-  // on its own is not yet, and the line under the frame says so.
-  { scene: "docs", label: "Artifacts", start: BEAT.docs, soon: false },
+export const PILLS: { scene: Scene; label: string; start: number }[] = [
+  { scene: "code", label: "Pull request", start: 0 },
+  { scene: "session", label: "Session", start: BEAT.session },
+  { scene: "chat", label: "Chat", start: BEAT.chat },
+  { scene: "docs", label: "Artifacts", start: BEAT.docs },
 ];
 
 /** Which pill a time falls under. */
@@ -136,41 +114,32 @@ function count(t: number, first: number, gap: number, max: number): number {
 function cursorAt(t: number): { cursor: CursorTarget; click: boolean } {
   const press = (at: number) => t >= at && t < at + 180;
   const moves: [number, CursorTarget][] = [
-    [BEAT.merged + 300, "rail-chat"],
-    [BEAT.sam + 500, "rail-agents"],
-    [BEAT.agents + 2600, "rail-docs"],
+    [BEAT.merged + 300, "pr-session"],
+    [BEAT.session + 2600, "rail-chat"],
+    [BEAT.told + 500, "rail-docs"],
     [BEAT.docs + 500, "idle"],
   ];
   let cursor: CursorTarget = "idle";
   for (const [at, target] of moves) if (t >= at) cursor = target;
-  const click = press(BEAT.railChatClick) || press(BEAT.railAgentsClick) || press(BEAT.railDocsClick);
+  const click = press(BEAT.sessionClick) || press(BEAT.railChatClick) || press(BEAT.railDocsClick);
   return { cursor, click };
 }
 
-/**
- * The frame at time t (ms into the loop). The ask, g1t's handoff and
- * Otto's work all happened before the pull request the story opens on, so
- * they are shown done throughout.
- */
+/** The frame at time t (ms into the loop). */
 export function frameAt(time: number): Frame {
   const t = ((time % LOOP_MS) + LOOP_MS) % LOOP_MS;
-  const scene: Scene = t >= BEAT.docs ? "docs" : t >= BEAT.agents ? "agents" : t >= BEAT.chat ? "chat" : "code";
+  const scene: Scene = t >= BEAT.docs ? "docs" : t >= BEAT.chat ? "chat" : t >= BEAT.session ? "session" : "code";
   const { cursor, click } = cursorAt(t);
   return {
     scene,
-    typed: 0,
-    sent: true,
-    g1tTyping: false,
-    handoff: true,
-    steps: STEPS.length,
     checks: count(t, BEAT.check0, BEAT.checkGap, CHECKS.length),
     diff: t >= BEAT.diff,
     approved: t >= BEAT.approved,
     merged: t >= BEAT.merged,
-    cardMerged: t >= BEAT.cardMerged,
+    // The session was recorded before the story opens; the tour plays it back once its tab is opened.
+    entries: t < BEAT.session ? 0 : count(t, BEAT.entry0, BEAT.entryGap, SESSION.length),
     shipped: t >= BEAT.shipped,
-    sam: t >= BEAT.sam,
-    consult: true,
+    told: t >= BEAT.told,
     docUpdated: t >= BEAT.docUpdated,
     cursor,
     click,
@@ -181,8 +150,8 @@ export function frameAt(time: number): Frame {
 /** A still frame for each pill, for reduced motion: the moment the step makes its point. */
 export const STILLS: Record<Scene, number> = {
   code: BEAT.approved + 200,
-  chat: BEAT.sam + 400,
-  agents: BEAT.agents + 400,
+  session: BEAT.railChatClick - 400,
+  chat: BEAT.told + 400,
   docs: BEAT.docUpdated + 400,
 };
 
