@@ -1103,6 +1103,12 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("edit_comment", Scope::IssuesWrite),
     ("delete_comment", Scope::IssuesWrite),
     ("import_issue", Scope::IssuesWrite),
+    // Coordinating work on issues: claims, and the context to pick one up.
+    ("list_claims", Scope::IssuesRead),
+    ("get_work", Scope::IssuesRead),
+    ("claim_issue", Scope::IssuesWrite),
+    ("release_claim", Scope::IssuesWrite),
+    ("hand_off_issue", Scope::IssuesWrite),
     // Pull requests.
     ("list_pull_requests", Scope::PullRequestsRead),
     ("get_pull_request", Scope::PullRequestsRead),
@@ -1120,6 +1126,13 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("merge_pull_request", Scope::PullRequestsWrite),
     ("request_reviewers", Scope::PullRequestsWrite),
     ("remove_requested_reviewers", Scope::PullRequestsWrite),
+    // Harness sessions, which record how pull requests are made.
+    ("get_session", Scope::PullRequestsRead),
+    ("list_sessions", Scope::PullRequestsRead),
+    ("start_session", Scope::PullRequestsWrite),
+    ("update_session", Scope::PullRequestsWrite),
+    ("end_session", Scope::PullRequestsWrite),
+    ("record_session_entries", Scope::PullRequestsWrite),
     // Workflows.
     ("list_workflows", Scope::WorkflowsRead),
     ("list_workflow_runs", Scope::WorkflowsRead),

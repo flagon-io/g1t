@@ -41,6 +41,10 @@ pub(crate) fn unless_archived(repo: Outcome<Repo>) -> Outcome<Repo> {
 /// kept by pull request go first, while the pull requests still name them.
 pub(crate) const PURGED: &[&str] = &[
     "DELETE FROM session_entries WHERE pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
+    "DELETE FROM session_entries WHERE session_id IN (SELECT id FROM sessions WHERE repo_id = ?1)",
+    "DELETE FROM sessions WHERE repo_id = ?1",
+    "DELETE FROM claims WHERE repo_id = ?1",
+    "DELETE FROM overlap_pairs WHERE repo_id = ?1",
     "DELETE FROM check_runs WHERE pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
     "DELETE FROM review_runs WHERE pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
     "DELETE FROM agent_messages WHERE repo_id = ?1 OR pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",

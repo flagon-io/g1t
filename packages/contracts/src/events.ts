@@ -12,7 +12,7 @@ import type { RepoRole } from "./access";
 import type { CheckRunEventData, CheckSuiteEventData, StatusEventData } from "./checks";
 import type { DeploymentStatus, RepoDeployment } from "./deployments";
 import type { TeamRole, TeamVisibility } from "./teams";
-import type { AgentRef, Verdict } from "./work";
+import type { AgentRef, ClaimEventData, DependencyChangedData, OverlapDetectedData, SessionEventData, Verdict } from "./work";
 
 /** What every `package.*` event names. */
 export type PackageEventData = {
@@ -392,6 +392,19 @@ export type EventPayloads = {
     };
   };
   "session.appended": { pullId: string; repoId: string; number: number; count: number };
+  /** A harness session started on the repository (not on an idempotent re-start). */
+  "session.started": SessionEventData;
+  /** A session ended, or timed out after 2 hours without a heartbeat. */
+  "session.ended": SessionEventData;
+  /** Someone claimed an issue; `others` are the other active claims on it. */
+  "work.claimed": ClaimEventData;
+  "work.released": ClaimEventData;
+  "work.claim_expired": ClaimEventData;
+  "work.handoff_requested": ClaimEventData;
+  /** An issue's blockers changed, or one of them closed or had its pull request merged. */
+  "dependency.changed": DependencyChangedData;
+  /** A push made a pull request change files another open one changes. */
+  "overlap.detected": OverlapDetectedData;
   /**
    * A build of a project finished, for production or one pull request's
    * preview (`number`). `path` is the deployment's page on the site;

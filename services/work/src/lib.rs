@@ -10,6 +10,7 @@ mod ghost;
 mod codeowners;
 mod commit_checks;
 mod contributions;
+mod coordination;
 mod guardrails;
 mod inbox;
 mod labels;
@@ -676,6 +677,11 @@ impl Work {
             Some(names) => Some(check!(self.valid_assignees(names).await?)),
             None => None,
         };
+        // What it is blocked by: checked before anything changes.
+        let blocked_by = match &a.blocked_by {
+            Some(asked) => Some(check!(self.checked_blocked_by(&issue.repo_id, issue.number, asked).await?)),
+            None => None,
+        };
         // Its labels and milestone first: either can be refused, and then
         // nothing else changes.
         if a.milestone.is_some() || a.labels.is_some() {
@@ -688,24 +694,28 @@ impl Work {
             }
         }
         let assigned = assignees.as_ref().map(serde_json::to_string).transpose()?;
+        let blocked = blocked_by.as_ref().map(serde_json::to_string).transpose()?;
         let body = a.body.map(|body| body.trim().to_owned());
         self.db
             .prepare(
                 "UPDATE issues
                  SET title = COALESCE(?, title), body = COALESCE(?, body),
-                     assignees = COALESCE(?, assignees), updated_at = ?
+                     assignees = COALESCE(?, assignees), blocked_by = COALESCE(?, blocked_by),
+                     updated_at = ?
                  WHERE id = ?",
             )
             .bind(&[
                 optional(&title),
                 optional(&body),
                 optional(&assigned),
+                optional(&blocked),
                 rfc3339(now_ms()).into(),
                 issue.id.as_str().into(),
             ])?
             .run()
             .await?;
         let before = issue.assignees.clone();
+        let blocked_before = issue.blocked_by.clone();
         let Some(issue) = self.issue(&issue.repo_id, issue.number).await? else {
             return Ok(no_issue());
         };
@@ -716,6 +726,9 @@ impl Work {
             Self::issue_event(&issue),
         )
         .await?;
+        if blocked_by.is_some() {
+            self.blocked_by_changed(&issue, &blocked_before, &a.actor).await?;
+        }
         if let Some(assignees) = assignees {
             self.note_changes(
                 &issue.repo_id,
@@ -839,6 +852,8 @@ impl Work {
             },
         )
         .await?;
+        // Its claims end, and the issues it blocks hear (coordination/).
+        self.issue_resolved(&issue.repo_id, issue.number, &a.actor, true, None).await;
         issue.state = State::Closed;
         issue.reason = Some(reason);
         issue.closed_at = Some(now.clone());
@@ -1336,6 +1351,8 @@ impl Work {
         // Its code owners asked to review (codeowners.rs).
         self.refresh_code_owners(&pull).await;
         let pull = self.pull(&repo.id, number).await?.unwrap_or(pull);
+        // A branch pushed before may overlap others from the start.
+        self.announce_overlaps(&pull, Some(a.actor.id.clone())).await;
         Ok(Outcome::Ok(pull))
     }
 
@@ -2300,6 +2317,13 @@ impl Work {
             )
             .await?;
         }
+        // A merge into the default branch clears its issue for the issues
+        // it blocks, and ends the claims on it when it closed it.
+        if let Some(number) = pull.issue
+            && pull.targets_default(&repo.default_branch)
+        {
+            self.issue_resolved(&repo.id, number, actor, issue.is_some(), Some(pull.number)).await;
+        }
         pull.status = PullStatus::Merged;
         pull.head_commit = Some(landed.commit.clone());
         pull.merge_base = landed.previous;
@@ -2556,6 +2580,8 @@ impl Work {
                 pull.files = self.refresh_files(&pull).await?;
                 // Owners of files it now changes are asked too.
                 self.refresh_code_owners(&pull).await;
+                // A new overlap with another pull request is announced.
+                self.announce_overlaps(&pull, event.actor.clone()).await;
             }
         }
         // A merge that was waiting for this push to bring it up to date.
@@ -2704,6 +2730,19 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_assigned_issues" => reply(&work.list_assigned_issues(args(body)?).await?),
         "append_session" => reply(&work.append_session(args(body)?).await?),
         "read_session" => reply(&work.read_session(args(body)?).await?),
+        // Coordinating work: harness sessions, claims, dependencies and an
+        // issue's whole context (coordination/).
+        "start_session" => reply(&work.start_session(args(body)?).await?),
+        "update_session" => reply(&work.update_session(args(body)?).await?),
+        "end_session" => reply(&work.end_session(args(body)?).await?),
+        "get_work_session" => reply(&work.get_work_session(args(body)?).await?),
+        "list_work_sessions" => reply(&work.list_work_sessions(args(body)?).await?),
+        "record_session_entries" => reply(&work.record_session_entries(args(body)?).await?),
+        "claim_issue" => reply(&work.claim_issue(args(body)?).await?),
+        "release_claim" => reply(&work.release_claim(args(body)?).await?),
+        "hand_off_issue" => reply(&work.hand_off_issue(args(body)?).await?),
+        "list_claims" => reply(&work.list_claims(args(body)?).await?),
+        "get_work" => reply(&work.get_work(args(body)?).await?),
         // Runs of sandboxes, and memory (runs.rs, memory.rs).
         "open_run" => reply(&work.open_run(args(body)?).await?),
         "report_run" => reply(&work.report_run(args(body)?).await?),

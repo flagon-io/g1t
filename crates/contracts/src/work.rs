@@ -11,6 +11,10 @@ use serde::{Deserialize, Serialize};
 use crate::repos::{CompareArgs, RepoPath};
 use crate::{User, Viewer};
 
+// Sessions, claims and dependencies: work/coordination.rs.
+mod coordination;
+pub use coordination::*;
+
 /// The labels a new repository starts with, and that "Add the default
 /// labels" adds to one that is missing some: `(name, color, description)`.
 /// Colors are six hex digits, without `#`.
@@ -1454,6 +1458,11 @@ pub struct UpdateIssueArgs {
     /// milestone. Needs the Triage role.
     #[serde(default)]
     pub milestone: Option<u32>,
+    /// The numbers of the issues of the same repository that have to land
+    /// first; replaces the whole set. Refused when one is not an issue, is
+    /// the issue itself, or would make a cycle.
+    #[serde(default)]
+    pub blocked_by: Option<Vec<u32>>,
 }
 
 /// `close_issue` and `reopen_issue`. Each returns `Outcome<Issue>`.
