@@ -8,6 +8,8 @@ mod commands;
 mod config;
 mod context;
 mod credentials;
+#[cfg(test)]
+mod docs;
 mod error;
 mod git;
 mod image;

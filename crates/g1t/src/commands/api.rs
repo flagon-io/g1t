@@ -376,6 +376,13 @@ pub fn run(ctx: &Ctx, args: ApiArgs) -> Result<()> {
     let endpoint = args.endpoint.clone().ok_or_else(|| {
         Error::usage("Say what to call: an operation's name, or a path. List them with --list.")
     })?;
+    // Git Bash turns `/user` into `C:/Program Files/Git/user` before we see it.
+    let bytes = endpoint.as_bytes();
+    if bytes.len() > 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/' {
+        return Err(Error::usage(format!(
+            "`{endpoint}` is a Windows path: Git Bash rewrote a path starting with /. Leave the leading slash off, or set MSYS_NO_PATHCONV=1."
+        )));
+    }
     let given = fields(&args.raw_field, &args.field)?;
     let repo = || ctx.repo();
     let client: Client;

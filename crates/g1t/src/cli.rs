@@ -246,7 +246,7 @@ pub struct RepoListArgs {
     /// Only those whose name or description holds this.
     #[arg(short, long)]
     pub query: Option<String>,
-    #[arg(short = 'L', long, default_value_t = 30)]
+    #[arg(short = 'L', long, default_value_t = 20)]
     pub limit: usize,
 }
 
