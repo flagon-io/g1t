@@ -2,6 +2,7 @@
 
 pub const MIB: u64 = 1024 * 1024;
 /// What a chunk is unless `--chunk-size` says otherwise.
+#[cfg_attr(not(test), allow(dead_code))]
 pub const DEFAULT_CHUNK: u64 = 90 * MIB;
 /// The largest chunk: well under the 100 MB a request to g1t.sh may carry.
 pub const MAX_CHUNK: u64 = 95 * MIB;

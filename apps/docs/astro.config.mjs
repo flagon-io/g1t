@@ -81,6 +81,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Quickstart', slug: 'quickstart' },
 						{ label: 'How g1t works', slug: 'concepts/overview' },
+						{ label: 'The g1t CLI', slug: 'guides/cli' },
 						{ label: 'Home', slug: 'guides/home' },
 						{ label: 'Notifications', slug: 'guides/notifications' },
 						{ label: 'The desktop app', slug: 'guides/desktop' },
@@ -208,6 +209,7 @@ export default defineConfig({
 					items: [
 						{ label: 'API overview', slug: 'reference/api' },
 						{ label: 'MCP tools', slug: 'reference/mcp' },
+						{ label: 'CLI commands', slug: 'reference/cli' },
 						{ label: 'Rate limits', slug: 'reference/rate-limits' },
 						{ label: 'Try it in the explorer', link: '/api/reference/', attrs: { target: '_self' } },
 						{ label: 'OpenAPI document', link: 'https://api.g1t.sh/openapi.json' },
