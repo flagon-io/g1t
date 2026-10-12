@@ -65,7 +65,9 @@
 	// a workspace on the plan pays at cost plus 20% and is never slowed.
 	// FREE_PRIVATE_STORAGE_BYTES: a free workspace's private repositories may
 	// hold this much (1 GB); past it, pushes to them stop. Billing reads the
-	// same amount.
+	// same amount. FREE_PUBLIC_STORAGE_BYTES: a free workspace's public
+	// repositories may hold this much together (5 GB); past it, pushes to
+	// them stop. 0 is no cap.
 	//
 	// The git store:
 	// REPO_STORAGE_LIMIT_BYTES: pushes stop before a repository holds this
@@ -106,6 +108,7 @@
 		"GIT_OPERATIONS_FREE_CAP": "50000",
 		"GIT_OPERATIONS_FREE_HOURLY": "60",
 		"FREE_PRIVATE_STORAGE_BYTES": "1000000000",
+		"FREE_PUBLIC_STORAGE_BYTES": "5000000000",
 		"REPO_STORAGE_LIMIT_BYTES": "950000000",
 		"LARGE_PUSHES": "unscanned",
 		"FORK_RETENTION_DAYS": "1",

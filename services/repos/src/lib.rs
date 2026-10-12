@@ -2216,6 +2216,21 @@ impl<S: GitStore> Repos<S> {
                 )));
             }
         }
+        if git.service == GitService::ReceivePack && git.endpoint == "info/refs" && !repo.is_private {
+            let free = git_ops::free_public_bytes(env);
+            if free > 0 {
+                let held = self.registry.public_bytes(&namespace).await.unwrap_or(0);
+                if git_ops::public_storage_full(held, free)
+                    && git_ops::is_free(env.service("BILLING").ok().as_ref(), &namespace).await
+                {
+                    return Ok(Some((
+                        git_ops::public_storage_full_response(&namespace, held, free)?,
+                        403,
+                        "Free public storage is full.",
+                    )));
+                }
+            }
+        }
         Ok(None)
     }
 
