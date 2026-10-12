@@ -549,12 +549,16 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         }
 
     // A sandbox building a deployment, reporting with its build's token,
-    // which is not a g1t token. The body goes through as it is: it can
-    // carry a Worker's bundled code.
+    // which is not a g1t token, or a container app's Worker reporting how
+    // long its container ran, with its own token. The body goes through as
+    // it is: it can carry a Worker's bundled code.
     if method == "POST" && !on_mcp
-        && let Some(rest) = path.strip_prefix("/deployments/jobs/")
+        && let Some(rest) = path
+            .strip_prefix("/deployments/jobs/")
+            .map(|rest| format!("jobs/{rest}"))
+            .or_else(|| path.strip_prefix("/deployments/apps/").filter(|rest| rest.ends_with("/meter")).map(|rest| format!("apps/{rest}")))
     {
-        let target = format!("https://deployments/jobs/{rest}");
+        let target = format!("https://deployments/{rest}");
         let body = request.bytes().await?;
         let headers = worker::Headers::new();
         headers.set("content-type", "application/json")?;

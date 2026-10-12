@@ -11889,6 +11889,8 @@
       "root_dir": "",
       "build_command": null,
       "output_dir": null,
+      "build_as": "auto",
+      "dockerfile": null,
       "build_env": {
         "PUBLIC_API_URL": "https://api.example.com"
       },

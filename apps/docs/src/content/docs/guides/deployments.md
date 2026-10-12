@@ -11,7 +11,9 @@ click through the change instead of reading a diff. A [mirror](/guides/mirroring
 deploys nothing while the remote leads it: pushes copied in from the remote
 don't build, and its **Deployments** page comes with a takeover.
 
-Apps run on Cloudflare Workers, on `g1t.page`:
+Apps run on Cloudflare Workers, on `g1t.page`, and a project with a
+`Dockerfile` (or a server g1t can write one for) runs as a container on
+Cloudflare Containers behind one; see [Docker deployments](#docker-deployments):
 
 | | Address |
 | --- | --- |
@@ -50,7 +52,9 @@ jobs make, with the source `g1t_page` and the environment `production` or
 report your own, and hear of them by webhook.
 
 An app runs only while it answers a request. One nobody visits runs
-nothing and costs nothing, and the next visit wakes it in milliseconds.
+nothing and costs nothing, and the next visit wakes it in milliseconds. A
+container wakes in seconds, and sleeps again after five minutes without a
+request.
 
 Deployments are part of the [g1t plan](/guides/usage-and-billing/#the-g1t-plan),
 and are opt-in per project. A project set to deploy on g1t, with
@@ -96,14 +100,20 @@ You do not configure anything for the common cases.
 | --- | --- |
 | `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` | Builds it as a **Workers project**: installs dependencies, runs `wrangler deploy --dry-run` to bundle it (which runs the config's own `build` command), and deploys the bundle with the config's static assets, `compatibility_date`, `compatibility_flags` and `vars`. |
 | A framework from the table below | Installs dependencies, builds it with the framework's command, and serves the folder it writes as a **static site**, or deploys the Worker its Cloudflare adapter writes as a **Workers project**. |
+| A framework set up to need a server (Next.js without a static export, Astro's `@astrojs/node`, SvelteKit's `adapter-node`, a server-rendered React Router or Remix app) | Builds it as a **container**: from its `Dockerfile`, or one g1t writes for it. |
+| A `Dockerfile` or `Containerfile`, and no framework above | Builds the image and runs it as a **container**. |
+| A Node.js, Python, Go, Ruby or PHP server, with no `Dockerfile` | Writes a Dockerfile for it, shows it in the build's log, and runs it as a **container**. See [Docker deployments](#docker-deployments). |
 | A `build` script in `package.json` | Installs dependencies, runs `npm run build`, and serves the output as a **static site**. |
 | An `index.html` and nothing to build | Serves it as it is. |
+| Nothing g1t recognises | Fails, saying to add a `Dockerfile`. |
 
 **Settings → Deployments** shows what g1t detected at the project's last
-finished build (**Workers project**, **Static site** or **Plain HTML**),
-and what running it costs. Before the first build it says **Detected at
-the first build**. The framework is named at the top of the build's log,
-as `Detected Astro: framework=astro.`
+finished build and what it was built with, such as **Static site ·
+Astro**, **Workers project**, **Container · Dockerfile** or **Container ·
+Flask, with a Dockerfile g1t wrote**, and what running it costs. Before
+the first build it says **Detected at the first build**. The framework is
+named at the top of the build's log, as `Detected Astro: framework=astro.`
+**Build as**, under the same settings, overrides what is detected.
 
 Dependencies are installed by the lockfile that is there: `npm ci`,
 `pnpm install --frozen-lockfile`, `yarn install` or `bun install`, and
@@ -138,14 +148,17 @@ your own, under **Settings → Deployments**, always wins over the table.
 | Jekyll | `_config.yml` and a `Gemfile` | `bundle install`, then `bundle exec jekyll build` | `_site`, or `destination` |
 | mdBook | `book.toml` | `mdbook build` | `book`, or `build.build-dir` |
 
-- **Frameworks that need a server fail early, saying what to change.**
-  g1t.page runs static sites and Workers, not servers that stay up. A
-  Next.js app without `output: 'export'`, an Astro site with
-  `output: 'server'` and no Cloudflare adapter, a SvelteKit app with
-  `adapter-auto` or `adapter-node`, and a React Router or Remix app that
-  renders on the server each fail before anything is installed, with the
-  change that makes them deploy: a static export, or the framework's
-  Cloudflare adapter. An **Output directory** of your own skips the check.
+- **Frameworks that need a server run as containers.** A Next.js app
+  without `output: 'export'`, an Astro site with `@astrojs/node`, a
+  SvelteKit app with `adapter-node`, and a React Router or Remix app that
+  renders on the server are built from their `Dockerfile`, or one g1t
+  writes ([Docker deployments](#docker-deployments)). A static export or
+  the framework's Cloudflare adapter costs less, since it runs nothing
+  while no one visits; the build's log says so. One g1t cannot run as a
+  server, such as SvelteKit with `adapter-auto`, fails before anything is
+  installed, saying what to change or to add a `Dockerfile`. An **Output
+  directory** of your own, or **Build as** Static site, builds it as a
+  static site instead.
 - **A framework's Worker.** Astro's and SvelteKit's Cloudflare adapters,
   OpenNext, and `@cloudflare/vite-plugin` with a Wrangler config build a
   Worker. g1t runs the build, then bundles what it wrote with
@@ -192,7 +205,81 @@ exists after the build: `dist`, `build`, `out`, `public`, `_site`,
   lists each one it left out. Code that needs them should check that the
   binding is there.
 
-What Deployments cannot run yet, such as long-running servers, is on
+### Docker deployments
+
+Any app that runs in a container deploys as one, whatever its framework or
+age: give it a `Dockerfile`, or let g1t write one. It runs on
+[Cloudflare Containers](https://developers.cloudflare.com/containers/)
+behind the app's Worker, at the same addresses, custom domains and
+previews as any other app.
+
+:::caution[Not switched on yet]
+Docker deployments are built but off on g1t.page until Cloudflare's
+container APIs are checked against g1t's account. Until then a container
+build fails with "Docker deployments are not switched on for g1t.page
+yet", and a project that is a container only for having a `Dockerfile`,
+beside a site g1t could serve, is built as that site, as before.
+:::
+
+What a project is built as is decided in this order:
+
+1. **Build as**, under **Settings → Deployments**: **Static site**,
+   **Workers** or **Docker** is what it is built as, whatever else it has.
+2. **Auto** (the default) finds it from its files:
+   1. A Wrangler config is a Workers project.
+   2. A framework that builds a static site or a Worker is that, even
+      beside a `Dockerfile`: it costs nothing while no one visits.
+   3. A framework set up to need a server is a container, from its
+      `Dockerfile`, or one g1t writes for it.
+   4. A project with no framework g1t knows is a container when it has a
+      `Dockerfile` (or `Containerfile`, or the path set as its
+      **Dockerfile**), or is a server g1t recognises.
+   5. Otherwise a static site or plain HTML, as above; with nothing to
+      serve, the build fails, saying to add a `Dockerfile`.
+
+g1t writes a Dockerfile for these, when there is none:
+
+| The project has | Runs with |
+| --- | --- |
+| `package.json` with a `start` script, or a server package (`express`, `fastify`, `koa`, `@nestjs/core`, `@hono/node-server` and others) and a main file | `npm start`, or `node <main>`, on `node:22-slim` (or the major release in `.nvmrc` or `.node-version`), after `npm run build` when there is one |
+| Next.js, Astro with `@astrojs/node`, SvelteKit with `adapter-node`, React Router or Remix | `next start`, `node ./dist/server/entry.mjs`, `node build`, `react-router-serve` or `remix-serve`, after the build |
+| `requirements.txt`, `pyproject.toml` or `Pipfile`, and `manage.py` (Django) | `gunicorn <project>.wsgi` on `python:3.12-slim` |
+| The same, with Flask and an `app.py`, `main.py`, `server.py`, `wsgi.py` or `asgi.py` | `gunicorn <module>:app` |
+| The same, with FastAPI or Starlette | `uvicorn <module>:app` |
+| The same, with neither | `python <module>.py` |
+| `go.mod` and one `package main`, at the top or in one folder of `cmd/` | The program, built with `golang:1.25` into an image with nothing else |
+| A `Gemfile` with Rails | `rails server`, after `assets:precompile`, on `ruby:3.3-slim` |
+| A `Gemfile` and a `config.ru` | `rackup` |
+| `composer.json`, and `artisan` with `public/index.php` (Laravel), or an `index.php` | Apache with PHP 8.3, after `composer install` |
+
+The Dockerfile g1t writes is printed whole in the build's log. To change
+how the app is built or run, commit it as `Dockerfile` and edit it. It
+leaves `.git`, `node_modules`, `.venv` and `__pycache__` out of the image.
+
+What a container gets, and what it must do:
+
+- **Listen on `0.0.0.0` at `PORT`.** `PORT` is the port its Dockerfile's
+  first `EXPOSE` names (in its last stage), else `8080`. The first request
+  waits up to 90 seconds for it to answer there; one that never does gets
+  a 503 page saying so.
+- **The project's [secrets and variables](#secrets-and-variables)** are
+  its environment variables, set by g1t when it starts, never baked into
+  the image. The image's build gets none of them: a step that needs one
+  belongs in the app's start.
+- **One instance, which sleeps.** It starts on the first request, and
+  stops after five minutes without one; asleep, it costs nothing, and the
+  next request starts it again in a few seconds. Its disk starts from the
+  image each time: keep data in a database or a bucket.
+- **Its size** is **Container size** under **Settings → Deployments**:
+  `lite` (the default) to `standard-4`, as [What it costs](#what-it-costs)
+  lists. The image may be as large as the size's disk, 2 GB for `lite`;
+  a larger image fails the build, saying how large it was.
+- **Built for `linux/amd64`**, with Docker, in the build's sandbox (or the
+  workflow job's Docker, for [`g1t-runner deploy`](#deploying-from-a-workflow)),
+  with network access as any build has. **Build command** is not used:
+  the Dockerfile builds it.
+
+What Deployments cannot run yet is on
 [What g1t can't do yet](/about/limitations/#deployments).
 
 ## Previews of branches
@@ -538,7 +625,10 @@ Under the project's **Settings → Deployments**,
 | --- | --- | --- |
 | Production | On | Deploy the default branch on every push. |
 | Previews | On | A preview for every branch with an open pull request. |
-| Build command | The project's own | Runs instead of `npm run build`, or before bundling a Workers project. |
+| Build as | Auto | **Auto** (found from its files), **Static site**, **Workers** or **Docker**; see [Docker deployments](#docker-deployments). |
+| Dockerfile | `Dockerfile` or `Containerfile` | For a container: its Dockerfile's path, inside the project. |
+| Container size | `lite` | For a container: the instance it runs at, with its price an hour awake. |
+| Build command | The project's own | Runs instead of `npm run build`, or before bundling a Workers project. Not used for a container. |
 | Output directory | Found by itself | What a static site serves. |
 | Idle days | 7 | 1 to 90. A preview no one visits this long comes down. |
 | Build with a workflow | Off | Build through the deploy workflow g1t manages for the project; see [build with a workflow](#build-with-a-workflow). |
@@ -556,7 +646,8 @@ available to Deployments, and the workspace's that reach it:
 
 The build gets them as environment variables, with secrets hidden in its
 log. The running app gets them as bindings, `env.KEY`, put in place by g1t
-rather than the build. Secrets reach a preview only when the pull
+rather than the build; a container gets them as its environment variables
+when it starts, and its image's build gets none. Secrets reach a preview only when the pull
 request's author has Write or higher on the repository, whether a member
 or an [outside collaborator](/guides/access-and-roles/#outside-collaborators),
 or it is g1t working on its own. For a pull request g1t made, whoever
@@ -586,25 +677,54 @@ plan's $10 of included usage first; past it, it is charged up to your
 | Requests, to all of the workspace's apps | $0.30 a million | $0.36 a million |
 | CPU time your code spends computing (waiting on the network is not counted) | $0.02 a million ms | $0.024 a million ms |
 | Custom domains, with their certificates (a www/apex pair is two) | $0.10 a month | $0.12 a month, by the most the workspace had at once that month |
+| A container, while it is awake, by the minute (see the sizes below) | From $0.0129 an hour (`lite`) | From $0.0155 an hour |
+| Data a container sends | $0.05 a GB, at most | $0.06 a GB |
 
-Builds are charged when they finish. Requests, CPU time and custom domains
-are counted through the month, so your limit and **Billing** follow them as
-they happen, and charged once, on the first sweep after the month ends, as
-one line: *Deployments in 2026-10: 1,240,000 requests, 3,100,000 CPU ms, 2
-custom domains*.
+A container's price is its size's memory, disk and vCPU while it is awake,
+with the Durable Object in front of it, at Cloudflare's
+[Containers prices](https://developers.cloudflare.com/containers/platform/pricing/)
+plus 20%. Cloudflare bills CPU only as it is used; g1t charges every vCPU
+as busy while the container is awake, so a container that mostly waits
+costs g1t less than it is charged. Data sent is charged at the most a GB
+costs anywhere ($0.05; $0.025 in North America and Europe), since g1t
+cannot tell where it went. Each minute it is awake is charged from its
+start, so a container woken by one request, and stopped five minutes after
+it, is charged five minutes.
+
+| Size | vCPU | Memory | Disk, and the largest image | An hour awake | Awake all month (730 hours) |
+| --- | --- | --- | --- | --- | --- |
+| `lite` | 1/16 | 256 MiB | 2 GB | $0.0155 | $11.28 |
+| `basic` | 1/4 | 1 GiB | 4 GB | $0.0404 | $29.46 |
+| `standard-1` | 1/2 | 4 GiB | 8 GB | $0.0956 | $69.77 |
+| `standard-2` | 1 | 6 GiB | 12 GB | $0.1616 | $117.95 |
+| `standard-3` | 2 | 8 GiB | 16 GB | $0.2708 | $197.68 |
+| `standard-4` | 4 | 12 GiB | 20 GB | $0.4880 | $356.24 |
+
+**Settings → Deployments** shows these with the price book's prices of the
+day. A container that is visited all day never sleeps, and costs the last
+column; one visited for an hour a day costs about a thirtieth of it.
+
+Builds are charged when they finish. Requests, CPU time, custom domains
+and container time are counted through the month, so your limit and
+**Billing** follow them as they happen, and charged once, on the first
+sweep after the month ends, as one line: *Deployments in 2026-10:
+1,240,000 requests, 3,100,000 CPU ms, 2 custom domains, 41.5 container
+hours and 2.3 GB sent*.
 
 A static site, or plain HTML, runs no code when it is visited: its files
 are served as they are, so serving it adds no requests or CPU time. Its
 builds are metered. A Workers project's code runs on every request, so its
-requests and CPU time are metered too.
+requests and CPU time are metered too. A container's Worker is metered the
+same way, and its container by the minute while it is awake.
 
 An app that no one visits costs nothing. Previews still come down when
 their pull request closes and after their idle days, to keep the list of
 what is up short.
 
 The only things that stop a workspace's apps are its own spend limit
-(apps pause with a notice, and come back once there is room) and the plan
-ending (they come down).
+(apps pause with a notice, and come back once there is room; a paused
+container is stopped and starts no more) and the plan ending (they come
+down).
 
 Deployments used to be a $5 plan of their own. A Deployments subscription
 bought before keeps working until its current period ends, and is not
@@ -653,7 +773,8 @@ Usage from the month that is under way is still charged once it ends.
    upload them and nothing else. Files Cloudflare already has are skipped.
 4. The sandbox sends the Worker's code to g1t, which puts the app in
    g1t's [Workers for Platforms](https://developers.cloudflare.com/cloudflare-for-platforms/workers-for-platforms/)
-   namespace, under the name in its address.
+   namespace, under the name in its address. A container build goes as
+   [below](#containers).
 5. A request to `*.g1t.page` reaches g1t's dispatcher, which runs the app
    by the name in the hostname. Nothing else is looked up. A request to a
    custom domain reaches the same dispatcher through Cloudflare for SaaS;
@@ -663,6 +784,74 @@ Your code never holds a Cloudflare credential, and apps are served from
 `g1t.page`, not `g1t.sh`, so they share no cookies or origin with the site
 you sign in to.
 
+### Containers
+
+1. The build finds it is a container, and asks g1t where to push its
+   image (the build's `registry` step). g1t mints a login to Cloudflare's
+   registry, `registry.cloudflare.com`, that can **push only** and lasts
+   **15 minutes**, and names the app's own repository,
+   `<account>/g1t-<app>`, with the build's id as its tag. Asked before
+   anything is built, so a build that could not push is not run.
+2. The sandbox starts a Docker Engine of its own (as a workflow job's),
+   builds the image for `linux/amd64`, checks its size against the
+   container size's disk, pushes it with that login, and reports the
+   image by its digest.
+3. g1t runs only an image by digest in that app's repository, and asks
+   the registry, with a pull login of its own, that the digest is there.
+   It puts the app's Worker in the namespace: g1t's own code, never the
+   project's, with a Durable Object class that holds the container, the
+   project's secrets and variables, and a token for the app to report its
+   running time with. Then it creates the app's Container application
+   (at most one instance, at the project's size, attached to that class),
+   or rolls it out to the new image.
+4. A request reaches the app's Worker through the dispatcher, as any
+   app's does. The Worker hands it to the app's Durable Object, which
+   starts the container if it is asleep, with the environment, waits for
+   it to answer on its port, and passes the request to it. Every minute it
+   is awake, the object charges the next minute ahead and reports it to g1t
+   (`POST /deployments/apps/<app>/meter` on the API, with its token); five
+   minutes after the last request it stops the container.
+5. A preview's container comes down with its pull request, its
+   application and Worker deleted together.
+
+Why it is built this way, from Cloudflare's documentation and Wrangler's
+own code (October 2026):
+
+- **Workers for Platforms runs containers.** A user Worker in a dispatch
+  namespace may bind Containers, as a Durable Object
+  ([WfP bindings](https://developers.cloudflare.com/cloudflare-for-platforms/workers-for-platforms/configuration/bindings/)).
+  Wrangler's `deploy --dispatch-namespace` deploys containers by finding
+  the Durable Object namespace of the class in that dispatch namespace and
+  creating a Container application attached to it
+  (`POST /accounts/{id}/containers/applications`, with
+  `durable_objects.namespace_id`), then rolling out new images
+  (`…/applications/{id}/rollouts`). So each app is a Worker of its own,
+  with a class of its own, isolated as every app is, and the dispatcher
+  routes to it unchanged. A single host Worker of g1t's could not run every
+  app's image: a Durable Object starts only the images its Worker's
+  configuration names.
+- **The default scheduling policy.** It takes one image and size for the
+  whole application, set through the API, which suits one app per
+  application; the `durable_object` policy is in beta, and needs the
+  image map uploaded with the Worker.
+- **Registry logins.** Cloudflare mints registry credentials with
+  `POST /accounts/{id}/containers/registries/registry.cloudflare.com/credentials`
+  and `{ "permissions": ["push"], "expiration_minutes": 15 }`, as Wrangler
+  does for its own pushes. They cannot be held to one repository, so g1t
+  holds the build to its app's: it names the repository, runs nothing but a
+  digest in it, and never gives a build a login that can pull, so no build
+  can read another app's image. g1t's own Cloudflare token never reaches
+  the sandbox.
+- **Sizes and limits.** Containers' instance types are `lite` (1/16 vCPU,
+  256 MiB, 2 GB) through `standard-4` (4 vCPU, 12 GiB, 20 GB); an image
+  may be as large as its instance's disk, and an account holds 50 GB of
+  images ([limits](https://developers.cloudflare.com/containers/platform/limits/)).
+- **Scale to zero.** Containers are billed every 10 ms while running, and
+  stop being billed once asleep. The Durable Object stops its container
+  itself after five minutes without a request, rather than leaving it to
+  the inactivity timeout, since the object's own minute alarm, which
+  meters it, would otherwise keep it awake.
+
 ## Troubleshooting
 
 | You see | Do |
@@ -671,7 +860,11 @@ you sign in to.
 | A deployment **Skipped**, saying it reached its spend limit or that new compute is paused | The build was refused before it started. Follow the link in the message: raise the spend limit, prepay, or answer the spike, on Billing. |
 | "Stopped: unusual CPU use" | The build looked like it was mining. Contact support if it was a real build; see [abuse and mining](/guides/guardrails/#abuse-and-mining). |
 | "403" from a host in the build log | The build's network is restricted. Add the host to the project's allowed domains under **Settings → Guardrails**. |
-| "found nothing to serve" | Add a `build` script, an `index.html`, or a Workers config; or set **Output directory**. |
+| "found nothing to serve" | Add a `Dockerfile`, a `build` script, an `index.html`, or a Workers config; or set **Output directory**. |
+| "Docker deployments are not switched on for g1t.page yet" | The project is a container, which g1t.page does not run yet. Set **Build as** to Static site or Workers if it can be built as one. See [Docker deployments](#docker-deployments). |
+| "**Build as** is Docker, but this project has no Dockerfile" | Add a `Dockerfile`, or set **Dockerfile** to its path. |
+| "The image is 2.4 GB, more than the 2.0 GB an app of its size (lite) can hold" | Make the image smaller (a slim base image, a multi-stage build), or choose a larger **Container size**. |
+| A container app says "The app did not start" | It did not answer on its port within 90 seconds. Make it listen on `0.0.0.0` at `PORT`, or `EXPOSE` the port it uses in its Dockerfile. Its output is in the build's log only while it builds; run the image locally with `docker run -e PORT=8080 -p 8080:8080` to see it start. |
 | "the output directory `x` does not exist after the build" | The build wrote elsewhere: check its log, then fix **Output directory**. |
 | "`d1_databases` is not provisioned on g1t.page yet" | The app deployed without that binding. See [Workers projects](#workers-projects). |
 | "`triggers.crons` (1 schedule) is not set up on g1t.page yet" | The app deployed, but its `scheduled` handler never runs. See [Workers projects](#workers-projects). |
@@ -697,6 +890,12 @@ Deployments need a Workers for Platforms namespace and a zone for apps:
    Analytics: Read**, and store it:
    `npx wrangler secret put CLOUDFLARE_API_TOKEN` in `services/deployments`.
 4. Deploy `services/deployments`, `services/pages`, and the runner.
+
+Docker deployments also need the token to have **Containers: Edit**, a
+Workers Paid plan with Containers, and `CONTAINERS` set to `on` in
+`services/deployments/wrangler.jsonc`; see
+[Docker deployments](/guides/deploy-to-cloudflare/#docker-deployments)
+for what to check first.
 
 Custom domains also need Cloudflare for SaaS on the apps' zone. Turn it on
 under the zone's **SSL/TLS → Custom Hostnames**, give the token **SSL and

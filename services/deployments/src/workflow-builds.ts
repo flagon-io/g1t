@@ -160,6 +160,9 @@ export type WorkflowBuild = {
   root_dir: string;
   build_command: string | null;
   output_dir: string | null;
+  /** What it is built as (`auto`, `static`, `workers` or `docker`), and its Dockerfile's path when set. */
+  build_as: string;
+  dockerfile: string | null;
   /** The variables builds of this kind get. */
   build_env: Record<string, string>;
   /** The secrets builds of this kind get; empty for an untrusted run. */

@@ -22,12 +22,21 @@
 //!   bundled as a Workers project's is, without a Wrangler config of its
 //!   own. A framework set up to need a server fails before anything is
 //!   installed, saying what to change.
+//! - A container (deploy/container.rs): a project with a `Dockerfile` (or
+//!   `Containerfile`, or the path it chose) and no framework that builds a
+//!   static site or a Worker, a framework set up to need a server, or a
+//!   Node.js, Python, Go, Ruby or PHP server, for which g1t writes a
+//!   Dockerfile and shows it in the log. The image is built with Docker
+//!   and pushed to Cloudflare's registry with a push-only login the
+//!   deployments service gives this build alone, for minutes (the
+//!   `registry` step); the service runs it.
 //! - Anything else: a static site. Its `build` script runs, and the first
 //!   of `dist`, `build`, `out`, `public`, `_site` or `.output/public` that
 //!   exists is served, or the repository itself if it has an `index.html`.
 //!
-//! The project's own **Build command** and **Output directory** win over
-//! what is detected.
+//! The project's own **Build as** (`BUILD_AS`: auto, static, workers or
+//! docker), **Dockerfile** (`DOCKERFILE`), **Build command** and **Output
+//! directory** win over what is detected.
 //!
 //! Configuration comes from the environment:
 //!
@@ -63,8 +72,10 @@ use sha2::{Digest, Sha256};
 use crate::checks::{redact, run_command};
 use crate::{WORKDIR, auth_option, env, git};
 
+mod container;
 mod frameworks;
 
+use container::BuildAs;
 use frameworks::{Adapter, Framework};
 
 /// Where `wrangler deploy --dry-run` writes the bundle in a sandbox.
@@ -525,10 +536,14 @@ struct Built {
     assets_dir: Option<PathBuf>,
     warnings: Vec<String>,
     /// What kind of project it was found to be, for its settings page:
-    /// `workers`, `static` (a build's output) or `html` (the files as they are).
+    /// `workers`, `static` (a build's output), `html` (the files as they
+    /// are) or `container`.
     detected: &'static str,
-    /// The framework it was found to be built with, if any (`astro`…).
+    /// The framework it was found to be built with, if any (`astro`…), or
+    /// for a container what it was built from (`dockerfile`, `flask`…).
     framework: Option<&'static str>,
+    /// For a container: the image pushed, its digest, port and size.
+    container: Option<Value>,
 }
 
 /// What a project without a Workers config is: a site it built, or its own
@@ -597,7 +612,8 @@ fn find_output(dir: &Path) -> Option<String> {
 /// unless one was chosen or the framework says where it writes.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Detected {
-    /// `workers`, `static`, `html`, or `none` when there is nothing to serve.
+    /// `workers`, `static`, `html`, `container`, or `none` when there is
+    /// nothing to serve.
     pub kind: &'static str,
     /// The framework it is built with, if g1t knows it.
     pub framework: Option<Framework>,
@@ -610,12 +626,178 @@ pub(crate) struct Detected {
     /// What runs before wrangler bundles a Workers project; for anything
     /// else, `build`.
     pre_build: Option<String>,
+    /// For a container: its Dockerfile, or the one g1t writes.
+    pub container: Option<ContainerBuild>,
+    /// What it would be served as without its Dockerfile, when it is a
+    /// container only for having one: built so while g1t.page runs no
+    /// containers (`not_enabled` from the registry step).
+    fallback: Option<Box<Detected>>,
 }
 
+/// How a container is built.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ContainerBuild {
+    /// The project's own Dockerfile, relative to the project; none when
+    /// g1t writes one.
+    pub dockerfile: Option<String>,
+    /// The Dockerfile g1t writes, for a server it recognises.
+    pub generated: Option<container::Server>,
+    /// What it listens on: its Dockerfile's `EXPOSE`, else 8080. `PORT`
+    /// is set to it.
+    pub port: u16,
+}
+
+impl Detected {
+    fn nothing(framework: Option<Framework>, install: Option<String>, problem: String) -> Detected {
+        Detected {
+            kind: "none",
+            framework,
+            install,
+            build: None,
+            output_dir: None,
+            problem: Some(problem),
+            pre_build: None,
+            container: None,
+            fallback: None,
+        }
+    }
+
+    /// The `framework` `g1t-runner detect` prints: the framework, else for
+    /// a container the server g1t wrote a Dockerfile for (`flask`…) or
+    /// `dockerfile`.
+    pub(crate) fn framework_id(&self) -> Option<&'static str> {
+        self.framework.as_ref().map(|f| f.id).or_else(|| {
+            self.container.as_ref().map(|c| c.generated.as_ref().map_or("dockerfile", |server| server.id))
+        })
+    }
+}
+
+/// Why nothing could be found to serve, and what to add.
+const NOTHING_TO_SERVE: &str = "found nothing to serve: no Workers config, no Dockerfile, no index.html, and none of dist, build, out, \
+     public, _site or .output/public. Add a `Dockerfile` to deploy it as a container, or set **Build command** and \
+     **Output directory** for a static site.";
+
+/// The project as a container: its own Dockerfile, else one g1t writes
+/// for `framework` or for a server it recognises. None when it has neither.
+fn as_container(dir: &Path, framework: Option<Framework>, own: Option<String>) -> Option<Detected> {
+    let build = match own {
+        Some(path) => {
+            let text = std::fs::read_to_string(dir.join(&path)).unwrap_or_default();
+            ContainerBuild { port: container::exposed_port(&text).unwrap_or(container::DEFAULT_PORT), dockerfile: Some(path), generated: None }
+        }
+        None => {
+            let server = match &framework {
+                // One set up for Workers (OpenNext's adapter) is not run as a server.
+                Some(framework) if framework.workers => None,
+                Some(framework) => container::for_framework(dir, framework.id),
+                None => container::server(dir),
+            }?;
+            ContainerBuild { dockerfile: None, generated: Some(server), port: container::DEFAULT_PORT }
+        }
+    };
+    let file = build.dockerfile.clone().unwrap_or_else(|| "Dockerfile (written by g1t)".to_owned());
+    Some(Detected {
+        kind: "container",
+        framework,
+        // The image installs what it needs: nothing runs before its build.
+        install: None,
+        build: Some(format!("docker build -f {file} .")),
+        output_dir: None,
+        problem: None,
+        pre_build: None,
+        container: Some(build),
+        fallback: None,
+    })
+}
+
+#[cfg(test)]
 pub(crate) fn detect(dir: &Path, custom_build: Option<&str>, chosen_output: Option<&str>) -> Result<Detected> {
+    detect_as(dir, custom_build, chosen_output, BuildAs::Auto, None)
+}
+
+/// What the project is, by its **Build as** setting (`build_as`) and its
+/// Dockerfile's path (`dockerfile`, when it chose one):
+///
+/// - **Docker**: a container, from its Dockerfile or one g1t writes.
+/// - **Static site**: built and served as files, whatever else it has.
+/// - **Workers**: its Wrangler config or a framework adapter's Worker.
+/// - **Auto**: a Wrangler config is a Workers project; a framework that
+///   builds a static site or a Worker is that, which costs nothing while
+///   no one visits; a framework set up to need a server is a container
+///   when it has a Dockerfile, or when g1t can write one; a project with
+///   no framework g1t knows is a container when it has a Dockerfile or is
+///   a server g1t recognises (a Node.js, Python, Go, Ruby or PHP app),
+///   else a static site, else nothing, saying to add a Dockerfile.
+pub(crate) fn detect_as(
+    dir: &Path,
+    custom_build: Option<&str>,
+    chosen_output: Option<&str>,
+    build_as: BuildAs,
+    dockerfile: Option<&str>,
+) -> Result<Detected> {
+    let own = container::own_dockerfile(dir, dockerfile)?;
+    match build_as {
+        BuildAs::Docker => {
+            let framework = frameworks::detect(dir, read_wrangler(dir)?.is_some());
+            Ok(as_container(dir, framework.clone(), own).unwrap_or_else(|| {
+                Detected::nothing(
+                    framework,
+                    None,
+                    "**Build as** is Docker, but this project has no Dockerfile and g1t doesn't recognise a server it can write \
+                     one for. Add a `Dockerfile` (or set its path under Settings, Deployments)."
+                        .to_owned(),
+                )
+            }))
+        }
+        BuildAs::Static => detect_site(dir, custom_build, chosen_output, true),
+        BuildAs::Workers => {
+            let site = detect_site(dir, custom_build, chosen_output, false)?;
+            if site.kind == "workers" {
+                return Ok(site);
+            }
+            Ok(Detected::nothing(
+                site.framework,
+                site.install,
+                "**Build as** is Workers, but this project has no Wrangler config (`wrangler.jsonc`, `wrangler.json` or \
+                 `wrangler.toml`) and no framework adapter that writes a Worker."
+                    .to_owned(),
+            ))
+        }
+        BuildAs::Auto => {
+            let site = detect_site(dir, custom_build, chosen_output, false)?;
+            if site.kind == "workers" || (site.framework.is_some() && site.problem.is_none()) {
+                return Ok(site);
+            }
+            if let Some(problem) = site.problem.clone() {
+                // A framework set up to need a server.
+                let found = as_container(dir, site.framework.clone(), own);
+                return Ok(found.unwrap_or_else(|| {
+                    Detected::nothing(site.framework, site.install, format!("{problem} Or add a `Dockerfile` to run it as a container."))
+                }));
+            }
+            let has_own = own.is_some();
+            if let Some(mut found) = as_container(dir, None, own) {
+                // A Dockerfile beside a site that could be served as it is.
+                if has_own && (site.kind == "static" || site.kind == "html") {
+                    found.fallback = Some(Box::new(site));
+                }
+                return Ok(found);
+            }
+            if site.kind == "none" {
+                return Ok(Detected::nothing(site.framework, site.install, NOTHING_TO_SERVE.to_owned()));
+            }
+            Ok(site)
+        }
+    }
+}
+
+/// What the project is as a static site or Workers project: `as_static`
+/// ignores its Wrangler config and any framework adapter, and builds it
+/// even when its framework is set up to need a server.
+fn detect_site(dir: &Path, custom_build: Option<&str>, chosen_output: Option<&str>, as_static: bool) -> Result<Detected> {
     let custom_build = custom_build.map(str::trim).filter(|c| !c.is_empty());
     let chosen_output = chosen_output.map(|d| d.trim().trim_matches('/')).filter(|d| !d.is_empty());
-    let config = read_wrangler(dir)?;
+    let config = if as_static { None } else { read_wrangler(dir)? };
     let framework = frameworks::detect(dir, config.is_some());
     let installs: Vec<&str> = [install_command(dir), framework.as_ref().and_then(|f| f.install)].into_iter().flatten().collect();
     let install = (!installs.is_empty()).then(|| installs.join(" && "));
@@ -638,6 +820,8 @@ pub(crate) fn detect(dir: &Path, custom_build: Option<&str>, chosen_output: Opti
             output_dir: config.assets.and_then(|assets| assets.directory),
             problem: None,
             pre_build,
+            container: None,
+            fallback: None,
         });
     }
     let build = custom_build
@@ -645,7 +829,7 @@ pub(crate) fn detect(dir: &Path, custom_build: Option<&str>, chosen_output: Opti
         .or(framework_build)
         .or_else(|| has_build_script(dir).then(|| "npm run build".to_owned()));
     // An adapter's Worker, unless the project chose a folder to serve.
-    if chosen_output.is_none() && framework.as_ref().is_some_and(|f| f.adapter.is_some()) {
+    if !as_static && chosen_output.is_none() && framework.as_ref().is_some_and(|f| f.adapter.is_some()) {
         // Where its files are is known once it has built: the adapter's
         // own folder, or where the config it writes says.
         return Ok(Detected {
@@ -656,15 +840,18 @@ pub(crate) fn detect(dir: &Path, custom_build: Option<&str>, chosen_output: Opti
             pre_build: build.clone(),
             build,
             problem: None,
+            container: None,
+            fallback: None,
         });
     }
-    // A command or a folder of the project's own says it knows better.
+    // A command or a folder of the project's own says it knows better, as
+    // does **Build as** set to Static site.
     let problem = framework
         .as_ref()
         .and_then(|f| f.problem.clone())
-        .filter(|_| custom_build.is_none() && chosen_output.is_none());
-    if problem.is_some() {
-        return Ok(Detected { kind: "none", framework, install, build: None, output_dir: None, problem, pre_build: None });
+        .filter(|_| !as_static && custom_build.is_none() && chosen_output.is_none());
+    if let Some(problem) = problem {
+        return Ok(Detected::nothing(framework, install, problem));
     }
     let output_dir = chosen_output
         .map(str::to_owned)
@@ -676,7 +863,7 @@ pub(crate) fn detect(dir: &Path, custom_build: Option<&str>, chosen_output: Opti
         (None, None) => "none",
         _ => "static",
     };
-    Ok(Detected { kind, framework, install, pre_build: build.clone(), build, output_dir, problem: None })
+    Ok(Detected { kind, framework, install, pre_build: build.clone(), build, output_dir, problem: None, container: None, fallback: None })
 }
 
 /// The compatibility date a Worker gets when its config names none.
@@ -723,13 +910,176 @@ fn adapter_config_path() -> PathBuf {
     bundle.with_file_name(format!("{}.wrangler.json", bundle.file_name().unwrap_or_default().to_string_lossy()))
 }
 
-fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
+/// What a container build says when g1t.page runs no containers.
+const CONTAINERS_OFF: &str = "This project deploys as a container, and Docker deployments are not switched on for g1t.page yet. \
+     Set **Build as** to Static site or Workers under Settings, Deployments if it can be built as one.";
+
+/// Where a container's registry login is kept for the build: its own
+/// folder, never the job's `~/.docker`.
+fn docker_config_dir() -> PathBuf {
+    bundle_dir().with_file_name(format!("{}.docker", bundle_dir().file_name().unwrap_or_default().to_string_lossy()))
+}
+
+/// Where the Dockerfile g1t writes for a project without one goes: beside
+/// the bundle, never in the checkout.
+fn generated_dockerfile_path() -> PathBuf {
+    bundle_dir().with_file_name(format!("{}.Dockerfile", bundle_dir().file_name().unwrap_or_default().to_string_lossy()))
+}
+
+/// What the deployments service answers the `registry` step with: where
+/// to push the app's image, with a login good for pushing only and only
+/// for minutes, and the largest image the app's instance can run.
+#[derive(Debug, Deserialize)]
+struct RegistryGrant {
+    registry: String,
+    repository: String,
+    tag: String,
+    username: String,
+    password: String,
+    #[serde(alias = "maxImageBytes")]
+    max_image_bytes: u64,
+    #[serde(default, alias = "instanceType")]
+    instance_type: Option<String>,
+}
+
+/// `name@sha256:…` for `repository` among an image's repository digests,
+/// as `docker image inspect` lists them, one a line.
+fn pushed_digest(repo_digests: &str, registry: &str, repository: &str) -> Option<String> {
+    let prefix = format!("{registry}/{repository}@sha256:");
+    repo_digests
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with(&prefix) && line.len() == prefix.len() + 64)
+        .map(str::to_owned)
+}
+
+/// Bytes, as a person reads them: `1.4 GB`.
+fn size_text(bytes: u64) -> String {
+    format!("{:.1} GB", bytes as f64 / 1_000_000_000.0)
+}
+
+/// Runs `docker` with `args`, signed in through `config`; its output, or
+/// why it failed, redacted.
+fn docker(args: &[&str], config: &Path, input: Option<&str>, secrets: &[String]) -> Result<String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let mut command = Command::new("docker");
+    command.args(args).env("DOCKER_CONFIG", config).stdout(Stdio::piped()).stderr(Stdio::piped());
+    command.stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() });
+    let mut child = command.spawn().context("could not run docker")?;
+    if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+        stdin.write_all(input.as_bytes())?;
+    }
+    let output = child.wait_with_output()?;
+    let text = redact(&format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr)), secrets);
+    if !output.status.success() {
+        bail!("`docker {}` failed: {}", args.first().copied().unwrap_or_default(), text.trim());
+    }
+    Ok(text)
+}
+
+/// Builds the project's container image with Docker and pushes it to
+/// Cloudflare's registry, at the place and with the short-lived push-only
+/// login the deployments service gives for this build (`registry`). The
+/// sandbox never holds g1t's own Cloudflare token. None when g1t.page runs
+/// no containers (the service answers `not_enabled`).
+fn container_build(reporter: &Reporter, log: &mut Log, secrets: &[String], dir: &Path, plan: &Detected) -> Result<Option<Value>> {
+    let build = plan.container.as_ref().context("not a container")?;
+    // Asked first: a build that could not be pushed is not run.
+    let answer = reporter.send("registry", json!({}))?;
+    if answer["ok"] == false {
+        if answer["error"]["code"] == "not_enabled" {
+            return Ok(None);
+        }
+        bail!("{}", answer["error"]["message"].as_str().unwrap_or("g1t refused the image's upload"));
+    }
+    let grant: RegistryGrant =
+        serde_json::from_value(answer["value"].clone()).context("g1t's answer to the image's upload was not understood")?;
+    let mut secrets = secrets.to_vec();
+    secrets.push(grant.password.clone());
+    let dockerfile = match (&build.dockerfile, &build.generated) {
+        (Some(own), _) => {
+            log.line(&format!("Building a container from {own}, listening on port {}.", build.port));
+            dir.join(own)
+        }
+        (None, Some(server)) => {
+            // Shown whole, so it can be committed and changed.
+            log.line(&format!("This {} project has no Dockerfile, so g1t wrote this one (commit it as `Dockerfile` to change it):", server.name));
+            for line in server.dockerfile.lines() {
+                log.line(&format!("    {line}"));
+            }
+            let path = generated_dockerfile_path();
+            std::fs::write(&path, &server.dockerfile)?;
+            // BuildKit reads `<Dockerfile>.dockerignore` beside it.
+            std::fs::write(path.with_file_name(format!("{}.dockerignore", path.file_name().unwrap_or_default().to_string_lossy())), container::DOCKERIGNORE)?;
+            path
+        }
+        (None, None) => bail!("nothing to build the container from"),
+    };
+    if std::env::var("BUILD_COMMAND").is_ok_and(|c| !c.trim().is_empty()) {
+        log.line("Build command is not used for a container: its Dockerfile builds it.");
+    }
+    // A sandbox's own Docker Engine, started for the build; in a workflow
+    // step, the job's.
+    if clones() {
+        if std::env::var("G1T_DOCKER").as_deref() != Ok("on") {
+            bail!("Docker is turned off for g1t's sandboxes here, so a container cannot be built.");
+        }
+        crate::docker::engine::enable(crate::docker::engine::Options::default())
+            .map_err(|problem| anyhow::anyhow!("Docker is not available in this sandbox: {problem}"))?;
+        let started = crate::docker::engine::ensure_started();
+        for note in crate::docker::take_notes() {
+            log.line(&note);
+        }
+        started.map_err(|problem| anyhow::anyhow!("Docker could not start: {problem}"))?;
+    }
+    let config = docker_config_dir();
+    std::fs::create_dir_all(&config)?;
+    let image = format!("{}/{}:{}", grant.registry, grant.repository, grant.tag);
+    let quote = |path: &Path| format!("'{}'", path.display().to_string().replace('\'', r"'\''"));
+    let built = step(
+        log,
+        &format!("docker build --platform linux/amd64 --pull -f {} -t {image} .", quote(&dockerfile)),
+        &secrets,
+    );
+    let pushed = built.and_then(|()| {
+        let size: u64 = docker(&["image", "inspect", "--format", "{{.Size}}", &image], &config, None, &secrets)?.trim().parse().unwrap_or(0);
+        log.line(&format!("The image is {}.", size_text(size)));
+        if size > grant.max_image_bytes {
+            bail!(
+                "The image is {}, more than the {} an app of its size ({}) can hold. Make it smaller (a slim base image, a multi-stage build), or choose a larger instance under Settings, Deployments.",
+                size_text(size),
+                size_text(grant.max_image_bytes),
+                grant.instance_type.as_deref().unwrap_or("its instance type"),
+            );
+        }
+        docker(&["login", &grant.registry, "--username", &grant.username, "--password-stdin"], &config, Some(&grant.password), &secrets)?;
+        log.line(&format!("$ docker push {image}"));
+        let output = docker(&["push", &image], &config, None, &secrets)?;
+        log.line(output.trim_end());
+        let digests = docker(&["image", "inspect", "--format", "{{join .RepoDigests \"\\n\"}}", &image], &config, None, &secrets)?;
+        let reference = pushed_digest(&digests, &grant.registry, &grant.repository).context("the pushed image's digest was not found")?;
+        Ok(json!({
+            "image": reference,
+            "port": build.port,
+            "sizeBytes": size,
+            "dockerfile": build.dockerfile,
+            "generated": build.generated.as_ref().map(|server| server.id),
+        }))
+    });
+    let _ = std::fs::remove_dir_all(&config);
+    let _ = std::fs::remove_file(generated_dockerfile_path());
+    pushed.map(Some)
+}
+
+fn build(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Built> {
     let project = project_dir();
     let dir = project.as_path();
     let custom_build = std::env::var("BUILD_COMMAND").ok();
     let chosen = std::env::var("OUTPUT_DIR").ok().filter(|d| !d.trim().is_empty());
-    let plan = detect(dir, custom_build.as_deref(), chosen.as_deref())?;
-    let framework_id = plan.framework.as_ref().map(|f| f.id);
+    let build_as = BuildAs::parse(&std::env::var("BUILD_AS").unwrap_or_default());
+    let dockerfile = std::env::var("DOCKERFILE").ok();
+    let mut plan = detect_as(dir, custom_build.as_deref(), chosen.as_deref(), build_as, dockerfile.as_deref())?;
     if let Some(framework) = &plan.framework {
         log.line(&format!("Detected {}: framework={}.", framework.name, framework.id));
     }
@@ -737,17 +1087,44 @@ fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
     if let Some(problem) = &plan.problem {
         bail!("{problem}");
     }
+    if plan.container.is_some() {
+        match container_build(reporter, log, secrets, dir, &plan)? {
+            Some(image) => {
+                return Ok(Built {
+                    worker: json!({}),
+                    assets_dir: None,
+                    warnings: Vec::new(),
+                    detected: "container",
+                    framework: plan.framework_id(),
+                    container: Some(image),
+                });
+            }
+            // g1t.page runs no containers yet: the site it is without its
+            // Dockerfile, as it was built before.
+            None => match plan.fallback.take() {
+                Some(site) => {
+                    log.line(&format!("Building it as a {} site instead, as it is without its Dockerfile.", if site.kind == "html" { "plain HTML" } else { "static" }));
+                    plan = *site;
+                }
+                None => bail!("{CONTAINERS_OFF}"),
+            },
+        }
+    }
+    let framework_id = plan.framework.as_ref().map(|f| f.id);
     if let Some(install) = &plan.install {
         step(log, install, secrets)?;
     }
     if let Some(command) = &plan.pre_build {
         step(log, command, secrets)?;
     }
-    let own_config = read_wrangler(dir)?;
+    // A static site (by **Build as**, or found to be one) never reads a
+    // Workers config.
+    let workers = plan.kind == "workers";
+    let own_config = if workers { read_wrangler(dir)? } else { None };
     // A framework built for Workers may write the config wrangler reads
     // (`@cloudflare/vite-plugin` does, and Astro's adapter with it), with
     // or without one of the project's own.
-    let written = if own_config.is_some() || plan.framework.as_ref().is_some_and(|f| f.workers) {
+    let written = if own_config.is_some() || (workers && plan.framework.as_ref().is_some_and(|f| f.workers)) {
         redirected_config(dir)?
     } else {
         None
@@ -755,13 +1132,13 @@ fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
     if let Some((config, base)) = written {
         log.line(&format!("Using the Workers config the build wrote, in {}.", base.display()));
         let (worker, assets_dir, warnings) = build_worker(log, secrets, config, &base, None)?;
-        return Ok(Built { worker, assets_dir, warnings, detected: "workers", framework: framework_id });
+        return Ok(Built { worker, assets_dir, warnings, detected: "workers", framework: framework_id, container: None });
     }
     if let Some(config) = own_config {
         let (worker, assets_dir, warnings) = build_worker(log, secrets, config, dir, None)?;
-        return Ok(Built { worker, assets_dir, warnings, detected: "workers", framework: framework_id });
+        return Ok(Built { worker, assets_dir, warnings, detected: "workers", framework: framework_id, container: None });
     }
-    let adapter = plan.framework.as_ref().and_then(|f| f.adapter.as_ref()).filter(|_| chosen.is_none());
+    let adapter = plan.framework.as_ref().and_then(|f| f.adapter.as_ref()).filter(|_| workers && chosen.is_none());
     if let Some(adapter) = adapter
         && let Some(entry) = adapter_entry(dir, adapter)
     {
@@ -792,7 +1169,7 @@ fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
         let built = build_worker(log, secrets, config, dir, Some(&file));
         let _ = std::fs::remove_file(&file);
         let (worker, assets_dir, warnings) = built?;
-        return Ok(Built { worker, assets_dir, warnings, detected: "workers", framework: framework_id });
+        return Ok(Built { worker, assets_dir, warnings, detected: "workers", framework: framework_id, container: None });
     }
     if let (Some(adapter), Some(framework)) = (adapter, &plan.framework)
         && framework.output.is_none()
@@ -843,6 +1220,7 @@ fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
         assets_dir: Some(assets_dir),
         warnings: Vec::new(),
         framework: framework_id,
+        container: None,
     })
 }
 
@@ -929,15 +1307,17 @@ fn deploy(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Valu
             }
         }
     }
-    let built = build(log, secrets)?;
+    let built = build(reporter, log, secrets)?;
     let mut finish = json!({
         "worker": built.worker,
         "warnings": built.warnings,
         "detected": built.detected,
-        // Not stored by the deployments service yet, which ignores fields
-        // it does not know; the build's log names it too.
+        // What it is built with, shown beside `detected` on its settings.
         "framework": built.framework,
     });
+    if let Some(image) = built.container {
+        finish["container"] = image;
+    }
     for warning in &built.warnings {
         log.line(&format!("Warning: {warning}"));
     }
@@ -995,7 +1375,9 @@ const CLI_HELP: &str = "g1t-runner deploy: builds the project in this checkout a
 
 Reads DEPLOY_ID and DEPLOY_TOKEN (from POST /repos/{owner}/{repo}/deployments/builds),
 G1T_API (https://api.g1t.sh), and optionally ROOT_DIR, BUILD_COMMAND, OUTPUT_DIR,
-BUILD_ENV and BUILD_SECRETS (JSON objects). The g1t/deploy action sets them all.
+BUILD_AS (auto, static, workers or docker), DOCKERFILE, and BUILD_ENV and
+BUILD_SECRETS (JSON objects). The g1t/deploy action sets them all. A container
+is built with the docker on PATH.
 
 g1t-runner detect prints what the build would find, as key=value lines.";
 
@@ -1030,6 +1412,7 @@ fn run(step_log: bool) -> i32 {
     if step_log {
         let _ = std::fs::remove_dir_all(bundle_dir());
         let _ = std::fs::remove_file(adapter_config_path());
+        let _ = std::fs::remove_dir_all(docker_config_dir());
     }
     let (sent, failed) = match outcome {
         Ok(mut finish) => {
@@ -1077,7 +1460,7 @@ pub fn detect_cli(args: &[String]) -> i32 {
             "--root-dir" => root = rest.next().cloned().unwrap_or_default(),
             "--help" | "-h" => {
                 println!(
-                    "g1t-runner detect [--root-dir DIR]: prints kind, install, build, output-dir and framework (when one is found) as key=value lines."
+                    "g1t-runner detect [--root-dir DIR]: prints kind, install, build, output-dir and framework (when one is found), and for a container dockerfile and port, as key=value lines. Reads ROOT_DIR, BUILD_COMMAND, OUTPUT_DIR, BUILD_AS (auto, static, workers or docker) and DOCKERFILE as a build does."
                 );
                 return 0;
             }
@@ -1090,7 +1473,9 @@ pub fn detect_cli(args: &[String]) -> i32 {
     let dir = project_dir_in(&checkout_dir(), &root);
     let custom = std::env::var("BUILD_COMMAND").ok();
     let output = std::env::var("OUTPUT_DIR").ok();
-    match detect(&dir, custom.as_deref(), output.as_deref()) {
+    let build_as = BuildAs::parse(&std::env::var("BUILD_AS").unwrap_or_default());
+    let dockerfile = std::env::var("DOCKERFILE").ok();
+    match detect_as(&dir, custom.as_deref(), output.as_deref(), build_as, dockerfile.as_deref()) {
         Ok(found) => {
             print!("{}", output_lines(&found));
             if let Some(problem) = &found.problem {
@@ -1117,8 +1502,12 @@ fn output_lines(found: &Detected) -> String {
         one_line(found.build.as_deref()),
         one_line(found.output_dir.as_deref()),
     );
-    if let Some(framework) = &found.framework {
-        lines.push_str(&format!("framework={}\n", framework.id));
+    if let Some(framework) = found.framework_id() {
+        lines.push_str(&format!("framework={framework}\n"));
+    }
+    // A container's Dockerfile (empty when g1t writes one) and its port.
+    if let Some(container) = &found.container {
+        lines.push_str(&format!("dockerfile={}\nport={}\n", one_line(container.dockerfile.as_deref()), container.port));
     }
     lines
 }
@@ -1262,6 +1651,8 @@ crons = [\"0 * * * *\"]
             output_dir: None,
             problem: None,
             pre_build: None,
+            container: None,
+            fallback: None,
         };
         assert_eq!(output_lines(&found), "kind=static\ninstall=npm ci\nbuild=a b\noutput-dir=\n");
         let vite = project("lines", &[("package.json", r#"{ "devDependencies": { "vite": "7" } }"#)]);
@@ -1361,10 +1752,9 @@ crons = [\"0 * * * *\"]
             Case {
                 name: "astro-server",
                 files: &[("package.json", r#"{ "dependencies": { "astro": "5", "@astrojs/node": "9" } }"#), ("astro.config.mjs", "export default { output: \"server\" }")],
-                kind: "none",
+                kind: "container",
                 framework: Some("astro"),
-                build: None,
-                problem: Some("`output: 'static'`"),
+                build: Some(GENERATED),
                 ..CASE
             },
             Case {
@@ -1392,10 +1782,9 @@ crons = [\"0 * * * *\"]
             Case {
                 name: "next-server",
                 files: &[("package.json", r#"{ "scripts": { "build": "next build" }, "dependencies": { "next": "16" } }"#), ("next.config.mjs", "export default {}")],
-                kind: "none",
+                kind: "container",
                 framework: Some("nextjs"),
-                build: None,
-                problem: Some("`@opennextjs/cloudflare`"),
+                build: Some(GENERATED),
                 ..CASE
             },
             Case {
@@ -1460,7 +1849,7 @@ crons = [\"0 * * * *\"]
                 kind: "none",
                 framework: Some("sveltekit"),
                 build: None,
-                problem: Some("`@sveltejs/adapter-static`"),
+                problem: Some("Or add a `Dockerfile`"),
                 ..CASE
             },
             Case {
@@ -1492,10 +1881,9 @@ crons = [\"0 * * * *\"]
             Case {
                 name: "react-router-ssr",
                 files: &[("package.json", r#"{ "devDependencies": { "@react-router/dev": "7" } }"#), ("react-router.config.ts", "export default { ssr: true }")],
-                kind: "none",
+                kind: "container",
                 framework: Some("react-router"),
-                build: None,
-                problem: Some("`ssr: false`"),
+                build: Some(GENERATED),
                 ..CASE
             },
             Case {
@@ -1626,6 +2014,88 @@ crons = [\"0 * * * *\"]
             let _ = std::fs::remove_dir_all(&dir);
         }
     }
+
+    #[test]
+    fn build_as_and_dockerfiles_decide_in_order() {
+        let detect_with = |dir: &Path, build_as: BuildAs, dockerfile: Option<&str>| detect_as(dir, None, None, build_as, dockerfile).unwrap();
+        // A framework that builds a static site stays one beside a
+        // Dockerfile: it costs nothing while no one visits.
+        let vite = project("p-vite", &[("package.json", r#"{ "devDependencies": { "vite": "7" } }"#), ("Dockerfile", "FROM nginx\nEXPOSE 80\n")]);
+        assert_eq!(detect_with(&vite, BuildAs::Auto, None).kind, "static");
+        // Unless the project says Docker.
+        let found = detect_with(&vite, BuildAs::Docker, None);
+        assert_eq!((found.kind, found.framework_id()), ("container", Some("vite")));
+        let container = found.container.unwrap();
+        assert_eq!((container.dockerfile.as_deref(), container.port), (Some("Dockerfile"), 80));
+        // A Wrangler config wins in Auto, and not when it says Static site.
+        let workers = project("p-workers", &[("wrangler.jsonc", r#"{ "assets": { "directory": "public" } }"#), ("index.html", "")]);
+        assert_eq!(detect_with(&workers, BuildAs::Auto, None).kind, "workers");
+        assert_eq!(detect_with(&workers, BuildAs::Static, None).kind, "html");
+        // Workers, without a config or adapter, says what is missing.
+        let html = project("p-html", &[("index.html", "<h1>hi</h1>")]);
+        let found = detect_with(&html, BuildAs::Workers, None);
+        assert_eq!(found.kind, "none");
+        assert!(found.problem.unwrap().contains("no Wrangler config"));
+        // No framework and a Dockerfile: a container, built as the site it
+        // is without one while g1t.page runs no containers.
+        let both = project("p-both", &[("index.html", ""), ("Containerfile", "FROM nginx")]);
+        let found = detect_with(&both, BuildAs::Auto, None);
+        assert_eq!((found.kind, found.framework_id()), ("container", Some("dockerfile")));
+        assert_eq!(found.container.as_ref().unwrap().port, 8080);
+        assert_eq!(found.fallback.as_ref().map(|site| site.kind), Some("html"));
+        // A Dockerfile at a path of the project's choosing.
+        let chosen = project("p-chosen", &[("ops/web.Dockerfile", "FROM node\nEXPOSE 3000")]);
+        assert_eq!(detect_with(&chosen, BuildAs::Auto, None).kind, "none");
+        let found = detect_with(&chosen, BuildAs::Auto, Some("ops/web.Dockerfile"));
+        assert_eq!((found.kind, found.container.unwrap().port), ("container", 3000));
+        assert!(detect_as(&chosen, None, None, BuildAs::Auto, Some("nope")).is_err());
+        // A server g1t recognises gets a Dockerfile written for it.
+        let express = project("p-express", &[("package.json", r#"{ "scripts": { "start": "node index.js" }, "dependencies": { "express": "5" } }"#)]);
+        let found = detect_with(&express, BuildAs::Auto, None);
+        assert_eq!((found.kind, found.framework_id(), found.install.as_deref()), ("container", Some("node"), None));
+        assert!(found.fallback.is_none());
+        assert!(output_lines(&found).ends_with("framework=node\ndockerfile=\nport=8080\n"));
+        // Nothing at all says to add a Dockerfile.
+        let nothing = project("p-nothing", &[("README.md", "")]);
+        let found = detect_with(&nothing, BuildAs::Auto, None);
+        assert_eq!(found.kind, "none");
+        assert!(found.problem.as_deref().unwrap().starts_with("found nothing to serve"));
+        assert!(found.problem.unwrap().contains("Add a `Dockerfile`"));
+        let found = detect_with(&nothing, BuildAs::Docker, None);
+        assert!(found.problem.unwrap().contains("**Build as** is Docker"));
+        // A framework set up for a server, with a Dockerfile of its own.
+        let next = project("p-next", &[("package.json", r#"{ "dependencies": { "next": "16" } }"#), ("Dockerfile", "FROM node")]);
+        let found = detect_with(&next, BuildAs::Auto, None);
+        assert_eq!((found.kind, found.framework_id()), ("container", Some("nextjs")));
+        assert_eq!(found.container.unwrap().dockerfile.as_deref(), Some("Dockerfile"));
+        // OpenNext's adapter means Workers: it is not run as a server.
+        let opennext = project("p-opennext", &[("package.json", r#"{ "dependencies": { "next": "16", "@opennextjs/cloudflare": "1" } }"#)]);
+        assert_eq!(detect_with(&opennext, BuildAs::Auto, None).kind, "none");
+        for dir in [vite, workers, html, both, chosen, express, nothing, next, opennext] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    #[test]
+    fn the_pushed_digest_is_the_one_in_the_apps_repository() {
+        let digest = "a".repeat(64);
+        let lines = format!("docker.io/x@sha256:{digest}\nregistry.cloudflare.com/acc/other@sha256:{digest}\nregistry.cloudflare.com/acc/g1t-web@sha256:{digest}\n");
+        assert_eq!(
+            pushed_digest(&lines, "registry.cloudflare.com", "acc/g1t-web"),
+            Some(format!("registry.cloudflare.com/acc/g1t-web@sha256:{digest}"))
+        );
+        assert_eq!(pushed_digest("registry.cloudflare.com/acc/g1t-web@sha256:short", "registry.cloudflare.com", "acc/g1t-web"), None);
+        let grant: RegistryGrant = serde_json::from_value(json!({
+            "registry": "registry.cloudflare.com", "repository": "acc/g1t-web", "tag": "dpl_1",
+            "username": "u", "password": "p", "max_image_bytes": 2_000_000_000u64, "instance_type": "lite"
+        }))
+        .unwrap();
+        assert_eq!((grant.max_image_bytes, grant.instance_type.as_deref()), (2_000_000_000, Some("lite")));
+        assert_eq!(size_text(1_450_000_000), "1.4 GB");
+    }
+
+    /// What a container g1t writes the Dockerfile for is built with.
+    const GENERATED: &str = "docker build -f Dockerfile (written by g1t) .";
 
     fn frameworks_hugo() -> &'static str {
         "if command -v hugo >/dev/null 2>&1; then hugo --minify; else npx --yes hugo-extended@0.166.0 --minify; fi"

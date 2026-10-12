@@ -9,6 +9,7 @@
  * else.
  */
 
+import { APP_CLASS, APP_WORKER, REGISTRY_HOST, applicationName, applicationRequest, pushLoginRequest, rolloutRequest } from "./containers";
 import { redirectScript } from "./redirect";
 
 const API = "https://api.cloudflare.com/client/v4";
@@ -154,6 +155,117 @@ export class Cloudflare {
       );
     }
     await this.call("PUT", this.scriptPath(script), form);
+  }
+
+  // ---- Container apps (containers.ts) ---------------------------------
+
+  /**
+   * A login to Cloudflare's registry for this account: push only (never
+   * pull, so a build cannot read another app's image), for minutes.
+   */
+  async registryLogin(permissions: ("push" | "pull")[] = ["push"]): Promise<{ username: string; password: string }> {
+    const body = permissions.includes("pull") ? { permissions, expiration_minutes: 5 } : pushLoginRequest();
+    const result = await this.call<{ username: string; password?: string }>(
+      "POST",
+      `/accounts/${this.account}/containers/registries/${REGISTRY_HOST}/credentials`,
+      JSON.stringify(body),
+      "application/json",
+    );
+    if (!result.password) throw new Error("Cloudflare's registry gave no password.");
+    return { username: result.username, password: result.password };
+  }
+
+  /**
+   * Whether `repository` holds the image `digest`: asked of the registry
+   * itself, with a pull login of g1t's own, through the token exchange
+   * registries use (`WWW-Authenticate: Bearer`).
+   */
+  async hasImage(repository: string, digest: string): Promise<boolean> {
+    const login = await this.registryLogin(["pull"]);
+    const basic = `Basic ${btoa(`${login.username}:${login.password}`)}`;
+    const url = `https://${REGISTRY_HOST}/v2/${repository}/manifests/${digest}`;
+    const accept = "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json";
+    let response = await fetch(url, { method: "HEAD", headers: { authorization: basic, accept } });
+    const challenge = response.headers.get("www-authenticate") ?? "";
+    if (response.status === 401 && /^bearer /i.test(challenge)) {
+      const params = Object.fromEntries([...challenge.matchAll(/(\w+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
+      const token = new URL(params.realm);
+      if (params.service) token.searchParams.set("service", params.service);
+      token.searchParams.set("scope", params.scope ?? `repository:${repository}:pull`);
+      const answer = (await (await fetch(token, { headers: { authorization: basic } })).json().catch(() => null)) as {
+        token?: string;
+        access_token?: string;
+      } | null;
+      const bearer = answer?.token ?? answer?.access_token;
+      if (!bearer) return false;
+      response = await fetch(url, { method: "HEAD", headers: { authorization: `Bearer ${bearer}`, accept } });
+    }
+    return response.ok;
+  }
+
+  /** Puts a container app's Worker (`APP_WORKER`, g1t's own) in the namespace, with `metadata`. */
+  async putContainerWorker(script: string, metadata: Record<string, unknown>): Promise<void> {
+    const form = new FormData();
+    form.append("metadata", JSON.stringify(metadata));
+    form.append("index.js", new File([APP_WORKER], "index.js", { type: "application/javascript+module" }));
+    await this.call("PUT", this.scriptPath(script), form);
+  }
+
+  /** The Durable Object namespace of a container app's Worker: what its Container application is attached to. */
+  async appNamespace(script: string): Promise<string> {
+    for (let page = 1; page <= 20; page++) {
+      const namespaces = await this.call<{ id: string; class: string; script: string; dispatch_namespace?: string }[]>(
+        "GET",
+        `/accounts/${this.account}/workers/durable_objects/namespaces?per_page=1000&page=${page}`,
+      );
+      const found = namespaces.find((n) => n.class === APP_CLASS && n.script === script && n.dispatch_namespace === this.namespace);
+      if (found) return found.id;
+      if (namespaces.length < 1000) break;
+    }
+    throw new Error(`The app's Durable Object namespace was not found for ${script}.`);
+  }
+
+  /** The Container application named `name`, if there is one. */
+  async containerApplication(name: string): Promise<{ id: string } | null> {
+    const apps = await this.call<{ id: string; name: string }[]>("GET", `/accounts/${this.account}/containers/applications`);
+    return apps.find((app) => app.name === name) ?? null;
+  }
+
+  /**
+   * Runs `image` at `instanceType` for the app `script`: its Container
+   * application is made the first time, and rolled out to after.
+   */
+  async runContainer(script: string, image: string, instanceType: string, description: string): Promise<string> {
+    const name = applicationName(script);
+    const existing = await this.containerApplication(name);
+    if (existing) {
+      await this.call(
+        "POST",
+        `/accounts/${this.account}/containers/applications/${existing.id}/rollouts`,
+        JSON.stringify(rolloutRequest(image, instanceType, description)),
+        "application/json",
+      );
+      return existing.id;
+    }
+    const namespaceId = await this.appNamespace(script);
+    const created = await this.call<{ id: string }>(
+      "POST",
+      `/accounts/${this.account}/containers/applications`,
+      JSON.stringify(applicationRequest(name, image, instanceType, namespaceId)),
+      "application/json",
+    );
+    return created.id;
+  }
+
+  /** Deletes the app's Container application, and its instances with it. Already gone is fine. */
+  async deleteContainer(script: string, id?: string | null): Promise<void> {
+    const found = id ? { id } : await this.containerApplication(applicationName(script)).catch(() => null);
+    if (!found) return;
+    try {
+      await this.call("DELETE", `/accounts/${this.account}/containers/applications/${found.id}`);
+    } catch (error) {
+      if (!/404|not found/i.test(String(error))) throw error;
+    }
   }
 
   /** Every app in the namespace, with when it was last changed. */

@@ -157,6 +157,8 @@ There are no seats. The live figures are on
 | App requests | Million | $0.30 | $0.36 |
 | App CPU time | Million CPU milliseconds | $0.02 | $0.024 |
 | Custom domains | Domain-month | $0.10 | $0.12 |
+| [Container apps](/guides/deployments/#docker-deployments), while awake | Second, by the minute: vCPU, memory, disk and the Durable Object, by the size | From $0.0129 an hour (`lite`) | Cost + 20%: from $0.0155 an hour |
+| Data container apps send | GB | $0.05 | $0.06 |
 | Private storage, past the free 1 GB | GB-month | $0.50 | $0.60 |
 | [Actions cache](#actions-cache) storage | GB-month | $0.015 | $0.018 |
 | Git operations, past the free 50,000 a month | 1,000 | $0.15 | $0.18 |
@@ -299,7 +301,7 @@ that held up on past work.
 | The [merge queue](/guides/merge-queue/) | [Sandbox time](#sandbox-time) |
 | [Workflow](/guides/actions/) jobs | [Sandbox time](#sandbox-time), more on a [larger machine](#workflow-jobs-on-larger-machines) |
 | [Actions cache](#actions-cache) | What it holds, on the plan only |
-| [Deployments](/guides/deployments/) | Builds, requests, CPU time and custom domains, from the first. Projects and previews are not charged. |
+| [Deployments](/guides/deployments/) | Builds, requests, CPU time, custom domains and container time, from the first. Projects and previews are not charged. |
 | [Private repository storage](#storage-search-embeddings-and-scans) | Past the free 1 GB, on the plan only |
 | [Git operations](#git-operations) | Past the free 50,000 a month, on the plan only |
 | [Search embeddings](#storage-search-embeddings-and-scans) | For private text, on the plan only |
@@ -374,6 +376,7 @@ billing charges from.
 | Deploy builds | Per second |
 | App requests and CPU | Per million requests, per million CPU milliseconds |
 | Custom domains | Per domain-month |
+| Container apps | Per vCPU-second, GiB-second of memory and GB-second of disk while awake, a second of the Durable Object in front of each, and per GB sent |
 | Private storage past the free 1 GB | Per GB-month |
 | Actions cache storage | Per GB-month |
 | Git operations past the free 50,000 a month | Per 1,000 |
@@ -1083,7 +1086,7 @@ time. Every member can see it.
   | Runs on your own model provider | Older months only: the flat fee runs on your own provider used to carry. |
   | Sandbox time | Each sandbox's time. |
   | Self-hosted runner time | Each job on your own runners, at $0. |
-  | Deployments | Builds as they finish; each month's requests, CPU time and custom domains when it closes. |
+  | Deployments | Builds as they finish; each month's requests, CPU time, custom domains and container time when it closes. |
   | Private storage | Storage past the free 1 GB, once a month. |
   | Actions cache storage | What `actions/cache` and artifacts held, on the plan, once a month. |
   | Git operations | Operations past the free 50,000, once a month. |
