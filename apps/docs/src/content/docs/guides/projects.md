@@ -149,7 +149,7 @@ For an app or site deployed on g1t:
 
 | Step | Done when | Links to |
 | --- | --- | --- |
-| Connect a source or push code | The default branch has a commit, or the source is a mirror. | **Code**, which shows how to push, or how to have your coding agent start the project. |
+| Connect a source or push code | The default branch has a commit. | **Code**, which shows how to push, or how to have your coding agent start the project. |
 | Deploy to production | A production build has gone live. | Deployments settings, or **Deployments** once they are on. |
 | Add a custom domain | The project has a [custom domain](/guides/deployments/#custom-domains). | Domain settings. |
 | Open a preview | A branch or pull request has had a [preview](/guides/deployments/#previews-of-branches). | A new pull request. |
@@ -316,9 +316,9 @@ Someone without the role does not see the tab.
    - **Import code**: copy a public repository from GitHub or any git host
      into a new one on g1t, with every branch and tag (up to 40 MB of
      history).
-   - **Import from GitHub**: import, mirror or move repositories you can
-     reach on GitHub, private ones too, with every branch and tag and,
-     if you like, their issues. See [GitHub](/guides/github/).
+   - **Import from GitHub**: import repositories you can reach on GitHub,
+     private ones too, with every branch and tag and, if you like, their
+     issues. See [GitHub](/guides/github/).
 3. Give it a name and say who can see it, then choose **Create project**.
 
 Pushing a repository that does not exist yet makes one, and with it a
@@ -330,15 +330,12 @@ git push https://g1t.sh/acme/my-app.git main
 
 ## Sources
 
-A project's source is a repository hosted on g1t. A repository can be a
-**mirror of one on GitHub**: the code stays there, every push to GitHub is
-fetched into g1t, and the project gets g1t's deployments, secrets and
-agents on it. See [GitHub](/guides/github/#import-mirror-or-move-a-repository).
+A project's source is a repository hosted on g1t: one you pushed, or one
+imported from GitHub or any git host. See
+[GitHub](/guides/github/#import-a-repository).
 
 Coming next:
 
-- **Mirrored from GitLab or Bitbucket**, and previews on GitHub's own pull
-  requests.
 - **Several projects on one repository**, each from its own root
   directory, with a push building only the projects it touched.
 

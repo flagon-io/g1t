@@ -7,7 +7,7 @@
 import { redirect } from "react-router";
 
 import type { Route } from "./+types/security-policy-setup";
-import { refusal, requireWritableRepo } from "../../lib/access.server";
+import { refusal } from "../../lib/access.server";
 import { securityPolicyBranch, securityPolicyPullBody, securityPolicyTemplate } from "../../lib/security-overview";
 import { advisories, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
@@ -15,7 +15,6 @@ import { assertSameOrigin, requireUser } from "../../lib/session.server";
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
   const refused = await refusal(context, params, "push");
   if (refused) return { error: refused };
   const path = { namespace: params.owner, name: params.repo };

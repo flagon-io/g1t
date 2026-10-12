@@ -50,7 +50,7 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
   },
   github: {
     title: "GitHub",
-    about: "Sign in with your GitHub account, and import or mirror repositories you can reach there.",
+    about: "Sign in with your GitHub account, and import repositories you can reach there.",
   },
   applications: {
     title: "Connected applications",

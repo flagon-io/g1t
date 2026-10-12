@@ -8,7 +8,7 @@
 export type ChecklistFacts = {
   /** The project's address, `/<workspace>/<project>`. */
   base: string;
-  /** Its default branch has a commit, or its source is a mirror. */
+  /** Its default branch has a commit. */
   hasCode: boolean;
   /** Deployments are switched on for it. */
   deploysEnabled: boolean;

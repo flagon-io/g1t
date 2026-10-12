@@ -12,7 +12,6 @@ import { ComputeNote, CopyLine, EmptyState, ErrorText, SubmitButton, TimeAgo, us
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
-import { useWorkflowReason } from "../../components/mirror";
 import { Hint } from "../../components/ui/hint";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
@@ -193,8 +192,6 @@ function InputField({ name, spec }: { name: string; spec: DispatchInput }) {
 
 function RunWorkflow({ workflow }: { workflow: Workflow }) {
   const [open, setOpen] = useState(false);
-  // A mirror standing by runs nothing; in CI failover it runs them.
-  const blocked = useWorkflowReason();
   // Open, saying it is starting, until the run shows below or the error does.
   const running = usePending({ intent: "dispatch", workflow: workflow.id });
   const was = useRef(false);
@@ -206,12 +203,10 @@ function RunWorkflow({ workflow }: { workflow: Workflow }) {
   const booleans = inputs.filter(([, spec]) => spec.type === "boolean").map(([name]) => name);
   return (
     <div className="relative">
-      <Hint label={blocked} disabled={blocked != null}>
-        <Button type="button" variant="outline" disabled={blocked != null} onClick={() => setOpen((v) => !v)}>
-          <Play size={14} />
-          Run workflow
-        </Button>
-      </Hint>
+      <Button type="button" variant="outline" onClick={() => setOpen((v) => !v)}>
+        <Play size={14} />
+        Run workflow
+      </Button>
       {open && (
         <Card asChild className="absolute right-0 z-20 mt-2 w-80 space-y-3 p-4 shadow-xl">
           <Form

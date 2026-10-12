@@ -492,13 +492,13 @@ mod tests {
                 Some("usr_bo"),
                 json!({ "ref": "refs/heads/main", "after": "d", "before": "b", "defaultBranch": true }),
             ),
-            // A mirror's push names nobody.
+            // A push an import made names nobody.
             event(
                 "evt_4",
                 "git.push",
                 Some("rep_1"),
                 None,
-                json!({ "ref": "refs/heads/main", "after": "e", "before": "d", "defaultBranch": true, "mirrored": true, "commits": 3 }),
+                json!({ "ref": "refs/heads/main", "after": "e", "before": "d", "defaultBranch": true, "commits": 3 }),
             ),
             // A tag is not a push to a branch.
             event(

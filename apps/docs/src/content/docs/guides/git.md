@@ -230,8 +230,7 @@ would a push, and says why. When nothing protects the default branch,
 people with the Admin role see a note saying so, with **Protect this
 branch**, which starts a [ruleset](/guides/rules/), and **Dismiss**, which
 this browser remembers for them and that repository. An archived
-repository, or a mirror that g1t has not taken over, offers none of these
-changes.
+repository offers none of these changes.
 
 From the API, a person's token with `repo:write` can do the same:
 
@@ -342,8 +341,8 @@ Each push sends only what the one before did not.
 ### Pushes of many branches or tags
 
 Every branch and tag in a push is stored. Each one is also announced as a
-`git.push` event, which starts workflows, mirrors the repository and
-calls webhooks, except in a push of many:
+`git.push` event, which starts workflows and calls webhooks, except in a
+push of many:
 
 | A push of | What is announced |
 | --- | --- |

@@ -10,12 +10,11 @@ import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../component
 import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
-import { useMirrorReason } from "../../components/mirror";
 import { SelectField } from "../../components/ui/select";
 import { LabelChip } from "../../components/labels";
 import { integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
-import { accessTo, requireWritableRepo } from "../../lib/access.server";
+import { accessTo } from "../../lib/access.server";
 import { computeNoteFor } from "../../lib/compute.server";
 import { delegateForm, issuePath, notStarted } from "../../lib/delegate";
 
@@ -56,7 +55,6 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
   const form = await request.formData();
   if (form.get("intent") === "import") {
     const imported = await integrations.import(
@@ -100,8 +98,6 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
   const [params] = useSearchParams();
   const refused = actionData && "notStarted" in actionData ? actionData.notStarted : null;
   const names = loaderData.sources.map((source) => PROVIDERS[source].label);
-  // A mirror takes no new issues until someone takes over.
-  const mirrorBlocked = useMirrorReason();
   return (
     <div className="max-w-2xl">
       {names.length > 0 && (
@@ -121,11 +117,9 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
                 <Input name="reference" required placeholder="TECH-1234" aria-label="Ticket key or address" />
               </div>
               <CheckboxOption name="assign" label="Put an agent on it" className="items-center" labelClassName="text-muted" />
-              <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
-                <SubmitButton variant="outline" match={{ intent: "import" }} pending="Importing…" disabled={mirrorBlocked != null}>
-                  Import
-                </SubmitButton>
-              </Hint>
+              <SubmitButton variant="outline" match={{ intent: "import" }} pending="Importing…">
+                Import
+              </SubmitButton>
             </div>
             {actionData && "importError" in actionData && (
               <div className="mt-2">
@@ -226,11 +220,9 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
           </div>
         )}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
-        <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
-          <SubmitButton name="intent" value="open" pending="Opening…" disabled={mirrorBlocked != null}>
-            Open issue
-          </SubmitButton>
-        </Hint>
+        <SubmitButton name="intent" value="open" pending="Opening…">
+          Open issue
+        </SubmitButton>
       </Form>
     </div>
   );

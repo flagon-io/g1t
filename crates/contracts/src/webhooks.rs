@@ -15,7 +15,7 @@ use crate::repos::RepoPath;
 use crate::{User, Viewer};
 
 /// Every event a webhook can be sent, in the order people are shown them.
-pub const EVENT_TYPES: [&str; 113] = [
+pub const EVENT_TYPES: [&str; 109] = [
     "git.push",
     "git.deleted",
     "branch.renamed",
@@ -125,10 +125,6 @@ pub const EVENT_TYPES: [&str; 113] = [
     "security_advisory.published",
     "security_advisory.withdrawn",
     "security_advisory.reported",
-    "mirror.unreachable",
-    "mirror.reachable",
-    "mirror.state_changed",
-    "mirror.moved_in",
 ];
 
 /// What a webhook belongs to.

@@ -1,8 +1,8 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorCog, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, SlidersHorizontal, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorCog, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, SlidersHorizontal, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
-import { type Abilities, type ChatSidebarEntry, type InboxCounts, type WorkspaceAgent, type Membership, type RepoMirror, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
+import { type Abilities, type ChatSidebarEntry, type InboxCounts, type WorkspaceAgent, type Membership, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
 
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
@@ -789,8 +789,6 @@ type MenuRepo = {
   settings?: boolean;
   /** What they may do there, once the repository's page loads. */
   can?: Abilities;
-  /** The remote it mirrors, once the repository's page loads: a mirror lists only what it offers. */
-  mirror?: RepoMirror | null;
   issues?: number;
   pulls?: number;
 };
@@ -820,9 +818,9 @@ function RepoMenu({
   back: { to: string; label: string };
 }) {
   const base = `/${repo.namespace}/${repo.name}`;
-  // What a member sees, what everyone who can see the project does, and
-  // what a mirror offers now (lib/chrome.ts).
-  const shows = new Set(projectPages(repo.member, repo.can, repo.mirror));
+  // What a member sees, and what everyone who can see the project does
+  // (lib/chrome.ts).
+  const shows = new Set(projectPages(repo.member, repo.can));
   const { current: atOverview, pending: toOverview } = useRowState(base, { end: true });
   return (
     <nav aria-label={`${repo.namespace}/${repo.name}`} className={PANEL}>
@@ -851,7 +849,6 @@ function RepoMenu({
         <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, `${base}/compare`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
           Code
         </SidebarLink>
-        {/* A mirror that is not taken over lists none of these: its work happens on the remote. */}
         {shows.has("issues") && (
           <SidebarLink to={`${base}/issues`} also={[`${base}/plans`, `${base}/milestones`, `${base}/labels`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
             Issues
@@ -968,11 +965,6 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
         {shows("repository") && (
           <SidebarLink to={`${base}/settings/repository`} icon={<BookMarked size={15} />}>
             Repository
-          </SidebarLink>
-        )}
-        {shows("mirroring") && (
-          <SidebarLink to={`${base}/settings/mirroring`} icon={<ArrowLeftRight size={15} />}>
-            Mirroring
           </SidebarLink>
         )}
         {shows("access") && (
@@ -1128,11 +1120,11 @@ function CodeSidebar({
     : null;
   // The viewer's role there, from the repository's page once it has loaded.
   const page = useRouteLoaderData("routes/repo/layout") as
-    | { repo?: { namespace: string; name: string; mirror?: RepoMirror | null }; access?: ViewerAccess }
+    | { repo?: { namespace: string; name: string }; access?: ViewerAccess }
     | undefined;
   const menuRepo: MenuRepo | null =
     guessed && page?.access && page.repo && sameRepo(page.repo, guessed)
-      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can, mirror: page.repo.mirror }
+      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can }
       : guessed;
 
   // The way from Code's list to the one shown.

@@ -911,9 +911,7 @@ export function Landing() {
             <p className="mt-4 max-w-xl leading-7 text-muted">
               Bring repositories across from GitHub in a few clicks: every
               branch and tag with full history, and their issues if you want
-              them. Import a copy, keep a mirror that follows GitHub while you
-              try g1t, or move and let g1t push back to GitHub so people still
-              working there see every change.
+              them. The copy on g1t is then your own.
             </p>
             <p className="mt-4 max-w-xl leading-7 text-muted">
               If g1t went away tomorrow, your code is plain git, the source is
@@ -921,7 +919,7 @@ export function Landing() {
               Docker Compose.
             </p>
             <More
-              to={`${DOCS}/guides/github/#import-mirror-or-move-a-repository`}
+              to={`${DOCS}/guides/github/#import-a-repository`}
             >
               Import from GitHub
             </More>

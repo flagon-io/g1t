@@ -28,7 +28,6 @@
 mod run_artifacts;
 mod cache;
 mod managed;
-mod mirrored;
 mod payload;
 mod plan;
 mod protection;

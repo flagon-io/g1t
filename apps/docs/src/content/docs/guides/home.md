@@ -129,8 +129,8 @@ are the faces of the five most active, and how many more there were.
 How a side is decided: everything is recorded with who did it. One of the
 workspace's agents acting as itself, or g1t, is an agent; everyone else is
 a person. A comment a workspace agent writes is the agent's, not the
-person's it was working for. A push copied in by a mirror names nobody, so
-it is counted under People without a face.
+person's it was working for. A push an import made names nobody, so it is
+counted under People without a face.
 
 Under the Agents column's lines, a compact row says how their work was
 received: accepted first time, fixed after review, didn't finish, and the

@@ -11,7 +11,6 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
-import { mirrorReason, type MirroredRepo } from "../../lib/mirror";
 import {
   Assignee,
   AssigneeStack,
@@ -24,7 +23,7 @@ import { computeNoteFor } from "../../lib/compute.server";
 import { isWaitingMessage } from "../../lib/compute";
 import { work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
-import { accessTo, refusal, requireWritableRepo } from "../../lib/access.server";
+import { accessTo, refusal } from "../../lib/access.server";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
 
@@ -68,7 +67,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
   const path = { namespace: params.owner, name: params.repo };
   const numbers = (await request.formData())
     .getAll("issue")
@@ -114,10 +112,8 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
   kept.delete("q");
 
   // An archived repository's issues are locked: no new ones.
-  const layout = useRouteLoaderData("routes/repo/layout") as { repo?: MirroredRepo & { archivedAt?: string | null } } | undefined;
+  const layout = useRouteLoaderData("routes/repo/layout") as { repo?: { archivedAt?: string | null } } | undefined;
   const archived = Boolean(layout?.repo?.archivedAt);
-  // A mirror takes no new issues until someone takes over: the button says why.
-  const mirrorBlocked = mirrorReason(layout?.repo);
   // Handed over: the ticks are cleared. Refused: they stay, to try again.
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -130,14 +126,7 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
         state={state}
         query={kept.toString()}
         action={
-          archived ? undefined : mirrorBlocked ? (
-            <Hint label={mirrorBlocked} disabled>
-              <Button type="button" disabled>
-                <Plus size={15} />
-                New issue
-              </Button>
-            </Hint>
-          ) : (
+          archived ? undefined : (
             <ButtonLink to={`${base}/new`}>
               <Plus size={15} />
               New issue
@@ -202,11 +191,9 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
               Tick the issues to hand over. g1t takes each one in a run of its own,
               and they all work at once.
             </p>
-            <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
-              <SubmitButton variant="accent" pending="Starting sandboxes…" disabled={mirrorBlocked != null}>
-                Assign to g1t
-              </SubmitButton>
-            </Hint>
+            <SubmitButton variant="accent" pending="Starting sandboxes…">
+              Assign to g1t
+            </SubmitButton>
             {loaderData.computeNote && (
               <div className="basis-full">
                 <ComputeNote note={loaderData.computeNote} />

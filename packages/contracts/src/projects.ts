@@ -11,12 +11,8 @@ import type { Result } from "./result";
  * root directory. Every repository on g1t gets a project of its own name.
  */
 
-/** Where a project's code lives. */
-export type ProjectSource =
-  /** A repository hosted on g1t. */
-  | { kind: "hosted"; repoId: string; repo: RepoPath; rootDir: string; defaultBranch: string }
-  /** Mirrored from another host; coming next. */
-  | { kind: "mirror"; provider: "github" | "gitlab" | "bitbucket"; url: string; rootDir: string };
+/** Where a project's code lives: a repository hosted on g1t. */
+export type ProjectSource = { kind: "hosted"; repoId: string; repo: RepoPath; rootDir: string; defaultBranch: string };
 
 export type Project = {
   id: string;

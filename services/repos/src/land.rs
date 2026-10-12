@@ -261,7 +261,7 @@ pub async fn fast_forward(
 
 /// The commands at the start of a receive-pack request for many refs:
 /// `(name, old, new)`, `new` the zero id to delete.
-fn commands_block(commands: &[crate::mirror::Command]) -> Vec<u8> {
+fn commands_block(commands: &[crate::copy::Command]) -> Vec<u8> {
     let deletes = commands.iter().any(|(_, _, new)| new == ZERO_ID);
     let capabilities = if deletes { "report-status delete-refs" } else { "report-status" };
     let mut body = Vec::new();
@@ -282,7 +282,7 @@ fn commands_block(commands: &[crate::mirror::Command]) -> Vec<u8> {
 pub(crate) async fn copy_refs(
     source: &GitAccess,
     target: &GitAccess,
-    commands: &[crate::mirror::Command],
+    commands: &[crate::copy::Command],
     wants: &[String],
     haves: &[String],
 ) -> Result<std::result::Result<(), String>> {
@@ -299,7 +299,7 @@ pub(crate) async fn copy_refs(
         }
         post(target, "git-receive-pack", body).await?
     } else {
-        let request = crate::mirror::upload_request(wants, haves);
+        let request = crate::copy::upload_request(wants, haves);
         let sent = request.len() as u64;
         let mut fetched = send(source, "git-upload-pack", Uint8Array::from(request.as_slice()).into(), sent).await?;
         let failure: Rc<RefCell<Option<String>>> = Rc::default();
@@ -341,7 +341,7 @@ pub(crate) async fn copy_refs(
         }
         report
     };
-    let problems = crate::mirror::refused(&report, commands);
+    let problems = crate::copy::refused(&report, commands);
     Ok(if problems.is_empty() { Ok(()) } else { Err(problems.join("; ")) })
 }
 

@@ -634,8 +634,8 @@ impl Security {
     /// work on its own, so the update fails with why, shown on the alert,
     /// and is tried again later. Nothing is opened for it: a person can ask
     /// g1t to fix the alert. On a repository that takes no updates now
-    /// (security updates off, archived, deleted, or a mirror that is not
-    /// taken over, whose pushes are refused) the reason is that instead.
+    /// (security updates off, archived or deleted) the reason is that
+    /// instead.
     pub async fn stalled_updates(&self) -> Result<()> {
         let before = rfc3339(now_ms().saturating_sub(STALLED_MS));
         for row in self.store.stalled_updates(&before, 10).await? {

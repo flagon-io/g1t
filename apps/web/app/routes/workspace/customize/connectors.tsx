@@ -256,7 +256,7 @@ function Discover({ data: loaded }: { data: Loaded }) {
       {directory.integrations.length > 0 && (
         <section aria-labelledby="integrations">
           <SectionHead id="integrations" title="g1t's integrations" aside={`${directory.integrations.length}`}>
-            Built into g1t and set up on their own pages: import and mirror code, read trackers and alerts, run models on your own account.
+            Built into g1t and set up on their own pages: import code, read trackers and alerts, run models on your own account.
           </SectionHead>
           <ListingGrid>
             {directory.integrations.map((entry) => (
