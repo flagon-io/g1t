@@ -51,6 +51,12 @@ export type Project = {
   runs: ProjectRuns | null;
   /** Where production is when it runs elsewhere; null when nobody has given one. */
   productionUrl: string | null;
+  /**
+   * An image of production someone uploaded, shown on its overview when
+   * there is no screenshot, or instead of one when `preferred`. Null when
+   * none was uploaded.
+   */
+  productionImage: ProductionImage | null;
   /** What detection decides, whatever the setting is, to show beside it. */
   detected: { kind: ProjectKind; reason: KindReason };
   /** The ecosystem its files say it publishes to, for how to publish; null when none says. */
@@ -101,6 +107,26 @@ export type ProjectLinks = {
   /** Any others, in the order given, at most `MAX_PROJECT_LINKS`. */
   custom: ProjectLink[];
 };
+
+/**
+ * An uploaded image of a project's production. `file` is the SHA-256 of
+ * its bytes: it is served from the usercontent origin at
+ * `/production-images/<file>`.
+ */
+export type ProductionImage = { file: string; contentType: string; preferred: boolean };
+
+/** The largest production image taken, in bytes. */
+export const MAX_PRODUCTION_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** The types a production image may be, read from its bytes. */
+export const PRODUCTION_IMAGE_TYPES: readonly string[] = ["image/png", "image/jpeg", "image/webp"];
+
+/**
+ * A change to a project's production image. `image` is the new one's bytes
+ * in base64, or null to remove it (and with it the preference); left out,
+ * it stays. `preferred` shows it instead of a screenshot.
+ */
+export type ProductionImageChange = { image?: string | null; preferred?: boolean };
 
 /** How many links of its own a project keeps besides its homepage and docs. */
 export const MAX_PROJECT_LINKS = 10;
@@ -169,6 +195,18 @@ export interface ProjectsApi {
    * is refused: they are turned off first.
    */
   update(actor: User, workspace: string, slug: string, changes: ProjectChanges): Promise<Result<Project>>;
+  /**
+   * Uploads, replaces or removes its production image, or says whether it
+   * is shown instead of a screenshot. Whoever may change the project's
+   * settings, as for its production address.
+   */
+  setProductionImage(actor: User, workspace: string, slug: string, change: ProductionImageChange): Promise<Result<Project>>;
+  /**
+   * For the screenshot service's daily refresh: every production address
+   * of a project deployed elsewhere that shows a screenshot (not an
+   * uploaded image instead), once each.
+   */
+  externalProductions(): Promise<string[]>;
   /** For deployments: Deployments were turned on or off for the project. */
   deploymentsChanged(projectId: string, enabled: boolean): Promise<void>;
   /** A person's pinned and recent projects in a workspace. Empty for anyone else. */

@@ -102,7 +102,8 @@ import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.serv
 import { accessTo, countsFor, projectFor, refusal, repoFor, requireWritableRepo } from "../../lib/access.server";
 import { shotVersion } from "./production-screenshot";
 import { DeploymentsPanel } from "../../components/deployments-panel";
-import { environmentUrl, productionEnvironment } from "../../lib/deployments";
+import { reportedProduction } from "../../lib/deployments";
+import { cardSources, externalTarget, externalVersion, productionImageUrl } from "../../lib/production-image";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { readBranches } from "../../lib/branches.server";
 import { commitChecksFor } from "../../lib/commit-checks.server";
@@ -372,17 +373,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   // reported through the API): the slot an app deployed elsewhere shows.
   const environments = await environmentsP;
   const environmentList = environments?.ok ? environments.value : null;
-  const reported = productionEnvironment(environmentList?.environments ?? []);
-  const deployment: ExternalDeployment | null =
-    reported?.latest && reported.latest.source !== "g1t_page"
-      ? {
-          environment: reported.name,
-          url: environmentUrl(reported),
-          state: reported.latest.state,
-          sha: reported.latest.sha,
-          created_at: reported.latest.updated_at,
-        }
-      : null;
+  const deployment: ExternalDeployment | null = reportedProduction(environmentList?.environments ?? []);
   // An app that has not said where it runs, but reports production from
   // elsewhere, runs elsewhere.
   const found = ok(project);
@@ -452,6 +443,8 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     checklistTitle: plan.title,
     // Production as reported from outside g1t, for an app deployed elsewhere.
     deployment,
+    // Its screenshot's address on the site (production-elsewhere.ts), when it has one to show.
+    elsewhereShot: elsewhereShot(projectValue, deployment, base),
     // Every environment's latest deployment, for the Deployments panel.
     environments: environmentList,
     // About's languages and contributors, filled in by the files' About work.
@@ -697,6 +690,16 @@ function LibraryHead({
   );
 }
 
+/**
+ * Where the overview asks for the screenshot of production deployed
+ * elsewhere, with `?v=` naming the reported deploy or the day; null when
+ * there is none to show (lib/production-image.ts `externalTarget`).
+ */
+function elsewhereShot(project: Project | null | undefined, deployment: ExternalDeployment | null, base: string): string | null {
+  const target = project ? externalTarget(project, deployment, Date.now()) : null;
+  return target ? `${base}/production-elsewhere.jpg?v=${externalVersion(target)}` : null;
+}
+
 function Stat({ label, value, to }: { label: string; value: ReactNode; to?: string }) {
   const body = (
     <>
@@ -814,6 +817,13 @@ function Overview({
             : null;
   const stripLinks = project ? linksToShow({ ...project.links, custom: [] }, [headUrl]) : [];
   const addresses = useAddresses();
+  // The production card's picture: an uploaded image, served from the
+  // usercontent origin, and where someone who may change it adds one.
+  const upload = project?.productionImage
+    ? { url: productionImageUrl(project.productionImage.file, addresses.usercontent), preferred: project.productionImage.preferred }
+    : null;
+  const addImage = canChange ? `${base}/settings#production-image` : null;
+  const elsewhereUrl = loaderData.deployment?.url ?? project?.productionUrl ?? null;
   const source = project?.source.kind === "hosted" ? project.source : null;
   const moving = agentsLive.length > 0 || columns.working.length + columns.checking.length > 0;
   useLiveRefresh(moving);
@@ -876,6 +886,15 @@ function Overview({
             deployment={loaderData.deployment}
             commit={commit}
             checks={commit ? <CommitChecksBadge checks={checks} sha={commit.hash} className="size-5" /> : undefined}
+            shot={
+              <ProductionShot
+                sources={cardSources(loaderData.elsewhereShot, upload)}
+                href={elsewhereUrl}
+                label={elsewhereUrl ? host(elsewhereUrl).replace(/\/$/, "") : ""}
+                addImage={addImage}
+                className="w-full shrink-0 sm:w-60 lg:w-72"
+              />
+            }
           />
         ) : plan === "unknown" && project ? (
           <WhereItRuns project={project} base={base} canChange={canChange} canDeploy={member && loaderData.can.manage_integrations} />
@@ -887,14 +906,15 @@ function Overview({
           <LibraryHead library={library} project={project} base={base} workspace={params.owner} />
         ) : (
           <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:p-6">
-            {member && (production || settings?.enabled) && (
-              <ProductionShot
-                src={production ? `${base}/production.jpg?v=${shotVersion(production)}` : null}
-                href={production ? (productionUrl ?? production.url) : null}
-                label={host(production ? (productionUrl ?? production.url) : (settings?.productionUrl ?? ""))}
-                className="w-full shrink-0 sm:w-60 lg:w-72"
-              />
-            )}
+            {/* Always a picture: the screenshot (members, like the deployments), the uploaded image, or the frame. */}
+            <ProductionShot
+              sources={cardSources(member && production ? `${base}/production.jpg?v=${shotVersion(production)}` : null, upload)}
+              href={production ? (productionUrl ?? production.url) : null}
+              label={production ? host(productionUrl ?? production.url) : settings?.productionUrl ? host(settings.productionUrl) : ""}
+              note={!production && settings?.enabled ? "A screenshot appears after the next deploy" : null}
+              addImage={addImage}
+              className="w-full shrink-0 sm:w-60 lg:w-72"
+            />
             <div className="flex min-w-0 grow flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted uppercase">

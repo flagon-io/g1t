@@ -960,6 +960,8 @@ export function projectsClient(service: ServiceBinding): ProjectsApi {
     byRepo: (repoId) => call("by_repo", { repoId }),
     create: (actor, workspace, input) => call("create", { actor, workspace, input }),
     update: (actor, workspace, slug, changes) => call("update", { actor, workspace, slug, changes }),
+    setProductionImage: (actor, workspace, slug, change) => call("set_production_image", { actor, workspace, slug, change }),
+    externalProductions: () => call("external_productions", {}),
     deploymentsChanged: (projectId, enabled) => call("deployments_changed", { projectId, enabled }),
     shortcuts: (workspace, viewer) => call("shortcuts", { workspace, viewer }),
     pin: (actor, workspace, slug, position) => call("pin", { actor, workspace, slug, position: position ?? null }),

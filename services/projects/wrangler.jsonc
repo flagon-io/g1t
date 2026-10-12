@@ -22,9 +22,18 @@
 		// publishes, and whether Deployments are on (asked once; after that
 		// deployments says when it changes).
 		{ "binding": "PACKAGES", "service": "g1t-packages" },
-		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" }
+		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
+		// A screenshot of a production deployed elsewhere, asked for when its
+		// address is set or changed and when a production deployment is
+		// reported for it (src/index.ts).
+		{ "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" }
 	],
-	// A repository created is given its own project.
+	// Uploaded production images, under `production/<sha256>` in the same
+	// namespace as avatars, which the usercontent origin serves
+	// (src/production-image.ts).
+	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
+	// A repository created is given its own project; a production
+	// deployment reported from elsewhere asks for its screenshot.
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-projects", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},

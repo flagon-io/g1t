@@ -54,7 +54,7 @@ else sees what the project shares publicly.
 | Part | What it shows |
 | --- | --- |
 | **What it is** | A badge, such as **App, deployed elsewhere** or **Library**, beside its homepage and docs. People who can change its settings open the badge to change [what it is](#what-a-project-is) in one click. |
-| **Production** | For an app [deployed on g1t](/guides/deployments/): a screenshot of the live site, which opens it; its address, the commit it runs and when it went up; **Visit** and **Redeploy**. For an app deployed elsewhere: production's address and **Visit**, with the default branch's latest commit. For an app nobody has placed yet: one question, where it runs. |
+| **Production** | [Production's picture](#productions-picture), which opens the live site, beside the rest. For an app [deployed on g1t](/guides/deployments/): its address, the commit it runs and when it went up; **Visit** and **Redeploy**. For an app deployed elsewhere: production's address and **Visit**, with its latest reported production deployment or the default branch's latest commit. For an app nobody has placed yet: one question, where it runs. |
 | **Packages** | For a library or a tool, in place of Production: the packages its repository publishes, each with its latest version and how to install it, or how to publish a first one. |
 | **Documentation**, **Homepage** | For docs, where they are read; for anything else, its homepage. |
 | **Get to production**, **Ship a release** or **Get started** | The [checklist](#the-checklist) for what the project is, until every step is done or you dismiss it. |
@@ -64,6 +64,65 @@ else sees what the project shares publicly.
 | **Recent changes**, **Latest on main**, **Activity**, **Previews** | What landed, the default branch's latest commits, what happened (pull requests opened, readied and merged, issues opened and closed, checks, reviews, comments, pushes to the default branch and production deploys), and the previews that are up. |
 | **About** | Its description, its [links](#links), what it is, and its latest release (its newest tag). People who can change its settings edit the description and links from here. |
 | **Health**, **Clone** | How often checks pass (on pull requests, or the project's workflow runs when it ships without them), recent builds and open issues by age; the clone address. |
+
+### Production's picture
+
+The production card always has a picture of the app, wherever it runs.
+It is the first of these there is:
+
+1. **A screenshot of production.** For an app deployed on g1t, g1t takes
+   one each time production goes live (see
+   [the production screenshot](/guides/deployments/#the-production-screenshot));
+   people with a role on the repository see it, like the rest of its
+   deployments. For an app deployed elsewhere, g1t takes one of
+   production's address: the address its latest production deployment
+   reported to g1t gives, or else the one set for it under **What it is**.
+   Anyone who can see the project sees it.
+2. **An image someone uploaded**, under **Settings** → **General** →
+   **Production image**.
+3. **A plain frame** with production's address. People who can change
+   the project's settings see **Add an image of your app** on it, which
+   opens **Production image**.
+
+A screenshot of production deployed elsewhere is taken:
+
+- when its address is set or changed;
+- when a production deployment of it is reported to g1t and succeeds,
+  through the [API](/guides/deployments/) or by a workflow job with an
+  `environment:`;
+- otherwise about once a day, when the one kept is a day old. Opening the
+  overview after that also takes a new one, in the background, while the
+  old one shows.
+
+g1t waits up to 12 seconds for the page to settle, as a 1280 by 800
+browser window sees it, then takes it as it is. Only public `http` and
+`https` addresses on their usual ports are visited: an address on a
+private network, a loopback or link-local address, or one of g1t's own
+service addresses (other than `g1t.sh` itself) gets the uploaded image
+or the frame instead. Screenshots are not charged.
+
+#### Uploading an image
+
+**Production image** takes a PNG, JPEG or WebP of at most 5 MB; wide
+images fit best, such as 1280 by 800. It is checked by its contents, not
+its name, and served from g1t's user-content address
+(`g1tusercontent.com` on g1t.sh), never from the site itself. Its address
+is made from its contents, so the card shows a new image as soon as it
+is uploaded. Anyone with an image's address can open it, even for a
+private project, so upload only what you would show.
+
+- The uploaded image shows whenever there is no screenshot: before the
+  first one, when one cannot be taken, or for an app with no production
+  address.
+- **Use the uploaded image instead of a screenshot** shows it in place of
+  any screenshot. While it is on, g1t takes no screenshots of production
+  deployed elsewhere.
+- **Remove** takes it away; the card goes back to the screenshot or the
+  frame.
+
+Anyone who can change the project's settings (the **Maintain** role on
+its repository and up, as for production's address) can upload, replace
+or remove it.
 
 ### The checklist
 
@@ -216,7 +275,7 @@ A project's **Settings** has a tab for each part:
 
 | Tab | What it holds |
 | --- | --- |
-| **General** | The project's name and description, its source, its **root directory**, [what it is](#what-a-project-is), and its [links](#links). A project shows its repository's description, and follows it as it changes, until you give the project one of its own; **Use the repository's description** goes back. |
+| **General** | The project's name and description, its source, its **root directory**, [what it is](#what-a-project-is), its [links](#links), and its [production image](#uploading-an-image). A project shows its repository's description, and follows it as it changes, until you give the project one of its own; **Use the repository's description** goes back. |
 | **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
 | **Domains** | Custom domains for production. See [custom domains](/guides/deployments/#custom-domains). |
 | **Agents** | How g1t's agents pick up work here, and what they read first. |

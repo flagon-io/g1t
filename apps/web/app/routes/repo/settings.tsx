@@ -1,10 +1,13 @@
-import { Box, Code2, GitBranch, Link2, Rocket } from "lucide-react";
+import { Box, Code2, GitBranch, Image as ImageIcon, Link2, Rocket } from "lucide-react";
 import { useState } from "react";
 import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/settings";
 import { page } from "../../lib/meta";
+import { useAddresses } from "../../lib/addresses";
+import { productionImageUrl, readProductionImageUpload } from "../../lib/production-image";
 import { KindFields, LinkFields } from "../../components/project-about";
+import { ProductionImageField } from "../../components/production-image-field";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { Card } from "../../components/ui/card";
@@ -42,6 +45,20 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   await requireCapability(context, params, "manage_settings");
   const form = await request.formData();
+  // Production's picture on the overview: whoever may change its address may change it.
+  const intent = form.get("intent");
+  if (intent === "production-image" || intent === "remove-production-image" || intent === "prefer-production-image") {
+    let change: { image?: string | null; preferred?: boolean };
+    if (intent === "production-image") {
+      const upload = await readProductionImageUpload(form);
+      if ("error" in upload) return { error: upload.error };
+      change = { image: upload.image };
+    } else {
+      change = intent === "remove-production-image" ? { image: null } : { preferred: form.get("preferred") === "on" };
+    }
+    const saved = await projects.setProductionImage(user, params.owner, params.repo, change);
+    return saved.ok ? { imageSaved: true as const } : { error: saved.error.message };
+  }
   const choice = form.get("choice") as KindChoice | null;
   const set = choice && choice in KIND_CHOICE_SETS ? KIND_CHOICE_SETS[choice] : null;
   const saved = await projects.update(user, params.owner, params.repo, {
@@ -67,6 +84,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
   const blocked = stops && !neverDeploys(project) && deploymentsOn === true;
   const base = `/${params.owner}/${params.repo}`;
   const source = project.source.kind === "hosted" ? project.source : null;
+  const { usercontent } = useAddresses();
   return (
     <div className="max-w-4xl">
       <RepoSettingsHeading base={base} />
@@ -210,6 +228,24 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
         </div>
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
       </Form>
+
+      {/* Its own forms, sent as soon as an image is picked: outside the settings form. */}
+      <section className="mt-10 scroll-mt-20 space-y-4" id="production-image">
+        <h2 className="flex items-center gap-2 text-sm font-medium">
+          <ImageIcon size={15} className="text-accent" />
+          Production image
+        </h2>
+        <p className="max-w-2xl text-xs text-muted">
+          The picture on its overview's production card. A screenshot is taken by itself for an app deployed on g1t,
+          and of production's address for one deployed elsewhere, about once a day and after each production deployment
+          reported to g1t.
+        </p>
+        <ProductionImageField
+          image={project.productionImage}
+          src={project.productionImage ? productionImageUrl(project.productionImage.file, usercontent) : null}
+          screenshots={project.runs === "g1t" || (project.runs === "elsewhere" && !!project.productionUrl)}
+        />
+      </section>
     </div>
   );
 }

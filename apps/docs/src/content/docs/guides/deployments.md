@@ -181,12 +181,20 @@ When production goes live, g1t takes a screenshot of its home page, as a
   seconds for the page to settle, then takes it as it is.
 - The screenshot is of the app's `g1t.page` address. A custom domain
   serves the same app, so it looks the same.
-- Until it is ready, or if it could not be taken, the overview shows a
-  plain frame with the address. A failed screenshot is tried again when
-  the overview is next opened, at most every five minutes.
-- Only people who can read the project's repository see it, like the
-  rest of its deployments.
+- Until it is ready, or if it could not be taken, the overview shows the
+  project's uploaded image, if it has one, or else a plain frame with the
+  address. A failed screenshot is tried again when the overview is next
+  opened, at most every five minutes.
+- Only people with a role on the project's repository see it, like the
+  rest of its deployments; anyone else who can see the project sees its
+  uploaded image or the frame.
+- With **Use the uploaded image instead of a screenshot** on, the
+  uploaded image shows instead.
 - Screenshots are not charged.
+
+An app deployed elsewhere gets a screenshot of its production address
+too, and any project can show an uploaded image instead. See
+[production's picture](/guides/projects/#productions-picture).
 
 The [checklist on the overview](/guides/projects/#get-to-production) also
 tracks the first production deploy, a custom domain and a first preview.
