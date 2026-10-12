@@ -259,9 +259,10 @@ test("tokens: the deployments' one is kept and the same each time; others can be
   assert.match(a.secret, /^g1to_prj_1_[0-9a-f]{48}$/);
   const made = await store.createToken("prj_1", "laptop", "u1");
   const listed = store.tokens();
-  assert.equal(listed.length, 2);
+  assert.deepEqual(listed.map((t) => t.name), ["laptop"], "the deployments' token is g1t's, not listed");
   assert.ok(!JSON.stringify(listed).includes(made.secret), "a token's secret is never listed");
-  assert.equal(store.revokeToken(listed.find((t) => t.managed)!.id), false);
+  const managedId = String((store.sql.exec("SELECT id FROM tokens WHERE managed = 1").toArray()[0] as { id: string }).id);
+  assert.equal(store.revokeToken(managedId), false);
   assert.equal(store.revokeToken(made.token.id), true);
   assert.equal(await store.checkToken(made.secret), false);
 });

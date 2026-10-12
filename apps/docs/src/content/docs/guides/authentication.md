@@ -639,7 +639,8 @@ when their creator leaves. See [workspace tokens](#workspace-tokens).
      a token that reads your notifications.
 5. Under **Permissions**, set each resource the token needs to a level.
    **Read only**, **Agent** and **CI** fill in a [preset](#presets);
-   **Clear** sets everything back to no access.
+   **All** sets every resource to its highest level; **Clear** sets
+   everything back to no access.
 6. Leave **Use the website as you**, under **Website**, off unless the
    token is for automation that drives a browser. See
    [use a token on the website](#use-a-token-on-the-website).
@@ -663,7 +664,19 @@ A token that can use the website is marked **Uses the website**. The token
 itself stays the
 same; the change applies from its next request. Widening a token made for
 a workspace that requires approval asks its owners again. Where it reaches
-and when it expires cannot change; make a new token instead.
+cannot change; make a new token instead.
+
+### Regenerate a token
+
+To rotate a token, or replace one that may have leaked, open its page,
+choose when the new one expires, and select **Regenerate**. The token gets
+a new secret, shown once, and keeps its name, permissions, repositories
+and where it reaches. The old secret stops working at once, so give
+whatever used it the new one. A token made for a workspace keeps to that
+workspace's [rules](#a-workspaces-rules-for-tokens) on how long it may
+last. A workspace's owners regenerate its own tokens the same way, from
+**Workspace settings** → **Access tokens**. Each regeneration is in your
+[security log](#security-log), or the workspace's audit log.
 
 **Delete token**, at the bottom of its page, stops it working at once.
 
@@ -875,6 +888,10 @@ any row.
 | Read only | Every resource at read except Chat. Changes nothing. |
 | Agent | Every resource at read except Self-hosted runners and Chat, and Code, Issues, Pull requests, Memory and context and Notifications at read and write, and g1t agents at run. Reads everything, works on issues and pull requests, pushes code, puts g1t to work, and answers your inbox. No admin level. |
 | CI | Repositories: read; Code, Packages, Workflows, Checks and statuses, and Deployments: read and write. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments. |
+
+**All** is not a preset that grows: it ticks every permission there is
+when you select it. A permission g1t adds later is not added to a token on
+its own; edit the token to give it, as with any other.
 
 A new personal token starts on Read only; a new workspace token on CI.
 

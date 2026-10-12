@@ -235,6 +235,9 @@ export function TokenForm({
   const blocked = Boolean(one && !workspaceOwned && chosen?.policy && !chosen.policy.allowTokensForThisWorkspace);
   const keptOut = !workspaceOwned && reach === ALL_WORKSPACES ? keptOutOfAll(workspaces) : [];
   const choosePreset = (id: PresetId) => setLevels(permissionsOf(presetScopes(id)));
+  // Every permission this kind of token can have, each at its highest level.
+  const chooseAll = () =>
+    setLevels(Object.fromEntries(groups.flatMap((group) => group.resources.map((row) => [row.resource, levelsOf(row.resource).at(-1)!]))) as typeof levels);
 
   return (
     <div className="space-y-8">
@@ -341,6 +344,17 @@ export function TokenForm({
               </Button>
             </Hint>
           ))}
+          <Hint label="Every permission, each at its highest level. A permission g1t adds later is added to the token by editing it.">
+            <Button
+              type="button"
+              onClick={chooseAll}
+              variant="outline"
+              size="inline"
+              className="rounded-full px-2.5 py-0.5 text-xs text-muted"
+            >
+              All
+            </Button>
+          </Hint>
           <Button
             type="button"
             onClick={() => setLevels({})}

@@ -126,6 +126,8 @@ export function identityClient(service: ServiceBinding): IdentityApi {
         permissions: change.permissions ?? null,
         website: change.website ?? null,
       }),
+    regenerateToken: (actor, id, ttlSeconds, owner) =>
+      call("regenerate_token", { actor, id, owner: owner ?? null, ttl_seconds: ttlSeconds ?? null }),
     getTokenPolicy: (slug, viewer) => call("get_token_policy", { slug, viewer }),
     setTokenPolicy: (actor, slug, change) =>
       call("set_token_policy", {

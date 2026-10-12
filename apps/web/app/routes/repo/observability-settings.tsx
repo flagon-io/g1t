@@ -110,7 +110,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 export default function ObservabilitySettings({ loaderData, actionData }: Route.ComponentProps) {
   const { settings, tokens, exports, usage, slug } = loaderData;
   const submit = useSubmit();
-  const deploymentToken = tokens?.find((t) => t.managed);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -153,11 +152,14 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
           </h2>
           <NewToken />
         </div>
-        <p className="mt-1 text-sm text-muted">A token lets software send to this project and do nothing else. Each is shown once, when it is made.</p>
+        <p className="mt-1 text-sm text-muted">
+          For software running anywhere other than g1t.page: a token lets it send to this project and do nothing else. Each is shown once, when
+          it is made. Apps on g1t.page need none; g1t gives them their own.
+        </p>
         {!tokens ? (
           <Card className="mt-3 p-4 text-sm text-muted">Tokens could not be loaded just now.</Card>
         ) : tokens.length === 0 ? (
-          <Card className="mt-3 p-4 text-sm text-muted">No tokens yet.</Card>
+          <Card className="mt-3 p-4 text-sm text-muted">None yet.</Card>
         ) : (
           <Card className="mt-3 divide-y divide-line">
             {tokens.map((t) => (
@@ -166,7 +168,6 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
                   <p className="flex items-center gap-2 text-sm font-medium">
                     <KeyRound size={14} className="text-faint" />
                     {t.name}
-                    {t.managed && <Badge tone="accent">g1t</Badge>}
                   </p>
                   <p className="mt-0.5 text-xs text-faint">
                     <span className="font-mono">{t.hint}</span> · made <TimeAgo at={t.created_us / 1000} /> ·{" "}
@@ -179,39 +180,34 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
                     )}
                   </p>
                 </div>
-                {t.managed ? (
-                  <span className="text-xs text-faint">Given to the project's apps on g1t.page</span>
-                ) : (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="outline" size="sm" aria-label={`Revoke ${t.name}`}>
-                        <Trash2 size={14} />
-                        Revoke
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <Form method="post" className="grid gap-4">
-                        <input type="hidden" name="intent" value="revoke-token" />
-                        <input type="hidden" name="id" value={t.id} />
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Revoke {t.name}?</AlertDialogTitle>
-                          <AlertDialogDescription>Anything sending with it is refused at once. What it already sent stays.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction asChild>
-                            <button type="submit">Revoke token</button>
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </Form>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" size="sm" aria-label={`Revoke ${t.name}`}>
+                      <Trash2 size={14} />
+                      Revoke
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <Form method="post" className="grid gap-4">
+                      <input type="hidden" name="intent" value="revoke-token" />
+                      <input type="hidden" name="id" value={t.id} />
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Revoke {t.name}?</AlertDialogTitle>
+                        <AlertDialogDescription>Anything sending with it is refused at once. What it already sent stays.</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction asChild>
+                          <button type="submit">Revoke token</button>
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </Form>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             ))}
           </Card>
         )}
-        {!deploymentToken && <p className="mt-2 text-xs text-faint">The project's apps on g1t.page get a token of their own at their next deployment.</p>}
       </section>
 
       <section className="mt-10" aria-labelledby="exports-title">

@@ -193,8 +193,12 @@ export class Store {
     };
   }
 
+  /**
+   * The tokens people made. The one g1t's deployments send with is kept
+   * out of sight: it is g1t's, given to the project's apps on their own.
+   */
   tokens(): IngestToken[] {
-    return this.rows("SELECT * FROM tokens ORDER BY managed DESC, created_us DESC").map((r) => this.tokenRow(r));
+    return this.rows("SELECT * FROM tokens WHERE managed = 0 ORDER BY created_us DESC").map((r) => this.tokenRow(r));
   }
 
   /** A new token: `g1to_<project>_<secret>`, so the ingest door knows whose store to ask. */

@@ -715,6 +715,65 @@ impl Identity {
         Ok(Outcome::Ok(info))
     }
 
+    /// A new secret for a token, everything else kept: for rotating one
+    /// without remaking it. See `RegenerateTokenArgs`.
+    pub async fn regenerate_token(&self, a: RegenerateTokenArgs) -> Result<Outcome<CreatedAccessToken>> {
+        if !is_person(&a.actor) || a.actor.token.is_some() {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only a person, signed in on g1t.sh, can regenerate an access token."));
+        }
+        if a.ttl_seconds.is_some_and(|ttl| !(DAY_SECONDS..=u64::from(MAX_LIFETIME_DAYS) * DAY_SECONDS).contains(&ttl)) {
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                format!("A token lasts between 1 and {MAX_LIFETIME_DAYS} days, or does not expire."),
+            ));
+        }
+        let owner_slug = a.owner.as_deref().map(|slug| slug.trim().to_lowercase()).filter(|slug| !slug.is_empty());
+        let found = match (&owner_slug, self.owned_token(&a.id).await?) {
+            (Some(slug), Some(token)) => {
+                let workspace_id = match self.owned_workspace(&a.actor, slug).await? {
+                    Outcome::Ok(id) => id,
+                    Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+                };
+                if token.workspace_id.as_deref() != Some(workspace_id.as_str()) {
+                    return Ok(Outcome::fail(FailureCode::NotFound, "No such token."));
+                }
+                token
+            }
+            (None, Some(token)) if token.user_id.as_deref() == Some(a.actor.id.as_str()) => token,
+            _ => return Ok(Outcome::fail(FailureCode::NotFound, "No such token.")),
+        };
+        if found.status.as_deref() == Some(TokenStatus::Revoked.as_str()) {
+            return Ok(Outcome::fail(FailureCode::Conflict, "This token was revoked. Make a new one instead."));
+        }
+        // A personal token made for one workspace keeps to its rules on lifetime.
+        if found.user_id.is_some()
+            && let Some(id) = &found.owner_workspace_id
+            && let Some(slug) = self.slug_of(id).await?
+            && let Some((_, policy)) = self.policy_of(&slug).await?
+            && let Some(refusal) = policy.refusal(&slug, true, a.ttl_seconds)
+        {
+            return Ok(Outcome::fail(FailureCode::Forbidden, refusal));
+        }
+        let token = format!("{}{}", crate::tokens::TOKEN_PREFIX, crate::crypto::random_hex(20));
+        let expires_at = a.ttl_seconds.map(|ttl| rfc3339(now_ms() + ttl * 1000));
+        self.db
+            .prepare("UPDATE access_tokens SET token_hash = ?, expires_at = ? WHERE id = ?")
+            .bind(&[crate::crypto::sha256_hex(&token).into(), text(expires_at.as_deref()), a.id.as_str().into()])?
+            .run()
+            .await?;
+        let Some(mut info) = self.token_info(&a.id).await? else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "No such token."));
+        };
+        self.name_repositories(std::slice::from_mut(&mut info), &Some(a.actor.clone())).await?;
+        if found.user_id.is_some() {
+            self.log_security(&a.actor.id, "token_regenerated", Some(&info.name), None).await;
+            self.audit_account(&a.actor, "token.regenerated", &format!("Regenerated access token {}", info.name)).await;
+        } else if let Some(slug) = &owner_slug {
+            self.audit_workspace(&a.actor, "workspace_token.regenerated", slug, Surface::Web, format!("Regenerated workspace access token {}", info.name)).await;
+        }
+        Ok(Outcome::Ok(CreatedAccessToken { token, info }))
+    }
+
     /// A token a person or workspace made on purpose, by id: never an
     /// agent's or a workflow job's.
     async fn owned_token(&self, id: &str) -> Result<Option<Owned>> {

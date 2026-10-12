@@ -5,8 +5,9 @@ import type { Route } from "./+types/token";
 import { page } from "../../lib/meta";
 import { ErrorText, SubmitButton } from "../../components/ui";
 import { TokenForm } from "../../components/token-form";
-import { TokenBadges, TokenMeta } from "../../components/token-list";
-import { changesTo, tokenFromForm } from "../../lib/access-tokens";
+import { TokenBadges, TokenCreated, TokenMeta } from "../../components/token-list";
+import { RegenerateToken } from "../../components/token-regenerate";
+import { changesTo, tokenFromForm, ttlFromForm } from "../../lib/access-tokens";
 import { personalToken, workspaceChoices } from "../../lib/access-tokens.server";
 import { identity } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
@@ -33,6 +34,12 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     await identity.removeAccessToken(user, params.id);
     throw redirect("/settings/tokens");
   }
+  if (form.get("intent") === "regenerate") {
+    const ttl = ttlFromForm(form);
+    if (!ttl.ok) return { error: ttl.error, saved: false };
+    const made = await identity.regenerateToken(user, params.id, ttl.value);
+    return made.ok ? { error: null, saved: false, secret: made.value.token, made: made.value.info } : { error: made.error.message, saved: false };
+  }
   const token = await personalToken(user, params.id);
   const input = tokenFromForm(form, { editing: true });
   if (!input.ok) return { error: input.error, saved: false };
@@ -56,6 +63,9 @@ export default function TokenPage({ loaderData, actionData }: Route.ComponentPro
         </h2>
         <TokenMeta token={token} />
       </div>
+      {actionData && "secret" in actionData && actionData.secret && actionData.made && (
+        <TokenCreated secret={actionData.secret} token={actionData.made} back="/settings/tokens" />
+      )}
       <Form method="post" key={token.id} className="space-y-6">
         <input type="hidden" name="intent" value="save" />
         <TokenForm workspaces={workspaces} editing={token} />
@@ -72,6 +82,7 @@ export default function TokenPage({ loaderData, actionData }: Route.ComponentPro
             : "The token stays the same; what it may do changes from its next request."}
         </p>
       </Form>
+      <RegenerateToken name={token.name} />
       <section className="rounded-xl border border-danger/30 p-4">
         <h2 className="text-sm font-medium">Delete this token</h2>
         <p className="mt-1 text-xs text-muted">Anything still using it stops working at once.</p>

@@ -933,6 +933,13 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
    * workspace that approves tokens asks for approval again.
    */
   updateToken(actor: User, id: string, change: TokenChange, owner?: string | null): Promise<Result<AccessToken>>;
+  /**
+   * A new secret for a token, everything else kept, the old secret refused
+   * from then on: rotating it. `ttlSeconds` is its new lifetime from now
+   * (null: it does not expire), within its workspace's rules. The secret
+   * is shown once.
+   */
+  regenerateToken(actor: User, id: string, ttlSeconds: number | null, owner?: string | null): Promise<Result<{ token: string; info: AccessToken }>>;
   /** A workspace's rules for personal access tokens. Members only. */
   getTokenPolicy(slug: string, viewer: Viewer): Promise<Result<TokenPolicy>>;
   /** Owners only, as people. `maxLifetimeDays` of 0 removes the limit. */

@@ -1018,6 +1018,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         // workspaces' rules for tokens; see token_reach.rs.
         "create_token" => reply(&identity.create_token(args(body)?).await?),
         "update_token" => reply(&identity.update_token(args(body)?).await?),
+        "regenerate_token" => reply(&identity.regenerate_token(args(body)?).await?),
         "get_token_policy" => reply(&identity.get_token_policy(args(body)?).await?),
         "set_token_policy" => reply(&identity.set_token_policy(args(body)?).await?),
         "list_member_tokens" => reply(&identity.list_member_tokens(args(body)?).await?),

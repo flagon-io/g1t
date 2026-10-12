@@ -60,6 +60,17 @@ export function expiryChoices(policies: readonly (TokenPolicy | null | undefined
   return { days, never };
 }
 
+/** A new lifetime chosen in a form's `expires` (days, or `never`), as seconds; null for none, or an error. */
+export function ttlFromForm(form: FormData): { ok: true; value: number | null } | { ok: false; error: string } {
+  const expires = String(form.get("expires") ?? DEFAULT_EXPIRY_DAYS);
+  if (expires === "never") return { ok: true, value: null };
+  const days = Number(expires);
+  if (!Number.isInteger(days) || days < 1 || days > MAX_TOKEN_LIFETIME_DAYS) {
+    return { ok: false, error: `Choose when it expires: at most ${MAX_TOKEN_LIFETIME_DAYS} days, or never.` };
+  }
+  return { ok: true, value: days * 86_400 };
+}
+
 /** The resources a token can hold: a workspace's own token holds none about a person. */
 export function resourcesFor(workspaceOwned: boolean): { resource: ScopeResource; label: string; group: ResourceGroup }[] {
   return SCOPE_RESOURCES.filter((row) => !workspaceOwned || row.group !== "account");

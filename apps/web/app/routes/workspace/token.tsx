@@ -5,8 +5,9 @@ import type { Route } from "./+types/token";
 import { page } from "../../lib/meta";
 import { ErrorText, SubmitButton } from "../../components/ui";
 import { TokenForm } from "../../components/token-form";
-import { TokenBadges, TokenFacts, TokenMeta } from "../../components/token-list";
-import { changesTo, tokenFromForm } from "../../lib/access-tokens";
+import { TokenBadges, TokenCreated, TokenFacts, TokenMeta } from "../../components/token-list";
+import { RegenerateToken } from "../../components/token-regenerate";
+import { changesTo, tokenFromForm, ttlFromForm } from "../../lib/access-tokens";
 import { workspaceRepos, workspaceToken } from "../../lib/access-tokens.server";
 import { identity } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
@@ -36,6 +37,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!removed.ok) return { error: removed.error.message, saved: false };
     throw redirect(`/${slug}/-/tokens`);
   }
+  if (form.get("intent") === "regenerate") {
+    const ttl = ttlFromForm(form);
+    if (!ttl.ok) return { error: ttl.error, saved: false };
+    const made = await identity.regenerateToken(user, params.id, ttl.value, slug);
+    return made.ok ? { error: null, saved: false, secret: made.value.token, made: made.value.info } : { error: made.error.message, saved: false };
+  }
   const token = await workspaceToken(user, slug, params.id);
   const input = tokenFromForm(form, { editing: true, workspaceOwned: true, owner: slug });
   if (!input.ok) return { error: input.error, saved: false };
@@ -60,6 +67,9 @@ export default function WorkspaceTokenPage({ loaderData, actionData }: Route.Com
         {token.description && <p className="text-sm text-muted">{token.description}</p>}
         <TokenMeta token={token} />
       </div>
+      {actionData && "secret" in actionData && actionData.secret && actionData.made && (
+        <TokenCreated secret={actionData.secret} token={actionData.made} back={`/${slug}/-/tokens`} />
+      )}
       {owner ? (
         <>
           <Form method="post" key={token.id} className="space-y-6">
@@ -73,6 +83,7 @@ export default function WorkspaceTokenPage({ loaderData, actionData }: Route.Com
               {actionData?.saved && <span className="text-sm text-success">Saved.</span>}
             </div>
           </Form>
+          <RegenerateToken name={token.name} />
           <section className="rounded-xl border border-danger/30 p-4">
             <h3 className="text-sm font-medium">Delete this token</h3>
             <p className="mt-1 text-xs text-muted">Anything still using it stops working at once.</p>

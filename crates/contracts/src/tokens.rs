@@ -146,6 +146,23 @@ pub struct UpdateTokenArgs {
     pub website: Option<bool>,
 }
 
+/// `regenerate_token`: a person gives a token of theirs, or, as an
+/// owner, a workspace's token, a new secret. Everything else about it
+/// stays: its name, permissions, reach and repositories. The old secret
+/// stops working at once. `ttl_seconds` is its new lifetime from now, as
+/// when it was made (null: it does not expire), within its workspace's
+/// rules. Returns `Outcome<CreatedAccessToken>`, the new secret shown once.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct RegenerateTokenArgs {
+    pub actor: User,
+    pub id: String,
+    /// The workspace whose token it is; null for one of the actor's own.
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub ttl_seconds: Option<u64>,
+}
+
 /// A workspace's rules for personal access tokens.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
