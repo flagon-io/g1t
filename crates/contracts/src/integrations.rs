@@ -10,6 +10,10 @@
 //! - **Trackers.** A Jira or Linear key, such as `TECH-1234`, resolves to the
 //!   ticket: people and their tools read it, people import it as an issue,
 //!   and when the work lands the ticket is told.
+//! - **Ask g1t.** A conversation with g1t from the top bar, answered by the
+//!   AI provider and model an owner chose from the workspace's own
+//!   connections, on the workspace's own key. g1t hosts no model for it and
+//!   bills nothing for it; the key never leaves this service.
 //!
 //! Mirrors `packages/contracts/src/integrations.ts`.
 
@@ -446,6 +450,110 @@ pub struct LinksArgs {
     pub number: u32,
 }
 
+// --- Ask g1t ---------------------------------------------------------------
+
+/// The most messages one ask sends: the conversation's latest turns.
+pub const ASK_MAX_MESSAGES: usize = 40;
+/// The longest one message may be, in characters.
+pub const ASK_MAX_MESSAGE_CHARS: usize = 16_000;
+/// The longest a whole conversation may be, in characters.
+pub const ASK_MAX_TOTAL_CHARS: usize = 64_000;
+/// The most tokens one answer may run to.
+pub const ASK_MAX_OUTPUT_TOKENS: u32 = 4_096;
+
+/// What Ask g1t answers with in a workspace: the connection and model an
+/// owner chose, or why it cannot answer yet.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AskSetup {
+    pub connection_id: Option<String>,
+    /// The connection's name, as its owner named it.
+    pub connection_name: Option<String>,
+    pub provider: Option<Provider>,
+    pub model: Option<String>,
+    /// Why Ask cannot answer, in words for the person asking. `None` when
+    /// it can.
+    pub problem: Option<String>,
+}
+
+/// `ask_settings`: what Ask answers with. Returns `Outcome<AskSetup>`.
+/// Members only.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AskSettingsArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+}
+
+/// `set_ask_settings`: chooses the connection and model Ask answers with;
+/// no `connection_id` turns Ask off. Returns `Outcome<AskSetup>`. Owners
+/// only.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetAskSettingsArgs {
+    pub actor: User,
+    pub workspace: String,
+    #[serde(default)]
+    pub connection_id: Option<String>,
+    /// One of the models the connection offers; its own model (an Azure
+    /// deployment) when not given.
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskRole {
+    User,
+    Assistant,
+}
+
+/// One turn of an Ask conversation.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AskMessage {
+    pub role: AskRole,
+    pub content: String,
+}
+
+/// Where the person asking is in g1t, so the answer is about their work.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AskPage {
+    /// The page's path, such as `/acme/web/issues/12`.
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub repo: Option<RepoPath>,
+    #[serde(default)]
+    pub issue: Option<u32>,
+    #[serde(default)]
+    pub pull: Option<u32>,
+}
+
+/// `ask`: one answer, streamed as newline-delimited JSON [`AskEvent`]s:
+/// `meta` first, then `text` as it comes, then `done`, or `error` at any
+/// point. Members only. The conversation alternates, starting and ending
+/// with the person.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AskArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub messages: Vec<AskMessage>,
+    #[serde(default)]
+    pub page: AskPage,
+}
+
+/// One line of an `ask` answer.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AskEvent {
+    /// Who is answering.
+    Meta { provider: Provider, provider_label: String, model: String },
+    /// The next piece of the answer.
+    Text { text: String },
+    /// The answer is complete. `stop_reason` as the provider said it, such
+    /// as `end_turn`, `stop` or `max_tokens`.
+    Done { stop_reason: Option<String> },
+    /// The answer stopped: what went wrong, for the person asking.
+    Error { message: String },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -487,5 +595,19 @@ mod tests {
             assert!(!spec.auth_header.is_empty(), "{}", spec.name);
             assert!(spec.base_url.is_empty() || spec.base_url.starts_with("https://"), "{}", spec.name);
         }
+    }
+
+    #[test]
+    fn ask_events_are_tagged_lines() {
+        let line = serde_json::to_string(&AskEvent::Text { text: "Hi".into() }).unwrap();
+        assert_eq!(line, r#"{"type":"text","text":"Hi"}"#);
+        let meta: AskEvent =
+            serde_json::from_str(r#"{"type":"meta","provider":"anthropic","provider_label":"Anthropic","model":"claude"}"#).unwrap();
+        assert_eq!(
+            meta,
+            AskEvent::Meta { provider: Provider::Anthropic, provider_label: "Anthropic".into(), model: "claude".into() }
+        );
+        let page: AskPage = serde_json::from_str("{}").unwrap();
+        assert_eq!(page, AskPage::default());
     }
 }

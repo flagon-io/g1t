@@ -682,6 +682,17 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     resolve: (workspace, viewer, reference) => call("resolve", { workspace, viewer, reference }),
     import: (actor, repo, reference) => call("import", { actor, repo, reference }),
     links: (repo, number) => call("links", { repo, number }),
+    askSettings: (workspace, viewer) => call("ask_settings", { workspace, viewer }),
+    setAskSettings: (actor, workspace, connectionId, model) =>
+      call("set_ask_settings", { actor, workspace, connection_id: connectionId, model }),
+    // Streamed: the response itself, not its parsed body.
+    ask: (actor, workspace, messages, page, signal) =>
+      service.fetch("https://service/rpc/ask", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ actor, workspace, messages, page }),
+        signal,
+      }),
   };
 }
 

@@ -128,6 +128,48 @@ export type UpdateConnectionInput = {
   signingSecret?: string;
 };
 
+// --- Ask g1t -----------------------------------------------------------------
+// A conversation with g1t from the top bar, answered by the AI provider and
+// model an owner chose from the workspace's own connections, on its own key.
+// g1t hosts no model for it and bills nothing for it.
+
+/** The most messages one ask sends: the conversation's latest turns. */
+export const ASK_MAX_MESSAGES = 40;
+/** The longest one message may be, in characters. */
+export const ASK_MAX_MESSAGE_CHARS = 16_000;
+/** The longest a whole conversation may be, in characters. */
+export const ASK_MAX_TOTAL_CHARS = 64_000;
+/** The most tokens one answer may run to. */
+export const ASK_MAX_OUTPUT_TOKENS = 4_096;
+
+/** What Ask answers with in a workspace, or why it cannot yet. */
+export type AskSetup = {
+  connection_id: string | null;
+  connection_name: string | null;
+  provider: Provider | null;
+  model: string | null;
+  /** Why Ask cannot answer, for the person asking. Null when it can. */
+  problem: string | null;
+};
+
+export type AskRole = "user" | "assistant";
+export type AskMessage = { role: AskRole; content: string };
+
+/** Where the person asking is, so the answer is about their work. */
+export type AskPage = {
+  path?: string | null;
+  repo?: RepoPath | null;
+  issue?: number | null;
+  pull?: number | null;
+};
+
+/** One line of an `ask` answer, as newline-delimited JSON. */
+export type AskEvent =
+  | { type: "meta"; provider: Provider; provider_label: string; model: string }
+  | { type: "text"; text: string }
+  | { type: "done"; stop_reason: string | null }
+  | { type: "error"; message: string };
+
 export interface IntegrationsApi {
   list(workspace: string, viewer: Viewer): Promise<Result<Connection[]>>;
   connect(actor: User, workspace: string, input: ConnectInput): Promise<Result<Connected>>;
@@ -138,6 +180,16 @@ export interface IntegrationsApi {
   resolve(workspace: string, viewer: Viewer, reference: string): Promise<Result<ContextItem>>;
   import(actor: User, repo: RepoPath, reference: string): Promise<Result<{ number: number; item: ContextItem; created: boolean }>>;
   links(repo: RepoPath, number: number): Promise<Link[]>;
+  /** What Ask answers with. Members only. */
+  askSettings(workspace: string, viewer: Viewer): Promise<Result<AskSetup>>;
+  /** Chooses Ask's connection and model; a null connection turns it off. Owners only. */
+  setAskSettings(actor: User, workspace: string, connectionId: string | null, model: string | null): Promise<Result<AskSetup>>;
+  /**
+   * One answer, as the service's response: newline-delimited `AskEvent`s,
+   * streamed. Members only. Call it on the binding itself, not through
+   * anything that reads the whole body first. `signal` stops the answer.
+   */
+  ask(actor: User, workspace: string, messages: AskMessage[], page: AskPage, signal?: AbortSignal): Promise<Response>;
 }
 
 /** What each provider is for, as people choose between them. */

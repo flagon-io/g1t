@@ -9,6 +9,7 @@
 //! the sender give up and send it again.
 
 mod alerts;
+mod ask;
 mod github;
 mod github_jwt;
 mod http;
@@ -23,13 +24,13 @@ use g1t_contracts::identity::{SlugArgs, Workspace};
 use g1t_contracts::integrations::*;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::{AddCommentArgs, Issue, IssueActionArgs, IssueDetail, OpenIssueArgs, State, ViewArgs};
+use g1t_contracts::work::{AddCommentArgs, Issue, IssueActionArgs, IssueDetail, OpenIssueArgs, PullDetail, State, ViewArgs};
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use worker::wasm_bindgen::JsValue;
-use worker::{Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, event};
+use worker::{Context, D1Database, Env, Fetcher, Headers, MessageBatch, MessageExt, Method, Request, Response, Result, event};
 
 use alerts::{Action, Signal};
 use g1t_secrets::{self as crypto, Sealer};
@@ -462,6 +463,8 @@ impl Integrations {
             .batch(vec![
                 self.db.prepare("DELETE FROM connections WHERE id = ?").bind(&[row.id.as_str().into()])?,
                 self.db.prepare("DELETE FROM deliveries WHERE connection_id = ?").bind(&[row.id.as_str().into()])?,
+                // Ask stops answering with it.
+                self.db.prepare("DELETE FROM model_routes WHERE connection_id = ?").bind(&[row.id.as_str().into()])?,
             ])
             .await?;
         Ok(Outcome::Ok(true))
@@ -533,6 +536,232 @@ impl Integrations {
                 })
                 .collect(),
         ))
+    }
+
+    // --- Ask g1t ----------------------------------------------------------------
+
+    /// What Ask answers with: the owner's choice, kept as the workspace's
+    /// `ask` model route, and the connection it names.
+    async fn ask_setup(&self, workspace: &str) -> Result<(AskSetup, Option<Row>)> {
+        #[derive(Deserialize)]
+        struct Route {
+            connection_id: Option<String>,
+            model: Option<String>,
+        }
+        let route = self
+            .db
+            .prepare("SELECT connection_id, model FROM model_routes WHERE workspace = ? AND task = ?")
+            .bind(&[workspace.into(), ASK_TASK.into()])?
+            .first::<Route>(None)
+            .await?;
+        let Some(id) = route.as_ref().and_then(|route| route.connection_id.clone()) else {
+            return Ok((
+                AskSetup {
+                    problem: Some("No AI provider is chosen for Ask in this workspace yet.".to_owned()),
+                    ..AskSetup::default()
+                },
+                None,
+            ));
+        };
+        let Some(row) = self.row_in(workspace, &id).await?.filter(|row| row.provider().kind() == ProviderKind::Models) else {
+            return Ok((
+                AskSetup {
+                    problem: Some("The AI provider chosen for Ask was removed. Choose another.".to_owned()),
+                    ..AskSetup::default()
+                },
+                None,
+            ));
+        };
+        let model = route
+            .and_then(|route| route.model)
+            .or_else(|| row.config().model)
+            .filter(|model| !model.trim().is_empty());
+        let problem = if model.is_none() {
+            Some("No model is chosen for Ask.".to_owned())
+        } else if self.sealer.is_none() {
+            Some("Integrations are not set up on this g1t: it has no key to keep secrets with.".to_owned())
+        } else if !row.provider().own_address() && self.secrets(&row).secret.is_none() {
+            Some(format!("The key for {} cannot be read. Replace it.", row.name))
+        } else {
+            None
+        };
+        Ok((
+            AskSetup {
+                connection_id: Some(row.id.clone()),
+                connection_name: Some(row.name.clone()),
+                provider: Some(row.provider()),
+                model,
+                problem,
+            },
+            Some(row),
+        ))
+    }
+
+    async fn ask_settings(&self, a: AskSettingsArgs) -> Result<Outcome<AskSetup>> {
+        let workspace = a.workspace.to_lowercase();
+        if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {
+            return Ok(fail(FailureCode::Forbidden, "Only members can use Ask in a workspace."));
+        }
+        Ok(Outcome::Ok(self.ask_setup(&workspace).await?.0))
+    }
+
+    async fn set_ask_settings(&self, a: SetAskSettingsArgs) -> Result<Outcome<AskSetup>> {
+        let workspace = a.workspace.to_lowercase();
+        if let Some(refused) = Self::owner_only(&a.actor, &workspace) {
+            return Ok(refused);
+        }
+        let Some(id) = a.connection_id.map(|id| id.trim().to_owned()).filter(|id| !id.is_empty()) else {
+            self.db
+                .prepare("DELETE FROM model_routes WHERE workspace = ? AND task = ?")
+                .bind(&[workspace.as_str().into(), ASK_TASK.into()])?
+                .run()
+                .await?;
+            return Ok(Outcome::Ok(self.ask_setup(&workspace).await?.0));
+        };
+        let Some(row) = self.row_in(&workspace, &id).await? else {
+            return Ok(fail(FailureCode::NotFound, "No such integration."));
+        };
+        if row.provider().kind() != ProviderKind::Models {
+            return Ok(fail(FailureCode::Invalid, "Ask can only answer with an AI provider."));
+        }
+        let connection = self.to_connection(&row);
+        let model = match ask_model(&connection, a.model.as_deref()) {
+            Ok(model) => model,
+            Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
+        };
+        self.db
+            .prepare(
+                "INSERT INTO model_routes (workspace, task, connection_id, model) VALUES (?, ?, ?, ?)
+                 ON CONFLICT (workspace, task) DO UPDATE SET connection_id = excluded.connection_id, model = excluded.model",
+            )
+            .bind(&[workspace.as_str().into(), ASK_TASK.into(), row.id.as_str().into(), optional(model.as_deref())])?
+            .run()
+            .await?;
+        Ok(Outcome::Ok(self.ask_setup(&workspace).await?.0))
+    }
+
+    /// The issue or pull request the person is looking at, as they may see
+    /// it. Nothing when there is none or they cannot.
+    async fn ask_facts(&self, actor: &User, page: &AskPage) -> Result<Vec<ask::Fact>> {
+        let Some(repo) = &page.repo else {
+            return Ok(Vec::new());
+        };
+        let view = |number: u32| ViewArgs {
+            repo: repo.clone(),
+            number,
+            viewer: Some(actor.clone()),
+            after_seq: 0,
+        };
+        let state = |value: Value| value.as_str().unwrap_or_default().to_owned();
+        let mut facts = Vec::new();
+        if let Some(number) = page.issue {
+            let found: Outcome<IssueDetail> = g1t_kit::call(&self.work, "get_issue", &view(number)).await?;
+            if let Outcome::Ok(detail) = found {
+                facts.push(ask::Fact {
+                    kind: "issue",
+                    number,
+                    state: state(serde_json::to_value(detail.issue.state)?),
+                    title: detail.issue.title,
+                    body: http::shorten(&detail.issue.body, ASK_FACT_CHARS),
+                });
+            }
+        }
+        if let Some(number) = page.pull {
+            let found: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view(number)).await?;
+            if let Outcome::Ok(detail) = found {
+                facts.push(ask::Fact {
+                    kind: "pull request",
+                    number,
+                    state: state(serde_json::to_value(detail.pull.status)?),
+                    body: http::shorten(detail.pull.body.as_deref().unwrap_or_default(), ASK_FACT_CHARS),
+                    title: detail.pull.title,
+                });
+            }
+        }
+        Ok(facts)
+    }
+
+    /// One answer, streamed: see [`AskArgs`].
+    async fn ask(&self, a: AskArgs) -> Result<Response> {
+        let workspace = a.workspace.to_lowercase();
+        if !a.actor.is_member(&workspace) {
+            return ask_refusal("Only members can use Ask in this workspace.");
+        }
+        let messages = match ask::conversation(a.messages) {
+            Ok(messages) => messages,
+            Err(problem) => return ask_refusal(&problem),
+        };
+        let (setup, row) = self.ask_setup(&workspace).await?;
+        let (Some(row), Some(model), None) = (row, setup.model.clone(), setup.problem.clone()) else {
+            return ask_refusal(setup.problem.as_deref().unwrap_or("Ask is not set up in this workspace."));
+        };
+        let provider = row.provider();
+        let config = row.config();
+        let key = self.secrets(&row).secret;
+        let (named, facts) = futures_util::future::join(
+            g1t_kit::call::<_, Option<Workspace>>(&self.identity, "get_workspace", &SlugArgs { slug: workspace.clone() }),
+            self.ask_facts(&a.actor, &a.page),
+        )
+        .await;
+        let name = named.ok().flatten().map(|found| found.name).unwrap_or_default();
+        // Without what the page is about, the answer can still come.
+        let facts = facts.unwrap_or_default();
+        let system = ask::system_prompt(&workspace, &name, &a.page, &facts);
+        let built = match ask::build(provider, &config, key.as_deref(), &model, &system, &messages, ASK_MAX_OUTPUT_TOKENS) {
+            Ok(built) => built,
+            Err(problem) => return ask_refusal(&problem),
+        };
+        let headers: Vec<(&str, &str)> = built.headers.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
+        let mut response = match http::open(Method::Post, &built.url, &headers, Some(built.body)).await {
+            Ok(response) => response,
+            Err(error) => {
+                let problem = format!("{} could not be reached: {error}", provider.label());
+                self.note(&row.id, Some(&problem)).await?;
+                return ask_refusal(&problem);
+            }
+        };
+        let status = response.status_code();
+        if !(200..300).contains(&status) {
+            let answer = http::Answer {
+                status,
+                body: response.text().await.unwrap_or_default(),
+            };
+            let problem = answer.problem(provider.label());
+            self.note(&row.id, Some(&problem)).await?;
+            return ask_refusal(&problem);
+        }
+        self.note(&row.id, None).await?;
+        let meta = ask::line(&AskEvent::Meta {
+            provider,
+            provider_label: provider.label().to_owned(),
+            model,
+        });
+        let upstream = response.stream()?;
+        let relay = ask::Relay::new(provider);
+        let label = provider.label();
+        let lines = futures_util::stream::unfold((upstream, relay, Some(meta)), move |(mut upstream, mut relay, mut first)| async move {
+            use futures_util::StreamExt;
+            if let Some(meta) = first.take() {
+                return Some((Ok::<Vec<u8>, worker::Error>(meta.into_bytes()), (upstream, relay, None)));
+            }
+            loop {
+                if relay.over() {
+                    return None;
+                }
+                let out = match upstream.next().await {
+                    Some(Ok(bytes)) => relay.feed(&bytes),
+                    Some(Err(error)) => relay.broke(&format!("The answer from {label} broke off: {error}")),
+                    None => relay.end(),
+                };
+                if !out.is_empty() {
+                    return Some((Ok(out.into_bytes()), (upstream, relay, None)));
+                }
+            }
+        });
+        let headers = Headers::new();
+        headers.set("content-type", ASK_CONTENT_TYPE)?;
+        headers.set("cache-control", "no-store")?;
+        Ok(Response::from_stream(lines)?.with_headers(headers))
     }
 
     // --- Acting in g1t --------------------------------------------------------
@@ -1070,6 +1299,38 @@ impl Integrations {
     }
 }
 
+/// The model route that holds the workspace's choice for Ask g1t.
+const ASK_TASK: &str = "ask";
+/// How much of an issue's or pull request's description Ask is given.
+const ASK_FACT_CHARS: usize = 6_000;
+const ASK_CONTENT_TYPE: &str = "application/x-ndjson; charset=utf-8";
+
+/// The model Ask uses on `connection`: the one chosen, else the
+/// connection's own (an Azure deployment). One the provider listed when it
+/// was last checked, where it lists them and it is not an Azure deployment.
+fn ask_model(connection: &Connection, chosen: Option<&str>) -> std::result::Result<Option<String>, String> {
+    let chosen = chosen.map(str::trim).filter(|model| !model.is_empty());
+    let Some(model) = chosen.map(str::to_owned).or_else(|| connection.config.model.clone()) else {
+        return Err("Choose a model for Ask.".to_owned());
+    };
+    if model.chars().count() > 200 {
+        return Err("That model's name is too long.".to_owned());
+    }
+    let checks_list = connection.provider != Provider::AzureOpenai && !connection.models.is_empty();
+    if chosen.is_some() && checks_list && !connection.models.iter().any(|offered| offered == &model) {
+        return Err(format!("{} does not offer {model}. Test it to list its models again.", connection.name));
+    }
+    Ok(Some(model))
+}
+
+/// An `ask` that cannot be answered: one `error` line.
+fn ask_refusal(message: &str) -> Result<Response> {
+    let headers = Headers::new();
+    headers.set("content-type", ASK_CONTENT_TYPE)?;
+    headers.set("cache-control", "no-store")?;
+    Ok(Response::ok(ask::line(&AskEvent::Error { message: message.to_owned() }))?.with_headers(headers))
+}
+
 fn clone_row(row: &Row) -> Row {
     Row {
         id: row.id.clone(),
@@ -1121,6 +1382,9 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "resolve" => reply(&service.resolve(args(body)?).await?),
         "import" => reply(&service.import(args(body)?).await?),
         "links" => reply(&service.links(args(body)?).await?),
+        "ask_settings" => reply(&service.ask_settings(args(body)?).await?),
+        "set_ask_settings" => reply(&service.set_ask_settings(args(body)?).await?),
+        "ask" => service.ask(args(body)?).await,
         _ => Response::error("Unknown method", 404),
     }
 }
@@ -1188,6 +1452,42 @@ mod config_tests {
         assert!(check_config(Provider::AzureOpenai, "acme", &mut azure, &key).is_ok());
         let mut alerts = ConnectionConfig { repo: Some("acme/web".into()), ..ConnectionConfig::default() };
         assert!(check_config(Provider::Webhook, "acme", &mut alerts, &key).is_ok());
+    }
+
+    fn connection(provider: Provider, model: Option<&str>, models: &[&str]) -> Connection {
+        Connection {
+            id: "con_1".into(),
+            workspace: "acme".into(),
+            provider,
+            kind: ProviderKind::Models,
+            name: "Team key".into(),
+            config: ConnectionConfig { model: model.map(str::to_owned), ..ConnectionConfig::default() },
+            secret_hint: None,
+            webhook_url: None,
+            created_by: "ana".into(),
+            created_at: "2026-10-12T00:00:00Z".into(),
+            last_used_at: None,
+            last_error: None,
+            models: models.iter().map(|model| (*model).to_owned()).collect(),
+        }
+    }
+
+    #[test]
+    fn asks_model_is_one_the_provider_offers_or_its_own() {
+        let listed = connection(Provider::Openai, None, &["gpt-5", "gpt-5-mini"]);
+        assert_eq!(ask_model(&listed, Some(" gpt-5 ")).unwrap().as_deref(), Some("gpt-5"));
+        assert!(ask_model(&listed, Some("gpt-4")).unwrap_err().contains("does not offer gpt-4"));
+        assert_eq!(ask_model(&listed, None).unwrap_err(), "Choose a model for Ask.");
+        // The connection's own model when none is chosen.
+        let own = connection(Provider::Anthropic, Some("claude-x"), &[]);
+        assert_eq!(ask_model(&own, Some("")).unwrap().as_deref(), Some("claude-x"));
+        // An endpoint that lists nothing takes what the owner writes.
+        let open = connection(Provider::OpenaiEndpoint, None, &[]);
+        assert_eq!(ask_model(&open, Some("qwen3-coder")).unwrap().as_deref(), Some("qwen3-coder"));
+        // Azure lists base models, not deployments: its deployment stands.
+        let azure = connection(Provider::AzureOpenai, Some("prod-gpt"), &["gpt-5"]);
+        assert_eq!(ask_model(&azure, Some("prod-gpt")).unwrap().as_deref(), Some("prod-gpt"));
+        assert!(ask_model(&own, Some(&"m".repeat(201))).is_err());
     }
 
     #[test]
