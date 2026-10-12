@@ -58,6 +58,21 @@ export default defineConfig({
       output: {
         codeSplitting: {
           groups: [
+            // React and react-dom are CommonJS, which the bundler wraps in
+            // initialisers that a chunk calls while it loads. Left to
+            // automatic splitting, react-dom's landed in an app chunk that
+            // imports the chunk calling it, so that chunk ran first and
+            // threw `s is not a function`: tooltips, cards, menus and the
+            // spend pill never came up. In a chunk of their own, which
+            // imports nothing of the app's, they are always ready first.
+            { name: "react", test: /[\\/]node_modules[\\/](react|react-dom|scheduler|use-sync-external-store|react-is)[\\/]/, priority: 3 },
+            // The UI primitives behind shadcn's components (Radix, and the
+            // floating-ui that positions tooltips, cards and menus) set
+            // themselves up while they load, calling each other. Inside the
+            // app's chunks they could end up in two that import each other,
+            // and whichever a page loaded first would call into the other
+            // before it was ready. Together, apart from the app, they can't.
+            { name: "ui", test: /[\\/]node_modules[\\/](radix-ui|@radix-ui[\\/][^\\/]+|@floating-ui[\\/][^\\/]+|aria-hidden|react-remove-scroll[^\\/]*|use-callback-ref|use-sidecar|react-style-singleton|get-nonce|tslib|detect-node-es)[\\/]/, priority: 3 },
             // Icons are shared by nearly every page, a few hundred bytes each:
             // one file for all of them, not a request per icon.
             { name: "icons", test: /[\\/]node_modules[\\/]lucide-react[\\/]/, priority: 2 },
