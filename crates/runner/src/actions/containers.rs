@@ -277,7 +277,7 @@ impl Job {
         if self.docker_output(&["version", "--format", "{{.Server.Version}}"]).is_some() {
             return true;
         }
-        self.log.line("##[error]This job needs Docker (`services`, `container` or a Docker action), and Docker does not answer here. On a self-hosted runner, run the runner directly on a machine with Docker (`--no-docker`).");
+        self.log.line("##[error]This job needs Docker (`services`, `container` or a Docker action), and Docker does not answer here. On a self-hosted runner, run the runner's image under Sysbox, which gives each job that uses Docker an engine of its own.");
         false
     }
 
@@ -355,7 +355,7 @@ impl Job {
         // A self-hosted machine without Docker runs the steps as before,
         // on the machine, without the containers.
         if !self.docker_hosted && self.docker_output(&["version", "--format", "{{.Server.Version}}"]).is_none() {
-            self.log.line("##[warning]Docker does not answer on this runner, so the job's `services` and `container` are not started and its steps run on the machine. Run the runner directly on a machine with Docker (`--no-docker`) to start them.");
+            self.log.line("##[warning]Docker does not answer on this runner, so the job's `services` and `container` are not started and its steps run on the machine. Run the runner's image under Sysbox to give each job Docker of its own.");
             return true;
         }
         self.log.line("##[group]Initialize containers");

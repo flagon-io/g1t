@@ -245,6 +245,34 @@ page says so.
   stop it in a later one; write a schedule's `cron` in UTC.
 - **Status.** Not scheduled.
 
+### Self-hosted Windows and macOS jobs run on the host
+
+On a self-hosted runner, a job native to Windows or macOS runs directly on
+the machine, unsandboxed, in host mode, which is deprecated. Only Linux
+jobs run in a sandbox of their own, a container inside the runner's own
+container under Sysbox.
+
+- **Why.** Sandboxes for them are not built yet: Windows containers with
+  Hyper-V isolation, and ephemeral macOS virtual machines (two per Mac at
+  most, by Apple's licence).
+- **Instead.** Run Linux jobs in
+  [the runner's container](/guides/self-hosted-runners/#run-it-as-a-container),
+  and keep Windows and macOS runners for repositories whose code you
+  trust. Host mode refuses public repositories' work.
+- **Status.** Planned. See
+  [Windows and macOS](/guides/self-hosted-runners/#windows-and-macos).
+
+### A self-hosted job's Docker can reach its runner's container
+
+On a runner in its container under Sysbox, a job that uses Docker gets an
+engine of its own that is privileged inside the runner's container. It
+cannot reach the machine, but it can reach the runner's container,
+including the runner's credential.
+
+- **Instead.** Use ephemeral runners for code you do not trust, or
+  register with `--no-job-docker`.
+- **Status.** Not scheduled.
+
 ### No `gh` command in jobs
 
 The runner does not include the `gh` command, and pointing it at g1t

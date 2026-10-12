@@ -150,9 +150,9 @@ export function installSteps(platform: Platform, token: RegistrationToken | null
     case "docker":
       return [
         {
-          title: "Register and run, with jobs in sibling containers",
+          title: "Register and run under Sysbox, each job in a container inside the runner's",
           lines: [
-            `docker run -d --name g1t-runner --restart unless-stopped -v /var/run/docker.sock:/var/run/docker.sock -v g1t-runner:/data -e G1T_RUNNER_DIR=/data ${RUNNER_IMAGE} register-and-run --url ${url} --token ${value}`,
+            `docker run -d --name g1t-runner --restart unless-stopped --runtime=sysbox-runc -v g1t-runner:/data ${RUNNER_IMAGE} register-and-run --url ${url} --token ${value}`,
           ],
         },
       ];
@@ -232,7 +232,8 @@ export function NewRunner({ token, groups, repoScoped }: { token: RegistrationTo
         ))}
       </ol>
       <p className="text-xs text-faint">
-        Jobs run in Docker containers by default; add <code className="font-mono">--no-docker</code> to run them on the machine itself. Add{" "}
+        Each job runs in a container of its own; on Linux, run the Docker command under Sysbox so neither the runner nor its jobs reach the machine.{" "}
+        <code className="font-mono">--no-docker</code>, which runs jobs on the machine itself, is deprecated. Add{" "}
         <code className="font-mono">--labels gpu,cuda</code> for jobs to ask for, or <code className="font-mono">--ephemeral</code> for a runner that takes
         one job and removes itself.{" "}
         <a href="https://docs.g1t.sh/guides/self-hosted-runners/" className="underline underline-offset-2">

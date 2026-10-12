@@ -880,6 +880,10 @@ fn run_job(job: &mut Job) {
             job.docker_hosted = false;
         }
     }
+    // A self-hosted runner's word on how this job was run (selfhosted/exec.rs).
+    if let Ok(notice) = std::env::var("G1T_JOB_NOTICE") {
+        job.log.line(&format!("##[warning]{notice}"));
+    }
     // Actions first, then containers, as GitHub's "Set up job" and
     // "Initialize containers". Each action's `pre` (read from the actions
     // just downloaded) is a step of its own, "Pre <step>", before the

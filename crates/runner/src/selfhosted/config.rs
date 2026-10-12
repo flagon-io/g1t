@@ -45,6 +45,24 @@ pub struct Config {
     /// Checks for new versions and updates itself.
     #[serde(default = "yes")]
     pub auto_update: bool,
+    /// Each job container's memory limit (`--memory`): `8g`. Three
+    /// quarters of the machine's (or the runner container's) memory if
+    /// left out.
+    #[serde(default)]
+    pub memory: Option<String>,
+    /// Each job container's CPUs (`--cpus`): `2`, `1.5`. Every CPU if left out.
+    #[serde(default)]
+    pub cpus: Option<String>,
+    /// The most processes in a job container (`--pids-limit`). 4096 if left out.
+    #[serde(default)]
+    pub pids_limit: Option<u32>,
+    /// With nested-container isolation, a job that uses Docker gets an
+    /// engine of its own. Off: jobs have no Docker.
+    #[serde(default = "yes")]
+    pub job_docker: bool,
+    /// The image a job's own engine runs: `docker:28-dind` if left out.
+    #[serde(default)]
+    pub job_docker_image: Option<String>,
 }
 
 fn yes() -> bool {
@@ -122,6 +140,15 @@ mod tests {
     }
 
     #[test]
+    fn an_older_configuration_still_reads() {
+        let old = r#"{"url":"https://g1t.sh","api":"https://api.g1t.sh","runner":"rnr_1","name":"a","credential":"g1tr_x",
+            "workspace":"acme","labels":["self-hosted"],"work_dir":"/tmp/w"}"#;
+        let config: Config = serde_json::from_str(old).unwrap();
+        assert!(config.docker && config.job_docker && config.auto_update);
+        assert_eq!(config.memory, None);
+    }
+
+    #[test]
     fn a_configuration_survives_a_round_trip() {
         let dir = std::env::temp_dir().join(format!("g1t-runner-config-{}", std::process::id()));
         let config = Config {
@@ -141,11 +168,17 @@ mod tests {
             agent_image: None,
             harness: None,
             auto_update: true,
+            memory: Some("4g".into()),
+            cpus: None,
+            pids_limit: None,
+            job_docker: true,
+            job_docker_image: None,
         };
         save(&dir, &config).unwrap();
         let back = load(&dir).unwrap();
         assert_eq!(back.runner, "rnr_1");
         assert_eq!(back.labels, config.labels);
+        assert_eq!(back.memory.as_deref(), Some("4g"));
         forget(&dir);
         assert!(load(&dir).is_err());
         let _ = std::fs::remove_dir_all(&dir);
