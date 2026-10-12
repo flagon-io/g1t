@@ -13,7 +13,8 @@
 use g1t_actions::events::{account_id, github_id};
 use g1t_contracts::{PrincipalKind, User};
 use g1t_contracts::repos::{Commit, Repo, RepoPath};
-use g1t_contracts::work::{Comment, Issue, MilestoneRef, Pull, PullStatus, State};
+use g1t_contracts::repos::FileStatus;
+use g1t_contracts::work::{Comment, DEFAULT_LABELS, Issue, Label, MilestoneRef, Pull, PullStatus, State, label_color_for};
 use serde_json::{Value, json};
 
 use crate::{API, SITE};
@@ -119,13 +120,49 @@ fn labels(repo: &Repo, names: &[String]) -> Value {
     Value::Array(names.iter().map(|name| label(repo, name, None)).collect())
 }
 
-/// A label, by its name in `repo`.
+/// A label, by its name in `repo`. Its `color` is the one g1t gives a
+/// label of that name until [`color_labels`] sets the repository's own;
+/// `default` is whether it is one of the labels a repository starts with.
 fn label(repo: &Repo, name: &str, color: Option<&Value>) -> Value {
-    let mut label = json!({ "id": github_id(&format!("{}:label:{name}", repo.id)), "name": name });
-    if let Some(color) = color {
-        label["color"] = color.clone();
+    json!({
+        "id": github_id(&format!("{}:label:{name}", repo.id)),
+        "node_id": format!("{}:label:{name}", repo.id),
+        "name": name,
+        "color": color.filter(|c| c.is_string()).cloned().unwrap_or_else(|| json!(label_color_for(name))),
+        "description": DEFAULT_LABELS.iter().find(|(known, _, _)| *known == name).map(|(_, _, about)| *about),
+        "default": DEFAULT_LABELS.iter().any(|(known, _, _)| *known == name),
+    })
+}
+
+/// Gives every label in a payload (`labels[]` and `label`) the color and
+/// description the repository has for it (work's `list_labels`).
+pub fn color_labels(payload: &mut Value, known: &[Label]) {
+    fn set(label: &mut Value, known: &[Label]) {
+        let Some(found) = label["name"].as_str().and_then(|name| known.iter().find(|k| k.name == name)) else { return };
+        label["color"] = json!(found.color);
+        label["description"] = if found.description.is_empty() { Value::Null } else { json!(found.description) };
     }
-    label
+    if let Value::Object(map) = payload {
+        for (key, value) in map.iter_mut() {
+            match (key.as_str(), value) {
+                ("labels", Value::Array(labels)) => labels.iter_mut().for_each(|label| set(label, known)),
+                ("label", label @ Value::Object(_)) => set(label, known),
+                (_, value) => color_labels(value, known),
+            }
+        }
+    }
+}
+
+/// Whether a payload has any label, so its colors are worth reading.
+pub fn has_labels(payload: &Value) -> bool {
+    match payload {
+        Value::Object(map) => map.iter().any(|(key, value)| match (key.as_str(), value) {
+            ("labels", Value::Array(labels)) => !labels.is_empty(),
+            ("label", Value::Object(_)) => true,
+            (_, value) => has_labels(value),
+        }),
+        _ => false,
+    }
 }
 
 /// A milestone as an issue or a pull request names it.
@@ -158,9 +195,40 @@ pub fn commit(repo: &Repo, commit: &Commit) -> Value {
     })
 }
 
+/// Sets a one-commit push's `added`, `removed` and `modified` (on its
+/// commit and `head_commit`) from what the push changed, compared as its
+/// `paths` filters are. A push of several commits keeps them empty: the
+/// comparison is of the whole push, not of each commit.
+pub fn push_changes(payload: &mut Value, changes: &[(String, FileStatus)]) {
+    if payload["commits"].as_array().map(Vec::len) != Some(1) {
+        return;
+    }
+    let of = |status: FileStatus| -> Value {
+        changes.iter().filter(|(_, s)| *s == status).map(|(path, _)| json!(path)).collect::<Vec<_>>().into()
+    };
+    for commit in ["commits", "head_commit"] {
+        let commit = if commit == "commits" { &mut payload["commits"][0] } else { &mut payload["head_commit"] };
+        commit["added"] = of(FileStatus::Added);
+        commit["removed"] = of(FileStatus::Deleted);
+        commit["modified"] = of(FileStatus::Modified);
+    }
+}
+
 /// A push. `forced` is whether `before` is not in `after`'s history, when
 /// that is known; a push whose history is too long to read says `false`.
-pub fn push(repo: &Repo, git_ref: &str, before: Option<&str>, after: &str, commits: &[Commit], pusher: &str, forced: bool) -> Value {
+/// `pusher_email` is the pusher's noreply address, when the push was a
+/// person's.
+#[allow(clippy::too_many_arguments)]
+pub fn push(
+    repo: &Repo,
+    git_ref: &str,
+    before: Option<&str>,
+    after: &str,
+    commits: &[Commit],
+    pusher: &str,
+    pusher_email: Option<&str>,
+    forced: bool,
+) -> Value {
     let before = before.unwrap_or(ZERO);
     let created = before == ZERO;
     let deleted = after == ZERO;
@@ -183,7 +251,7 @@ pub fn push(repo: &Repo, git_ref: &str, before: Option<&str>, after: &str, commi
         // GitHub's head commit is the one pushed: the last.
         "head_commit": commits.last().cloned().unwrap_or(Value::Null),
         "commits": commits,
-        "pusher": { "name": pusher, "email": null },
+        "pusher": { "name": pusher, "email": pusher_email },
         "repository": repository(repo),
         "sender": user(pusher),
     })
@@ -420,6 +488,37 @@ pub struct FollowedRun<'a> {
     pub triggering_actor: Option<&'a str>,
     pub title: Option<&'a str>,
     pub head_commit: Option<&'a Commit>,
+    /// The pull request the run was for (`data.pull`), when it can be
+    /// read, and its base branch's latest commit.
+    pub pull: Option<&'a Pull>,
+    pub base_sha: Option<&'a str>,
+}
+
+/// The run's pull request as `workflow_run.pull_requests[]` gives it. One
+/// from a fork is left out, as on GitHub, where only pull requests whose
+/// head is in the repository are listed.
+fn run_pulls(repo: &Repo, run: &FollowedRun) -> Vec<Value> {
+    let full_name = format!("{}/{}", repo.namespace, repo.name);
+    let Some(number) = run.data["pull"].as_u64() else { return Vec::new() };
+    let url = format!("{API}/repos/{full_name}/pulls/{number}");
+    let Some(pull) = run.pull else {
+        return vec![json!({ "number": number, "url": url })];
+    };
+    if pull.fork.is_some() {
+        return Vec::new();
+    }
+    let short = json!({ "id": github_id(&repo.id), "url": format!("{API}/repos/{full_name}"), "name": repo.name });
+    vec![json!({
+        "id": github_id(&pull.id),
+        "number": number,
+        "url": url,
+        "head": { "ref": head_ref(pull), "sha": pull.head_commit, "repo": short },
+        "base": {
+            "ref": pull.base_branch(&repo.default_branch),
+            "sha": run.base_sha.map(str::to_owned).or_else(|| pull.merge_base.clone()),
+            "repo": short,
+        },
+    })]
 }
 
 pub fn workflow_run(repo: &Repo, run: &FollowedRun) -> Value {
@@ -463,10 +562,7 @@ pub fn workflow_run(repo: &Repo, run: &FollowedRun) -> Value {
         "logs_url": format!("{url}/logs"),
         "artifacts_url": format!("{url}/artifacts"),
         "workflow_url": run.workflow_id.map(|w| format!("{API}/repos/{full_name}/actions/workflows/{w}")),
-        "pull_requests": data["pull"].as_u64().map(|n| vec![json!({
-            "number": n,
-            "url": format!("{API}/repos/{full_name}/pulls/{n}"),
-        })]).unwrap_or_default(),
+        "pull_requests": run_pulls(repo, run),
         "repository": repository(repo),
         "head_repository": repository(repo),
     })
@@ -586,12 +682,6 @@ mod github_shapes {
         ("workflow_run", "workflow_run.id", "string"),
         ("workflow_run", "workflow_run.workflow_id", "string"),
         ("workflow_run", "workflow.id", "string"),
-        // g1t keeps labels by name on issues and pull requests; only a
-        // `labeled` event's own `label` has its color.
-        ("pull_request", "pull_request.labels[].color", "absent"),
-        ("issues", "issue.labels[].color", "absent"),
-        // A push names who pushed, not their address.
-        ("push", "pusher.email", "null"),
     ];
 
     fn kind(value: &Value) -> &'static str {
@@ -705,17 +795,21 @@ mod github_shapes {
     fn payloads() -> Vec<(&'static str, Value)> {
         let repo = repo();
         let pull = a_pull();
-        let push = push(&repo, "refs/heads/main", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), &a_commit().hash, &[a_commit()], "ada", false);
-        let pull_request = json!({
+        let mut push = push(&repo, "refs/heads/main", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), &a_commit().hash, &[a_commit()], "ada", Some("0d0efg+ada@users.noreply.g1t.sh"), false);
+        push_changes(&mut push, &[("README.md".into(), FileStatus::Modified)]);
+        let known = [Label { name: "bug".into(), color: "d73a4a".into(), description: "Something isn't working".into(), issues: 1, pulls: 1 }];
+        let mut pull_request = json!({
             "action": "opened", "number": 2, "pull_request": self::pull(&repo, &pull),
             "repository": repository(&repo), "sender": user("ada"),
         });
+        color_labels(&mut pull_request, &known);
         let review = json!({
             "action": "submitted", "review": self::review(&repo, &pull, Some(&a_comment(Some(Verdict::Approve)))),
             "pull_request": self::pull(&repo, &pull), "repository": repository(&repo), "sender": user("cy"),
         });
         let mut issues = json!({ "action": "labeled", "issue": issue(&repo, &an_issue()), "repository": repository(&repo), "sender": user("ada") });
         changed(&repo, &mut issues, &json!({ "label": { "name": "bug", "color": "d73a4a" } }));
+        color_labels(&mut issues, &known);
         let mut on_pull = pull.clone();
         on_pull.labels.clear();
         on_pull.assignees.clear();
@@ -742,6 +836,8 @@ mod github_shapes {
             triggering_actor: None,
             title: Some("Update README.md"),
             head_commit: Some(&head),
+            pull: Some(&pull),
+            base_sha: Some("f95f852bd8fca8fcc58a9a2d6c842781e32a215e"),
         };
         // As trigger.rs gives it.
         let workflow_run = json!({
@@ -845,15 +941,78 @@ mod github_shapes {
     fn a_push_says_whether_it_made_deleted_or_forced_its_ref() {
         let repo = repo();
         let after = "0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c";
-        let made = push(&repo, "refs/heads/new", None, after, &[a_commit()], "ada", false);
+        let made = push(&repo, "refs/heads/new", None, after, &[a_commit()], "ada", None, false);
         assert_eq!((made["created"].clone(), made["deleted"].clone(), made["forced"].clone()), (json!(true), json!(false), json!(false)));
         assert_eq!(made["before"], ZERO);
-        let forced = push(&repo, "refs/heads/main", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), after, &[a_commit()], "ada", true);
+        let forced = push(&repo, "refs/heads/main", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), after, &[a_commit()], "ada", None, true);
         assert_eq!(forced["forced"], true);
         assert_eq!(forced["compare"], format!("https://g1t.sh/acme/web/compare/6113728f27ae82c7b1a177c8d03f9e96e0adf246...{after}"));
         assert_eq!(forced["head_commit"]["id"], after);
-        let gone = push(&repo, "refs/heads/old", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), ZERO, &[], "ada", true);
+        let gone = push(&repo, "refs/heads/old", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), ZERO, &[], "ada", None, true);
         assert_eq!((gone["deleted"].clone(), gone["forced"].clone()), (json!(true), json!(false)));
+    }
+
+    #[test]
+    fn a_one_commit_push_lists_what_it_changed() {
+        let repo = repo();
+        let changes = [
+            ("new.txt".to_owned(), FileStatus::Added),
+            ("README.md".to_owned(), FileStatus::Modified),
+            ("old.txt".to_owned(), FileStatus::Deleted),
+        ];
+        let mut one = push(&repo, "refs/heads/main", None, &a_commit().hash, &[a_commit()], "ada", None, false);
+        push_changes(&mut one, &changes);
+        for commit in [&one["commits"][0], &one["head_commit"]] {
+            assert_eq!(commit["added"], json!(["new.txt"]));
+            assert_eq!(commit["modified"], json!(["README.md"]));
+            assert_eq!(commit["removed"], json!(["old.txt"]));
+        }
+        // Several commits: the comparison is not any one commit's.
+        let mut two = push(&repo, "refs/heads/main", None, &a_commit().hash, &[a_commit(), a_commit()], "ada", None, false);
+        push_changes(&mut two, &changes);
+        assert_eq!(two["head_commit"]["modified"], json!([]));
+    }
+
+    #[test]
+    fn labels_have_the_repositorys_colors() {
+        let repo = repo();
+        let mut event = json!({ "issue": issue(&repo, &an_issue()), "label": label(&repo, "bug", None) });
+        // Before the repository's are known, g1t's default for the name.
+        assert_eq!(event["issue"]["labels"][0]["color"], "d73a4a");
+        assert_eq!(event["issue"]["labels"][0]["default"], true);
+        assert!(has_labels(&event));
+        let known = [Label { name: "bug".into(), color: "123456".into(), description: String::new(), issues: 1, pulls: 0 }];
+        color_labels(&mut event, &known);
+        assert_eq!(event["issue"]["labels"][0]["color"], "123456");
+        assert_eq!(event["issue"]["labels"][0]["description"], Value::Null);
+        assert_eq!(event["label"]["color"], "123456");
+        assert!(!has_labels(&json!({ "issue": { "labels": [] } })));
+    }
+
+    #[test]
+    fn a_run_names_its_pull_request_unless_it_is_from_a_fork() {
+        let repo = repo();
+        let data = json!({ "runId": "run_1", "pull": 2 });
+        let pull = a_pull();
+        let run = |pull: Option<&Pull>| {
+            workflow_run(&repo, &FollowedRun {
+                data: &data, workflow_id: None, attempt: None, created_at: None, started_at: None, updated_at: None,
+                actor: None, triggering_actor: None, title: None, head_commit: None, pull, base_sha: Some("b4se"),
+            })
+        };
+        let named = run(Some(&pull));
+        let first = &named["pull_requests"][0];
+        assert_eq!(first["number"], 2);
+        assert_eq!(first["id"], json!(github_id(&pull.id)));
+        assert_eq!(first["head"]["ref"], "changes");
+        assert_eq!(first["head"]["sha"], "ec26c3e57ca3a959ca5aad62de7213c562f8c821");
+        assert_eq!(first["base"]["ref"], "main");
+        assert_eq!(first["base"]["sha"], "b4se");
+        assert_eq!(first["base"]["repo"]["id"], json!(github_id(&repo.id)));
+        let mut forked = a_pull();
+        forked.fork = Some(RepoPath { namespace: "ana".into(), name: "web".into() });
+        assert_eq!(run(Some(&forked))["pull_requests"], json!([]));
+        assert_eq!(run(None)["pull_requests"][0]["number"], 2, "unread, still numbered");
     }
 
     #[test]

@@ -361,8 +361,9 @@ pub struct RegisterArgs {
     /// How the runner keeps work from its machine: `nested-container` (a
     /// container per job, inside the runner's own sandboxed container),
     /// `container` (a container per job, on a Docker Engine it shares with
-    /// its machine) or `host` (directly on the machine). Kept, and shown
-    /// nowhere yet; older runners leave it out.
+    /// its machine) or `host` (directly on the machine). A `host` runner is
+    /// given no public repository's work ([`isolation_allows`]); older
+    /// runners leave it out.
     #[serde(default)]
     pub isolation: Option<String>,
 }
@@ -397,6 +398,11 @@ pub struct PollArgs {
     pub running: Vec<String>,
     #[serde(default)]
     pub wait_ms: u64,
+    /// How the runner keeps work from its machine now, as at registration
+    /// (`RegisterArgs::isolation`); kept up to date from each poll. Older
+    /// runners leave it out.
+    #[serde(default)]
+    pub isolation: Option<String>,
 }
 
 /// Work for a runner.
@@ -614,6 +620,19 @@ impl Wanted {
     }
 }
 
+/// What a public repository's job says while the only runners that could
+/// take it run jobs directly on their machines (`host` isolation), which
+/// are never given a public repository's work.
+pub const WAITING_FOR_SANDBOX: &str =
+    "Waiting for a sandboxed runner: this repository is public, and host-mode runners don't run public repositories' jobs.";
+
+/// Whether a runner of `isolation` may be given a repository's work, by
+/// its visibility (`public` or `private`; unknown lets it through, and the
+/// runner decides). A host-mode runner takes no public repository's work.
+pub fn isolation_allows(isolation: Option<&str>, visibility: Option<&str>) -> bool {
+    !(isolation == Some("host") && visibility == Some("public"))
+}
+
 /// What a job waiting for a runner says.
 pub fn waiting_reason(wanted: &Wanted) -> String {
     format!("Waiting for a self-hosted runner with labels {}.", wanted.describe())
@@ -625,6 +644,17 @@ mod tests {
 
     fn strings(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_host_mode_runner_takes_no_public_repositorys_work() {
+        assert!(!isolation_allows(Some("host"), Some("public")));
+        assert!(isolation_allows(Some("host"), Some("private")));
+        assert!(isolation_allows(Some("host"), None));
+        assert!(isolation_allows(Some("container"), Some("public")));
+        assert!(isolation_allows(None, Some("public")), "an older runner decides itself");
+        let poll: PollArgs = serde_json::from_value(serde_json::json!({ "runner": "rnr_1", "credential": "c" })).unwrap();
+        assert_eq!(poll.isolation, None, "an older runner's poll");
     }
 
     #[test]

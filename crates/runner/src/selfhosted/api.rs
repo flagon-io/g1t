@@ -113,8 +113,11 @@ impl Api {
         Ok(serde_json::from_value(answer)?)
     }
 
-    pub fn poll(&self, running: &[String], wait_ms: u64) -> std::result::Result<Poll, Failure> {
-        let body = json!({ "version": VERSION, "running": running, "wait_ms": wait_ms });
+    /// Asks for work. `isolation` is how this runner keeps work from its
+    /// machine now, which g1t keeps up to date from each poll (it gives a
+    /// host-mode runner no public repository's work); an older g1t ignores it.
+    pub fn poll(&self, running: &[String], wait_ms: u64, isolation: &str) -> std::result::Result<Poll, Failure> {
+        let body = poll_body(running, wait_ms, isolation);
         let answer = post(&format!("{}/runners/{}/poll", self.base, self.runner), Some(&self.credential), &body)?;
         serde_json::from_value(answer).map_err(|e| Failure::Unreachable(e.to_string()))
     }
@@ -148,4 +151,21 @@ pub fn download(url: &str) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     std::io::Read::read_to_end(&mut response.into_reader(), &mut bytes)?;
     Ok(bytes)
+}
+
+fn poll_body(running: &[String], wait_ms: u64, isolation: &str) -> Value {
+    json!({ "version": VERSION, "running": running, "wait_ms": wait_ms, "isolation": isolation })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_poll_says_how_the_runner_is_isolated() {
+        let body = poll_body(&["job_1".to_owned()], 0, "host");
+        assert_eq!(body["isolation"], "host");
+        assert_eq!(body["running"], json!(["job_1"]));
+        assert_eq!(body["version"], VERSION);
+    }
 }

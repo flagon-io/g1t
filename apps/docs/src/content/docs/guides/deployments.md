@@ -322,7 +322,9 @@ runs `g1t-runner deploy` in the checkout, which installs, builds and
 uploads exactly as [What deploys](#what-deploys) says; its output is in
 the step's log and on the deployment's page. When the build fails, or
 g1t does not take what it built, the step fails and the deployment says
-why.
+why. When the job ends before the build has finished, because it was
+cancelled, failed in an earlier step or timed out, the deployment fails
+as the job ends, saying how it ended, rather than staying **Building**.
 
 - **Secrets.** A pull request from a fork or from someone without the
   Write role, and a run that had to be
@@ -673,6 +675,7 @@ you sign in to.
 | g1t/deploy says "The job's token needs `deployments: write`" | Add `deployments: write` to the workflow's or the job's `permissions:`. A pull request's run from outside gets a read-only token and cannot deploy. |
 | g1t/deploy says "Name the project to build" | The repository has several projects with Deployments on: give `project:`. |
 | g1t/deploy says "g1t.page deploys branches and pull requests" | The run is for a tag. Run the workflow on a branch, such as on a push to `main`. |
+| "The workflow job was cancelled before the build finished" | The job that opened the build (`g1t/deploy`) was cancelled, or ended another way the message names, before `g1t-runner deploy` reported. Run the job again. |
 | "The build did not finish in 45 minutes" | The build stopped reporting: a build stops at 30 minutes, and one not heard from after 45 is failed. Make the build faster, or build less for previews with **Build command**. |
 
 ## Running your own g1t

@@ -304,3 +304,20 @@ test("it is refused without a job's write token, after the job, without the plan
   assert.equal(await refused({}), "conflict");
   assert.ok(!w.state.calls.includes("RUNNER start_deploy"));
 });
+
+test("a job that ends without finishing its build fails the build at once, and leaves a finished one be", async () => {
+  const build = (await open()).value;
+  const ended = await post("/rpc/workflow_job_ended", { jobId: "job_1", conclusion: "cancelled" });
+  assert.deepEqual(ended, { ok: true, value: 1 });
+  assert.deepEqual(rows("SELECT id, status, error FROM deployments"), [
+    { id: build.deploy_id, status: "failed", error: "The workflow job was cancelled before the build finished." },
+  ]);
+  // Another job's build, and one that is no longer open, are left alone.
+  w.state.sqlite.prepare("UPDATE deployments SET job_id = 'job_2', status = 'building', error = NULL").run();
+  assert.deepEqual(await post("/rpc/workflow_job_ended", { jobId: "job_1", conclusion: "success" }), { ok: true, value: 0 });
+  assert.deepEqual(rows("SELECT status FROM deployments"), [{ status: "building" }]);
+  w.state.sqlite.prepare("UPDATE deployments SET status = 'ready'").run();
+  assert.deepEqual(await post("/rpc/workflow_job_ended", { jobId: "job_2", conclusion: "success" }), { ok: true, value: 0 });
+  assert.deepEqual(rows("SELECT status FROM deployments"), [{ status: "ready" }]);
+  assert.equal((await post("/rpc/workflow_job_ended", {})).error.code, "invalid");
+});

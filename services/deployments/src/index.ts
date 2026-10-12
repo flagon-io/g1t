@@ -91,7 +91,7 @@ import { moveTargets, ownerOf, rebuildOutcome, type DroppedBuild, type MoveTarge
 import { commitMissing, MAX_IDENTICAL_FAILURES, missingCommitMessage, retryDecision, type PastBuild } from "./retries";
 import { appHost, appUrl, label, uniqueLabel } from "./names";
 import { RepoDeployments, sourceOf } from "./repo-deployments";
-import { NEEDS_WRITE, commitOf, jobOf, projectNamed, readOnlyAllowed, runTrusted, targetOf, type WorkflowBuild } from "./workflow-builds";
+import { NEEDS_WRITE, commitOf, jobEndedMessage, jobOf, projectNamed, readOnlyAllowed, runTrusted, targetOf, type WorkflowBuild } from "./workflow-builds";
 
 type Env = {
   DB: D1Database;
@@ -1028,6 +1028,23 @@ class Deployments {
       build_env: opened.build.variables,
       build_secrets: opened.build.secrets,
     });
+  }
+
+  /**
+   * For the actions service, when a workflow job ends (`finish_job`), with
+   * any conclusion: a build the job opened and did not finish or fail is
+   * failed now, saying how the job ended, rather than left building until
+   * the sweep's 45 minutes. A build the job finished is left as it is.
+   */
+  async workflowJobEnded(a: { jobId?: unknown; conclusion?: unknown }): Promise<Result<number>> {
+    if (typeof a.jobId !== "string" || !a.jobId) return fail("invalid", "No job.");
+    const open = await this.db
+      .prepare("SELECT id FROM deployments WHERE job_id = ? AND status IN ('queued', 'building')")
+      .bind(a.jobId)
+      .all<{ id: string }>();
+    const message = jobEndedMessage(typeof a.conclusion === "string" ? a.conclusion : "");
+    for (const { id } of open.results) await this.finishFailed(id, message, null, null);
+    return ok(open.results.length);
   }
 
   private async deployProduction(project: Project, commit: string | null, createdBy: string): Promise<Result<Deployment> | null> {
@@ -2429,6 +2446,9 @@ async function rpc(service: Deployments, method: string, args: any, ctx: Executi
     // For the API: a g1t Actions job opening a build it runs itself.
     case "start_from_workflow":
       return service.startFromWorkflow(args);
+    // For the actions service: a job ended, so its open builds end too.
+    case "workflow_job_ended":
+      return service.workflowJobEnded(args);
     case "take_down":
       return service.takeDown(args);
     case "overview":

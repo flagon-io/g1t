@@ -103,3 +103,10 @@ test("a read-only token opens only a preview, and only from the deploy workflow 
   assert.ok(!readOnlyAllowed(own, { kind: "pull", number: 4 }));
   assert.ok(!readOnlyAllowed(managed, { error: "a tag" }));
 });
+
+test("a build its job left open says how the job ended", async () => {
+  const { jobEndedMessage } = await import("./workflow-builds.ts");
+  assert.equal(jobEndedMessage("cancelled"), "The workflow job was cancelled before the build finished.");
+  assert.equal(jobEndedMessage("failure"), "The workflow job failed before the build finished.");
+  assert.equal(jobEndedMessage("success"), "The workflow job ended without finishing the build.");
+});
