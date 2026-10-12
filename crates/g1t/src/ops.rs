@@ -114,7 +114,6 @@ pub static PENDING: &[Operation] = &[
     pending("hand_off_issue", "POST", "/repos/{owner}/{name}/issues/{number}/handoff", "Issues", "Hand off an issue", &[OWNER, NAME, NUMBER]),
     pending("get_work", "GET", "/repos/{owner}/{name}/issues/{number}/work", "Issues", "Get an issue's work context", &[OWNER, NAME, NUMBER]),
     pending("list_claims", "GET", "/repos/{owner}/{name}/claims", "Issues", "List claims", &[OWNER, NAME]),
-    pending("why", "GET", "/repos/{owner}/{name}/why", "Repositories", "Why a line is as it is", &[OWNER, NAME]),
 ];
 
 /// The operation, which must exist: commands name only operations the
