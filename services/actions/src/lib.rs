@@ -27,6 +27,7 @@
 
 mod run_artifacts;
 mod cache;
+mod managed;
 mod mirrored;
 mod payload;
 mod plan;
@@ -251,6 +252,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "set_setting" => reply(&service.set_setting(args(body)?).await?),
         "delete_setting" => reply(&service.delete_setting(args(body)?).await?),
         "resolve_settings" => reply(&service.resolve_settings(args(body)?).await?),
+        // Managed workflows: g1t's services' side only.
+        "set_managed_workflow" => reply(&service.set_managed_workflow(args(body)?).await?),
+        "remove_managed_workflow" => reply(&service.remove_managed_workflow(args(body)?).await?),
         "job_spec" => reply(&service.job_spec(args(body)?).await?),
         "job_auth" => reply(&service.job_auth(args(body)?).await?),
         "job_action" => reply(&service.job_action(args(body)?).await?),

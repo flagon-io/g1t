@@ -62,20 +62,27 @@ impl Actions {
 
     /// The workflow files a repository runs: `.g1t/workflows`, and on a
     /// mirror in CI failover or taken over, `.github/workflows` too (see
-    /// mirrored.rs), where g1t's own stands in for one of the same name.
+    /// mirrored.rs), where g1t's own stands in for one of the same name;
+    /// then the managed workflows installed in it that none of those take
+    /// the place of (managed.rs).
     pub async fn read_for(&self, repo: &Repo, actor: &User, git_ref: Option<&str>, github: bool) -> Result<Read> {
         let path = RepoPath {
             namespace: repo.namespace.clone(),
             name: repo.name.clone(),
         };
-        if !github {
-            return self.read_workflows(&path, actor, git_ref).await;
-        }
-        let read = self.read_folders(&path, actor, git_ref, &[FOLDER, crate::mirrored::GITHUB_FOLDER]).await?;
-        Ok(Read {
-            files: crate::mirrored::prefer_g1t(read.files),
-            head: read.head,
-        })
+        let mut read = if github {
+            let read = self.read_folders(&path, actor, git_ref, &[FOLDER, crate::mirrored::GITHUB_FOLDER]).await?;
+            Read {
+                files: crate::mirrored::prefer_g1t(read.files),
+                head: read.head,
+            }
+        } else {
+            self.read_workflows(&path, actor, git_ref).await?
+        };
+        // And the managed workflows installed beside them (managed.rs).
+        let managed = self.managed_beside(&repo.id, &read.files).await?;
+        read.files.extend(managed);
+        Ok(read)
     }
 
     async fn read_folders(&self, path: &RepoPath, actor: &User, git_ref: Option<&str>, folders: &[&str]) -> Result<Read> {
