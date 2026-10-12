@@ -4,13 +4,10 @@ import { test } from "node:test";
 import {
   aclChain,
   aclRootOf,
-  agentAbilities,
-  agentFolioRole,
   canShare,
   effectiveRole,
   explicitAccess,
   folioPathOf,
-  folioReadableByAll,
   folioReadableByWorkspace,
   folioScope,
   generalRoleCap,
@@ -214,34 +211,6 @@ test("readable by the whole workspace: open spaces and workspace general access 
   // Restricted inside an open space: not the workspace's.
   const restricted = byId([node("a", { space_id: "open" }), node("b", { space_id: "open", parent_id: "a", inherit: false })]);
   assert.equal(folioReadableByWorkspace(aclChain("b", restricted), open), false);
-});
-
-test("readable by an audience only when every person in it can read", () => {
-  const nodes = new Map([["f", node("f", { owner: "user:ana" })]]);
-  const chain = aclChain("f", nodes);
-  const grants = new Map([["f", [{ principal: "user:bo", role: "view" as const }]]]);
-  assert.equal(folioReadableByAll(chain, grants, null, [ana, bo]), true);
-  assert.equal(folioReadableByAll(chain, grants, null, [ana, bo, cy]), false);
-  const link = new Map([["l", node("l", { general_access: "link", general_role: "view" })]]);
-  assert.equal(folioReadableByAll(aclChain("l", link), new Map(), null, [ana, bo]), false);
-  assert.equal(
-    folioReadableByAll(aclChain("l", link), new Map(), null, [ana, bo], (p) => p.user_id === "bo"),
-    true,
-  );
-});
-
-test("an agent is capped by its asker and narrowed by its audience", () => {
-  // The agent holds an edit grant, its asker only view: it may only read.
-  const nodes = [node("f", { owner: "user:cy" })];
-  const grants = { f: [{ principal: "agent:ag1", role: "edit" as const }, { principal: "user:bo", role: "view" as const }] };
-  const asker = roleIn(nodes, grants, "f", bo);
-  assert.equal(asker, "view");
-  assert.equal(agentFolioRole(asker, true), "view");
-  assert.deepEqual(agentAbilities(agentFolioRole(asker, true), "edit"), { read: true, suggest: false, edit: false, attach: false });
-  // Someone in the conversation can't read it: the agent can't either.
-  assert.equal(agentFolioRole("manage", false), null);
-  // Someone who can't read it gets nothing from the agent's grant.
-  assert.equal(agentFolioRole(roleIn(nodes, grants, "f", ana), true), null);
 });
 
 test("who may share", () => {

@@ -7,9 +7,7 @@
  * the folio's chain, after the list SQL's coarse filter (`folio_access`,
  * readable spaces, general access, link visits). Everything that changes
  * a folio's content goes through its room (src/folios/room.ts); this
- * class decides who may ask. Agents act for a person and never reach
- * more than that person can, narrowed to their audience
- * (src/folios/agents.ts).
+ * class decides who may ask.
  */
 import {
   DOCS_VIEWER_HEADER,
@@ -29,10 +27,8 @@ import {
   notifyClient,
   ok,
   parsePrincipalKey,
-  principalKey,
   reposClient,
   type DocAgentMode,
-  type DocAudience,
   type DocCitation,
   type DocEditTarget,
   type DocRepoSpace,
@@ -54,7 +50,6 @@ import {
   type FolioListQuery,
   type FolioMove,
   type FolioPage,
-  type FolioPassage,
   type FolioProposal,
   type FolioRef,
   type FolioSearchHit,
@@ -73,23 +68,22 @@ import {
   type User,
   type Viewer,
   type Workspace,
-  type WorkspaceAgent,
 } from "@g1t/contracts";
 
-import { RANK, aclChain, atLeast, canShare, explicitAccess, inheritsSpace, isPrivateFolio, isRole, personKeys, type Person, type SpaceRules } from "../access.ts";
+import { RANK, aclChain, atLeast, canShare, explicitAccess, inheritsSpace, isPrivateFolio, isRole, personKeys, type Person } from "../access.ts";
 import { diffLines } from "../diff.ts";
 import { fileStore, safeName, servedType } from "../files.ts";
-import { adapters, folioAdapters, forgetFolios, indexFolio, startBackfill, ensureIndexed, type DocsJob } from "../indexer.ts";
+import { folioAdapters, forgetFolios, indexFolio, startBackfill, type DocsJob } from "../indexer.ts";
 import { kindModel } from "../kinds/index.ts";
 import type { FolioOrigin } from "../kinds/types.ts";
 import { excerpt, searchText } from "../markdown.ts";
-import { QueryCache, fuseRanks, pickPassages, queryKey, recallLimit, vectorQueryPlan, MEANING_FLOOR, WORDS_SCORE, type Candidate } from "../recall.ts";
+import { QueryCache, fuseRanks, queryKey, vectorQueryPlan, MEANING_FLOOR } from "../recall.ts";
 import type { RepoSpaceRow } from "../repo-spaces.ts";
 import { ROOM_MEMBER_HEADER } from "../room.ts";
-import { ftsAnyQuery, ftsQuery, projectRef } from "../search.ts";
+import { ftsQuery, projectRef } from "../search.ts";
 import type { ThreadResult } from "../threads.ts";
 import { placeBefore } from "../tree.ts";
-import { Who, now, rulesOf, userKey, type Space, type WhoEnv } from "../who.ts";
+import { Who, now, userKey, type Space, type WhoEnv } from "../who.ts";
 import {
   FOLIO_COLUMNS,
   aclNode,
@@ -108,7 +102,6 @@ import {
   type FolioRow,
   type ReaderContext,
 } from "./access-store.ts";
-import { agentMayFind, agentReach, audienceRule, type AgentReach, type AudienceRule } from "./agents.ts";
 import { publishFolioEvent, publishSpaceDeleted } from "./events.ts";
 import { MAX_DEPTH, MAX_PAGE_STATE, cleanCover, cleanIcon, cleanNote, cleanSource, cleanTarget, cleanTitle, decodeCursor, depthOf, encodeCursor, listLimit, pageState, sharedTops, slugOf, subtreeHeight, treeNodes } from "./list.ts";
 import { REQUEST_RECIPIENTS, claimAccessRequest } from "./requests.ts";
@@ -136,13 +129,9 @@ export type FoliosEnv = WhoEnv & {
 };
 
 type Args = { workspace: string; viewer: Viewer };
-type AgentArgs = Args & { agent_id: string; audience?: DocAudience | null };
 
 /** The viewer in their workspace, with their spaces. */
 type Ctx = { workspace: Workspace; viewer: User; key: string; person: Person; spaces: Space[]; spaceById: Map<string, Space>; owner: boolean };
-
-/** An agent's turn: its asker's context, the agent, and who will see the answer. */
-type AgentCtx = Ctx & { agent: WorkspaceAgent; agentKey: string; rule: AudienceRule; people: Person[]; audienceIds: string[] };
 
 type SuggestionRow = {
   id: string;
@@ -662,18 +651,14 @@ export class Folios {
     return ok({ text, spec, title, icon });
   }
 
-  /** Whether a member key may be shared with: a member, an agent or a team of this workspace. */
+  /** Whether a member key may be shared with: a member or a team of this workspace. */
   private async principalExists(ctx: Ctx, principal: string): Promise<boolean> {
     const p = parsePrincipalKey(principal);
     if (principal.startsWith("team:")) {
       const slug = principal.slice(5).toLowerCase();
       return [...(await this.who.teamsOf(ctx.workspace)).values()].some((set) => set.has(slug));
     }
-    if (!p) return false;
-    if (p.kind === "agent") {
-      const agent = (await this.who.agentsById([p.id])).get(p.id);
-      return !!agent && agent.workspace_id === ctx.workspace.id && !agent.archived_at;
-    }
+    if (!p || p.kind !== "user") return false;
     await this.who.nameUsers([p.id]);
     const username = this.who.usernames.get(p.id);
     return !!username && (await this.who.members(ctx.workspace)).has(username.toLowerCase());
@@ -766,12 +751,12 @@ export class Folios {
     return (await foliosById(this.db, [id])).get(id) ?? row;
   }
 
-  /** Grants asked for at creation: people, agents and teams of this workspace, never above `edit` for teams' sake of sense. */
+  /** Grants asked for at creation: people and teams of this workspace, never above `edit` for teams' sake of sense. */
   private async cleanShares(ctx: Ctx, share: { principal: string; role: DocRole }[] | null | undefined): Promise<Result<{ principal: string; role: DocRole }[]>> {
     const out: { principal: string; role: DocRole }[] = [];
     for (const s of (share ?? []).slice(0, FOLIO_MAX_SHARE)) {
       const principal = s.principal.startsWith("team:") ? `team:${s.principal.slice(5).toLowerCase()}` : s.principal;
-      if (!(await this.principalExists(ctx, principal))) return fail("invalid", `${s.principal} isn't a member, agent or team of this workspace.`);
+      if (!(await this.principalExists(ctx, principal))) return fail("invalid", `${s.principal} isn't a member or team of this workspace.`);
       out.push({ principal, role: s.role });
     }
     return ok(out);
@@ -1220,7 +1205,7 @@ export class Folios {
       return ok({ mode: "applied", version_id: result.version_id, folio: ref, summary: result.summary });
     }
     if (edit.kind !== "doc") return fail("forbidden", `Suggesting changes to ${kindLabel(row.kind)} comes with proposals, which aren't here yet.`);
-    const suggestion = await this.fileSuggestion(ctx, row, { author: ctx.key, asked_by: null, agentName: null }, { target: cleanTarget(edit.target)!, markdown: edit.markdown, note: cleanNote(edit.note), marks_current: edit.marks_current === true });
+    const suggestion = await this.fileSuggestion(ctx, row, { author: ctx.key, asked_by: null }, { target: cleanTarget(edit.target)!, markdown: edit.markdown, note: cleanNote(edit.note), marks_current: edit.marks_current === true });
     return suggestion.ok ? ok({ mode: "suggested", suggestion: suggestion.value, folio: ref }) : suggestion;
   }
 
@@ -1316,7 +1301,7 @@ export class Folios {
       await this.db.prepare("DELETE FROM folio_grants WHERE folio_id = ? AND principal = ?").bind(row.id, principal).run();
       return ok(await this.afterShare(ctx, row));
     }
-    if (!(await this.principalExists(ctx, principal))) return fail("invalid", "Share with a member, an agent or a team of this workspace.");
+    if (!(await this.principalExists(ctx, principal))) return fail("invalid", "Share with a member or a team of this workspace.");
     await this.db
       .prepare("INSERT INTO folio_grants (folio_id, principal, role, granted_by, granted_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (folio_id, principal) DO UPDATE SET role = excluded.role")
       .bind(row.id, principal, change.role, ctx.key, now())
@@ -1812,11 +1797,11 @@ export class Folios {
     );
   }
 
-  /** Files a doc suggestion: someone who can comment (a person, or an agent for one). */
+  /** Files a doc suggestion: someone who can comment. */
   private async fileSuggestion(
     ctx: Ctx,
     row: FolioRow,
-    by: { author: string; asked_by: string | null; agentName: string | null },
+    by: { author: string; asked_by: string | null },
     edit: { target: DocEditTarget; markdown: string; note: string | null; marks_current: boolean },
   ): Promise<Result<FolioSuggestion>> {
     const room = await this.ready(ctx.workspace, row);
@@ -1843,7 +1828,6 @@ export class Folios {
       .run();
     const [suggestion] = await this.toSuggestions(ctx.workspace, [s], [current.block_ids]);
     this.tell(row.id, { type: "suggestion.created", suggestion: suggestion! });
-    if (by.agentName) this.defer(room.announce(by.author, by.agentName).catch(() => undefined));
     this.defer(this.notifyOwnerOfSuggestion(ctx, row, suggestion!));
     return ok(suggestion!);
   }
@@ -2034,12 +2018,6 @@ export class Folios {
     return fail("invalid", "Dashboards aren't here yet.");
   }
 
-  async queryDatasetForAgent(a: AgentArgs): Promise<Result<never>> {
-    const found = await this.agentCtx(a);
-    if (!found.ok) return found;
-    return fail("invalid", "Dashboards aren't here yet.");
-  }
-
   // ── Staleness ───────────────────────────────────────────────────────────
 
   private async clearStale(folioId: string, by: string): Promise<boolean> {
@@ -2063,408 +2041,6 @@ export class Folios {
     if (!found.ok) return found;
     if (!found.value.owner) return fail("forbidden", "Only an owner can index the workspace's artifacts again.");
     return ok(await startBackfill(this.env, found.value.workspace.id, { force: true }));
-  }
-
-  // ── Agents ──────────────────────────────────────────────────────────────
-
-  private async agentCtx(a: AgentArgs): Promise<Result<AgentCtx>> {
-    const found = await this.ctx(a.workspace, a.viewer);
-    if (!found.ok) return found;
-    const ctx = found.value;
-    const agentId = String(a.agent_id ?? "");
-    const agent = (await this.who.agentsById([agentId])).get(agentId);
-    if (!agent || agent.workspace_id !== ctx.workspace.id || agent.archived_at) return fail("not_found", "No such agent.");
-    const rule = audienceRule(a.audience ?? null, ctx.viewer.id);
-    const people = rule.kind === "people" ? await this.who.peopleByIds(ctx.workspace, rule.user_ids) : [];
-    return ok({ ...ctx, agent, agentKey: principalKey({ kind: "agent", id: agent.id }), rule, people, audienceIds: rule.kind === "people" ? rule.user_ids : [] });
-  }
-
-  /** What the agent may reach in each folio for its asker and audience. */
-  private async reach(actx: AgentCtx, rows: FolioRow[]): Promise<Map<string, AgentReach>> {
-    const out = new Map<string, AgentReach>();
-    if (!rows.length) return out;
-    const [found, asker] = await Promise.all([ancestry(this.db, rows), visitsOf(this.db, actx.viewer.id, rows)]);
-    let audienceVisits = new Map<string, Set<string>>();
-    if (actx.rule.kind === "people") {
-      const ids = [...new Set(rows.flatMap((r) => [r.id, r.acl_root]))];
-      const found2 = await this.db
-        .prepare("SELECT folio_id, user_id FROM folio_visits WHERE user_id IN (SELECT value FROM json_each(?)) AND folio_id IN (SELECT value FROM json_each(?))")
-        .bind(json(actx.audienceIds), json(ids))
-        .all<{ folio_id: string; user_id: string }>();
-      audienceVisits = new Map();
-      for (const v of found2.results) audienceVisits.set(v.user_id, (audienceVisits.get(v.user_id) ?? new Set()).add(v.folio_id));
-    }
-    const allSpaces = new Map((await this.who.allSpaces(actx.workspace)).map((s) => [s.row.id, s]));
-    for (const row of rows) {
-      const chain = aclChain(row.id, found.nodes);
-      const root = chain[chain.length - 1];
-      const s = root?.space_id ? allSpaces.get(root.space_id) : undefined;
-      const space: SpaceRules | null = s ? rulesOf(s) : null;
-      const seen = (set: Set<string> | undefined) => !!set && (set.has(row.id) || (!!root && set.has(root.id)));
-      out.set(
-        row.id,
-        agentReach({
-          chain,
-          grants: found.grants,
-          space,
-          asker: actx.person,
-          askerVisited: seen(asker),
-          rule: actx.rule,
-          people: actx.people,
-          visited: (p) => seen(audienceVisits.get(p.user_id)),
-          agent_mode: this.agentMode(row, actx),
-        }),
-      );
-    }
-    return out;
-  }
-
-  /** A folio the agent may reach for its asker: not found when the asker can't read it. */
-  private async agentOpen(actx: AgentCtx, folioId: unknown): Promise<Result<{ row: FolioRow; reach: AgentReach }>> {
-    const row = await this.db.prepare(`SELECT ${FOLIO_COLUMNS} FROM folios WHERE id = ? AND workspace_id = ? AND trashed_at IS NULL`).bind(String(folioId ?? ""), actx.workspace.id).first<FolioRow>();
-    if (!row) return fail("not_found", "No such artifact.");
-    const reach = (await this.reach(actx, [row])).get(row.id)!;
-    if (!reach.asker_role) return fail("not_found", "No such artifact.");
-    return ok({ row, reach });
-  }
-
-  async foliosForAgent(a: AgentArgs & { query: FolioListQuery }): Promise<Result<FolioList>> {
-    const found = await this.agentCtx(a);
-    if (!found.ok) return found;
-    const actx = found.value;
-    const query = { ...(a.query ?? { tab: "all" as const }), tab: a.query?.tab ?? "all", limit: Math.min(listLimit(a.query?.limit), 50) };
-    const invalid = folioListQueryError(query);
-    if (invalid) return fail("invalid", invalid);
-    const page = await this.listFor(actx, query);
-    const rows = await foliosById(
-      this.db,
-      page.items.map((f) => f.id),
-    );
-    const reach = await this.reach(actx, [...rows.values()]);
-    return ok({ items: page.items.filter((f) => agentMayFind(reach.get(f.id) ?? { asker_role: null, audience_can_read: false, can: { read: false, suggest: false, edit: false, attach: false } })), next_cursor: page.next_cursor });
-  }
-
-  async readForAgent(a: AgentArgs & { folio_id: string }): Promise<Result<FolioAgentRead>> {
-    const found = await this.agentCtx(a);
-    if (!found.ok) return found;
-    const actx = found.value;
-    const opened = await this.agentOpen(actx, a.folio_id);
-    if (!opened.ok) return opened;
-    const { row, reach } = opened.value;
-    if (!kindModel(row.kind)) return fail("invalid", `${kindLabel(row.kind)} aren't here yet.`);
-    const read = await (await this.ready(actx.workspace, row)).read();
-    return ok({
-      folio: { ...this.ref(actx.workspace.slug, row), edited_at: row.edited_at },
-      space: this.spaceOf(actx, row),
-      content: read.content,
-      ...(read.blocks ? { blocks: read.blocks } : {}),
-      can: reach.can,
-      audience_can_read: reach.audience_can_read,
-    });
-  }
-
-  async createAsAgent(
-    a: AgentArgs & {
-      input: { kind: FolioKind; title: string; content?: FolioContentInput | null; template_id?: string | null; where: { space_id: string } | "private" | { conversation: string[] }; parent_id?: string | null; source?: { title: string; href: string } | null };
-    },
-  ): Promise<Result<FolioRef>> {
-    const found = await this.agentCtx({ ...a, audience: null });
-    if (!found.ok) return found;
-    const actx = found.value;
-    const input = a.input ?? ({} as typeof a.input);
-    const invalid = newFolioError({ kind: input.kind, title: input.title, content: input.content ?? null, template_id: input.template_id ?? null });
-    if (invalid) return fail("invalid", invalid);
-    if (!kindModel(input.kind)) return fail("invalid", `${kindLabel(input.kind)} aren't here yet.`);
-    const title = cleanTitle(input.title);
-    if (!title && !input.template_id) return fail("invalid", "Give it a title.");
-    const where = input.where ?? "private";
-    let place: Result<{ space_id: string | null; parent: FolioRow | null }>;
-    let grants: { principal: string; role: DocRole }[] = [{ principal: actx.agentKey, role: "edit" }];
-    if (input.parent_id) place = await this.placeFor(actx, { parent_id: input.parent_id });
-    else if (typeof where === "object" && "space_id" in where) place = await this.placeFor(actx, { space_id: where.space_id });
-    else place = ok({ space_id: null, parent: null });
-    if (!place.ok) return place.error.code === "forbidden" ? fail("forbidden", `${actx.viewer.username} can't add there.`) : place;
-    if (typeof where === "object" && "conversation" in where) {
-      // Private, and the conversation's people may read it.
-      const ids = [...new Set((Array.isArray(where.conversation) ? where.conversation : []).map(String))].filter((id) => id && id !== actx.viewer.id).slice(0, FOLIO_MAX_SHARE);
-      const people = await this.who.peopleByIds(actx.workspace, ids);
-      grants = [...grants, ...people.filter((p) => !p.user_id.startsWith("outside:")).map((p) => ({ principal: `user:${p.user_id}`, role: "view" as DocRole }))];
-    }
-    const start = await this.startingPoint(actx, input.kind, { title, template_id: input.template_id, content: input.content });
-    if (!start.ok) return start;
-    const row = await this.insertFolio(actx, {
-      kind: input.kind,
-      owner: actx.key,
-      created_by: actx.agentKey,
-      space_id: place.value.space_id,
-      parent: place.value.parent,
-      title: start.value.title,
-      icon: start.value.icon,
-      text: start.value.text,
-      spec: start.value.spec,
-      source: cleanSource(input.source),
-      grants,
-    });
-    return ok(this.ref(actx.workspace.slug, row));
-  }
-
-  async editAsAgent(a: AgentArgs & { folio_id: string; edit: FolioAgentEdit }): Promise<Result<FolioAgentEditResult>> {
-    const found = await this.agentCtx({ ...a, audience: null });
-    if (!found.ok) return found;
-    const actx = found.value;
-    const opened = await this.agentOpen(actx, a.folio_id);
-    if (!opened.ok) return opened;
-    const { row, reach } = opened.value;
-    const invalid = this.editError(row, a.edit);
-    if (invalid) return fail("invalid", invalid);
-    const edit = a.edit;
-    const ref = this.ref(actx.workspace.slug, row);
-    if (reach.can.edit && !edit.suggest_only) {
-      const room = await this.ready(actx.workspace, row);
-      const note = cleanNote(edit.note);
-      const result = await room.edit(edit, {
-        key: actx.agentKey,
-        kind: "agent",
-        note: note ? `@${actx.agent.handle} for @${actx.viewer.username}: ${note}` : `@${actx.agent.handle} for @${actx.viewer.username}`,
-        authors: [actx.agentKey],
-      });
-      if (!result.applied) return fail("not_found", `${result.summary} Read it again and target what is there now.`);
-      if (edit.marks_current) await this.clearStale(row.id, actx.agentKey);
-      this.defer(room.announce(actx.agentKey, actx.agent.display_name).catch(() => undefined));
-      return ok({ mode: "applied", version_id: result.version_id, folio: ref, summary: result.summary });
-    }
-    if (!reach.can.suggest) return fail("forbidden", `${actx.viewer.username} can only read this, so it can't be changed for them.`);
-    if (edit.kind !== "doc") return fail("forbidden", `Changing ${kindLabel(row.kind)} without edit access comes with proposals, which aren't here yet.`);
-    const suggestion = await this.fileSuggestion(actx, row, { author: actx.agentKey, asked_by: actx.key, agentName: actx.agent.display_name }, { target: cleanTarget(edit.target)!, markdown: edit.markdown, note: cleanNote(edit.note), marks_current: edit.marks_current === true });
-    return suggestion.ok ? ok({ mode: "suggested", suggestion: suggestion.value, folio: ref }) : suggestion;
-  }
-
-  async shareAsAgent(a: AgentArgs & { folio_id: string; user_ids: string[]; role: "view" | "comment" }): Promise<Result<FolioAccessList>> {
-    if (a.role !== "view" && a.role !== "comment") return fail("invalid", "An agent shares to view or comment only. For more, post a card with a Share button for the person to press.");
-    const found = await this.agentCtx(a);
-    if (!found.ok) return found;
-    const actx = found.value;
-    if (actx.rule.kind !== "people") return fail("forbidden", "An agent shares only with people in a private conversation. Ask the person to use Share instead.");
-    const opened = await this.agentOpen(actx, a.folio_id);
-    if (!opened.ok) return opened;
-    const { row, reach } = opened.value;
-    if (!canShare(reach.asker_role)) return fail("forbidden", `${actx.viewer.username} doesn't have full access, so it can't be shared for them.`);
-    const inConversation = new Set(actx.rule.user_ids);
-    const ids = [...new Set((Array.isArray(a.user_ids) ? a.user_ids : []).map(String))];
-    if (!ids.length) return fail("invalid", "Name who to share it with.");
-    if (ids.some((id) => !inConversation.has(id))) return fail("forbidden", "An agent shares only with people already in the conversation.");
-    const people = (await this.who.peopleByIds(actx.workspace, ids)).filter((p) => !p.user_id.startsWith("outside:"));
-    const at = now();
-    // Never lowers what someone already has.
-    await runBatches(
-      this.db,
-      people.map((p) =>
-        this.db
-          .prepare(
-            "INSERT INTO folio_grants (folio_id, principal, role, granted_by, granted_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (folio_id, principal) DO UPDATE SET role = CASE WHEN folio_grants.role IN ('edit', 'manage') OR (folio_grants.role = 'comment' AND excluded.role = 'view') THEN folio_grants.role ELSE excluded.role END",
-          )
-          .bind(row.id, `user:${p.user_id}`, a.role, actx.agentKey, at),
-      ),
-    );
-    const list = await this.afterShare(actx, row);
-    const open = await workspaceReadable(this.db, row.id).catch(() => false);
-    this.defer(
-      publishFolioEvent(
-        this.env.EVENTS,
-        "folio.shared",
-        { workspace: actx.workspace.slug, workspaceId: actx.workspace.id, folioId: row.id, kind: row.kind, spaceId: row.space_id, title: open ? row.title : null, principals: people.map((p) => `user:${p.user_id}`), role: a.role },
-        actx.agentKey,
-      ),
-    );
-    return ok(list);
-  }
-
-  /**
-   * A file an agent made (`make_file` in services/agents), kept with a
-   * folio as a person's upload is: only where the agent may edit for the
-   * person it acts for, up to the same size, served the same way.
-   */
-  async attachAsAgent(
-    a: AgentArgs & { folio_id: string; file: { name: string; content_type: string; data: string } },
-  ): Promise<Result<{ id: string; url: string; name: string; content_type: string; bytes: number }>> {
-    const found = await this.agentCtx({ ...a, audience: null });
-    if (!found.ok) return found;
-    const actx = found.value;
-    const opened = await this.agentOpen(actx, a.folio_id);
-    if (!opened.ok) return opened;
-    const { row, reach } = opened.value;
-    if (!reach.can.attach) return fail("forbidden", `${actx.viewer.username} can't edit this artifact, so nothing can be attached to it for them.`);
-    let bytes: Uint8Array;
-    try {
-      bytes = Uint8Array.from(atob(String(a.file?.data ?? "")), (c) => c.charCodeAt(0));
-    } catch {
-      return fail("invalid", "The file isn't base64.");
-    }
-    if (!bytes.length) return fail("invalid", "The file is empty.");
-    if (bytes.length > DOC_MAX_FILE_BYTES) return fail("invalid", `Files can be up to ${DOC_MAX_FILE_BYTES / 1024 / 1024} MB.`);
-    const name = safeName(a.file?.name ?? "file");
-    const contentType = servedType(a.file?.content_type ?? "");
-    const key = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
-    const id = newId("fil");
-    await fileStore(this.env).put(`docs/${key}`, bytes, contentType);
-    await this.db
-      .prepare("INSERT INTO folio_files (id, workspace_id, folio_id, key, name, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(id, actx.workspace.id, row.id, key, name, contentType, bytes.length, actx.agentKey, now())
-      .run();
-    return ok({ id, url: `/docs-files/${key}`, name, content_type: contentType, bytes: bytes.length });
-  }
-
-  /**
-   * What the workspace's artifacts (and projects' docs) say about a
-   * query, for an agent about to answer: passages by meaning above the
-   * floor, then by words, at most two per folio, only from folios its
-   * asker and every person in the audience can read, each checked against
-   * the folio itself. Projects' docs come from Docs' index (`g1t-docs`)
-   * until Phase 7 moves them.
-   */
-  async recallForAgent(a: AgentArgs & { query: string; limit?: number | null; spaces?: string[] | null; kinds?: FolioKind[] | null }): Promise<Result<FolioPassage[]>> {
-    const found = await this.agentCtx(a);
-    if (!found.ok) return found;
-    const actx = found.value;
-    this.defer(ensureIndexed(this.env, actx.workspace.id).catch((error: unknown) => console.error("folios could not start indexing", actx.workspace.id, String(error))));
-    const query = String(a.query ?? "").trim().slice(0, 2000);
-    if (!query) return ok([]);
-    const limit = recallLimit(a.limit);
-    const kinds = (a.kinds ?? []).filter(isFolioKind);
-    const { scopes } = await this.allowedScopes(actx);
-    const required = new Set((Array.isArray(a.spaces) ? a.spaces : []).map((id) => `space:${id}`).filter((s) => scopes.includes(s)));
-    const fts = ftsAnyQuery(query);
-    const [meaning, words, repo] = await Promise.all([
-      this.meaningPassages(actx, query, scopes, kinds).catch(() => []),
-      fts
-        ? this.db
-            .prepare(
-              `SELECT c.id, c.folio_id, c.scope, c.heading, c.text FROM folio_chunks_fts JOIN folio_chunks c ON c.id = folio_chunks_fts.chunk_id
-               WHERE folio_chunks_fts MATCH ? AND c.workspace_id = ? ${scopes.length <= 80 ? "AND folio_chunks_fts.scope IN (SELECT value FROM json_each(?))" : ""} ${kinds.length ? "AND c.kind IN (SELECT value FROM json_each(?))" : ""}
-               ORDER BY bm25(folio_chunks_fts, 0, 0, 0, 4.0, 1.0) LIMIT 30`,
-            )
-            .bind(fts, actx.workspace.id, ...(scopes.length <= 80 ? [json(scopes)] : []), ...(kinds.length ? [json(kinds)] : []))
-            .all<{ id: string; folio_id: string; scope: string; heading: string | null; text: string }>()
-            .then((r) => r.results)
-            .catch((error: unknown) => {
-              console.error("folios word recall failed", String(error));
-              return [] as { id: string; folio_id: string; scope: string; heading: string | null; text: string }[];
-            })
-        : Promise.resolve([] as { id: string; folio_id: string; scope: string; heading: string | null; text: string }[]),
-      kinds.length && !kinds.includes("doc") ? Promise.resolve([] as FolioPassage[]) : this.recallRepoDocs(actx, query, fts, limit).catch(() => [] as FolioPassage[]),
-    ]);
-    // Every folio a passage came from, checked as the agent's asker and audience.
-    const folioIds = [...new Set([...meaning.map((m) => m.folio_id), ...words.map((w) => w.folio_id)])];
-    const rows = [...(await foliosById(this.db, folioIds)).values()].filter((r) => r.workspace_id === actx.workspace.id && !r.trashed_at);
-    const reach = await this.reach(actx, rows);
-    const may = new Set(rows.filter((r) => agentMayFind(reach.get(r.id)!)).map((r) => r.id));
-    const byFolio = new Map(rows.map((r) => [r.id, r]));
-    type C = Candidate & { heading: string | null; text: string };
-    const scopeOf = (folioId: string) => (required.size && byFolio.get(folioId)?.space_id && required.has(`space:${byFolio.get(folioId)!.space_id}`) ? "required" : "rest");
-    const candidates: C[] = [
-      ...meaning.filter((m) => may.has(m.folio_id)).map((m) => ({ id: m.id, doc_id: m.folio_id, space_id: scopeOf(m.folio_id), score: m.score, by: "meaning" as const, heading: m.heading, text: m.text })),
-      ...words.filter((w) => may.has(w.folio_id)).map((w) => ({ id: w.id, doc_id: w.folio_id, space_id: scopeOf(w.folio_id), score: WORDS_SCORE, by: "words" as const, heading: w.heading, text: w.text })),
-    ];
-    const picked = pickPassages(candidates, { allowed: new Set(["required", "rest"]), required: required.size ? ["required"] : [], limit });
-    const stale = await this.staleIds(picked.map((c) => c.doc_id));
-    const passages: FolioPassage[] = picked.map((c) => {
-      const row = byFolio.get(c.doc_id)!;
-      const space = row.space_id ? actx.spaceById.get(row.space_id) : undefined;
-      return {
-        folio: this.ref(actx.workspace.slug, row),
-        repo_file: null,
-        space_name: space?.row.name ?? "Private",
-        heading: c.heading,
-        text: c.text,
-        score: Math.round(c.score * 1000) / 1000,
-        updated_at: row.edited_at,
-        stale: stale.has(row.id),
-      };
-    });
-    // Projects' docs fill what's left, best first.
-    const out = [...passages, ...repo.sort((x, y) => y.score - x.score)].slice(0, limit);
-    return ok(out.sort((x, y) => y.score - x.score));
-  }
-
-  /** Projects' docs the agent may recall from: repositories its asker and every person in the audience can read. */
-  private async recallRepoDocs(actx: AgentCtx, query: string, fts: string | null, limit: number): Promise<FolioPassage[]> {
-    const spaces = await this.repoSpacesForAudience(actx);
-    if (!spaces.length) return [];
-    const ids = spaces.map((s) => s.row.id);
-    const { embedder, store } = adapters(this.env);
-    const vector = store ? await this.queryVector(query, embedder) : null;
-    const plan = vectorQueryPlan(actx.workspace.id, ids);
-    const [meaning, words] = await Promise.all([
-      vector && store && plan ? store.query(vector, { topK: plan.topK, filter: plan.filter }).catch(() => [] as { id: string; score: number }[]) : Promise.resolve([] as { id: string; score: number }[]),
-      fts
-        ? this.db
-            .prepare(
-              `SELECT doc_chunks_fts.chunk_id AS id FROM doc_chunks_fts JOIN doc_chunks c ON c.id = doc_chunks_fts.chunk_id
-               WHERE doc_chunks_fts MATCH ? AND c.workspace_id = ? AND c.repo_file_id IS NOT NULL AND doc_chunks_fts.space_id IN (SELECT value FROM json_each(?))
-               ORDER BY bm25(doc_chunks_fts, 0, 0, 0, 4.0, 1.0) LIMIT 20`,
-            )
-            .bind(fts, actx.workspace.id, json(ids))
-            .all<{ id: string }>()
-            .then((r) => r.results.map((x) => x.id))
-            .catch(() => [] as string[])
-        : Promise.resolve([] as string[]),
-    ]);
-    const scores = new Map<string, number>();
-    for (const m of meaning) if (m.score >= MEANING_FLOOR) scores.set(m.id, Math.max(scores.get(m.id) ?? 0, m.score));
-    for (const id of words) if (!scores.has(id)) scores.set(id, WORDS_SCORE);
-    if (!scores.size) return [];
-    const rows = (
-      await this.db
-        .prepare(
-          `SELECT c.id, c.space_id, c.repo_file_id, c.path, c.heading, c.text FROM doc_chunks c JOIN repo_files f ON f.space_id = c.space_id AND f.path = c.path
-           WHERE c.workspace_id = ? AND c.repo_file_id IS NOT NULL AND c.id IN (SELECT value FROM json_each(?))`,
-        )
-        .bind(actx.workspace.id, json([...scores.keys()]))
-        .all<{ id: string; space_id: string; repo_file_id: string; path: string; heading: string | null; text: string }>()
-    ).results;
-    const bySpace = new Map(spaces.map((s) => [s.row.id, s]));
-    const perFile = new Map<string, number>();
-    const out: FolioPassage[] = [];
-    for (const r of rows.sort((x, y) => (scores.get(y.id) ?? 0) - (scores.get(x.id) ?? 0))) {
-      const s = bySpace.get(r.space_id);
-      if (!s) continue;
-      const n = perFile.get(r.repo_file_id) ?? 0;
-      if (n >= 2) continue;
-      perFile.set(r.repo_file_id, n + 1);
-      const name = `${s.repo.namespace}/${s.repo.name}`;
-      out.push({
-        folio: null,
-        repo_file: { repo: name, path: r.path, href: `/${actx.workspace.slug}/-/artifacts/repo/${name}/${r.path.split("/").map(encodeURIComponent).join("/")}` },
-        space_name: name,
-        heading: r.heading,
-        text: r.text,
-        score: Math.round((scores.get(r.id) ?? 0) * 1000) / 1000,
-        updated_at: s.row.indexed_at ?? s.row.added_at,
-        stale: false,
-      });
-      if (out.length >= limit) break;
-    }
-    return out;
-  }
-
-  async staleForAgent(a: AgentArgs & { repo?: string | null; since?: string | null }): Promise<Result<Folio[]>> {
-    const found = await this.agentCtx(a);
-    if (!found.ok) return found;
-    const actx = found.value;
-    const repo = a.repo ? projectRef(a.repo) : null;
-    if (a.repo && !repo) return fail("invalid", "Name the repository as owner/name.");
-    const since = a.since && !Number.isNaN(Date.parse(a.since)) ? new Date(a.since).toISOString() : null;
-    const rows = (
-      await this.db
-        .prepare(
-          `SELECT ${folioColumns("f")} FROM folios f JOIN (SELECT folio_id, MAX(detected_at) AS flagged FROM folio_changes WHERE cleared_at IS NULL ${repo ? "AND repo = ?" : ""} GROUP BY folio_id) c ON c.folio_id = f.id
-           WHERE f.workspace_id = ? AND f.trashed_at IS NULL ${since ? "AND c.flagged >= ?" : ""} ORDER BY c.flagged DESC LIMIT 200`,
-        )
-        .bind(...(repo ? [repo] : []), actx.workspace.id, ...(since ? [since] : []))
-        .all<FolioRow>()
-    ).results;
-    const reach = await this.reach(actx, rows);
-    return ok((await this.toFolios(actx, rows.filter((r) => agentMayFind(reach.get(r.id)!)))).slice(0, 50));
   }
 
   // ── Projects' docs ──────────────────────────────────────────────────────
@@ -2507,28 +2083,6 @@ export class Folios {
         .map((f) => ({ path: f.path, title: f.title })),
       can_remove: row.added_by === ctx.key || ctx.owner,
     }));
-  }
-
-  /** Projects' docs an agent may recall from: the asker's, narrowed to every person in the audience (public repositories only for a workspace audience). */
-  private async repoSpacesForAudience(actx: AgentCtx): Promise<{ row: RepoSpaceRow; repo: Repo }[]> {
-    const mine = await this.readableRepoSpaces(actx.workspace, actx.viewer);
-    if (!mine.length || actx.rule.kind === "asker") return mine;
-    const publicOnly = () => mine.filter((s) => !s.repo.isPrivate);
-    if (actx.rule.kind === "workspace" || !this.env.REPOS) return publicOnly();
-    const others = await identityClient(this.env.IDENTITY)
-      .usersForAudience(actx.rule.user_ids)
-      .catch(() => [] as User[]);
-    let keep = new Set(mine.map((s) => s.row.repo_id));
-    // Someone who isn't a live account reads public repositories only.
-    if (others.length < actx.rule.user_ids.length) keep = new Set(publicOnly().map((s) => s.row.repo_id));
-    for (const person of others) {
-      const readable = await reposClient(this.env.REPOS)
-        .readable([...keep], person)
-        .catch(() => [] as Repo[]);
-      keep = new Set(readable.map((r) => r.id));
-      if (!keep.size) break;
-    }
-    return mine.filter((s) => keep.has(s.row.repo_id));
   }
 
   // ── Sockets and files ───────────────────────────────────────────────────

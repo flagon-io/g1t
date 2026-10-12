@@ -1,6 +1,6 @@
 /**
  * The artifacts service: a workspace's spaces and pages, their live documents,
- * history, comments, agents' suggestions, templates and search
+ * history, comments, suggestions, templates and search
  * (docs.g1t.sh/guides/artifacts/, "Docs").
  *
  * Reached through service bindings: `POST /rpc/<method>` with snake_case
@@ -32,21 +32,14 @@ import {
   parsePrincipalKey,
   principalKey,
   reposClient,
-  workspaceAgentsClient,
-  type DocAgentAbilities,
   type DocCitation,
-  type DocDescribes,
   type DocRepoPage,
   type DocRepoSpace,
   type DocStaleChange,
-  type DocStalePage,
   type DocStaleness,
   type G1tEvent,
   type Repo,
-  type DocAgentEditResult,
   type DocAgentMode,
-  type DocAgentPage,
-  type DocAudience,
   type DocEditTarget,
   type DocFile,
   type DocMove,
@@ -54,7 +47,6 @@ import {
   type DocPageChange,
   type DocPageDetail,
   type DocPageRef,
-  type DocPassage,
   type DocRole,
   type DocSearchHit,
   type DocSearchQuery,
@@ -82,21 +74,20 @@ import {
   type User,
   type Viewer,
   type Workspace,
-  type WorkspaceAgent,
 } from "@g1t/contracts";
 
-import { RANK, agentAbilities, atLeast, isRole, leavesNoManager, memberKey, readableByAll, readableByWorkspace, roleOf, type Person, type SpaceRules } from "./access.ts";
+import { RANK, atLeast, isRole, leavesNoManager, memberKey, roleOf, type Person, type SpaceRules } from "./access.ts";
 import { diffLines } from "./diff.ts";
 import { cleanDescribes } from "./citations.ts";
 import { publishDocEvent } from "./events.ts";
 import { fileStore, safeName, servedType, type FileStoreEnv } from "./files.ts";
 import { repoFileId } from "./chunks.ts";
-import { adapters, ensureIndexed, forgetDocs, indexPage, indexRepoFiles, runBackfill, startBackfill, type DocsJob } from "./indexer.ts";
+import { adapters, forgetDocs, indexPage, indexRepoFiles, runBackfill, startBackfill, type DocsJob } from "./indexer.ts";
 import { excerpt, searchText } from "./markdown.ts";
-import { QueryCache, fuseRanks, pickPassages, queryKey, recallLimit, requiredSpaces, vectorQueryPlan, MEANING_FLOOR, WORDS_SCORE, type Candidate } from "./recall.ts";
+import { QueryCache, fuseRanks, queryKey, vectorQueryPlan, MEANING_FLOOR } from "./recall.ts";
 import { ROOM_MEMBER_HEADER, type Origin, type PageRoom, type RoomMember } from "./room.ts";
 import { indexRepoSpace, reindexRepo, type RepoSpaceRow } from "./repo-spaces.ts";
-import { ftsAnyQuery, ftsQuery, inProject, projectRef, searchSpaces } from "./search.ts";
+import { ftsQuery, inProject, projectRef, searchSpaces } from "./search.ts";
 import { freeSlug, pageSlug, validSpaceSlug } from "./slugs.ts";
 import { BUILTIN_TEMPLATES, builtinTemplate } from "./templates.ts";
 import type { ThreadResult } from "./threads.ts";
@@ -112,7 +103,6 @@ export { FolioRoom } from "./folios/room.ts";
 type Env = FileStoreEnv & {
   DB: D1Database;
   IDENTITY: ServiceBinding;
-  AGENTS: ServiceBinding;
   NOTIFY?: ServiceBinding;
   /** Repositories: who may read one, what a change touched, a project's docs (src/staleness.ts, src/repo-spaces.ts). */
   REPOS?: ServiceBinding;
@@ -229,7 +219,6 @@ const PAGE_COLUMNS = "id, workspace_id, space_id, parent_id, position, title, ic
 
 const MAX_TITLE = 200;
 const MAX_MARKDOWN = 512 * 1024;
-const MAX_NOTE = 500;
 
 const now = () => new Date().toISOString();
 
@@ -268,28 +257,11 @@ function cleanProjects(list: unknown): string[] {
   return [...new Set(list.map((p) => projectRef(String(p))).filter((p): p is string => !!p))].slice(0, 20);
 }
 
-function cleanTarget(target: unknown): DocEditTarget | null {
-  const t = target as DocEditTarget | null;
-  if (!t || typeof t !== "object") return null;
-  switch (t.kind) {
-    case "append":
-    case "document":
-      return { kind: t.kind };
-    case "section":
-      return typeof t.heading === "string" && t.heading.trim() ? { kind: "section", heading: t.heading.trim().slice(0, 300) } : null;
-    case "blocks":
-      return typeof t.from_block === "string" && typeof t.to_block === "string" ? { kind: "blocks", from_block: t.from_block, to_block: t.to_block } : null;
-    default:
-      return null;
-  }
-}
-
 class Docs {
   private readonly workspaces = new Map<string, Promise<Workspace | null>>();
   private readonly people = new Map<string, Promise<Map<string, Member>>>();
   private readonly teams = new Map<string, Promise<Map<string, Set<string>>>>();
   private readonly usernames = new Map<string, string>();
-  private readonly agents = new Map<string, WorkspaceAgent | null>();
 
   constructor(
     private readonly env: Env,
@@ -352,26 +324,11 @@ class Docs {
     for (const [id, username] of Object.entries(named)) this.usernames.set(id, username);
   }
 
-  private async agentsById(ids: string[]): Promise<Map<string, WorkspaceAgent | null>> {
-    const wanted = [...new Set(ids)].filter((id) => !this.agents.has(id));
-    if (wanted.length) {
-      let found: WorkspaceAgent[] = [];
-      try {
-        found = await workspaceAgentsClient(this.env.AGENTS).byIds(wanted);
-      } catch (error) {
-        console.error("docs could not resolve agents", error);
-      }
-      for (const id of wanted) this.agents.set(id, found.find((a) => a.id === id) ?? null);
-    }
-    return new Map(ids.map((id) => [id, this.agents.get(id) ?? null]));
-  }
-
   /** How member keys show. Teams show by slug. */
   private async profiles(workspace: Workspace, keys: string[]): Promise<Map<string, MemberProfile>> {
     const principals = [...new Set(keys)].map((k) => parsePrincipalKey(k)).filter((p): p is Principal => !!p);
     const userIds = principals.filter((p) => p.kind === "user").map((p) => p.id);
-    const agentIds = principals.filter((p) => p.kind === "agent").map((p) => p.id);
-    const [, people, agents] = await Promise.all([this.nameUsers(userIds), userIds.length ? this.members(workspace) : new Map<string, Member>(), this.agentsById(agentIds)]);
+    const [, people] = await Promise.all([this.nameUsers(userIds), userIds.length ? this.members(workspace) : new Map<string, Member>()]);
     const out = new Map<string, MemberProfile>();
     for (const p of principals) {
       if (p.kind === "user") {
@@ -387,17 +344,8 @@ class Docs {
           avatar_seed: null,
         });
       } else {
-        const agent = agents.get(p.id) ?? null;
-        out.set(principalKey(p), {
-          ...p,
-          name: agent?.handle ?? p.id,
-          display_name: agent?.display_name ?? "Former agent",
-          avatar: agent?.avatar ?? null,
-          role: agent?.role ?? null,
-          title: agent?.title || null,
-          avatar_seed: agent?.avatar_seed ?? null,
-          look: agent?.look ?? null,
-        });
+        // Workspaces no longer have agents: what one wrote shows as a deleted agent's.
+        out.set(principalKey(p), { ...p, name: p.id, display_name: "A deleted agent", avatar: null, role: null, title: null, avatar_seed: null, deleted: true });
       }
     }
     // Anything else (system, ghost keys): a plain name.
@@ -980,7 +928,7 @@ class Docs {
     if (!space?.role) return fail("not_found", "No such space.");
     if (!atLeast(space.role, "manage")) return fail("forbidden", "Only people with full access can change who is in a space.");
     const key = memberKey(String(a.member ?? ""));
-    if (!key) return fail("invalid", "Choose a person, agent or team.");
+    if (!key) return fail("invalid", "Choose a person or team.");
     const role = a.role === null ? null : isRole(a.role) ? a.role : null;
     if (a.role !== null && !role) return fail("invalid", "Choose a role.");
     // They must belong to the workspace.
@@ -989,8 +937,8 @@ class Docs {
       const username = this.usernames.get(key.id);
       if (!username || !(await this.members(workspace)).has(username.toLowerCase())) return fail("invalid", "Only members of the workspace can be added.");
     } else if (key.kind === "agent") {
-      const agent = (await this.agentsById([key.id])).get(key.id);
-      if (!agent || agent.workspace_id !== workspace.id || agent.archived_at) return fail("invalid", "No such agent in this workspace.");
+      // An agent left in a space from before can be taken out, never added.
+      if (role) return fail("invalid", "Choose a person or team.");
     } else {
       const teams = await this.teamsOf(workspace);
       if (![...teams.values()].some((set) => set.has(key.id.toLowerCase()))) return fail("invalid", "No such team in this workspace.");
@@ -1178,48 +1126,6 @@ class Docs {
     return ok(true);
   }
 
-  async stalePagesForAgent(a: { workspace: string; agent_id: string; viewer: Viewer; repo?: string | null; since?: string | null; audience: DocAudience | null }): Promise<Result<DocStalePage[]>> {
-    const found = await this.agentSpaces(a.workspace, a.agent_id, a.viewer, a.audience);
-    if (!found.ok) return found;
-    const { workspace, spaces } = found.value;
-    const repo = a.repo ? projectRef(a.repo) : null;
-    if (a.repo && !repo) return fail("invalid", "Name the repository as owner/name.");
-    const since = a.since && !Number.isNaN(Date.parse(a.since)) ? new Date(a.since).toISOString() : null;
-    const rows = await this.staleRows(
-      spaces.map((s) => s.row.id),
-      repo,
-      200,
-    );
-    const [changes, cited, pages] = await Promise.all([
-      this.openChanges(rows.map((r) => r.id)),
-      this.citationsOf(rows.map((r) => r.id)),
-      this.toPages(workspace, new Map(spaces.map((s) => [s.row.id, s.row])), rows),
-    ]);
-    // The agent learns only of code its person can read.
-    const readable = await this.readableRepos(a.viewer!, [...changes.map((c) => c.repo), ...[...cited.values()].flat().map((c) => c.repo)]);
-    const bySpace = new Map(spaces.map((s) => [s.row.id, s]));
-    const out: DocStalePage[] = [];
-    for (const row of rows) {
-      const mine = changes.filter((c) => c.page_id === row.id && readable.has(c.repo) && (!repo || c.repo === repo));
-      if (!mine.length) continue;
-      const newest = mine[0]!.detected_at;
-      if (since && newest < since) continue;
-      const space = bySpace.get(row.space_id)!;
-      const page = pages.find((p) => p.id === row.id)!;
-      out.push({
-        page: { ...this.ref(workspace.slug, space.row, row), updated_at: row.updated_at },
-        space: { id: space.row.id, slug: space.row.slug, name: space.row.name, agent_mode: space.row.agent_mode },
-        can: space.can,
-        owners: page.owners,
-        citations: (cited.get(row.id) ?? []).filter((c) => readable.has(c.repo)),
-        changes: mine.slice(0, 20).map((c) => this.toChange(c, readable)),
-        since: mine[mine.length - 1]!.detected_at,
-      });
-      if (out.length >= 50) break;
-    }
-    return ok(out);
-  }
-
   /** Where a new page in `space` from `input` starts: its Markdown and title. */
   private async startingPoint(workspace: Workspace, input: NewDocPage): Promise<{ markdown: string; title: string; icon: string | null }> {
     let markdown = String(input.markdown ?? "").slice(0, MAX_MARKDOWN);
@@ -1289,7 +1195,7 @@ class Docs {
     ]);
     await this.room(id).ensure({ page_id: id, workspace_slug: workspace.slug, markdown: input.markdown, state: input.state ?? null });
     this.defer(publishDocEvent(this.env.EVENTS, "doc.page.created", this.eventData(workspace, space, row), author));
-    // Its passages, for agents' recall (src/indexer.ts); later edits are indexed by its room.
+    // Its passages, for search by meaning (src/indexer.ts); later edits are indexed by its room.
     if (input.markdown.trim()) this.defer(indexPage(this.env, id));
     return row;
   }
@@ -1361,7 +1267,7 @@ class Docs {
       }
     }
     if (c.owners !== undefined) {
-      const owners = [...new Set((Array.isArray(c.owners) ? c.owners : []).map(String).filter((k) => memberKey(k)?.kind === "user" || memberKey(k)?.kind === "agent"))].slice(0, 20);
+      const owners = [...new Set((Array.isArray(c.owners) ? c.owners : []).map(String).filter((k) => memberKey(k)?.kind === "user"))].slice(0, 20);
       statements.push(this.db.prepare("DELETE FROM page_owners WHERE page_id = ?").bind(page.id));
       for (const o of owners) statements.push(this.db.prepare("INSERT INTO page_owners (page_id, principal) VALUES (?, ?)").bind(page.id, o));
     }
@@ -1438,7 +1344,7 @@ class Docs {
     const at = now();
     await this.db.batch(ids.map((id) => this.db.prepare("UPDATE pages SET archived_at = ?, archived_by = ? WHERE id = ? AND archived_at IS NULL").bind(at, this.userKey(a.viewer!), id)));
     for (const id of ids) this.defer(this.room(id).closeAll("Moved to the trash").catch(() => undefined));
-    // Out of agents' recall while in the trash; restoring indexes them again.
+    // Out of search while in the trash; restoring indexes them again.
     this.defer(forgetDocs(this.env, { page_ids: ids }));
     this.defer(publishDocEvent(this.env.EVENTS, "doc.page.archived", this.eventData(workspace, space.row, page), this.userKey(a.viewer!)));
     const after = await this.db.prepare("SELECT * FROM pages WHERE id = ?").bind(page.id).first<PageRow>();
@@ -2080,94 +1986,6 @@ class Docs {
     return ok(await this.resolveThreads(found.value.workspace, await this.room(a.page_id).threads()));
   }
 
-  // ── Agents ──────────────────────────────────────────────────────────────
-
-  /**
-   * What an agent may read and do for `viewer`, space by space: the
-   * viewer's own access, narrowed to what every person in the audience can
-   * read. Never wider than the viewer.
-   */
-  private async agentSpaces(slug: string, agentId: string, viewer: Viewer, audience: DocAudience | null): Promise<Result<{ workspace: Workspace; agent: WorkspaceAgent; spaces: (Space & { can: DocAgentAbilities })[] }>> {
-    const found = await this.viewerWorkspace(slug, viewer);
-    if (!found.ok) return found;
-    const workspace = found.value;
-    const agent = (await this.agentsById([String(agentId ?? "")])).get(String(agentId ?? ""));
-    if (!agent || agent.workspace_id !== workspace.id || agent.archived_at) return fail("not_found", "No such agent.");
-    const spaces = await this.spacesFor(workspace, viewer!);
-    let readable = (s: Space) => !!s.role;
-    if (audience?.kind === "workspace") {
-      readable = (s) => !!s.role && readableByWorkspace(rulesOf(s));
-    } else if (audience?.kind === "people" && Array.isArray(audience.user_ids) && audience.user_ids.length) {
-      const ids = [...new Set(audience.user_ids.map(String))].slice(0, 200);
-      await this.nameUsers(ids);
-      const [members, teams] = await Promise.all([this.members(workspace), this.needsTeams(spaces) ? this.teamsOf(workspace) : Promise.resolve(new Map<string, Set<string>>())]);
-      const people: Person[] = ids.map((id) => {
-        const username = this.usernames.get(id)?.toLowerCase() ?? "";
-        const member = members.get(username);
-        // Someone who is not a member reads nothing: a person with no teams who owns nothing.
-        return { user_id: member ? id : `outside:${id}`, owner: member?.role === "owner", teams: teams.get(username) ?? new Set() };
-      });
-      readable = (s) => !!s.role && readableByAll(rulesOf(s), people);
-    }
-    return ok({
-      workspace,
-      agent,
-      spaces: spaces.filter(readable).map((s) => ({ ...s, can: agentAbilities(s.role, s.row.agent_mode) })),
-    });
-  }
-
-  async spacesForAgent(a: { workspace: string; agent_id: string; viewer: Viewer; audience: DocAudience | null }) {
-    const found = await this.agentSpaces(a.workspace, a.agent_id, a.viewer, a.audience);
-    if (!found.ok) return found;
-    return ok(
-      found.value.spaces.map((s) => ({
-        id: s.row.id,
-        slug: s.row.slug,
-        name: s.row.name,
-        description: s.row.description,
-        kind: s.row.kind,
-        agent_mode: s.row.agent_mode,
-        projects: s.projects,
-        can: s.can,
-      })),
-    );
-  }
-
-  /** A page an agent may read for the viewer and audience, or not found. */
-  private async agentPage(a: { workspace: string; agent_id: string; viewer: Viewer; page_id: string; audience?: DocAudience | null }) {
-    const found = await this.agentSpaces(a.workspace, a.agent_id, a.viewer, a.audience ?? null);
-    if (!found.ok) return found;
-    const page = await this.db
-      .prepare("SELECT * FROM pages WHERE id = ? AND workspace_id = ? AND archived_at IS NULL")
-      .bind(String(a.page_id ?? ""), found.value.workspace.id)
-      .first<PageRow>();
-    const space = page ? found.value.spaces.find((s) => s.row.id === page.space_id) : null;
-    if (!page || !space) return fail("not_found", "No such page.");
-    return ok({ ...found.value, page, space });
-  }
-
-  async pageMarkdown(a: { workspace: string; agent_id: string; viewer: Viewer; page_id: string; audience: DocAudience | null }): Promise<Result<DocAgentPage>> {
-    const found = await this.agentPage(a);
-    if (!found.ok) return found;
-    const { workspace, page, space } = found.value;
-    const room = this.room(page.id);
-    await room.ensure({ page_id: page.id, workspace_slug: workspace.slug, markdown: page.markdown });
-    const read = await room.read();
-    return ok({
-      page: { ...this.ref(workspace.slug, space.row, page), updated_at: page.updated_at },
-      space: { id: space.row.id, slug: space.row.slug, name: space.row.name, agent_mode: space.row.agent_mode },
-      markdown: read.markdown,
-      blocks: read.blocks,
-      can: space.can,
-    });
-  }
-
-  async searchForAgent(a: { workspace: string; agent_id: string; viewer: Viewer; query: DocSearchQuery; audience: DocAudience | null }): Promise<Result<DocSearchHit[]>> {
-    const found = await this.agentSpaces(a.workspace, a.agent_id, a.viewer, a.audience);
-    if (!found.ok) return found;
-    return ok(await this.searchIn(found.value.workspace, found.value.spaces, { ...(a.query ?? { query: "" }), limit: Math.min(Number(a.query?.limit) || 10, 20) }));
-  }
-
   // ── Recall: the semantic index ──────────────────────────────────────────
 
   /** Pages indexed again one after another (moved, restored). */
@@ -2205,25 +2023,6 @@ class Docs {
     }
   }
 
-  /** Passages by their words (any of them), best first, from `allowed` spaces. */
-  private async wordMatches(workspaceId: string, allowed: string[], fts: string, limit: number): Promise<string[]> {
-    if (!allowed.length) return [];
-    const named = allowed.length <= 80;
-    const rows = await this.db
-      .prepare(
-        `SELECT doc_chunks_fts.chunk_id AS id FROM doc_chunks_fts JOIN doc_chunks c ON c.id = doc_chunks_fts.chunk_id
-         WHERE doc_chunks_fts MATCH ? AND c.workspace_id = ? ${named ? `AND doc_chunks_fts.space_id IN (${allowed.map(() => "?").join(",")})` : ""}
-         ORDER BY bm25(doc_chunks_fts, 0, 0, 0, 4.0, 1.0) LIMIT ?`,
-      )
-      .bind(fts, workspaceId, ...(named ? allowed : []), limit)
-      .all<{ id: string }>()
-      .catch((error: unknown) => {
-        console.error("docs word recall failed", String(error));
-        return { results: [] as { id: string }[] };
-      });
-    return rows.results.map((r) => r.id);
-  }
-
   /**
    * Passages by id as they read now, with their page or file: only those
    * whose page is still out of the trash and whose file is still there.
@@ -2252,294 +2051,12 @@ class Docs {
     return out;
   }
 
-  /**
-   * Projects' docs an agent may recall from: those the viewer can read
-   * and, with an audience, everyone in it. A workspace-wide audience, or
-   * one too large to ask about person by person, gets public repositories
-   * only. Never wider than the viewer.
-   */
-  private async repoSpacesForAudience(workspace: Workspace, viewer: User, audience: DocAudience | null): Promise<{ row: RepoSpaceRow; repo: Repo }[]> {
-    const mine = await this.readableRepoSpaces(workspace, viewer);
-    if (!mine.length || !audience) return mine;
-    const publicOnly = () => mine.filter((s) => !s.repo.isPrivate);
-    if (audience.kind === "workspace") return publicOnly();
-    if (audience.kind !== "people" || !Array.isArray(audience.user_ids)) return mine;
-    const others = [...new Set(audience.user_ids.map(String))].filter((id) => id !== viewer.id);
-    if (!others.length) return mine;
-    if (others.length > 20 || !this.env.REPOS) return publicOnly();
-    await this.nameUsers(others);
-    const members = await this.members(workspace);
-    let keep = new Set(mine.map((s) => s.row.repo_id));
-    for (const id of others) {
-      const username = this.usernames.get(id)?.toLowerCase();
-      if (!username) {
-        const open = new Set(publicOnly().map((s) => s.row.repo_id));
-        keep = new Set([...keep].filter((r) => open.has(r)));
-        continue;
-      }
-      const member = members.get(username);
-      // As repos sees them: their membership here and no direct grants, so never wider than they are.
-      const person: User = { id, username, verified: true, workspaces: member ? [{ slug: workspace.slug, role: member.role }] : [] };
-      const readable = await reposClient(this.env.REPOS)
-        .readable([...keep], person)
-        .catch(() => [] as Repo[]);
-      keep = new Set(readable.map((r) => r.id));
-      if (!keep.size) break;
-    }
-    return mine.filter((s) => keep.has(s.row.repo_id));
-  }
-
-  /**
-   * What the workspace's Docs say about a query, for an agent about to
-   * answer (DocsApi.recallForAgent): the closest passages by meaning above
-   * MEANING_FLOOR, required spaces first, at most two per page, filled with
-   * passages matching its words when meaning finds too few. Only from what
-   * the viewer and audience can all read, by the same rules as every other
-   * agent read (`agentSpaces`).
-   */
-  async recallForAgent(a: {
-    workspace: string;
-    agent_id: string;
-    viewer: Viewer;
-    query: string;
-    limit?: number | null;
-    spaces?: string[] | null;
-    audience: DocAudience | null;
-  }): Promise<Result<DocPassage[]>> {
-    const found = await this.agentSpaces(a.workspace, a.agent_id, a.viewer, a.audience ?? null);
-    if (!found.ok) return found;
-    const { workspace, spaces } = found.value;
-    this.defer(ensureIndexed(this.env, workspace.id).catch((error: unknown) => console.error("docs could not start indexing", workspace.id, String(error))));
-    const query = String(a.query ?? "").trim().slice(0, 2000);
-    if (!query) return ok([]);
-    const limit = recallLimit(a.limit);
-    const repoSpaces = await this.repoSpacesForAudience(workspace, a.viewer!, a.audience ?? null).catch((error: unknown) => {
-      console.error("docs could not check projects' docs for recall", String(error));
-      return [] as { row: RepoSpaceRow; repo: Repo }[];
-    });
-    const allowed = [...spaces.map((s) => s.row.id), ...repoSpaces.map((r) => r.row.id)];
-    if (!allowed.length) return ok([]);
-    const required = requiredSpaces(allowed, a.spaces);
-    const fts = ftsAnyQuery(query);
-    const vector = await this.queryVector(query);
-    const [meaning, requiredMeaning, words] = await Promise.all([
-      vector ? this.meaningMatches(workspace.id, allowed, vector) : Promise.resolve([]),
-      // Required reading asked on its own too, so the rest of the workspace can't crowd it out.
-      vector && required.length && required.length < allowed.length ? this.meaningMatches(workspace.id, required, vector) : Promise.resolve([]),
-      fts ? this.wordMatches(workspace.id, allowed, fts, 30) : Promise.resolve([] as string[]),
-    ]);
-    const scores = new Map<string, number>();
-    for (const m of [...meaning, ...requiredMeaning]) scores.set(m.id, Math.max(scores.get(m.id) ?? 0, m.score));
-    const rows = await this.passages(workspace.id, [...scores.keys(), ...words]);
-    const candidates: (Candidate & { row: PassageRow })[] = [];
-    for (const [id, score] of scores) {
-      const row = rows.get(id);
-      if (row) candidates.push({ id, doc_id: row.page_id ?? row.repo_file_id!, space_id: row.space_id, score, by: "meaning", row });
-    }
-    for (const id of words) {
-      const row = rows.get(id);
-      if (row) candidates.push({ id, doc_id: row.page_id ?? row.repo_file_id!, space_id: row.space_id, score: WORDS_SCORE, by: "words", row });
-    }
-    const picked = pickPassages(candidates, { allowed: new Set(allowed), required, limit });
-    const stale = await this.staleIds([...new Set(picked.map((c) => c.row.page_id).filter((id): id is string => !!id))]);
-    const bySpace = new Map(spaces.map((s) => [s.row.id, s.row]));
-    const byRepo = new Map(repoSpaces.map((r) => [r.row.id, r]));
-    const out: DocPassage[] = [];
-    for (const c of picked) {
-      const row = c.row;
-      const score = Math.round(c.score * 1000) / 1000;
-      if (row.page_id) {
-        const space = bySpace.get(row.space_id);
-        if (!space) continue;
-        out.push({
-          page: this.ref(workspace.slug, space, { id: row.page_id, title: row.title ?? "", icon: row.icon }),
-          repo_file: null,
-          space_name: space.name,
-          heading: row.heading,
-          text: row.text,
-          score,
-          updated_at: row.page_updated_at ?? row.updated_at,
-          stale: stale.has(row.page_id),
-        });
-      } else {
-        const repo = byRepo.get(row.space_id);
-        if (!repo || !row.path) continue;
-        const name = `${repo.repo.namespace}/${repo.repo.name}`;
-        out.push({
-          page: null,
-          repo_file: { repo: name, path: row.path, href: `/${workspace.slug}/-/docs/repo/${name}/${row.path.split("/").map(encodeURIComponent).join("/")}` },
-          space_name: name,
-          heading: row.heading,
-          text: row.text,
-          score,
-          updated_at: repo.row.indexed_at ?? row.updated_at,
-          stale: false,
-        });
-      }
-    }
-    return ok(out);
-  }
-
   /** Indexes the workspace's pages and projects' docs again, on the queue. Owners only. */
   async reindexDocs(a: { workspace: string; viewer: Viewer }): Promise<Result<boolean>> {
     const found = await this.viewerWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
     if (!this.viewerOwner(a.viewer!, a.workspace)) return fail("forbidden", "Only an owner can index the workspace's docs again.");
     return ok(await startBackfill(this.env, found.value.id, { force: true }));
-  }
-
-  private async fileSuggestion(
-    workspace: Workspace,
-    page: PageRow,
-    space: SpaceRow,
-    agent: WorkspaceAgent,
-    viewer: User,
-    edit: { target: DocEditTarget; markdown: string; note: string | null; marks_current: boolean },
-  ): Promise<Result<DocSuggestion>> {
-    const room = this.room(page.id);
-    await room.ensure({ page_id: page.id, workspace_slug: workspace.slug, markdown: page.markdown });
-    const current = await room.target(edit.target);
-    if (!current) return fail("not_found", "That part of the page isn't there. Read the page again and target what is there now.");
-    const id = newId("sug");
-    const row: SuggestionRow = {
-      id,
-      page_id: page.id,
-      author: principalKey({ kind: "agent", id: agent.id }),
-      asked_by: this.userKey(viewer),
-      target: JSON.stringify(edit.target),
-      before_markdown: current.markdown,
-      after_markdown: edit.markdown,
-      note: edit.note,
-      status: "open",
-      created_at: now(),
-      decided_by: null,
-      decided_at: null,
-      marks_current: edit.marks_current ? 1 : 0,
-    };
-    await this.db
-      .prepare("INSERT INTO suggestions (id, page_id, author, asked_by, target, before_markdown, after_markdown, note, status, created_at, marks_current) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)")
-      .bind(row.id, row.page_id, row.author, row.asked_by, row.target, row.before_markdown, row.after_markdown, row.note, row.created_at, row.marks_current)
-      .run();
-    const [suggestion] = await this.toSuggestions(workspace, [row], [current.block_ids]);
-    this.tell(page.id, { type: "suggestion.created", suggestion: suggestion! });
-    this.defer(room.announce(row.author, agent.display_name).catch(() => undefined));
-    this.defer(this.notifyOwners(workspace, page, space, suggestion!));
-    return ok(suggestion!);
-  }
-
-  /** A page's owners (people) hear of a suggestion waiting for them. */
-  private async notifyOwners(workspace: Workspace, page: PageRow, space: SpaceRow, suggestion: DocSuggestion): Promise<void> {
-    if (!this.env.NOTIFY) return;
-    const owners = (await this.db.prepare("SELECT principal FROM page_owners WHERE page_id = ?").bind(page.id).all<{ principal: string }>()).results
-      .map((o) => o.principal)
-      .filter((k) => k.startsWith("user:"))
-      .map((k) => k.slice(5));
-    if (!owners.length) return;
-    const notify = notifyClient(this.env.NOTIFY);
-    const href = this.ref(workspace.slug, space, page).path;
-    await Promise.all(
-      owners.map((id) =>
-        notify
-          .notify(
-            { user_id: id },
-            {
-              id: `doc-suggestion:${suggestion.id}:${id}`,
-              kind: "inbox",
-              workspace: workspace.slug,
-              title: `${suggestion.author.display_name} suggested a change to ${page.title || "Untitled"}`,
-              body: suggestion.note ?? excerpt(suggestion.after_markdown, 140),
-              href,
-              actor: { kind: "agent", id: suggestion.author.id, name: suggestion.author.display_name, avatar: suggestion.author.avatar, avatar_seed: suggestion.author.avatar_seed ?? null, look: suggestion.author.look ?? null },
-              created_at: suggestion.created_at,
-            },
-          )
-          .catch(() => undefined),
-      ),
-    );
-  }
-
-  private cleanEdit(edit: unknown): Result<{ target: DocEditTarget; markdown: string; note: string | null; marks_current: boolean }> {
-    const e = (edit ?? {}) as { target?: unknown; markdown?: unknown; note?: unknown; marks_current?: unknown };
-    const target = cleanTarget(e.target);
-    if (!target) return fail("invalid", "Say what to change: append, document, a section by its heading, or blocks by id.");
-    const markdown = String(e.markdown ?? "");
-    if (markdown.length > MAX_MARKDOWN) return fail("invalid", "That edit is too long.");
-    if (target.kind === "append" && !markdown.trim()) return fail("invalid", "Nothing to add.");
-    return ok({ target, markdown, note: e.note ? String(e.note).trim().slice(0, MAX_NOTE) || null : null, marks_current: e.marks_current === true });
-  }
-
-  async suggestEdit(a: { workspace: string; agent_id: string; viewer: Viewer; page_id: string; edit: unknown }): Promise<Result<DocSuggestion>> {
-    const edit = this.cleanEdit(a.edit);
-    if (!edit.ok) return edit;
-    const found = await this.agentPage(a);
-    if (!found.ok) return found;
-    const { workspace, agent, page, space } = found.value;
-    if (!space.can.suggest) return fail("forbidden", `${a.viewer!.username} can only read this page, so no change can be suggested for them.`);
-    return this.fileSuggestion(workspace, page, space.row, agent, a.viewer!, edit.value);
-  }
-
-  async applyEdit(a: { workspace: string; agent_id: string; viewer: Viewer; page_id: string; edit: unknown }): Promise<Result<DocAgentEditResult>> {
-    const edit = this.cleanEdit(a.edit);
-    if (!edit.ok) return edit;
-    const found = await this.agentPage(a);
-    if (!found.ok) return found;
-    const { workspace, agent, page, space } = found.value;
-    const ref = this.ref(workspace.slug, space.row, page);
-    if (!space.can.edit) {
-      if (!space.can.suggest) return fail("forbidden", `${a.viewer!.username} can only read this page, so it can't be changed for them.`);
-      const suggestion = await this.fileSuggestion(workspace, page, space.row, agent, a.viewer!, edit.value);
-      return suggestion.ok ? ok({ mode: "suggested", suggestion: suggestion.value, page: ref }) : suggestion;
-    }
-    const room = this.room(page.id);
-    await room.ensure({ page_id: page.id, workspace_slug: workspace.slug, markdown: page.markdown });
-    const result = await room.edit(edit.value.target, edit.value.markdown, {
-      key: principalKey({ kind: "agent", id: agent.id }),
-      kind: "agent",
-      note: edit.value.note ? `@${agent.handle} for @${a.viewer!.username}: ${edit.value.note}` : `@${agent.handle} for @${a.viewer!.username}`,
-      authors: [principalKey({ kind: "agent", id: agent.id })],
-    });
-    if (!result.applied) return fail("not_found", "That part of the page isn't there. Read the page again and target what is there now.");
-    if (edit.value.marks_current) await this.clearStale(page.id, principalKey({ kind: "agent", id: agent.id }));
-    this.defer(room.announce(principalKey({ kind: "agent", id: agent.id }), agent.display_name).catch(() => undefined));
-    return ok({ mode: "applied", version_id: result.version_id, page: ref });
-  }
-
-  async createPageAsAgent(a: {
-    workspace: string;
-    agent_id: string;
-    viewer: Viewer;
-    input: { space_id?: string | null; parent_id?: string | null; title: string; icon?: string | null; markdown: string; source?: { title: string; href: string } | null };
-  }): Promise<Result<DocPageRef>> {
-    const found = await this.agentSpaces(a.workspace, a.agent_id, a.viewer, null);
-    if (!found.ok) return found;
-    const { workspace, agent, spaces } = found.value;
-    const input = a.input ?? ({} as typeof a.input);
-    const space = input.space_id ? spaces.find((s) => s.row.id === input.space_id) : spaces.find((s) => s.row.is_default);
-    if (!space) return fail("not_found", "No such space.");
-    if (!atLeast(space.role, "edit")) return fail("forbidden", `${a.viewer!.username} can't add pages to ${space.row.name}.`);
-    const title = cleanTitle(input.title);
-    if (!title) return fail("invalid", "Give the page a title.");
-    let markdown = String(input.markdown ?? "").slice(0, MAX_MARKDOWN);
-    const source = input.source && typeof input.source.href === "string" && input.source.href.startsWith("/") ? input.source : null;
-    if (source) markdown = `> [!NOTE]\n> Written up from [${String(source.title || "a conversation").replace(/[[\]]/g, "")}](${source.href}).\n\n${markdown}`;
-    const parent = input.parent_id
-      ? await this.db.prepare("SELECT id FROM pages WHERE id = ? AND space_id = ? AND archived_at IS NULL").bind(input.parent_id, space.row.id).first<{ id: string }>()
-      : null;
-    const agentKey = principalKey({ kind: "agent", id: agent.id });
-    const row = await this.insertPage(workspace, space.row, agentKey, {
-      parent_id: parent?.id ?? null,
-      title,
-      icon: cleanIcon(input.icon),
-      markdown,
-      owners: [this.userKey(a.viewer!)],
-    });
-    return ok(this.ref(workspace.slug, space.row, row));
-  }
-
-  async threadsForAgent(a: { workspace: string; agent_id: string; viewer: Viewer; page_id: string; audience: DocAudience | null }): Promise<Result<DocThread[]>> {
-    const found = await this.agentPage(a);
-    if (!found.ok) return found;
-    return ok(await this.resolveThreads(found.value.workspace, await this.room(found.value.page.id).threads()));
   }
 
   // ── Sockets and files ───────────────────────────────────────────────────
@@ -2689,22 +2206,6 @@ async function answer(service: Docs, method: string, args: any): Promise<Respons
       return Response.json(await service.thread(args));
     case "threads":
       return Response.json(await service.threads(args));
-    case "spaces_for_agent":
-      return Response.json(await service.spacesForAgent(args));
-    case "page_markdown":
-      return Response.json(await service.pageMarkdown(args));
-    case "search_for_agent":
-      return Response.json(await service.searchForAgent(args));
-    case "suggest_edit":
-      return Response.json(await service.suggestEdit(args));
-    case "apply_edit":
-      return Response.json(await service.applyEdit(args));
-    case "create_page_as_agent":
-      return Response.json(await service.createPageAsAgent(args));
-    case "threads_for_agent":
-      return Response.json(await service.threadsForAgent(args));
-    case "stale_pages_for_agent":
-      return Response.json(await service.stalePagesForAgent(args));
     case "mark_current":
       return Response.json(await service.markCurrent(args));
     case "stale_pages":
@@ -2715,8 +2216,6 @@ async function answer(service: Docs, method: string, args: any): Promise<Respons
       return Response.json(await service.removeRepoSpace(args));
     case "repo_page":
       return Response.json(await service.repoPage(args));
-    case "recall_for_agent":
-      return Response.json(await service.recallForAgent(args));
     case "reindex_docs":
       return Response.json(await service.reindexDocs(args));
     default:

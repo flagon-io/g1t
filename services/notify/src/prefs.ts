@@ -12,15 +12,13 @@
  */
 import type { CardAction, FeedNotification, NotificationCard, NotificationKind, NotifyLevel, NotifyPreferences } from "@g1t/contracts";
 
-import { readLook } from "../../../packages/contracts/src/agent-look.ts";
-
 // The same as NOTIFY_LEVELS and DEFAULT_NOTIFY_PREFERENCES in @g1t/contracts, kept here so
 // Node runs the tests on this file without the contracts package.
 const NOTIFY_LEVELS: readonly NotifyLevel[] = ["all", "dms_mentions", "none"];
 const DEFAULT_NOTIFY_PREFERENCES: NotifyPreferences = { level: "dms_mentions", workspaces: {} };
 
 /** What `dms_mentions`, the default, lets through: what was said to you, waits on you, or is an urgent security alert. */
-const DIRECT: ReadonlySet<NotificationKind> = new Set(["dm", "mention", "thread_reply", "agent_waiting", "approval", "security"]);
+const DIRECT: ReadonlySet<NotificationKind> = new Set(["dm", "mention", "thread_reply", "approval", "security"]);
 
 /** A tab whose last word is older than this is not in front of anyone. Pings come every 25 s. */
 export const STALE_MS = 70_000;
@@ -111,7 +109,8 @@ export function cleanNotification(value: unknown): FeedNotification | null {
   if (!value || typeof value !== "object") return null;
   const n = value as Record<string, unknown>;
   const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
-  const kinds: NotificationKind[] = ["dm", "mention", "thread_reply", "inbox", "agent_waiting", "approval", "security"];
+  // A kind no longer sent (`agent_waiting`, from workspace agents) is not one.
+  const kinds: NotificationKind[] = ["dm", "mention", "thread_reply", "inbox", "approval", "security"];
   const kind = kinds.find((k) => k === n.kind);
   const id = text(n.id, 200);
   const workspace = text(n.workspace, 100).toLowerCase();
@@ -135,7 +134,6 @@ export function cleanNotification(value: unknown): FeedNotification | null {
       name: text(a.name, 100) || "g1t",
       avatar: text(a.avatar, 100) || null,
       avatar_seed: text(a.avatar_seed, 100) || null,
-      look: readLook(a.look),
     },
     channel_id: text(n.channel_id, 100) || null,
     thread_root: text(n.thread_root, 100) || null,

@@ -20,8 +20,6 @@
 	"services": [
 		// Workspaces by slug, and people's names and avatars for members.
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		// The workspace's agents: who they are, and handing them messages to answer.
-		{ "binding": "AGENTS", "service": "g1t-agents" },
 		// Live notifications and unread counts for the people in a conversation (services/notify).
 		{ "binding": "NOTIFY", "service": "g1t-notify" }
 	],

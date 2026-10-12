@@ -60,7 +60,6 @@ export type FolioRoomEnv = IndexEnv &
     NOTIFY?: ServiceBinding;
     EVENTS?: ServiceBinding;
     IDENTITY: ServiceBinding;
-    AGENTS: ServiceBinding;
     REPOS?: ServiceBinding;
     /** The rooms themselves, as the Worker binds them (mentions are checked through the service). */
     FOLIOS: DurableObjectNamespace<FolioRoom>;
@@ -318,27 +317,6 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
 
   async threads(): Promise<ReturnType<typeof listThreads>> {
     return listThreads(this.load());
-  }
-
-  /** Shows an agent in everyone's presence row for a little while when it edits or suggests. */
-  async announce(key: string, name: string): Promise<void> {
-    let id = 0;
-    for (let i = 0; i < key.length; i++) id = (Math.imul(id, 31) + key.charCodeAt(i)) | 0;
-    const client = (id & 0x3fffffff) + 1;
-    const clock = Math.floor(Date.now() / 1000);
-    const state = JSON.stringify({ user: { name, color: "#b8a6ff", key, kind: "agent", avatar: "" } });
-    const update = encoding.createEncoder();
-    encoding.writeVarUint(update, 1);
-    encoding.writeVarUint(update, client);
-    encoding.writeVarUint(update, clock);
-    encoding.writeVarString(update, state);
-    const bytes = encoding.toUint8Array(update);
-    this.awareness.set(client, bytes);
-    this.clocks.set(client, clock);
-    const message = encoding.createEncoder();
-    encoding.writeVarUint(message, MESSAGE_AWARENESS);
-    encoding.writeVarUint8Array(message, bytes);
-    this.send(encoding.toUint8Array(message));
   }
 
   /** Tells everyone with the folio open. */

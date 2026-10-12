@@ -1,6 +1,6 @@
 /**
  * Who and where, for the artifacts service's folio code: the workspace by
- * slug, its people, agents and teams, how member keys show, and the
+ * slug, its people and teams, how member keys show, and the
  * spaces with a person's role in each. Cached per request (one instance
  * per request). Docs' page code (src/index.ts, `Docs`) keeps its own copy
  * of these until it is removed.
@@ -12,7 +12,6 @@ import {
   ok,
   parsePrincipalKey,
   principalKey,
-  workspaceAgentsClient,
   type DocAgentMode,
   type DocRole,
   type DocSpace,
@@ -25,13 +24,12 @@ import {
   type User,
   type Viewer,
   type Workspace,
-  type WorkspaceAgent,
 } from "@g1t/contracts";
 
 import { roleOf, type Person, type SpaceRules } from "./access.ts";
 import { freeSlug } from "./slugs.ts";
 
-export type WhoEnv = { DB: D1Database; IDENTITY: ServiceBinding; AGENTS: ServiceBinding };
+export type WhoEnv = { DB: D1Database; IDENTITY: ServiceBinding };
 
 export type SpaceRow = {
   id: string;
@@ -100,7 +98,6 @@ export class Who {
   private readonly teams = new Map<string, Promise<Map<string, Set<string>>>>();
   private readonly spaces = new Map<string, Promise<Omit<Space, "role">[]>>();
   readonly usernames = new Map<string, string>();
-  private readonly agents = new Map<string, WorkspaceAgent | null>();
 
   constructor(private readonly env: WhoEnv) {}
 
@@ -163,26 +160,15 @@ export class Who {
     for (const [id, username] of Object.entries(named)) this.usernames.set(id, username);
   }
 
-  async agentsById(ids: string[]): Promise<Map<string, WorkspaceAgent | null>> {
-    const wanted = [...new Set(ids)].filter((id) => !this.agents.has(id));
-    if (wanted.length) {
-      let found: WorkspaceAgent[] = [];
-      try {
-        found = await workspaceAgentsClient(this.env.AGENTS).byIds(wanted);
-      } catch (error) {
-        console.error("folios could not resolve agents", error);
-      }
-      for (const id of wanted) this.agents.set(id, found.find((a) => a.id === id) ?? null);
-    }
-    return new Map(ids.map((id) => [id, this.agents.get(id) ?? null]));
-  }
-
-  /** How member keys show. Anything that isn't a person or agent shows as g1t. */
+  /**
+   * How member keys show. An agent's key (workspaces no longer have
+   * agents) shows as a deleted agent; anything else that isn't a person
+   * shows as g1t.
+   */
   async profiles(workspace: Workspace, keys: string[]): Promise<Map<string, MemberProfile>> {
     const principals = [...new Set(keys)].map((k) => parsePrincipalKey(k)).filter((p): p is Principal => !!p);
     const userIds = principals.filter((p) => p.kind === "user").map((p) => p.id);
-    const agentIds = principals.filter((p) => p.kind === "agent").map((p) => p.id);
-    const [, people, agents] = await Promise.all([this.nameUsers(userIds), userIds.length ? this.members(workspace) : new Map<string, Member>(), this.agentsById(agentIds)]);
+    const [, people] = await Promise.all([this.nameUsers(userIds), userIds.length ? this.members(workspace) : new Map<string, Member>()]);
     const out = new Map<string, MemberProfile>();
     for (const p of principals) {
       if (p.kind === "user") {
@@ -190,17 +176,7 @@ export class Who {
         const person = username ? people.get(username.toLowerCase()) : undefined;
         out.set(principalKey(p), { ...p, name: username ?? "ghost", display_name: person?.name || username || "Former member", avatar: person?.avatar ?? null, role: null, title: null, avatar_seed: null });
       } else {
-        const agent = agents.get(p.id) ?? null;
-        out.set(principalKey(p), {
-          ...p,
-          name: agent?.handle ?? p.id,
-          display_name: agent?.display_name ?? "Former agent",
-          avatar: agent?.avatar ?? null,
-          role: agent?.role ?? null,
-          title: agent?.title || null,
-          avatar_seed: agent?.avatar_seed ?? null,
-          look: agent?.look ?? null,
-        });
+        out.set(principalKey(p), { ...p, name: p.id, display_name: "A deleted agent", avatar: null, role: null, title: null, avatar_seed: null, deleted: true });
       }
     }
     for (const key of keys) {

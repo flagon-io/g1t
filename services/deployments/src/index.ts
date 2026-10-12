@@ -299,7 +299,7 @@ type OpenInput = {
   commit: string;
   createdBy: string;
   settings: SettingsRow;
-  /** A push, or work by a member or an agent; see `insider`. */
+  /** A push, or work by a member; see `insider`. */
   trusted: boolean;
   /** The g1t Actions job that builds it, for a build opened from a workflow. */
   workflow?: { runId: string; jobId: string };
@@ -475,11 +475,11 @@ class Deployments {
 
   /**
    * Whether whoever a pull request is for (`workOwner`: whoever asked g1t for
-   * it, or its author) is trusted with the project's secrets: g1t itself,
-   * or someone who can push to the repository (Write or more, a member's or
-   * a collaborator's). Anyone else gets a preview built without them, as
-   * their workflows run. A change g1t made for someone is trusted as they
-   * are, never more for being g1t's.
+   * it, or its author) is trusted with the project's secrets: g1t's own
+   * system work, or someone who can push to the repository (Write or more,
+   * a member's or a collaborator's). Anyone else gets a preview built
+   * without them, as their workflows run. A change made for someone is
+   * trusted as they are, never more.
    */
   private async insider(repo: RepoPath, owner: User, actor: User): Promise<boolean> {
     if (trustedOutright(owner)) return true;
@@ -1175,7 +1175,7 @@ class Deployments {
       reader: actor,
       createdBy,
       settings,
-      // The default branch only moves by people and agents with access.
+      // The default branch only moves by people with access.
       trusted: true,
     });
   }
@@ -1190,7 +1190,7 @@ class Deployments {
     if (!detail.ok) return null;
     const { pull } = detail.value;
     if ((pull.status !== "open" && pull.status !== "draft") || !pull.headCommit) return null;
-    // A pull request from a fork (as g1t's agents work) has no branch here.
+    // A pull request from a fork has no branch here.
     const branch = pull.branch ?? `pr-${number}`;
     if (!force) {
       // Already built, or being built, at this commit.

@@ -11,7 +11,7 @@ const dms = { level: "dms_mentions" as const, workspaces: {} };
 
 test("the default hears of what is said to you or waits on you, not everything", () => {
   assert.deepEqual(readPreferences(null), dms);
-  for (const kind of ["dm", "mention", "thread_reply", "agent_waiting", "approval"] as const) assert.ok(wants("dms_mentions", kind), kind);
+  for (const kind of ["dm", "mention", "thread_reply", "approval"] as const) assert.ok(wants("dms_mentions", kind), kind);
   assert.ok(!wants("dms_mentions", "inbox"));
   assert.ok(wants("all", "inbox"));
   for (const kind of ["dm", "mention", "inbox"] as const) assert.ok(!wants("none", kind));
@@ -63,6 +63,8 @@ test("push only when no tab is focused, there is a browser to push to, and the l
 
 test("notifications are cleaned: kinds checked, links kept on the site, text trimmed", () => {
   assert.equal(cleanNotification({ id: "x", kind: "shout", title: "t" }), null);
+  // Workspace agents are gone: what they once sent is no notification now.
+  assert.equal(cleanNotification({ id: "x", kind: "agent_waiting", title: "t" }), null);
   assert.equal(cleanNotification({ kind: "dm", title: "t" }), null);
   const n = cleanNotification({
     id: "n1",
@@ -142,7 +144,7 @@ const capped = {
   actions: [
     { id: "approve", label: "Approve more", style: "primary", input: { kind: "money", label: "New cap", initial: "4.00" } },
     { id: "stop", label: "Stop", style: "danger", confirm: "Stop this session and everything under it?" },
-    { id: "open", label: "Open", href: "/acme/-/agents/g1t/sessions/ses_1" },
+    { id: "open", label: "Open", href: "/acme/web/pull/1" },
   ],
 };
 
@@ -154,7 +156,7 @@ test("a notification's card is checked: its place, its actions, links kept on th
     [
       ["approve", "primary", "money", null],
       ["stop", "danger", null, null],
-      ["open", "default", null, "/acme/-/agents/g1t/sessions/ses_1"],
+      ["open", "default", null, "/acme/web/pull/1"],
     ],
   );
   assert.equal(card.actions[1].confirm, "Stop this session and everything under it?");
@@ -171,7 +173,7 @@ test("a notification's card is checked: its place, its actions, links kept on th
 test("a push shows only the card's actions that need nothing typed or confirmed, two at most", () => {
   const card = cleanCard(capped)!;
   // Stop asks first in the app; a push can't, so it isn't offered there.
-  assert.deepEqual(pushActions(card), [{ id: "open", label: "Open", href: "/acme/-/agents/g1t/sessions/ses_1" }]);
+  assert.deepEqual(pushActions(card), [{ id: "open", label: "Open", href: "/acme/web/pull/1" }]);
   assert.deepEqual(pushActions(null), []);
   const payload = pushPayload({
     id: "approval:ses_1:2000000",
@@ -179,7 +181,7 @@ test("a push shows only the card's actions that need nothing typed or confirmed,
     workspace: "acme",
     title: "g1t needs more budget",
     body: "",
-    href: "/acme/-/agents/g1t/sessions/ses_1",
+    href: "/acme/web/pull/1",
     actor: { kind: "agent", id: "a1", name: "g1t" },
     channel_id: "chn_1",
     card,

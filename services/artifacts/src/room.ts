@@ -309,31 +309,6 @@ export class PageRoom extends DurableObject<Env> {
     return listThreads(this.load());
   }
 
-  /**
-   * Shows an agent on the page for a little while (its face in everyone's
-   * presence row) when it edits or suggests: an awareness entry of its
-   * own, which editors drop after 30 s without renewal, as for anyone.
-   */
-  async announce(key: string, name: string): Promise<void> {
-    let id = 0;
-    for (let i = 0; i < key.length; i++) id = (Math.imul(id, 31) + key.charCodeAt(i)) | 0;
-    const client = (id & 0x3fffffff) + 1;
-    const clock = Math.floor(Date.now() / 1000);
-    const state = JSON.stringify({ user: { name, color: "#b8a6ff", key, kind: "agent", avatar: "" } });
-    const update = encoding.createEncoder();
-    encoding.writeVarUint(update, 1);
-    encoding.writeVarUint(update, client);
-    encoding.writeVarUint(update, clock);
-    encoding.writeVarString(update, state);
-    const bytes = encoding.toUint8Array(update);
-    this.awareness.set(client, bytes);
-    this.clocks.set(client, clock);
-    const message = encoding.createEncoder();
-    encoding.writeVarUint(message, MESSAGE_AWARENESS);
-    encoding.writeVarUint8Array(message, bytes);
-    this.send(encoding.toUint8Array(message));
-  }
-
   /** Tells everyone with the page open. */
   async notice(event: DocsLiveEvent): Promise<void> {
     this.send(JSON.stringify(event));

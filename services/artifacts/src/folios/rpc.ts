@@ -12,7 +12,13 @@ import type { Folios } from "./service.ts";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Handler = (service: Folios, args: any) => Promise<unknown>;
 
-export const FOLIO_RPC: Record<FolioRpcMethod, Handler> = {
+/**
+ * Methods workspace agents called, which g1t no longer has. The contract
+ * may still list them until it is trimmed; nothing here answers them.
+ */
+type RetiredMethod = Extract<FolioRpcMethod, `${string}_for_agent` | `${string}_as_agent`>;
+
+export const FOLIO_RPC: Record<Exclude<FolioRpcMethod, RetiredMethod>, Handler> = {
   folio_list: (s, a) => s.list(a),
   folio_sidebar: (s, a) => s.sidebar(a),
   folio: (s, a) => s.folio(a),
@@ -52,19 +58,10 @@ export const FOLIO_RPC: Record<FolioRpcMethod, Handler> = {
   folio_threads: (s, a) => s.threads(a),
   query_tile: (s, a) => s.queryTile(a),
   query_dataset: (s, a) => s.queryDataset(a),
-  query_dataset_for_agent: (s, a) => s.queryDatasetForAgent(a),
-  folios_for_agent: (s, a) => s.foliosForAgent(a),
-  read_folio_for_agent: (s, a) => s.readForAgent(a),
-  create_folio_as_agent: (s, a) => s.createAsAgent(a),
-  edit_folio_as_agent: (s, a) => s.editAsAgent(a),
-  share_folio_as_agent: (s, a) => s.shareAsAgent(a),
-  attach_file_as_agent: (s, a) => s.attachAsAgent(a),
-  recall_folios_for_agent: (s, a) => s.recallForAgent(a),
-  stale_folios_for_agent: (s, a) => s.staleForAgent(a),
   mark_folio_current: (s, a) => s.markCurrent(a),
   reindex_folios: (s, a) => s.reindex(a),
 };
 
 export function folioHandler(method: string): Handler | null {
-  return Object.prototype.hasOwnProperty.call(FOLIO_RPC, method) ? FOLIO_RPC[method as FolioRpcMethod] : null;
+  return Object.prototype.hasOwnProperty.call(FOLIO_RPC, method) ? FOLIO_RPC[method as keyof typeof FOLIO_RPC] : null;
 }

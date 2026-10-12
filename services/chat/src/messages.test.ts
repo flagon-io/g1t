@@ -2,13 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  DEFAULT_HISTORY,
   DEFAULT_PAGE,
   MAX_BODY,
-  MAX_HISTORY,
   MAX_PAGE,
-  historyOf,
-  historySize,
   isTypingFrame,
   messageBody,
   meterDay,
@@ -39,24 +35,6 @@ test("a page read one past its size says where to read on from", () => {
   assert.deepEqual(pageOf(rows, 2), { rows: rows.slice(0, 2), older: "m4" });
   assert.deepEqual(pageOf(rows, 3), { rows, older: null });
   assert.deepEqual(pageOf([], 3), { rows: [], older: null });
-});
-
-test("an agent reads 30 messages unless it asks, and at most 100", () => {
-  assert.equal(historySize(null), DEFAULT_HISTORY);
-  assert.equal(DEFAULT_HISTORY, 30);
-  assert.equal(historySize(5), 5);
-  assert.equal(historySize(0), 1);
-  assert.equal(historySize(500), MAX_HISTORY);
-  assert.equal(MAX_HISTORY, 100);
-});
-
-test("an agent's history is oldest first, a thread's root leading", () => {
-  const newestFirst = ["m9", "m8", "m7"].map((id) => ({ id }));
-  assert.deepEqual(historyOf(newestFirst).map((r) => r.id), ["m7", "m8", "m9"]);
-  assert.deepEqual(historyOf(newestFirst, { id: "m1" }).map((r) => r.id), ["m1", "m7", "m8", "m9"]);
-  // The root is never there twice.
-  assert.deepEqual(historyOf([{ id: "m2" }, { id: "m1" }], { id: "m1" }).map((r) => r.id), ["m1", "m2"]);
-  assert.deepEqual(historyOf([], { id: "m1" }).map((r) => r.id), ["m1"]);
 });
 
 test("the meter counts by UTC day", () => {

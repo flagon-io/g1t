@@ -19,7 +19,7 @@
  *   signed in to (through `/-/notify`); and
  *   `last_visit` and `mark_visit`, when they were last on a workspace's
  *   Home page (src/visits.ts);
- * - agents and the site: `workspace_presence`, how a workspace's people
+ * - the site: `workspace_presence`, how a workspace's people
  *   show now (away, in Do Not Disturb, offline, and their statuses);
  * - integrations, later: `set_presence` with a status of `source`
  *   `calendar` or `integration`, for the person they act for;
@@ -63,7 +63,7 @@ function feed(env: Env, userId: string) {
 
 /** A user id from the arguments, or one looked up by username. */
 async function userIdOf(env: Env, given: { user_id?: unknown; username?: unknown; target?: unknown }): Promise<string | null> {
-  // Who it's for, at the top level or under `target` as the agents service sends it.
+  // Who it's for, at the top level or under `target`.
   const target = given.target && typeof given.target === "object" ? (given.target as { user_id?: unknown; username?: unknown }) : null;
   const args = { user_id: given.user_id ?? target?.user_id, username: given.username ?? target?.username };
   if (typeof args.user_id === "string" && args.user_id) return args.user_id;

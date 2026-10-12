@@ -1,20 +1,16 @@
 /**
  * Who may do what in a space: pure, so the rules are tested apart from the
- * service (docs.g1t.sh/guides/agent-access/, "Rule one: the asker's access
- * caps the agent").
+ * service.
  *
  * - `workspace` spaces give every member `default_role`; `team` spaces give
  *   the team's members `default_role`; `private` spaces give nobody
  *   anything by default.
- * - Listed members (`user:<id>`, `agent:<id>`, `team:<slug>`) add to that:
+ * - Listed members (`user:<id>`, `team:<slug>`) add to that:
  *   a person's role is the highest that applies to them.
  * - Workspace owners manage every workspace and team space. A private
  *   space is its members' alone, owners included.
- * - An agent acts for a person: it reads what they read, suggests where
- *   they can comment, and edits directly only where they can edit and the
- *   space lets agents edit.
  */
-import type { DocAgentAbilities, DocAgentMode, DocRole, DocSpaceKind } from "@g1t/contracts";
+import type { DocRole, DocSpaceKind } from "@g1t/contracts";
 
 export const RANK: Record<DocRole, number> = { view: 1, comment: 2, edit: 3, manage: 4 };
 
@@ -67,32 +63,12 @@ export function roleOf(space: SpaceRules, person: Person): DocRole | null {
   return role;
 }
 
-/** Whether every one of `people` can read the space; for an agent answering to an audience. */
-export function readableByAll(space: SpaceRules, people: Person[]): boolean {
-  return people.every((person) => atLeast(roleOf(space, person), "view"));
-}
-
 /**
- * Whether a space is readable by "everyone in the workspace": a public
- * channel's audience. Only a workspace space with a base role is.
+ * Whether a space is readable by "everyone in the workspace". Only a
+ * workspace space with a base role is.
  */
 export function readableByWorkspace(space: SpaceRules): boolean {
   return space.kind === "workspace" && atLeast(space.default_role, "view");
-}
-
-/**
- * What an agent may do for a person whose role is `asker`, in a space whose
- * agents `mode`. Editing the body follows the mode; attaching a file it
- * made only needs the person to be able to edit, since the body stays as
- * it is.
- */
-export function agentAbilities(asker: DocRole | null, mode: DocAgentMode): DocAgentAbilities {
-  return {
-    read: atLeast(asker, "view"),
-    suggest: atLeast(asker, "comment"),
-    edit: atLeast(asker, "edit") && mode === "edit",
-    attach: atLeast(asker, "edit"),
-  };
 }
 
 /** Whether `role` holders may change who is in a space and its settings. */
@@ -135,9 +111,7 @@ export function memberKey(key: string): { kind: "user" | "agent" | "team"; id: s
 //    role, `link` gives it to members who opened the link (a visit).
 //
 // A restricted folio (`inherit` false) is its own access root: grants
-// above it, its space and its parent's general access stop there. An
-// agent never has more than the person it acts for, narrowed to what
-// everyone it is talking to can read.
+// above it, its space and its parent's general access stop there.
 
 /** One folio as access needs it. */
 export type FolioAclNode = {
@@ -257,8 +231,7 @@ export function isPrivateFolio(chain: readonly FolioAclNode[], grants: FolioGran
 }
 
 /**
- * Whether "everyone in the workspace" can read a folio: a public
- * channel's audience. Only through an open space it inherits (with a base
+ * Whether "everyone in the workspace" can read a folio. Only through an open space it inherits (with a base
  * role) or general access `workspace`; never a link, grants or Private.
  */
 export function folioReadableByWorkspace(chain: readonly FolioAclNode[], space: SpaceRules | null): boolean {
@@ -266,17 +239,6 @@ export function folioReadableByWorkspace(chain: readonly FolioAclNode[], space: 
   if (!root) return false;
   if (root.general_access === "workspace") return true;
   return inheritsSpace(chain) && !!space && readableByWorkspace(space);
-}
-
-/** Whether every one of `people` can read a folio. `visited` says whether a person opened its link. */
-export function folioReadableByAll(
-  chain: readonly FolioAclNode[],
-  grants: FolioGrants,
-  space: SpaceRules | null,
-  people: readonly Person[],
-  visited: (person: Person) => boolean = () => false,
-): boolean {
-  return people.every((person) => atLeast(effectiveRole(chain, grants, space ? roleOf(space, person) : null, person, { visited: visited(person) }), "view"));
 }
 
 /**
@@ -313,11 +275,3 @@ export function canShare(role: DocRole | null, editorsCanShare = false): boolean
   return atLeast(role, "manage") || (editorsCanShare && atLeast(role, "edit"));
 }
 
-/**
- * An agent's role on a folio: never more than its asker's, and nothing
- * when someone it is talking to can't read the folio. The agent's own
- * grants never widen this; they make it a participant, nothing more.
- */
-export function agentFolioRole(askerRole: DocRole | null, audienceCanRead: boolean): DocRole | null {
-  return audienceCanRead ? askerRole : null;
-}

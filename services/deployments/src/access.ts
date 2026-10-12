@@ -33,10 +33,11 @@ export function repoRef(project: Project): RepoRef {
 
 /**
  * Whether whoever a pull request is for is trusted with a project's secrets
- * without asking what they may do: only g1t itself, in work nobody asked it
- * for. A change g1t made for someone is for them (`workOwner`), and they are
+ * without asking what they may do: only g1t's own system work. A pull
+ * request g1t's former agent opened is its requester's (`workOwner`), or,
+ * when nobody asked for it, trusted no further than anyone else: they are
  * asked about like anyone else.
  */
 export function trustedOutright(owner: Pick<User, "kind">): boolean {
-  return owner.kind === "agent" || owner.kind === "system";
+  return owner.kind === "system";
 }

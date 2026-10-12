@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { agentAbilities, atLeast, leavesNoManager, readableByAll, readableByWorkspace, roleOf, type Person, type SpaceRules } from "./access.ts";
+import { atLeast, leavesNoManager, readableByWorkspace, roleOf, type Person, type SpaceRules } from "./access.ts";
 
 const ana: Person = { user_id: "u1", owner: false, teams: new Set(["web"]) };
 const bo: Person = { user_id: "u2", owner: false, teams: new Set() };
@@ -41,21 +41,10 @@ test("owners manage workspace and team spaces, but a private space is its member
   assert.equal(roleOf(secret, ana), "manage");
 });
 
-test("an audience reads a space only if every person in it can", () => {
-  assert.equal(readableByAll(team, [ana]), true);
-  assert.equal(readableByAll(team, [ana, bo]), false);
-  assert.equal(readableByAll(workspace, [ana, bo]), true);
+test("a space is readable by the whole workspace only when it is open with a base role", () => {
   assert.equal(readableByWorkspace(workspace), true);
   assert.equal(readableByWorkspace(team), false);
   assert.equal(readableByWorkspace({ ...workspace, default_role: null }), false);
-});
-
-test("an agent is capped by the person it acts for and by the space's agent mode", () => {
-  assert.deepEqual(agentAbilities("edit", "suggest"), { read: true, suggest: true, edit: false, attach: true }, "a file can be attached where the person could edit, whatever the agent mode");
-  assert.deepEqual(agentAbilities("edit", "edit"), { read: true, suggest: true, edit: true, attach: true });
-  assert.deepEqual(agentAbilities("view", "edit"), { read: true, suggest: false, edit: false, attach: false });
-  assert.deepEqual(agentAbilities("comment", "edit"), { read: true, suggest: true, edit: false, attach: false });
-  assert.deepEqual(agentAbilities(null, "edit"), { read: false, suggest: false, edit: false, attach: false });
 });
 
 test("roles order view < comment < edit < manage", () => {

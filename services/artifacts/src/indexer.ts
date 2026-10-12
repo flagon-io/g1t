@@ -341,20 +341,6 @@ async function enqueue(env: IndexEnv, workspaceId: string, delaySeconds: number)
 }
 
 /**
- * The first time anyone recalls from a workspace's docs: when it has
- * pages or projects' docs and has never been indexed, start the backfill.
- */
-export async function ensureIndexed(env: IndexEnv, workspaceId: string): Promise<void> {
-  const row = await env.DB.prepare(
-    "SELECT (SELECT 1 FROM doc_index_runs WHERE workspace_id = ?1) AS ran, (SELECT 1 FROM pages WHERE workspace_id = ?1 AND archived_at IS NULL LIMIT 1) AS page, (SELECT 1 FROM folios WHERE workspace_id = ?1 AND trashed_at IS NULL LIMIT 1) AS folio, (SELECT 1 FROM repo_spaces WHERE workspace_id = ?1 LIMIT 1) AS repo",
-  )
-    .bind(workspaceId)
-    .first<{ ran: number | null; page: number | null; folio: number | null; repo: number | null }>();
-  if (!row || row.ran || (!row.page && !row.folio && !row.repo)) return;
-  await startBackfill(env, workspaceId);
-}
-
-/**
  * One batch of a workspace's backfill: pages by id, then projects' docs
  * files by space and path, from the run's cursor. Hands on to the next
  * batch (or waits out the hour's cap) through the queue.

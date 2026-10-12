@@ -1,6 +1,7 @@
 /**
  * The chat service: a workspace's channels, direct messages, threads and
- * messages. People and agents are members alike (docs.g1t.sh/guides/chat/).
+ * messages. Conversations are between people (docs.g1t.sh/guides/chat/);
+ * messages from agents of the past still show, under the name they had.
  *
  * Reached through service bindings: `POST /rpc/<method>` with snake_case
  * bodies (`chatClient` in @g1t/contracts), and `GET /live` for a channel's
@@ -12,8 +13,6 @@
  */
 
 import {
-  CHAT_MAX_HOPS,
-  askerAccess,
   CHAT_VIEWER_HEADER,
   fail,
   identityClient,
@@ -23,18 +22,10 @@ import {
   openD1,
   parsePrincipalKey,
   principalKey,
-  readLook,
-  workspaceAgentsClient,
-  type AgentDelivery,
-  type AgentFoundMessage,
-  type AgentHandOff,
-  type AgentPostMessage,
-  type AskerAccess,
   type Channel,
   type ChannelChange,
   type ChannelDetail,
   type ChannelMember,
-  type ChatAudience,
   type ChatLiveEvent,
   type ChatMessage,
   type ChatReaction,
@@ -47,12 +38,8 @@ import {
   type ChatActivity,
   type ChatSidebar,
   type ChatSidebarEntry,
-  CONVERSATION_PEOPLE_SHOWN,
-  type ConversationForAgent,
-  type HandOffResult,
   type Member,
   type MemberProfile,
-  type CardActionResult,
   type MessageCard,
   type MessagePage,
   type NewChannel,
@@ -63,26 +50,9 @@ import {
   type User,
   type Viewer,
   type Workspace,
-  type WorkspaceAgent,
 } from "@g1t/contracts";
 
 import { type ActivityRow, activitySpan, chatActivity } from "./activity.ts";
-import { audienceKind, isShared, likePattern, readableBy } from "./audience.ts";
-import {
-  ADDRESSING_HISTORY,
-  MAX_HOPS,
-  addsOrchestrator,
-  chainFor,
-  deliveries,
-  delivery,
-  handOffPlace,
-  handOffRefusal,
-  personalAgentRefusal,
-  wakeable,
-  type Chain,
-  type RecentMessage,
-  type Wake,
-} from "./delivery.ts";
 import {
   MAX_REACTIONS_PER_MESSAGE,
   emojiImage,
@@ -96,9 +66,9 @@ import {
   type ReactionRow,
   type ReactionTally,
 } from "./emoji.ts";
-import { cleanCard } from "./cards.ts";
-import { mentionedHandles, mentionsColumn, plainOutside } from "./mentions.ts";
-import { AGENT_TYPING_MS, historyOf, historySize, messageBody, meterDay, pageOf, pageSize } from "./messages.ts";
+import { shownCard } from "./cards.ts";
+import { mentionedHandles, mentionsColumn } from "./mentions.ts";
+import { messageBody, meterDay, pageOf, pageSize } from "./messages.ts";
 import { GENERAL, MAX_DM_MEMBERS, channelName, dmKey, dmMembers } from "./names.ts";
 import { ROOM_MEMBER_HEADER, type ChannelRoom, type RoomMember } from "./room.ts";
 import { mayCreateChannel, mayManageChannel, permissionsFor, rowFor, settingsChange, settingsOf, type SettingsRow } from "./settings.ts";
@@ -108,14 +78,9 @@ import { notifyMessage, notifyMuted, notifyRead } from "./notify.ts";
 
 export { ChannelRoom } from "./room.ts";
 
-// The hop limit here is the one in the contract.
-const SAME_HOP_LIMIT: typeof CHAT_MAX_HOPS = MAX_HOPS;
-void SAME_HOP_LIMIT;
-
 type Env = {
   DB: D1Database;
   IDENTITY: ServiceBinding;
-  AGENTS: ServiceBinding;
   ROOMS: DurableObjectNamespace<ChannelRoom>;
   /** The avatars namespace: custom emoji images, under `emoji/<sha256>`, which the usercontent origin serves. */
   AVATARS: KVNamespace;
@@ -185,7 +150,11 @@ type MessageRow = {
   deleted_at: string | null;
 };
 
-/** An agent deleted for good, as `former_agents` keeps it (migration 0004). */
+/**
+ * An agent deleted for good, as `former_agents` keeps it (migration 0004).
+ * Workspaces no longer have agents; their old messages show under the name
+ * kept here, else as a deleted agent.
+ */
 type FormerAgentRow = { agent_id: string; workspace_id: string; handle: string; display_name: string; avatar_seed: string | null; look: string | null; deleted_at: string };
 
 /** What a method found out about the channel it was asked about. */
@@ -227,14 +196,6 @@ function toChannel(row: ChannelRow): Channel {
   };
 }
 
-/** An asker handed back by the agents service, or null when what was sent is not one. */
-function cleanAsker(asker: unknown): AskerAccess | null {
-  if (!asker || typeof asker !== "object") return null;
-  const a = asker as Record<string, unknown>;
-  if (typeof a.username !== "string" || !["owner", "member", "outside"].includes(String(a.role))) return null;
-  return { username: a.username, role: a.role as AskerAccess["role"], can_write: a.can_write === true };
-}
-
 function bytesOf(text: string): number {
   return new TextEncoder().encode(text).length;
 }
@@ -243,7 +204,6 @@ class Chat {
   private readonly workspaces = new Map<string, Promise<Workspace | null>>();
   private readonly people = new Map<string, Promise<Map<string, Member>>>();
   private readonly usernames = new Map<string, string>();
-  private readonly agents = new Map<string, WorkspaceAgent | null>();
   /** Agents deleted for good, by id, from `former_agents`; null for one chat never heard of. */
   private readonly former = new Map<string, FormerAgentRow | null>();
   private readonly settingsRows = new Map<string, Promise<SettingsRow | null>>();
@@ -274,7 +234,7 @@ class Chat {
   private members(slug: string, workspace: Workspace): Promise<Map<string, Member>> {
     let found = this.people.get(workspace.id);
     if (!found) {
-      // Asked as the workspace itself, so it works for agents' calls too.
+      // Asked as the workspace itself.
       const actor: User = {
         id: workspace.id,
         username: workspace.slug,
@@ -294,31 +254,9 @@ class Chat {
     return found;
   }
 
-  /** Agents by id; ones the agents service does not know are null. Asked once per request. */
-  private async agentsById(ids: string[]): Promise<Map<string, WorkspaceAgent | null>> {
-    const wanted = [...new Set(ids)].filter((id) => !this.agents.has(id));
-    if (wanted.length) {
-      let found: WorkspaceAgent[] = [];
-      try {
-        found = await workspaceAgentsClient(this.env.AGENTS).byIds(wanted);
-      } catch (error) {
-        console.error("chat could not resolve agents", error);
-      }
-      for (const id of wanted) this.agents.set(id, found.find((a) => a.id === id) ?? null);
-    }
-    return new Map(ids.map((id) => [id, this.agents.get(id) ?? null]));
-  }
-
-  /** An agent of this workspace that is not archived, or null. */
-  private async liveAgent(workspace: Workspace, id: string): Promise<WorkspaceAgent | null> {
-    const agent = (await this.agentsById([id])).get(id) ?? null;
-    return agent && agent.workspace_id === workspace.id && !agent.archived_at ? agent : null;
-  }
-
   /**
-   * Agents deleted for good, by id, as `former_agents` remembers them: the
-   * name and face their messages still show under. Asked only for agents
-   * the agents service no longer knows, and once per request.
+   * Agents of the past, by id, as `former_agents` remembers them: the
+   * name and face their messages still show under. Once per request.
    */
   private async formerAgents(ids: string[]): Promise<Map<string, FormerAgentRow>> {
     const wanted = [...new Set(ids)].filter((id) => !this.former.has(id));
@@ -342,23 +280,20 @@ class Chat {
   }
 
   /**
-   * How each member key shows, for one workspace. An archived agent's
-   * profile says so (`archived_at`, `archived_by`); one deleted for good
-   * shows under the name it had, marked `deleted`.
+   * How each member key shows, for one workspace. An agent of the past
+   * shows under the name it had, else as a deleted agent, marked `deleted`.
    */
   private async profiles(slug: string, workspace: Workspace, keys: string[]): Promise<Map<string, MemberProfile>> {
     const principals = [...new Set(keys)].map((key) => parsePrincipalKey(key)).filter((p): p is Principal => !!p);
     const userIds = principals.filter((p) => p.kind === "user").map((p) => p.id);
     const agentIds = principals.filter((p) => p.kind === "agent").map((p) => p.id);
     const unnamed = userIds.filter((id) => !this.usernames.has(id));
-    const [named, people, agents] = await Promise.all([
+    const [named, people, former] = await Promise.all([
       unnamed.length ? identityClient(this.env.IDENTITY).usernames(unnamed).catch(() => ({}) as Record<string, string>) : ({} as Record<string, string>),
       userIds.length ? this.members(slug, workspace) : new Map<string, Member>(),
-      this.agentsById(agentIds),
+      agentIds.length ? this.formerAgents(agentIds) : new Map<string, FormerAgentRow>(),
     ]);
     for (const [id, username] of Object.entries(named)) this.usernames.set(id, username);
-    const gone = agentIds.filter((id) => !agents.get(id));
-    const former = gone.length ? await this.formerAgents(gone) : new Map<string, FormerAgentRow>();
     const out = new Map<string, MemberProfile>();
     for (const p of principals) {
       if (p.kind === "user") {
@@ -377,21 +312,19 @@ class Chat {
           avatar_seed: null,
         });
       } else {
-        const agent = agents.get(p.id) ?? null;
-        const was = agent ? null : (former.get(p.id) ?? null);
+        const was = former.get(p.id) ?? null;
         out.set(principalKey(p), {
           ...p,
-          name: agent?.handle ?? was?.handle ?? p.id,
-          // Never blank: a deleted agent's messages show under the name it had, else as a deleted agent.
-          display_name: agent?.display_name ?? was?.display_name ?? "A deleted agent",
-          avatar: agent?.avatar ?? null,
-          role: agent?.role ?? null,
-          title: agent?.title || null,
-          avatar_seed: agent?.avatar_seed ?? was?.avatar_seed ?? null,
-          look: agent?.look ?? (was ? readLook(was.look) : null),
-          archived_at: agent?.archived_at ?? null,
-          archived_by: agent?.archived_by ?? null,
-          ...(agent ? {} : { deleted: true }),
+          name: was?.handle ?? p.id,
+          // Never blank: an old agent's messages show under the name it had, else as a deleted agent.
+          display_name: was?.display_name ?? "A deleted agent",
+          avatar: null,
+          role: null,
+          title: null,
+          avatar_seed: was?.avatar_seed ?? null,
+          archived_at: null,
+          archived_by: null,
+          deleted: true,
         });
       }
     }
@@ -402,9 +335,9 @@ class Chat {
     return (await this.profiles(slug, workspace, [key])).get(key)!;
   }
 
-  /** Whether `principal` may be added to a conversation in this workspace. */
+  /** Whether `principal` may be added to a conversation in this workspace: people of it only. */
   private async belongs(slug: string, workspace: Workspace, principal: Principal): Promise<boolean> {
-    if (principal.kind === "agent") return !!(await this.liveAgent(workspace, principal.id));
+    if (principal.kind !== "user") return false;
     if (!this.usernames.has(principal.id)) {
       const named = await identityClient(this.env.IDENTITY).usernames([principal.id]);
       for (const [id, username] of Object.entries(named)) this.usernames.set(id, username);
@@ -489,7 +422,7 @@ class Chat {
         author: profiles.get(row.author)!,
         kind: row.kind,
         body: gone ? "" : row.body,
-        card: gone || !row.card ? null : (JSON.parse(row.card) as MessageCard),
+        card: gone || !row.card ? null : shownCard(JSON.parse(row.card) as MessageCard),
         thread_root: row.thread_root,
         reply_count: row.reply_count,
         last_reply_at: row.last_reply_at,
@@ -823,12 +756,12 @@ class Chat {
     const principals: Principal[] = [];
     for (const member of asked) {
       const p = member && parsePrincipalKey(`${member.kind}:${member.id}`);
-      if (!p) return fail("invalid", "Each member is a person or an agent, by id.");
+      if (!p || p.kind !== "user") return fail("invalid", "Each member is a person of the workspace, by id.");
       principals.push(p);
     }
     const members = dmMembers(me, principals.map(principalKey));
     if (members.length > MAX_DM_MEMBERS) {
-      return fail("invalid", `A direct message has at most ${MAX_DM_MEMBERS} people and agents. Make a private channel instead.`);
+      return fail("invalid", `A direct message has at most ${MAX_DM_MEMBERS} people. Make a private channel instead.`);
     }
     const key = dmKey(members);
     const existing = await this.db
@@ -841,13 +774,7 @@ class Chat {
       if (member === me) continue;
       const p = parsePrincipalKey(member)!;
       if (!(await this.belongs(slug, workspace, p))) {
-        return fail("not_found", p.kind === "agent" ? "No such agent in this workspace." : "That person is not in this workspace.");
-      }
-      // A member's personal agent: only in the DM of the two of them.
-      if (p.kind === "agent") {
-        const agent = await this.liveAgent(workspace, p.id);
-        const refused = agent ? personalAgentRefusal(agent, { kind: "dm", members }) : null;
-        if (refused) return fail("forbidden", refused);
+        return fail("not_found", "That person is not in this workspace.");
       }
     }
     const at = now();
@@ -892,30 +819,6 @@ class Chat {
     return ok(null);
   }
 
-  /**
-   * Internal, from the agents service: an agent was deleted for good. It
-   * comes off every channel of its workspace, and its name and face are
-   * kept (`former_agents`) so its messages, which stay, show under them.
-   * Its direct messages keep their membership rows: a conversation is its
-   * people's, stays in their lists and opens to read, with the agent shown
-   * as deleted (`profiles`); it is never woken, since the agents service no
-   * longer knows it (delivery.ts `wakeable`).
-   */
-  async agentDestroyed(a: { workspace_id: string; agent_id: string; handle: string; display_name: string; avatar_seed?: string | null; look?: unknown }): Promise<Result<null>> {
-    if (typeof a?.workspace_id !== "string" || !a.workspace_id || typeof a?.agent_id !== "string" || !a.agent_id) return fail("invalid", "Name the workspace and the agent by id.");
-    const handle = typeof a.handle === "string" && a.handle ? a.handle : a.agent_id;
-    const key = principalKey({ kind: "agent", id: a.agent_id });
-    await this.db.batch([
-      this.db
-        .prepare("INSERT OR REPLACE INTO former_agents (agent_id, workspace_id, handle, display_name, avatar_seed, look, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(a.agent_id, a.workspace_id, handle, typeof a.display_name === "string" && a.display_name.trim() ? a.display_name : handle, typeof a.avatar_seed === "string" ? a.avatar_seed : null, a.look ? JSON.stringify(a.look) : null, now()),
-      this.db.prepare("DELETE FROM channel_members WHERE principal = ? AND channel_id IN (SELECT id FROM channels WHERE workspace_id = ? AND kind = 'channel')").bind(key, a.workspace_id),
-    ]);
-    this.agents.delete(a.agent_id);
-    this.former.delete(a.agent_id);
-    return ok(null);
-  }
-
   async invite(a: { workspace: string; channel_id: string; viewer: Viewer; member: Principal }): Promise<Result<null>> {
     const found = await this.place(a.workspace, a.channel_id, a.viewer, "member");
     if (!found.ok) return found;
@@ -923,15 +826,8 @@ class Chat {
     if (channel.kind === "dm") return fail("invalid", "People can't be added to a direct message. Start a new one with everyone in it.");
     if (channel.archived_at) return fail("invalid", "This channel is archived.");
     const p = a.member && parsePrincipalKey(`${a.member.kind}:${a.member.id}`);
-    if (!p) return fail("invalid", "Invite a person or an agent, by id.");
-    if (!(await this.belongs(slug, workspace, p))) {
-      return fail("not_found", p.kind === "agent" ? "No such agent in this workspace." : "That person is not in this workspace.");
-    }
-    if (p.kind === "agent") {
-      const agent = await this.liveAgent(workspace, p.id);
-      const refused = agent ? personalAgentRefusal(agent, { kind: "channel", members: null }) : null;
-      if (refused) return fail("forbidden", refused);
-    }
+    if (!p || p.kind !== "user") return fail("invalid", "Invite a person of the workspace, by id.");
+    if (!(await this.belongs(slug, workspace, p))) return fail("not_found", "That person is not in this workspace.");
     await this.joinStatement(channel.id, principalKey(p), "member", now()).run();
     return ok(null);
   }
@@ -1164,7 +1060,7 @@ class Chat {
     let list = page.rows;
     // The message a thread is under: the oldest once the page reaches the
     // start, and, on the first page, as `root` however long the thread is,
-    // so a session's card stays at the top of its thread.
+    // so what the thread replies to stays at the top of it.
     const firstPage = before === "~";
     const rootRow = root && (page.older === null || firstPage) ? await this.messageRow(channel.id, root) : null;
     if (rootRow && page.older === null) list = [...list, rootRow];
@@ -1177,16 +1073,13 @@ class Chat {
   /**
    * Writes a message and everything that follows from it: the thread's
    * reply count, the channel's last activity, the author's own read mark,
-   * the meter; then, after answering, tells the room and wakes the agents
-   * it is for: those a person's message is for (src/delivery.ts), or, for
-   * an agent's, only `wake` (a hand-off's colleague), never by mention.
+   * the meter; then, after answering, tells the room and notifies the
+   * people it is for.
    */
   private async write(
     place: Place,
     author: string,
     input: { body: string; card: MessageCard | null; thread_root: string | null },
-    chain: Chain<AskerAccess>,
-    wake: Wake[] = [],
   ): Promise<Result<ChatMessage>> {
     const { channel, workspace } = place;
     if (channel.archived_at) return fail("invalid", "This channel is archived.");
@@ -1198,8 +1091,7 @@ class Chat {
       threadRoot = root.thread_root ?? root.id;
     }
     const at = now();
-    // An agent's mention of someone who isn't here reaches nobody, so it reads as a plain name.
-    const body = author.startsWith("agent:") ? await this.agentText(place, input.body) : input.body;
+    const body = input.body;
     const handles = mentionedHandles(body);
     const row: MessageRow = {
       id: newId("msg"),
@@ -1246,106 +1138,13 @@ class Chat {
     const [message] = await this.toMessages(place.slug, workspace, [row]);
     this.broadcast(channel.id, { type: "message.created", message });
     if (threadRoot) this.rebroadcast(place, threadRoot);
-    this.defer(
-      (wake.length ? this.deliverTo(place, row, chain, wake) : this.wake(place, row, handles, chain)).catch((error) =>
-        console.error("chat could not hand", row.id, "to agents", error),
-      ),
-    );
     // Notify: counts for everyone in the conversation, a notification for those it is for.
     this.defer(
-      notifyMessage(this.db, this.env.NOTIFY, (keys) => this.profiles(place.slug, workspace, keys), { slug: place.slug, channel, row, handles, asked_by: chain.asked_by }).catch(
+      notifyMessage(this.db, this.env.NOTIFY, (keys) => this.profiles(place.slug, workspace, keys), { slug: place.slug, channel, row, handles }).catch(
         (error) => console.error("chat could not notify about", row.id, error),
       ),
     );
     return ok(message);
-  }
-
-  /** Hands a new message to the agents it is for (src/delivery.ts). */
-  private async wake(place: Place, row: MessageRow, handles: string[], chain: Chain<AskerAccess>): Promise<void> {
-    const { channel, workspace } = place;
-    // Only a person's message wakes anyone, and in a channel only by mention.
-    if (!row.author.startsWith("user:") || chain.quiet) return;
-    if (channel.kind === "channel" && !handles.length) return;
-    const members = await this.db
-      .prepare("SELECT principal FROM channel_members WHERE channel_id = ? AND principal LIKE 'agent:%'")
-      .bind(channel.id)
-      .all<{ principal: string }>();
-    const ids = members.results.map((m) => m.principal.slice("agent:".length));
-    let found = await this.agentsById(ids);
-    const orchestratorIsMember = wakeable(found.values(), workspace.id).some((agent) => !!agent.builtin);
-    if (addsOrchestrator({ channelKind: channel.kind, mentioned: handles, orchestratorIsMember })) {
-      // Mentioning @g1t brings it in: every workspace has it, nobody invites it.
-      const builtin = await workspaceAgentsClient(this.env.AGENTS)
-        .builtin(place.slug, workspace.id)
-        .catch((error: unknown) => {
-          console.error("chat could not find @g1t for", place.slug, error);
-          return null;
-        });
-      if (builtin?.ok) {
-        await this.joinStatement(channel.id, `agent:${builtin.value.id}`, "member", now()).run();
-        this.agents.set(builtin.value.id, builtin.value);
-        ids.push(builtin.value.id);
-        found = await this.agentsById(ids);
-      }
-    }
-    if (!ids.length) return;
-    // Archived agents stay members, so their conversations can be read, but are never woken (delivery.ts `wakeable`).
-    const agents = wakeable(found.values(), workspace.id);
-    const wakes = deliveries({
-      author: row.author,
-      hops: chain.hops,
-      channelKind: channel.kind,
-      agents: agents.map((agent) => ({ id: agent.id, handle: agent.handle })),
-      mentioned: handles,
-      // With several agents in a direct message, who the person is talking with decides an unaddressed message.
-      recent: channel.kind === "dm" && agents.length > 1 ? await this.recentBefore(row) : [],
-    });
-    await this.deliverTo(place, row, chain, wakes);
-  }
-
-  /**
-   * The conversation before `row`, oldest first, as addressing reads it
-   * (src/delivery.ts `addressedAgents`): the latest messages of its thread,
-   * or of the conversation's top level, who wrote each and whom it mentions.
-   */
-  private async recentBefore(row: Pick<MessageRow, "id" | "channel_id" | "thread_root">): Promise<RecentMessage[]> {
-    const rows = await this.db
-      .prepare(
-        `SELECT author, mentions FROM messages WHERE channel_id = ?1 AND id < ?2 AND deleted_at IS NULL
-           AND ${row.thread_root ? "(thread_root = ?3 OR id = ?3)" : "thread_root IS NULL"} ORDER BY id DESC LIMIT ${ADDRESSING_HISTORY}`,
-      )
-      .bind(...(row.thread_root ? [row.channel_id, row.id, row.thread_root] : [row.channel_id, row.id]))
-      .all<{ author: string; mentions: string | null }>();
-    return rows.results.reverse().map((found) => ({ author: found.author, mentioned: (found.mentions ?? "").split(" ").filter(Boolean) }));
-  }
-
-  /** Hands a message to these agents (src/delivery.ts `delivery`). */
-  private async deliverTo(place: Place, row: { id: string; thread_root: string | null }, chain: Chain<AskerAccess>, wakes: Wake[]): Promise<void> {
-    const { channel, workspace } = place;
-    const client = workspaceAgentsClient(this.env.AGENTS);
-    await Promise.all(
-      wakes.map((wake) =>
-        client
-          .deliver(
-            delivery(
-              {
-                workspace: place.slug,
-                workspace_id: workspace.id,
-                channel_id: channel.id,
-                channel_kind: channel.kind,
-                channel_name: channel.kind === "dm" ? null : channel.name,
-              },
-              wake,
-              row,
-              chain,
-            ) satisfies AgentDelivery,
-          )
-          .then((result) => {
-            if (!result.ok) console.error("agents refused delivery to", wake.agent_id, result.error.message);
-          })
-          .catch((error) => console.error("chat could not deliver to", wake.agent_id, error)),
-      ),
-    );
   }
 
   async post(a: { workspace: string; channel_id: string; viewer: Viewer; message: PostMessage }): Promise<Result<ChatMessage>> {
@@ -1365,8 +1164,6 @@ class Chat {
       place,
       me,
       { body: body.body, card: null, thread_root: a.message?.thread_root ?? null },
-      // A person's message starts a chain; a workflow job's token starts none.
-      { hops: 0, asked_by: a.viewer!.id, asker: askerAccess(a.viewer!, a.workspace), chain: [], quiet: !!a.viewer!.token?.job },
     );
   }
 
@@ -1448,402 +1245,6 @@ class Chat {
     return ok(null);
   }
 
-  // ── Agents ──────────────────────────────────────────────────────────────
-
-  /** The channel and agent for an agent's call: the agent must be of the workspace and in the channel. */
-  private async agentPlace(slug: string, channelId: string, agentId: string): Promise<Result<{ place: Place; agent: WorkspaceAgent }>> {
-    const workspace = await this.workspace(String(slug ?? ""));
-    if (!workspace) return fail("not_found", "No such workspace.");
-    const agent = await this.liveAgent(workspace, String(agentId ?? ""));
-    if (!agent) return fail("not_found", "No such agent in this workspace.");
-    const key = principalKey({ kind: "agent", id: agent.id });
-    const [channel, member] = await Promise.all([
-      this.db
-        .prepare("SELECT * FROM channels WHERE id = ? AND workspace_id = ?")
-        .bind(String(channelId ?? ""), workspace.id)
-        .first<ChannelRow>(),
-      this.db.prepare("SELECT * FROM channel_members WHERE channel_id = ? AND principal = ?").bind(String(channelId ?? ""), key).first<MemberRow>(),
-    ]);
-    if (!channel) return fail("not_found", "No such channel.");
-    if (!member) return fail("forbidden", "The agent is not a member of this channel.");
-    return ok({ place: { slug: slug.toLowerCase(), workspace, channel, member }, agent });
-  }
-
-  async postAsAgent(a: { workspace: string; channel_id: string; agent_id: string; message: AgentPostMessage }): Promise<Result<ChatMessage>> {
-    const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
-    if (!found.ok) return found;
-    const { place, agent } = found.value;
-    const card = a.message?.card == null ? null : cleanCard(a.message.card);
-    if (a.message?.card != null && !card) return fail("invalid", "A card needs a kind and a title.");
-    const body = messageBody(a.message?.body ?? "", !!card);
-    if (!body.ok) return fail("invalid", body.message);
-    const hops = typeof a.message?.hops === "number" && a.message.hops >= 0 ? Math.floor(a.message.hops) : 0;
-    const askedBy = typeof a.message?.asked_by === "string" && a.message.asked_by ? a.message.asked_by : agent.created_by;
-    return this.write(
-      place,
-      principalKey({ kind: "agent", id: agent.id }),
-      { body: body.body, card, thread_root: a.message?.thread_root ?? null },
-      // The asker carries on from the delivery the agent is answering;
-      // without one, agents it wakes treat the asker as unable to change code.
-      { hops, asked_by: askedBy, asker: cleanAsker(a.message?.asker), chain: chainFor(a.message?.chain, agent.id) },
-    );
-  }
-
-  /** Everyone in a conversation, as member keys. */
-  private async memberKeys(channelId: string): Promise<string[]> {
-    const rows = await this.db.prepare("SELECT principal FROM channel_members WHERE channel_id = ?").bind(channelId).all<{ principal: string }>();
-    return rows.results.map((row) => row.principal);
-  }
-
-  /** An agent's text as it is kept: mentions of anyone not in the conversation lose their `@` (src/mentions.ts). */
-  private async agentText(place: Place, body: string): Promise<string> {
-    if (!body.includes("@")) return body;
-    const profiles = await this.profiles(place.slug, place.workspace, await this.memberKeys(place.channel.id));
-    return plainOutside(body, new Set([...profiles.values()].map((p) => p.name.toLowerCase())));
-  }
-
-  /** What an agent is told about where it is answering, every turn. */
-  async conversationForAgent(a: { workspace: string; channel_id: string; agent_id: string; asked_by?: string | null }): Promise<Result<ConversationForAgent>> {
-    const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
-    if (!found.ok) return found;
-    const { place } = found.value;
-    const rows = await this.db
-      .prepare("SELECT principal FROM channel_members WHERE channel_id = ? ORDER BY joined_at, principal")
-      .bind(place.channel.id)
-      .all<{ principal: string }>();
-    const keys = rows.results.map((row) => row.principal);
-    const agents = keys.filter((key) => key.startsWith("agent:"));
-    const people = keys.filter((key) => key.startsWith("user:"));
-    // The person who asked first, then the earliest to join, up to the cap.
-    const asker = typeof a.asked_by === "string" && a.asked_by ? `user:${a.asked_by}` : null;
-    const shown = [...(asker && people.includes(asker) ? [asker] : []), ...people.filter((key) => key !== asker)].slice(0, CONVERSATION_PEOPLE_SHOWN);
-    const profiles = await this.profiles(place.slug, place.workspace, [...agents, ...shown]);
-    return ok({
-      channel: toChannel(place.channel),
-      members: [...agents, ...shown].map((key) => profiles.get(key)!).filter(Boolean),
-      people: people.length,
-      agents: agents.length,
-    });
-  }
-
-  /**
-   * An agent hands work to a colleague agent for the person who asked
-   * (`handOffAsAgent` in @g1t/contracts). The brief is the agent's message,
-   * so everyone where it lands sees the work move; it wakes the colleague
-   * and nobody else.
-   */
-  async handOffAsAgent(a: { workspace: string; channel_id: string; agent_id: string; hand_off: AgentHandOff }): Promise<Result<HandOffResult>> {
-    const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
-    if (!found.ok) return found;
-    const { place, agent } = found.value;
-    const input = a.hand_off ?? ({} as AgentHandOff);
-    const brief = messageBody(input.brief);
-    if (!brief.ok) return fail("invalid", brief.message);
-    const colleague = await this.liveAgent(place.workspace, String(input.colleague_id ?? ""));
-    if (!colleague) return fail("not_found", "No such agent in this workspace.");
-    const personal = personalAgentRefusal(colleague, { kind: "hand_off", members: null });
-    if (personal) return fail("invalid", personal);
-    const given = typeof input.hops === "number" && input.hops >= 0 ? Math.floor(input.hops) : 0;
-    const before = chainFor(input.chain, agent.id).slice(0, -1);
-    const refused = handOffRefusal({ agent: agent.id, colleague, chain: before, hops: given });
-    if (refused) return fail("invalid", refused);
-    // Work is handed on for someone in this conversation, never for a stranger to it.
-    const askedBy = typeof input.asked_by === "string" ? input.asked_by : "";
-    const keys = await this.memberKeys(place.channel.id);
-    const askerKey = principalKey({ kind: "user", id: askedBy });
-    if (!askedBy || !keys.includes(askerKey)) return fail("forbidden", "Only the person who asked, in this conversation, can have work handed on.");
-    const me = principalKey({ kind: "agent", id: agent.id });
-    const them = principalKey({ kind: "agent", id: colleague.id });
-    const chain: Chain<AskerAccess> = { hops: given + 1, asked_by: askedBy, asker: cleanAsker(input.asker), chain: [...before, agent.id] };
-    const wake: Wake[] = [{ agent_id: colleague.id, hops: given + 1 }];
-    const threadRoot = typeof input.thread_root === "string" && input.thread_root ? input.thread_root : null;
-
-    if (handOffPlace({ channelKind: place.channel.kind, members: keys.length, colleagueHere: keys.includes(them) }) === "here") {
-      const posted = await this.write(place, me, { body: brief.body, card: null, thread_root: threadRoot }, chain, wake);
-      return posted.ok ? ok({ where: "here", channel_id: place.channel.id, message_id: posted.value.id, opened: false }) : posted;
-    }
-
-    // The group DM of the person, the agent and the colleague: the same three always get the same one.
-    if (!(await this.belongs(place.slug, place.workspace, { kind: "user", id: askedBy }))) {
-      return fail("forbidden", "Only members of the workspace can have work handed on to its agents.");
-    }
-    const members = dmMembers(askerKey, [me, them]);
-    const key = dmKey(members);
-    let dm = await this.db.prepare("SELECT * FROM channels WHERE workspace_id = ? AND dm_key = ?").bind(place.workspace.id, key).first<ChannelRow>();
-    const opened = !dm;
-    if (!dm) {
-      const at = now();
-      await this.db
-        .prepare("INSERT OR IGNORE INTO channels (id, workspace_id, kind, private, dm_key, created_by, created_at) VALUES (?, ?, 'dm', 1, ?, ?, ?)")
-        .bind(newId("chn"), place.workspace.id, key, askerKey, at)
-        .run();
-      dm = await this.db.prepare("SELECT * FROM channels WHERE workspace_id = ? AND dm_key = ?").bind(place.workspace.id, key).first<ChannelRow>();
-      if (!dm) return fail("conflict", "The group message could not be opened. Try again.");
-      await this.db.batch(members.map((member) => this.joinStatement(dm!.id, member, "member", at)));
-    }
-    const there: Place = { slug: place.slug, workspace: place.workspace, channel: dm, member: { channel_id: dm.id, principal: me } as MemberRow };
-    const posted = await this.write(there, me, { body: brief.body, card: null, thread_root: null }, chain, wake);
-    if (!posted.ok) return posted;
-    // Where the work went, here, where it was asked for. It wakes nobody.
-    const named = await this.profiles(place.slug, place.workspace, [askerKey]);
-    const person = named.get(askerKey);
-    await this.write(
-      place,
-      me,
-      {
-        body: "",
-        card: {
-          kind: "handoff",
-          title: `${agent.display_name} handed this to ${colleague.display_name}`,
-          detail: `${colleague.display_name} works on it in a group message with ${person ? person.display_name : "the person who asked"} and ${agent.display_name}.`,
-          state: null,
-          href: `/${place.slug}/-/chat/dm/${dm.id}`,
-        },
-        thread_root: threadRoot,
-      },
-      { ...chain, hops: given },
-    ).catch((error: unknown) => console.error("chat could not post where a hand-off went", error));
-    return ok({ where: "group_dm", channel_id: dm.id, message_id: posted.value.id, opened });
-  }
-
-  /**
-   * A person presses an action on a card. They must be able to read the
-   * conversation; the card must offer the action; its owner (agents)
-   * decides whether this person may, does it, and updates the card.
-   */
-  async cardAction(a: {
-    workspace: string;
-    channel_id: string;
-    viewer: Viewer;
-    message_id: string;
-    action_id: string;
-    input?: string | null;
-  }): Promise<Result<CardActionResult>> {
-    const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
-    if (!found.ok) return found;
-    const place = found.value;
-    const row = await this.messageRow(place.channel.id, String(a.message_id ?? ""));
-    if (!row || row.deleted_at || !row.card) return fail("not_found", "No such card.");
-    const card = JSON.parse(row.card) as MessageCard;
-    const action = card.actions?.find((x) => x.id === a.action_id);
-    if (!action || action.href || card.owner !== "agents") return fail("invalid", "That card has no such action.");
-    const input = typeof a.input === "string" ? a.input.slice(0, 4000) : null;
-    if (action.input && !input?.trim()) return fail("invalid", `${action.input.label || "A value"} is needed.`);
-    return workspaceAgentsClient(this.env.AGENTS).cardAction({
-      workspace: place.slug,
-      channel_id: place.channel.id,
-      message_id: row.id,
-      viewer: a.viewer!,
-      card: { kind: card.kind, ref: card.ref ?? null },
-      action_id: action.id,
-      input,
-    });
-  }
-
-  /**
-   * Changes a message the agent posted (a session's live card, say): its
-   * body, its card, or both. Only the agent's own messages; it wakes
-   * nobody, and everyone in the conversation sees it change.
-   */
-  async updateAsAgent(a: {
-    workspace: string;
-    channel_id: string;
-    agent_id: string;
-    id: string;
-    change: { body?: string; card?: MessageCard | null };
-  }): Promise<Result<ChatMessage>> {
-    const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
-    if (!found.ok) return found;
-    const { place, agent } = found.value;
-    const row = await this.messageRow(place.channel.id, String(a.id ?? ""));
-    if (!row || row.deleted_at) return fail("not_found", "No such message.");
-    if (row.author !== principalKey({ kind: "agent", id: agent.id })) return fail("forbidden", "An agent can change only its own messages.");
-    const change = a.change ?? {};
-    const card = change.card === undefined ? (row.card ? (JSON.parse(row.card) as MessageCard) : null) : change.card === null ? null : cleanCard(change.card);
-    if (change.card && !card) return fail("invalid", "A card needs a kind and a title.");
-    const body = messageBody(change.body === undefined ? row.body : await this.agentText(place, String(change.body ?? "")), !!card);
-    if (!body.ok) return fail("invalid", body.message);
-    const cardJson = card ? JSON.stringify(card) : null;
-    const at = now();
-    // A card's live state is not an edit a person made: no "edited" mark for it.
-    const edited = change.body !== undefined && change.body !== row.body ? at : row.edited_at;
-    await this.db
-      .prepare("UPDATE messages SET body = ?, card = ?, kind = ?, edited_at = ? WHERE id = ?")
-      .bind(body.body, cardJson, card ? "card" : "text", edited, row.id)
-      .run();
-    const [message] = await this.toMessages(place.slug, place.workspace, [{ ...row, body: body.body, card: cardJson, kind: card ? "card" : "text", edited_at: edited }]);
-    this.broadcast(place.channel.id, { type: "message.updated", message });
-    return ok(message);
-  }
-
-  /**
-   * What an agent reads before replying, oldest first: a thread (its root,
-   * then its latest replies), or the channel's latest top-level messages.
-   * Only where the agent is a member, so it reads only what was said where
-   * it was invited. Deleted messages are left out, save a thread's root.
-   */
-  async historyForAgent(a: {
-    workspace: string;
-    channel_id: string;
-    agent_id: string;
-    thread_root?: string | null;
-    limit?: number | null;
-  }): Promise<Result<ChatMessage[]>> {
-    const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
-    if (!found.ok) return found;
-    const { place } = found.value;
-    const size = historySize(a.limit);
-    if (typeof a.thread_root === "string" && a.thread_root) {
-      const asked = await this.messageRow(place.channel.id, a.thread_root);
-      if (!asked) return fail("not_found", "No such thread.");
-      // Asked from a reply: its whole thread.
-      const root = asked.thread_root ? await this.messageRow(place.channel.id, asked.thread_root) : asked;
-      if (!root) return fail("not_found", "No such thread.");
-      const replies = await this.db
-        .prepare(
-          "SELECT * FROM messages WHERE thread_root = ? AND channel_id = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT ?",
-        )
-        .bind(root.id, place.channel.id, Math.max(0, size - 1))
-        .all<MessageRow>();
-      return ok(await this.toMessages(place.slug, place.workspace, historyOf(replies.results, root)));
-    }
-    const rows = await this.db
-      .prepare(
-        "SELECT * FROM messages WHERE channel_id = ? AND thread_root IS NULL AND id < '~' AND deleted_at IS NULL ORDER BY id DESC LIMIT ?",
-      )
-      .bind(place.channel.id, size)
-      .all<MessageRow>();
-    return ok(await this.toMessages(place.slug, place.workspace, historyOf(rows.results)));
-  }
-
-  // ── What an agent may read (src/audience.ts) ───────────────────────────
-
-  /** The people in a conversation, by user id. */
-  private async peopleIn(channelId: string): Promise<string[]> {
-    const rows = await this.db
-      .prepare("SELECT principal FROM channel_members WHERE channel_id = ? AND principal LIKE 'user:%'")
-      .bind(channelId)
-      .all<{ principal: string }>();
-    return rows.results.map((row) => row.principal.slice("user:".length));
-  }
-
-  /** A conversation of this workspace and who reads it, worked out here, never taken from a caller. */
-  private async audienceOf(slug: string, channelId: string): Promise<Result<{ workspace: Workspace; channel: ChannelRow; audience: ChatAudience }>> {
-    const workspace = await this.workspace(String(slug ?? "").toLowerCase());
-    if (!workspace) return fail("not_found", "No such workspace.");
-    const channel = await this.db
-      .prepare("SELECT * FROM channels WHERE id = ? AND workspace_id = ?")
-      .bind(String(channelId ?? ""), workspace.id)
-      .first<ChannelRow>();
-    if (!channel) return fail("not_found", "No such conversation.");
-    const people = await this.peopleIn(channel.id);
-    return ok({ workspace, channel, audience: { kind: audienceKind(channel), member_user_ids: people, member_count: people.length } });
-  }
-
-  async audience(a: { workspace: string; channel_id: string }): Promise<Result<ChatAudience>> {
-    const found = await this.audienceOf(a.workspace, a.channel_id);
-    return found.ok ? ok(found.value.audience) : found;
-  }
-
-  /**
-   * The conversations of the workspace the audience of `channelId` may all
-   * read: public channels, and the ones every person in it is in (a DM only
-   * with exactly them). At most 500, most recently active first.
-   */
-  private async readableFor(workspace: Workspace, audience: ChatAudience): Promise<Map<string, ChannelRow>> {
-    const people = audience.member_user_ids;
-    const rows = isShared({ kind: audience.kind, user_ids: people }) || !people.length
-      ? await this.db
-          .prepare("SELECT * FROM channels WHERE workspace_id = ? AND kind = 'channel' AND private = 0 ORDER BY last_message_at DESC LIMIT 500")
-          .bind(workspace.id)
-          .all<ChannelRow>()
-      : await this.db
-          .prepare(
-            `SELECT * FROM channels WHERE workspace_id = ?1 AND (
-               (kind = 'channel' AND private = 0)
-               OR id IN (SELECT channel_id FROM channel_members WHERE principal IN (${people.map((_, i) => `?${i + 2}`).join(", ")})
-                         GROUP BY channel_id HAVING COUNT(DISTINCT principal) = ${people.length})
-             ) ORDER BY last_message_at DESC LIMIT 500`,
-          )
-          .bind(workspace.id, ...people.map((id) => `user:${id}`))
-          .all<ChannelRow>();
-    const out = new Map<string, ChannelRow>();
-    for (const channel of rows.results) {
-      // The query finds candidates; the rule decides, a DM's people included.
-      const target = { kind: channel.kind, private: channel.private, user_ids: channel.kind === "channel" && !channel.private ? [] : await this.peopleIn(channel.id) };
-      if (readableBy(target, { kind: audience.kind, user_ids: people })) out.set(channel.id, channel);
-    }
-    return out;
-  }
-
-  private async found(slug: string, workspace: Workspace, channels: Map<string, ChannelRow>, rows: MessageRow[]): Promise<AgentFoundMessage[]> {
-    const messages = await this.toMessages(slug, workspace, rows);
-    return messages.map((message) => {
-      const channel = channels.get(message.channel_id)!;
-      return { channel_id: channel.id, channel: channel.kind === "dm" ? null : channel.name, message };
-    });
-  }
-
-  async searchForAgent(a: { workspace: string; channel_id: string; query: string; limit?: number | null }): Promise<Result<AgentFoundMessage[]>> {
-    const found = await this.audienceOf(a.workspace, a.channel_id);
-    if (!found.ok) return found;
-    const pattern = likePattern(a.query);
-    if (!pattern) return fail("invalid", "Search for at least two characters.");
-    const { workspace, audience } = found.value;
-    const channels = await this.readableFor(workspace, audience);
-    if (!channels.size) return ok([]);
-    const ids = [...channels.keys()];
-    const limit = Math.min(20, Math.max(1, Math.floor(Number(a.limit) || 20)));
-    const rows = await this.db
-      .prepare(
-        `SELECT * FROM messages WHERE channel_id IN (${ids.map(() => "?").join(", ")}) AND deleted_at IS NULL AND body LIKE ? ESCAPE '\\'
-         ORDER BY id DESC LIMIT ?`,
-      )
-      .bind(...ids, pattern, limit)
-      .all<MessageRow>();
-    return ok(await this.found(a.workspace.toLowerCase(), workspace, channels, rows.results));
-  }
-
-  async threadForAgent(a: { workspace: string; channel_id: string; target_channel_id: string; id: string }): Promise<Result<AgentFoundMessage[]>> {
-    const found = await this.audienceOf(a.workspace, a.channel_id);
-    if (!found.ok) return found;
-    const { workspace, audience } = found.value;
-    // The same answer for a conversation that is not there and one the audience may not read.
-    const hidden = fail("not_found", "Not available in this conversation.");
-    const target = await this.db
-      .prepare("SELECT * FROM channels WHERE id = ? AND workspace_id = ?")
-      .bind(String(a.target_channel_id ?? ""), workspace.id)
-      .first<ChannelRow>();
-    if (!target) return hidden;
-    const people = target.kind === "channel" && !target.private ? [] : await this.peopleIn(target.id);
-    if (!readableBy({ kind: target.kind, private: target.private, user_ids: people }, { kind: audience.kind, user_ids: audience.member_user_ids })) return hidden;
-    const asked = await this.messageRow(target.id, String(a.id ?? ""));
-    if (!asked) return hidden;
-    const root = asked.thread_root ? await this.messageRow(target.id, asked.thread_root) : asked;
-    if (!root) return hidden;
-    const replies = await this.db
-      .prepare("SELECT * FROM messages WHERE thread_root = ? AND channel_id = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 49")
-      .bind(root.id, target.id)
-      .all<MessageRow>();
-    const rows = historyOf(replies.results, root).filter((row) => !row.deleted_at);
-    return ok(await this.found(a.workspace.toLowerCase(), workspace, new Map([[target.id, target]]), rows));
-  }
-
-  async agentTyping(a: { workspace: string; channel_id: string; agent_id: string }): Promise<Result<null>> {
-    const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
-    if (!found.ok) return found;
-    const { place, agent } = found.value;
-    const key = principalKey({ kind: "agent", id: agent.id });
-    const member = await this.profile(place.slug, place.workspace, key);
-    this.broadcast(place.channel.id, {
-      type: "typing",
-      channel_id: place.channel.id,
-      member,
-      until: new Date(Date.now() + AGENT_TYPING_MS).toISOString(),
-    });
-    return ok(null);
-  }
-
   // ── Reactions (src/emoji.ts) ────────────────────────────────────────────
 
   /** One message's reactions now, as `me` sees them. */
@@ -1912,21 +1313,6 @@ class Chat {
     const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
     if (!found.ok) return found;
     return this.reactTo(found.value, userKey(a.viewer!), a.message_id, a.emoji, true);
-  }
-
-  /** An agent's reaction counts like anyone's; it must be in the channel. */
-  async reactAsAgent(a: {
-    workspace: string;
-    channel_id: string;
-    agent_id: string;
-    message_id: string;
-    emoji: string;
-    remove?: boolean;
-  }): Promise<Result<ChatReaction[]>> {
-    const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
-    if (!found.ok) return found;
-    const { place, agent } = found.value;
-    return this.reactTo(place, principalKey({ kind: "agent", id: agent.id }), a.message_id, a.emoji, a.remove === true);
   }
 
   // ── A workspace's own emoji (src/emoji.ts) ──────────────────────────────
@@ -2158,8 +1544,6 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.join(args));
     case "leave":
       return Response.json(await service.leave(args));
-    case "agent_destroyed":
-      return Response.json(await service.agentDestroyed(args));
     case "invite":
       return Response.json(await service.invite(args));
     case "messages":
@@ -2174,32 +1558,10 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.markRead(args));
     case "set_preferences":
       return Response.json(await service.setPreferences(args));
-    case "post_as_agent":
-      return Response.json(await service.postAsAgent(args));
-    case "card_action":
-      return Response.json(await service.cardAction(args));
-    case "update_as_agent":
-      return Response.json(await service.updateAsAgent(args));
-    case "agent_typing":
-      return Response.json(await service.agentTyping(args));
-    case "history_for_agent":
-      return Response.json(await service.historyForAgent(args));
-    case "audience":
-      return Response.json(await service.audience(args));
-    case "conversation_for_agent":
-      return Response.json(await service.conversationForAgent(args));
-    case "hand_off_as_agent":
-      return Response.json(await service.handOffAsAgent(args));
-    case "search_for_agent":
-      return Response.json(await service.searchForAgent(args));
-    case "thread_for_agent":
-      return Response.json(await service.threadForAgent(args));
     case "react":
       return Response.json(await service.react(args));
     case "unreact":
       return Response.json(await service.unreact(args));
-    case "react_as_agent":
-      return Response.json(await service.reactAsAgent(args));
     case "list_emoji":
       return Response.json(await service.listEmoji(args));
     case "add_emoji":
