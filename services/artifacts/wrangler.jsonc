@@ -67,8 +67,14 @@
 		// What a merged pull request changed.
 		{ "binding": "WORK", "service": "g1t-work" },
 		// doc.page.* events on the bus (src/events.ts).
-		{ "binding": "EVENTS", "service": "g1t-events" }
+		{ "binding": "EVENTS", "service": "g1t-events" },
+		// Whether a workspace has the plan, once its files pass the free cap (src/quota.ts).
+		{ "binding": "BILLING", "service": "g1t-billing" }
 	],
+	// What a workspace without the plan may keep in files put in its pages
+	// and artifacts, in bytes; past it, new uploads are refused (src/quota.ts).
+	// 0 is no cap.
+	"vars": { "FREE_DOC_FILES_BYTES": "1073741824" },
 	// Merges and pushes to default branches: pages whose cited code
 	// changed, and projects' docs read again (src/staleness.ts). The events
 	// service sends it what g1t_contracts::subscribers routes to
