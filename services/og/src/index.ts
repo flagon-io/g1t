@@ -13,7 +13,8 @@
  * a card shows does, so a new logo or an edited title gets a new address.
  *
  * Also the `Screenshots` entrypoint, reached only through service
- * bindings: a screenshot of each project's production, per deploy (see
+ * bindings: a screenshot of each project's production, per deploy on
+ * g1t.page, and of a production deployed elsewhere at its address (see
  * `capture.ts`).
  */
 import { WorkerEntrypoint } from "cloudflare:workers";
@@ -33,9 +34,9 @@ import mono400 from "./fonts/ibm-plex-mono-400.ttf";
 import mono500 from "./fonts/ibm-plex-mono-500.ttf";
 import { cardPng } from "./render.ts";
 import { cacheKey, drawnKey } from "./cache.ts";
-import { type Shot, screenshotOf, sweep, take } from "./capture.ts";
+import { type Shot, externalOf, refreshExternal, screenshotOf, sweep, take, takeExternal } from "./capture.ts";
 import { pausedCard } from "./paused.ts";
-import { parseShot } from "./screenshot.ts";
+import { parseExternalShot, parseShot } from "./screenshot.ts";
 import { BRAND, type Card, cardPath, docsCard, resolve } from "./resolve.ts";
 
 interface Env {
@@ -49,7 +50,7 @@ interface Env {
   BILLING?: ServiceBinding;
   /** Browser Rendering, for production screenshots. */
   BROWSER: Fetcher;
-  /** Production screenshots, by app hostname. */
+  /** Production screenshots, by app hostname; a production deployed elsewhere's under `external/`. */
   SCREENSHOTS: R2Bucket;
   /** Cards drawn per address (RATE_LIMITS in packages/contracts). Absent: no limit. */
   OG_RENDER_LIMIT?: RateLimitBinding;
@@ -77,6 +78,34 @@ export class Screenshots extends WorkerEntrypoint<Env> {
     const request = parseShot(input);
     if (!request) return null;
     return screenshotOf(this.env, request);
+  }
+
+  /**
+   * Takes the screenshot of a production deployed elsewhere,
+   * `{ url, commit }` (`commit` a deploy's commit or a UTC day), in the
+   * background. Called by projects when the address is set or changed and
+   * when a production deployment is reported. False for an address that is
+   * not public.
+   */
+  async captureExternal(input: unknown): Promise<boolean> {
+    const request = parseExternalShot(input);
+    if (!request) return false;
+    this.ctx.waitUntil(takeExternal(this.env, request));
+    return true;
+  }
+
+  /**
+   * The kept screenshot of a production deployed elsewhere, `{ url,
+   * commit, since? }`, taken now when there is none. One more than a day
+   * old, or older than `since`, is returned as it is and taken again in
+   * the background.
+   */
+  async externalImage(input: unknown): Promise<Shot | null> {
+    const request = parseExternalShot(input);
+    if (!request) return null;
+    const { shot, stale } = await externalOf(this.env, request);
+    if (stale) this.ctx.waitUntil(takeExternal(this.env, request));
+    return shot;
   }
 }
 
@@ -107,10 +136,19 @@ const BRIEF_CACHE_CONTROL = "public, max-age=60";
 const NO_STORE = "no-store";
 
 export default {
-  /** Once a day: old screenshots out (capture.ts `sweep`). */
+  /**
+   * Once a day: old screenshots out (capture.ts `sweep`), and productions
+   * deployed elsewhere taken again when theirs is a day old
+   * (`refreshExternal`).
+   */
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
     const removed = await sweep(env).catch((error) => (console.error("og: sweep failed", error), 0));
     if (removed) console.log(`og: removed ${removed} old screenshots`);
+    const urls = await projectsClient(env.PROJECTS)
+      .externalProductions()
+      .catch((error) => (console.error("og: could not list productions deployed elsewhere", error), [] as string[]));
+    const taken = await refreshExternal(env, urls).catch((error) => (console.error("og: refresh failed", error), 0));
+    if (taken) console.log(`og: took ${taken} screenshots of productions deployed elsewhere`);
   },
 
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

@@ -45,6 +45,13 @@ declare global {
           commit: string;
           capturedAt: string;
         } | null>;
+        /** A production deployed elsewhere, at its address; `commit` is a deploy's commit or a UTC day. */
+        externalImage(input: { url: string; commit: string; since?: string }): Promise<{
+          body: ArrayBuffer;
+          contentType: string;
+          commit: string;
+          capturedAt: string;
+        } | null>;
       };
       BLOBS: KVNamespace;
       /** Uploaded avatars by SHA-256, with `{ contentType }`; written by identity. */

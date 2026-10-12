@@ -33,6 +33,7 @@ import { ACTIVE, decayed, raised } from "./activity";
 import { MAX_PINS, MAX_RECENT, MAX_VISITS, placePin, recentAfterPins, reorderPins } from "./pins";
 import { renameStatements } from "./rename";
 import { moveStatements, slugOf, strandedQuery } from "./transfer";
+import { checkProductionImage, productionImageKey, productionImageOf, sha256, today, wantsScreenshot } from "./production-image";
 
 import {
   can,
@@ -56,6 +57,7 @@ import {
   type NewProject,
   type Project,
   type ProjectChanges,
+  type ProductionImageChange,
   type ProjectKind,
   type ProjectEcosystem,
   type ProjectShortcuts,
@@ -72,6 +74,14 @@ type Env = {
   IDENTITY: ServiceBinding;
   PACKAGES: ServiceBinding;
   DEPLOYMENTS: ServiceBinding;
+  /** The avatars namespace: uploaded production images, under `production/<sha256>`, which the usercontent origin serves. */
+  AVATARS: KVNamespace;
+  /**
+   * The og service's `Screenshots` entrypoint: a screenshot of a production
+   * deployed elsewhere, taken when its address is set or changed and when
+   * a production deployment is reported. Absent: none is asked for.
+   */
+  SCREENSHOTS?: { captureExternal(input: { url: string; commit: string }): Promise<boolean> };
 };
 
 type Row = {
@@ -102,6 +112,10 @@ type Row = {
   kind_setting?: string | null;
   runs_setting?: string | null;
   production_url?: string | null;
+  /** An uploaded image of production, by its SHA-256 (migrations/0012_production_image.sql). */
+  production_image?: string | null;
+  production_image_type?: string | null;
+  production_image_preferred?: number | null;
   /** Its own homepage; null follows `repo_website`. */
   homepage?: string | null;
   repo_website?: string | null;
@@ -170,6 +184,7 @@ function toProject(row: Row): Project {
     kindReason: reason,
     runs,
     productionUrl: row.production_url ?? null,
+    productionImage: productionImageOf(row),
     detected: detectedKind(facts),
     ecosystem: (row.detected_ecosystem as ProjectEcosystem | null) ?? null,
     links: projectLinks(row),
@@ -487,7 +502,113 @@ class Projects {
     let saved = (await this.db.prepare("SELECT * FROM projects WHERE id = ?").bind(row.id).first<Row>())!;
     // Another root has other files: read them again.
     if (rootDir !== row.root_dir) saved = (await this.detect({ ...saved, detected_commit: null }).catch(() => null)) ?? saved;
-    return ok(toProject(saved));
+    const project = toProject(saved);
+    // Production elsewhere given an address, or a new one: its screenshot, now.
+    const was = toProject(row);
+    if (wantsScreenshot(project) && (project.productionUrl !== was.productionUrl || was.runs !== "elsewhere")) {
+      this.screenshot(project.productionUrl!, today());
+    }
+    return ok(project);
+  }
+
+  /**
+   * Asks og for a screenshot of a production deployed elsewhere (og takes
+   * it in the background). Never fails: the overview and the daily
+   * refresh take it later anyway.
+   */
+  private async capture(url: string, commit: string): Promise<void> {
+    await this.env.SCREENSHOTS?.captureExternal({ url, commit }).catch((error) => console.warn("could not ask for a screenshot", url, error));
+  }
+
+  /** The same, after the answer is sent. */
+  private screenshot(url: string, commit: string): void {
+    this.defer(this.capture(url, commit));
+  }
+
+  async setProductionImage(a: {
+    actor: User;
+    workspace: string;
+    slug: string;
+    change: ProductionImageChange;
+  }): Promise<Result<Project>> {
+    const change = a.change ?? {};
+    const row = await this.db
+      .prepare("SELECT * FROM projects WHERE workspace = ? AND slug = ? AND repo_deleted_at IS NULL")
+      .bind(a.workspace.toLowerCase(), a.slug.toLowerCase())
+      .first<Row>();
+    if (!row) return fail("not_found", "There is no such project.");
+    // Whoever may change its production address.
+    const allowed = this.changeable(row, a.actor, NEEDS.update);
+    if (!allowed.ok) return allowed;
+    let file = row.production_image ?? null;
+    let type = row.production_image_type ?? null;
+    let preferred = !!row.production_image_preferred;
+    if (change.image === null) {
+      file = null;
+      type = null;
+      preferred = false;
+    } else if (change.image !== undefined) {
+      const checked = checkProductionImage(change.image);
+      if (!checked.ok) return fail("invalid", checked.message);
+      file = await sha256(checked.bytes);
+      type = checked.contentType;
+      // Kept by its hash, so the same image stored twice is one file; its
+      // type is the one read from its bytes (usercontent serves only that).
+      await this.env.AVATARS.put(productionImageKey(file), checked.bytes, { metadata: { contentType: type } });
+    }
+    if (change.preferred !== undefined) {
+      if (change.preferred && !file) return fail("invalid", "Upload an image first.");
+      preferred = !!change.preferred;
+    }
+    await this.db
+      .prepare("UPDATE projects SET production_image = ?, production_image_type = ?, production_image_preferred = ?, updated_at = ? WHERE id = ?")
+      .bind(file, type, preferred ? 1 : 0, now(), row.id)
+      .run();
+    // The image it replaced goes, unless another project shows it too.
+    const old = row.production_image;
+    if (old && old !== file) {
+      const used = await this.db.prepare("SELECT 1 FROM projects WHERE production_image = ? LIMIT 1").bind(old).first();
+      if (!used) this.defer(this.env.AVATARS.delete(productionImageKey(old)).catch((error) => console.warn("could not delete an image", error)));
+    }
+    const saved = (await this.db.prepare("SELECT * FROM projects WHERE id = ?").bind(row.id).first<Row>())!;
+    const project = toProject(saved);
+    // No longer shown instead of a screenshot: one is taken, if none is fresh.
+    if (row.production_image_preferred && !preferred && wantsScreenshot(project)) this.screenshot(project.productionUrl!, today());
+    return ok(project);
+  }
+
+  /** Every production address deployed elsewhere that shows a screenshot, once each. */
+  async externalProductions(): Promise<string[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT * FROM projects WHERE production_url IS NOT NULL AND repo_deleted_at IS NULL
+           AND (runs_setting IS NULL OR runs_setting = 'elsewhere') AND production_image_preferred = 0`,
+      )
+      .all<Row>();
+    const urls = rows.results.map(toProject).filter(wantsScreenshot).map((project) => project.productionUrl!);
+    return [...new Set(urls)];
+  }
+
+  /**
+   * A production deployment reported from outside g1t.page succeeded: a
+   * screenshot of each of its repository's projects deployed elsewhere,
+   * at the address the deployment gives, else the project's own.
+   */
+  private async productionReported(data: Extract<G1tEvent, { type: "deployment_status.created" }>["data"]): Promise<void> {
+    const { deployment, deploymentStatus } = data;
+    if (deploymentStatus.state !== "success" || !deployment.production_environment || deployment.source === "g1t_page") return;
+    const rows = await this.db
+      .prepare("SELECT * FROM projects WHERE repo_id = ? AND repo_deleted_at IS NULL ORDER BY is_primary DESC")
+      .bind(data.repoId)
+      .all<Row>();
+    // The repository's own project first: the overview shows the reported
+    // production on it, as running elsewhere when nobody has said otherwise.
+    const project = rows.results
+      .map(toProject)
+      .find((one) => one.runs === "elsewhere" || (one.runs === null && one.kind === "app"));
+    if (!project || project.productionImage?.preferred) return;
+    const url = deploymentStatus.environment_url ?? deployment.environment_url ?? project.productionUrl;
+    if (url) await this.capture(url, deployment.sha);
   }
 
   async publicLinks(a: { repos: { namespace: string; name: string }[] }): Promise<Record<string, string>> {
@@ -776,6 +897,10 @@ class Projects {
       const repoId = event.repoId ?? ("repoId" in event.data ? (event.data as { repoId?: string }).repoId : undefined);
       if (repoId) await this.active(repoId, event.time, event.type === "git.push");
     }
+    if (event.type === "deployment_status.created") {
+      await this.productionReported(event.data);
+      return;
+    }
     if (event.type === "workspace.renamed") {
       const current = await currentWorkspaceSlug(this.env.IDENTITY, event.data);
       const statements = renameStatements(staleSlugs(event.data, current), current);
@@ -942,6 +1067,10 @@ async function answer(service: Projects, method: string, args: any): Promise<Res
       return Response.json(await service.create(args));
     case "update":
       return Response.json(await service.update(args));
+    case "set_production_image":
+      return Response.json(await service.setProductionImage(args));
+    case "external_productions":
+      return Response.json(await service.externalProductions());
     case "deployments_changed":
       await service.deploymentsChanged(args);
       return Response.json(null);

@@ -140,6 +140,30 @@ export function productionEnvironment<T extends Ordered & Pick<DeploymentEnviron
   return orderEnvironments(environments).find((env) => env.production_environment && env.latest != null) ?? null;
 }
 
+/**
+ * Production deployed somewhere other than g1t.page (by g1t Actions, or
+ * reported through the API), as an app deployed elsewhere shows it: the
+ * production environment's latest deployment, when it is not a g1t.page
+ * build. `created_at` is its latest status.
+ */
+export function reportedProduction(environments: readonly DeploymentEnvironment[]): {
+  environment: string;
+  url: string | null;
+  state: string;
+  sha: string;
+  created_at: string;
+} | null {
+  const reported = productionEnvironment(environments);
+  if (!reported?.latest || reported.latest.source === "g1t_page") return null;
+  return {
+    environment: reported.name,
+    url: environmentUrl(reported),
+    state: reported.latest.state,
+    sha: reported.latest.sha,
+    created_at: reported.latest.updated_at,
+  };
+}
+
 /** The filters the list's address can carry, besides the page. */
 export const FILTER_KEYS = ["environment", "state", "source", "creator", "ref"] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
