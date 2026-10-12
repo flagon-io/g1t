@@ -7,6 +7,7 @@ import { visitorAsksFirst } from "../app/lib/analytics-consent";
 import { hardenRegistryHeaders } from "../app/lib/content-safety";
 import { withSiteHeaders } from "../app/lib/page-headers";
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
+import { READ_DEADLINE_MS, withDeadline } from "../app/lib/deadline";
 import { gitLimited, pageLimited, usercontentLimited } from "../app/lib/front-door-limits";
 import { goImport } from "../app/lib/go-get";
 import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
@@ -125,6 +126,8 @@ const PUBLIC_PROJECT =
 /** Fresh for this long; then served once more while a new copy is made. */
 const PUBLIC_FRESH_SECONDS = 30;
 const PUBLIC_STALE_SECONDS = 300;
+/** The longest a cache lookup holds up a public page. */
+const CACHE_DEADLINE_MS = 2_000;
 
 function anonymousPage(request: Request, pathname: string): boolean {
   if (request.method !== "GET") return false;
@@ -142,7 +145,11 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
   const key = new Request(keyUrl, { method: "GET" });
   const repository = PUBLIC_PROJECT.test(new URL(request.url).pathname) ? repositoryOfPage(new URL(request.url).pathname) : null;
   // Asked alongside the cache, so a hit waits for one indexed read at most.
-  const [cached, visible] = await Promise.all([cache.match(key), repository ? isStillPublic(env, repository) : Promise.resolve(true)]);
+  // A cache that does not answer is a miss: the page is drawn afresh.
+  const [cached, visible] = await Promise.all([
+    withDeadline("cache", CACHE_DEADLINE_MS, () => cache.match(key)).catch(() => undefined),
+    repository ? isStillPublic(env, repository) : Promise.resolve(true),
+  ]);
   if (cached && !visible) {
     ctx.waitUntil(cache.delete(key).then(() => undefined, () => undefined));
     return render();
@@ -179,12 +186,15 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
 /** Whether the repository is there and public; anything else, including no answer, is no. */
 async function isStillPublic(env: Env, repository: string): Promise<boolean> {
   try {
-    const answer = await env.REPOS.fetch("https://service/rpc/visibility", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ paths: [repository] }),
+    return await withDeadline("repos visibility", READ_DEADLINE_MS, async (signal) => {
+      const answer = await env.REPOS.fetch("https://service/rpc/visibility", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ paths: [repository] }),
+        signal,
+      });
+      return answer.ok && stillPublic(await answer.json(), repository);
     });
-    return answer.ok && stillPublic(await answer.json(), repository);
   } catch {
     return false;
   }
