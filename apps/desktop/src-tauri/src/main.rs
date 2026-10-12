@@ -66,6 +66,7 @@ fn main() {
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .setup(|app| {
             let handle = app.handle().clone();
+            config::note_dev_server(&handle);
             config::load(&handle);
             config::allow_site(&handle)?;
             let hidden = settings::starts_hidden(&handle);
