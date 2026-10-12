@@ -63,6 +63,11 @@ jobs:
         run: |
           # A token pasted with a newline breaks the request's header.
           export EXPO_TOKEN="$(printf %s "$EXPO_TOKEN" | tr -d '[:space:]')"
+          # Without a token Expo answers 200; a bare 403 is its edge refusing this network.
+          code="$(curl -s -o /dev/null -w '%{http_code}' -X POST https://api.expo.dev/graphql \
+            -H 'Content-Type: application/json' -d '{"query":"{ meUserActor { id } }"}')"
+          echo "api.expo.dev answers this runner with $code"
+          if [ "$code" = 403 ]; then echo "::error::Expo refuses requests from this runner's network"; exit 1; fi
           npx --yes eas-cli@24.12.1 whoami
           npx --yes eas-cli@24.12.1 build --platform android --profile "$PROFILE" \
             --non-interactive --wait --json > build.json
