@@ -2415,14 +2415,24 @@ impl Actions {
         // A brokered secret's value never reaches the sandbox: the job gets
         // a stand-in, which the runner Worker fills in on its requests to
         // the secret's hosts. A self-hosted runner's requests never pass
-        // the Worker, so there it stays a stand-in, and the log says so.
+        // the Worker: a harness there that brokers is given each stand-in's
+        // hosts, and passes its job's requests to them through g1t
+        // (broker.rs); any other keeps a stand-in that does nothing, and
+        // the log says so.
         let stand_ins = broker::substitute(&mut secrets, &brokers, broker::stand_in);
+        let relayed = job.runner_id.is_some() && a.broker && !stand_ins.is_empty();
         if !stand_ins.is_empty() {
             self.keep_stand_ins(&job.id, job.timeout_minutes, &stand_ins).await?;
             if job.runner_id.is_some() {
-                let mut names: Vec<&str> = stand_ins.iter().map(|made| made.broker.name.as_str()).collect();
-                names.sort_unstable();
-                let notes: String = names.iter().map(|name| broker::self_hosted_note(name) + "\n").collect();
+                let mut made: Vec<&broker::StandIn> = stand_ins.iter().collect();
+                made.sort_unstable_by(|a, b| a.broker.name.cmp(&b.broker.name));
+                let notes: String = made
+                    .iter()
+                    .map(|made| {
+                        let note = if relayed { broker::brokered_note(&made.broker.name, &made.broker.hosts) } else { broker::self_hosted_note(&made.broker.name) };
+                        note + "\n"
+                    })
+                    .collect();
                 self.note_log(&job.id, 0, &notes).await?;
             }
         }
@@ -2569,6 +2579,9 @@ impl Actions {
         });
         if let Some(next) = next {
             spec["nextToken"] = json!(next);
+        }
+        if relayed {
+            spec["brokered"] = broker::spec_entries(&stand_ins);
         }
         Ok(Outcome::Ok(spec))
     }

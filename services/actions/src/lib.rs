@@ -280,6 +280,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         // A running job's stand-ins for brokered secrets: the runner
         // Worker's alone, never passed on by the API.
         "brokered_secrets" => reply(&service.brokered_secrets(args(body)?).await?),
+        // The same for a self-hosted job's broker requests, which the
+        // runner Worker relays (`POST /actions/jobs/{job}/broker`): with
+        // the job's current token only.
+        "relayed_secrets" => reply(&service.relayed_secrets(args(body)?).await?),
         // actions/cache, through the API with the job's token.
         "cache_lookup" => reply(&service.cache_lookup(args(body)?).await?),
         "cache_reserve" => reply(&service.cache_reserve(args(body)?).await?),
