@@ -1,8 +1,7 @@
 /**
  * People: a workspace's directory of everyone in it, people and agents,
- * and each member's place in it: a title, who they report to, and what
- * they own. Kept by identity beside membership; mirrors
- * `crates/contracts/src/people.rs`. Agents come from the agents service,
+ * and each member's place in it: a title and what they own. Kept by
+ * identity beside membership; mirrors `crates/contracts/src/people.rs`. Agents come from the agents service,
  * which teams name by id.
  */
 import type { User } from "./identity";
@@ -15,7 +14,7 @@ export const MAX_TITLE_LENGTH = 80;
 export const MAX_OWNS = 8;
 export const MAX_OWNS_LENGTH = 60;
 
-/** One member, as the directory, their profile and the org chart show them. */
+/** One member, as the directory and their profile show them. */
 export type DirectoryPerson = {
   user_id: string;
   username: string;
@@ -30,8 +29,6 @@ export type DirectoryPerson = {
   role: "owner" | "member";
   /** Their title in this workspace. */
   title: string | null;
-  /** Who they report to, by username. */
-  manager: string | null;
   /** What they own: a few short phrases. */
   owns: string[];
   joined_at: string;
@@ -39,7 +36,7 @@ export type DirectoryPerson = {
 
 export type TeamPersonRef = { username: string; role: TeamRole };
 
-/** A team as the directory and the org chart need it. */
+/** A team as the directory needs it. */
 export type DirectoryTeam = {
   slug: string;
   name: string;
@@ -61,21 +58,20 @@ export type PeopleDirectory = {
   teams: DirectoryTeam[];
   /** What members get on every repository. */
   base_permission: "none" | "read" | "write" | "admin";
-  /** Whether the viewer owns the workspace: they set anyone's title, manager and what they own. */
+  /** Whether the viewer owns the workspace: they set anyone's title and what they own. */
   can_manage: boolean;
 };
 
-/** What changes on a member's profile; the rest stays. `manager: ""` clears it (owners only). */
+/** What changes on a member's profile; the rest stays. */
 export type MemberProfileChanges = {
   title?: string;
-  manager?: string;
   owns?: string[];
 };
 
 export interface PeopleClient {
   /** Everyone in a workspace and its teams, as the viewer may see them. Members only. */
   peopleDirectory(viewer: User | null, workspace: string): Promise<Result<PeopleDirectory>>;
-  /** A member's title and what they own (themselves or an owner), and their manager (owners). */
+  /** A member's title and what they own: themselves, or an owner. */
   setMemberProfile(actor: User, workspace: string, username: string, changes: MemberProfileChanges): Promise<Result<DirectoryPerson>>;
 }
 

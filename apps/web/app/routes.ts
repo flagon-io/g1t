@@ -100,12 +100,11 @@ export default [
     index("routes/workspace/overview.tsx"),
     // Its pages, each in the sidebar: Overview (above), Projects, People, Insights; Teams and Packages below.
     route("-/projects", "routes/workspace/projects.tsx"),
-    // People mode: the directory of people, each one's profile, and the org chart. Agents
+    // People mode: the directory of people and each one's profile. Agents
     // are not in it; an agent's old People address redirects to its page in Agents.
     route("-/people", "routes/workspace/people.tsx"),
     route("-/people/agents/:handle", "routes/workspace/people/agent.tsx"),
     route("-/people/:username", "routes/workspace/people/person.tsx"),
-    route("-/org-chart", "routes/workspace/org-chart.tsx"),
     // Workspace mode's Access: who is a member and their roles, the invitations sent, and who may do what.
     route("-/members", "routes/workspace/members.tsx"),
     route("-/members/invitations", "routes/workspace/member-invitations.tsx"),

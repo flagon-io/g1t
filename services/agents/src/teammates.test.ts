@@ -14,7 +14,6 @@ const person = (username: string, extra: Partial<AgentTeam["people"][number]> = 
   title: null,
   timezone: null,
   owns: [],
-  manager: null,
   maintainer: false,
   ...extra,
 });
@@ -37,8 +36,8 @@ const sales: AgentTeam = {
   channel: { id: "chn_1", name: "sales" },
   budget_micros: 150_000_000,
   people: [
-    person("sofia", { name: "Sofia Reyes", title: "Head of Sales", owns: ["the forecast"], manager: "chase", maintainer: true, timezone: "America/Chicago" }),
-    person("jordan", { name: "Jordan Lee", title: "Account Executive", owns: ["Halcyon", "Bluebird"], manager: "sofia" }),
+    person("sofia", { name: "Sofia Reyes", title: "Head of Sales", owns: ["the forecast"], maintainer: true, timezone: "America/Chicago" }),
+    person("jordan", { name: "Jordan Lee", title: "Account Executive", owns: ["Halcyon", "Bluebird"] }),
   ],
   agent_ids: ["agt_david"],
 };
@@ -66,8 +65,8 @@ test("an agent is told who leads, who owns what and who is around", () => {
   assert.match(text, /Led by Sofia Reyes \(@sofia\)\./);
   assert.match(text, /Its channel is #sales\./);
   assert.match(text, /share a budget of \$150\.00 a month/);
-  assert.match(text, /Sofia Reyes \(@sofia\); Head of Sales, the lead, a maintainer; owns the forecast; reports to @chase \(focusing in Do Not Disturb until 23:12 their time; it's 20:12 for them\)/);
-  assert.match(text, /Jordan Lee \(@jordan\); Account Executive; owns Halcyon, Bluebird; reports to @sofia \(online\)/);
+  assert.match(text, /Sofia Reyes \(@sofia\); Head of Sales, the lead, a maintainer; owns the forecast \(focusing in Do Not Disturb until 23:12 their time; it's 20:12 for them\)/);
+  assert.match(text, /Jordan Lee \(@jordan\); Account Executive; owns Halcyon, Bluebird \(online\)/);
   assert.match(text, /- @david: you/);
   // Sofia is focusing, so Jordan is the one to page.
   assert.match(text, /When a person is needed: Jordan Lee \(@jordan\), who is online now\./);

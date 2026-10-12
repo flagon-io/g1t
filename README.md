@@ -37,7 +37,7 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | Chat: channels, direct messages and threads, live, with people and agents as members | Live |
 | Notifications: mentions, reviews, approvals and alerts, with browser push | Live |
 | People and teams: members, roles, nested teams, invites | Live |
-| A directory of people and agents, profiles, org chart, teams with agent members | Coming |
+| A directory of people and agents, profiles, teams with agent members | Coming |
 | Artifacts: documents written together, live, by people and agents | Live |
 | Slides, designs and dashboards as artifacts | Coming |
 | Scratchpads: tools, reports and agents anyone can build on a copy of the data, promoted after review | Coming |

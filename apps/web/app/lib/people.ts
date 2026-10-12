@@ -1,6 +1,6 @@
 /**
  * People on the site: the directory (people only; agents are on their
- * teams and under Agents), profiles, teams of any mix, and the org chart.
+ * teams and under Agents), profiles, and teams of any mix.
  * Types only from the contracts, so this file runs under `node --test`.
  */
 import type { DirectoryPerson, DirectoryTeam, PeopleDirectory, TeamLead, WorkspaceAgent } from "@g1t/contracts";
@@ -119,68 +119,6 @@ export function directoryEntries(directory: PeopleDirectory, query: string): Dir
     if (matches(query, fields)) out.push({ person, teams });
   }
   return out;
-}
-
-/** One person in the org chart, with who reports to them and the agents of the teams they lead. */
-export type OrgNode = { person: DirectoryPerson; agents: PeopleAgent[]; leads: DirectoryTeam[]; reports: OrgNode[] };
-
-export type OrgChart = {
-  /** Everyone at the top: no manager, or one who is no longer here. */
-  roots: OrgNode[];
-  /** Teams no person leads (an agent does, or no one), with their agents. */
-  unled: { team: DirectoryTeam; agents: PeopleAgent[] }[];
-};
-
-/**
- * Reporting lines, with each team's agents beside the person who leads it.
- * A loop (which identity refuses) would leave its people out of `roots`;
- * they are put back at the top, so no one is ever missing.
- */
-export function orgChart(directory: PeopleDirectory, agents: readonly PeopleAgent[]): OrgChart {
-  const known = new Set(directory.people.map((person) => person.username));
-  const byManager = new Map<string, DirectoryPerson[]>();
-  for (const person of directory.people) {
-    if (person.manager && known.has(person.manager) && person.manager !== person.username) {
-      byManager.set(person.manager, [...(byManager.get(person.manager) ?? []), person]);
-    }
-  }
-  const placed = new Set<string>();
-  const node = (person: DirectoryPerson): OrgNode => {
-    placed.add(person.username);
-    const led = directory.teams.filter((team) => leads(team.lead, { username: person.username }));
-    const theirAgents: PeopleAgent[] = [];
-    for (const team of led) for (const agent of agentsOn(team, agents)) if (!theirAgents.includes(agent)) theirAgents.push(agent);
-    const reports = (byManager.get(person.username) ?? []).filter((report) => !placed.has(report.username)).map(node);
-    return { person, agents: theirAgents, leads: led, reports };
-  };
-  const roots = directory.people.filter((person) => !person.manager || !known.has(person.manager)).map(node);
-  for (const person of directory.people) if (!placed.has(person.username)) roots.push(node(person));
-  const unled = directory.teams
-    .filter((team) => !team.lead || team.lead.kind === "agent")
-    .map((team) => ({ team, agents: agentsOn(team, agents) }))
-    .filter((entry) => entry.agents.length > 0);
-  return { roots, unled };
-}
-
-/** Everyone who reports to `username`, directly. */
-export function reportsOf(people: readonly DirectoryPerson[], username: string): DirectoryPerson[] {
-  return people.filter((person) => person.manager === username && person.username !== username);
-}
-
-/** Who `username` could report to: anyone but themselves and the people under them. */
-export function managerChoices(people: readonly DirectoryPerson[], username: string): DirectoryPerson[] {
-  const below = new Set<string>([username]);
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const person of people) {
-      if (person.manager && below.has(person.manager) && !below.has(person.username)) {
-        below.add(person.username);
-        grew = true;
-      }
-    }
-  }
-  return people.filter((person) => !below.has(person.username));
 }
 
 /** What someone owns, from a form's text: one per line or comma. */

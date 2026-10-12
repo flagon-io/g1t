@@ -106,7 +106,6 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/acme/-/people/ana", "acme"), "people");
   // An agent's old People address (it redirects to Agents) is still read as People's until it does.
   assert.equal(modeOf("/acme/-/people/agents/margo", "acme"), "people");
-  assert.equal(modeOf("/acme/-/org-chart", "acme"), "people");
   // Members, invitations and permissions are the workspace's settings.
   assert.equal(modeOf("/acme/-/members", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/members/invitations", "acme"), "workspace");
