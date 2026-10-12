@@ -45,8 +45,9 @@
 //!   this computer is stopped between jobs and started on the new one.
 //!   "Download updates by themselves" off, it looks only when asked.
 //! - **Seen.** What it is doing, and when it is not running why and how to
-//!   fix it (diagnosis.rs), is in the tray, in settings, and on the site's
-//!   Runners page (`g1t-runner-status`), read from what its log says
+//!   fix it (diagnosis.rs), is in the title bar's chip, the Runner window
+//!   (launcher/runner.html), the tray, a line in settings, and on the
+//!   site's Runners page (`g1t-runner-status`), read from what its log says
 //!   (log.rs), or for the sandbox from its status. The whole log is kept
 //!   in `runner/runner.log`.
 //!
@@ -209,6 +210,8 @@ pub struct View {
     pub platform: String,
     /// The last lines of the runner's log.
     pub log: Vec<String>,
+    /// In a few words, for the title bar's chip.
+    pub chip: diagnosis::Chip,
 }
 
 /// What the thread is told.
@@ -399,8 +402,10 @@ pub fn view(app: &AppHandle) -> View {
     let settings = config::settings(app);
     let facts = facts(app, &now);
     let server = config::server(app);
+    let diagnosed = diagnosis::diagnose(now.code, &facts);
     View {
-        diagnosis: diagnosis::diagnose(now.code, &facts),
+        chip: diagnosis::chip(&diagnosed),
+        diagnosis: diagnosed,
         closed: diagnosis::closed(&facts),
         running: matches!(now.code, Code::Idle | Code::Busy | Code::Offline) || facts.sandbox.as_ref().is_some_and(Status::running),
         version: now.version,
@@ -434,6 +439,8 @@ fn publish(app: &AppHandle) {
     let view = view(app);
     tray::runner_changed(app, &view);
     let _ = app.emit_to(settings::SETTINGS, STATUS_EVENT, view.clone());
+    let _ = app.emit_to(settings::RUNNER, STATUS_EVENT, view.clone());
+    let _ = app.emit_to(EventTarget::webview(frame::BAR), STATUS_EVENT, view.chip.clone());
     let _ = app.emit_to(EventTarget::webview(frame::SITE), STATUS_EVENT, view);
 }
 
@@ -552,7 +559,8 @@ pub fn act(app: &AppHandle, action: &str, kind: Option<&str>) -> Result<(), Stri
             Some(workspace) => crate::links::go(app, &format!("/{workspace}/-/runners")),
             None => crate::links::go(app, "/"),
         },
-        "choose_workspace" | "choose_backend" => settings::open(app),
+        // They are chosen in the Runner window.
+        "choose_workspace" | "choose_backend" | "open_runner" => settings::open_runner(app),
         "view_log" => {
             let path = log_file(app);
             if !path.exists() {
@@ -2113,8 +2121,10 @@ mod tests {
 
     fn view(code: Code, job: Option<&str>) -> View {
         let facts = Facts { workspace: Some("acme".into()), backend: "sandboxed", machine: "box".into(), job: job.map(str::to_owned), ..Facts::default() };
+        let diagnosed = diagnosis::diagnose(code, &facts);
         View {
-            diagnosis: diagnosis::diagnose(code, &facts),
+            chip: diagnosis::chip(&diagnosed),
+            diagnosis: diagnosed,
             closed: diagnosis::closed(&facts),
             running: code == Code::Idle,
             version: None,

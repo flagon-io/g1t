@@ -90,6 +90,8 @@ colours of g1t's rail, in light and dark.
 | **☰** (Windows and Linux) | Opens the app's [menu](#the-menu). |
 | **← →** | Back and forward through the pages you have been on. |
 | **Search** | In the middle: searches your workspace, as **Ctrl+K** or **⌘K** does. Before you are signed in, it shows the page's title. |
+| **The runner** | At the right, beside **Settings**: what [the runner](#the-runner) is doing in a few words, with a dot in its colour (*Runner running*, *Running a job*, *Running 2 jobs*, *Runner starting*, *Runner stopped*, *Runner needs you*), live. It opens [the Runner window](#the-runner-window). In a narrow window only its dot shows. |
+| **Settings** | Opens [the settings](#settings). |
 | **Minimize, maximize, close** (Windows and Linux) | At the right. Close keeps g1t in the tray unless [the settings](#settings) say it quits. On macOS the window's own buttons sit at the left of the bar. |
 
 Drag the bar to move the window, and double-click it to maximize or
@@ -137,14 +139,11 @@ notify you among them, stay on g1t, in [your settings](/guides/notifications/#se
 | **Use the system's title bar** | Off | The system's title bar in place of [g1t's own](#the-title-bar), with the menu bar under it on Windows and Linux. Takes effect when g1t restarts. |
 | **Zoom** | 100% | How large g1t is drawn, from 67% to 200%. The View menu changes it too. |
 | **Download updates by themselves** | On | Off, the app never checks on its own; **Check for updates** still does. The runner's updates follow it too: off, only **Check for runner updates** looks for a newer runner. |
-| **Run jobs on this computer while g1t is open** | On | Starts [the runner](#the-runner) a few seconds after the window. Off, nothing runs. |
-| **How jobs run** | Sandboxed | Sandboxed, in Docker, or directly on this computer. See [how jobs run](#how-jobs-run). |
-| **Linux jobs**, **Windows jobs** (sandboxed) | Both on | Each kind of job's card has its own **Stop** and **Start**, which leave the other kind as it is. See [the runner](#the-runner). |
-| **Workspace** | The one you were in when it first registered | The workspace whose jobs the runner runs. Lists the workspaces you own. |
 
 The settings window also shows the app's version and whether it is up to
 date, with **Check for updates** (see [Updates](#updates)), and the server it opens, with **Change…** to [use another
-g1t](#your-own-g1t).
+g1t](#your-own-g1t). The runner is a line there, what it is doing with
+**Open runner**: its own settings are in [the Runner window](#the-runner-window).
 
 ## The runner
 
@@ -158,10 +157,9 @@ runners.
 To stop it, press **Stop running jobs** in the tray; it starts again with
 **Start running jobs**, or the next time g1t opens. To keep it off, turn
 off **Run jobs on this computer while g1t is open** in
-[the settings](#settings).
+[the Runner window](#the-runner-window).
 
-Sandboxed, each kind of job is a card of its own in the settings' Runner
-section, **Linux jobs** and **Windows jobs**, each with its own **Stop**
+Sandboxed, each kind of job is a card of its own in the Runner window, **Linux jobs** and **Windows jobs**, each with its own **Stop**
 and **Start**. Stopping Windows jobs leaves Linux jobs running, and the
 other way round; a kind you stop stays stopped, across restarts, until you
 start it again. Both are on until you stop one.
@@ -175,9 +173,26 @@ runner for each kind of job it can run, named after it with `-linux` or
 `-windows`: `build-box-linux` has `linux`, and `build-box-windows` has
 `windows`, on a Windows computer with Windows Sandbox.
 
+### The Runner window
+
+The runner has a window of its own, apart from the settings, as Docker
+Desktop has for its engine: open it from the chip beside **Settings** in
+the title bar, from the runner's row in the tray, or with **Open runner**
+in the settings. It shows what the runner is doing as it happens, and keeps
+its settings:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| **Run jobs on this computer while g1t is open** | On | Starts the runner a few seconds after the window. Off, nothing runs. |
+| **How jobs run** | Sandboxed | Sandboxed, in Docker, or directly on this computer. See [how jobs run](#how-jobs-run). |
+| **Linux jobs**, **Windows jobs** (sandboxed) | Both on | Each kind of job's card has its own **Stop** and **Start**, which leave the other kind as it is. |
+| **Workspace** | The one you were in when it first registered | The workspace whose jobs the runner runs. Lists the workspaces you own. |
+
+[Seeing it](#seeing-it) says what else it shows.
+
 ### How jobs run
 
-**How jobs run** in the settings decides what a job on your computer can
+**How jobs run** in the Runner window decides what a job on your computer can
 reach. The app never changes it by itself: when the one you chose cannot
 start, it says why and runs nothing.
 
@@ -236,7 +251,7 @@ token is never shown, and is not kept. From then on the runner starts
 from its registration, signed in or not.
 
 The workspace is the one you were in when it first registered; choose
-another under **Workspace** in the settings. Changing it, or how jobs
+another under **Workspace** in the Runner window. Changing it, or how jobs
 run, waits for a job that is running to end, then removes the old
 registration and makes a new one. The sandbox is registered with one
 workspace, so moving it to another removes it and makes it again, image
@@ -267,7 +282,7 @@ hour, it looks for a newer `g1t-runner` in
 
 Meanwhile each card says what is waiting: *0.3.2 ready, installs after
 this job*. **Check for runner updates**, beside your computer's name in
-the settings, looks at once, and installs what it finds the same way. An
+the Runner window, looks at once, and installs what it finds the same way. An
 update that fails leaves the runner as it was, and the next hour's look
 tries again. Turning off **Download updates by themselves** stops the
 hourly look; **Check for runner updates** still looks, and installs.
@@ -276,8 +291,9 @@ hourly look; **Check for runner updates** still looks, and installs.
 
 | Where | What it shows |
 | --- | --- |
-| The tray | A row with what the runner is doing, *Runner: Waiting for jobs*, which opens the settings; **Stop running jobs** or **Start running jobs** under it. The icon's hover text says it too. |
-| The settings window | Sandboxed, a card for each kind of job this computer can have, side by side: its state (*Running a job*, *Waiting for jobs*, *Starting*, *Downloading image* with how far, *Updating*, *Waiting for image*, *Stopped*, *Not available*, *Problem*), what it is, the job it is running with a link to it, and when it isn't running why and the fix, with the fix's buttons and its own **Stop** or **Start**; below, its runner's name on g1t, version, updates (when the app last looked, *Checked 12 min ago*, and a newer one waiting for it, *0.3.2 ready, installs after this job*) and isolation. Above the cards, only what is about the whole runner: signed out, no workspace, turned off, stopped, the sandbox down. Then how jobs run; the workspace; your computer's name, the runner's version and when the app last looked for a newer one, with **Check for runner updates** and **View on g1t**; and the runner's recent log, with **Open the whole log**. In Docker or directly on this computer, one line says what it is doing, or why it isn't running and the fix. |
+| The title bar | Its chip, beside **Settings**: *Runner running*, *Running a job*, with a dot in its colour, which opens the Runner window. |
+| The tray | A row with what the runner is doing, *Runner: Waiting for jobs*, which opens the Runner window; **Stop running jobs** or **Start running jobs** under it. The icon's hover text says it too. |
+| [The Runner window](#the-runner-window) | At the top, what the whole runner is doing, as the chip says it, with what it is running, its version and workspace, and its own **Stop** or **Start**. Below, sandboxed, a card for each kind of job this computer can have, side by side: its state (*Running a job*, *Waiting for jobs*, *Starting*, *Downloading image* with how far, *Updating*, *Waiting for image*, *Stopped*, *Not available*, *Problem*), what it is, the job it is running with a link to it, and when it isn't running why and the fix, with the fix's buttons and its own **Stop** or **Start**; below, its runner's name on g1t, version, updates (when the app last looked, *Checked 12 min ago*, and a newer one waiting for it, *0.3.2 ready, installs after this job*) and isolation. Above the cards, only what is about the whole runner: signed out, no workspace, turned off, stopped, the sandbox down. Then its setup: **Run jobs on this computer while g1t is open**, how jobs run, the workspace, and your computer's name, the runner's version and when the app last looked for a newer one, with **Check for runner updates** and **View on g1t**. Last, its log, following along as it is written, with **Open the whole log**. In Docker or directly on this computer, one line says what it is doing, or why it isn't running and the fix. |
 | The workspace's [Runners page](/guides/self-hosted-runners/#the-runners-page) | **Desktops**: every computer with the app in the workspace, with what each is doing, or why it isn't running and the fix, in the same words; a sandboxed one's kinds of job as cards of their own, as in the settings, with a link to the run each is running, its version, when the app last looked for updates and a newer one waiting. Inside the app, this computer comes first, live, with its buttons, each kind's **Stop** or **Start** and **Check for runner updates** among them. A computer whose g1t is closed says *g1t is closed on* its name. |
 
 ### When it isn't running

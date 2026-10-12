@@ -59,6 +59,17 @@ fn from_settings(webview: &Webview) -> Result<(), String> {
     if webview.label() == settings::SETTINGS { Ok(()) } else { Err("only the settings window may ask that".into()) }
 }
 
+/// The Runner window, a page bundled with the app (launcher/runner.html).
+fn from_runner(webview: &Webview) -> Result<(), String> {
+    from_launcher(webview)?;
+    if webview.label() == settings::RUNNER { Ok(()) } else { Err("only the Runner window may ask that".into()) }
+}
+
+/// The settings window, or the Runner window, which keeps the runner's settings.
+fn from_settings_or_runner(webview: &Webview) -> Result<(), String> {
+    from_settings(webview).or_else(|_| from_runner(webview))
+}
+
 fn from_either(app: &AppHandle, webview: &Webview) -> Result<(), String> {
     from_site(app, webview).or_else(|_| from_launcher(webview))
 }
@@ -77,9 +88,9 @@ fn from_bar(webview: &Webview) -> Result<(), String> {
     if webview.label() == frame::BAR { Ok(()) } else { Err("only the title bar may ask that".into()) }
 }
 
-/// The page asking has window buttons: the title bar, or the settings window's own.
+/// The page asking has window buttons: the title bar, or the settings or Runner window's own.
 fn from_frame(webview: &Webview) -> Result<(), String> {
-    from_bar(webview).or_else(|_| from_settings(webview))
+    from_bar(webview).or_else(|_| from_settings_or_runner(webview))
 }
 
 #[tauri::command]
@@ -229,14 +240,14 @@ pub fn open_settings(app: AppHandle, webview: Webview) -> Result<(), String> {
 /// What the settings window shows.
 #[tauri::command]
 pub fn get_settings(app: AppHandle, webview: Webview) -> Result<settings::View, String> {
-    from_settings(&webview)?;
+    from_settings_or_runner(&webview)?;
     Ok(settings::view(&app))
 }
 
 /// The settings window changed something: everything but opening at sign-in.
 #[tauri::command]
 pub fn save_settings(app: AppHandle, webview: Webview, settings: Settings) -> Result<settings::View, String> {
-    from_settings(&webview)?;
+    from_settings_or_runner(&webview)?;
     settings::apply(&app, settings)?;
     Ok(settings::view(&app))
 }
@@ -264,7 +275,7 @@ pub fn change_server(app: AppHandle, webview: Webview) -> Result<(), String> {
 /// this computer and the settings window.
 #[tauri::command]
 pub fn runner_status(app: AppHandle, webview: Webview) -> Result<runner::View, String> {
-    from_site(&app, &webview).or_else(|_| from_settings(&webview))?;
+    from_site(&app, &webview).or_else(|_| from_settings_or_runner(&webview)).or_else(|_| from_bar(&webview))?;
     Ok(runner::view(&app))
 }
 
@@ -293,7 +304,7 @@ pub fn runner_register(app: AppHandle, webview: Webview, workspace: String, toke
 /// of job (`capability`: `linux`, `windows`), Start and Stop are its alone.
 #[tauri::command]
 pub fn runner_control(app: AppHandle, webview: Webview, action: String, capability: Option<String>) -> Result<(), String> {
-    from_site(&app, &webview).or_else(|_| from_settings(&webview))?;
+    from_site(&app, &webview).or_else(|_| from_settings_or_runner(&webview))?;
     runner::act(&app, &action, capability.as_deref())
 }
 

@@ -46,53 +46,14 @@
 
 				<section aria-labelledby="runner-heading" id="runner-section">
 					<h2 id="runner-heading">Runner</h2>
-					<label class="setting">
-						<span
-							><strong>Run jobs on this computer while g1t is open</strong
-							><span class="muted">Your workspace's <code>runs-on: self-hosted</code> jobs run here, at no cost, while g1t is open.</span></span
-						>
-						<input type="checkbox" role="switch" id="runner" />
-					</label>
-					<!--
-						What affects the whole runner (signed out, no workspace, turned off,
-						the sandbox down): why, and how to fix it (src/runner/diagnosis.rs).
-						Hidden when the cards below say it all.
-					-->
-					<div class="diagnosis" id="runner-diagnosis" role="status" aria-live="polite" hidden>
-						<span class="dot" id="runner-dot" aria-hidden="true"></span>
-						<span class="diagnosis-text">
-							<strong id="runner-title">Runner</strong>
-							<span class="muted" id="runner-cause"></span>
-							<span id="runner-fix"></span>
-							<span class="buttons" id="runner-actions"></span>
-						</span>
-					</div>
-					<!-- Sandboxed: each kind of job it runs, a card of its own, started and stopped on its own. -->
-					<div class="kinds" id="runner-kinds" role="list" aria-label="Kinds of job this computer runs" hidden></div>
-					<label class="setting">
-						<span><strong>How jobs run</strong><span class="muted" id="runner-backend-note">&nbsp;</span></span>
-						<select id="runnerBackend">
-							<option value="sandboxed">Sandboxed (recommended)</option>
-							<option value="docker">In Docker</option>
-							<option value="host">Directly on this computer</option>
-						</select>
-					</label>
-					<label class="setting">
-						<span><strong>Workspace</strong><span class="muted" id="runner-workspace-note">The workspace whose jobs it runs. Only a workspace's owners can add runners to it.</span></span>
-						<select id="runnerWorkspace"></select>
-					</label>
+					<!-- What it is doing, in a line; the Runner window has the rest (runner.html). -->
 					<div class="setting">
-						<span><strong id="runner-machine">This computer</strong><span class="muted" id="runner-version">&nbsp;</span></span>
-						<span class="buttons"
-							><button type="button" id="runner-check" hidden>Check for runner updates</button
-							><button type="button" id="runner-view">View on g1t</button></span
+						<span
+							><strong class="runner-line"><span class="dot" id="runner-dot" aria-hidden="true"></span><span id="runner-title" role="status" aria-live="polite">Runner</span></strong
+							><span class="muted" id="runner-summary">Your workspace's <code>runs-on: self-hosted</code> jobs, on this computer while g1t is open.</span></span
 						>
+						<span class="buttons"><button type="button" id="open-runner">Open runner</button></span>
 					</div>
-					<details class="log">
-						<summary>Recent log</summary>
-						<pre id="runner-log">Nothing yet.</pre>
-						<button type="button" id="runner-open-log">Open the whole log</button>
-					</details>
 				</section>
 
 				<section aria-labelledby="notifications-heading">

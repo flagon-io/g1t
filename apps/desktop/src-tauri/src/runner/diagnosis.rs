@@ -833,6 +833,34 @@ fn capability_line(status: &Status, capability: &launcher::Capability, facts: &F
     line
 }
 
+/// The runner in a few words, for the chip beside the title bar's settings
+/// button, which opens the Runner window: `Runner running`, `Running 2 jobs`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Chip {
+    pub tone: Tone,
+    pub label: String,
+}
+
+/// The chip, from the whole runner's diagnosis and its kinds of job: what
+/// it is doing, and whether anything there wants the person.
+pub fn chip(diagnosis: &Diagnosis) -> Chip {
+    let jobs = diagnosis.capabilities.iter().filter(|kind| kind.job.is_some()).count().max(usize::from(diagnosis.code == Code::Busy));
+    let wanting = diagnosis.capabilities.iter().any(|kind| kind.enabled && matches!(kind.tone, Tone::Problem | Tone::Warning));
+    let (tone, label) = match diagnosis.code {
+        _ if jobs > 1 => (Tone::Working, format!("Running {jobs} jobs")),
+        _ if jobs == 1 => (Tone::Working, "Running a job".to_owned()),
+        Code::Idle => (if wanting { Tone::Warning } else { Tone::Ok }, "Runner running".to_owned()),
+        Code::Starting | Code::Registering => (Tone::Working, "Runner starting".to_owned()),
+        Code::Updating => (Tone::Working, "Runner updating".to_owned()),
+        Code::UpdateFailed | Code::UpdateRefused => (Tone::Warning, "Runner running".to_owned()),
+        Code::Off => (Tone::Off, "Runner off".to_owned()),
+        Code::Stopped | Code::KindsStopped => (Tone::Off, "Runner stopped".to_owned()),
+        Code::Offline => (Tone::Warning, "Runner offline".to_owned()),
+        _ => (diagnosis.tone, "Runner needs you".to_owned()),
+    };
+    Chip { tone, label }
+}
+
 /// What the site says of this computer while g1t is closed on it.
 pub fn closed(facts: &Facts) -> Diagnosis {
     Diagnosis {
@@ -1156,6 +1184,31 @@ mod tests {
         assert_eq!(nothing.title, "Not running: the runner's release isn't signed by g1t");
         assert_eq!((nothing.tone, nothing.actions[0].id), (Tone::Problem, "retry"));
         assert!(!nothing.in_capabilities);
+    }
+
+    #[test]
+    fn the_title_bars_chip_says_the_runner_in_a_few_words() {
+        let said = |code: Code, facts: &Facts| {
+            let chip = chip(&diagnose(code, facts));
+            (chip.tone, chip.label)
+        };
+        assert_eq!(said(Code::Idle, &facts()), (Tone::Ok, "Runner running".into()));
+        assert_eq!(said(Code::Busy, &Facts { job: Some("build (acme/web)".into()), ..facts() }), (Tone::Working, "Running a job".into()));
+        assert_eq!(said(Code::Starting, &facts()), (Tone::Working, "Runner starting".into()));
+        assert_eq!(said(Code::Stopped, &facts()), (Tone::Off, "Runner stopped".into()));
+        assert_eq!(said(Code::Off, &facts()), (Tone::Off, "Runner off".into()));
+        assert_eq!(said(Code::NoWsl, &facts()), (Tone::Problem, "Runner needs you".into()));
+        assert_eq!(said(Code::UpdateFailed, &Facts { detail: Some("x".into()), ..facts() }).1, "Runner running");
+        // Both kinds of job busy at once.
+        let both = status(
+            r#"{"schema":1,"state":"running","capabilities":[
+              {"id":"linux","available":true,"state":"running","turned_off":false,"job":{"kind":"workflow","id":"a","name":"build","repo":"acme/web"}},
+              {"id":"windows","available":true,"state":"running","turned_off":false,"job":{"kind":"workflow","id":"b","name":"installer","repo":"acme/app"}}]}"#,
+        );
+        assert_eq!(said(Code::Busy, &Facts { sandbox: Some(both), live: true, ..facts() }), (Tone::Working, "Running 2 jobs".into()));
+        // Linux jobs run while Windows jobs can't start: running, and wanting a look.
+        let one_failing = status(NO_WSL_PRO);
+        assert_eq!(said(Code::Idle, &Facts { sandbox: Some(one_failing), live: true, ..facts() }), (Tone::Warning, "Runner running".into()));
     }
 
     #[test]

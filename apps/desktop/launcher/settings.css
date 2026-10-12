@@ -115,6 +115,10 @@ section {
 	padding: 0.75rem 0;
 	border-bottom: 1px solid var(--line);
 }
+/* A row hidden until it applies, such as Restart to change the title bar. */
+.setting[hidden] {
+	display: none;
+}
 section .setting:last-child {
 	border-bottom: 0;
 }
@@ -631,4 +635,79 @@ details.log pre {
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 	user-select: text;
+}
+/* The Runner window's head: what the whole runner is doing, as the title
+   bar's chip says it, with its Start or Stop, as Docker Desktop shows its
+   engine. */
+.engine {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	margin: 0 0 1rem;
+	padding: 0.875rem 1rem;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--surface);
+}
+.engine .dot {
+	width: 10px;
+	height: 10px;
+	margin-top: 0;
+}
+.engine .dot.working {
+	animation: breathe 1.6s ease-in-out infinite;
+}
+.engine-text {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+	flex: 1;
+	min-width: 0;
+}
+.engine-text strong {
+	font-size: 0.9375rem;
+	font-weight: 500;
+}
+.engine-text .muted {
+	font-size: 0.8125rem;
+	overflow-wrap: anywhere;
+}
+@keyframes breathe {
+	50% {
+		opacity: 0.35;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.engine .dot.working {
+		animation: none;
+	}
+}
+/* Its log, open and following along. */
+pre.live-log {
+	max-height: 16rem;
+	overflow: auto;
+	margin: 0.5rem 0;
+	padding: 0.625rem 0.75rem;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: #050507;
+	color: var(--muted);
+	font: 0.75rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	user-select: text;
+}
+p.buttons {
+	display: flex;
+	gap: 0.5rem;
+	margin: 0;
+}
+/* Settings' line for the runner: its dot beside what it is doing. */
+.runner-line {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+.runner-line .dot {
+	margin-top: 0;
 }

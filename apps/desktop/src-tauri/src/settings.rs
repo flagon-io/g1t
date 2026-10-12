@@ -14,6 +14,10 @@ use crate::config;
 
 /// The settings window's label.
 pub const SETTINGS: &str = "settings";
+/// The Runner window's label: the runner on its own, apart from the
+/// settings, opened from the title bar's chip, the tray or the menu
+/// (launcher/runner.html).
+pub const RUNNER: &str = "runner";
 
 /// The argument the system starts g1t with at sign-in, so it can tell a
 /// start of its own from someone opening it.
@@ -217,36 +221,61 @@ pub fn open_and_check(app: &AppHandle) {
     show(app, true);
 }
 
+/// Opens the Runner window, or brings it forward.
+pub fn open_runner(app: &AppHandle) {
+    if !forward(app, RUNNER) {
+        made_aside(app, Window { label: RUNNER, page: "runner.html", title: "g1t runner", size: (720.0, 760.0) });
+    }
+}
+
+/// Brings a window that is open forward: false when it isn't.
+fn forward(app: &AppHandle, label: &str) -> bool {
+    let Some(window) = app.get_webview_window(label) else { return false };
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+    true
+}
+
 fn show(app: &AppHandle, check: bool) {
-    if let Some(window) = app.get_webview_window(SETTINGS) {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+    if forward(app, SETTINGS) {
         if check {
             let _ = app.emit_to(SETTINGS, CHECK_EVENT, ());
         }
         return;
     }
-    // Made on a thread of its own, whoever asks. Settings opens from
-    // synchronous commands too (the title bar's button, the site's account
-    // menu), which run on the main thread, and on Windows a window made
-    // there deadlocks: it appears, white, and its page never loads. From
-    // another thread, Tauri hands the making to the event loop and waits.
+    // A window still loading has no listener yet: the address asks instead.
+    let page = if check { "settings.html?check" } else { "settings.html" };
+    made_aside(app, Window { label: SETTINGS, page, title: "g1t settings", size: (620.0, 720.0) });
+}
+
+/// A window of the app's own pages.
+struct Window {
+    label: &'static str,
+    page: &'static str,
+    title: &'static str,
+    size: (f64, f64),
+}
+
+/// Makes a window on a thread of its own, whoever asks. The app's windows
+/// open from synchronous commands too (the title bar's buttons, the site's
+/// account menu), which run on the main thread, and on Windows a window
+/// made there deadlocks: it appears, white, and its page never loads. From
+/// another thread, Tauri hands the making to the event loop and waits.
+fn made_aside(app: &AppHandle, window: Window) {
     let app = app.clone();
-    let spawned = std::thread::Builder::new().name("g1t-settings-window".into()).spawn(move || build(&app, check));
+    let spawned = std::thread::Builder::new().name(format!("g1t-{}-window", window.label)).spawn(move || build(&app, &window));
     if let Err(error) = spawned {
-        eprintln!("g1t: the settings window could not open: {error}");
+        eprintln!("g1t: a window could not open: {error}");
     }
 }
 
-fn build(app: &AppHandle, check: bool) {
-    // A window still loading has no listener yet: the address asks instead.
-    let page = if check { "settings.html?check" } else { "settings.html" };
+fn build(app: &AppHandle, window: &Window) {
     let custom = crate::frame::started(app);
-    let builder = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App(page.into()))
-        .title("g1t settings");
+    let builder = WebviewWindowBuilder::new(app, window.label, WebviewUrl::App(window.page.into()))
+        .title(window.title);
     let built = crate::frame::dialog(builder, custom)
-        .inner_size(620.0, 720.0)
+        .inner_size(window.size.0, window.size.1)
         .min_inner_size(440.0, 420.0)
         .maximizable(false)
         .minimizable(false)
@@ -258,7 +287,7 @@ fn build(app: &AppHandle, check: bool) {
         Ok(window) => {
             let _ = window.set_focus();
         }
-        Err(error) => eprintln!("g1t: the settings window could not open: {error}"),
+        Err(error) => eprintln!("g1t: the {} window could not open: {error}", window.label),
     }
 }
 

@@ -1,0 +1,106 @@
+<!doctype html>
+<!--
+  The runner, in a window of its own, apart from the settings: opened from
+  the chip beside the title bar's settings button, the tray, or the menu
+  (src/settings.rs open_runner). What it is doing, each kind of job it
+  runs and the job each is running, how jobs run and for which workspace,
+  its updates and its log, live (runner.js). Its words are the app's
+  (src/runner/diagnosis.rs).
+-->
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="dark" />
+		<title>g1t runner</title>
+		<link rel="stylesheet" href="settings.css" />
+	</head>
+	<body>
+		<!-- Its title bar, when g1t draws its own (src/frame.rs): drag it to move the window. -->
+		<header class="titlebar" id="titlebar" hidden>
+			<span>Runner</span>
+			<button type="button" id="close-window" class="caption" aria-label="Close" title="Close" tabindex="-1">
+				<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" aria-hidden="true">
+					<line x1="4" y1="4" x2="12" y2="12" />
+					<line x1="12" y1="4" x2="4" y2="12" />
+				</svg>
+			</button>
+		</header>
+		<div class="page">
+			<main>
+				<h1>Runner</h1>
+				<p class="muted lede">Your workspace's <code>runs-on: self-hosted</code> jobs run on this computer while g1t is open, at no cost.</p>
+
+				<!-- What the whole runner is doing, as the title bar's chip says it, with its Start or Stop. -->
+				<div class="engine" id="engine">
+					<span class="dot" id="engine-dot" aria-hidden="true"></span>
+					<span class="engine-text">
+						<strong id="engine-label" role="status" aria-live="polite">Runner</strong>
+						<span class="muted" id="engine-sub">&nbsp;</span>
+					</span>
+					<button type="button" id="engine-toggle" hidden>Stop</button>
+				</div>
+
+				<section aria-labelledby="kinds-heading" id="runner-section">
+					<h2 id="kinds-heading" class="visually-hidden">Jobs</h2>
+					<!--
+						What affects the whole runner (signed out, no workspace, turned off,
+						the sandbox down): why, and how to fix it (src/runner/diagnosis.rs).
+						Hidden when the cards below say it all.
+					-->
+					<div class="diagnosis" id="runner-diagnosis" role="status" aria-live="polite" hidden>
+						<span class="dot" id="runner-dot" aria-hidden="true"></span>
+						<span class="diagnosis-text">
+							<strong id="runner-title">Runner</strong>
+							<span class="muted" id="runner-cause"></span>
+							<span id="runner-fix"></span>
+							<span class="buttons" id="runner-actions"></span>
+						</span>
+					</div>
+					<!-- Sandboxed: each kind of job it runs, a card of its own, started and stopped on its own. -->
+					<div class="kinds" id="runner-kinds" role="list" aria-label="Kinds of job this computer runs" hidden></div>
+				</section>
+
+				<section aria-labelledby="setup-heading">
+					<h2 id="setup-heading">Setup</h2>
+					<label class="setting">
+						<span
+							><strong>Run jobs on this computer while g1t is open</strong
+							><span class="muted">Off, nothing runs here until you turn it on again.</span></span
+						>
+						<input type="checkbox" role="switch" id="runner" />
+					</label>
+					<label class="setting">
+						<span><strong>How jobs run</strong><span class="muted" id="runner-backend-note">&nbsp;</span></span>
+						<select id="runnerBackend">
+							<option value="sandboxed">Sandboxed (recommended)</option>
+							<option value="docker">In Docker</option>
+							<option value="host">Directly on this computer</option>
+						</select>
+					</label>
+					<label class="setting">
+						<span><strong>Workspace</strong><span class="muted" id="runner-workspace-note">The workspace whose jobs it runs. Only a workspace's owners can add runners to it.</span></span>
+						<select id="runnerWorkspace"></select>
+					</label>
+					<div class="setting">
+						<span><strong id="runner-machine">This computer</strong><span class="muted" id="runner-version">&nbsp;</span></span>
+						<span class="buttons"
+							><button type="button" id="runner-check" hidden>Check for runner updates</button
+							><button type="button" id="runner-view">View on g1t</button></span
+						>
+					</div>
+				</section>
+
+				<section aria-labelledby="log-heading">
+					<h2 id="log-heading">Log</h2>
+					<pre class="live-log" id="runner-log" tabindex="0" aria-label="The runner's recent log">Nothing yet.</pre>
+					<p class="buttons"><button type="button" id="runner-open-log">Open the whole log</button></p>
+				</section>
+
+				<p class="error" id="error" role="alert" hidden></p>
+				<p class="muted small foot"><a href="https://docs.g1t.sh/guides/desktop/#the-runner">About the runner</a></p>
+			</main>
+		</div>
+		<script src="runner.js"></script>
+	</body>
+</html>

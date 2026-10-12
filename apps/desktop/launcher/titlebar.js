@@ -79,9 +79,30 @@
   });
   left.append(back, forward);
 
-  // The app's settings (the runner among them), at the right of the bar,
-  // before the window's buttons: where they are found without the menu.
+  // The runner, in a few words beside the settings, as Docker Desktop shows
+  // its engine: what it is doing, live, and a click opens its window
+  // (runner.html). The words are the app's (diagnosis.rs chip).
+  var chip = button("chip", "Runner", null, function () {
+    act("runner");
+  });
+  chip.hidden = true;
+  var chipDot = document.createElement("span");
+  chipDot.className = "chip-dot";
+  var chipText = document.createElement("span");
+  chipText.className = "chip-text";
+  chip.append(chipDot, chipText);
+  function drawChip(said) {
+    if (!said || !said.label) return;
+    chip.hidden = false;
+    chip.dataset.tone = said.tone;
+    chipText.textContent = said.label;
+    chip.setAttribute("aria-label", said.label + ": open the runner");
+    chip.title = "Open the runner";
+  }
+  // The app's settings, at the right of the bar, before the window's
+  // buttons: where they are found without the menu.
   right.append(
+    chip,
     button("icon", "Settings", "settings", function () {
       act("settings");
     }),
@@ -180,4 +201,14 @@
       .catch(function () {});
   }
   invoke("title_bar_current").then(draw, function () {});
+  if (events && typeof events.listen === "function") {
+    events
+      .listen("g1t-runner-status", function (event) {
+        drawChip(event.payload);
+      })
+      .catch(function () {});
+  }
+  invoke("runner_status").then(function (view) {
+    drawChip(view && view.chip);
+  }, function () {});
 })();

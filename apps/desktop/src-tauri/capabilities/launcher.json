@@ -15,6 +15,7 @@
 		"allow-window-menu",
 		"allow-title-bar-page",
 		"allow-title-bar-current",
-		"allow-title-bar-act"
+		"allow-title-bar-act",
+		"allow-runner-status"
 	]
 }

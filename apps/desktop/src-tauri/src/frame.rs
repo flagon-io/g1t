@@ -268,6 +268,11 @@ pub fn act(app: &AppHandle, action: &str) -> Result<(), String> {
             crate::settings::open(app);
             return Ok(());
         }
+        // The runner on its own: the chip beside the settings button.
+        "runner" => {
+            crate::settings::open_runner(app);
+            return Ok(());
+        }
         "focus" => {}
         other => return Err(format!("the bar cannot {other}")),
     }
