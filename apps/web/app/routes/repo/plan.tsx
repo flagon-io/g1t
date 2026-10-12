@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { G1tEvent } from "@g1t/contracts";
 import { ArrowRight, CircleCheck, FileCode2, Sparkles } from "lucide-react";
-import { Form, Link, data } from "react-router";
+import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/plan";
 import { refusal, requireRepo, requireWritableRepo } from "../../lib/access.server";

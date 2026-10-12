@@ -106,6 +106,14 @@ impl Reporter {
         Ok(())
     }
 
+    /// Keeps another value out of every entry from now on: a secret the run
+    /// learned after it started, such as a connector's key.
+    pub fn hide(&mut self, secret: &str) {
+        if !secret.is_empty() && !self.secrets.iter().any(|known| known == secret) {
+            self.secrets.push(secret.to_owned());
+        }
+    }
+
     /// Queues an entry, sending the batch if it is due.
     pub fn record(&mut self, mut entry: Entry) {
         if !self.recording {

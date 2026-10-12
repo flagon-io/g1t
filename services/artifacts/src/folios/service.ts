@@ -109,11 +109,12 @@ import {
   type ReaderContext,
 } from "./access-store.ts";
 import { agentMayFind, agentReach, audienceRule, type AgentReach, type AudienceRule } from "./agents.ts";
-import { publishFolioEvent } from "./events.ts";
+import { publishFolioEvent, publishSpaceDeleted } from "./events.ts";
 import { MAX_DEPTH, MAX_PAGE_STATE, cleanCover, cleanIcon, cleanNote, cleanSource, cleanTarget, cleanTitle, decodeCursor, depthOf, encodeCursor, listLimit, pageState, sharedTops, slugOf, subtreeHeight, treeNodes } from "./list.ts";
 import { REQUEST_RECIPIENTS, claimAccessRequest } from "./requests.ts";
 import type { FolioRoom } from "./room.ts";
 import { builtinFolioTemplate, builtinFolioTemplates } from "./templates.ts";
+import { deleteSpaceRows, eraseFolios, landingFor } from "./trash.ts";
 
 export type FoliosEnv = WhoEnv & {
   FOLIOS: DurableObjectNamespace<FolioRoom>;
@@ -453,8 +454,8 @@ export class Folios {
     if (!found.ok) return found;
     const ctx = found.value;
     const joins = new Set(joined.results.map((r) => r.space_id));
-    // Joined open spaces (General always), team spaces of theirs, Members-only spaces they're in.
-    const shown = ctx.spaces.filter((s) => s.role && !s.row.archived_at && (s.row.kind !== "workspace" || s.row.is_default || joins.has(s.row.id)));
+    // Joined open spaces (General always), team spaces of theirs, Members-only spaces they're in; never archived or deleted ones.
+    const shown = ctx.spaces.filter((s) => s.role && !s.row.archived_at && !s.row.deleted_at && (s.row.kind !== "workspace" || s.row.is_default || joins.has(s.row.id)));
     const keys = personKeys(ctx.person);
     const [spaceRows, privateRows, sharedRows, favoriteRows, repos, trashed] = await Promise.all([
       shown.length
@@ -633,7 +634,7 @@ export class Folios {
     }
     if (input.space_id) {
       const space = ctx.spaceById.get(input.space_id);
-      if (!space?.role || space.row.archived_at) return fail("not_found", "No such space.");
+      if (!space?.role || space.row.archived_at || space.row.deleted_at) return fail("not_found", "No such space.");
       if (!atLeast(space.role, "edit")) return fail("forbidden", `You can read ${space.row.name} but not add to it.`);
       return ok({ space_id: space.row.id, parent: null });
     }
@@ -866,7 +867,7 @@ export class Folios {
       spaceId = parent.space_id;
     } else if (move.space_id) {
       const space = ctx.spaceById.get(move.space_id);
-      if (!space?.role || space.row.archived_at) return fail("not_found", "No such space.");
+      if (!space?.role || space.row.archived_at || space.row.deleted_at) return fail("not_found", "No such space.");
       if (!atLeast(space.role, "edit")) return fail("forbidden", `You can't add to ${space.row.name}.`);
       spaceId = space.row.id;
     } else {
@@ -1032,11 +1033,24 @@ export class Folios {
     // Its parent is gone or still in the trash: it comes back at the top of where it was.
     const detach = !!row.parent_id && (!parent || !!parent.trashed_at);
     if (detach) statements.push(this.db.prepare("UPDATE folios SET parent_id = NULL WHERE id = ?").bind(row.id));
+    // Its space was deleted: a top comes back at the end of General (when
+    // there is one the restorer may add to), else of its owner's Private; a
+    // child whose parent lives follows its parent's place (rebuilt below).
+    const gone = !!row.space_id && !!ctx.spaceById.get(row.space_id)?.row.deleted_at;
+    const relocate = gone && (detach || !row.parent_id);
+    let spaceId = row.space_id;
+    if (relocate) {
+      spaceId = landingFor(ctx.spaces)?.row.id ?? null;
+      const last = spaceId
+        ? await this.db.prepare("SELECT MAX(position) AS p FROM folios WHERE space_id = ? AND parent_id IS NULL AND trashed_at IS NULL").bind(spaceId).first<{ p: number | null }>()
+        : await this.db.prepare("SELECT MAX(position) AS p FROM folios WHERE workspace_id = ? AND space_id IS NULL AND parent_id IS NULL AND owner = ? AND trashed_at IS NULL").bind(ctx.workspace.id, row.owner).first<{ p: number | null }>();
+      statements.push(this.db.prepare("UPDATE folios SET space_id = ?, parent_id = NULL, position = ?, updated_at = ?, updated_by = ? WHERE id = ?").bind(spaceId, (last?.p ?? 0) + 1, now(), ctx.key, row.id));
+    }
     await runBatches(this.db, statements);
-    if (detach) await this.afterAccessChange(ctx, row.id, below.length);
+    if (detach || gone) await this.afterAccessChange(ctx, row.id, below.length);
     else this.defer((async () => { for (const id of ids.slice(0, 2000)) await indexFolio(this.env, id); })());
     const open = await workspaceReadable(this.db, row.id).catch(() => false);
-    this.defer(publishFolioEvent(this.env.EVENTS, "folio.restored", { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: row.id, kind: row.kind, spaceId: row.space_id, title: open ? row.title : null }, ctx.key));
+    this.defer(publishFolioEvent(this.env.EVENTS, "folio.restored", { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: row.id, kind: row.kind, spaceId, title: open ? row.title : null }, ctx.key));
     return ok(await this.folioOf(ctx, row));
   }
 
@@ -1048,19 +1062,43 @@ export class Folios {
     if (!opened.ok) return opened;
     const { row } = opened.value;
     if (!row.trashed_at) return fail("invalid", "Move it to the trash first.");
-    // Deepest first, so no parent goes before its children.
-    const ids = (await subtree(this.db, row)).sort((x, y) => y.path.length - x.path.length).map((r) => r.id);
-    await forgetFolios(this.env, ids);
-    await runBatches(
-      this.db,
-      ids.flatMap((id) => [this.db.prepare("DELETE FROM folios_fts WHERE folio_id = ?").bind(id), this.db.prepare("DELETE FROM folios WHERE id = ?").bind(id)]),
-    );
+    const open = await workspaceReadable(this.db, row.id).catch(() => false);
+    const ids = await eraseFolios(this.env, await subtree(this.db, row));
     for (const id of ids.slice(0, INLINE_ROOMS)) this.defer(this.room(id).destroy().catch(() => undefined));
+    this.defer(publishFolioEvent(this.env.EVENTS, "folio.deleted", { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: row.id, kind: row.kind, spaceId: row.space_id, title: open ? row.title : null }, ctx.key));
     return ok(true);
   }
 
-  /** Trashed folios the viewer may restore: the tops of what went to the trash together. */
-  private async trashedFor(ctx: Ctx, limit: number): Promise<FolioRow[]> {
+  /**
+   * Empties the viewer's trash: everything `trashed` lists for them that
+   * they have full access to goes for good, with everything under it, as
+   * `delete` does one at a time. What they may only edit stays. Tells one
+   * `folio.deleted` per top, with no title (many folios, each a chain to
+   * check). Answers how many tops went.
+   */
+  async emptyTrash(a: Args): Promise<Result<{ deleted: number }>> {
+    const found = await this.ctx(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const ctx = found.value;
+    let deleted = 0;
+    for (;;) {
+      const tops = await this.trashedFor(ctx, 500, "manage");
+      if (!tops.length) break;
+      const rows: FolioRow[] = [];
+      for (const top of tops) rows.push(...(await subtree(this.db, top)));
+      const ids = await eraseFolios(this.env, rows);
+      for (const id of ids.slice(0, INLINE_ROOMS)) this.defer(this.room(id).destroy().catch(() => undefined));
+      for (const top of tops) {
+        this.defer(publishFolioEvent(this.env.EVENTS, "folio.deleted", { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: top.id, kind: top.kind, spaceId: top.space_id, title: null }, ctx.key));
+      }
+      deleted += tops.length;
+      if (tops.length < 500) break;
+    }
+    return ok({ deleted });
+  }
+
+  /** Trashed folios the viewer has `need` role on (edit: may restore; manage: may delete): the tops of what went to the trash together. */
+  private async trashedFor(ctx: Ctx, limit: number, need: DocRole = "edit"): Promise<FolioRow[]> {
     const filter = this.filterOf(ctx);
     const rows = (
       await this.db
@@ -1070,13 +1108,42 @@ export class Folios {
     ).results;
     const { roles } = await this.roles(ctx, rows);
     const byId = new Map(rows.map((r) => [r.id, r]));
-    return rows.filter((r) => atLeast(roles.get(r.id), "edit") && !(r.parent_id && byId.get(r.parent_id)?.trashed_at === r.trashed_at)).slice(0, limit);
+    return rows.filter((r) => atLeast(roles.get(r.id), need) && !(r.parent_id && byId.get(r.parent_id)?.trashed_at === r.trashed_at)).slice(0, limit);
   }
 
   async trashed(a: Args): Promise<Result<Folio[]>> {
     const found = await this.ctx(a.workspace, a.viewer);
     if (!found.ok) return found;
     return ok(await this.toFolios(found.value, await this.trashedFor(found.value, 200)));
+  }
+
+  /**
+   * Deletes a space, the General space too: everything in it goes to the
+   * trash together (whoever could edit an artifact restores it as usual;
+   * it then lands in General, or in its owner's Private), and the space is
+   * gone for good, its row kept marked (SpaceRow.deleted_at), so General
+   * is never made again and a workspace may have no spaces. Full access to
+   * the space, or a workspace owner who can open it.
+   */
+  async deleteSpace(a: Args & { space_id: string }): Promise<Result<{ trashed: number }>> {
+    const found = await this.ctx(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const ctx = found.value;
+    const space = ctx.spaceById.get(String(a.space_id ?? ""));
+    if (!space?.role || space.row.deleted_at) return fail("not_found", "No such space.");
+    if (!atLeast(space.role, "manage") && !ctx.owner) return fail("forbidden", "Only people with full access to a space, or a workspace owner, can delete it.");
+    const ids = await deleteSpaceRows(this.db, space.row, now(), ctx.key);
+    for (const id of ids.slice(0, INLINE_ROOMS)) this.defer(this.room(id).closeAll("Moved to the trash").catch(() => undefined));
+    this.defer(forgetFolios(this.env, ids));
+    this.who.forgetSpaces();
+    this.defer(
+      publishSpaceDeleted(
+        this.env.EVENTS,
+        { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, spaceId: space.row.id, name: space.row.kind === "private" ? null : space.row.name, kind: space.row.kind, trashed: ids.length },
+        ctx.key,
+      ),
+    );
+    return ok({ trashed: ids.length });
   }
 
   async favorite(a: Args & { folio_id: string; on: boolean }): Promise<Result<boolean>> {
@@ -1374,7 +1441,7 @@ export class Folios {
     if (!found.ok) return found;
     const ctx = found.value;
     const space = ctx.spaceById.get(String(a.space_id ?? ""));
-    if (!space?.role || space.row.archived_at) return fail("not_found", "No such space.");
+    if (!space?.role || space.row.archived_at || space.row.deleted_at) return fail("not_found", "No such space.");
     if (space.row.kind !== "workspace") return fail("invalid", "Only open spaces are joined; you're in team and members-only spaces already.");
     await this.db
       .prepare("INSERT OR IGNORE INTO space_joins (space_id, user_id, position, joined_at) VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1024 FROM space_joins WHERE user_id = ?), ?)")
@@ -2559,20 +2626,14 @@ export const TRASH_DAYS = 30;
 
 /**
  * The daily cron: folios in the trash for over TRASH_DAYS are deleted for
- * good, deepest first, at most 500 a run (the rest go the next day).
+ * good (`eraseFolios`, as emptying the trash does), at most 500 a run
+ * (the rest go the next day).
  */
 export async function purgeTrash(env: FoliosEnv, at = new Date()): Promise<number> {
   const cutoff = new Date(at.getTime() - TRASH_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const rows = (await env.DB.prepare("SELECT id, path FROM folios WHERE trashed_at IS NOT NULL AND trashed_at < ? ORDER BY length(path) DESC LIMIT 500").bind(cutoff).all<{ id: string; path: string }>()).results;
   if (!rows.length) return 0;
-  // Children still alive under one being purged go to the top of where they were.
-  const ids = rows.map((r) => r.id);
-  await env.DB.prepare("UPDATE folios SET parent_id = NULL WHERE parent_id IN (SELECT value FROM json_each(?)) AND id NOT IN (SELECT value FROM json_each(?))").bind(json(ids), json(ids)).run();
-  await forgetFolios(env, ids);
-  await runBatches(
-    env.DB,
-    ids.flatMap((id) => [env.DB.prepare("DELETE FROM folios_fts WHERE folio_id = ?").bind(id), env.DB.prepare("DELETE FROM folios WHERE id = ?").bind(id)]),
-  );
+  const ids = await eraseFolios(env, rows);
   if (env.FOLIOS) for (const id of ids) await env.FOLIOS.get(env.FOLIOS.idFromName(id)).destroy().catch(() => undefined);
   return ids.length;
 }

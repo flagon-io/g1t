@@ -9,6 +9,7 @@ use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
@@ -549,6 +550,33 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Customize",
+        "What shapes how a workspace's agents work, in the formats Claude Code reads: the marketplaces it reads plugins from, what Discover lists, the plugins it installed (their skills, subagents and remote MCP servers reach g1t's agents; the rest reaches Claude Code on a runner), and its connectors: MCP servers connected once, then given to every agent, a team or one agent. The bundle is what a job's Claude Code loads on a runner.",
+        &[
+            Op::Customize(CustomizeOp::ListMarketplaces),
+            Op::Customize(CustomizeOp::AddMarketplace),
+            Op::Customize(CustomizeOp::RemoveMarketplace),
+            Op::Customize(CustomizeOp::RefreshMarketplace),
+            Op::Customize(CustomizeOp::Discover),
+            Op::Customize(CustomizeOp::ListPlugins),
+            Op::Customize(CustomizeOp::GetPlugin),
+            Op::Customize(CustomizeOp::InstallPlugin),
+            Op::Customize(CustomizeOp::SetPluginEnabled),
+            Op::Customize(CustomizeOp::UninstallPlugin),
+            Op::Customize(CustomizeOp::UpdatePlugin),
+            Op::Customize(CustomizeOp::ListPluginAgents),
+            Op::Customize(CustomizeOp::ListConnectors),
+            Op::Customize(CustomizeOp::GetConnector),
+            Op::Customize(CustomizeOp::AddConnector),
+            Op::Customize(CustomizeOp::SetConnectorKey),
+            Op::Customize(CustomizeOp::RemoveConnector),
+            Op::Customize(CustomizeOp::RefreshConnector),
+            Op::Customize(CustomizeOp::GrantConnector),
+            Op::Customize(CustomizeOp::RevokeConnector),
+            Op::Customize(CustomizeOp::Bundle),
+        ],
+    ),
+    (
         "Artifacts",
         "A workspace's docs, slides, designs and dashboards (Artifacts mode): listing and searching the ones you can open, reading and editing their content in Markdown, making, moving, trashing and restoring them, their versions, and who can open them. Each answers for your own role on it. Not workflow runs' artifacts, which are under Actions. Slides, designs and dashboards answer that they are not here yet.",
         &[
@@ -793,6 +821,7 @@ fn title(op: Op) -> &'static str {
         Op::Mirrors(op) => op.title(),
         Op::Packages(op) => op.title(),
         Op::Folios(op) => op.title(),
+        Op::Customize(op) => op.title(),
     }
 }
 

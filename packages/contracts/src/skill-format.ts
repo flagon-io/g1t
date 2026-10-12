@@ -33,8 +33,13 @@ export const SKILL_FILES_MAX = 200;
 export const SKILL_NAME_MAX = 64;
 /** The longest description ("when to use it"). */
 export const SKILL_DESCRIPTION_MAX = 1024;
-/** Where a repository keeps the skills it mirrors: `.g1t/skills/<name>/SKILL.md`. */
-export const SKILLS_REPO_DIR = ".g1t/skills";
+/**
+ * Where a repository keeps the skills it mirrors: `.claude/skills/<name>/SKILL.md`,
+ * the folder Claude Code reads project skills from, so one repository
+ * serves both. `.g1t/skills` is still read for libraries linked before.
+ */
+export const SKILLS_REPO_DIR = ".claude/skills";
+export const SKILLS_REPO_DIRS: readonly string[] = [".claude/skills", ".g1t/skills"];
 
 /**
  * Names the library can't use: g1t's foundational skills', so `use_skill`
@@ -296,6 +301,14 @@ export function skillNameProblem(name: string): string | null {
   return null;
 }
 
+/** A plugin skill's name, as Claude Code takes it: letters, digits, dots, underscores and hyphens, at most 64. */
+export function lenientSkillNameProblem(name: string): string | null {
+  if (!name) return "A skill needs a name.";
+  if (name.length > SKILL_NAME_MAX) return `A skill's name is at most ${SKILL_NAME_MAX} characters.`;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) || name.includes("..")) return "A skill's name is letters, digits, dots, underscores and hyphens.";
+  return null;
+}
+
 /** Whether `path` is a plain relative path inside the folder. */
 export function skillPathProblem(path: string): string | null {
   if (!path || path.length > 255) return `${path || "A file"} isn't a path a skill can hold.`;
@@ -334,10 +347,31 @@ function listOf(value: unknown): string[] | null {
  * files and `SKILL_FOLDER_MAX_BYTES` together. `expectName` is the
  * folder's name when it must match (a repository's `.g1t/skills/<name>/`).
  */
-export function checkSkillFolder(input: SkillFile[], options: { expectName?: string | null } = {}): SkillCheck {
+export type SkillCheckOptions = {
+  expectName?: string | null;
+  /**
+   * For a skill from a plugin: its name keeps its case and may be one of
+   * g1t's foundational names (agents call it as `plugin:name`), `tools:`
+   * names agents don't have are kept aside rather than refused, and the
+   * folder may be larger (`limits`).
+   */
+  lenient?: boolean;
+  limits?: { files: number; bytes: number };
+};
+
+/**
+ * How large a plugin's skill kept here may be: public skills carry
+ * references and schemas, and a version is one database row (2 MB at
+ * most, with its JSON). Larger folders keep their text and leave their
+ * biggest binaries out (the runner fetches the plugin whole anyway).
+ */
+export const PLUGIN_SKILL_LIMITS = { files: 1000, bytes: 1_500_000 };
+
+export function checkSkillFolder(input: SkillFile[], options: SkillCheckOptions = {}): SkillCheck {
   const bad = (message: string): SkillCheck => ({ ok: false, message });
   if (!Array.isArray(input) || !input.length) return bad("A skill is a folder with a SKILL.md in it.");
-  if (input.length > SKILL_FILES_MAX) return bad(`A skill holds at most ${SKILL_FILES_MAX} files; this one has ${input.length}.`);
+  const limits = options.limits ?? { files: SKILL_FILES_MAX, bytes: SKILL_FOLDER_MAX_BYTES };
+  if (input.length > limits.files) return bad(`A skill holds at most ${limits.files} files; this one has ${input.length}.`);
   const seen = new Set<string>();
   let skillMd: SkillFile | null = null;
   const files: SkillFile[] = [];
@@ -357,7 +391,7 @@ export function checkSkillFolder(input: SkillFile[], options: { expectName?: str
       skillMd = { ...file, path: "SKILL.md" };
     } else files.push(file);
   }
-  if (bytes > SKILL_FOLDER_MAX_BYTES) return bad(`A skill's folder is at most 1 MB; this one is ${skillSize(bytes)}.`);
+  if (bytes > limits.bytes) return bad(`A skill's folder is at most ${limits.bytes === SKILL_FOLDER_MAX_BYTES ? "1 MB" : skillSize(limits.bytes)}; this one is ${skillSize(bytes)}.`);
   if (!skillMd) {
     const nested = files.find((f) => f.path.toLowerCase().endsWith("/skill.md"));
     return bad(nested ? `SKILL.md belongs at the top of the folder, not in ${nested.path.slice(0, nested.path.lastIndexOf("/"))}.` : "A skill's folder needs a SKILL.md at its top.");
@@ -370,18 +404,21 @@ export function checkSkillFolder(input: SkillFile[], options: { expectName?: str
   } catch (error) {
     return bad(`SKILL.md's front-matter can't be read: ${error instanceof Error ? error.message : String(error)}.`);
   }
-  const name = typeof front.name === "string" ? front.name.trim() : "";
-  const nameProblem = skillNameProblem(name);
+  const name = typeof front.name === "string" ? front.name.trim() : options.lenient && options.expectName ? options.expectName : "";
+  const nameProblem = options.lenient ? lenientSkillNameProblem(name) : skillNameProblem(name);
   if (nameProblem) return bad(name ? nameProblem : "SKILL.md's front-matter needs a name: the skill's name, like release-notes.");
   if (options.expectName && options.expectName !== name) return bad(`The folder is ${options.expectName}, but its SKILL.md is named ${name}. They must match.`);
-  const description = typeof front.description === "string" ? front.description.replace(/\s+/g, " ").trim() : "";
-  if (!description) return bad("SKILL.md's front-matter needs a description: when an agent should use the skill.");
-  if (description.length > SKILL_DESCRIPTION_MAX) return bad(`A skill's description is at most ${SKILL_DESCRIPTION_MAX} characters.`);
+  const full = typeof front.description === "string" ? front.description.replace(/\s+/g, " ").trim() : "";
+  if (!full) return bad("SKILL.md's front-matter needs a description: when an agent should use the skill.");
+  if (full.length > SKILL_DESCRIPTION_MAX && !options.lenient) return bad(`A skill's description is at most ${SKILL_DESCRIPTION_MAX} characters.`);
+  // A plugin's skill keeps its text as written; the listing shows the first part.
+  const description = full.length > SKILL_DESCRIPTION_MAX ? `${full.slice(0, SKILL_DESCRIPTION_MAX - 1).trimEnd()}…` : full;
   const listed = listOf(front.tools);
   if (!listed) return bad("tools: is a list of tool names, like [read_file, make_file].");
-  const tools = [...new Set(listed.map((t) => t.trim()))].filter(Boolean);
-  const unknown = tools.filter((tool) => !AGENT_TOOL_NAMES.includes(tool));
-  if (unknown.length) return bad(`tools: names ${unknown.join(", ")}, which ${unknown.length === 1 ? "isn't a tool" : "aren't tools"} agents have. Agents' tools are listed in the skills guide.`);
+  const named = [...new Set(listed.map((t) => t.trim()))].filter(Boolean);
+  const unknown = named.filter((tool) => !AGENT_TOOL_NAMES.includes(tool));
+  const tools = options.lenient ? named.filter((tool) => AGENT_TOOL_NAMES.includes(tool)) : named;
+  if (unknown.length && !options.lenient) return bad(`tools: names ${unknown.join(", ")}, which ${unknown.length === 1 ? "isn't a tool" : "aren't tools"} agents have. Agents' tools are listed in the skills guide.`);
   const flag = front.requires_computer;
   if (flag !== undefined && flag !== null && typeof flag !== "boolean") return bad("requires_computer: is true or false.");
   const body = split.body.trim();
@@ -389,6 +426,7 @@ export function checkSkillFolder(input: SkillFile[], options: { expectName?: str
   const scripts = files.filter((f) => f.path.startsWith("scripts/")).map((f) => f.path);
   const extra: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(front)) if (!["name", "description", "tools", "requires_computer"].includes(key)) extra[key] = value;
+  if (options.lenient && unknown.length) extra.tools = unknown;
   files.sort((a, b) => a.path.localeCompare(b.path));
   return {
     ok: true,

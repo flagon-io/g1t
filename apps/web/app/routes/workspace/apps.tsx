@@ -1,17 +1,21 @@
 /**
- * Apps: what the workspace installed from the Marketplace that you can
- * use, the ones pinned to your rail first. Built-in apps are always in the
+ * Apps: what the workspace added in Customize that you can use, the ones
+ * pinned to your rail first. Built-in apps are always in the
  * rail, and their own pages are in their sidebars; Apps are only what was
  * added. Pins are yours alone, per workspace, kept with your account so
  * every device shows the same dock (lib/dock.server.ts), with a copy in a
  * cookie for when the account's cannot be read (lib/apps.ts). The pin
  * buttons post here, and the launcher reads its list from here.
  */
-import { Store } from "lucide-react";
-import { Link, data } from "react-router";
+import { SlidersHorizontal } from "lucide-react";
+import { data } from "react-router";
+
+import type { Result } from "@g1t/contracts";
+import { customizePath } from "@g1t/contracts/customize";
 
 import type { Route } from "./+types/apps";
 import { AppTile, NoApps, useAppPins } from "../../components/apps";
+import { ButtonLink } from "../../components/ui";
 import { DOCK_COOKIE, type InstalledAppData, appData, appPinFromForm, dockCookie, installedApps, pinsToShow, withPin, writeDock } from "../../lib/apps";
 import { connectedStates } from "../../lib/connected.server";
 import { savePins, savedPins } from "../../lib/dock.server";
@@ -30,19 +34,19 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const slug = params.owner.toLowerCase();
   const membership = viewer?.workspaces?.find((m) => m.slug === slug);
   if (!viewer || !membership) throw data(null, { status: 404 });
-  const [connected, installs, saved] = await Promise.all([
+  // What Customize added; a service that doesn't answer counts as nothing added.
+  const read = <T,>(call: Promise<Result<T[]>>): Promise<T[]> => call.then((result) => (result.ok ? result.value : [])).catch(() => []);
+  const [connected, installs, connectors, saved] = await Promise.all([
     connectedStates(slug, viewer).catch(() => null),
-    workspaceAgents
-      .extensionInstalls(slug, viewer)
-      .then((result) => (result.ok ? result.value : []))
-      .catch(() => []),
+    read(workspaceAgents.pluginInstalls(slug, viewer)),
+    read(workspaceAgents.connectors(slug, viewer)),
     savedPins(viewer, slug),
   ]);
   return {
     slug,
     name: membership.name?.trim() || slug,
     /** Null when what is installed could not be read. */
-    apps: connected ? installedApps(connected, installs).map((app) => appData(app, slug)) : (null as InstalledAppData[] | null),
+    apps: connected ? installedApps(connected, installs, connectors).map((app) => appData(app, slug)) : (null as InstalledAppData[] | null),
     pins: pinsToShow(saved, readCookie(request.headers.get("cookie"), DOCK_COOKIE), slug),
   };
 }
@@ -76,17 +80,13 @@ export default function Apps({ loaderData }: Route.ComponentProps) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Apps</h1>
           <p className="mt-1 max-w-xl text-sm text-muted">
-            What {name} added from the Marketplace. Pin the ones you want in your rail: your rail is yours, and nobody else sees your pins.
+            What {name} added in Customize: plugins, connectors and integrations. Pin the ones you want in your rail: your rail is yours, and nobody else sees your pins.
           </p>
         </div>
-        <Link
-          to={`/${slug}/-/marketplace`}
-          prefetch="intent"
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-line px-3 text-sm text-fg/85 transition-colors hover:border-line-strong hover:bg-surface hover:text-fg"
-        >
-          <Store size={15} />
-          Browse the Marketplace
-        </Link>
+        <ButtonLink to={customizePath("", slug)} prefetch="intent" variant="outline">
+          <SlidersHorizontal size={15} />
+          Customize
+        </ButtonLink>
       </div>
 
       {apps == null ? (

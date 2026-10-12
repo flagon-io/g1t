@@ -1,3 +1,4 @@
+import { pluginRef } from "@g1t/contracts/claude-plugin";
 import { connectorPath, connectorsFor } from "@g1t/contracts/connectors";
 import { CUSTOMIZE, type CustomizeSection, customizePath } from "@g1t/contracts/customize";
 import { FIRST_PARTY_EXTENSIONS } from "@g1t/contracts/marketplace";
@@ -8,7 +9,9 @@ import { FOUNDATIONAL_SKILLS } from "@g1t/contracts/skills";
  * (packages/contracts/src/customize.ts). What is listed comes from the
  * catalogs every g1t ships with; a workspace's own library, connections
  * and installs are read on the site for now, and added here once the API
- * serves them.
+ * serves them. Every item opens where the site shows it: a connector on
+ * Connectors' Discover (an MCP server on its connect page), g1t's own
+ * announced plugins on their pages in the `g1t` marketplace.
  */
 
 export type CustomizeItem = {
@@ -42,7 +45,7 @@ export function customizeItems(section: CustomizeSection, workspace: string): Cu
       description: connector.description,
       status: connector.status,
       group: connector.status === "available" ? "Connect now" : "Coming",
-      sitePath: connector.href ? connectorPath(connector.href, workspace) : `${fallback}/${encodeURIComponent(connector.id)}`,
+      sitePath: connector.href ? connectorPath(connector.href, workspace) : `${fallback}?view=discover&directory=${encodeURIComponent(connector.id)}`,
     }));
   }
   return FIRST_PARTY_EXTENSIONS.map((extension) => ({
@@ -51,7 +54,7 @@ export function customizeItems(section: CustomizeSection, workspace: string): Cu
     description: extension.tagline,
     status: extension.status,
     group: `${extension.publisher.name} · ${extension.category}`,
-    sitePath: `${fallback}/${encodeURIComponent(extension.id)}`,
+    sitePath: customizePath("plugins", workspace, encodeURIComponent(pluginRef(extension.id, "g1t"))),
   }));
 }
 

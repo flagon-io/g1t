@@ -41,6 +41,27 @@ export function foliosFailure<T>(error: unknown): Result<T> {
   return { ok: false, error: { code: "conflict", message } };
 }
 
+/**
+ * Whether something changed since the layout last loaded its sidebar. A
+ * change (a `foliosRequest` that succeeded) sets it; the layout's
+ * `shouldRevalidate` reads it, so a page that changes something and then
+ * navigates (trashing an artifact from its own page, making one from the
+ * sidebar) reloads the sidebar with the navigation, instead of the
+ * navigation cancelling the reload the change asked for. The layout
+ * clears it once its data arrives.
+ */
+let sidebarChanged = false;
+
+/** For the layout's `shouldRevalidate`: whether a change happened since its data last arrived. */
+export function sidebarChangedSinceLoad(): boolean {
+  return sidebarChanged;
+}
+
+/** The layout's data arrived: the sidebar shows every change made before it. */
+export function sidebarLoaded(): void {
+  sidebarChanged = false;
+}
+
 export async function foliosRequest<T>(slug: string, intent: string, body: Record<string, unknown> = {}): Promise<Result<T>> {
   try {
     const response = await fetch(`/${slug}/-/artifacts/api`, {
@@ -49,7 +70,9 @@ export async function foliosRequest<T>(slug: string, intent: string, body: Recor
       body: JSON.stringify({ intent, ...body }),
       signal: AbortSignal.timeout(FOLIOS_TIMEOUT_MS),
     });
-    return (await response.json()) as Result<T>;
+    const result = (await response.json()) as Result<T>;
+    if (result.ok) sidebarChanged = true;
+    return result;
   } catch (error) {
     return foliosFailure(error);
   }

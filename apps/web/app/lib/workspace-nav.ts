@@ -185,12 +185,19 @@ const TAB_WORDS: Record<string, string> = {
   settings: "-/settings",
 };
 
-/** Workspace pages that moved, by their old name under `-/`. */
+/** Workspace pages that moved, by their old name under `-/`; a new address may carry a query of its own. */
 const MOVED: Record<string, string> = {
   // Home was called Today for a while.
   today: "-/home",
   "soon/teams": "-/teams",
   "soon/insights": "-/insights",
+  // The Marketplace became Customize: extensions are plugins, integrations connectors.
+  marketplace: "-/customize",
+  "marketplace/extensions": "-/customize/plugins",
+  "marketplace/integrations": "-/customize/connectors",
+  "marketplace/requests": "-/customize/requests",
+  // The skill library is Customize's Skills tab; each skill's page stays under Agents.
+  "agents/skills": "-/customize/skills?view=yours",
 };
 
 /** Workspace pages that moved with everything under them, by their old name under `-/`: the rest of the path follows. */
@@ -198,6 +205,30 @@ const MOVED_UNDER: Record<string, string> = {
   // Agent templates were the Marketplace's Agents tab.
   "marketplace/agents": "-/agents/templates",
 };
+
+/** Pages whose one child moved to a new shape: an extension's page is its plugin's in g1t's marketplace, an integration's the directory entry on Connectors. */
+const MOVED_CHILD: Record<string, (id: string) => string> = {
+  "marketplace/extensions": (id) => `-/customize/plugins/${encodeURIComponent(`${id}@g1t`)}`,
+  "marketplace/integrations": (id) => `-/customize/connectors?directory=${encodeURIComponent(id)}`,
+};
+
+/** Where the page `rest` (under `-/`) is now, or null when it has not moved. */
+function movedTo(rest: string): string | null {
+  if (MOVED[rest] !== undefined) return MOVED[rest]!;
+  const under = Object.keys(MOVED_UNDER).find((from) => rest === from || rest.startsWith(`${from}/`));
+  if (under) return `${MOVED_UNDER[under]}${rest.slice(under.length)}`;
+  const parent = Object.keys(MOVED_CHILD).find((from) => rest.startsWith(`${from}/`) && !rest.slice(from.length + 1).includes("/"));
+  return parent ? MOVED_CHILD[parent]!(rest.slice(parent.length + 1)) : null;
+}
+
+/** `to` with `search` merged into any query of its own, as a path under the workspace. */
+function withQuery(to: string, search: string): string {
+  const [path = "", own = ""] = to.split("?", 2);
+  const params = new URLSearchParams(search);
+  for (const [key, value] of new URLSearchParams(own)) params.set(key, value);
+  const query = params.toString();
+  return `${path ? `/${path}` : ""}${query ? `?${query}` : ""}`;
+}
 
 /** The page a request is for: a click's data request ends in `.data`. */
 export function pagePath(pathname: string): string {
@@ -242,11 +273,9 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
     return `/${slug}${to ? `/${to}` : ""}${rest ? `?${rest}` : ""}`;
   }
   if (parts[1] !== "-") return null;
-  const rest = parts.slice(2).join("/");
-  const under = Object.keys(MOVED_UNDER).find((from) => rest === from || rest.startsWith(`${from}/`));
-  const to = under ? `${MOVED_UNDER[under]}${rest.slice(under.length)}` : MOVED[rest];
-  if (to === undefined) return null;
-  return `/${slug}${to ? `/${to}` : ""}${search && search !== "?" ? (search.startsWith("?") ? search : `?${search}`) : ""}`;
+  const to = movedTo(parts.slice(2).join("/"));
+  if (to === null) return null;
+  return `/${slug}${withQuery(to, search)}`;
 }
 
 /**
@@ -282,6 +311,7 @@ const PAGE_MODES: Record<string, ModeKey> = {
   context: "agents",
   memory: "agents",
   apps: "apps",
+  customize: "apps",
   marketplace: "apps",
   people: "people",
   members: "workspace",

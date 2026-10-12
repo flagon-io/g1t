@@ -1,6 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
-import { Await, Form, Link, data, redirect, useNavigation } from "react-router";
+import { Await, Form, data, redirect, useNavigation } from "react-router";
 
 import { hasCodeAccess } from "@g1t/contracts";
 

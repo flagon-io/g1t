@@ -41,6 +41,7 @@ mod checks;
 mod clone;
 mod computer;
 mod confidence;
+mod customize;
 mod deploy;
 mod docker;
 mod guard;

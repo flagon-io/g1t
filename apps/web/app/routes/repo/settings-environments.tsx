@@ -95,13 +95,13 @@ export default function RepoEnvironments({ loaderData, actionData, params }: Rou
       {editing ? (
         <EnvironmentEditor key={editing.name} environment={editing} base={base} saved={actionData?.saved ?? false} error={actionData?.error} />
       ) : (
-        <EnvironmentList environments={environments} base={base} badName={badName} />
+        <EnvironmentList environments={environments} badName={badName} />
       )}
     </div>
   );
 }
 
-function EnvironmentList({ environments, base, badName }: { environments: Environment[]; base: string; badName: string | null }) {
+function EnvironmentList({ environments, badName }: { environments: Environment[]; badName: string | null }) {
   return (
     <div className="max-w-4xl space-y-8">
       <p className="max-w-3xl text-sm text-muted">

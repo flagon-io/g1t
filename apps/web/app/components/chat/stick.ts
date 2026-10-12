@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useRef } from "react";
+import { type RefObject, useEffect } from "react";
 
 /**
  * Keeps a conversation's newest message in view while the reader is at

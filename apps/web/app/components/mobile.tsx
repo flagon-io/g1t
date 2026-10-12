@@ -12,7 +12,7 @@ import {
   Moon,
   Settings,
   Smile,
-  Store,
+  SlidersHorizontal,
   Sun,
 } from "lucide-react";
 import { Dialog as Primitive } from "radix-ui";
@@ -257,7 +257,7 @@ function MoreTile({ to, icon, label, onClick, disabled, note }: { to?: string; i
 
 /**
  * More, from the bottom bar: a flat panel standing on it, with g1t's
- * mark at its top and a grid of big tiles: all apps, the Marketplace,
+ * mark at its top and a grid of big tiles: all apps, Customize,
  * your pinned apps, Artifacts, People, Workspace, and "You and
  * help", which opens your account's sheet.
  */
@@ -283,7 +283,7 @@ function MoreSheet({ open, onOpenChange, user, workspace, pins }: { open: boolea
             </div>
             <div className="grid grid-cols-4 gap-1.5">
               <MoreTile to={`/${slug}/-/apps`} icon={<LayoutGrid size={20} />} label="All apps" />
-              <MoreTile to={`/${slug}/-/marketplace`} icon={<Store size={20} />} label="Marketplace" />
+              <MoreTile to={`/${slug}/-/customize`} icon={<SlidersHorizontal size={20} />} label="Customize" />
               {shown.map((app) => (
                 <MoreTile key={app.key} to={app.to} icon={app.icon(26)} label={app.name} />
               ))}

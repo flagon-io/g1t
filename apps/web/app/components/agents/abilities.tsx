@@ -2,10 +2,13 @@ import { ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useId } from "react";
 import { Link, useFetcher } from "react-router";
 
-import type { Ability, AbilityLevel, AbilitySection, AbilitySource, McpServer } from "@g1t/contracts";
+import type { Ability, AbilityLevel, AbilitySection, AbilitySource, AgentConnector, McpServer } from "@g1t/contracts";
 import { ABILITY_LEVEL_LABELS } from "@g1t/contracts/abilities";
+import { customizePath } from "@g1t/contracts/customize";
 
 import { cn } from "../../lib/cn";
+import { connectorPagePath } from "../../lib/customize";
+import { StateBadge } from "../customize";
 import { ButtonLink, SubmitButton } from "../ui";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -131,7 +134,12 @@ export function AbilityRow({ ability, source, agentName, canEdit, fetcher }: { a
   );
 }
 
-/** A source's block: its name, whether it is connected, and its rows. */
+/**
+ * A source's block: its name, whether it is connected, and its rows. An MCP
+ * source is one of the workspace's connectors (`connector`: how it is
+ * doing and how the agent has it, with its page in Customize) or a server
+ * only this agent has, which owners list again or remove here.
+ */
 export function SourceBlock({
   section,
   source,
@@ -140,6 +148,7 @@ export function SourceBlock({
   isOwner,
   slug,
   fetcher,
+  connector = null,
 }: {
   section: AbilitySection;
   source: AbilitySource;
@@ -148,10 +157,12 @@ export function SourceBlock({
   isOwner: boolean;
   slug: string;
   fetcher: Fetcher;
+  connector?: AgentConnector | null;
 }) {
   const integration = section.group === "integration";
   const mcp = section.group === "mcp";
-  const askHref = `/${slug}/-/marketplace/integrations/${source.id}`;
+  const shared = mcp && connector != null && connector.via !== "agent-only";
+  const askHref = `${customizePath("connectors", slug)}?view=discover&directory=${encodeURIComponent(source.id)}`;
   return (
     <article className="overflow-hidden rounded-xl border border-line bg-surface" aria-labelledby={`source-${source.id}`}>
       {(integration || mcp) && (
@@ -161,7 +172,9 @@ export function SourceBlock({
               {source.name}
             </h3>
             {integration && <Badge tone={source.connected ? "success" : "neutral"}>{source.connected ? "Connected" : "Not connected"}</Badge>}
-            {mcp && (
+            {shared && <StateBadge state={connector.state} />}
+            {mcp && <Badge tone={shared ? "accent" : "neutral"}>{connector?.via_label ?? "Only this agent"}</Badge>}
+            {mcp && !shared && (
               <a href={source.href ?? "#"} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 truncate font-mono text-xs text-muted hover:text-fg">
                 {source.href}
                 <ExternalLink size={11} aria-hidden />
@@ -175,7 +188,12 @@ export function SourceBlock({
                 Manage
               </Link>
             )}
-            {mcp && isOwner && (
+            {shared && (
+              <Link to={connectorPagePath(slug, source.id)} className="text-xs text-muted underline-offset-2 hover:underline">
+                Open in Customize
+              </Link>
+            )}
+            {mcp && !shared && isOwner && (
               <>
                 <fetcher.Form method="post">
                   <input type="hidden" name="intent" value="mcp_refresh" />

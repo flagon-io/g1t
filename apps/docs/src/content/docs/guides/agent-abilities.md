@@ -1,6 +1,6 @@
 ---
 title: Agent abilities
-description: What an agent may do, in groups - g1t's own, its computer, each connected integration and MCP servers you add - and for each whether it acts alone, only when asked for it, after asking first, or never; whose connection it uses; and the cards it posts when it can't.
+description: What an agent may do, in groups - g1t's own, its computer, each connected integration, and the connectors and MCP servers it has - and for each whether it acts alone, only when asked for it, after asking first, or never; whose connection it uses; and the cards it posts when it can't.
 ---
 
 Every agent has an **Abilities** tab on its page, after **Skills**. It
@@ -102,8 +102,8 @@ the agent acted for with a link back to the conversation.
 
 An integration that gives agents abilities but isn't connected is listed
 too, with **Connect** for owners and **Ask an owner** for anyone else,
-which opens its [Marketplace](/guides/marketplace/) page. Nothing on it
-can be set until it is connected.
+which opens it in [Customize](/guides/customize/#connectors). Nothing on
+it can be set until it is connected.
 
 #### Whose connection
 
@@ -119,22 +119,35 @@ connection; an owner can put it on the workspace's. Linear, Jira and
 Sentry can't be connected per person yet, so for them the choice is the
 workspace's connection today.
 
-### MCP servers
+### Connectors
 
-Owners add MCP servers to an agent, one at a time, by a name and an HTTPS
-address on a public host. g1t lists the server's tools when it is added,
-and each tool becomes a row:
+MCP servers reach an agent in two ways, and the tab lists both under
+**Connectors**:
+
+- **The workspace's connectors**, connected once in
+  [Customize](/guides/customize/#connectors) and given to every agent, a
+  team or this agent. Each row says how the agent has it (**Every agent**,
+  **Team QA**, **This agent**) and its state. A connector that needs a
+  sign-in or a key, or has a problem, gives the agent nothing until an
+  owner fixes it there. Servers that need a key or a browser sign-in are
+  connected this way.
+- **Only this agent**: servers owners add to this agent alone, one at a
+  time, by a name and an HTTPS address on a public host, with no sign-in.
+  An agent keeps at most 10.
+
+g1t lists a server's tools when it is connected or added, keeps the first
+40, and each tool becomes a row:
 
 - a tool the server marks as read-only is a **read**, Alone by default;
 - any other tool, including one the server says nothing about, counts as
   a **write outside g1t**, Ask first by default.
 
 Tools are offered to the agent as `<server>__<tool>`, with the arguments
-the server describes. **List its tools again** picks up a server that
-changed; **Remove** takes the server and its rows off the agent at once.
-Both are new versions of the agent. An agent keeps at most 10 servers,
-and each server's first 40 tools. Servers that need a key or a sign-in
-aren't supported yet.
+the server describes. For a server added to this agent alone, **List its
+tools again** picks up a server that changed and **Remove** takes the
+server and its rows off the agent at once; both are new versions of the
+agent. A workspace connector is listed again, signed in, given and taken
+back on its own page in Customize, and the tab links there.
 
 ## Ask first, in the conversation
 
@@ -158,9 +171,9 @@ When a request needs an integration that isn't connected, or an ability
 the agent doesn't have, the agent says so plainly and posts a **Request**
 card:
 
-- for an integration, **Ask the owners** opens the same request the
-  Marketplace does (see [ask an owner to add something](/guides/marketplace/#ask-an-owner-to-add-something)),
-  and **Open in Marketplace** goes to its page;
+- for an integration or a connector, **Ask the owners** opens the same
+  request Customize does (see [requests](/guides/customize/#requests)),
+  and **Open in Customize** goes to its page;
 - for an ability, **Ask the owners** notifies every owner with a link to
   the agent's Abilities tab, and **Open Abilities** goes there.
 
@@ -195,7 +208,10 @@ by ability id (`integration:linear:comment`), each with a `level`
 with `abilities: { settings }` replaces its settings, and is a new
 version like any change. MCP servers are added and removed with the
 agents service's `add_mcp_server`, `refresh_mcp_server` and
-`remove_mcp_server`; they never travel with a change.
+`remove_mcp_server`; they never travel with a change. The workspace's
+connectors and who gets them are the [`customize`](/guides/customize/#api)
+resource's; which ones reach an agent is read with the agents service's
+`agent_connectors`.
 
 The computer itself has routes of its own under the agent:
 `GET /workspaces/{workspace}/agents/{agent}/computer` for its state and
@@ -208,5 +224,5 @@ tool's `computer`, `wake_computer`, `sleep_computer`, `reset_computer` and
 
 - [Agents](/guides/agents/): hiring, changing and running agents.
 - [Agent skills](/guides/agent-skills/): how an agent does a kind of work.
-- [Marketplace](/guides/marketplace/): connecting integrations, and asking an owner to.
+- [Customize](/guides/customize/): connecting connectors and integrations, and asking an owner to.
 - [What agents can do for whom](/guides/agent-access/): the access every ability runs within.

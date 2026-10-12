@@ -55,7 +55,7 @@ import { loadShelf, skillsSection, teamSlugs } from "./skills.ts";
 import { readVersion } from "./skill-library.ts";
 import { conversationFrom } from "./surface.ts";
 import { type Row, definitionOf, periods } from "./store.ts";
-import { abilitiesFor, abilitiesSection, abilityPorts, pendingRequests, saidText } from "./abilities.ts";
+import { abilitiesWithConnectors, abilitiesSection, abilityPorts, pendingRequests, saidText } from "./abilities.ts";
 import { computerPorts, hasComputer } from "./computer.ts";
 import { commandEvent, eventStatement } from "./transcript.ts";
 import { type ActionPorts, type ToolCall, ToolBox } from "./tools.ts";
@@ -820,8 +820,9 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
           .usersForAudience([current.asked_by])
           .then((users) => users[0] ?? null)
           .catch(() => null);
-        const sections = askerUser ? await abilitiesFor(env, { agent, definition, workspace: slug, asker: askerUser }).catch(() => null) : null;
-        if (sections) {
+        const resolved = askerUser ? await abilitiesWithConnectors(env, { agent, definition, workspace: slug, asker: askerUser, teams: teamSlugs(teamsHere) }).catch(() => null) : null;
+        const sections = resolved?.sections ?? null;
+        if (sections && resolved) {
           toolbox.useAbilities(
             sections,
             abilityPorts(env, {
@@ -831,9 +832,10 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
               session: { id: current.id, title: current.title },
               asker,
               postCard: (card) => postCardInThread(env, current, agent, card),
+              connectors: resolved.connectors,
             }),
             saidText([current.goal, ...inbox.filter((item) => item.kind === "steer").map((item) => item.body)]),
-            definition.abilities.mcp_servers,
+            resolved.servers,
           );
           abilitiesText = abilitiesSection(sections);
           if (hasComputer(sections)) {

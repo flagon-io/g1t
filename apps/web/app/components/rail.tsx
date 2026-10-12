@@ -9,7 +9,6 @@ import { Mark } from "./logo";
 
 import { Avatar } from "./ui/avatar";
 import { Card } from "./ui/card";
-import { Hint } from "./ui/hint";
 import { Kbd } from "./ui/kbd";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import {
@@ -235,8 +234,9 @@ export function Rail({
       label: "Chat",
       badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 },
     },
-    { key: "agents", label: "Agents" },
     ...(code ? [{ key: "code" as const, label: "Code" }] : []),
+    // Agents comes after Code: it is where agents are configured, not where the work is.
+    { key: "agents", label: "Agents" },
     { key: "artifacts", label: "Artifacts" },
   ];
   const shown = pins.map((key) => pinnedApp(key, slug)).filter((app) => app != null);

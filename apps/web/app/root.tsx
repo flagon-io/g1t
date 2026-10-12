@@ -356,7 +356,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     setLiveViaToken(Boolean(user?.token?.website));
     offerTicket("/-/live", root?.liveTicket);
   }
-  const { pathname, search } = useLocation();
+  const { pathname } = useLocation();
   // Drawn around the error page too: a 404 keeps the sidebar out of a
   // project or workspace the viewer cannot see.
   const error = useRouteError();

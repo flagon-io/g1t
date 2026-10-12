@@ -549,17 +549,21 @@ pub fn operations_for(kind: RunCredentialKind, usage: CredentialUse) -> Vec<&'st
                     "message_agent",
                     "answer_message",
                     "get_context",
+                    "customize_bundle",
                 ]);
             }
             K::Review => {
                 operations.extend(TOOLS_READ.iter().copied());
-                operations.extend(["add_comment", "review_pull_request", "get_context"]);
+                operations.extend(["add_comment", "review_pull_request", "get_context", "customize_bundle"]);
             }
             K::Plan => {
                 operations.extend(TOOLS_READ.iter().copied());
-                operations.extend(["create_issue", "get_context"]);
+                operations.extend(["create_issue", "get_context", "customize_bundle"]);
             }
-            K::Update => operations.extend(TOOLS_READ.iter().copied()),
+            K::Update => {
+                operations.extend(TOOLS_READ.iter().copied());
+                operations.push("customize_bundle");
+            }
             K::Checks | K::Queue | K::Mergecheck | K::Deploy | K::Bump => {}
         },
     }

@@ -36,7 +36,7 @@ export function asSkillFile(path: string, bytes: Uint8Array): SkillFile {
   return { path, content: bytesBase64(bytes), encoding: "base64" };
 }
 
-async function inflate(data: Uint8Array, size: number): Promise<Uint8Array> {
+async function inflate(data: Uint8Array, size: number, cap: number = SKILL_FOLDER_MAX_BYTES): Promise<Uint8Array> {
   const stream = new Blob([data as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
@@ -45,7 +45,7 @@ async function inflate(data: Uint8Array, size: number): Promise<Uint8Array> {
     const { done, value } = await reader.read();
     if (done) break;
     total += value.length;
-    if (total > Math.max(size, 0) || total > SKILL_FOLDER_MAX_BYTES) {
+    if (total > Math.max(size, 0) || total > cap) {
       await reader.cancel().catch(() => undefined);
       throw new Error("too large");
     }
@@ -60,8 +60,8 @@ async function inflate(data: Uint8Array, size: number): Promise<Uint8Array> {
   return out;
 }
 
-/** The files in a zip archive, by path; directories and macOS's `__MACOSX` copies left out. */
-export async function unzip(bytes: Uint8Array): Promise<Unpacked> {
+/** The files in a zip archive, by path; directories and macOS's `__MACOSX` copies left out. `limits` is a skill's unless a larger folder (a plugin) is read. */
+export async function unzip(bytes: Uint8Array, limits: { files: number; bytes: number } = { files: SKILL_FILES_MAX, bytes: SKILL_FOLDER_MAX_BYTES }): Promise<Unpacked> {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   // The end of central directory record: the last 22 bytes, or before a comment.
   let end = -1;
@@ -74,7 +74,7 @@ export async function unzip(bytes: Uint8Array): Promise<Unpacked> {
   if (end < 0) return { ok: false, message: "That file isn't a zip archive." };
   const count = view.getUint16(end + 10, true);
   let at = view.getUint32(end + 16, true);
-  if (count > SKILL_FILES_MAX * 2) return { ok: false, message: `A skill holds at most ${SKILL_FILES_MAX} files.` };
+  if (count > limits.files * 2) return { ok: false, message: `That archive holds more than ${limits.files} files.` };
   const files: SkillFile[] = [];
   let unpacked = 0;
   for (let n = 0; n < count; n++) {
@@ -93,7 +93,7 @@ export async function unzip(bytes: Uint8Array): Promise<Unpacked> {
     if (flags & 1) return { ok: false, message: `${name} is encrypted. Upload a zip without a password.` };
     if (compressed === 0xffffffff || size === 0xffffffff) return { ok: false, message: "That zip archive is too large for a skill." };
     unpacked += size;
-    if (unpacked > SKILL_FOLDER_MAX_BYTES) return { ok: false, message: "A skill's folder is at most 1 MB once unpacked." };
+    if (unpacked > limits.bytes) return { ok: false, message: limits.bytes === SKILL_FOLDER_MAX_BYTES ? "A skill's folder is at most 1 MB once unpacked." : `That archive is larger than ${Math.round(limits.bytes / 1024 / 1024)} MB once unpacked.` };
     if (local + 30 > bytes.length || view.getUint32(local, true) !== 0x04034b50) return { ok: false, message: "That zip archive is damaged." };
     const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
     const data = bytes.subarray(start, start + compressed);
@@ -101,7 +101,7 @@ export async function unzip(bytes: Uint8Array): Promise<Unpacked> {
     if (method === 0) content = data;
     else if (method === 8) {
       try {
-        content = await inflate(data, size);
+        content = await inflate(data, size, limits.bytes);
       } catch {
         return { ok: false, message: `${name} couldn't be unpacked.` };
       }

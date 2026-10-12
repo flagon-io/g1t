@@ -905,7 +905,7 @@ export function decisionsIn(
       text: `${request.status === "done" ? "Added" : "Turned down"} ${request.name}, which ${request.requested_by} asked for`,
       by: request.resolved_by,
       at: Date.parse(request.resolved_at!),
-      to: `/${slug}/-/marketplace/requests`,
+      to: `/${slug}/-/customize/requests`,
       kind: "request",
     });
   }
@@ -1076,7 +1076,7 @@ export type AttentionRow = {
   /** Epoch ms: when it started waiting. */
   at: number;
   /** Where it came from, for a member without Code access never `code`. */
-  from: "code" | "agents" | "notifications" | "chat" | "marketplace";
+  from: "code" | "agents" | "notifications" | "chat" | "customize";
 };
 
 /**
@@ -1331,19 +1331,19 @@ export function chatRow(entry: ChatEntryLike, slug: string): AttentionRow | null
   };
 }
 
-/** A member's open request to add something from the Marketplace, for an owner. */
+/** A member's open request to add something in Customize, for an owner. */
 export function installRequestRow(request: InstallRequest, slug: string): AttentionRow | null {
   if (request.status !== "open") return null;
   return {
     key: `request:${request.id}`,
     kind: "install_request",
     title: `${request.requested_by} asked to add ${request.name}`,
-    detail: request.note ? `“${request.note}”` : "A request to add it from the Marketplace.",
+    detail: request.note ? `“${request.note}”` : "A request to add it in Customize.",
     stake: { text: "Only owners can add it", tone: null },
-    action: { label: "Review the request", to: `/${slug}/-/marketplace/requests` },
+    action: { label: "Review the request", to: `/${slug}/-/customize/requests` },
     owner: { name: request.requested_by, agent: false },
     at: Date.parse(request.requested_at),
-    from: "marketplace",
+    from: "customize",
   };
 }
 

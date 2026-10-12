@@ -20,6 +20,7 @@ use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
@@ -432,6 +433,35 @@ pub const TOOLS: &[Tool] = &[
         ],
     },
     Tool {
+        name: "customize",
+        title: "Customize",
+        description: "What shapes how a workspace's agents work, in the formats Claude Code reads: the marketplaces it reads plugins from (`.claude-plugin/marketplace.json`), what Discover lists, the plugins it installed as `name@marketplace` (their skills join the library as `plugin:skill`, their subagents become templates, their remote MCP servers become connectors), and its connectors: MCP servers connected once with a key or a sign-in, then given to every agent, a team or one agent. Members read; owners change. `bundle` is what a job's Claude Code loads on a runner, for the job's own token.",
+        default_action: None,
+        actions: &[
+            a("list_marketplaces", Op::Customize(CustomizeOp::ListMarketplaces), "The marketplaces it reads plugins from"),
+            a("add_marketplace", Op::Customize(CustomizeOp::AddMarketplace), "Add one by owner/repo, workspace/name, a git address or a marketplace.json link"),
+            a("remove_marketplace", Op::Customize(CustomizeOp::RemoveMarketplace), "Remove one; its installed plugins stay"),
+            a("refresh_marketplace", Op::Customize(CustomizeOp::RefreshMarketplace), "Read its manifest again now"),
+            a("discover", Op::Customize(CustomizeOp::Discover), "Every plugin and skill it can add, with availability"),
+            a("list_plugins", Op::Customize(CustomizeOp::ListPlugins), "Installed plugins: pinned commit, components, updates"),
+            a("get_plugin", Op::Customize(CustomizeOp::GetPlugin), "One plugin's listing, install, components, README and agents"),
+            a("install_plugin", Op::Customize(CustomizeOp::InstallPlugin), "Install one at its listed commit"),
+            a("set_plugin_enabled", Op::Customize(CustomizeOp::SetPluginEnabled), "Switch an installed one on or off"),
+            a("uninstall_plugin", Op::Customize(CustomizeOp::UninstallPlugin), "Uninstall one, with its skills, templates and connectors"),
+            a("update_plugin", Op::Customize(CustomizeOp::UpdatePlugin), "Read one again at its marketplace's current commit"),
+            a("list_plugin_agents", Op::Customize(CustomizeOp::ListPluginAgents), "Subagents plugins brought, as templates to hire from"),
+            a("list_connectors", Op::Customize(CustomizeOp::ListConnectors), "MCP servers connected to the workspace, with state, tools and grants"),
+            a("get_connector", Op::Customize(CustomizeOp::GetConnector), "One connector"),
+            a("add_connector", Op::Customize(CustomizeOp::AddConnector), "Add one from the directory, a plugin's server or an address"),
+            a("set_connector_key", Op::Customize(CustomizeOp::SetConnectorKey), "Put a key on one; never returned"),
+            a("remove_connector", Op::Customize(CustomizeOp::RemoveConnector), "Remove one with its secrets and grants"),
+            a("refresh_connector", Op::Customize(CustomizeOp::RefreshConnector), "List its tools again now"),
+            a("grant_connector", Op::Customize(CustomizeOp::GrantConnector), "Give it to every agent, a team or one agent"),
+            a("revoke_connector", Op::Customize(CustomizeOp::RevokeConnector), "Take one grant back"),
+            a("bundle", Op::Customize(CustomizeOp::Bundle), "What a job's Claude Code loads: plugins, library skills, connectors with headers"),
+        ],
+    },
+    Tool {
         name: "billing",
         title: "Billing",
         description: "A workspace's billing: its usage by product, project and day, its budget (the monthly spend limit, alerts and whether usage pauses at it), its AI credit, its invoices, and its AI Gateway requests. Amounts are whole millionths of a dollar (`_micros`), or cents (`_cents`) where named. Members read it; changing the budget and buying credit are for owners, as people, and never for g1t's agents.",
@@ -593,6 +623,7 @@ fn destructive(op: Op) -> bool {
             | Op::DeleteRunnerGroup
             | Op::UpdateRunnerSettings
             | Op::Folios(FoliosOp::SetAccess | FoliosOp::Purge)
+            | Op::Customize(CustomizeOp::RemoveMarketplace | CustomizeOp::UninstallPlugin | CustomizeOp::RemoveConnector)
     )
 }
 
@@ -843,7 +874,7 @@ mod tests {
                 assert!(tool.action(default).is_some(), "{}", tool.name);
             }
         }
-        assert!(TOOLS.len() <= 19, "{} tools", TOOLS.len());
+        assert!(TOOLS.len() <= 20, "{} tools", TOOLS.len());
     }
 
     #[test]

@@ -3,9 +3,10 @@
  * (docs.g1t.sh/guides/agent-abilities/, "MCP servers"): lists a server's
  * tools when an owner adds it, and calls one when an agent's ability
  * allows. JSON-RPC, one request per call, a fresh session each time; an
- * answer may come back as JSON or as a server-sent event stream. No
- * sign-in: servers that need a key aren't supported yet, and the docs say
- * so. Pure apart from `fetch`, so it is tested with a fake.
+ * answer may come back as JSON or as a server-sent event stream. A server
+ * that needs a sign-in gets the headers its connector keeps (connectors.ts):
+ * a key, or an OAuth bearer token. Pure apart from `fetch`, so it is tested
+ * with a fake.
  */
 import type { McpTool } from "@g1t/contracts";
 
@@ -22,12 +23,13 @@ export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 type Rpc = { id?: number | string | null; result?: unknown; error?: { code?: number; message?: string } };
 
 /** One JSON-RPC exchange with the server; the body of the matching answer, or why there is none. */
-async function exchange(fetchFn: Fetch, url: string, session: string | null, body: Record<string, unknown>, expectAnswer: boolean): Promise<{ ok: true; answer: Rpc | null; session: string | null } | { ok: false; message: string }> {
+async function exchange(fetchFn: Fetch, url: string, session: string | null, body: Record<string, unknown>, expectAnswer: boolean, headers: Record<string, string> = {}): Promise<{ ok: true; answer: Rpc | null; session: string | null } | { ok: false; message: string }> {
   let response: Response;
   try {
     response = await fetchFn(url, {
       method: "POST",
       headers: {
+        ...headers,
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
         "mcp-protocol-version": PROTOCOL,
@@ -42,6 +44,7 @@ async function exchange(fetchFn: Fetch, url: string, session: string | null, bod
   }
   const next = response.headers.get("mcp-session-id") ?? session;
   if (!expectAnswer) return { ok: true, answer: null, session: next };
+  if (response.status === 401 || response.status === 403) return { ok: false, message: `The server refused the sign-in (${response.status}). Sign in again, or check its key.` };
   if (!response.ok) return { ok: false, message: `The server answered ${response.status}.` };
   const type = (response.headers.get("content-type") ?? "").toLowerCase();
   let text: string;
@@ -81,17 +84,18 @@ async function exchange(fetchFn: Fetch, url: string, session: string | null, bod
 }
 
 /** Opens a session: initialize, then the initialized notification. The session id, if the server gave one. */
-async function handshake(fetchFn: Fetch, url: string): Promise<{ ok: true; session: string | null } | { ok: false; message: string }> {
+async function handshake(fetchFn: Fetch, url: string, headers: Record<string, string>): Promise<{ ok: true; session: string | null } | { ok: false; message: string }> {
   const opened = await exchange(
     fetchFn,
     url,
     null,
     { id: 1, method: "initialize", params: { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: "g1t-agents", version: "1" } } },
     true,
+    headers,
   );
   if (!opened.ok) return opened;
   if (opened.answer?.error) return { ok: false, message: `The server refused to start: ${opened.answer.error.message ?? "no reason given"}.` };
-  const told = await exchange(fetchFn, url, opened.session, { method: "notifications/initialized" }, false);
+  const told = await exchange(fetchFn, url, opened.session, { method: "notifications/initialized" }, false, headers);
   return { ok: true, session: told.ok ? told.session : opened.session };
 }
 
@@ -110,10 +114,10 @@ function toolOf(raw: unknown): McpTool | null {
 }
 
 /** The server's tools, at most `MAX_MCP_TOOLS`, or why they couldn't be listed. */
-export async function listMcpTools(url: string, fetchFn: Fetch = (u, init) => fetch(u, init)): Promise<{ ok: true; tools: McpTool[] } | { ok: false; message: string }> {
-  const opened = await handshake(fetchFn, url);
+export async function listMcpTools(url: string, fetchFn: Fetch = (u, init) => fetch(u, init), headers: Record<string, string> = {}): Promise<{ ok: true; tools: McpTool[] } | { ok: false; message: string }> {
+  const opened = await handshake(fetchFn, url, headers);
   if (!opened.ok) return opened;
-  const listed = await exchange(fetchFn, url, opened.session, { id: 2, method: "tools/list", params: {} }, true);
+  const listed = await exchange(fetchFn, url, opened.session, { id: 2, method: "tools/list", params: {} }, true, headers);
   if (!listed.ok) return listed;
   if (listed.answer?.error) return { ok: false, message: `The server couldn't list its tools: ${listed.answer.error.message ?? "no reason given"}.` };
   const raw = (listed.answer?.result as { tools?: unknown } | undefined)?.tools;
@@ -124,10 +128,10 @@ export async function listMcpTools(url: string, fetchFn: Fetch = (u, init) => fe
 }
 
 /** Calls one tool; the text it returned (its text parts joined), or why it didn't work. */
-export async function callMcpTool(url: string, name: string, args: Record<string, unknown>, fetchFn: Fetch = (u, init) => fetch(u, init)): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
-  const opened = await handshake(fetchFn, url);
+export async function callMcpTool(url: string, name: string, args: Record<string, unknown>, fetchFn: Fetch = (u, init) => fetch(u, init), headers: Record<string, string> = {}): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+  const opened = await handshake(fetchFn, url, headers);
   if (!opened.ok) return opened;
-  const called = await exchange(fetchFn, url, opened.session, { id: 3, method: "tools/call", params: { name, arguments: args } }, true);
+  const called = await exchange(fetchFn, url, opened.session, { id: 3, method: "tools/call", params: { name, arguments: args } }, true, headers);
   if (!called.ok) return called;
   if (called.answer?.error) return { ok: false, message: called.answer.error.message ?? "the server refused" };
   const result = called.answer?.result as { content?: unknown; isError?: unknown; structuredContent?: unknown } | undefined;

@@ -115,7 +115,7 @@ export function setupChoices(
 }
 
 /**
- * What the Integrations directory and the Marketplace say about GitHub
+ * What the Integrations directory and Customize say about GitHub
  * from the installations a workspace has recorded: nothing until there is
  * one, then the accounts it is on and any that GitHub has suspended.
  */

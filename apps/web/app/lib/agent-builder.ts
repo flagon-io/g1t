@@ -63,14 +63,14 @@ export type IntegrationHint = {
   why: string;
   /** `connect` (an owner sets it up), `ask` (anyone else asks an owner), `soon` (nobody can yet). */
   action: "connect" | "ask" | "soon";
-  /** Its page in the Marketplace, which connects it or asks for it. */
+  /** Where it is connected, or where anyone else asks for it: Customize's Connectors. */
   href: string;
 };
 
 export function integrationHint(slug: string, suggestion: { id: string; why: string }, owner: boolean): IntegrationHint | null {
   const connector = connectorById(suggestion.id);
   if (!connector) return null;
-  const href = `/${slug}/-/marketplace/integrations/${encodeURIComponent(connector.id)}`;
+  const href = `/${slug}/-/customize/connectors?view=discover&directory=${encodeURIComponent(connector.id)}`;
   const action = connector.status === "soon" ? "soon" : owner ? "connect" : "ask";
   return { id: connector.id, name: connector.name, why: suggestion.why, action, href: action === "connect" && connector.href?.workspace ? connectorPath(connector.href.workspace, slug) : href };
 }

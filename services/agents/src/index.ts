@@ -18,7 +18,6 @@ import {
   type AgentDelivery,
   type CardActionResult,
   type G1tEvent,
-  type ExtensionInstall,
   type InstallRequest,
   type InstallRequests,
   type McpServer,
@@ -36,7 +35,6 @@ import {
   awaitsConfirmation,
   chatClient,
   cleanRequestNote,
-  extensionById,
   fail,
   identityClient,
   newId,
@@ -70,7 +68,7 @@ import * as views from "./views.ts";
 import { computerCommands, computerView, eraseComputer, forgetComputer, keepComputer, resetComputer, sleepComputer, wakeComputer } from "./computer.ts";
 import { destroyRefusal, destroyStatements, listArchived, restoreHandle, restoreRefusal } from "./archived.ts";
 import { monthKey } from "./budget.ts";
-import * as extensions from "./extensions.ts";
+import { customizeRpc } from "./customize-rpc.ts";
 import { skillPushes, skillRpc } from "./skill-rpc.ts";
 import { type Answered, type Person, answerLine, findListing, listRequests, listingPath, openRequest, requestsPath, resolveListing, resolveRequest } from "./installs.ts";
 
@@ -590,62 +588,8 @@ class Agents {
     return ok(request);
   }
 
-  // ── Extensions installed in the workspace (./extensions.ts) ──────────────
-
-  /** The workspace's installs; any member sees them. */
-  async extensionInstalls(a: { workspace: string; viewer: User | null }): Promise<Result<ExtensionInstall[]>> {
-    if (a?.viewer && awaitsConfirmation(a.viewer)) return UNVERIFIED;
-    const seen = await this.seen(a?.workspace ?? "", a?.viewer ?? null);
-    if (!seen.ok) return seen;
-    return ok(await extensions.listInstalls(this.db, seen.value));
-  }
-
-  /** Owners install a published extension; whoever asked for it is told. */
-  async installExtension(a: { workspace: string; viewer: User | null; extension: unknown }): Promise<Result<ExtensionInstall>> {
-    const managed = await this.managed(a?.workspace ?? "", a?.viewer ?? null);
-    if (!managed.ok) return managed.error.code === "forbidden" ? fail("forbidden", "Only the workspace's owners install extensions.") : managed;
-    const installed = await extensions.install(this.db, extensionById, managed.value, newId("ins"), String(a.extension ?? ""), a.viewer!.username);
-    if (!installed.ok) return installed;
-    const slug = a.workspace.toLowerCase();
-    this.audit(a.viewer!, slug, "install_extension", installed.value.listing, `Installed ${installed.value.listing} ${installed.value.version}`, "marketplace");
-    this.defer(this.answerListing(slug, managed.value, installed.value.listing, a.viewer!));
-    return installed;
-  }
-
-  /** Owners switch an install on or off. */
-  async setExtensionEnabled(a: { workspace: string; viewer: User | null; listing: unknown; enabled: unknown }): Promise<Result<ExtensionInstall>> {
-    const managed = await this.managed(a?.workspace ?? "", a?.viewer ?? null);
-    if (!managed.ok) return managed;
-    const listing = String(a.listing ?? "");
-    if (!extensions.extensionIdOf(listing)) return fail("invalid", "Name an extension as extension:<id>.");
-    const changed = await extensions.setEnabled(this.db, managed.value, listing, a.enabled === true, a.viewer!.username);
-    if (changed.ok) this.audit(a.viewer!, a.workspace, a.enabled === true ? "enable_extension" : "disable_extension", listing, `${a.enabled === true ? "Switched on" : "Switched off"} ${listing}`, "marketplace");
-    return changed;
-  }
-
-  /** Owners cap what an install spends a month. */
-  async setExtensionBudget(a: { workspace: string; viewer: User | null; listing: unknown; monthly_micros: unknown }): Promise<Result<ExtensionInstall>> {
-    const managed = await this.managed(a?.workspace ?? "", a?.viewer ?? null);
-    if (!managed.ok) return managed;
-    const listing = String(a.listing ?? "");
-    const micros = a.monthly_micros == null ? null : Number(a.monthly_micros);
-    const changed = await extensions.setBudget(this.db, managed.value, listing, micros);
-    if (changed.ok) this.audit(a.viewer!, a.workspace, "set_extension_budget", listing, `Set ${listing}'s monthly budget`, "marketplace");
-    return changed;
-  }
-
-  /** Owners remove an install. */
-  async uninstallExtension(a: { workspace: string; viewer: User | null; listing: unknown }): Promise<Result<null>> {
-    const managed = await this.managed(a?.workspace ?? "", a?.viewer ?? null);
-    if (!managed.ok) return managed;
-    const listing = String(a.listing ?? "");
-    const removed = await extensions.uninstall(this.db, managed.value, listing, a.viewer!.username);
-    if (removed.ok) this.audit(a.viewer!, a.workspace, "uninstall_extension", listing, `Uninstalled ${listing}`, "marketplace");
-    return removed;
-  }
-
   /** Marks every open request for `listing` added, and tells each person who asked. */
-  private async answerListing(slug: string, workspaceId: string, listing: string, by: User): Promise<void> {
+  async answerListing(slug: string, workspaceId: string, listing: string, by: User): Promise<void> {
     try {
       const answered = await resolveListing(this.db, workspaceId, listing, by as Person);
       await Promise.all(answered.map((one) => this.tellRequester(slug.toLowerCase(), by, one)));
@@ -1066,6 +1010,9 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
   // The skill library (./skill-rpc.ts).
   const skill = await skillRpc(method, args, (a, run) => service.view(a, run), (viewer, workspace, action, name, message) => service.auditSkill(viewer, workspace, action, name, message));
   if (skill) return Response.json(skill);
+  // Customize: marketplaces, plugins and connectors (./customize-rpc.ts).
+  const customize = await customizeRpc(method, args, (a, run) => service.view(a, run));
+  if (customize) return Response.json(customize);
   switch (method) {
     case "list":
       return Response.json(await service.list(args));
@@ -1166,16 +1113,6 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
       return Response.json(await service.requestInstall(args));
     case "resolve_install_request":
       return Response.json(await service.resolveInstallRequest(args));
-    case "extension_installs":
-      return Response.json(await service.extensionInstalls(args));
-    case "install_extension":
-      return Response.json(await service.installExtension(args));
-    case "set_extension_enabled":
-      return Response.json(await service.setExtensionEnabled(args));
-    case "set_extension_budget":
-      return Response.json(await service.setExtensionBudget(args));
-    case "uninstall_extension":
-      return Response.json(await service.uninstallExtension(args));
     case "effort_costs":
       return Response.json(await service.effortCosts(args));
     case "recommendations":

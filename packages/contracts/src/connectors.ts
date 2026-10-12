@@ -73,6 +73,20 @@ export type Connector = {
   personal?: { description?: string; status?: ConnectorStatus; capabilities?: ConnectorCapability[] };
   /** More words search should find it by. */
   keywords?: string[];
+  /**
+   * The remote MCP server behind it, when the tool publishes one: g1t
+   * connects to it (docs.g1t.sh/guides/customize/, "Connectors"), signs in
+   * the way it asks (`oauth`: the browser; `header`: a key an owner
+   * pastes; `none`), lists its tools, and gives them to agents.
+   */
+  mcp?: {
+    url: string;
+    auth: "oauth" | "header" | "none";
+    /** For `header`: the header the key goes in (Authorization when unset). */
+    header?: string;
+    /** What to know before connecting: where the key comes from, or that signing in needs an app g1t doesn't have yet. */
+    caveat?: string;
+  };
 };
 
 /** A connector as one context (a workspace, or you) shows it. */
@@ -88,6 +102,8 @@ export type ConnectorView = {
   keywords: string[];
   /** The other scope it can also be connected in. */
   alsoIn: ConnectorScope | null;
+  /** The MCP server behind it, when there is one. */
+  mcp: Connector["mcp"] | null;
 };
 
 /** The categories, in the order the directory lists them. */
@@ -127,6 +143,25 @@ function model(provider: Provider, name: string, description: string, keywords: 
   };
 }
 
+/** Where an MCP-backed connector is connected: Customize's Connectors page, with the directory entry chosen. */
+export const MCP_CONNECT_PATH = "/:workspace/-/customize/connectors/new?directory=";
+
+/**
+ * A tool with a remote MCP server: available now, connected from Customize
+ * (an owner signs in or pastes a key), its tools then given to agents.
+ */
+function mcp(
+  id: string,
+  name: string,
+  category: ConnectorCategory,
+  description: string,
+  server: NonNullable<Connector["mcp"]>,
+  capabilities: ConnectorCapability[] = ["Agents can read", "Agents can act"],
+  keywords: string[] = [],
+): Connector {
+  return { id, name, category, description, scopes: W, status: "available", href: { workspace: `${MCP_CONNECT_PATH}${id}` }, capabilities, keywords: ["mcp", ...keywords], mcp: server };
+}
+
 /** A planned connector. */
 function soon(
   id: string,
@@ -157,6 +192,7 @@ export const CONNECTORS: Connector[] = [
     },
     keywords: ["git", "import", "mirror", "sign in"],
   },
+  mcp("github-mcp", "GitHub (MCP)", "code", "Agents read and act on repositories, issues and pull requests on GitHub, through GitHub's MCP server.", { url: "https://api.githubcopilot.com/mcp/", auth: "header", header: "Authorization", caveat: "Paste a GitHub personal access token as Bearer <token>: GitHub's server takes one in place of a sign-in." }, ["Agents can read", "Agents can act"], ["issues", "pull requests"]),
   {
     id: "webhooks",
     name: "Webhooks",
@@ -198,6 +234,7 @@ export const CONNECTORS: Connector[] = [
     },
     keywords: ["tracker", "tickets"],
   },
+  mcp("linear-mcp", "Linear (MCP)", "issues", "Agents search, create and update issues, projects and cycles in Linear, through Linear's MCP server.", { url: "https://mcp.linear.app/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["tracker", "issues"]),
   {
     id: "jira",
     name: "Jira",
@@ -210,10 +247,7 @@ export const CONNECTORS: Connector[] = [
     provider: "jira",
     keywords: ["atlassian", "tracker", "tickets"],
   },
-  soon("asana", "Asana", "issues", BOTH, "Tasks agents can read, import as issues, and close when the work merges.", ["Agents can read", "Writes back"], {
-    description: "Tasks assigned to you in Asana, in your g1t inbox.",
-    capabilities: ["Agents can read"],
-  }),
+  mcp("asana", "Asana", "issues", "Agents read, create and update tasks and projects in Asana, through Asana's MCP server.", { url: "https://mcp.asana.com/v2/mcp", auth: "oauth", caveat: "Asana signs in only apps registered with it, and g1t isn't one yet: signing in here fails until it is." }, ["Agents can read", "Agents can act"], ["tasks", "projects"]),
   soon("shortcut", "Shortcut", "issues", W, "Stories agents read when work mentions them, updated when the work lands.", ["Agents can read", "Writes back"]),
   soon("clickup", "ClickUp", "issues", W, "Tasks agents can read and import, kept in step with their pull requests.", ["Agents can read", "Writes back"]),
   soon("trello", "Trello", "issues", W, "Cards become issues, and move along their board as the work does.", ["Opens issues", "Writes back"]),
@@ -241,15 +275,13 @@ export const CONNECTORS: Connector[] = [
   soon("outlook-mail", "Outlook Mail", "calendar", P, "Forward a thread to an agent, or turn an email into an issue, from your own inbox.", ["Opens issues", "Agents can read"]),
 
   // Docs & knowledge ------------------------------------------------------
-  soon("notion", "Notion", "docs", BOTH, "Import pages into Docs, and let agents read the ones work refers to.", ["Agents can read"], {
-    description: "Reach your own Notion pages, to bring them into Docs.",
-    capabilities: ["Agents can read"],
-  }),
-  soon("confluence", "Confluence", "docs", W, "Import spaces into Docs, and let agents read pages work refers to.", ["Agents can read"]),
+  mcp("notion", "Notion", "docs", "Agents search, read and write Notion pages and databases, through Notion's MCP server.", { url: "https://mcp.notion.com/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["pages", "wiki", "databases"]),
+  mcp("atlassian", "Atlassian (Jira and Confluence)", "docs", "Agents search and update Jira issues and Confluence pages, through Atlassian's MCP server.", { url: "https://mcp.atlassian.com/v1/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["jira", "confluence", "tickets", "wiki"]),
   soon("google-docs", "Google Docs", "docs", BOTH, "Agents read the specs and plans linked from issues and chat.", ["Agents can read"], {
     description: "Docs you share in chat open for agents as well as people.",
     capabilities: ["Agents can read"],
   }),
+  mcp("zapier", "Zapier", "data", "Agents run the actions you expose from Zapier, across thousands of apps, through Zapier's MCP server.", { url: "https://mcp.zapier.com/api/mcp/mcp", auth: "header", header: "Authorization", caveat: "Paste the token from your Zapier MCP settings as Bearer <token>." }, ["Agents can act"], ["automation", "apps"]),
   soon("coda", "Coda", "docs", W, "Agents read the docs and tables linked from issues and chat.", ["Agents can read"]),
 
   // Monitoring & incidents ------------------------------------------------
@@ -289,6 +321,7 @@ export const CONNECTORS: Connector[] = [
     provider: "webhook",
     keywords: ["incoming", "http", "alerts", "pagerduty", "grafana"],
   },
+  mcp("sentry-mcp", "Sentry (MCP)", "monitoring", "Agents search issues, read stack traces and look up errors in Sentry, through Sentry's MCP server.", { url: "https://mcp.sentry.dev/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["errors", "issues"]),
   soon("pagerduty", "PagerDuty", "monitoring", BOTH, "Incidents open issues an agent can start on, and resolve when the fix lands.", ["Opens issues", "Writes back"], {
     description: "Sets your status to On call while you are on call.",
     capabilities: ["Sets your status"],
@@ -301,11 +334,12 @@ export const CONNECTORS: Connector[] = [
   soon("better-stack", "Better Stack", "monitoring", W, "Uptime incidents and log alerts open issues.", ["Opens issues"]),
 
   // Cloud & deploy --------------------------------------------------------
-  soon("cloudflare", "Cloudflare", "cloud", W, "Deploy projects to your own Cloudflare account, and manage their domains.", ["Deploys"]),
+  mcp("cloudflare", "Cloudflare", "cloud", "Agents read your Cloudflare account's Workers, storage and settings, and look things up in its docs, through Cloudflare's MCP servers.", { url: "https://bindings.mcp.cloudflare.com/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["workers", "r2", "d1", "dns"]),
+  mcp("cloudflare-docs", "Cloudflare docs", "docs", "Agents search Cloudflare's documentation while they work.", { url: "https://docs.mcp.cloudflare.com/mcp", auth: "none" }, ["Agents can read"], ["documentation"]),
   soon("aws", "Amazon Web Services", "cloud", W, "Workflows and deployments reach AWS with short-lived credentials, no stored keys.", ["Deploys"]),
   soon("google-cloud", "Google Cloud", "cloud", W, "Workflows and deployments reach Google Cloud with short-lived credentials.", ["Deploys"]),
   soon("azure", "Microsoft Azure", "cloud", W, "Workflows and deployments reach Azure with short-lived credentials.", ["Deploys"]),
-  soon("vercel", "Vercel", "cloud", W, "Preview and production deployments as checks on pull requests.", ["Deploys", "Agents can read"]),
+  mcp("vercel", "Vercel", "cloud", "Agents read your Vercel projects, deployments and logs, through Vercel's MCP server.", { url: "https://mcp.vercel.com", auth: "oauth" }, ["Agents can read", "Agents can act"], ["deployments", "previews"]),
   soon("netlify", "Netlify", "cloud", W, "Deploy previews as checks on pull requests.", ["Deploys", "Agents can read"]),
   soon("fly-io", "Fly.io", "cloud", W, "Deploy apps from workflows, and roll back from the deployment's page.", ["Deploys"]),
   soon("kubernetes", "Kubernetes", "cloud", W, "Roll out to your own clusters from workflows, with each rollout's status on g1t.", ["Deploys"]),
@@ -349,28 +383,32 @@ export const CONNECTORS: Connector[] = [
   },
   soon("amazon-bedrock", "Amazon Bedrock", "ai", W, "Models in your own AWS account, billed there.", ["Runs models"]),
   soon("vertex-ai", "Google Vertex AI", "ai", W, "Models in your own Google Cloud project, billed there.", ["Runs models"]),
-  soon("hugging-face", "Hugging Face", "ai", W, "Inference endpoints you run on Hugging Face, for any kind of work.", ["Runs models"]),
+  mcp("hugging-face", "Hugging Face", "ai", "Agents search models, datasets, papers and Spaces on the Hub, through Hugging Face's MCP server.", { url: "https://huggingface.co/mcp", auth: "oauth" }, ["Agents can read"], ["models", "datasets", "hub"]),
+  mcp("context7", "Context7", "docs", "Agents read current documentation for the libraries a codebase uses, through Context7's MCP server.", { url: "https://mcp.context7.com/mcp", auth: "none" }, ["Agents can read"], ["documentation", "libraries"]),
+  mcp("microsoft-learn", "Microsoft Learn", "docs", "Agents search Microsoft's documentation for Azure, .NET and Windows, through Microsoft Learn's MCP server.", { url: "https://learn.microsoft.com/api/mcp", auth: "none" }, ["Agents can read"], ["azure", "dotnet", "documentation"]),
+  mcp("deepwiki", "DeepWiki", "docs", "Agents read generated documentation for public repositories, through DeepWiki's MCP server.", { url: "https://mcp.deepwiki.com/mcp", auth: "none" }, ["Agents can read"], ["repositories", "documentation"]),
 
   // Data & analytics ------------------------------------------------------
   soon("postgresql", "PostgreSQL", "data", W, "Agents read your schema, and run read-only queries while they investigate.", ["Agents can read"]),
   soon("snowflake", "Snowflake", "data", W, "Agents answer questions from your warehouse with read-only queries.", ["Agents can read"]),
   soon("bigquery", "BigQuery", "data", W, "Agents answer questions from your datasets with read-only queries.", ["Agents can read"]),
-  soon("posthog", "PostHog", "data", W, "Agents read product analytics and feature flags while they plan a change.", ["Agents can read"]),
+  mcp("posthog", "PostHog", "data", "Agents read product analytics, feature flags and errors in PostHog, through PostHog's MCP server.", { url: "https://mcp.posthog.com/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["analytics", "feature flags"]),
+  mcp("supabase", "Supabase", "data", "Agents read your Supabase projects, schemas and logs, and run queries, through Supabase's MCP server.", { url: "https://mcp.supabase.com/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["postgres", "database"]),
+  mcp("neon", "Neon", "data", "Agents read and manage Neon Postgres projects and branches, through Neon's MCP server.", { url: "https://mcp.neon.tech/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["postgres", "database"]),
   soon("amplitude", "Amplitude", "data", W, "Agents read the charts that work refers to.", ["Agents can read"]),
   soon("segment", "Segment", "data", W, "Agents read your tracking plan, and check new events against it.", ["Agents can read"]),
 
   // CRM & support ---------------------------------------------------------
   soon("zendesk", "Zendesk", "crm", W, "Turn a ticket into an issue, and tell the customer when the fix ships.", ["Opens issues", "Writes back"]),
-  soon("intercom", "Intercom", "crm", W, "Conversations become issues, and hear back when the fix ships.", ["Opens issues", "Writes back"]),
-  soon("hubspot", "HubSpot", "crm", W, "Agents read the account behind a request when work mentions it.", ["Agents can read"]),
+  mcp("intercom", "Intercom", "crm", "Agents search conversations, contacts and companies in Intercom, through Intercom's MCP server.", { url: "https://mcp.intercom.com/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["support", "conversations", "customers"]),
+  mcp("hubspot", "HubSpot", "crm", "Agents read contacts, companies and deals in HubSpot, through HubSpot's MCP server.", { url: "https://mcp.hubspot.com/anthropic", auth: "oauth", caveat: "HubSpot signs in only apps registered with it, and g1t isn't one yet: signing in here fails until it is." }, ["Agents can read", "Agents can act"], ["crm", "contacts", "deals"]),
   soon("salesforce", "Salesforce", "crm", W, "Agents read the account and case behind a request.", ["Agents can read"]),
-  soon("stripe", "Stripe", "crm", W, "Agents read customers and payments while they work on billing.", ["Agents can read"]),
+  mcp("stripe", "Stripe", "crm", "Agents read customers, payments and subscriptions, and look things up in Stripe's docs, through Stripe's MCP server.", { url: "https://mcp.stripe.com", auth: "oauth" }, ["Agents can read", "Agents can act"], ["payments", "billing", "customers"]),
+  mcp("paypal", "PayPal", "crm", "Agents read and manage orders, invoices and subscriptions, through PayPal's MCP server.", { url: "https://mcp.paypal.com/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["payments", "invoices"]),
 
   // Design ----------------------------------------------------------------
-  soon("figma", "Figma", "design", BOTH, "Agents read the frames linked from an issue, and build to them.", ["Agents can read"], {
-    description: "Reach your own Figma files, to link and preview them in chat and issues.",
-    capabilities: ["Agents can read"],
-  }),
+  mcp("figma", "Figma", "design", "Agents read designs, components and variables from your Figma files, and build to them, through Figma's MCP server.", { url: "https://mcp.figma.com/mcp", auth: "oauth" }, ["Agents can read"], ["design", "frames", "components"]),
+  mcp("canva", "Canva", "design", "Agents search, create and export Canva designs, through Canva's MCP server.", { url: "https://mcp.canva.com/mcp", auth: "oauth" }, ["Agents can read", "Agents can act"], ["design", "slides"]),
   soon("miro", "Miro", "design", W, "Agents read the boards linked from issues and chat.", ["Agents can read"]),
   soon("storybook", "Storybook", "design", W, "Each pull request's stories as a check, with what changed.", ["Agents can read"]),
 
@@ -422,6 +460,7 @@ export function connectorView(connector: Connector, scope: ConnectorScope): Conn
     provider: connector.provider ?? null,
     keywords: connector.keywords ?? [],
     alsoIn: connector.scopes.includes(other) ? other : null,
+    mcp: connector.mcp ?? null,
   };
 }
 

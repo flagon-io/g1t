@@ -100,7 +100,7 @@ and the test chat.
 | In the draft | What it means |
 | --- | --- |
 | **Skills** | The [foundational skills](/guides/agent-skills/) its job needs are marked **Suggested** and on; the rest are off. Turn any on or off. |
-| **What it needs connected** | Integrations its job would use, with why. Owners choose **Connect**; anyone else **Ask an owner**, which opens the integration's [Marketplace](/guides/marketplace/) page. **Soon** means nobody can connect it yet. The agent works without them and says so when asked for something that needs one. |
+| **What it needs connected** | Integrations its job would use, with why. Owners choose **Connect**; anyone else **Ask an owner**, which opens it in [Customize](/guides/customize/#connectors). **Soon** means nobody can connect it yet. The agent works without them and says so when asked for something that needs one. |
 | **Routines that would suit it** | Set them up on its **Routines** tab once it exists. Personal agents can't run routines yet. |
 | **Models and budget** | A personal agent starts with **$20 a month** and **$2 a session**. A workspace agent starts with the workspace's budget for a new agent. |
 
@@ -258,6 +258,17 @@ Planning isn't a role: it is `@g1t`'s own job.
 Model limits follow the work. Careful review never runs on the fast tier;
 high-volume intake and summaries never run on the most capable one. Change
 either if your team works differently.
+
+### From plugins
+
+A [plugin](/guides/customize/#plugins) installed from Customize can bring
+subagents (`agents/<name>.md`), and **Templates** lists each under **From
+plugins**, as `plugin:name`, with the plugin it came from. Hiring from one
+works like any template: the file's `name`, `description` and `model`
+fill the agent's name, description and model, and its body becomes the
+agent's instructions, all of which you can change before you create it.
+The agent is yours once it is created, and keeps working if the plugin is
+switched off or uninstalled; the template leaves with the plugin.
 
 ## Title and responsibilities
 
@@ -794,9 +805,9 @@ branches and required checks still apply on top.
 | Edit docs | Alone, or as a suggestion | As a suggestion |
 
 These four are also on the agent's **Abilities** tab, beside everything
-else it may do: each connected integration's actions, MCP servers an owner
-adds, and whose connection each runs on, with four levels (alone, alone
-when asked for it, ask first, never). See
+else it may do: each connected integration's actions, the connectors it
+has and MCP servers an owner adds, and whose connection each runs on, with
+four levels (alone, alone when asked for it, ask first, never). See
 [agent abilities](/guides/agent-abilities/).
 
 An agent also never does more for someone than that person could do
@@ -858,7 +869,7 @@ Each agent has a page at `g1t.sh/<workspace>/-/agents/<handle>`:
 | --- | --- |
 | **Sessions** | Every session it is working on, then every one it worked on before, each child under the session that started it. See [sessions](/guides/agent-sessions/). |
 | **Skills** | The [skills](/guides/agent-skills/) it has: g1t's foundational ones and your library's, each on or off. |
-| **Abilities** | What it may do, in groups, with a level for each: alone, alone when asked for it, ask first, or never; whose connection an integration runs on; MCP servers owners add. See [agent abilities](/guides/agent-abilities/). |
+| **Abilities** | What it may do, in groups, with a level for each: alone, alone when asked for it, ask first, or never; whose connection an integration runs on; the connectors and MCP servers it has. See [agent abilities](/guides/agent-abilities/). |
 | **Computer** | [Its computer](#its-computer): asleep or awake and since when, its disk against the 5 GB it holds, where it runs, and the commands it ran most recently with their output. Owners (or the member, for a personal agent) wake it, put it to sleep, or reset it. |
 | **Memory** | What it remembers, by scope, with where each fact came from. Pin, correct or forget facts. See [agent memory](/guides/agent-memory/). |
 | **Routines** | Work it does on a schedule or when something happens. See [routines](/guides/agent-routines/). |
@@ -943,11 +954,11 @@ archiving, restoring and deleting are `archive_agent`, `restore_agent` and
 		and agree in a visible thread when their work would overlap.
 		<Soon />
 	</Card>
-	<Card title="Skills and webhooks" icon="calendar-clock">
-		Skills you write or add from the Marketplace, and webhooks that wake an
-		agent. Every agent already has g1t's
-		[foundational skills](/guides/agent-skills/), and schedules and
-		workspace events already run as [routines](/guides/agent-routines/).
+	<Card title="Webhooks" icon="calendar-clock">
+		Webhooks that wake an agent. Skills are already here: every agent has
+		g1t's [foundational skills](/guides/agent-skills/), your library and
+		[Customize](/guides/customize/) add more, and schedules and workspace
+		events already run as [routines](/guides/agent-routines/).
 		<Soon />
 	</Card>
 </CardGrid>
@@ -956,7 +967,8 @@ archiving, restoring and deleting are `archive_agent`, `restore_agent` and
 
 - [Chat](/guides/chat/): channels, DMs, threads and mentions.
 - [Agent skills](/guides/agent-skills/): what every agent can make and do, and what is coming.
-- [Agent abilities](/guides/agent-abilities/): what it may do through integrations and MCP servers, and how freely.
+- [Agent abilities](/guides/agent-abilities/): what it may do through integrations and connectors, and how freely.
+- [Customize](/guides/customize/): skills, connectors and plugins for the workspace's agents.
 - [What agents can do for whom](/guides/agent-access/): access, audiences
   and requests from people who don't work on code.
 - [Model providers](/guides/models/): connect your own.

@@ -28,10 +28,16 @@
  * test it under Node.
  */
 
-/** What a listing adds to a workspace. */
-export type ListingKind = "integration" | "extension";
+/**
+ * What a listing adds to a workspace: a g1t integration, a plugin
+ * (`plugin:<name@marketplace>`), a skill from a marketplace
+ * (`skill:<name@marketplace>/<skill>`), a connector from the directory
+ * (`connector:<id>`), or an extension (g1t's own, announced). Requests
+ * (./customize.ts) name any of them.
+ */
+export type ListingKind = "integration" | "extension" | "plugin" | "skill" | "connector";
 
-export const LISTING_KINDS: readonly ListingKind[] = ["integration", "extension"];
+export const LISTING_KINDS: readonly ListingKind[] = ["integration", "extension", "plugin", "skill", "connector"];
 
 /** Whether a listing can be added today, or is planned. */
 export type ListingStatus = "available" | "soon";
@@ -386,7 +392,8 @@ export function listingRef(kind: ListingKind, id: string): string {
 /** A reference split into kind and id; null when it is not one. */
 export function parseListing(value: unknown): ListingRef | null {
   if (typeof value !== "string") return null;
-  const match = /^(integration|extension):([a-z0-9][a-z0-9_-]{0,63})$/.exec(value.trim());
+  const match = /^(integration|extension|connector):([a-z0-9][a-z0-9_-]{0,63})$|^(plugin|skill):([A-Za-z0-9][A-Za-z0-9._@/-]{0,199})$/.exec(value.trim());
+  if (match && match[3]) return { kind: match[3] as ListingKind, id: match[4]! };
   return match ? { kind: match[1] as ListingKind, id: match[2]! } : null;
 }
 

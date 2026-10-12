@@ -499,7 +499,7 @@ pub fn agent_edit_error(edit: &Value) -> Result<FolioKind, String> {
 
 /// Every method the artifacts service answers for folios, as `FOLIO_RPC_METHODS`
 /// in folios.ts.
-pub const FOLIO_RPC_METHODS: [&str; 48] = [
+pub const FOLIO_RPC_METHODS: [&str; 50] = [
     "folio_list",
     "folio_sidebar",
     "folio",
@@ -512,6 +512,7 @@ pub const FOLIO_RPC_METHODS: [&str; 48] = [
     "restore_folio",
     "delete_folio",
     "folio_trash",
+    "empty_folio_trash",
     "favorite_folio",
     "folio_content",
     "edit_folio",
@@ -521,6 +522,7 @@ pub const FOLIO_RPC_METHODS: [&str; 48] = [
     "request_folio_access",
     "join_space",
     "leave_space",
+    "delete_space",
     "search_folios",
     "folio_versions",
     "folio_version",
@@ -669,7 +671,7 @@ pub struct QueryDatasetArgs {
 /// The `folio.*` types the artifacts service publishes, with no `repoId` on
 /// the event: a folio may be private, so it never reaches a repository's
 /// timeline or webhooks. Nothing subscribes to them yet.
-pub const FOLIO_EVENTS: [&str; 6] = ["folio.created", "folio.updated", "folio.trashed", "folio.restored", "folio.shared", "folio.stale"];
+pub const FOLIO_EVENTS: [&str; 7] = ["folio.created", "folio.updated", "folio.trashed", "folio.restored", "folio.deleted", "folio.shared", "folio.stale"];
 
 /// What every `folio.*` event carries (`FolioEventData` in events.ts).
 /// Event data is camelCase, as every event on the bus.

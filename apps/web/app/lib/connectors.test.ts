@@ -44,7 +44,7 @@ test("all shows everything once", () => {
 
 test("search finds by name, description, tag and keyword, across every category", () => {
   const found = arrange(workspace, { category: "design", query: "sentry", connected: none });
-  assert.deepEqual(found.available.map((view) => view.id), ["sentry"], "a search is not held to the category");
+  assert.deepEqual(found.available.map((view) => view.id), ["sentry", "sentry-mcp"], "a search is not held to the category");
   assert.ok(matchesQuery(personal.find((view) => view.id === "google-calendar")!, "in a meeting"));
   assert.ok(matchesQuery(workspace.find((view) => view.id === "anthropic")!, "claude"));
   assert.ok(matchesQuery(workspace.find((view) => view.id === "incident-io")!, "incidentio"));

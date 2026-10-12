@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorCog, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Store, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorCog, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, SlidersHorizontal, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -14,14 +14,12 @@ import { Hint } from "./ui/hint";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import {
   Sidebar,
-  SidebarContent,
   SidebarGroup,
   SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -423,14 +421,14 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
           <OwnPresenceDot ring={side === "right" ? "var(--color-rail)" : "var(--color-bg)"} className={side === "right" ? "absolute -right-1 -bottom-1" : "absolute -right-0.5 -bottom-0.5"} />
         </DropdownMenuTrigger>
       </Hint>
-      <DropdownMenuContent align="end" side={side} sideOffset={side === "right" ? 14 : 6} collisionPadding={8} className="w-[17.5rem] p-1.5">
+      <DropdownMenuContent align="end" side={side} sideOffset={side === "right" ? 14 : 6} collisionPadding={8} className="w-70 p-1.5">
         {/* Who is signed in, and a way to their profile. */}
         <DropdownMenuItem asChild className="gap-3 px-2 py-2">
           <Link to={profile} aria-label={`${me?.name ?? shownUsername(user)} (@${shownUsername(user)}), your profile`}>
             <Avatar name={user.username} image={user.avatar} size={36} />
             <span className="flex min-w-0 grow flex-col leading-tight" aria-busy={loading}>
               {loading ? (
-                <Skeleton className="my-[0.1875rem] h-3.5 w-28" />
+                <Skeleton className="my-0.75 h-3.5 w-28" />
               ) : (
                 <span className="truncate text-sm font-medium text-fg">{me?.name ?? shownUsername(user)}</span>
               )}
@@ -1064,7 +1062,7 @@ function AccountSettingsMenu({ username }: { username: string }) {
       <Rule />
       <NavRows>
         {link("integrations", <Blocks size={15} />)}
-        {link("github", <GithubMark className="size-[15px]" />)}
+        {link("github", <GithubMark className="size-3.75" />)}
         {link("applications", <Plug size={15} />)}
       </NavRows>
       <Rule />
@@ -1430,7 +1428,7 @@ function NotificationsSidebar({ counts }: { counts: InboxCounts | null }) {
             <SidebarLink
               key={entry.reason ?? "any"}
               to={address({ reason: entry.reason, before: null })}
-              icon={<span className="block size-[15px]" />}
+              icon={<span className="block size-3.75" />}
               current={reason === entry.reason}
             >
               {entry.reason == null ? "Any reason" : entry.label}
@@ -1513,7 +1511,7 @@ const SECTIONS: Record<string, string> = {
   artifacts: "Artifacts",
   home: "Home",
   apps: "Apps",
-  marketplace: "Marketplace",
+  customize: "Customize",
   "code-access": "Code access",
   overview: "Overview",
   workspace: "Workspace",
@@ -1578,10 +1576,10 @@ function Breadcrumbs({
     } else if (third) {
       // The workspace's settings pages each stand alone: General, Members, Permissions.
       trail.push({ label: third === "settings" ? "General" : (SECTIONS[third] ?? third), to: page });
-      // The Marketplace names its tab (Marketplace / Extensions), Agents its templates, and Members its invitations.
+      // Customize names its tab (Customize / Plugins), Agents its templates, and Members its invitations.
       const tabs: Record<string, string> =
-        third === "marketplace"
-          ? { integrations: "Integrations", extensions: "Extensions", requests: "Requests" }
+        third === "customize"
+          ? { skills: "Skills", connectors: "Connectors", plugins: "Plugins", marketplaces: "Marketplaces", requests: "Requests" }
           : third === "agents"
             ? { templates: "Templates" }
             : third === "members"
@@ -1714,19 +1712,15 @@ function commandsFor(user: User, shell: ShellData): Command[] {
           ...(hasCodeAccess(ws) ? [{ label: "Code overview", to: `/${ws.slug}/-/overview`, icon: <Code2 size={15} /> }] : []),
           { label: "Artifacts", to: `/${ws.slug}/-/artifacts`, icon: <Shapes size={15} /> },
           { label: "Apps", hint: "Everything installed that you can use", to: `/${ws.slug}/-/apps`, icon: <LayoutGrid size={15} /> },
-          { label: "Marketplace", hint: "Extensions and integrations to add", to: `/${ws.slug}/-/marketplace`, icon: <Store size={15} /> },
+          { label: "Customize", hint: "Skills, connectors and plugins", to: `/${ws.slug}/-/customize`, icon: <SlidersHorizontal size={15} /> },
           { label: "Agent templates", hint: "Starting points for a new agent", to: `/${ws.slug}/-/agents/templates`, icon: <Bot size={15} /> },
           { label: "Workspace", hint: "Billing, policies, settings", to: `/${ws.slug}/-/workspace`, icon: <Building2 size={15} /> },
         ]
-      : []),
-    ...(shell.repos.length > 0
-      ? [{ label: "Put an agent on it", hint: "Open an issue and assign g1t", to: "/?agent=new", icon: <Sparkles size={15} /> }]
       : []),
     { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
     { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
     { label: "Notifications", hint: "What needs you", to: "/notifications", icon: <Bell size={15} /> },
     { label: "New project", to: "/new", icon: <Plus size={15} /> },
-    { label: "New workspace", to: "/workspaces/new", icon: <Plus size={15} /> },
     { label: "Your settings", to: FIRST_SETTINGS_PAGE, icon: <Settings size={15} /> },
     ...(Object.keys(ACCOUNT_SETTINGS) as AccountSettingsPage[])
       .filter((page) => page !== "profile")
@@ -1844,7 +1838,7 @@ export function Progress() {
   return (
     <div
       aria-hidden="true"
-      className={`pointer-events-none fixed inset-x-0 top-0 z-[60] h-[3px] transition-opacity duration-300 ${
+      className={`pointer-events-none fixed inset-x-0 top-0 z-60 h-0.75 transition-opacity duration-300 ${
         visible ? "opacity-100" : "opacity-0"
       }`}
     >
@@ -2212,12 +2206,6 @@ function CreateMenu({ shell }: { shell: ShellData }) {
           </>
         )}
         <DropdownMenuItem asChild>
-          <Link to="/?agent=new">
-            <Sparkles />
-            Put an agent on it
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
           <Link to="/new">
             <Box />
             New project
@@ -2229,14 +2217,8 @@ function CreateMenu({ shell }: { shell: ShellData }) {
             Import from GitHub
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link to="/workspaces/new">
-            <Users />
-            New workspace
-          </Link>
-        </DropdownMenuItem>
-        {/* A team in the workspace you are in, for whoever it lets create one. */}
+        {/* A team in the workspace you are in, for whoever it lets create one. A new workspace is made from the workspace switcher in the rail. */}
+        {shell.workspace && <DropdownMenuSeparator />}
         {shell.workspace &&
           (mayCreateTeams(shell.workspace.team_creation, shell.workspace.role) ? (
             <DropdownMenuItem asChild>

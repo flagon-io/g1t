@@ -864,7 +864,11 @@ export class ToolBox {
 
   /** One of the agent's skills, as `use_skill` reads it; only skills it has, and never a tool it lacks. */
   private async skill(name: string, file: string | null): Promise<ToolResult> {
-    const entry = this.shelf.find((skill) => skill.name === name.toLowerCase());
+    const wanted = name.toLowerCase();
+    // By its full name; else, a plugin's skill by its bare name when only one plugin brings it.
+    const matches = this.shelf.filter((skill) => skill.name.toLowerCase() === wanted);
+    const bare = matches.length ? [] : this.shelf.filter((skill) => skill.name.toLowerCase().replace(/^[^:]+:/, "") === wanted);
+    const entry = matches[0] ?? (bare.length === 1 ? bare[0] : undefined);
     if (!entry) {
       const names = this.shelf.map((skill) => skill.name).join(", ");
       return { text: `You have no skill called ${name || "that"}. Your skills: ${names || "none"}.`, outcome: "refused" };

@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { Bot, ExternalLink, GitCommitHorizontal, GitMerge, Play, Sparkles } from "lucide-react";
+import { Bot, ExternalLink, GitCommitHorizontal, GitMerge, Sparkles } from "lucide-react";
 import { Form, Link, redirect } from "react-router";
 
 import { type Pull, PROVIDERS, workOwner } from "@g1t/contracts";
@@ -24,7 +24,6 @@ import { CheckBadge } from "../../components/checks";
 import { LabelChip, LabelsBox, MilestoneBox } from "../../components/labels";
 import {
   Assignee,
-  AssigneeStack,
   ChangeSize,
   CommentForm,
   CommentList,

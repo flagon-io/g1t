@@ -33,6 +33,7 @@ import {
   type SkillFile,
   SKILLS_PER_AGENT_MAX,
   SKILLS_REPO_DIR,
+  SKILLS_REPO_DIRS,
   SKILL_FILES_MAX,
   SKILL_FOLDER_MAX_BYTES,
   checkSkillFolder,
@@ -55,6 +56,8 @@ export type SkillRow = {
   id: string;
   workspace_id: string;
   name: string;
+  /** The plugin it came with (`name@marketplace`), or null. */
+  plugin: string | null;
   status: SkillStatus;
   version: number;
   description: string;
@@ -128,13 +131,14 @@ export function mayChange(actor: Actor, scope: SkillScope, target: string): bool
   return actor.owner || (scope === "team" && actor.maintains.has(target));
 }
 
-export function mayEdit(actor: Actor, row: Pick<SkillRow, "status" | "created_by" | "mirrored">): boolean {
-  if (row.mirrored) return false;
+export function mayEdit(actor: Actor, row: Pick<SkillRow, "status" | "created_by" | "mirrored" | "plugin">): boolean {
+  if (row.mirrored || row.plugin) return false;
   if (!mayWrite(actor)) return false;
   return actor.owner || row.status === "draft" || row.created_by === actor.username;
 }
 
-export function mayDelete(actor: Actor, row: Pick<SkillRow, "status" | "created_by">, attachments: readonly Pick<AttachmentRow, "scope" | "target">[]): boolean {
+export function mayDelete(actor: Actor, row: Pick<SkillRow, "status" | "created_by" | "plugin">, attachments: readonly Pick<AttachmentRow, "scope" | "target">[]): boolean {
+  if (row.plugin) return false;
   if (actor.owner) return true;
   if (row.status === "draft") return mayWrite(actor) || row.created_by === actor.username;
   return mayWrite(actor) && row.created_by === actor.username && attachments.every((a) => a.scope === "team" && actor.maintains.has(a.target));
@@ -161,8 +165,20 @@ export async function readVersion(db: D1Database, skillId: string, version: numb
   return row ? { skill_md: row.skill_md, files: json<SkillFile[]>(row.files, []) } : null;
 }
 
-async function skillByName(db: D1Database, workspaceId: string, name: string): Promise<SkillRow | null> {
-  return db.prepare("SELECT * FROM skills WHERE workspace_id = ? AND name = ? AND archived_at IS NULL").bind(workspaceId, name).first<SkillRow>();
+/** A skill by name: the workspace's own (`plugin` null), or a plugin's. Names are matched without case, as agents say them. */
+export async function skillByName(db: D1Database, workspaceId: string, name: string, plugin: string | null = null): Promise<SkillRow | null> {
+  return db.prepare("SELECT * FROM skills WHERE workspace_id = ? AND lower(name) = lower(?) AND COALESCE(plugin, '') = ? AND archived_at IS NULL").bind(workspaceId, name, plugin ?? "").first<SkillRow>();
+}
+
+/** The part of a plugin's ref agents use as a prefix: `pdf@anthropic-agent-skills` is `pdf`. */
+export function pluginPrefix(ref: string): string {
+  const at = ref.lastIndexOf("@");
+  return at > 0 ? ref.slice(0, at) : ref;
+}
+
+/** `plugin:name` for a plugin's skill, the name alone otherwise. */
+export function qualifiedName(row: Pick<SkillRow, "name" | "plugin">): string {
+  return row.plugin ? `${pluginPrefix(row.plugin)}:${row.name}` : row.name;
 }
 
 async function attachmentsOf(db: D1Database, skillIds: string[]): Promise<AttachmentRow[]> {
@@ -192,6 +208,8 @@ export async function writeVersion(
     now: Date;
     status: SkillStatus;
     mirrored: boolean;
+    /** The plugin it comes with, for a plugin's skill. */
+    plugin?: string | null;
     move: (attachment: AttachmentRow) => boolean;
   },
 ): Promise<Result<{ id: string; version: number; changed: boolean; moved: number }>> {
@@ -211,21 +229,21 @@ export async function writeVersion(
       await db.batch([
         db
           .prepare(
-            `INSERT INTO skills (id, workspace_id, name, description, tools, requires_computer, files, bytes, origin, mirrored, status, version, created_by, created_at, updated_by, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12, ?13, ?12, ?13)`,
+            `INSERT INTO skills (id, workspace_id, name, description, tools, requires_computer, files, bytes, origin, mirrored, status, version, created_by, created_at, updated_by, updated_at, plugin)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12, ?13, ?12, ?13, ?14)`,
           )
-          .bind(id, input.workspaceId, ...summary, input.status, input.by, at),
+          .bind(id, input.workspaceId, ...summary, input.status, input.by, at, input.plugin ?? null),
         versionInsert(db, id, 1, checked, filesJson, origin, input.note, digest, input.by, at),
       ]);
     } catch (error) {
-      if (String(error).includes("UNIQUE")) return fail("conflict", `The library already has a skill called ${checked.name}.`);
+      if (String(error).includes("UNIQUE")) return fail("conflict", `The library already has a skill called ${input.plugin ? `${pluginPrefix(input.plugin)}:` : ""}${checked.name}.`);
       throw error;
     }
     return ok({ id, version: 1, changed: true, moved: 0 });
   }
 
   if (checked.name !== existing.name) {
-    const taken = await skillByName(db, input.workspaceId, checked.name);
+    const taken = await skillByName(db, input.workspaceId, checked.name, existing.plugin);
     if (taken && taken.id !== existing.id) return fail("conflict", `The library already has a skill called ${checked.name}.`);
   }
 
@@ -352,7 +370,8 @@ export async function syncMirror(
   try {
     const listing = await ports.listFiles(mirror.repo_id, null);
     commit = listing.commit;
-    const base = `${SKILLS_REPO_DIR}/`;
+    // `.claude/skills/` first, as Claude Code reads it; `.g1t/skills/` still, for libraries linked before.
+    const base = `${SKILLS_REPO_DIRS.find((dir) => listing.files.some((f) => f.path.startsWith(`${dir}/`))) ?? SKILLS_REPO_DIR}/`;
     const folders = [...new Set(listing.files.filter((f) => f.path.startsWith(base) && f.path.slice(base.length).includes("/")).map((f) => f.path.slice(base.length).split("/")[0]!))].sort();
     if (listing.truncated) problems.push("The repository has more files than g1t reads at once, so some skills may be missing.");
     const seen = new Set<string>();
@@ -424,6 +443,8 @@ function skillOut(row: SkillRow, attachments: AttachmentRow[], actor: Actor, lab
   return {
     id: row.id,
     name: row.name,
+    plugin: row.plugin,
+    qualified_name: qualifiedName(row),
     description: row.description,
     status: row.status,
     version: row.version,
@@ -497,7 +518,7 @@ export class Library {
 
   async library(): Promise<Result<SkillLibrary>> {
     const [rows, mirror, actor, labels] = await Promise.all([
-      this.db.prepare("SELECT * FROM skills WHERE workspace_id = ? AND archived_at IS NULL ORDER BY status = 'draft' DESC, name LIMIT ?").bind(this.ctx.workspaceId, LIBRARY_MAX).all<SkillRow>(),
+      this.db.prepare("SELECT * FROM skills WHERE workspace_id = ? AND archived_at IS NULL ORDER BY status = 'draft' DESC, plugin IS NOT NULL, plugin, name LIMIT ?").bind(this.ctx.workspaceId, LIBRARY_MAX).all<SkillRow>(),
       this.db.prepare("SELECT * FROM skill_mirrors WHERE workspace_id = ?").bind(this.ctx.workspaceId).first<MirrorRow>(),
       this.actor(),
       this.labels(),
@@ -516,6 +537,15 @@ export class Library {
 
   private async named(name: unknown): Promise<Result<SkillRow>> {
     const key = String(name ?? "").trim().toLowerCase();
+    const colon = key.indexOf(":");
+    // `plugin:name`: a plugin's skill, by the plugin's name.
+    if (colon > 0) {
+      const row = await this.db
+        .prepare("SELECT * FROM skills WHERE workspace_id = ? AND lower(name) = ? AND plugin IS NOT NULL AND lower(plugin) LIKE ? AND archived_at IS NULL")
+        .bind(this.ctx.workspaceId, key.slice(colon + 1), `${key.slice(0, colon)}@%`)
+        .first<SkillRow>();
+      return row ? ok(row) : fail("not_found", `No installed plugin brings a skill called ${key}.`);
+    }
     const row = key ? await skillByName(this.db, this.ctx.workspaceId, key) : null;
     if (row) return ok(row);
     if (FOUNDATIONAL_SKILLS.some((s) => s.id === key)) return fail("not_found", `${key} is one of g1t's foundational skills: see it on any agent's Skills tab.`);
@@ -843,7 +873,7 @@ export class Library {
     const teamNames = new Map(teams.map((t) => [t.slug, t.name]));
     const rows = await this.db
       .prepare(
-        `SELECT s.id AS skill_id, s.name, s.version AS latest, v.description, a.id AS attachment_id, a.version, v.tools, v.requires_computer, a.scope, a.target, a.attached_at
+        `SELECT s.id AS skill_id, s.name, s.plugin, s.version AS latest, v.description, a.id AS attachment_id, a.version, v.tools, v.requires_computer, a.scope, a.target, a.attached_at
          FROM skill_attachments a
          JOIN skills s ON s.id = a.skill_id AND s.archived_at IS NULL AND s.status = 'published'
          JOIN skill_versions v ON v.skill_id = a.skill_id AND v.version = a.version
@@ -852,7 +882,7 @@ export class Library {
          LIMIT 500`,
       )
       .bind(this.ctx.workspaceId, agent.id, JSON.stringify(teams.map((t) => t.slug)))
-      .all<{ skill_id: string; name: string; latest: number; description: string; attachment_id: string; version: number; tools: string; requires_computer: number; scope: SkillScope; target: string; attached_at: string }>();
+      .all<{ skill_id: string; name: string; plugin: string | null; latest: number; description: string; attachment_id: string; version: number; tools: string; requires_computer: number; scope: SkillScope; target: string; attached_at: string }>();
     const order: Record<SkillScope, number> = { agent: 0, team: 1, workspace: 2 };
     const seen = new Set<string>();
     const library: AgentSkillLine[] = [];
@@ -861,7 +891,8 @@ export class Library {
       seen.add(r.skill_id);
       library.push({
         id: r.skill_id,
-        name: r.name,
+        name: qualifiedName(r),
+        plugin: r.plugin,
         description: r.description,
         foundational: false,
         on: !off.has(r.skill_id),
@@ -878,6 +909,7 @@ export class Library {
     const foundational: AgentSkillLine[] = FOUNDATIONAL_SKILLS.map((s) => ({
       id: s.id,
       name: s.name,
+      plugin: null,
       description: s.description,
       foundational: true,
       on: !off.has(s.id),

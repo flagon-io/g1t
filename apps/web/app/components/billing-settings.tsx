@@ -467,7 +467,7 @@ export function PaymentMethodCard({ details, owner, enabled, staff, error }: { d
 
 // --- Add-ons ------------------------------------------------------------------------------------
 
-export function AddOns({ plan, security, owner, enabled, error }: { plan: FeatureState | null; security: FeatureState | null; owner: boolean; enabled: boolean; error?: string }) {
+export function AddOns({ plan, security, error }: { plan: FeatureState | null; security: FeatureState | null; error?: string }) {
   const planOn = !!plan?.on;
   const rows: { key: string; name: string; about: string; price: string; on: boolean; label: string; control: ReactNode }[] = [];
   if (security) {

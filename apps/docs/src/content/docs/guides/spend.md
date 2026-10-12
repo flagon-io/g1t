@@ -49,9 +49,13 @@ Slice the period's spend with the tabs:
 | **Models** | Each model's share. |
 | **Kind of work** | Chat replies, sessions, routines, helping colleagues and subagents. |
 | **Products** | Every product at price, from Usage: Agent, Sandboxes, AI Gateway, Deployments, Git & storage, Packages, Security & quality and Search. Workspace view only. |
-| **Extensions** | Coming: what each installed extension runs, once extensions can be installed. |
 
 A slice is part of the page's address (`?by=channel`), so you can share it.
+
+Plugins installed from [Customize](/guides/customize/#plugins) are free
+and have no slice of their own. What an agent hired from a plugin's
+template does, and what any agent does with a plugin's skills and
+connectors, is billed as that agent's work and shows under **Agents**.
 
 ## Spend less, keep quality
 

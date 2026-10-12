@@ -3,10 +3,10 @@ title: MCP tools
 description: The g1t MCP server's resource tools, each action they take with its required inputs and scope, and how to call them.
 ---
 
-The MCP server at `https://mcp.g1t.sh` exposes 19 tools, one per kind of
+The MCP server at `https://mcp.g1t.sh` exposes 20 tools, one per kind of
 thing on g1t: `search`, `repository`, `issue`, `pull_request`, `agent`,
 `plan`, `memory`, `workflow`, `package`, `secret`, `security`, `webhook`, `access`,
-`team`, `workspace`, `billing`, `notifications`, `account` and `artifact`. Each tool takes an `action` that says what to do. Every
+`team`, `workspace`, `customize`, `billing`, `notifications`, `account` and `artifact`. Each tool takes an `action` that says what to do. Every
 action is the same operation as a route of the [REST API](/reference/api/),
 with the same inputs, permissions and results, so the two always agree.
 
@@ -169,7 +169,7 @@ token can see. Clients use them to decide when to ask you before a call.
 | --- | --- |
 | `title` | The tool's name for people, such as `Pull requests`. |
 | `readOnlyHint` | `true` when every action shown only reads. |
-| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, deleting a team or taking its role on a repository away, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, removing a member, transferring a workspace's ownership, leaving a workspace, merging a pull request, removing a self-hosted runner, deleting a runner group, changing runner settings, sharing an artifact, and deleting an artifact for good. |
+| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, deleting a team or taking its role on a repository away, disconnecting an integration, removing a marketplace, uninstalling a plugin, removing a connector, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, removing a member, transferring a workspace's ownership, leaving a workspace, merging a pull request, removing a self-hosted runner, deleting a runner group, changing runner settings, sharing an artifact, and deleting an artifact for good. |
 | `idempotentHint` | The same as `readOnlyHint`. |
 | `openWorldHint` | Always `false`. |
 
@@ -697,6 +697,43 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 | [`review_token_request`](/reference/api/personal-access-tokens/review-token-request/) | Approve or deny one: `decision` is `approve` or `deny`, with an optional `reason` its owner is shown. Owners only, as people. | `workspace`, `id`, `decision` | `access:admin` |
 | [`revoke_member_token`](/reference/api/personal-access-tokens/revoke-member-token/) | Take a member's token out of the workspace, with an optional `reason`. A token made for it stops reaching it; one made for all of its owner's workspaces keeps working elsewhere. Owners only, as people. | `workspace`, `id` | `access:admin` |
 
+## `customize`
+
+What shapes how a workspace's agents work, in the formats Claude Code
+reads: the marketplaces it reads plugins from (`.claude-plugin/marketplace.json`),
+what Discover lists, the plugins it installed as `name@marketplace` (their
+skills join the library as `plugin:skill`, their subagents become
+templates, their remote MCP servers become connectors), and its
+connectors: MCP servers connected once with a key or a sign-in, then given
+to every agent, a team or one agent. Members read; owners change. Signing a
+connector in with OAuth needs a browser, so it is done on the site. `bundle`
+is what a job's Claude Code loads on a runner, for the job's own token. See
+[Customize](/guides/customize/).
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`list_marketplaces`](/reference/api/customize/list-marketplaces/) | The marketplaces the workspace reads plugins from: `name`, `source`, whether `builtin`, how many `plugins`, `fetched_at` and `problem`. Members only. | `workspace` | `workspace:read` |
+| [`add_marketplace`](/reference/api/customize/add-marketplace/) | Add one by `address`: `owner/repo` on GitHub, `workspace/name` here, a git address or a `marketplace.json` link; `name` overrides its own. Its manifest is read first. Owners only. | `workspace`, `address` | `workspace:admin` |
+| [`remove_marketplace`](/reference/api/customize/remove-marketplace/) | Remove one by its name (`marketplace`); plugins installed from it stay. Never a built-in one. Owners only. | `workspace`, `marketplace` | `workspace:admin` |
+| [`refresh_marketplace`](/reference/api/customize/refresh-marketplace/) | Read its manifest again now. Owners only. | `workspace`, `marketplace` | `workspace:admin` |
+| [`discover`](/reference/api/customize/discover/) | Every plugin and skill the workspace can add, with each one's `availability` (`available`, `installed`, `unavailable` with why, or `soon`), and the marketplaces. Members only. | `workspace` | `workspace:read` |
+| [`list_plugins`](/reference/api/customize/list-plugins/) | Installed plugins, switched-off ones included: pinned `sha`, `fetch`, `components`, `problems`, `enabled` and `update`. Members only. | `workspace` | `workspace:read` |
+| [`get_plugin`](/reference/api/customize/get-plugin/) | One plugin by `ref` (`name@marketplace`), installed or not: its listing, install, components, README, manifest and subagents, read from its source. Members only. | `workspace`, `ref` | `workspace:read` |
+| [`install_plugin`](/reference/api/customize/install-plugin/) | Install one at the commit its listing names: skills to the library as `plugin:skill`, subagents to Templates, remote servers to connectors. Owners only. | `workspace`, `ref` | `workspace:admin` |
+| [`set_plugin_enabled`](/reference/api/customize/set-plugin-enabled/) | Switch an installed one off (`enabled` false: its skills, templates and connectors leave agents, and runners leave it out) or on. Owners only. | `workspace`, `ref`, `enabled` | `workspace:admin` |
+| [`uninstall_plugin`](/reference/api/customize/uninstall-plugin/) | Uninstall one: its skills, templates and the connectors it brought go. Owners only. | `workspace`, `ref` | `workspace:admin` |
+| [`update_plugin`](/reference/api/customize/update-plugin/) | Read one again at its marketplace's current commit and pin it there: skills get new versions, ones it lost are archived, a server it already brought keeps its connector. Owners only. | `workspace`, `ref` | `workspace:admin` |
+| [`list_plugin_agents`](/reference/api/customize/list-plugin-agents/) | The subagents installed plugins brought, as templates to hire from (`plugin:agent`, with `prompt`, `model`, `skills`, `tools`). Members only. | `workspace` | `workspace:read` |
+| [`list_connectors`](/reference/api/customize/list-connectors/) | The workspace's connectors: `name`, `url`, `auth`, `state` (`connected`, `needs_sign_in`, `needs_key`, `problem`), `from`, `tools`, `grants`. Keys are never returned. Members only. | `workspace` | `workspace:read` |
+| [`get_connector`](/reference/api/customize/get-connector/) | One connector by `id` (`con_…`). Members only. | `workspace`, `id` | `workspace:read` |
+| [`add_connector`](/reference/api/customize/add-connector/) | Add one `from` the directory (`id`), an installed plugin's server (`ref`, `server`) or an address (`name`, `url`), with `auth` `none`, `header` (and `header` `name` and `value`) or `oauth`. Owners only. | `workspace`, `from` | `workspace:admin` |
+| [`set_connector_key`](/reference/api/customize/set-connector-key/) | Put a key on one: `value`, sent as `header_name` (its own, or `Authorization`). Kept sealed, never returned. Owners only. | `workspace`, `id`, `value` | `workspace:admin` |
+| [`remove_connector`](/reference/api/customize/remove-connector/) | Remove one with its secrets and grants. Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`refresh_connector`](/reference/api/customize/refresh-connector/) | List its tools again now. Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`grant_connector`](/reference/api/customize/grant-connector/) | Give it to every agent (`scope` `workspace`), a team (`team`, `target` its slug) or one agent (`agent`, `target` its handle). Owners only. | `workspace`, `id`, `scope` | `workspace:admin` |
+| [`revoke_connector`](/reference/api/customize/revoke-connector/) | Take one grant back, by its id (`grant`). Owners only. | `workspace`, `id`, `grant` | `workspace:admin` |
+| [`bundle`](/reference/api/customize/customize-bundle/) | What a job's Claude Code loads: switched-on `plugins` with where to fetch each at its pinned commit, the library `skills` that reach the job's agent as files, and the `connectors` that reach it with the headers that sign them in. A job's agent token or a workspace's token; a person's is refused. Secrets are in it: g1t never keeps or logs it. | `workspace` | `agents:run` |
+
 ## `billing`
 
 A workspace's billing: its usage, its budget, its AI credit, its
@@ -815,13 +852,13 @@ actions it may use depends on the kind of run.
 
 | Run | Actions |
 | --- | --- |
-| Implement, revise, answer | Reading: `repository` `get`, `list_labels`, `list_milestones`, `get_milestone` and `list_events`; `issue` `list`, `get` and `labels`; `pull_request` `list`, `get`, `changes`, `read_session` and `merge_queue`; `memory` `recall`; `search` `code`, `context` and `entity`; `workflow` `list`, `list_runs`, `get_run` and `job_logs`. Then `issue` `create` and `comment`, `memory` `remember`, `agent` `message`, `answer` and `take_messages`, and `search` `ticket`. |
+| Implement, revise, answer | Reading: `repository` `get`, `list_labels`, `list_milestones`, `get_milestone` and `list_events`; `issue` `list`, `get` and `labels`; `pull_request` `list`, `get`, `changes`, `read_session` and `merge_queue`; `memory` `recall`; `search` `code`, `context` and `entity`; `workflow` `list`, `list_runs`, `get_run` and `job_logs`; `customize` `bundle`, which the runner reads before Claude Code starts. Then `issue` `create` and `comment`, `memory` `remember`, `agent` `message`, `answer` and `take_messages`, and `search` `ticket`. |
 | Review | The same reading actions, and `issue` `comment`, `pull_request` `review` and `search` `ticket`. |
 | Plan | The same reading actions, and `issue` `create` and `search` `ticket`. |
 | Catch up | The reading actions only. |
 
 No agent's token can use the `workspace`, `access`, `team`, `secret`, `webhook` or
-`notifications` tools (g1t acts as `g1t`, which has no notifications), the controls of `workflow`, or `pull_request` `merge`, `agent`
+`notifications` tools, or any `customize` action but `bundle` (g1t acts as `g1t`, which has no notifications), the controls of `workflow`, or `pull_request` `merge`, `agent`
 `assign` and `delegate`, `plan` `create` and `apply`, `issue` `import`, or
 any `repository` action that creates, changes, renames, archives,
 transfers, deletes, restores or purges a repository, or dismisses or

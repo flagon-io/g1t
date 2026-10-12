@@ -408,7 +408,7 @@ export function HeroArt({ className }: { className?: string }) {
       ))}
 
       {/* Lanes: a raised slab each, with an agent riding it. */}
-      {lanes.map((y, index) => (
+      {lanes.map((y) => (
         <g key={y}>
           <Box x={0} y={y} w={150} d={16} h={3} stroke="var(--color-fg)" opacity={0.22} top="var(--color-surface)" />
         </g>
