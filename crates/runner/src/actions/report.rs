@@ -79,11 +79,32 @@ pub(crate) struct Api {
 }
 
 impl Api {
-    pub(crate) fn spec(&self) -> Result<Value> {
-        let response = ureq::post(&format!("{}/actions/jobs/{}/spec", self.base, self.job))
-            .timeout(Duration::from_secs(60))
-            .send_json(json!({ "token": self.token }))?;
-        Ok(response.into_json()?)
+    /// The job's spec. With `rotate`, g1t spends the token it was asked
+    /// with and sends a new one beside the spec, which this takes for
+    /// everything after (`next_token`): a copy of the first left on the
+    /// runner's computer cannot fetch the job, its secrets or a G1T_TOKEN
+    /// again. A g1t that predates it sends none, and the token stays.
+    pub(crate) fn spec(&mut self, rotate: bool) -> Result<Value> {
+        let mut body = json!({ "token": self.token });
+        if rotate {
+            body["rotate"] = json!(true);
+        }
+        let response = ureq::post(&format!("{}/actions/jobs/{}/spec", self.base, self.job)).timeout(Duration::from_secs(60)).send_json(body)?;
+        let mut spec: Value = response.into_json()?;
+        self.take_next_token(&mut spec);
+        Ok(spec)
+    }
+
+    /// Takes the token a spec carries in place of the one it was fetched
+    /// with, and masks it in the log.
+    fn take_next_token(&mut self, spec: &mut Value) {
+        let next = spec.as_object_mut().and_then(|s| s.remove("next_token").or_else(|| s.remove("nextToken")));
+        if let Some(next) = next.as_ref().and_then(Value::as_str).filter(|t| !t.is_empty()) {
+            self.token = next.to_owned();
+            if let Some(masks) = spec.get_mut("masks").and_then(Value::as_array_mut) {
+                masks.push(json!(next));
+            }
+        }
     }
 
     /// Where to fetch another repository's action from: `{"source": "g1t",
@@ -440,6 +461,21 @@ pub(crate) fn unstamped(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_token_a_spec_carries_replaces_the_one_it_was_fetched_with() {
+        let mut api = Api::offline();
+        let mut spec = json!({ "job": "job_1", "masks": ["s3cret"], "next_token": "fresh" });
+        api.take_next_token(&mut spec);
+        assert_eq!(api.token, "fresh");
+        assert!(spec.get("next_token").is_none(), "the job's steps never see it");
+        assert_eq!(spec["masks"], json!(["s3cret", "fresh"]));
+        // A g1t that does not rotate sends none: the token stays.
+        let mut spec = json!({ "job": "job_1", "masks": [] });
+        api.take_next_token(&mut spec);
+        assert_eq!(api.token, "fresh");
+        assert_eq!(spec["masks"], json!([]));
+    }
 
     #[test]
     fn every_line_is_stamped_with_the_time_as_github_stamps_it() {
