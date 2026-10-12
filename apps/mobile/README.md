@@ -273,6 +273,9 @@ and self-hosting's "The phone app"):
   allows, so the app has its own `react` (19.2.3) and `metro.config.js`
   resolves every `react` import to it. `expo-doctor` reports the root's
   copy as a duplicate; that is expected here, and the bundle has one.
+  The doctor has no way to allow one duplicate, so EAS builds skip it
+  (`EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP` in `eas.json`); `npm run doctor`
+  still runs it.
 - **Icons** are drawn from the mark: `npm run icons -w @g1t/mobile`.
 - **Versions**: `version` in `app.config.ts` is what people see;
   EAS counts build numbers itself (`appVersionSource: remote`). Over-the-air
