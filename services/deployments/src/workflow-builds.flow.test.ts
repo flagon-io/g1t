@@ -72,6 +72,7 @@ function world() {
     pull: { status: "open", headCommit: SHA, branch: "feature" as string | null, fork: null as null | { namespace: string; name: string } },
     collaborator: "write",
     plan: true,
+    limit: "ok",
     /** What other services were asked, as `SERVICE method`. */
     calls: [] as string[],
     /** What `resolve_settings` was asked for. */
@@ -113,7 +114,7 @@ function world() {
     }),
     BILLING: service("BILLING", (method) => {
       if (method === "has_feature") return state.plan ? ok(true) : { ok: false, error: { code: "payment_required", message: "Deployments need the Team plan." } };
-      if (method === "check_limit") return ok({ state: "ok" });
+      if (method === "check_limit") return ok({ state: state.limit, message: state.limit === "stopped" ? "The workspace reached its spend limit." : null });
       if (method === "prices") return { prices: [] };
       return ok(null);
     }),
@@ -226,6 +227,35 @@ test("the job reports with the build's token, and its seconds are not charged ag
   assert.equal((await post(`/jobs/${build.deploy_id}/started`, { token: build.token })).ok, false);
 });
 
+test("a sandbox's build is still charged by the second; a workflow job's never is", async () => {
+  // A classic build: what a push opens, built by g1t's sandbox.
+  const { createHash } = await import("node:crypto");
+  const token = "f".repeat(64);
+  w.state.sqlite
+    .prepare(
+      `INSERT INTO deployments (id, project_id, workspace, slug, repo_id, repo, kind, branch, number, commit_sha, script, status,
+         token_hash, trusted, created_by, created_at)
+       VALUES ('dpl_sandbox', ?, 'acme', 'web', ?, 'acme/web', 'preview', 'other', NULL, ?, 'web-git-other-acme', 'building', ?, 1, 'g1t', '2026-10-12T00:00:00Z')`,
+    )
+    .run(PROJECT, REPO, SHA, createHash("sha256").update(token).digest("hex"));
+  const finish = { worker: { compatibilityDate: "2026-09-26", vars: {} }, completionJwt: "done", buildSeconds: 30 };
+  assert.equal((await post("/jobs/dpl_sandbox/finish", { token, ...finish })).ok, true);
+  assert.equal(w.state.calls.filter((call) => call === "BILLING charge_feature").length, 1);
+  assert.deepEqual(rows("SELECT build_seconds FROM meters"), [{ build_seconds: 30 }]);
+  // A workflow job's build of the same project, finished and then failed: not charged.
+  const { value: done } = await open();
+  assert.equal((await post(`/jobs/${done.deploy_id}/finish`, { token: done.token, ...finish })).ok, true);
+  const { value: failed } = await open();
+  await post(`/jobs/${failed.deploy_id}/fail`, { token: failed.token, message: "npm run build failed", buildSeconds: 99 });
+  assert.equal(w.state.calls.filter((call) => call === "BILLING charge_feature").length, 1);
+  assert.deepEqual(rows("SELECT build_seconds FROM meters"), [{ build_seconds: 30 }]);
+  // What runs after the build is the same app as any: in apps, which the sweep meters.
+  assert.deepEqual(rows("SELECT script, kind FROM apps ORDER BY script"), [
+    { script: "web-acme", kind: "production" },
+    { script: "web-git-other-acme", kind: "preview" },
+  ]);
+});
+
 test("another branch builds its preview; a pull request's run builds the pull request's", async () => {
   w.state.run = { ...w.state.run, ref: "refs/heads/feature/x" };
   const branch = (await open()).value;
@@ -265,6 +295,10 @@ test("it is refused without a job's write token, after the job, without the plan
   assert.deepEqual([unpaid.ok, unpaid.error.code], [false, "payment_required"]);
   assert.deepEqual(rows("SELECT status FROM deployments"), [{ status: "skipped" }]);
   w.state.plan = true;
+  w.state.limit = "stopped";
+  const stopped = await open();
+  assert.deepEqual([stopped.ok, stopped.error.code, stopped.error.message], [false, "payment_required", "The workspace reached its spend limit."]);
+  w.state.limit = "ok";
   w.state.sqlite.prepare("UPDATE settings SET previews = 0").run();
   w.state.run = { ...w.state.run, ref: "refs/heads/feature" };
   assert.equal(await refused({}), "conflict");
