@@ -36,9 +36,15 @@ env:
 
 jobs:
   binaries:
-    name: Build
+    # One job per target, side by side: each cross-compile takes about six
+    # minutes, and one after another they were most of a release's wait.
+    name: Build ${{ matrix.target }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [linux-x64, linux-arm64, windows-x64]
     steps:
       - uses: actions/checkout@v5
       - name: The tag names this version
@@ -46,18 +52,39 @@ jobs:
         run: |
           version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/runner/Cargo.toml | head -1)"
           [ "runner-v$version" = "${GITHUB_REF_NAME}" ] || { echo "::error::The tag is ${GITHUB_REF_NAME}, but crates/runner is $version"; exit 1; }
+      # zig and cargo-zigbuild, kept between releases: installing them took
+      # four minutes of every one. Change the key to take newer versions.
+      - name: Cache zig and cargo-zigbuild
+        id: zig
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/lib/python3*/site-packages/ziglang
+            ~/.local/bin
+            ~/.cargo/bin/cargo-zigbuild
+          key: zig-0.13.0-zigbuild-${{ runner.os }}-1
       - name: Install zig and cargo-zigbuild
+        if: steps.zig.outputs.cache-hit != 'true'
         run: |
           # The runner's Debian marks its Python as externally managed (PEP 668); zig goes under ~/.local anyway.
           pip install --user --break-system-packages ziglang==0.13.0
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           cargo install --locked cargo-zigbuild
+      - name: zig on the PATH
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      # Each target's build, kept between releases; a release after a
+      # Cargo.lock change starts from the last one's rather than from nothing.
       - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             target
-          key: runner-release-${{ hashFiles('Cargo.lock') }}
+          key: runner-release-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: runner-release-${{ matrix.target }}-
+      # Crates whose inputs did not change come back from the Actions cache
+      # instead of being compiled (scripts/sccache.sh); without it, the job
+      # builds as before.
+      - name: sccache
+        run: bash scripts/sccache.sh install
       - name: Build Linux and Windows
         # The macOS targets need Apple's SDK to link (the Security and
         # CoreFoundation frameworks), which zig does not carry, so they are
@@ -67,11 +94,15 @@ jobs:
         env:
           G1T_RUNNER_RELEASE_KEY: ${{ vars.RUNNER_RELEASE_PUBLIC_KEY }}
           RUNNER_AGENT_IMAGE: ${{ vars.RUNNER_AGENT_IMAGE }}
-        run: node scripts/runner-release.mjs build --targets linux-x64,linux-arm64,windows-x64
+        run: node scripts/runner-release.mjs build --targets ${{ matrix.target }}
+      - name: sccache's hits
+        if: always()
+        run: bash scripts/sccache.sh stats
       - uses: actions/upload-artifact@v4
         with:
-          name: binaries
+          name: binaries-${{ matrix.target }}
           path: target/runner-release/
+          overwrite: true
 
   image:
     name: Container image
@@ -94,7 +125,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
-          name: binaries
+          pattern: binaries-*
           path: release
       - name: QEMU for arm64, if this machine allows it
         id: qemu
@@ -138,7 +169,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
-          name: binaries
+          pattern: binaries-*
           path: target/runner-release
       - name: QEMU for arm64, if this machine allows it
         id: qemu
@@ -168,6 +199,7 @@ jobs:
           path: |
             target/runner-release/*/g1t-sandbox-*
             target/runner-release/*/sandbox.json
+          overwrite: true
 
   publish:
     name: Sign and publish
@@ -184,7 +216,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
-          name: binaries
+          pattern: binaries-*
           path: target/runner-release
       - uses: actions/download-artifact@v4
         if: ${{ needs.sandbox.result == 'success' }}
