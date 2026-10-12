@@ -271,8 +271,24 @@ impl SandboxRegistration {
     }
 }
 
+/// Where the runner keeps everything: its program, registrations, log and
+/// the sandbox's VM. In the app's local data, which stays on this computer:
+/// roaming data (Windows' %APPDATA%) is copied to a profile server on
+/// networks with roaming profiles, and a VM's disk and a runner's
+/// credential have no business there. A computer whose runner already
+/// lives in roaming data keeps it there: its WSL distribution is
+/// registered at that path, and moving its disk would break it. On macOS
+/// and Linux the two are the same folder.
 fn folder(app: &AppHandle) -> PathBuf {
-    app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir().join("sh.g1t.desktop")).join("runner")
+    let fallback = || std::env::temp_dir().join("sh.g1t.desktop");
+    let local = app.path().app_local_data_dir().unwrap_or_else(|_| fallback()).join("runner");
+    let roaming = app.path().app_data_dir().unwrap_or_else(|_| fallback()).join("runner");
+    chosen_folder(local, roaming)
+}
+
+/// The local folder, unless the runner was set up in the roaming one before.
+fn chosen_folder(local: PathBuf, roaming: PathBuf) -> PathBuf {
+    if !local.exists() && roaming.exists() { roaming } else { local }
 }
 
 impl Registration {
@@ -2201,6 +2217,19 @@ mod tests {
         assert_eq!((code, extra.detail.as_deref()), (Code::SandboxFailed, Some("the sandbox did not start within 180 seconds")));
         let stopped = status(r#"{"schema":1,"state":"stopped","capabilities":[{"id":"linux","available":true,"state":"stopped"},{"id":"windows","available":true,"state":"stopped"}]}"#);
         assert_eq!(shown(&stopped).0, Code::SandboxFailed);
+    }
+
+    #[test]
+    fn a_new_runner_lives_in_local_data_and_an_old_one_stays_put() {
+        let base = std::env::temp_dir().join(format!("g1t-desktop-folders-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (local, roaming) = (base.join("local").join("runner"), base.join("roaming").join("runner"));
+        assert_eq!(chosen_folder(local.clone(), roaming.clone()), local);
+        std::fs::create_dir_all(&roaming).unwrap();
+        assert_eq!(chosen_folder(local.clone(), roaming.clone()), roaming);
+        std::fs::create_dir_all(&local).unwrap();
+        assert_eq!(chosen_folder(local.clone(), roaming), local);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

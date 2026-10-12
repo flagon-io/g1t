@@ -214,9 +214,11 @@ The sandbox also needs virtualization turned on in your computer's
 firmware (Intel VT-x or AMD-V), which most computers have on.
 
 For the sandbox, the app runs the same commands you would, with its own
-copy of `g1t-runner` and its state in the app's data folder
-(`%APPDATA%\sh.g1t.desktop\runner` on Windows,
-`~/Library/Application Support/sh.g1t.desktop/runner` on macOS,
+copy of `g1t-runner` and its state in the app's local data folder, which
+never roams to other computers with your profile
+(`%LOCALAPPDATA%\sh.g1t.desktop\runner` on Windows, or
+`%APPDATA%\sh.g1t.desktop\runner` where an earlier version set it up;
+`~/Library/Application Support/sh.g1t.desktop/runner` on macOS;
 `~/.local/share/sh.g1t.desktop/runner` on Linux):
 
 | When | The app runs |
