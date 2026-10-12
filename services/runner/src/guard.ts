@@ -27,6 +27,7 @@ import {
   sandboxNamespace,
 } from "./egress";
 import { type BrokeredParams, brokered } from "./broker-egress.ts";
+import { forward } from "./forward.ts";
 
 export {
   ABUSE_EXIT_CODE,
@@ -110,7 +111,7 @@ export async function egress(
   if (host === ABUSE_HOST) return abuse(request, env, ctx);
   if (ctx.params?.open || allows(ctx.params?.hosts ?? [], host)) {
     // A workflow job's brokered secrets are filled in first, if it has any.
-    return (await brokered(request, env, ctx)) ?? fetch(request);
+    return (await brokered(request, env, ctx)) ?? forward(request);
   }
   try {
     const namespace = sandboxNamespace(env, ctx.className);

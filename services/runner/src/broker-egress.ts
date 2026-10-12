@@ -9,6 +9,7 @@ import type { ServiceBinding } from "@g1t/contracts";
 
 import { type BrokeredJob, brokerFor, fill, scrub, scrubHeaders, scrubbable, standInsIn } from "./broker.ts";
 import { sandboxNamespace } from "./egress.ts";
+import { forward } from "./forward.ts";
 
 /**
  * What the outbound handler is given for brokering: `open` for a job whose
@@ -52,7 +53,7 @@ export async function brokered(
     }
   }
   if (filled.length === 0) return null;
-  const response = await fetch(new Request(url, { method: request.method, headers, body: request.body, redirect: "manual" }));
+  const response = await forward(new Request(url, { method: request.method, headers, body: request.body, redirect: "manual" }));
   const answered = scrubHeaders(response.headers, filled);
   const init = { status: response.status, statusText: response.statusText, headers: answered };
   if (!scrubbable(response.headers)) return new Response(response.body, init);
