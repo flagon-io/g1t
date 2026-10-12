@@ -96,9 +96,9 @@ level when it registers.
 
 | Isolation | How you get it | What a job can reach |
 | --- | --- | --- |
-| `nested-container` | The runner's image under Sysbox, as above. | Its own container, and its own Docker Engine if it uses Docker. Not the machine, and not other jobs. |
-| `container` | `g1t-runner` installed on the machine with Docker, or the image given the machine's Docker socket with the override. | Its own container. The runner itself drives the machine's Docker, which can do anything on the machine, so a job that escapes its container, or anything that takes over the runner, controls the machine. |
-| `host` | `--no-docker`. Deprecated. | Everything the runner's user can: the machine, its files, and what earlier jobs left. |
+| `nested-container` | The runner's image under Sysbox, as above, or [the desktop app](/guides/desktop/#how-jobs-run)'s Sandboxed choice. | Its own container, and its own Docker Engine if it uses Docker. Not the machine, and not other jobs. |
+| `container` | `g1t-runner` installed on the machine with Docker, the desktop app's In Docker choice, or the image given the machine's Docker socket with the override. | Its own container. The runner itself drives the machine's Docker, which can do anything on the machine, so a job that escapes its container, or anything that takes over the runner, controls the machine. |
+| `host` | `--no-docker`, or the desktop app's Directly on this computer choice. Deprecated. | Everything the runner's user can: the machine, its files, and what earlier jobs left. |
 
 ### What a job's container gets
 
@@ -201,8 +201,25 @@ Sessions that persist are here for workspace agents: each has
 [a computer of its own](/guides/agents/#its-computer) on g1t cloud, whose
 home stays between sessions and which sleeps when idle; the page says so
 under **Agents' computers and more**. Pinning an agent's computer to one of
-your own runners, a runner in the desktop app, and an official agent image
-are coming, and the page labels them so.
+your own runners and an official agent image are coming, and the page
+labels them so.
+
+**Desktops** lists every computer in the workspace with [the desktop
+app](/guides/desktop/#the-runner), whose runner runs while g1t is open
+there: what each is doing, or why it isn't running and how to fix it, in
+the app's own words, and how it runs jobs. A computer whose g1t has been
+closed for ten minutes says *g1t is closed on* its name, and so does its
+runner in the list, rather than *Offline*.
+
+## A runner in the desktop app
+
+[The desktop app](/guides/desktop/#the-runner) runs a runner for you
+while it is open, with nothing to install or register: it registers your
+computer with the workspace you choose, as you, through the site, and
+keeps the runner up to date. It runs jobs sandboxed by default
+(`nested-container`); running them in Docker (`container`) or directly
+on the computer (`host`) are settings you choose, and the app never falls
+back to them. Its runner has the label `desktop` besides the usual ones.
 
 ## Add a runner
 

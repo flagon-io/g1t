@@ -1,6 +1,6 @@
 ---
 title: The desktop app
-description: g1t in a window of its own, for Windows, macOS and Linux, with notifications from your system, a badge on the icon, g1t:// links, and updates that install themselves.
+description: g1t in a window of its own, for Windows, macOS and Linux, with notifications from your system, a badge on the icon, g1t:// links, a runner for your workspace's jobs, and updates that install themselves.
 ---
 
 The desktop app is g1t in a window of its own. Everything in it is the
@@ -17,8 +17,12 @@ moment it is deployed. What the app adds is what a browser cannot do:
 - **Updates that install themselves**, signed by g1t, in the background.
 - **Your own g1t**, if you [run one](/guides/self-hosting/): the app points
   at any server.
+- **A runner for your workspace**, started with the app, so your
+  computer runs the workspace's `runs-on: self-hosted` jobs while g1t is
+  open, with nothing to install or register. See [the runner](#the-runner).
 - **Settings of its own**: opening when you sign in to your computer,
-  what closing the window does, notifications, the badge, zoom and updates.
+  what closing the window does, notifications, the badge, zoom, updates
+  and the runner.
 
 Get it at [g1t.sh/download](https://g1t.sh/download), or from your account
 menu, **Get the desktop app**.
@@ -132,11 +136,120 @@ notify you among them, stay on g1t, in [your settings](/guides/notifications/#se
 | **Show a badge on the icon** | On | The count, or the dot on Windows. Off, the icon stays clean; the tray's hover text still counts. |
 | **Use the system's title bar** | Off | The system's title bar in place of [g1t's own](#the-title-bar), with the menu bar under it on Windows and Linux. Takes effect when g1t restarts. |
 | **Zoom** | 100% | How large g1t is drawn, from 67% to 200%. The View menu changes it too. |
-| **Download updates by themselves** | On | Off, the app never checks on its own; **Check for updates** still does. |
+| **Download updates by themselves** | On | Off, the app never checks on its own; **Check for updates** still does. The runner's updates follow it too. |
+| **Run jobs on this computer while g1t is open** | On | Starts [the runner](#the-runner) a few seconds after the window. Off, nothing runs. |
+| **How jobs run** | Sandboxed | Sandboxed, in Docker, or directly on this computer. See [how jobs run](#how-jobs-run). |
+| **Workspace** | The one you were in when it first registered | The workspace whose jobs the runner runs. Lists the workspaces you own. |
 
 The settings window also shows the app's version and whether it is up to
 date, with **Check for updates** (see [Updates](#updates)), and the server it opens, with **Change…** to [use another
 g1t](#your-own-g1t).
+
+## The runner
+
+The app runs a [self-hosted runner](/guides/self-hosted-runners/) for
+you while it is open: your workspace's jobs that ask for `self-hosted`
+run on your computer, at no cost, and nothing has to be downloaded,
+registered or started by hand. It starts a few seconds after the window
+opens, and stops when g1t quits. Time on it is free, as on any of your
+runners.
+
+To stop it, press **Stop** in the settings window's Runner section, or
+**Stop running jobs** in the tray; it starts again with **Start**, or the
+next time g1t opens. To keep it off, turn off **Run jobs on this computer
+while g1t is open** in [the settings](#settings).
+
+A job still runs only on a runner with every label it names. The app's
+runner has `self-hosted`, its OS and architecture (`linux` for a runner
+whose jobs run in containers, whatever the computer is), and `desktop`.
+It is named after your computer, and a new registration from the same
+computer takes the place of the old one.
+
+### How jobs run
+
+**How jobs run** in the settings decides what a job on your computer can
+reach. The app never changes it by itself: when the one you chose cannot
+start, it says why and runs nothing.
+
+| Choice | How | [Isolation](/guides/self-hosted-runners/#isolation) | What a job can reach |
+| --- | --- | --- | --- |
+| **Sandboxed** (the default) | The runner in a sandbox of its own, and each job in a container inside that. On Linux, the runner's image under [Sysbox](https://github.com/nestybox/sysbox), through your Docker, without its socket. On Windows and macOS, a small virtual machine the app makes, once that is released; until then it says *a sandbox isn't available on this computer yet*. | `nested-container` | Its own container. Not your computer. |
+| **In Docker** | `g1t-runner` on your computer, driving your Docker. Each job is a container of its own. | `container` | Its own container; but the runner controls your Docker, which can reach your files (Docker Desktop shares your home folder with its VM), so this is not a sandbox. |
+| **Directly on this computer** | `g1t-runner` on your computer, each job a process in a folder of its own. For jobs that need the system itself, such as building a Windows installer. | `host` | Everything your account can: your files, your keys, what an earlier job left. Not a sandbox. Never given a public repository's work. |
+
+On Linux, the sandboxed runner is this container, which the app starts,
+replaces and stops itself:
+
+```sh
+docker run -d --name g1t-desktop-runner --runtime=sysbox-runc \
+  -v g1t-desktop-runner:/data \
+  -e G1T_RUNNER_URL -e G1T_RUNNER_NAME -e G1T_RUNNER_LABELS=desktop … \
+  g1t.sh/flagon-io/g1t-runner:latest register-and-run
+```
+
+Its registration is kept on the `g1t-desktop-runner` volume. For the
+other two choices the app keeps `g1t-runner` in its data folder
+(`%APPDATA%\sh.g1t.desktop\runner` on Windows,
+`~/Library/Application Support/sh.g1t.desktop/runner` on macOS,
+`~/.local/share/sh.g1t.desktop/runner` on Linux), with each choice's
+registration beside it.
+
+### Registering
+
+The first time, and whenever you change the workspace or how jobs run,
+the app registers your computer with the workspace. It needs you signed
+in to g1t in the app as an owner of the workspace, since only owners add
+runners: the page you are on makes a registration token, which lasts an
+hour, and hands it to the app, which gives it to the runner once. The
+token is never shown, and is not kept. From then on the runner starts
+from its registration, signed in or not.
+
+The workspace is the one you were in when it first registered; choose
+another under **Workspace** in the settings. Changing it, or how jobs
+run, waits for a job that is running to end, then removes the old
+registration and makes a new one.
+
+### Keeping it up to date
+
+The app keeps the runner up to date: soon after it starts and every six
+hours, while the runner has no job, it looks for a newer `g1t-runner` in
+`g1t.sh/downloads/runner/latest.json` (or a newer image, for the
+sandbox), downloads it, checks it against the release's SHA-256, and puts
+it in place. A job is never cut short for an update, and one that fails
+leaves the runner as it was. Turning off **Download updates by
+themselves** turns these off too.
+
+### Seeing it
+
+| Where | What it shows |
+| --- | --- |
+| The tray | A row with what the runner is doing, *Runner: Waiting for jobs*, which opens the settings; **Stop running jobs** or **Start running jobs** under it. The icon's hover text says it too. |
+| The settings window | What it is doing; when it isn't running, why and how to fix it, with the fix's buttons; how jobs run; the workspace; your computer's name and the runner's version; **View on g1t**; and the runner's recent log, with **Open the whole log**. |
+| The workspace's [Runners page](/guides/self-hosted-runners/#the-runners-page) | **Desktops**: every computer with the app in the workspace, with what each is doing, or why it isn't running and the fix, in the same words. Inside the app, this computer comes first, live, with its buttons. A computer whose g1t is closed says *g1t is closed on* its name. |
+
+### When it isn't running
+
+Each state says why, and how to fix it, in the same words in the tray,
+the settings and the Runners page.
+
+| It says | Why | What to do |
+| --- | --- | --- |
+| *Waiting for jobs* | It is registered and listening. | Nothing. |
+| *Running* a job | It is running that job. | Nothing; the Runners page links to its run. |
+| *Starting*, *Registering with* a workspace, *Updating* | It is on its way. | Wait a few seconds. |
+| *Not running: turned off* | **Run jobs on this computer while g1t is open** is off. | **Turn on**. |
+| *Not running: stopped* | You pressed **Stop**. | **Start**, or open g1t again. |
+| *Not running: signed out* | It isn't registered yet, and registering needs you signed in. | **Sign in**, as an owner of the workspace. |
+| *Not running: no workspace to run jobs for* | You don't own a workspace, and only owners add runners. | Ask an owner, or **Create a workspace**. |
+| *Couldn't register with* a workspace: *only its owners can* | You aren't an owner of it. | Ask an owner to make you one, or **Choose workspace**. |
+| *Couldn't register with* a workspace, with g1t's reason | g1t refused the registration, such as for too many tokens in an hour. | **Retry**; it also tries again by itself. |
+| *Not running: Docker isn't running* | Running jobs in Docker, or the sandbox on Linux, needs Docker, and it isn't running or isn't installed. | **Open Docker** (Docker Desktop), or **Get Docker**. It starts by itself once Docker answers. |
+| *Not running: a sandbox isn't available on this computer yet* | The sandbox for Windows and macOS isn't released. | Wait for it, or **Choose how jobs run**: in Docker or directly on this computer, neither of which is a sandbox. |
+| *Not running: Sysbox isn't installed* | The sandbox on Linux needs Sysbox in your Docker. | **Install Sysbox**. |
+| *Offline:* the server *unreachable* | Your computer can't reach g1t. | Check the connection; it carries on by itself. **Retry** tries now. |
+| *Update failed* | A new version couldn't be downloaded, or its SHA-256 wasn't the release's. | It keeps running the version it has. **Retry**, or **Report** it. |
+| *Runner stopped (exit code* N*)* | The runner ended by itself, with the reason from its log. | It starts again by itself, waiting longer each time. **Restart** now, or **View log**. |
+| *g1t is closed on* a computer | Seen on the Runners page: g1t hasn't been open on that computer for ten minutes. | Open g1t there. |
 
 ## Links
 
@@ -194,9 +307,11 @@ talk to the app, whichever it is, and updates still come from g1t.sh.
 
 ## What's not there yet
 
-- **A runner inside the app**, so an agent can work on your own machine
-  with what only it reaches, as [the runners page](/guides/self-hosted-runners/)
-  says. The self-hosted runner works on the same machine meanwhile.
+- **The sandbox on Windows and macOS.** Until it is released, the runner
+  there runs jobs only if you choose Docker or this computer itself; see
+  [how jobs run](#how-jobs-run).
+- **Agents on your desktop.** The runner takes workflow jobs, and agent
+  work only if the workspace [sends it to its runners](/guides/self-hosted-runners/#agents-on-your-runners).
 - **Opening the conversation from a notification.** Clicking one brings
   the app forward; the page it is about is coming.
 - **A page of its own while offline.** If the network goes away while a
