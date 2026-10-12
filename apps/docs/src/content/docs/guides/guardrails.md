@@ -168,6 +168,27 @@ secret, needs its cloud's token service listed here, such as
 [reaching your cloud](/guides/actions/#reaching-your-cloud) for each
 cloud's hosts.
 
+### Brokered secrets
+
+The same interception keeps a workflow's API keys out of its jobs. A
+[brokered secret](/guides/secrets-and-variables/#brokered-secrets) names
+the hosts it is for, and a job is given a stand-in in place of its value.
+As a request to one of those hosts passes the runner Worker, the Worker
+puts the real value in place of the stand-in, in the request's headers
+(inside `Authorization: Basic` too) and its query string, and swaps it
+back should the answer echo it. A request to any other host goes with the
+stand-in, and the job's log notes it once. The Worker asks for a job's
+stand-ins with that job's own token and keeps them only while the job
+runs.
+
+Brokering does not widen the network: a secret's hosts must still be ones
+the job may reach. A job whose project's network is open, but which may be
+given a brokered secret, still sends its HTTP and HTTPS through the
+Worker, which reaches every host for it, and trusts the certificate as a
+restricted sandbox does; its other protocols go straight out, as before.
+Self-hosted runners' traffic does not pass through g1t, so brokered
+secrets stay stand-ins there.
+
 ## Commands
 
 The agent's harness checks every tool call the agent makes before it runs.

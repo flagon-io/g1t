@@ -13,6 +13,7 @@ import type { Setting } from "@g1t/contracts";
 
 import type { SecretsAction, SecretsData } from "../lib/secrets.server";
 import { ButtonLink, EmptyState, ErrorText, SubmitButton, TimeAgo } from "./ui";
+import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 import { CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
@@ -165,10 +166,21 @@ export function SecretsPanel({
 
 function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; manage: boolean }) {
   const secret = row.kind === "secret";
+  const hosts = row.brokeredHosts ?? [];
   return (
     <li className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-t border-line px-4 py-3 text-sm first:border-t-0 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_6rem_6rem_auto]">
       <div className="min-w-0">
-        <p className="truncate font-mono text-[0.8125rem]">{row.name}</p>
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="truncate font-mono text-[0.8125rem]">{row.name}</p>
+          {secret && hosts.length > 0 && (
+            <Hint label={`Filled in for ${hosts.join(", ")}`}>
+              <Badge tone="accent">
+                Brokered
+                <span className="sr-only">: filled in for {hosts.join(", ")}</span>
+              </Badge>
+            </Hint>
+          )}
+        </div>
         {row.note && <p className="truncate text-xs text-faint">{row.note}</p>}
         {!secret && row.value != null && <p className="truncate font-mono text-xs text-muted">{row.value}</p>}
       </div>
@@ -244,6 +256,9 @@ function Drawer({
   const [type, setType] = useState<"secret" | "config">(row?.kind === "variable" ? "config" : "secret");
   const [some, setSome] = useState(!!row && row.environments.length > 0);
   const [reach, setReach] = useState(row && row.projects.length > 0 ? "some" : "all");
+  const [brokered, setBrokered] = useState((row?.brokeredHosts?.length ?? 0) > 0);
+  // Only a secret is brokered, and only workflows read one.
+  const brokering = type === "secret" && brokered;
   const custom = row?.environments.filter((env) => !KNOWN_ENVIRONMENTS.includes(env)) ?? [];
   const field =
     "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim";
@@ -324,6 +339,42 @@ function Drawer({
             />
           </label>
 
+          {type === "secret" && (
+            <fieldset>
+              <legend className="mb-2 text-sm font-medium text-muted">Brokered</legend>
+              <div className="space-y-2 text-sm">
+                <CheckboxOption
+                  name="brokered"
+                  checked={brokered}
+                  onCheckedChange={(checked) => setBrokered(checked === true)}
+                  label="Only for these hosts"
+                  description="The job gets a stand-in; g1t puts the real value on requests to these hosts, so it never enters the sandbox."
+                />
+                {brokered && (
+                  <div className="ml-6 space-y-2">
+                    <textarea
+                      name="brokeredHosts"
+                      rows={2}
+                      required
+                      defaultValue={row?.brokeredHosts?.join("\n") ?? ""}
+                      placeholder={"api.example.com\n*.example.com"}
+                      autoComplete="off"
+                      spellCheck={false}
+                      aria-label="Hosts"
+                      className={`${field} font-mono`}
+                    />
+                    <p className="text-xs text-faint">
+                      One per line. Filled in in headers and the query string, for workflow jobs on g1t's machines.{" "}
+                      <a href="https://docs.g1t.sh/guides/secrets-and-variables/#brokered-secrets" className="text-fg hover:underline">
+                        What it covers
+                      </a>
+                    </p>
+                  </div>
+                )}
+              </div>
+            </fieldset>
+          )}
+
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-muted">Note (optional)</span>
             <input name="note" defaultValue={row?.note ?? ""} placeholder="Where to rotate it, or who to ask" className={field} />
@@ -370,16 +421,22 @@ function Drawer({
                   ["workflows", "Workflows", "secrets.KEY or vars.KEY in GitHub Actions workflows"],
                   ["deployments", "Deployments", "The build's environment, and env.KEY in the running app"],
                 ] as const
-              ).map(([value, title, text]) => (
-                <CheckboxOption
-                  key={value}
-                  name="availableTo"
-                  value={value}
-                  defaultChecked={row ? row.availableTo.includes(value) : true}
-                  label={title}
-                  description={text}
-                />
-              ))}
+              ).map(([value, title, text]) => {
+                // A deployment's app needs the value itself, so a brokered
+                // secret is never one of its.
+                const closed = brokering && value === "deployments";
+                return (
+                  <CheckboxOption
+                    key={`${value}${closed ? "-closed" : ""}`}
+                    name="availableTo"
+                    value={value}
+                    defaultChecked={closed ? false : row ? row.availableTo.includes(value) : true}
+                    disabled={closed}
+                    label={title}
+                    description={closed ? "Not for a brokered secret: a deployment's app needs the value itself." : text}
+                  />
+                );
+              })}
             </div>
           </fieldset>
 

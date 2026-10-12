@@ -9,7 +9,8 @@
 //!   is skipped or expanded into its matrix, queued, started in a sandbox
 //!   when the workspace has room, and finished by the sandbox's report.
 //! - [`payload`] builds the webhook-shaped `github.event`.
-//! - [`settings`] keeps secrets and variables.
+//! - [`settings`] keeps secrets and variables, and [`broker`] the stand-ins
+//!   jobs are given for brokered secrets.
 //! - [`protection`] keeps a repository's workflow settings and its
 //!   environments' protection rules, holds jobs at those rules until they
 //!   pass, and lets pull requests' runs from outside wait for approval.
@@ -26,6 +27,7 @@
 //! `permissions:` give it, revoked when the job ends.
 
 mod run_artifacts;
+mod broker;
 mod cache;
 mod managed;
 mod mirrored;
@@ -271,6 +273,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "job_action_archive" => reply(&service.job_action_archive(args(body)?).await?),
         "check_runs" => reply(&service.check_runs(args(body)?).await?),
         "job_report" => reply(&service.job_report(args(body)?).await?),
+        // A running job's stand-ins for brokered secrets: the runner
+        // Worker's alone, never passed on by the API.
+        "brokered_secrets" => reply(&service.brokered_secrets(args(body)?).await?),
         // actions/cache, through the API with the job's token.
         "cache_lookup" => reply(&service.cache_lookup(args(body)?).await?),
         "cache_reserve" => reply(&service.cache_reserve(args(body)?).await?),

@@ -28,6 +28,7 @@ here: it can sign in with the job's short-lived
 | **Type** | **Secret**: sealed when saved and never shown again, hidden in logs. For passwords, API keys and tokens. **Config**: readable by whoever may see the list. For values that are not sensitive. Config can be changed to a secret; a secret can never become config. |
 | **Key** | Letters, digits and underscores, not starting with a digit, upper-cased: `STRIPE_KEY`. Keys starting with `G1T_` or `GITHUB_` are g1t's own. |
 | **Value** | Up to 48 KB. |
+| **Brokered** | A secret only: the hosts it is for. Jobs get a stand-in, and g1t fills in the value on their requests to those hosts. See [brokered secrets](#brokered-secrets). |
 | **Note** | Optional: where to rotate it, or who to ask. |
 | **Environments** | **All environments**, or only some: **Production**, **Preview**, or any name a workflow job uses in `environment:`, such as `staging`. |
 | **Available to** | **Workflows**, **Deployments**, or both (the default). |
@@ -96,6 +97,93 @@ A job that names an environment gets that environment's secrets only once
 the environment's [protection rules](/guides/actions/#environments) let it
 through: required reviewers, a wait timer, and which branches may deploy.
 
+## Brokered secrets
+
+A secret a job uses only to call an API need not enter the job at all.
+Broker it, and the job gets a stand-in in its place: a token such as
+`g1tsec_3f9c…` (48 random characters after the prefix), made for that job
+and that secret alone. As the job's requests leave its sandbox, g1t puts
+the real value in place of the stand-in on requests to the hosts the
+secret is for. Code in the job, a compromised dependency included, can
+read only the stand-in, which works nowhere else and stops working when
+the job ends.
+
+To broker a secret:
+
+1. Open **Settings → Secrets and variables**, and add or edit the secret.
+2. Under **Brokered**, tick **Only for these hosts**.
+3. List the hosts it is for, one per line, as for
+   [allowed domains](/guides/guardrails/#network): `registry.npmjs.org`,
+   or `*.example.com` for every subdomain of `example.com`.
+4. Save.
+
+Workflows use it as they would any secret: `${{ secrets.NPM_TOKEN }}` in an
+`Authorization` header, an `.npmrc`, or a tool's settings.
+
+```yaml
+- run: npm publish
+  env:
+    NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+### Where the value is filled in
+
+| In the request | |
+| --- | --- |
+| Any header | As it is: `Authorization: Bearer …`, `Authorization: token …`, `X-Api-Key: …` |
+| `Authorization: Basic` | Decoded, filled in, and encoded again, so `user:$TOKEN` works |
+| The query string | `?key=…`, encoded for the URL |
+| The path and the body | Never: the stand-in goes as it is |
+
+A request to a host the secret is not for goes out with the stand-in,
+which is useless to whoever receives it, and the job's log says so once:
+`NPM_TOKEN was sent to example.com, which it is not for, so g1t did not
+fill it in.` A host must also be one the job may reach (its project's
+allowed domains, what builds need, or a
+[workflow-only domain](/guides/guardrails/#workflow-only-domains)):
+brokering a secret for a host does not open the network to it.
+
+If an answer echoes the value back, it is swapped for the stand-in again
+in the answer's headers, and in its body when that is plain text (JSON,
+XML, text) of at most 256 KB sent uncompressed. A request with a filled-in
+value is not followed through redirects outside the sandbox: the job
+follows them itself, and each is filled in only for the secret's hosts.
+
+### Where it works
+
+- **Workflow jobs on g1t's machines.** Brokering works whether the
+  project's network is restricted or open: a job that may be given a
+  brokered secret sends its HTTP and HTTPS through g1t either way, and
+  trusts the certificate HTTPS is re-signed with, as a restricted one does.
+  Other protocols are not affected.
+- **Self-hosted runners: not yet.** Their traffic never passes through
+  g1t, so a job there gets the stand-in too, never the value, and its log
+  warns that requests using it will not be signed in. Keep a separate,
+  unbrokered secret for jobs that must run there.
+- **Deployments** never read a brokered secret: a running app needs the
+  value itself. A brokered secret is available to workflows only.
+- **Security updates' private registries** do not get a brokered secret.
+
+The value is masked in the job's log as any secret is, should it ever
+appear there, and so is the stand-in.
+
+### What brokering cannot cover
+
+A secret the job itself must read cannot be brokered. Keep these as
+ordinary secrets:
+
+- passwords for a database or service reached over raw TCP rather than
+  HTTP, such as PostgreSQL or Redis;
+- signing keys (code signing, GPG, SSH, a release's private key), which
+  the job uses to sign rather than sends;
+- keys to files the job decrypts;
+- tests that need the real value inside the job;
+- a value sent in a request's body or path, such as an OAuth client
+  secret posted in a form.
+
+A brokered value is at least 8 characters, so it is not found inside
+other secrets by chance.
+
 ## G1T_TOKEN
 
 Every workflow job gets `${{ secrets.G1T_TOKEN }}`: a token for that job
@@ -144,6 +232,7 @@ A workspace's are under `/workspaces/{workspace}/actions/secrets` and
 | `environments` | `["production"]`, `["preview", "staging"]`; `[]` for all. |
 | `projects` | A workspace's row: project names; `[]` for every one. (`repositories` is read the same way.) |
 | `note` | Where to rotate it, or who to ask. |
+| `brokered_hosts` | A secret's: `["registry.npmjs.org"]`, `["*.example.com"]` to [broker it](#brokered-secrets); `[]` stops brokering it. Listed rows return it too. |
 
 ```sh
 curl -X PUT https://api.g1t.sh/repos/acme/web/actions/secrets/STRIPE_KEY \

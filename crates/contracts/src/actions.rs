@@ -595,6 +595,29 @@ pub struct Setting {
     pub note: Option<String>,
     #[serde(default)]
     pub updated_by: Option<String>,
+    /// A brokered secret's hosts: a job gets a stand-in for it, and g1t
+    /// puts the real value on the job's requests to these hosts as they
+    /// leave its sandbox. Empty for a secret that is not brokered, and for
+    /// config.
+    #[serde(default)]
+    pub brokered_hosts: Vec<String>,
+}
+
+/// How a brokered secret's stand-in starts. The rest is 48 random hex
+/// characters, so the whole is shaped like a token and tools take it.
+pub const STAND_IN_PREFIX: &str = "g1tsec_";
+
+/// A stand-in a running job was given for a brokered secret, as the runner
+/// Worker asks for them (`brokered_secrets`) to fill in the real value on
+/// the job's requests to `hosts`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrokeredSecret {
+    pub stand_in: String,
+    /// The secret's key, for the job's log.
+    pub name: String,
+    pub value: String,
+    pub hosts: Vec<String>,
 }
 
 // --- Methods ---------------------------------------------------------------
@@ -783,6 +806,10 @@ pub struct SetSettingArgs {
     pub projects: Option<Vec<String>>,
     #[serde(default)]
     pub note: Option<String>,
+    /// A secret's brokered hosts (`Setting::brokered_hosts`); empty stops
+    /// brokering it. Left out, unchanged.
+    #[serde(default, rename = "brokeredHosts")]
+    pub brokered_hosts: Option<Vec<String>>,
 }
 
 /// `set_managed_workflow`: installs, or replaces, a managed workflow in a
@@ -991,6 +1018,10 @@ pub struct StartJobArgs {
     /// `g1t-2core` or `g1t-4core`; absent, the standard one.
     #[serde(default)]
     pub instance: Option<String>,
+    /// Whether the job may be given brokered secrets, so the runner sends
+    /// its HTTP and HTTPS through the Worker even when its network is open.
+    #[serde(default)]
+    pub brokered: bool,
 }
 
 /// A size of machine g1t runs workflow jobs on, asked for by a label in

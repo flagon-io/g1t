@@ -340,7 +340,22 @@ export type Setting = {
   /** Where to rotate it, or who to ask. */
   note: string | null;
   updatedBy: string | null;
+  /**
+   * A brokered secret's hosts (`api.example.com`, `*.example.com`): jobs get
+   * a stand-in in place of its value, and g1t puts the real value on their
+   * requests to these hosts as they leave the sandbox. Empty when it is not
+   * brokered. Absent from a service older than brokering.
+   */
+  brokeredHosts?: string[];
 };
+
+/**
+ * A stand-in a running job was given for a brokered secret (`g1tsec_` and
+ * 48 hex characters), as the actions service's `brokered_secrets` answers
+ * the runner Worker, which fills in `value` on the job's requests to
+ * `hosts`.
+ */
+export type BrokeredSecret = { standIn: string; name: string; value: string; hosts: string[] };
 
 /** What saving a row sets beyond its value; left out is unchanged. */
 export type SettingOptions = {
@@ -351,6 +366,8 @@ export type SettingOptions = {
   /** A workspace's row: project slugs; empty for every one. */
   projects?: string[];
   note?: string;
+  /** A secret's brokered hosts; empty stops brokering it. */
+  brokeredHosts?: string[];
 };
 
 export type SettingsOwner = { repo: RepoPath } | { workspace: string };

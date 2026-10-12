@@ -19,6 +19,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use worker::Result;
 
+use crate::broker::{self, Broker};
 use crate::protection::Gate;
 use crate::sync::WorkflowRow;
 use crate::{Actions, Count, MAX_TIMEOUT_MINUTES, RUNNING_PER_WORKSPACE, SELF_HOSTED_MAX_TIMEOUT_MINUTES, SILENT_MS, SITE, check, fail, optional, repo_path};
@@ -34,7 +35,7 @@ const MAX_ANNOTATIONS: usize = 50;
 /// runner's number for the batch (null from runners that send none): a
 /// batch sent again, after an answer the runner did not hear, has the
 /// number of one already kept, and is not kept twice (migration 0016).
-const LOG_INSERT: &str = "INSERT INTO logs (job_id, seq, step, text, chunk)
+pub(crate) const LOG_INSERT: &str = "INSERT INTO logs (job_id, seq, step, text, chunk)
      SELECT ?1, COALESCE(MAX(seq), 0) + 1, ?2, ?3, ?4 FROM logs WHERE job_id = ?1
      ON CONFLICT (job_id, chunk) DO NOTHING";
 /// The most one step's job summary keeps, in bytes, and how many steps of a
@@ -231,6 +232,10 @@ pub struct JobRow {
     /// (migration 0009).
     #[serde(default)]
     pub cancel_requested_at: Option<String>,
+    /// Whether it was given stand-ins for brokered secrets (migration
+    /// 0019), so its log is masked for their values too.
+    #[serde(default)]
+    pub brokered: u32,
 }
 
 /// How long a cancelled job has to run its `if: always()` and `cancelled()`
@@ -1624,6 +1629,9 @@ impl Actions {
             });
             // Its environment and the machine it asked for, for the runner.
             let details = run.as_ref().map(|run| start_details(run, &job)).unwrap_or_default();
+            let trusted = run.as_ref().is_some_and(|run| run.trusted != 0);
+            // Only a trusted run's jobs get secrets, brokered ones included.
+            let brokered = trusted && self.may_broker(&job.repo_id, &job.namespace).await?;
             let started: Outcome<Value> = g1t_kit::call(
                 &self.runner,
                 "start_actions_job",
@@ -1634,8 +1642,9 @@ impl Actions {
                     timeout_minutes: job.timeout_minutes,
                     workflow: run.as_ref().map(|run| run.path.clone()),
                     environment: details.environment,
-                    trusted: run.as_ref().is_some_and(|run| run.trusted != 0),
+                    trusted,
                     instance: details.instance,
+                    brokered,
                 },
             )
             .await
@@ -2333,19 +2342,29 @@ impl Actions {
         // A run that is not trusted (a pull request from outside the
         // workspace) gets no secrets and an empty token.
         let passed = job.call().filter(|c| c["role"] == "callee").and_then(|c| c.get("secrets").cloned());
+        // Brokered secrets among them (broker.rs), whatever keys they reach
+        // the job under.
+        let mut brokers: Vec<Broker> = Vec::new();
         let mut secrets = match (trusted, passed) {
             (false, _) => Map::new(),
-            (true, None) => self.secrets_for(&run.repo_id, &run.repo, environment.as_deref(), true).await?,
+            (true, None) => {
+                let resolved = self.secrets_for(&run.repo_id, &run.repo, environment.as_deref(), true).await?;
+                brokers.extend(resolved.brokers());
+                resolved.values
+            }
             // A called workflow's job: what its callers passed it (reach.rs),
             // and its own environment's secrets over them.
             (true, Some(plan)) => {
                 let base = self.secrets_for(&run.repo_id, &run.repo, None, true).await?;
+                brokers.extend(base.brokers());
+                let base = base.values;
                 let vars = self.variables_for(&run.repo_id, &run.repo, None, true).await?;
                 let github = run.info().context(&job.key, "", run.action.as_deref());
                 let mut passed = crate::reach::resolve_secrets(&plan, &base, &github, &vars);
                 if let Some(name) = environment.as_deref() {
                     let own = self.secrets_for(&run.repo_id, &run.repo, Some(name), true).await?;
-                    for (key, value) in own {
+                    brokers.extend(own.brokers());
+                    for (key, value) in own.values {
                         if base.get(&key) != Some(&value) {
                             passed.insert(key, value);
                         }
@@ -2354,6 +2373,20 @@ impl Actions {
                 passed
             }
         };
+        // A brokered secret's value never reaches the sandbox: the job gets
+        // a stand-in, which the runner Worker fills in on its requests to
+        // the secret's hosts. A self-hosted runner's requests never pass
+        // the Worker, so there it stays a stand-in, and the log says so.
+        let stand_ins = broker::substitute(&mut secrets, &brokers, broker::stand_in);
+        if !stand_ins.is_empty() {
+            self.keep_stand_ins(&job.id, job.timeout_minutes, &stand_ins).await?;
+            if job.runner_id.is_some() {
+                let mut names: Vec<&str> = stand_ins.iter().map(|made| made.broker.name.as_str()).collect();
+                names.sort_unstable();
+                let notes: String = names.iter().map(|name| broker::self_hosted_note(name) + "\n").collect();
+                self.note_log(&job.id, 0, &notes).await?;
+            }
+        }
         secrets.insert("G1T_TOKEN".into(), Value::String(token.clone()));
         secrets.insert("GITHUB_TOKEN".into(), Value::String(token.clone()));
         // Each secret as it is, a line at a time, base64 and JSON-escaped.
@@ -2535,8 +2568,28 @@ impl Actions {
                     .run()
                     .await?;
             }
+            // A line from g1t itself, not the job: the runner Worker's note
+            // that a brokered secret went to a host it is not for. Put
+            // under the step that is running.
+            "note" => {
+                let text = report["text"].as_str().unwrap_or_default().chars().take(1000).collect::<String>();
+                let steps: Vec<Value> = serde_json::from_str(&job.steps).unwrap_or_default();
+                let step = steps.iter().rev().find(|step| step["status"] == "in_progress").and_then(|step| step["number"].as_u64()).unwrap_or(0);
+                if !text.trim().is_empty() {
+                    self.note_log(&job.id, step as u32, &text).await?;
+                }
+            }
             "log" => {
                 let mut text = report["text"].as_str().unwrap_or_default().to_owned();
+                // A brokered secret's value never enters the sandbox, but an
+                // answer that echoed it whole could carry it in; it is
+                // masked here, where the value is known.
+                if job.brokered != 0 {
+                    let values: Vec<String> = self.stand_ins_of(&job.id).await?.into_iter().map(|secret| secret.value).collect();
+                    if !values.is_empty() {
+                        text = g1t_actions::mask::apply(&text, &g1t_actions::mask::all_variants(values.iter().map(String::as_str)));
+                    }
+                }
                 if text.len() > MAX_CHUNK_BYTES {
                     let mut cut = MAX_CHUNK_BYTES;
                     while !text.is_char_boundary(cut) {
