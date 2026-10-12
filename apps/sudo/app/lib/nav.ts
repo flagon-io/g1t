@@ -67,7 +67,7 @@ export type NavItem = {
 };
 
 /** The numbers the sidebar can show, read by root.tsx on every page. */
-export type NavCount = "waitlist" | "incidents";
+export type NavCount = "incidents";
 
 export type NavCounts = Partial<Record<NavCount, number>>;
 
@@ -100,8 +100,7 @@ export const NAV: NavGroup[] = [
         label: "Invites",
         to: "/invites",
         icon: "invites",
-        about: "The waitlist, every invite, more invites for a person or workspace, and who invited whom.",
-        count: "waitlist",
+        about: "Every invitation sent to an address, to find and revoke one.",
       },
       {
         label: "Aliases",
@@ -230,6 +229,12 @@ export const NAV: NavGroup[] = [
         to: "/abuse",
         icon: "abuse",
         about: "Sandboxes stopped for looking like mining, and disputes and declines.",
+      },
+      {
+        label: "Blocked domains",
+        to: "/blocked-domains",
+        icon: "abuse",
+        about: "Email domains no new account may sign up with.",
       },
       {
         label: "Incidents",

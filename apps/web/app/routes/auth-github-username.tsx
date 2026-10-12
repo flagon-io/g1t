@@ -16,7 +16,7 @@ export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Choose a username · g1t" });
 }
 
-/** A new account from GitHub, once its username (and invite) are settled. */
+/** A new account from GitHub, once its username is settled. */
 export async function loader({ request }: Route.LoaderArgs) {
   const pending = readCookie(request.headers.get("cookie"), PENDING_COOKIE);
   if (!pending) throw redirect("/register");
@@ -34,11 +34,7 @@ export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
   // Where to go afterwards, read before the pending sign-in is used up.
   const found = await githubSignIn.pending(pending).catch(() => null);
-  const result = await githubSignIn.signUp(
-    pending,
-    String(form.get("username") ?? ""),
-    String(form.get("invite") ?? "").trim() || null,
-  );
+  const result = await githubSignIn.signUp(pending, String(form.get("username") ?? ""));
   if (!result.ok) return { error: result.error.message };
   const headers = new Headers({ "set-cookie": startSession(result.value.sessionToken) });
   headers.append("set-cookie", cookie(PENDING_COOKIE, "", 0));
@@ -49,7 +45,7 @@ export default function GithubUsername({ loaderData, actionData }: Route.Compone
   return (
     <AuthCard
       title="Create your account"
-      subtitle={loaderData.inviteRequired ? "g1t is invite-only for now" : "Choose your username"}
+      subtitle="Choose your username"
       footer={
         <>
           Have an account already?{" "}
@@ -78,11 +74,6 @@ export default function GithubUsername({ loaderData, actionData }: Route.Compone
             pattern={USERNAME_PATTERN}
           />
         </Field>
-        {loaderData.inviteRequired && (
-          <Field label="Invite code" hint="g1t is invite-only. Ask someone on g1t for one of their invites.">
-            <Input name="invite" required autoComplete="off" spellCheck={false} />
-          </Field>
-        )}
         <ErrorText>{actionData?.error}</ErrorText>
         <div className="pt-2 *:w-full">
           <SubmitButton pending="Creating account…">

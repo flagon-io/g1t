@@ -201,8 +201,10 @@ impl Identity {
             })
             .collect();
         let protected = self.is_protected(&row.id, &row.slug, row.protected != 0).await?;
+        let suspended = self.workspace_suspension(&row.slug).await?;
         Ok(Some(AdminWorkspaceDetail {
             protected,
+            suspended,
             slug: row.slug,
             name: row.name,
             description: row.description,

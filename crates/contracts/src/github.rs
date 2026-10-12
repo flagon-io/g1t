@@ -78,7 +78,7 @@ pub struct GithubStartArgs {
     #[serde(default)]
     pub next: String,
     /// An invite code, from `/register?invite=…`, carried through GitHub
-    /// for a new account while g1t is invite-only.
+    /// so a new account made with it gets the invitation it came with.
     #[serde(default)]
     pub invite_code: Option<String>,
 }
@@ -115,15 +115,11 @@ pub enum GithubFinished {
     /// in to it, and `github_claim` then links it.
     NeedsLink { pending: String, login: String, next: String },
     /// A new account, but the GitHub login cannot be its username.
-    /// A new account, but the GitHub login cannot be its username, or g1t
-    /// is invite-only and no invite code came with the sign-in.
     NeedsUsername {
         pending: String,
         login: String,
         suggestion: String,
         next: String,
-        #[serde(rename = "inviteRequired")]
-        invite_required: bool,
     },
 }
 
@@ -140,18 +136,12 @@ pub struct GithubPending {
     pub kind: String,
     pub suggestion: Option<String>,
     pub next: String,
-    /// Whether the person must give an invite code to create the account.
-    #[serde(rename = "inviteRequired", default)]
-    pub invite_required: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GithubSignUpArgs {
     pub pending: String,
     pub username: String,
-    /// Needed while g1t is invite-only, unless one came with the sign-in.
-    #[serde(rename = "inviteCode", default)]
-    pub invite_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

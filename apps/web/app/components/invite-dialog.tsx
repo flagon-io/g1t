@@ -13,7 +13,7 @@ import { Field, FieldDescription, FieldLabel } from "./ui/field";
 import { SelectField } from "./ui/select";
 import { Textarea } from "./ui/textarea";
 import { UserCard } from "./user-card";
-import { type InviteResult, moreInvitesMailto, workspaceInviteCopy } from "../lib/invites";
+import { type InviteResult, workspaceInviteCopy } from "../lib/invites";
 import { PEOPLE_SEARCH_PATH, looksLikeEmail, peopleQuery } from "../lib/people-search";
 
 /**
@@ -24,18 +24,13 @@ import { PEOPLE_SEARCH_PATH, looksLikeEmail, peopleQuery } from "../lib/people-s
  * dialog closes and `onInvited` is told who, so the page can say so.
  */
 export function InviteDialog({
-  slug,
   name,
-  inviteOnly,
   action,
   onInvited,
   trigger,
 }: {
-  slug: string;
   /** The workspace's display name. */
   name: string;
-  /** Whether sign-up takes an invite: then an invitation to a new address costs one. */
-  inviteOnly: boolean;
   /** The page's address, whose action handles `add`. */
   action: string;
   onInvited?: (who: string) => void;
@@ -44,7 +39,7 @@ export function InviteDialog({
 }) {
   const [open, setOpen] = useState(false);
   const fetcher = useFetcher<InviteResult>();
-  const copy = workspaceInviteCopy(name, inviteOnly);
+  const copy = workspaceInviteCopy(name);
   const result = fetcher.state === "idle" ? fetcher.data : undefined;
   // Sent: the dialog closes and the page says so. Each opening starts clean.
   const told = useRef<InviteResult | null>(null);
@@ -96,19 +91,7 @@ export function InviteDialog({
               <Textarea id={messageId} name="message" maxLength={MAX_INVITE_MESSAGE} rows={3} placeholder={`A line for the email: why you'd like them in ${name}.`} />
               <FieldDescription>Quoted in the invitation email, under your name.</FieldDescription>
             </Field>
-            {error && (
-              <div>
-                <ErrorText>{error.error}</ErrorText>
-                {error.outOfInvites && (
-                  <p className="mt-1 text-sm text-muted">
-                    <a href={moreInvitesMailto(slug)} className="text-accent underline underline-offset-4">
-                      Ask for more invites
-                    </a>{" "}
-                    for {slug}.
-                  </p>
-                )}
-              </div>
-            )}
+            {error && <ErrorText>{error.error}</ErrorText>}
             <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" variant="outline">

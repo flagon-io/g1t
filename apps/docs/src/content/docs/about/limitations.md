@@ -489,11 +489,6 @@ straight at a provider.
 
 ## Accounts, status and self-hosting
 
-### Sign-up needs an invite
-
-g1t is invite-only for now. See [Invites](/guides/authentication/#invites).
-**Status.** Opening sign-up is planned.
-
 ### Tokens for one workspace you belong to
 
 A personal access token can be made for one workspace only when you are a

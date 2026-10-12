@@ -32,15 +32,18 @@ the whole forge:
 - The [audit log](/guides/audit-log/), with export: kept 7 days, or 90 on
   the plan.
 - Your own agent through [MCP](/reference/mcp/).
-- 1 GB of private repository storage, and 50,000
-  [git operations](#git-operations) a month.
+- 1 GB of private repository storage, 5 GB of public repository storage,
+  and 50,000 [git operations](#git-operations) a month.
 
 None of this is charged, on the plan or not. A free workspace is never
 charged for storage: once its private repositories hold 1 GB, pushes to
 them are refused at the start of the push, with what to do: make the
 repository public, delete what you do not need, or start the plan, where
 storage past 1 GB is usage and pushes never stop. Public repositories are
-never charged for storage.
+never charged for storage, on any plan; a free workspace's public
+repositories hold up to 5 GB together, and past it pushes to them are
+refused the same way. On the plan, pushes to public repositories never
+stop.
 
 Compute is not free. Agents, workflows, the merge queue,
 deployments and semantic search need [the g1t plan](#the-g1t-plan), or a

@@ -71,6 +71,10 @@
 		{ "name": "WEB_TOKEN_LIMIT", "namespace_id": "4207", "simple": { "limit": 1000, "period": 60 } }
 	],
 	// Logs of a tenth of requests: every page view is one, too many to keep all.
+	// Cloudflare Turnstile on email sign-up (app/lib/turnstile.ts): the
+	// widget's public site key here, and its secret as the TURNSTILE_SECRET
+	// secret. Either one empty turns it off.
+	"vars": { "TURNSTILE_SITE_KEY": "" },
 	"observability": { "enabled": true, "head_sampling_rate": 0.1 },
 	"upload_source_maps": true
 }

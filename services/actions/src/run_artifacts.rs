@@ -191,6 +191,9 @@ impl Actions {
                 format!("A run's artifacts are at most {} MB together, and this run's hold {} MB.", RUN_ARTIFACTS_MAX_BYTES / 1_048_576, held / 1_048_576),
             ));
         }
+        if let Some(why) = self.storage_refused(&job.namespace, a.size).await? {
+            return Ok(fail(FailureCode::Limit, why));
+        }
         let existing = self
             .artifact_rows("artifacts.run_id = ? AND artifacts.name = ? AND artifacts.status <> 'expired'", &[job.run_id.as_str().into(), a.name.as_str().into()])
             .await?;

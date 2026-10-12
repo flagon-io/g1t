@@ -40,7 +40,7 @@ test("every item has its own path, a label and a line about it", () => {
 
 test("the built pages are not marked soon", () => {
   const built = navItems().filter((item) => !item.soon).map((item) => item.to);
-  assert.deepEqual(built, ["/", "/reach-out", "/workspaces", "/enterprises", "/invites", "/aliases", "/requests", "/overages", "/velocity", "/invoices", "/credits", "/stripe", "/costs", "/agents", "/abuse", "/incidents", "/audit"]);
+  assert.deepEqual(built, ["/", "/reach-out", "/workspaces", "/enterprises", "/invites", "/aliases", "/requests", "/overages", "/velocity", "/invoices", "/credits", "/stripe", "/costs", "/agents", "/abuse", "/blocked-domains", "/incidents", "/audit"]);
 });
 
 test("every soon page says what it will do, why, and what it will have", () => {
@@ -81,12 +81,12 @@ test("isCurrent: an item stays lit on the pages beneath it; / only on itself", (
   assert.ok(isCurrent({ to: "/x", also: ["/y"] }, "/y/z"));
 });
 
-test("requests waiting show beside Invites, and on Customers while it is folded", () => {
+
+test("open incidents show beside Incidents, and nothing waits beside Invites", () => {
+  const incidents = navItems().find((item) => item.to === "/incidents")!;
+  assert.equal(incidents.count, "incidents");
+  assert.equal(countFor([incidents], { incidents: 2 }), 2);
+  assert.equal(countFor([incidents], {}), 0);
   const invites = navItems().find((item) => item.to === "/invites")!;
-  assert.equal(invites.count, "waitlist");
-  assert.equal(countFor([invites], { waitlist: 4 }), 4);
-  assert.equal(countFor([invites], {}), 0);
-  const customers = NAV.find((group) => group.title === "Customers")!;
-  assert.equal(countFor(customers.items, { waitlist: 4 }), 4);
-  assert.equal(countFor(NAV.find((group) => group.title === "Team")!.items, { waitlist: 4 }), 0);
+  assert.equal(invites.count, undefined);
 });

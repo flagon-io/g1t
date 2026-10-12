@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorCog, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, SlidersHorizontal, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorCog, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, SlidersHorizontal, House, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -60,7 +60,6 @@ import { ACCOUNT_SETTINGS, type AccountSettingsPage, FIRST_SETTINGS_PAGE, accoun
 import { type PinnableApp, sidebarCookie } from "../lib/apps";
 import { REASON_FILTERS, inboxReason, inboxView } from "../lib/inbox";
 import { GithubMark } from "./github";
-import { useInviteOnly } from "../lib/registration";
 import { STATUS_URL, statusTitle } from "../lib/status";
 import { type ShortcutProject, movedPin, recentWith } from "../lib/pins";
 import type { AccountMenuData } from "../routes/settings-menu-json";
@@ -389,8 +388,6 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
   const me = details.data ?? null;
   // Still on its way: shapes where the words will be, the same size.
   const loading = details.data === undefined && details.state !== "idle";
-  // While anyone can sign up, listed once the data says there are invites to look back on.
-  const invitesListed = useInviteOnly() || me?.invites_page === true;
   const profile = `/u/${user.username}`;
   return (
     <>
@@ -457,20 +454,6 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
               <MonitorCog />
               Desktop app settings
             </DropdownMenuItem>
-          )}
-          {invitesListed && (
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <Link to="/settings/invites">
-              <Ticket />
-              {ACCOUNT_SETTINGS.invites.title}
-              {loading && <Skeleton className="ml-auto h-4 w-12 rounded-full" />}
-              {me?.invites_left != null && (
-                <span className="ml-auto rounded-full bg-line px-1.5 text-[0.6875rem] tabular-nums text-muted">
-                  {me.invites_left} left
-                </span>
-              )}
-            </Link>
-          </DropdownMenuItem>
           )}
         </DropdownMenuGroup>
         <DropdownMenuSeparator className="my-1.5" />
@@ -1008,24 +991,8 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
   );
 }
 
-/**
- * Whether the menus list Settings → Invites (invites to g1t): always while
- * sign-up takes an invite; once anyone can sign up, only for someone with
- * invites already made to look back on, which the account menu's data says.
- */
-function useInvitesListed(): boolean {
-  const inviteOnly = useInviteOnly();
-  const details = useFetcher<AccountMenuData | null>({ key: "account-menu" });
-  useEffect(() => {
-    if (!inviteOnly && details.state === "idle" && details.data === undefined) details.load("/settings/menu.json");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inviteOnly]);
-  return inviteOnly || details.data?.invites_page === true;
-}
-
 /** Your own settings, drilled into from Your settings: one page each. */
 function AccountSettingsMenu({ username }: { username: string }) {
-  const invites = useInvitesListed();
   const link = (page: AccountSettingsPage, icon: ReactNode) => (
     <SidebarLink to={`/settings/${page}`} icon={icon}>
       {ACCOUNT_SETTINGS[page].title}
@@ -1037,7 +1004,6 @@ function AccountSettingsMenu({ username }: { username: string }) {
       <NavRows className="mt-2">
         {link("profile", <CircleUserRound size={15} />)}
         {link("emails", <Mail size={15} />)}
-        {invites && link("invites", <Ticket size={15} />)}
       </NavRows>
       <Rule />
       <NavRows>

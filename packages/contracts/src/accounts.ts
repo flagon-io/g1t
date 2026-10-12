@@ -4,7 +4,7 @@
  */
 import type { AccountDeletion, DeletedAccount } from "./account-deletion";
 import type { ServiceBinding } from "./clients";
-import type { User } from "./identity";
+import type { Suspension, User } from "./identity";
 import type { Result } from "./result";
 
 /** The most addresses one account may have, confirmed or not. */
@@ -127,6 +127,8 @@ export type AdminUser = {
   deleted: DeletedAccount | null;
   /** The shared invite link it was made with, if it was: sudo shows "Joined through <label>". */
   joinedThrough: { id: string; label: string } | null;
+  /** Set while staff have it suspended. */
+  suspended?: Suspension | null;
 };
 
 /** Where an account's two-factor authentication stands. */

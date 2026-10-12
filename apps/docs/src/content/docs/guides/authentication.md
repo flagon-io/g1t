@@ -1,14 +1,15 @@
 ---
 title: Accounts and authentication
-description: Accounts, invites, email addresses, confirming them, two-factor authentication and recovery codes, personal access tokens and their permissions and scopes, a workspace's rules for tokens, OAuth, signing in from a tool, password reset, your security log and deleting your account.
+description: Creating an account, invitations, email addresses, confirming them, two-factor authentication and recovery codes, personal access tokens and their permissions and scopes, a workspace's rules for tokens, OAuth, signing in from a tool, password reset, your security log and deleting your account.
 ---
 
 ## Creating an account
 
-g1t is invite-only for now: to make an account you need an
-[invite](#invites). Open the link in your invite, or enter its code at
-[g1t.sh/register](https://g1t.sh/register). Without one, ask for access
-on the same page.
+Anyone can make an account at [g1t.sh/register](https://g1t.sh/register),
+with an email address and a password or with **Continue with GitHub**. No
+invite is needed. If someone invited you into a workspace or onto a
+repository, open the link in their invitation instead: it signs you up and
+takes you to what you were invited to (see [invites](#invites)).
 
 Usernames are letters, digits and single hyphens, 1 to 39 characters, not
 starting or ending with a hyphen. They keep the case you type: choose
@@ -44,7 +45,6 @@ under **Your settings**; the sidebar then lists every page.
 | Profile | [`/settings/profile`](https://g1t.sh/settings/profile) | Your picture, and your [public profile](/guides/workspaces/#profiles): name, pronouns, bio, location, website and time zone. |
 | Emails | [`/settings/emails`](https://g1t.sh/settings/emails) | Your [email addresses](#email-addresses), the backup address, and [keeping your address private](#keeping-your-address-private). |
 | Notifications | [`/settings/notifications`](https://g1t.sh/settings/notifications) | [Sounds and do not disturb](/guides/chat/#sounds-and-do-not-disturb), [pop-ups and browser notifications](/guides/chat/#notifications), and [what you are emailed for and how you watch repositories](/guides/notifications/#settings). |
-| Invites to g1t | [`/settings/invites`](https://g1t.sh/settings/invites) | [Making, copying and revoking invites to g1t](#making-invites), while g1t is invite-only; after that, the invites you made. |
 | SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/#ssh), each with when it was added and last used. |
 | Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens): their permissions, where they reach, and when they expire. |
 | Integrations | [`/settings/integrations`](https://g1t.sh/settings/integrations) | [Your own integrations](/guides/integrations/#workspace-and-personal): what you have connected for yourself, in every workspace, and what is coming. |
@@ -129,30 +129,24 @@ Passkeys are not supported yet; they are next.
 
 ## Invites
 
-There are two kinds of invite, and they do different things:
+Anyone can sign up without an invite. Invites are how people already on
+g1t bring someone in:
 
-| | Invite to g1t | Invite to a workspace |
-| --- | --- | --- |
-| Made from | [Settings → Invites](https://g1t.sh/settings/invites), your own | **Invite** on the workspace's **Members** or **Invitations** page, by its owners |
-| What it gives | One new account. It adds them to no workspace: the account gets a workspace of its own | An invitation to join that workspace, which they accept or decline |
-| Someone without an account | Makes their account with it | Makes their account with it too, while g1t is invite-only, then answers the invitation |
-| Someone already on g1t | Nothing: they have an account | The invitation, in their notifications and by email |
-| Exists | Only while g1t is invite-only | Always |
-| What its page and email say | "@syntaqx invited you to g1t" | "@syntaqx invited you to join Flagon, Inc. on g1t" |
+- an owner's [invitation into a workspace](#inviting-someone-into-a-workspace),
+  by username or by email address;
+- an [invitation to collaborate on a repository](/guides/access-and-roles/),
+  by username or by email address.
 
-So you can invite someone to g1t without inviting them into any
-workspace; an invite to g1t only adds them to a workspace when you tick
-**Also invite them to a workspace** (see [making invites](#making-invites)).
+Invited by username, the account gets the invitation in its notifications
+and by email. Invited by an address that has no g1t account yet, the email
+carries an invite code, such as `g1t-k7m2-q9xd-…`, in a link to
+`g1t.sh/invite/<code>`. That invite:
 
-While g1t is invite-only, every new account needs an invite code, such as
-`g1t-k7m2-q9xd-…`. People already on g1t make them, and g1t sends them to
-people who [asked for access](#asking-for-access). An invite:
-
-- works once, for one new account;
+- works once, for the address it was sent to;
 - works for 30 days;
-- when it was made for an email address, works only with that address;
-- can be revoked by whoever made it until it is used, and after that until
-  the new account [confirms its email address](#confirming-your-email-address).
+- can be revoked by whoever sent it (or the workspace's owners) until it is
+  used, and after that until the new account
+  [confirms its email address](#confirming-your-email-address).
 
 ### Using an invite
 
@@ -197,17 +191,17 @@ their email** to whoever made it, and they can still revoke it. If the
 invite is revoked or expires, or its workspace is deleted, before you
 confirm, your address is confirmed all the same and g1t tells you the
 invite no longer applies: ask whoever invited you to invite you again. A
-code typed at [g1t.sh/register](https://g1t.sh/register) goes to the
-same page.
+link to [g1t.sh/register](https://g1t.sh/register) with a good invite code
+goes to the same page.
 
 An expired, revoked or used invite says which, and who sent it, so you
-can ask them for a new one; or ask for access from the same page.
+can ask them for a new one; or [sign up](https://g1t.sh/register) without
+it.
 
 ### Invites from your inbox
 
-When g1t emails an invite to an address (an invite you make for someone,
-an owner's invite into a workspace or a repository, or an approved
-[request for access](#asking-for-access)), the link in that email carries a
+When g1t emails an invite to an address (an owner's invitation into a
+workspace, or an invitation onto a repository), the link in that email carries a
 `proof` that only the email has: `g1t.sh/invite/<code>?proof=…`. Opening
 the link shows that you can read that inbox, so:
 
@@ -218,85 +212,11 @@ the link shows that you can read that inbox, so:
   names is a [workspace invitation](#workspace-invitations) you accept or
   decline straight away, since nobody joins a workspace without saying yes.
 
-Anything else confirms the address the usual way, after you sign up: the
-code typed at [g1t.sh/register](https://g1t.sh/register), an invite link
-copied from **Settings → Invites** (whoever made the invite sees the code,
-never the proof), an invite made for anyone with the link, or an invite
-email sent before this existed. The proof is tied to one invite and its
+Anything else confirms the address the usual way, after you sign up: an
+invite link copied from the workspace's **Invitations** page (whoever sent
+the invite sees the code, never the proof), or an invite email sent before
+this existed. The proof is tied to one invite and its
 address, and stops working when the invite is used, revoked or expires.
-
-### Invite links for a group
-
-g1t sometimes hands one link to a group: an event's judges, readers of a
-post, a community. It looks like
-`https://g1t.sh/register?invite=g1t-k7m2-…` and opens sign-up with the
-code filled in and the group named above the form, such as **Invited as
-part of Launch week judges**.
-
-- **It makes your own account.** Each person who uses it gets a new
-  account, and then makes their own workspace. It does not add you to
-  anyone else's workspace; once you are in, a workspace's owners can add
-  you from its **Members** page.
-- **It may be for some email domains only.** When it is, the email field
-  says which, such as `example.com`, and sign-up takes only an address
-  there. Use your address at that organization; you confirm it like any
-  other.
-- **It works a set number of times, until a set day.** Once every place
-  is taken, or the day has passed, or g1t has stopped it, the link gets
-  the same answer as any invite that cannot be used. Ask whoever shared
-  it, or [ask for access](#asking-for-access).
-
-Using the link spends one place in the same step that makes your account,
-so two people signing up at the same moment can never take more places
-than it has. Anyone with an account can still [make invites](#making-invites)
-of their own; group links are made by g1t staff only.
-
-### Making invites
-
-These are invites to g1t. They let one person make an account, and add
-them to no workspace unless you say so.
-
-1. Open [Settings → Invites](https://g1t.sh/settings/invites) (**Invites
-   to g1t** in your settings and account menu).
-2. Optionally enter the email address of the person you are inviting.
-   With one, g1t emails them the invite, and only that address can use it.
-   Without one, anyone with the link can, once.
-3. Optionally tick **Also invite them to a workspace**, then choose the
-   workspace and the role (**Member** or **Owner**) they are invited with.
-   It is off to start with, and no workspace is chosen for you, not even
-   the one you are in.
-4. Select **Create invite**, then copy the link.
-
-Left unticked, the invite is to g1t only: the new account gets a
-[workspace of its own](#your-first-workspace). Ticked, the new account
-gets a [workspace invitation](#workspace-invitations) to the workspace you
-chose once its address is confirmed, and is not given a workspace of its
-own. The list of workspaces holds the ones you can add members to: the ones
-you own that are on the g1t plan. A workspace on the free plan cannot add
-people, so it is not offered, and the form says so when it is the one you
-are in.
-
-To bring someone into a workspace, you do not need an invite to g1t:
-invite them from the workspace's **Members** page,
-`g1t.sh/<workspace>/-/members`, instead (see
-[inviting someone into a workspace](#inviting-someone-into-a-workspace)).
-Settings → Invites links to the Members pages of the workspaces you own.
-
-Once anyone can sign up for g1t, there are no invites to g1t to make:
-Settings → Invites keeps only the list of invites you already made, and
-says that anyone can sign up now and that workspace invitations live on
-each workspace's Invitations page. With no invites made, the page is not listed
-in your settings or account menu.
-
-Each person can have **5** invites out at a time. Pending and used invites
-count; an invite you revoke, or one that expires before anyone uses it,
-comes back to you. The list under the form shows each invite's state:
-pending, confirming their email (used to sign up by someone who has not
-confirmed their address yet), waiting for them to accept (the account is
-made and confirmed, and the workspace invitation waits for its answer),
-joined (with the username of who joined), declined, expired or revoked. You
-must confirm your email before you can make invites. An agent's token and
-a workspace's token cannot make them.
 
 ### Inviting someone into a workspace
 
@@ -308,10 +228,7 @@ saying yes: someone on g1t gets a [workspace invitation](#workspace-invitations)
 to accept or decline. When an address has no g1t account, the invitation
 also lets it make one first, and the invitation is answered once the
 account's address is confirmed (at once when it was made from the invite
-email's link). While g1t is invite-only, that uses one invite: one of the
-workspace's shared invites when it has any, otherwise one of yours. Once
-anyone can sign up, it costs nothing. Inviting someone who is already on
-g1t never costs anything.
+email's link). Inviting someone costs nothing either way.
 
 ### Workspace invitations
 
@@ -336,10 +253,9 @@ Everything on g1t lives in a workspace, so every new account gets one:
 
 - An account whose invite brings it into a workspace gets the invitation
   to it, and no workspace of its own.
-- Every other account (signed up with a password, with GitHub, from a
-  shared invite link or an invite from g1t staff, or with an invite that
-  names no workspace) gets a workspace of its own, named for its username,
-  on the free plan. Rename it or start the plan on it whenever you like.
+- Every other account (signed up with a password or with GitHub, or with
+  an invite that names no workspace, such as one onto a repository) gets a
+  workspace of its own, named for its username, on the free plan. Rename it or start the plan on it whenever you like.
 
 Signed in without any workspace (you declined an invitation, or left the
 only workspace you were in), g1t shows **Create your workspace or ask to
@@ -347,33 +263,10 @@ join one** in place of Mission control: the invitations waiting for you, if
 any, and the form to create a workspace. To join a team already on g1t,
 ask one of its owners to invite you by your username.
 
-### Need more invites?
-
-Write to [hey@flagon.io](mailto:hey@flagon.io?subject=%5Bg1t%20Invites%5D%20)
-with the subject `[g1t Invites]` and say who you would like to bring. g1t
-can give more invites to you, or to a workspace, whose owners then share
-them. Invites given to a workspace appear under
-[Settings → Invites](https://g1t.sh/settings/invites) for
-each of its owners, as a choice of whose invites to use.
-
-### Asking for access
-
-Without an invite, [g1t.sh/register](https://g1t.sh/register) asks for your
-email address and, if you like, what you will build. g1t emails that
-address once to confirm you are on the list, and staff see the request
-straight away. When they approve it, the invite comes to the same address,
-sometimes with a note, and its link opens sign-up with the address filled
-in. There is no fixed date: g1t opens up a few people at a time. Asking
-again with the same address updates your request without another email; it
-does not move you down the list.
-
 ### Invites through the API
 
 | Route | MCP tool and action | What it does |
 | --- | --- | --- |
-| [`GET /user/invites`](/reference/api/invites/list-invites/) | `account` `list_invites` | Your invites and how many you have left |
-| [`POST /user/invites`](/reference/api/invites/create-invite/) | `account` `create_invite` | Make an invite, optionally for one `email`; with `workspace` (a slug), the new account is invited to that workspace |
-| [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/) | `account` `revoke_invite` | Revoke a pending invite, or one whose new account has not confirmed its address |
 | [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `workspace` `invite_member` | Invite a `username` or an `email` into a workspace, with a `role`. Owners only. |
 | [`GET /user/invitations`](/reference/api/invites/list-invitations/) | `account` `list_workspace_invitations` | The workspace invitations waiting for your answer |
 | [`POST /user/invitations/{id}/accept`](/reference/api/invites/accept-invitation/) | `account` `accept_workspace_invitation` | Join the invitation's workspace with its role |
@@ -420,8 +313,8 @@ An account that has not confirmed its address can only confirm it:
 - **The MCP server** answers `403` with the same message.
 - **Git** over HTTPS refuses pushes and fetches with your credentials, with
   the same message. Package registries treat them as wrong credentials.
-- You cannot create a workspace, answer the invitation your invite brought, make
-  invites or tokens, or approve a tool's sign-in.
+- You cannot create a workspace, answer the invitation your invite brought,
+  invite anyone, make tokens, or approve a tool's sign-in.
 
 You cannot make a token before you confirm, so the API and MCP refusals
 matter only for an account that made one before this rule existed.
@@ -1242,7 +1135,17 @@ and backup addresses.
 
 ## Too many attempts
 
-g1t counts wrong passwords, on the sign-in page, for git over HTTPS and
+g1t counts sign-ups with a password from each network: after **5** in an
+hour, [g1t.sh/register](https://g1t.sh/register) answers "Too many accounts
+were made from your network in the last hour" until the hour is up. A form
+with a mistake in it (a username that cannot be used, an address that is
+not one, a short password) is not counted. Signing up with GitHub is not
+counted this way: it needs a GitHub account with a verified address. The
+sign-up form also has a Cloudflare Turnstile check above its button, which
+usually passes without you doing anything; wait for it to finish before
+you select **Create account**.
+
+g1t also counts wrong passwords, on the sign-in page, for git over HTTPS and
 when confirming it is you, against the account and against where they come
 from. After 10 wrong passwords for one account in an hour, or 30 from one
 place, g1t stops checking passwords for it for a minute, then twice as long

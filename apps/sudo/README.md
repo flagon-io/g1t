@@ -54,6 +54,15 @@ roadmap.
   still opens and says so in those sections. A protected workspace (one
   nobody can ever delete: identity's `PROTECTED_WORKSPACES`, and
   flagon-io always) says so beside its name.
+- **Suspend and clean up** (`/workspaces/<slug>/abuse`, linked from a
+  workspace's page): suspend the workspace, with a reason (identity's
+  `admin_suspend_workspace`): its own tokens stop, and a billing hold
+  (`Suspended: <reason>`) stops its runs, checks, deploys, agents, new
+  self-hosted runners and telemetry. Lifting it lifts that hold, never one
+  staff set otherwise. Remove its self-hosted runners one at a time or all
+  at once, which also ends its registration tokens (actions'
+  `admin_runners`, `admin_remove_runners`), and revoke its projects'
+  telemetry ingest tokens. Every change is in sudo's audit log.
 - **Deleted workspaces** (`/workspaces/deleted`, linked from Workspaces):
   workspaces their owners deleted, newest first (`admin_deleted_workspaces`),
   each with who deleted it and when, when it is purged, what went with it
@@ -73,8 +82,8 @@ roadmap.
 - **A person's page** (`/users/<username>`, linked from a workspace's
   members): their addresses (remove one, with a reason they see), their
   security log, and **Delete account**. An account made with a shared
-  invite link says **Joined through <label>** under its name, linking to
-  the link on Invites. Delete only when the person asks
+  invite link, before registration opened, says **Joined through
+  <label>** under its name. Delete only when the person asks
   (from one of the account's confirmed addresses) or for abuse: give the
   reason, which goes in sudo's audit log (`account_deleted`), and type the
   username (`admin_delete_account`). It does what deleting their own
@@ -114,6 +123,14 @@ roadmap.
   first: once the account is purged its page is gone (they stay on
   Deleted workspaces). To undo it all, restore the account first, then
   each workspace, so it comes back with its owner.
+- **Suspending an account**, on a person's page: with a reason, it cannot
+  sign in (with a password or GitHub), is signed out everywhere, and its
+  tokens, SSH keys and git passwords stop until the suspension is lifted
+  (identity's `admin_suspend_user`). Nothing is deleted.
+- **Blocked domains** (`/blocked-domains`, under Platform): email domains,
+  and their subdomains, no new account may sign up with or add, each with
+  a reason (`admin_blocked_domains`, `admin_block_domain`). Accounts
+  already there are not touched.
 - **Deleted accounts** (`/users/deleted`, linked from Workspaces):
   accounts deleted by the person or by staff, newest first
   (`admin_deleted_accounts`), each with who deleted it (the person, or the
@@ -131,34 +148,13 @@ roadmap.
   out again; what it wrote shows as `ghost`. Both go in sudo's audit log
   (`account_restored`, `account_purged`), naming the staff member. There
   is no API route for deleting an account; only the site and sudo can.
-- **Invites** (`/invites`): g1t.sh is invite-only, and this page holds
-  every way in, one tab each. **Waitlist**: people who asked for access;
-  approve (identity mints an invite bound to the address and emails it,
-  with an optional note) or dismiss, one at a time or ticked together.
-  **Invites**: every invite code, searchable by a code's start, an email
-  or a username; revoke a pending one. **Shared links**: one link for a
-  group, such as the competition's judges, a post or a community. Make
-  one with a label (required, and not secret: sign-up says "Invited as
-  part of <label>"), how many accounts it makes (1 to 1000), its last day
-  (14 days ahead unless changed; up to a year; it works until the end of
-  that day, UTC) and, optionally, the email domains it is limited to
-  (exact domains, up to 10). Each use makes a new account, which makes its
-  own workspace: a shared link never joins anyone to an existing
-  workspace, and uses nobody's invites. The list shows each link's state
-  (live, used up, expired, revoked), its uses against its cap, its
-  expiry, who made it, the link itself in a read-only field to select and
-  copy while it is live (`https://g1t.sh/register?invite=<code>`;
-  identity keeps only the code's hash and a copy sealed under
-  IDENTITY_KEY), **Revoke**, and everyone who joined through it. Making
-  and revoking go in sudo's audit log (`shared_invite_created`,
-  `shared_invite_revoked`, filed under "Shared invite links"), naming
-  the staff member (`admin_shared_invites`,
-  `admin_create_shared_invite`, `admin_revoke_shared_invite`).
-  **Grant & mint**: more invites for a person or a workspace (a negative
-  number takes some back), and a one-off invite that uses nobody's.
-  **Invite tree**: where a person came from (who invited them, staff, or
-  the shared link they joined through) and whom they brought, three
-  levels down.
+- **Invites** (`/invites`): anyone may register on g1t.sh, so there is
+  no waitlist, allowance or shared link to manage. The page lists every
+  invite code sent with an invitation into a workspace or onto a
+  repository, searchable by a code's start, an email or a username, and
+  revokes a pending one (`admin_invites`, `admin_revoke_invite`). The
+  old waitlist, grants and shared links stay in identity's database,
+  untouched.
 - **Aliases** (`/aliases`, under Customers): names that lead to a
   workspace, set by staff only; there is no way for a customer to make
   one, and nothing user-facing mentions them. `g1t`, the product's name,

@@ -26,15 +26,14 @@ export type GithubFinished =
   | { kind: "linked"; login: string; next: string }
   /** An account has one of its verified emails: sign in to it, then claim. */
   | { kind: "needs_link"; pending: string; login: string; next: string }
-  /** A new account waiting on a username, or on an invite code. */
-  | { kind: "needs_username"; pending: string; login: string; suggestion: string; next: string; inviteRequired: boolean };
+  /** A new account waiting on a username. */
+  | { kind: "needs_username"; pending: string; login: string; suggestion: string; next: string };
 
 export type GithubPending = {
   login: string;
   kind: "link" | "username";
   suggestion: string | null;
   next: string;
-  inviteRequired: boolean;
 };
 
 export type GithubAccount = {
@@ -143,8 +142,8 @@ export function githubSignInClient(identity: ServiceBinding) {
       call<Result<{ authorizeUrl: string; state: string }>>("github_start", input),
     finish: (state: string, code: string) => call<Result<GithubFinished>>("github_finish", { state, code }),
     pending: (pending: string) => call<Result<GithubPending>>("github_pending", { pending }),
-    signUp: (pending: string, username: string, inviteCode?: string | null) =>
-      call<Result<{ user: User; sessionToken: string }>>("github_sign_up", { pending, username, inviteCode: inviteCode ?? null }),
+    signUp: (pending: string, username: string) =>
+      call<Result<{ user: User; sessionToken: string }>>("github_sign_up", { pending, username }),
     claim: (pending: string, user: User) => call<Result<GithubAccount>>("github_claim", { pending, user }),
     account: (user: User) => call<GithubAccountView>("github_account", { user }),
     unlink: (user: User) => call<Result<boolean>>("github_unlink", { user }),

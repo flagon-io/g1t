@@ -136,25 +136,6 @@ struct Pending {
 }
 
 impl Identity {
-    /// The workspace an own invite brings its person into, from `join` (a
-    /// slug): one `user` owns that can add members. None for none.
-    pub(crate) async fn joinable_workspace(&self, user: &User, join: Option<&str>) -> Result<Outcome<Option<(String, String)>>> {
-        let Some(slug) = join.map(str::trim).filter(|slug| !slug.is_empty()).map(str::to_lowercase) else {
-            return Ok(Outcome::Ok(None));
-        };
-        if user.role_in(&slug) != Some(Role::Owner) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only a workspace's owners can bring people into it."));
-        }
-        let Some(id) = self.workspace_id(&slug).await? else {
-            return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
-        };
-        // A free workspace adds no one until it starts the plan (paid.rs).
-        if let Some(refused) = self.free_workspace_refusal(&slug).await? {
-            return Ok(refused);
-        }
-        Ok(Outcome::Ok(Some((id, slug))))
-    }
-
     /// Gives a new account a workspace of its own unless `invite` brings
     /// it into one. Never fails the sign-up: an account left without one
     /// is asked to make one by the site.
@@ -235,10 +216,6 @@ impl Identity {
             workspace_id: Some(workspace_id),
             inviter: Some(actor),
             staff: None,
-            // Costs nothing: the person is on g1t already.
-            charged_to: "none",
-            charged_workspace_id: None,
-            limit: None,
             invitee_id: Some(&person.id),
             role: Some(if role == Role::Owner { "owner" } else { "member" }),
         };
@@ -592,7 +569,6 @@ mod tests {
             inviter_id: Some("usr_owner".into()),
             inviter: Some("syntaqx".into()),
             staff: None,
-            charged_to: "none".into(),
             created_at: EARLIER.into(),
             expires_at: LATER.into(),
             revoked_at: None,

@@ -34,7 +34,6 @@ import {
   inviteLink,
   inviteState,
 } from "../../lib/invites";
-import { registrationMode } from "../../lib/registration.server";
 import { billing, identity } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
@@ -50,15 +49,13 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   if (roleIn(viewer, params.owner) !== "owner") throw data(null, { status: 404 });
-  const [invites, workspace, free, mode] = await Promise.all([
+  const [invites, workspace, free] = await Promise.all([
     identity.workspaceInvites(params.owner, viewer),
     identity.getWorkspace(params.owner),
     billing.freeWorkspaces([params.owner]).catch(() => [] as string[]),
-    registrationMode(),
   ]);
   return {
     name: workspace?.name?.trim() || params.owner,
-    inviteOnly: mode !== "open",
     free: free.includes(params.owner.toLowerCase()),
     invites: invites.ok ? invites.value : [],
     origin: new URL(request.url).origin,
@@ -155,7 +152,7 @@ function InvitationMenu({ invite, origin, onDone }: { invite: Invite; origin: st
 }
 
 export default function WorkspaceInvitations({ loaderData, params }: Route.ComponentProps) {
-  const { name, inviteOnly, free, invites, origin } = loaderData;
+  const { name, free, invites, origin } = loaderData;
   const [search, setSearch] = useSearchParams();
   const filter = invitationFilter(search.get("state"));
   const counts = invitationCounts(invites);
@@ -187,9 +184,7 @@ export default function WorkspaceInvitations({ loaderData, params }: Route.Compo
         {!free && (
           <div className="ml-auto">
             <InviteDialog
-              slug={params.owner}
               name={name}
-              inviteOnly={inviteOnly}
               action={`/${params.owner}/-/members/invitations`}
               onInvited={(who) => setNotice({ tone: "ok", text: `Invitation to join ${name} sent to ${who}. They join once they accept.` })}
             />

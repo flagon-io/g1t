@@ -192,8 +192,6 @@ export type EventPayloads = {
     workspaceId: string | null;
     createdAccount: boolean;
   };
-  /** Someone asked for access while registration is invite-only. The address is not in the event. */
-  "waitlist.requested": { entryId: string };
   /**
    * One branch moved by a push. `ref` is the full ref, `after` the commit it
    * points to now, and `defaultBranch` whether it is the default branch.

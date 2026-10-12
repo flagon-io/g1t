@@ -636,6 +636,21 @@ impl Registry {
     }
 
     /// What one workspace's private repositories are counted as holding.
+    pub async fn public_bytes(&self, namespace: &str) -> Result<i64> {
+        #[derive(Deserialize)]
+        struct Row {
+            bytes: Option<f64>,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT SUM(stored_bytes) AS bytes FROM repos WHERE namespace = ? AND is_private = 0 AND fork_of IS NULL AND deleted_at IS NULL")
+            .bind(&[namespace.into()])?
+            .first::<Row>(None)
+            .await?
+            .and_then(|row| row.bytes)
+            .unwrap_or(0.0) as i64)
+    }
+
     pub async fn private_bytes(&self, namespace: &str) -> Result<i64> {
         #[derive(Deserialize)]
         struct Row {

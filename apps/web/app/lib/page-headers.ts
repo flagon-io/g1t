@@ -28,9 +28,10 @@ export function pagePolicy(nonce: string, usercontent?: string): string {
   const files = usercontent && /^http:/.test(usercontent) ? ` ${new URL(usercontent).origin}` : "";
   return [
     "default-src 'self'",
-    // Cloudflare's Web Analytics beacon, when the zone turns it on, and
-    // HeyCatch's helper for product analytics (lib/analytics.client.ts).
-    `script-src 'self' 'nonce-${nonce}' https://static.cloudflareinsights.com https://in.heycatch.ai`,
+    // Cloudflare's Web Analytics beacon, when the zone turns it on,
+    // HeyCatch's helper for product analytics (lib/analytics.client.ts), and
+    // Cloudflare Turnstile on sign-up when it is on (lib/turnstile.ts).
+    `script-src 'self' 'nonce-${nonce}' https://static.cloudflareinsights.com https://in.heycatch.ai https://challenges.cloudflare.com`,
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' https: data: blob:${files}`,
     `media-src 'self' https:${files}`,
@@ -39,7 +40,8 @@ export function pagePolicy(nonce: string, usercontent?: string): string {
     // shell, which the page calls through window.g1tDesktop
     // (lib/notify-client.ts); no browser resolves either.
     "connect-src 'self' https: ipc: http://ipc.localhost",
-    "frame-src 'none'",
+    // Turnstile's widget draws in a frame of its own; nothing else is framed.
+    "frame-src https://challenges.cloudflare.com",
     "object-src 'none'",
     "base-uri 'self'",
     "frame-ancestors 'none'",

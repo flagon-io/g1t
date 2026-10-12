@@ -34,6 +34,13 @@ export function tokenOf(request: Request): string | null {
   return bearer ?? request.headers.get("x-g1t-token");
 }
 
+/**
+ * A project id as g1t makes them (`newId("prj")`): `prj_` and a UUIDv7 in
+ * lowercase Crockford base32. Anything else names no project, so it never
+ * reaches (or makes) a store.
+ */
+const PROJECT_ID = /^prj_[0-9abcdefghjkmnpqrstvwxyz]{26}$/;
+
 /** The project a token is for: tokens are `g1to_<project id>_<secret>`. */
 export function projectOfToken(token: string): string | null {
   if (!token.startsWith(TELEMETRY_TOKEN_PREFIX)) return null;
@@ -41,7 +48,7 @@ export function projectOfToken(token: string): string | null {
   const at = rest.lastIndexOf("_");
   if (at <= 0 || at === rest.length - 1) return null;
   const project = rest.slice(0, at);
-  return /^[A-Za-z0-9_-]{1,64}$/.test(project) ? project : null;
+  return PROJECT_ID.test(project) ? project : null;
 }
 
 async function readBody(request: Request): Promise<Uint8Array> {

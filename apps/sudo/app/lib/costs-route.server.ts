@@ -16,7 +16,7 @@ export const DONE: Record<string, string> = {
   settings: "Guardrails saved. They apply from the next run.",
   mapping: "Mapping saved. It applies from the next run; read the bill now to see it.",
   removed: "Mapping removed.",
-  lifted: "Breaker lifted for the rest of today (UTC). Hosted-model runs start again; it is recorded in the audit log.",
+  lifted: "Breaker lifted for the rest of today (UTC). Runs g1t pays for start again; it is recorded in the audit log.",
   paused: "Paused across g1t. Every service sees it within 30 seconds; it is recorded in the audit log.",
   resumed: "Resumed across g1t. Every service sees it within 30 seconds; it is recorded in the audit log.",
 };

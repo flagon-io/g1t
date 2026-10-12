@@ -29,6 +29,7 @@
 mod run_artifacts;
 mod broker;
 mod cache;
+mod limits;
 mod managed;
 mod payload;
 mod plan;
@@ -36,6 +37,7 @@ mod protection;
 mod reach;
 mod registry;
 mod rename;
+mod retention;
 pub mod runtime;
 mod runners;
 mod settings;
@@ -124,6 +126,8 @@ pub struct Actions {
     sealer: Option<Sealer>,
     /// Signs the toolkit's blob links (runtime.rs), from `ACTIONS_KEY`.
     blob_key: Option<String>,
+    /// Log retention and free workspaces' caps, from wrangler vars (limits.rs).
+    limits: limits::Limits,
 }
 
 impl Actions {
@@ -142,6 +146,7 @@ impl Actions {
             cache: env.bucket("ACTIONS_CACHE").ok(),
             sealer: env.secret("ACTIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
             blob_key: env.secret("ACTIONS_KEY").ok().map(|key| runtime::blob_key(&key.to_string())),
+            limits: limits::Limits::from_env(env),
         })
     }
 
@@ -306,6 +311,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "runners" => reply(&service.runners(args(body)?).await?),
         "create_registration_token" => reply(&service.create_registration_token(args(body)?).await?),
         "remove_runner" => reply(&service.remove_runner(args(body)?).await?),
+        // Staff only, from sudo: a workspace's runners, and removing them.
+        "admin_runners" => reply(&service.admin_runners(args(body)?).await?),
+        "admin_remove_runners" => reply(&service.admin_remove_runners(args(body)?).await?),
         "runner_groups" => reply(&service.runner_groups(args(body)?).await?),
         "set_runner_group" => reply(&service.set_runner_group(args(body)?).await?),
         "delete_runner_group" => reply(&service.delete_runner_group(args(body)?).await?),

@@ -9,7 +9,6 @@ test("every anchor of the old settings page lands on its own page", () => {
     ["#profile", "/settings/profile"],
     ["#emails", "/settings/emails"],
     ["#github", "/settings/github"],
-    ["#invites", "/settings/invites"],
     ["#ssh-keys", "/settings/keys"],
     ["#tokens", "/settings/tokens"],
     ["#applications", "/settings/applications"],

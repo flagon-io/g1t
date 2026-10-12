@@ -119,6 +119,28 @@ export const RUNNER_ACTIVITY_LIMIT = 100;
 /** A job that has waited ten minutes or more with no matching runner online. */
 export type StuckJob = { id: string; name: string; runId: string; repo: string; labels: string; queuedAt: string };
 
+/** A self-hosted runner as staff see it. Mirrors `AdminRunner` in crates/contracts. */
+export type AdminRunner = {
+  id: string;
+  name: string;
+  /** `workspace/repo` for a repository's own runner. */
+  repo: string | null;
+  os: string;
+  version: string;
+  /** Running something now. */
+  busy: boolean;
+  lastSeenAt: string | null;
+  createdAt: string;
+  createdBy: string | null;
+};
+
+/** Staff-only: a workspace's runners, and removing them (sudo). */
+export interface RunnersAdminApi {
+  list(workspace: string): Promise<AdminRunner[]>;
+  /** Removes one runner, or with `id` null every one, and the workspace's registration tokens. How many went. */
+  remove(workspace: string, id: string | null, staff: string): Promise<Result<number>>;
+}
+
 export interface RunnersApi {
   /** The viewer's workspaces' jobs stuck waiting for a self-hosted runner, for Mission control. */
   stuck(viewer: User): Promise<StuckJob[]>;

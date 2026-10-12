@@ -2844,6 +2844,12 @@ impl Actions {
                 worker::console_error!("actions: the blob parts' sweep failed: {error}");
             }
         }
+        // And logs of jobs that finished longer ago than LOG_RETENTION_DAYS.
+        if (now_ms / 60_000) % 60 == 17
+            && let Err(error) = self.sweep_logs(now_ms).await
+        {
+            worker::console_error!("actions: the logs' sweep failed: {error}");
+        }
         self.start_queued().await
     }
 }

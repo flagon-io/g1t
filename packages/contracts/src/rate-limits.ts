@@ -44,7 +44,7 @@ export type RateLimitSpec = {
  * a person browsing makes a few requests a second at most, a clone is three
  * git requests, and nothing a person does needs dozens of archives a minute.
  * Namespace ids go in blocks of a hundred per Worker: 41xx packages,
- * 42xx web, 43xx repos, 44xx api, 45xx og, 46xx status.
+ * 42xx web, 43xx repos, 44xx api, 45xx og, 46xx status, 47xx telemetry.
  */
 export const RATE_LIMITS = {
   // services/packages (src/limits.rs): registry pulls and token requests.
@@ -70,6 +70,9 @@ export const RATE_LIMITS = {
   // apps/status: asking for a subscription, which sends an email.
   STATUS_SUBSCRIBE_LIMIT: { worker: "apps/status", namespaceId: 4601, limit: 3, per: "address" },
   STATUS_EMAIL_LIMIT: { worker: "apps/status", namespaceId: 4602, limit: 2, per: "email address" },
+  // services/telemetry (src/index.ts): OTLP requests to otel.g1t.sh, counted
+  // before the body is read or a project's store is woken.
+  TELEMETRY_INGEST_LIMIT: { worker: "services/telemetry", namespaceId: 4701, limit: 600, per: "address, OTLP requests" },
 } as const satisfies Record<string, RateLimitSpec>;
 
 export type RateLimitName = keyof typeof RATE_LIMITS;
