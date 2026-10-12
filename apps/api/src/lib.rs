@@ -25,6 +25,7 @@ mod oauth;
 mod oidc;
 mod packages;
 mod folios;
+mod follow;
 mod people;
 mod openapi;
 mod pins;

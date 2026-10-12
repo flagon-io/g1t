@@ -147,7 +147,8 @@ impl Events {
         send(&js::binding(&self.env, "BUS")?, &events).await
     }
 
-    /// Newest first. Callers must have checked that the viewer may see the
+    /// Newest first, or with `after` oldest first in the order the log
+    /// wrote them. Callers must have checked that the viewer may see the
     /// repository asked about.
     async fn list(&self, a: ListArgs) -> Result<Vec<Event>> {
         let (filter, binds) = list_filter(&a);
@@ -159,10 +160,11 @@ impl Events {
             })
             .collect();
         values.push(a.limit.unwrap_or(DEFAULT_PAGE).min(MAX_PAGE).into());
+        let order = if a.after.is_some() { "seq ASC" } else { "id DESC" };
         let rows = self
             .db
             .prepare(format!(
-                "SELECT * FROM events {filter} ORDER BY id DESC LIMIT ?"
+                "SELECT * FROM events {filter} ORDER BY {order} LIMIT ?"
             ))
             .bind(&values)?
             .all()
@@ -185,8 +187,10 @@ impl Events {
                 self.db
                     .prepare(
                         // Redelivered batches must not duplicate log rows.
-                        "INSERT OR IGNORE INTO events (id, type, source, time, repo_id, actor, data)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        // `seq` is the order of writing, which `after` follows
+                        // (0010_events_seq.sql): the log has one writer.
+                        "INSERT OR IGNORE INTO events (id, type, source, time, repo_id, actor, data, seq)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM events))",
                     )
                     .bind(&[
                         event.id.as_str().into(),
@@ -446,6 +450,14 @@ async fn scheduled(event: worker::ScheduledEvent, env: Env, _ctx: worker::Schedu
     }
 }
 
+/// The condition of an `after` cursor, binding its id twice.
+const AFTER: &str = concat!(
+    "seq > COALESCE(",
+    "(SELECT seq FROM events WHERE id = ?), ",
+    "(SELECT seq FROM events WHERE id > ? AND seq IS NOT NULL ORDER BY id LIMIT 1) - 1, ",
+    "(SELECT MAX(seq) FROM events), 0)"
+);
+
 /// A value bound to a `?` in [`list_filter`]'s clause.
 #[derive(Debug, PartialEq)]
 enum Bind {
@@ -496,6 +508,15 @@ fn list_filter(a: &ListArgs) -> (String, Vec<Bind>) {
         conditions.push("id < ?".to_owned());
         values.push(Bind::Text(before.clone()));
     }
+    if let Some(after) = &a.after {
+        // What the log wrote after the cursor's event. A cursor the log
+        // does not have (yet: an id from a webhook can arrive before its
+        // row is written) starts at the first event with a later id, and
+        // one past them all at the end of the log.
+        conditions.push(AFTER.to_owned());
+        values.push(Bind::Text(after.clone()));
+        values.push(Bind::Text(after.clone()));
+    }
     let filter = if conditions.is_empty() {
         String::new()
     } else {
@@ -544,5 +565,29 @@ mod tests {
                 Bind::Text("2026-10-01T00:00:00Z".into()),
             ]
         );
+    }
+
+    #[test]
+    fn an_after_cursor_reads_what_the_log_wrote_later_with_every_other_filter() {
+        let (filter, binds) = list_filter(&ListArgs {
+            repo_id: Some("rep_1".into()),
+            types: vec!["work.claimed".into(), "integration.failed".into()],
+            numbers: vec![7],
+            since: Some("2026-10-12T00:00:00Z".into()),
+            after: Some("evt_9".into()),
+            ..ListArgs::default()
+        });
+        assert_eq!(
+            filter,
+            format!(
+                "WHERE repo_id = ? AND type IN (?, ?) AND \
+                 (json_extract(data, '$.number') IN (?) OR json_extract(data, '$.issue') IN (?)) AND time >= ? AND {AFTER}"
+            )
+        );
+        // The cursor's id is bound once to find its place, and once for a
+        // cursor the log does not have.
+        assert_eq!(&binds[binds.len() - 2..], &[Bind::Text("evt_9".into()), Bind::Text("evt_9".into())]);
+        assert_eq!(binds.len(), 8);
+        assert_eq!(AFTER.matches('?').count(), 2);
     }
 }

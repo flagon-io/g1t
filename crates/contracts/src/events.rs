@@ -564,7 +564,8 @@ pub struct Published {
     pub data: serde_json::Value,
 }
 
-/// `list`: events from the log, newest first. Returns `Vec<Event>`.
+/// `list`: events from the log, newest first, or with `after` oldest first.
+/// Returns `Vec<Event>`.
 #[derive(Debug, Default, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListArgs {
@@ -576,6 +577,12 @@ pub struct ListArgs {
     /// Only events older than this event id.
     #[serde(default)]
     pub before: Option<String>,
+    /// Only events the log recorded after this event id, and then oldest
+    /// first: a cursor to follow the log with. Events are ordered by when
+    /// the log wrote them, not by their ids, so one published a moment
+    /// before another but written after it is not skipped.
+    #[serde(default)]
+    pub after: Option<String>,
     /// Only events by this account id.
     #[serde(default)]
     pub actor: Option<String>,
