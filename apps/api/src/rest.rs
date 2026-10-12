@@ -426,6 +426,30 @@ pub const ROUTES: &[Route] = &[
         Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
         &[],
     ),
+    route(
+        "GET",
+        "/workspaces/:workspace/actions/managed-workflows",
+        Op::Protection(ProtectionOp::ListWorkspaceManagedWorkflows),
+        &[],
+    ),
+    route(
+        "POST",
+        "/workspaces/:workspace/actions/managed-workflows",
+        Op::Protection(ProtectionOp::CreateWorkspaceManagedWorkflow),
+        &[],
+    ),
+    route(
+        "PATCH",
+        "/workspaces/:workspace/actions/managed-workflows/:workflow",
+        Op::Protection(ProtectionOp::UpdateWorkspaceManagedWorkflow),
+        &[],
+    ),
+    route(
+        "DELETE",
+        "/workspaces/:workspace/actions/managed-workflows/:workflow",
+        Op::Protection(ProtectionOp::DeleteWorkspaceManagedWorkflow),
+        &[],
+    ),
     route("GET", "/repos/:owner/:name/queue", Op::GetMergeQueue, &[]),
     route(
         "POST",

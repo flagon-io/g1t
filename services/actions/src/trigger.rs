@@ -830,8 +830,7 @@ impl Actions {
                 // And this repository's managed workflows: they are its own,
                 // whatever the fork's files say (managed.rs).
                 let mut read = self.read_workflows(&subject.source, &ws, subject.source_ref.as_deref()).await?;
-                let managed = self.managed_beside(&repo.id, &read.files).await?;
-                read.files.extend(managed);
+                read.files = self.with_managed(&repo, read.files).await?;
                 read
             };
             // A pull request's head runs each workflow once, however many
@@ -902,7 +901,8 @@ impl Actions {
             if !trigger.wants_type(action) || !self.passes(repo, ws, trigger, subject, event_name).await? {
                 continue;
             }
-            if self.disabled(&repo.id, &file.path).await? {
+            // A workspace's required workflow runs whatever its row says.
+            if !file.required && self.disabled(&repo.id, &file.path).await? {
                 continue;
             }
             // On a mirror the remote may deploy too: a workflow that deploys
@@ -1054,6 +1054,11 @@ impl Actions {
             else {
                 continue;
             };
+            // A managed workflow's row may be out of date while its
+            // repository waits to be synced again (managed.rs).
+            if g1t_actions::managed::is_managed(&row.path) && !self.synced(&repo.id).await? {
+                continue;
+            }
             let Some(sha) = self.default_head(&repo).await? else { continue };
             let payload = json!({ "schedule": cron, "repository": payload::repository(&repo), "workflow": row.path });
             let mut subject = Subject {
@@ -1335,7 +1340,9 @@ impl Actions {
         let Some((repo, ws)) = self.repo_by_id(&a.repo_id).await? else {
             return Ok(Outcome::Ok(json!({ "runs": 0 })));
         };
-        let read = self.read_workflows(&Self::repo_path(&repo), &ws, Some(&a.sha)).await?;
+        let mut read = self.read_workflows(&Self::repo_path(&repo), &ws, Some(&a.sha)).await?;
+        // A required workflow's check holds the queue too (managed.rs).
+        read.files = self.with_managed(&repo, read.files).await?;
         let head_commit = self.commits(&repo, &ws, &a.sha, None).await?.pop();
         let payload = json!({
             "action": "checks_requested",
@@ -1353,7 +1360,7 @@ impl Actions {
         for file in read.files {
             let Ok(workflow) = workflow::parse(&file.source) else { continue };
             let Some(trigger) = workflow.trigger("merge_group") else { continue };
-            if !trigger.wants_type(Some("checks_requested")) || self.disabled(&repo.id, &file.path).await? {
+            if !trigger.wants_type(Some("checks_requested")) || (!file.required && self.disabled(&repo.id, &file.path).await?) {
                 continue;
             }
             // Branch filters on merge_group name the branch it merges into.

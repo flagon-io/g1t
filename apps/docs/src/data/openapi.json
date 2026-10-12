@@ -542,7 +542,11 @@
         "set_actions_access",
         "create_repository_dispatch",
         "get_workspace_workflow_permissions",
-        "set_workspace_workflow_permissions"
+        "set_workspace_workflow_permissions",
+        "list_workspace_managed_workflows",
+        "create_workspace_managed_workflow",
+        "update_workspace_managed_workflow",
+        "delete_workspace_managed_workflow"
       ]
     },
     {
@@ -36134,6 +36138,559 @@
         },
         "x-example-params": {
           "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/actions/managed-workflows": {
+      "get": {
+        "operationId": "list_workspace_managed_workflows",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "List the workflows a workspace manages",
+        "description": "The workflows a workspace's owners added to its repositories, g1t's required workflows: each runs in every repository it targets as that repository's own workflow (its token, its secrets, its checks), under the path managed/<name>.yml, from a copy of its source file taken when it was saved. Each has name, path, workflow_name (its `name:`), source (owner/repo/path@ref), source_sha (the commit it was copied at), source_private, mode, repositories, visibility, content (the copy that runs) and when and by whom it was last saved. Owners only.",
+        "x-operation": "list_workspace_managed_workflows",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "list_managed_workflows",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "total_count": 1,
+                  "managed_workflows": [
+                    {
+                      "name": "security-scan",
+                      "path": "managed/security-scan.yml",
+                      "workflow_name": "Security scan",
+                      "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+                      "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
+                      "source_private": false,
+                      "mode": "required",
+                      "repositories": [
+                        "*",
+                        "!sandbox-*"
+                      ],
+                      "visibility": "all",
+                      "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
+                      "created_at": "2026-10-12T09:30:00Z",
+                      "updated_at": "2026-10-12T09:30:00Z",
+                      "updated_by": "ada"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "post": {
+        "operationId": "create_workspace_managed_workflow",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Add a workflow a workspace manages",
+        "description": "Add a workflow to a workspace's repositories. name (lowercase letters, digits and hyphens) makes its path managed/<name>.yml. source is a workflow file in one of the workspace's repositories, owner/repo/.g1t/workflows/file.yml@ref; g1t copies it at the commit ref names, and the copy runs until it is copied again (update_workspace_managed_workflow with refresh). mode is required (a repository's workflow of the same `name:` is set aside, and no one in the repository can turn it off, so its check can be required by a ruleset) or default (a repository's own workflow of the same name runs in its place, and the repository's admins can turn it off). repositories lists names and patterns (* matches any characters, ! excludes), read in order, the last match deciding; empty or left out is every repository. visibility is all (the default), public or private. A source in a private repository runs in private repositories only, so visibility must be private. Owners only. Returns the workflow.\n\ng1t copies the source when you save it, and that copy runs in each repository the workflow targets, as the repository's own workflow, with its token and secrets. A source in a private repository runs in private repositories only: give visibility private.",
+        "x-operation": "create_workspace_managed_workflow",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "add_managed_workflow",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "name": "security-scan",
+                  "path": "managed/security-scan.yml",
+                  "workflow_name": "Security scan",
+                  "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+                  "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
+                  "source_private": false,
+                  "mode": "required",
+                  "repositories": [
+                    "*",
+                    "!sandbox-*"
+                  ],
+                  "visibility": "all",
+                  "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
+                  "created_at": "2026-10-12T09:30:00Z",
+                  "updated_at": "2026-10-12T09:30:00Z",
+                  "updated_by": "ada"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Lowercase letters, digits and hyphens: its path is managed/<name>.yml."
+                  },
+                  "source": {
+                    "type": "string",
+                    "description": "A workflow file in one of the workspace's repositories: owner/repo/.g1t/workflows/file.yml@ref."
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "required",
+                      "default"
+                    ],
+                    "description": "required: a repository cannot take its place or turn it off. default: a repository's workflow of the same name takes its place."
+                  },
+                  "repositories": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Repository names and patterns (* matches any characters, ! excludes); empty is every repository."
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "public",
+                      "private"
+                    ],
+                    "description": "Which repositories, by visibility. A private source needs private."
+                  }
+                },
+                "required": [
+                  "name",
+                  "source",
+                  "mode"
+                ]
+              },
+              "example": {
+                "name": "security-scan",
+                "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+                "mode": "required",
+                "repositories": [
+                  "*",
+                  "!sandbox-*"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/actions/managed-workflows/{workflow}": {
+      "patch": {
+        "operationId": "update_workspace_managed_workflow",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Update a workflow a workspace manages",
+        "description": "Change a workflow a workspace manages: its source, mode, repositories or visibility; fields left out stay as they are. Giving source, or refresh: true, copies the source again at the commit its ref names now. Owners only. Returns the workflow.\n\nrefresh copies the source again at the commit its ref names now. Fields left out stay as they are.",
+        "x-operation": "update_workspace_managed_workflow",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "update_managed_workflow",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "name": "workflow",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The managed workflow's name, as in managed/<name>.yml."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "name": "security-scan",
+                  "path": "managed/security-scan.yml",
+                  "workflow_name": "Security scan",
+                  "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+                  "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
+                  "source_private": false,
+                  "mode": "required",
+                  "repositories": [
+                    "*",
+                    "!sandbox-*"
+                  ],
+                  "visibility": "all",
+                  "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
+                  "created_at": "2026-10-12T09:30:00Z",
+                  "updated_at": "2026-10-12T09:30:00Z",
+                  "updated_by": "ada"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "description": "A workflow file in one of the workspace's repositories: owner/repo/.g1t/workflows/file.yml@ref."
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "required",
+                      "default"
+                    ],
+                    "description": "required: a repository cannot take its place or turn it off. default: a repository's workflow of the same name takes its place."
+                  },
+                  "repositories": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Repository names and patterns (* matches any characters, ! excludes); empty is every repository."
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "public",
+                      "private"
+                    ],
+                    "description": "Which repositories, by visibility. A private source needs private."
+                  },
+                  "refresh": {
+                    "type": "boolean",
+                    "description": "Copy the source again, at the commit its ref names now."
+                  }
+                }
+              },
+              "example": {
+                "refresh": true
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "workflow": "security-scan"
+        }
+      },
+      "delete": {
+        "operationId": "delete_workspace_managed_workflow",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Remove a workflow a workspace manages",
+        "description": "Take a workflow out of every repository of the workspace. Its runs stay. Owners only.",
+        "x-operation": "delete_workspace_managed_workflow",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "remove_managed_workflow",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "name": "workflow",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The managed workflow's name, as in managed/<name>.yml."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "deleted": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "workflow": "security-scan"
         }
       }
     },

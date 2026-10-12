@@ -12228,6 +12228,104 @@
     },
     "notes": "A maximum of read holds every repository's default to read-only, and makes the workspace's default read too."
   },
+  "list_workspace_managed_workflows": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "total_count": 1,
+      "managed_workflows": [
+        {
+          "name": "security-scan",
+          "path": "managed/security-scan.yml",
+          "workflow_name": "Security scan",
+          "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+          "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
+          "source_private": false,
+          "mode": "required",
+          "repositories": [
+            "*",
+            "!sandbox-*"
+          ],
+          "visibility": "all",
+          "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
+          "created_at": "2026-10-12T09:30:00Z",
+          "updated_at": "2026-10-12T09:30:00Z",
+          "updated_by": "ada"
+        }
+      ]
+    }
+  },
+  "create_workspace_managed_workflow": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "name": "security-scan",
+      "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+      "mode": "required",
+      "repositories": [
+        "*",
+        "!sandbox-*"
+      ]
+    },
+    "response": {
+      "name": "security-scan",
+      "path": "managed/security-scan.yml",
+      "workflow_name": "Security scan",
+      "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+      "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
+      "source_private": false,
+      "mode": "required",
+      "repositories": [
+        "*",
+        "!sandbox-*"
+      ],
+      "visibility": "all",
+      "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
+      "created_at": "2026-10-12T09:30:00Z",
+      "updated_at": "2026-10-12T09:30:00Z",
+      "updated_by": "ada"
+    },
+    "notes": "g1t copies the source when you save it, and that copy runs in each repository the workflow targets, as the repository's own workflow, with its token and secrets. A source in a private repository runs in private repositories only: give visibility private."
+  },
+  "update_workspace_managed_workflow": {
+    "params": {
+      "workspace": "flagon-io",
+      "workflow": "security-scan"
+    },
+    "request": {
+      "refresh": true
+    },
+    "response": {
+      "name": "security-scan",
+      "path": "managed/security-scan.yml",
+      "workflow_name": "Security scan",
+      "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+      "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
+      "source_private": false,
+      "mode": "required",
+      "repositories": [
+        "*",
+        "!sandbox-*"
+      ],
+      "visibility": "all",
+      "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
+      "created_at": "2026-10-12T09:30:00Z",
+      "updated_at": "2026-10-12T09:30:00Z",
+      "updated_by": "ada"
+    },
+    "notes": "refresh copies the source again at the commit its ref names now. Fields left out stay as they are."
+  },
+  "delete_workspace_managed_workflow": {
+    "params": {
+      "workspace": "flagon-io",
+      "workflow": "security-scan"
+    },
+    "response": {
+      "deleted": true
+    }
+  },
   "get_token_policy": {
     "params": {
       "workspace": "flagon-io"

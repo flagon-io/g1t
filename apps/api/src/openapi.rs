@@ -499,6 +499,10 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Protection(ProtectionOp::CreateRepositoryDispatch),
             Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
             Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
+            Op::Protection(ProtectionOp::ListWorkspaceManagedWorkflows),
+            Op::Protection(ProtectionOp::CreateWorkspaceManagedWorkflow),
+            Op::Protection(ProtectionOp::UpdateWorkspaceManagedWorkflow),
+            Op::Protection(ProtectionOp::DeleteWorkspaceManagedWorkflow),
         ],
     ),
     (

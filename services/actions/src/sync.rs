@@ -17,6 +17,9 @@ use crate::{Actions, Count, MAX_WORKFLOWS, optional};
 pub struct WorkflowFile {
     pub path: String,
     pub source: String,
+    /// A workspace's required workflow (managed.rs): no one in the
+    /// repository can turn it off.
+    pub required: bool,
 }
 
 /// The files at a commit, and the commit the ref resolved to.
@@ -63,8 +66,8 @@ impl Actions {
     /// The workflow files a repository runs: `.g1t/workflows`, and on a
     /// mirror in CI failover or taken over, `.github/workflows` too (see
     /// mirrored.rs), where g1t's own stands in for one of the same name;
-    /// then the managed workflows installed in it that none of those take
-    /// the place of (managed.rs).
+    /// with the managed workflows installed in it and its workspace's that
+    /// target it, as managed.rs puts them together.
     pub async fn read_for(&self, repo: &Repo, actor: &User, git_ref: Option<&str>, github: bool) -> Result<Read> {
         let path = RepoPath {
             namespace: repo.namespace.clone(),
@@ -79,9 +82,8 @@ impl Actions {
         } else {
             self.read_workflows(&path, actor, git_ref).await?
         };
-        // And the managed workflows installed beside them (managed.rs).
-        let managed = self.managed_beside(&repo.id, &read.files).await?;
-        read.files.extend(managed);
+        // And the managed workflows beside them (managed.rs).
+        read.files = self.with_managed(repo, read.files).await?;
         Ok(read)
     }
 
@@ -127,7 +129,7 @@ impl Actions {
                 )
                 .await?;
                 if let Outcome::Ok(BlobView { text: Some(source), .. }) = blob {
-                    files.push(WorkflowFile { path: file_path, source });
+                    files.push(WorkflowFile { path: file_path, source, required: false });
                 }
             }
         }
@@ -191,6 +193,16 @@ impl Actions {
                 self.db
                     .prepare("UPDATE workflows SET crons = '[]', error = ? WHERE id = ?")
                     .bind(&[GONE.into(), row.id.as_str().into()])?,
+            );
+        }
+        // A workspace's required workflow cannot stay turned off, even one
+        // turned off while it was a default.
+        let required: Vec<&str> = read.files.iter().filter(|file| file.required).map(|file| file.path.as_str()).collect();
+        if !required.is_empty() {
+            statements.push(
+                self.db
+                    .prepare("UPDATE workflows SET state = 'active' WHERE repo_id = ? AND path IN (SELECT value FROM json_each(?))")
+                    .bind(&[repo.id.as_str().into(), serde_json::to_string(&required)?.into()])?,
             );
         }
         statements.push(
