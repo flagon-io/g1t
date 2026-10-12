@@ -1,15 +1,11 @@
-import { ArrowLeft, MessageSquare, StickyNote, Terminal, Wrench } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useSearchParams } from "react-router";
-
-import type { SessionEntry } from "@g1t/contracts";
 
 import type { Route } from "./+types/session";
 import { page } from "../../lib/meta";
-import { TimeAgo } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
 import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
-import { Hint } from "../../components/ui/hint";
+import { SessionEntries } from "../../components/session-entries";
 import { agents } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
@@ -23,65 +19,6 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const session = await agents.getSession(viewer, { namespace: params.owner, name: params.repo }, Number(params.number));
   return { session: unwrap(session) };
-}
-
-function Entry({ entry }: { entry: SessionEntry }) {
-  const at = (
-    <span className="shrink-0 text-xs text-faint">
-      <TimeAgo at={entry.at} />
-    </span>
-  );
-  if (entry.kind === "prompt") {
-    return (
-      <li className="px-4 py-3">
-        <details>
-          <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-            <Terminal size={14} className="text-accent" />
-            <span className="grow">Prompt</span>
-            {at}
-          </summary>
-          <pre className="mt-2 max-h-96 overflow-auto rounded-lg bg-bg p-3 text-xs whitespace-pre-wrap text-muted">{entry.text}</pre>
-        </details>
-      </li>
-    );
-  }
-  if (entry.kind === "message") {
-    return (
-      <li className="flex gap-2.5 px-4 py-3 text-sm">
-        <MessageSquare size={14} className="mt-0.5 shrink-0 text-faint" />
-        <p className="min-w-0 grow whitespace-pre-wrap wrap-break-word">{entry.text}</p>
-        {at}
-      </li>
-    );
-  }
-  if (entry.kind === "tool_call") {
-    return (
-      <li className="flex gap-2.5 px-4 py-2 text-xs">
-        <Wrench size={13} className="mt-0.5 shrink-0 text-faint" />
-        <span className="shrink-0 font-medium text-muted">{entry.tool}</span>
-        <Hint label={entry.text}>
-          <code className="min-w-0 grow truncate font-mono text-fg/85">{entry.text}</code>
-        </Hint>
-      </li>
-    );
-  }
-  if (entry.kind === "tool_result") {
-    return (
-      <li className="px-4 py-1.5 pl-10">
-        <details>
-          <summary className="cursor-pointer text-xs text-faint">Result</summary>
-          <pre className="mt-1.5 max-h-72 overflow-auto rounded-lg bg-bg p-3 text-xs text-muted">{entry.text}</pre>
-        </details>
-      </li>
-    );
-  }
-  return (
-    <li className="flex gap-2.5 px-4 py-2.5 text-xs text-muted">
-      <StickyNote size={13} className="mt-0.5 shrink-0 text-faint" />
-      <span className="min-w-0 grow">{entry.text}</span>
-      {at}
-    </li>
-  );
 }
 
 export default function SessionPage({ loaderData, params }: Route.ComponentProps) {
@@ -126,13 +63,9 @@ export default function SessionPage({ loaderData, params }: Route.ComponentProps
         {shown.length === 0 ? (
           <p className="mt-3 text-sm text-muted">Nothing recorded yet.</p>
         ) : (
-          <Card asChild divided className="mt-3">
-            <ol>
-              {shown.map((entry) => (
-                <Entry key={entry.seq} entry={entry} />
-              ))}
-            </ol>
-          </Card>
+          <div className="mt-3">
+            <SessionEntries entries={shown} />
+          </div>
         )}
         {entries.length >= 2000 && (
           <p className="mt-3 text-xs text-muted">

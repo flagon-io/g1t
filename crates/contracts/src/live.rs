@@ -61,7 +61,7 @@ pub struct RepoChangedArgs {
 /// The events a repository page shows: exact types, and families ending
 /// in a dot. Anything else (reads, fetches, settings, audit) changes no
 /// page anyone is looking at.
-const LIVE: [&str; 20] = [
+const LIVE: [&str; 27] = [
     "git.push",
     "git.deleted",
     "branch.renamed",
@@ -82,6 +82,14 @@ const LIVE: [&str; 20] = [
     "secret_scanning_alert.",
     "code_scanning_alert.",
     "vulnerability_alert.",
+    // Coordinating work: the issue, pull request and Work pages show them.
+    "work.",
+    "session.started",
+    "session.ended",
+    "dependency.changed",
+    "overlap.detected",
+    "integration.",
+    "decision.recorded",
 ];
 
 /// Whether an event of type `kind` changes a repository page.
@@ -227,6 +235,16 @@ mod tests {
         for kind in ["git.pushed", "repo.created", "user.deleted", "workspace.renamed"] {
             assert!(!is_live(kind), "{kind}");
         }
+    }
+
+    #[test]
+    fn coordination_names_the_issue_or_pull_request_it_is_about() {
+        for kind in ["work.claimed", "work.claim_expired", "session.started", "dependency.changed", "overlap.detected", "integration.failed", "integration.passed", "decision.recorded"] {
+            let change = change_of(&event(kind, None, json!({ "repoId": "rep_1", "number": 12, "issue": 4 }))).unwrap();
+            assert_eq!((change.repo_id.as_str(), change.number), ("rep_1", Some(12)), "{kind}");
+        }
+        // Each recorded step of a session changes no page anyone is watching live.
+        assert!(change_of(&event("session.appended", Some("rep_1"), json!({ "number": 12 }))).is_none());
     }
 
     #[test]

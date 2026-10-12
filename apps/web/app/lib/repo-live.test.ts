@@ -93,6 +93,18 @@ test("an issue hears its own changes and its linked pull requests", () => {
   assert.equal(issue(push("main")), false);
 });
 
+test("the Work page hears claims, sessions starting and ending, what the queue finds, and merges", () => {
+  const page = repoPages.work();
+  for (const kind of ["work.claimed", "work.claim_expired", "session.started", "session.ended", "dependency.changed", "overlap.detected", "integration.failed", "decision.recorded", "queue.changed", "pull.merged"]) {
+    assert.equal(page(change(kind, { number: 3 })), true, kind);
+  }
+  assert.equal(page(change("session.appended", { number: 3 })), false);
+  assert.equal(page(change("comment.created", { number: 3 })), false);
+  assert.equal(page(push("main")), false);
+  // An issue hears coordination about itself and its pull requests by number.
+  assert.equal(repoPages.issue(3, [9])(change("integration.failed", { number: 9 })), true);
+});
+
 test("runs, one run, and security", () => {
   assert.equal(repoPages.runs()(change("run.updated", { run: "run_1" })), true);
   assert.equal(repoPages.runs()(change("status.created", { sha: "abc" })), true, "a new run reports pending on its commit");

@@ -7,7 +7,7 @@ import { cn } from "../../lib/cn";
 // tone says how much it matters. `sm` (the default) is the 11px label beside
 // a title or in a table; `md` the 12px pill in a list of properties.
 
-export const badgeVariants = cva("inline-flex shrink-0 items-center gap-1 rounded-full border whitespace-nowrap", {
+export const badgeVariants = cva("inline-flex shrink-0 items-center gap-1 border whitespace-nowrap", {
   variants: {
     tone: {
       neutral: "border-line text-muted",
@@ -22,12 +22,16 @@ export const badgeVariants = cva("inline-flex shrink-0 items-center gap-1 rounde
       sm: "px-2 py-px text-[0.6875rem] font-medium",
       md: "px-2 py-0.5 text-xs",
     },
+    shape: {
+      pill: "rounded-full",
+      tag: "rounded",
+    },
   },
-  defaultVariants: { tone: "neutral", size: "sm" },
+  defaultVariants: { tone: "neutral", size: "sm", shape: "pill" },
 });
 
 export type BadgeTone = NonNullable<VariantProps<typeof badgeVariants>["tone"]>;
 
-export function Badge({ tone, size, className, ...props }: ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
-  return <span data-slot="badge" className={cn(badgeVariants({ tone, size }), className)} {...props} />;
+export function Badge({ tone, size, shape, className, ...props }: ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
+  return <span data-slot="badge" className={cn(badgeVariants({ tone, size, shape }), className)} {...props} />;
 }

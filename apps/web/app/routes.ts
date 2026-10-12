@@ -266,6 +266,9 @@ export default [
     route("pulls/new", "routes/repo/pull-new.tsx"),
     route("pull/:number", "routes/repo/pull.tsx"),
     route("queue", "routes/repo/queue.tsx"),
+    // Who is working on what, live: claims, harness sessions, the queue, coordination events.
+    route("work", "routes/repo/work.tsx"),
+    route("work/sessions/:id", "routes/repo/work-session.tsx"),
     route("usage", "routes/repo/usage.tsx"),
     route("sessions", "routes/repo/sessions.tsx"),
     route("sessions/:number", "routes/repo/session.tsx"),

@@ -38,7 +38,7 @@ const ROUTE_WORDS = new Set([
   "packages", "patterns", "people", "personal-access-tokens", "pins", "policies", "profile", "projects", "pull",
   "pulls", "queue", "releases", "repositories", "reset", "rules", "runners", "runs", "search", "secrets", "security",
   "security-log", "settings", "soon", "spend", "tags", "teams", "today", "tokens", "tree", "two-factor", "u", "usage",
-  "verify", "webhooks", "workspace", "workspaces",
+  "verify", "webhooks", "work", "workspace", "workspaces",
 ]);
 
 export function isPublicPath(pathname: string): boolean {

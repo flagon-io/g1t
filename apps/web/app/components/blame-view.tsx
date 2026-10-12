@@ -1,6 +1,7 @@
 import {
   ArrowUpRight,
   CircleDot,
+  Scale,
   GitCommitHorizontal,
   GitPullRequest,
   MessagesSquare,
@@ -16,6 +17,8 @@ import type { ShownBlame, ShownCommit } from "../lib/commit-people";
 import type { loader as whyLoader } from "../routes/repo/why";
 import { repoAt } from "../lib/markdown-plugins";
 import { CommitAvatars, CommitNames } from "./commit-person";
+import { DecisionLine, IntegrationFailure } from "./coordination";
+import { resolutionOf } from "../lib/coordination";
 import { Markdown } from "./markdown";
 import { TimeAgo } from "./ui";
 import { Button } from "./ui/button";
@@ -296,6 +299,8 @@ function WhyPanel({
             </section>
           )}
 
+          {current.decisions.length > 0 && <WhyDecisions decisions={current.decisions} base={base} />}
+
           {current.steps.length > 0 && current.pull && (
             <section className="p-4">
               <p className="flex items-center gap-1.5 text-xs text-faint">
@@ -343,5 +348,36 @@ function WhyPanel({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The decisions behind the line, oldest first: each proposal, the
+ * combination that failed in the merge queue and the fix that answered it,
+ * the approval and the merge, each with how sure it is.
+ */
+function WhyDecisions({ decisions, base }: { decisions: WhyData["decisions"]; base: string }) {
+  const failures = decisions.filter((decision) => decision.kind === "integration_failure");
+  const failure = failures[failures.length - 1] ?? null;
+  const answered = failure ? resolutionOf(decisions, failure) : null;
+  return (
+    <section className="p-4">
+      <p className="flex items-center gap-1.5 text-xs text-faint">
+        <Scale size={13} />
+        How it was decided
+      </p>
+      {failure && (
+        <IntegrationFailure className="mt-3" failure={failure} base={base} fixed={answered?.fix ?? answered?.passed} />
+      )}
+      <ol className="mt-3 space-y-3">
+        {decisions
+          .filter((decision) => decision !== failure)
+          .map((decision) => (
+            <li key={decision.id}>
+              <DecisionLine decision={decision} base={base} />
+            </li>
+          ))}
+      </ol>
+    </section>
   );
 }
