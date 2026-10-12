@@ -1,0 +1,34 @@
+name: Permissions
+on: push
+permissions: read-all
+jobs:
+  write:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+      - run: echo write
+  none:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - run: echo none
+  many:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      attestations: write
+      checks: write
+      contents: read
+      deployments: write
+      discussions: read
+      id-token: write
+      issues: write
+      models: read
+      packages: read
+      pages: write
+      pull-requests: write
+      repository-projects: read
+      security-events: write
+      statuses: write
+    steps:
+      - run: echo many

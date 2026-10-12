@@ -1,0 +1,10 @@
+# error: unexpected `reviewers` in `environment`
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      reviewers: [a]
+    steps:
+      - run: echo hi

@@ -1,0 +1,7 @@
+# error: `0job` is not a job id GitHub accepts
+on: push
+jobs:
+  0job:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

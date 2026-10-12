@@ -1,0 +1,8 @@
+# error: unexpected `label` in `runs-on`
+on: push
+jobs:
+  build:
+    runs-on:
+      label: big
+    steps:
+      - run: echo hi

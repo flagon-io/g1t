@@ -1,0 +1,11 @@
+# error: Job `build`: unexpected `fail_fast` in `strategy`
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail_fast: false
+      matrix:
+        a: [1]
+    steps:
+      - run: echo hi

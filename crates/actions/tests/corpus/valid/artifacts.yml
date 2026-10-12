@@ -1,0 +1,20 @@
+name: Artifacts
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mkdir -p out && echo hello > out/a.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: out
+          path: out/
+          if-no-files-found: error
+  use:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: out
+      - run: cat a.txt

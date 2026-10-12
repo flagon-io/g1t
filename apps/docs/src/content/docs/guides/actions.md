@@ -95,9 +95,49 @@ anything in it that runs differently.
   [actions built on the toolkit](#actions-built-on-the-toolkit).
 - **`on: delete`.** Deleting a branch or tag starts no workflows yet; the
   workflow's page says so.
+- **Background steps.** A step with `background: true`, or a `wait`,
+  `wait-all`, `cancel` or `parallel` step, is refused: g1t does not run
+  them yet.
+- **`timezone` on a schedule, `concurrency.queue`, `cancel-timeout-minutes`
+  and `snapshot`.** The workflow runs without them, and its page says so:
+  a schedule runs in UTC, a group keeps one run waiting, a cancelled job
+  stops in its usual time, and no runner image is made.
 
 Why each of these is missing, and what to use instead, is on
 [What g1t can't do yet](/about/limitations/#actions-and-runners).
+
+## How g1t checks a workflow
+
+g1t reads a workflow as GitHub does, from GitHub's own schema for workflow
+files, so a workflow GitHub refuses is refused on g1t too, and one GitHub
+runs reads on g1t. When a workflow can't be read, its page says what is
+wrong, with the job and step, and no run starts from it.
+
+| You write | g1t says |
+| --- | --- |
+| A key GitHub doesn't have, at any level, such as `runs_on:` or `with:` on a `run:` step | It is unexpected, and lists the keys that place can have. |
+| A job without `runs-on` | The job has no `runs-on`. A job that calls a reusable workflow with `uses:` has no `runs-on` or `steps`. |
+| A job id that doesn't start with a letter or `_`, has characters other than letters, digits, `-` and `_`, or starts with `__` | It is not a job id GitHub accepts. Step ids follow the same rule. Two jobs, or two steps of a job, whose ids differ only in case are the same id. |
+| An event GitHub doesn't have, or a filter the event doesn't take, such as `types` on `push` | GitHub has no such event, or the event doesn't take that key. `branches` and `branches-ignore` (and `tags`, `paths`) can't both be on one event. |
+| A YAML merge key (`<<: *defaults`) | GitHub doesn't read merge keys. Anchors and aliases (`&steps` and `*steps`) work, as on GitHub, for a whole value. |
+| A `permissions` name GitHub's token doesn't have, such as `metadata` | It is unexpected. A name GitHub has that g1t has nothing behind yet reads, and grants nothing. |
+
+### g1t's own settings
+
+A `g1t:` mapping can go at the top of a workflow, on a job and on a step.
+GitHub refuses a workflow with `g1t:` in it, so use it only in
+`.g1t/workflows`. It follows two rules:
+
+- It only adds to a workflow. It never changes what a GitHub key means.
+- Each setting in it has a GitHub equivalent, written here, so that a
+  workflow can be moved back to GitHub without it.
+
+| Setting | Where | What it does | On GitHub |
+| --- | --- | --- | --- |
+| `deployment: false` | A job | The job reads its `environment:` values without the run recording a deployment. | `environment: { name: ..., deployment: false }` |
+
+g1t keeps any other key under `g1t:` as written, and does nothing with it
+yet.
 
 ## Schedules
 

@@ -1,0 +1,6 @@
+# error: calls a reusable workflow with `uses`, so it has no `runs-on`
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    uses: ./.github/workflows/foo.yml

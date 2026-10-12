@@ -229,6 +229,22 @@ machines.
   macOS and Windows, on x64 and arm64.
 - **Status.** Not scheduled.
 
+### No background steps
+
+GitHub's background steps (`background: true` on a step, and `wait`,
+`wait-all`, `cancel` and `parallel` steps) are refused: a workflow with one
+does not run on g1t. A schedule's `timezone`, `concurrency.queue`,
+`cancel-timeout-minutes` and `snapshot` are read but not applied: schedules
+run in UTC, a concurrency group keeps one run waiting, a cancelled job stops
+in its usual time, and no runner image is made from a job. The workflow's
+page says so.
+
+- **Why.** They are newer than g1t's runner, which runs a job's steps one
+  after another.
+- **Instead.** Start a long-running process with `&` in a `run:` step and
+  stop it in a later one; write a schedule's `cron` in UTC.
+- **Status.** Not scheduled.
+
 ### No `gh` command in jobs
 
 The runner does not include the `gh` command, and pointing it at g1t

@@ -1,0 +1,29 @@
+name: Call reusable
+on:
+  push:
+    branches: [main]
+jobs:
+  call-local:
+    uses: ./.github/workflows/reusable-called.yml
+    with:
+      config-path: .github/labeler.yml
+      debug: true
+    secrets:
+      token: ${{ secrets.PUBLISH_TOKEN }}
+  call-remote:
+    needs: call-local
+    if: ${{ always() }}
+    uses: octo-org/example-repo/.github/workflows/reusable.yml@v1
+    secrets: inherit
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        target: [dev, stage]
+    concurrency:
+      group: remote-${{ matrix.target }}
+  report:
+    needs: [call-local]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ needs.call-local.outputs.artifact }}"

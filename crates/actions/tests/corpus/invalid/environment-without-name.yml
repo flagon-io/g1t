@@ -1,0 +1,9 @@
+# error: `environment` needs `name`
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      url: https://example.com
+    steps:
+      - run: echo hi

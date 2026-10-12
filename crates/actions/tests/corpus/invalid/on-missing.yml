@@ -1,0 +1,6 @@
+# error: `on` is missing
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

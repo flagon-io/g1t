@@ -355,16 +355,14 @@ pub(crate) fn environment_of(raw: &Value, contexts: &Map<String, Value>) -> Opti
         (!text.is_empty()).then_some(text)
     };
     match raw.get("environment")? {
-        name @ Value::String(_) => Some(JobEnvironment { name: plain(name)?, url: None, deploys: true }),
+        name @ Value::String(_) => Some(JobEnvironment { name: plain(name)?, url: None, deploys: workflow::records_deployment(raw) }),
         Value::Object(env) => {
             let name = plain(env.get("name")?)?;
             let url = env
                 .get("url")
                 .and_then(plain)
                 .filter(|url| url.starts_with("https://") || url.starts_with("http://"));
-            let deploys = !matches!(env.get("deployment"), Some(Value::Bool(false)))
-                && !matches!(env.get("deployment"), Some(Value::String(text)) if text.trim() == "false");
-            Some(JobEnvironment { name, url, deploys })
+            Some(JobEnvironment { name, url, deploys: workflow::records_deployment(raw) })
         }
         _ => None,
     }
@@ -397,12 +395,7 @@ pub(crate) fn deploys_to(run: &RunRow, job: &JobRow) -> Option<JobEnvironment> {
     let env = match (read, &job.environment) {
         (Some(env), Some(name)) => Some(JobEnvironment { name: name.clone(), ..env }),
         (Some(env), None) => Some(env),
-        (None, Some(name)) => {
-            let deployment = spec.raw.get("environment").and_then(|env| env.get("deployment"));
-            let deploys = !matches!(deployment, Some(Value::Bool(false)))
-                && !matches!(deployment, Some(Value::String(text)) if text.trim() == "false");
-            Some(JobEnvironment { name: name.clone(), url: None, deploys })
-        }
+        (None, Some(name)) => Some(JobEnvironment { name: name.clone(), url: None, deploys: workflow::records_deployment(&spec.raw) }),
         (None, None) => None,
     };
     env.filter(|env| env.deploys)
@@ -2454,6 +2447,9 @@ mod deployments {
         );
         // Secrets only: no deployment.
         assert!(!read(json!({ "environment": { "name": "production", "deployment": false } })).unwrap().deploys);
+        // The same, said in the job's g1t settings.
+        assert!(!read(json!({ "environment": "production", "g1t": { "deployment": false } })).unwrap().deploys);
+        assert!(!read(json!({ "environment": { "name": "production" }, "g1t": { "deployment": false } })).unwrap().deploys);
         // Only http(s) addresses.
         assert_eq!(read(json!({ "environment": { "name": "production", "url": "javascript:alert(1)" } })).unwrap().url, None);
     }

@@ -1,0 +1,9 @@
+# error: Job `build`: unexpected `metadata` in `permissions`
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      metadata: read
+    steps:
+      - run: echo hi

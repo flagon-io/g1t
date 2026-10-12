@@ -1,0 +1,35 @@
+name: Reusable build
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        description: Where the configuration is
+        required: true
+        type: string
+      debug:
+        type: boolean
+        default: false
+      retries:
+        type: number
+        default: 3
+    secrets:
+      token:
+        description: A token to publish with
+        required: true
+      optional-secret:
+    outputs:
+      artifact:
+        description: The artifact that was built
+        value: ${{ jobs.build.outputs.artifact }}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact: ${{ steps.pack.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pack
+        run: echo "name=build-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        env:
+          CONFIG: ${{ inputs.config-path }}
+          TOKEN: ${{ secrets.token }}

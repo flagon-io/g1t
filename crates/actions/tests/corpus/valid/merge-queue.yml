@@ -1,0 +1,12 @@
+name: Merge queue
+on:
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make check

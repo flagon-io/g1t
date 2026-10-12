@@ -1,0 +1,14 @@
+name: g1t settings
+on: push
+g1t:
+  anything: goes here
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment: production
+    g1t:
+      deployment: false
+    steps:
+      - run: echo plan
+        g1t:
+          note: kept as written

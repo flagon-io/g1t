@@ -1,0 +1,32 @@
+name: Integration
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "migrations/**"
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/test-integration.sh
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/app_test
+          REDIS_URL: redis://localhost:6379

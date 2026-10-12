@@ -1,0 +1,32 @@
+name: Manual deploy
+run-name: Deploy to ${{ inputs.environment }} by @${{ github.actor }}
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to deploy
+        type: environment
+        required: true
+      log-level:
+        description: Log level
+        required: true
+        default: warning
+        type: choice
+        options:
+          - info
+          - warning
+          - debug
+      dry-run:
+        type: boolean
+        default: true
+      count:
+        type: number
+        default: 1
+      notes:
+        description: Free text
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - run: echo "Deploying with ${{ inputs.log-level }}"

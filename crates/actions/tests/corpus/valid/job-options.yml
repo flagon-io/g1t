@@ -1,0 +1,27 @@
+name: Job options
+on: push
+jobs:
+  first:
+    name: The first job
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: false
+    env:
+      LEVEL: job
+    steps:
+      - run: echo "$LEVEL"
+  second:
+    name: ${{ format('Second for {0}', github.ref_name) }}
+    needs: first
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo second
+  _private_helper:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo underscore ids are allowed
+  Mixed-Case_2:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo mixed

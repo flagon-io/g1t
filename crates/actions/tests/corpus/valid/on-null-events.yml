@@ -1,0 +1,10 @@
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"

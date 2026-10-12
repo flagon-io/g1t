@@ -1,0 +1,10 @@
+# error: Unexpected `cancel_in_progress` in `concurrency`
+on: push
+concurrency:
+  group: ci
+  cancel_in_progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

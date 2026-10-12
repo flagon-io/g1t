@@ -1,0 +1,11 @@
+# error: Unexpected `inputs` in `on.push`
+on:
+  push:
+    inputs:
+      name:
+        type: string
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

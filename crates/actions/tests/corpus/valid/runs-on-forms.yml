@@ -1,0 +1,21 @@
+name: Runner forms
+on: push
+jobs:
+  label:
+    runs-on: ubuntu-24.04
+    steps: [{ run: uname -a }]
+  labels:
+    runs-on: [self-hosted, linux, x64]
+    steps: [{ run: uname -a }]
+  group:
+    runs-on:
+      group: ubuntu-runners
+      labels: ubuntu-20.04-16core
+    steps: [{ run: uname -a }]
+  group-only:
+    runs-on:
+      group: large
+    steps: [{ run: uname -a }]
+  expression:
+    runs-on: ${{ github.repository == 'example/app' && 'big-runner' || 'ubuntu-latest' }}
+    steps: [{ run: uname -a }]

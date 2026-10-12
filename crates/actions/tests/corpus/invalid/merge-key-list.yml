@@ -1,0 +1,13 @@
+# error: YAML merge key (`<<`)
+on: push
+x-env: &a
+  A: 1
+x-more: &b
+  B: 2
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      <<: [*a, *b]
+    steps:
+      - run: echo hi

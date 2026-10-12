@@ -1,0 +1,9 @@
+# error: Job `build`, step 1: unexpected `width` in a step that uses an action
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        width:
+          fetch-depth: 0
