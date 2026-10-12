@@ -6,11 +6,14 @@ use serde_json::{Map, Value, json};
 
 /// The GitHub event and activity type for a g1t event, if it has one.
 /// A g1t event can be more than one GitHub event: a pull request opening
-/// is `pull_request` and `pull_request_target`.
+/// is `pull_request` and `pull_request_target`. A new branch or tag is
+/// `push` and `create`; services/actions adds `create` for a `git.push`
+/// with no `before`.
 pub fn github_events(kind: &str) -> Vec<(&'static str, Option<&'static str>)> {
     let pull = |action| vec![("pull_request", Some(action)), ("pull_request_target", Some(action))];
     match kind {
         "git.push" => vec![("push", None)],
+        "git.deleted" => vec![("delete", None)],
         "pull.opened" => pull("opened"),
         "pull.updated" => pull("synchronize"),
         "pull.ready" => pull("ready_for_review"),
@@ -215,6 +218,11 @@ mod tests {
     #[test]
     fn g1t_events_are_github_events() {
         assert_eq!(github_events("git.push"), [("push", None)]);
+        assert_eq!(github_events("git.deleted"), [("delete", None)]);
+        assert_eq!(github_events("pull.labeled")[1], ("pull_request_target", Some("labeled")));
+        assert_eq!(github_events("pull.assigned")[0], ("pull_request", Some("assigned")));
+        assert_eq!(github_events("issue.unlabeled"), [("issues", Some("unlabeled"))]);
+        assert_eq!(github_events("issue.assigned"), [("issues", Some("assigned"))]);
         assert_eq!(github_events("pull.updated")[0], ("pull_request", Some("synchronize")));
         assert_eq!(github_events("pull.merged")[1], ("pull_request_target", Some("closed")));
         assert_eq!(github_events("comment.created"), [("issue_comment", Some("created"))]);

@@ -2729,7 +2729,7 @@ impl Op {
                     "repo": repo_schema(),
                     "workflow": { "type": "string", "description": "The workflow's id or file name." },
                     "ref": { "type": "string", "description": "A branch or tag. The default branch if not given." },
-                    "inputs": { "type": "object", "description": "The workflow_dispatch inputs, by name." },
+                    "inputs": { "type": "object", "description": "The workflow_dispatch inputs, by name. Only inputs the workflow declares: any other is refused. A boolean is true or false, a number a number, a choice one of its options, and an environment one of the repository's." },
                 }),
                 &["repo", "workflow"],
             ),

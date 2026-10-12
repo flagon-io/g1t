@@ -129,6 +129,21 @@ pub struct GitPush {
     pub commits: Option<u32>,
 }
 
+/// A branch or tag deleted by a push. `before` is the commit it pointed to.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitDeleted {
+    pub repo_id: String,
+    /// The full ref, such as `refs/heads/feature`.
+    #[serde(rename = "ref")]
+    pub git_ref: String,
+    pub before: String,
+    /// Set when a workflow job's token deleted it: the run's id (see
+    /// [`CAUSED_BY_JOB`]). Absent otherwise.
+    #[serde(rename = "causedByJob", skip_serializing_if = "Option::is_none")]
+    pub caused_by_job: Option<String>,
+}
+
 /// The payload of `issue.opened`, `issue.updated`, `issue.assigned`,
 /// `issue.labeled`, `issue.unlabeled`, `issue.milestoned`,
 /// `issue.demilestoned`, `issue.closed` and `issue.reopened`; each uses

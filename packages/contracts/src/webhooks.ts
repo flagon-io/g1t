@@ -10,6 +10,7 @@ import type { Result } from "./result";
 /** Every event a webhook can be sent, in the order people are shown them. */
 export const EVENT_TYPES = [
   "git.push",
+  "git.deleted",
   "branch.renamed",
   "repo.created",
   "repo.forked",

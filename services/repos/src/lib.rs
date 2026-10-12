@@ -51,7 +51,7 @@ mod transfer;
 mod workflow_gate;
 
 use g1t_contracts::events::{
-    Event, GitPush, NewEvent, Publish, RepoCreated, RepoForked, RepoUpdated, WorkspaceDeleted,
+    Event, GitDeleted, GitPush, NewEvent, Publish, RepoCreated, RepoForked, RepoUpdated, WorkspaceDeleted,
     WorkspaceDeleting, WorkspaceRenamed, WorkspaceRestored,
 };
 use g1t_contracts::access::{self, Capability};
@@ -2115,10 +2115,11 @@ impl<S: GitStore> Repos<S> {
             }
         }
         after.ended(status, None);
-        if status == 200 && (forwarded.pack_bytes > 0 || !forwarded.pushed.is_empty()) {
+        if status == 200 && (forwarded.pack_bytes > 0 || !forwarded.pushed.is_empty() || !forwarded.deleted.is_empty()) {
             after.push = Some(PushDone {
                 repo,
                 pushed: forwarded.pushed,
+                deleted: forwarded.deleted,
                 pack_bytes: forwarded.pack_bytes,
                 caused_by_job: viewer.as_ref().and_then(g1t_contracts::events::job_run_of).map(str::to_owned),
                 // The calendar credits people, never a job's, an agent's or a workspace's token.
@@ -2212,11 +2213,59 @@ impl<S: GitStore> Repos<S> {
         held
     }
 
+    /// A `git.deleted` event for each branch or tag a push deleted that is
+    /// gone from the store: the store can refuse one ref and accept
+    /// another. As many as a push announces of tags and branches it moves.
+    async fn publish_deleted(
+        &self,
+        repo: &Repo,
+        deleted: &[(String, String)],
+        actor: Option<&str>,
+        caused_by_job: Option<&str>,
+    ) -> Result<()> {
+        let stored = self.store.open(&store_key(repo)).await?;
+        let is_branch = |git_ref: &str| git_ref.starts_with("refs/heads/");
+        let tags = deleted.iter().filter(|(git_ref, _)| !is_branch(git_ref)).count();
+        let announced = deleted
+            .iter()
+            .filter(|(git_ref, _)| is_branch(git_ref))
+            .take(MAX_PUSH_BRANCH_EVENTS)
+            .chain(deleted.iter().filter(|(git_ref, _)| !is_branch(git_ref) && tags <= MAX_PUSH_TAG_EVENTS));
+        for (git_ref, before) in announced {
+            let named = git_ref.strip_prefix("refs/heads/").unwrap_or(git_ref);
+            let gone = match stored.log(named, 1).await {
+                Ok(head) => head.is_empty(),
+                Err(error) => {
+                    worker::console_error!("whether {git_ref} of {} was deleted is not known: {error}", repo.name);
+                    false
+                }
+            };
+            if !gone {
+                continue;
+            }
+            self.publish(NewEvent {
+                kind: "git.deleted",
+                source: SOURCE,
+                repo_id: Some(repo.id.clone()),
+                actor: actor.map(str::to_owned),
+                data: GitDeleted {
+                    repo_id: repo.id.clone(),
+                    git_ref: git_ref.clone(),
+                    before: before.clone(),
+                    caused_by_job: caused_by_job.map(str::to_owned),
+                },
+            })
+            .await?;
+        }
+        Ok(())
+    }
+
     /// What a push changed, recorded once git has its answer.
     async fn record_push(&self, push: PushDone) -> Result<()> {
         let PushDone {
             repo,
             pushed,
+            deleted,
             pack_bytes,
             actor,
             unscanned,
@@ -2229,6 +2278,9 @@ impl<S: GitStore> Repos<S> {
             && let Err(error) = self.registry.add_stored_bytes(&repo, pack_bytes).await
         {
             worker::console_error!("stored bytes for {} not counted: {error}", repo.name);
+        }
+        if !deleted.is_empty() {
+            self.publish_deleted(&repo, &deleted, actor.as_deref(), caused_by_job.as_deref()).await?;
         }
         if pushed.is_empty() {
             return Ok(());
@@ -2328,6 +2380,9 @@ fn announced_refs<'a>(pushed: &'a [git_http::Pushed], default_branch: &str) -> V
 struct PushDone {
     repo: Repo,
     pushed: Vec<git_http::Pushed>,
+    /// The branches and tags it asked to delete, each with the commit it
+    /// pointed to.
+    deleted: Vec<(String, String)>,
     pack_bytes: u64,
     actor: Option<String>,
     /// Too large to scan for secrets before it was stored.

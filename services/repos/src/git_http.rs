@@ -480,12 +480,27 @@ fn pushed_branches(body: &[u8]) -> Vec<Pushed> {
         .collect()
 }
 
+/// The branches and tags a push asks to delete: each full ref, with the
+/// commit it pointed to.
+fn deleted_refs(body: &[u8]) -> Vec<(String, String)> {
+    commands(body)
+        .0
+        .into_iter()
+        .filter(|command| command.new == ZERO_ID && command.old != ZERO_ID)
+        .filter(|command| command.name.starts_with(HEADS) || command.name.starts_with(TAGS))
+        .map(|Command { old, name, .. }| (name, old))
+        .collect()
+}
+
 /// The git store's answer, and what the request asked it to change.
 pub struct Forwarded {
     pub response: Response,
     /// For a push: the branches and tags it asks to move, and the commits
     /// to move them to. Whether each moved is for the caller to confirm.
     pub pushed: Vec<Pushed>,
+    /// For a push: the branches and tags it asks to delete, each with the
+    /// commit it pointed to. Whether each went is for the caller to confirm.
+    pub deleted: Vec<(String, String)>,
     /// For a push: the size of the pack it sent, for the storage meter.
     pub pack_bytes: u64,
     /// The bytes sent to the store.
@@ -988,6 +1003,7 @@ pub async fn forward(
                 return Ok(Push::Forwarded(Forwarded {
                     response: busy_response(busy)?,
                     pushed: Vec::new(),
+                    deleted: Vec::new(),
                     pack_bytes: 0,
                     sent,
                     from_store: false,
@@ -1027,6 +1043,7 @@ pub async fn forward(
     Ok(Push::Forwarded(Forwarded {
         response,
         pushed: Vec::new(),
+        deleted: Vec::new(),
         pack_bytes: 0,
         sent,
         from_store: true,
@@ -1114,6 +1131,7 @@ async fn push(
         return Ok(Push::Declined(declined(&head, &reason, &messages)?, reason));
     }
     let pushed = pushed_branches(&head);
+    let deleted = deleted_refs(&head);
     let mut init = RequestInit::new();
     init.with_method(Method::Post).with_headers(headers);
     let started = g1t_kit::now_ms();
@@ -1191,6 +1209,7 @@ async fn push(
     Ok(Push::Forwarded(Forwarded {
         response,
         pushed,
+        deleted,
         pack_bytes,
         sent,
         from_store: true,
@@ -1200,7 +1219,7 @@ async fn push(
 
 #[cfg(test)]
 mod tests {
-    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, framed, negotiating, pack_bytes, parse, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace, with_no_thin};
+    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, deleted_refs, framed, negotiating, pack_bytes, parse, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace, with_no_thin};
 
     #[test]
     fn server_timing_names_each_step_and_the_total() {
@@ -1530,6 +1549,9 @@ mod tests {
                 },
             ]
         );
+        assert_eq!(deleted_refs(&body), [("refs/heads/gone".to_owned(), old.to_owned())]);
+        let tag = [pkt(&format!("{old} {ZERO_ID} refs/tags/v0\0 report-status\n")), pkt(&format!("{old} {ZERO_ID} refs/notes/x\n")), b"0000".to_vec()].concat();
+        assert_eq!(deleted_refs(&tag), [("refs/tags/v0".to_owned(), old.to_owned())]);
     }
 
     #[test]

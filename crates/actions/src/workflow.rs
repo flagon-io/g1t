@@ -30,6 +30,7 @@ pub const SUPPORTED_EVENTS: &[&str] = &[
     "workflow_run",
     "merge_group",
     "create",
+    "delete",
     "release",
     "deployment",
     "deployment_status",
@@ -38,8 +39,8 @@ pub const SUPPORTED_EVENTS: &[&str] = &[
 /// Events GitHub has that g1t knows of but never sends: a workflow on one
 /// of them is told so, rather than waiting for a run that never comes.
 pub const UNSENT_EVENTS: &[(&str, &str)] = &[(
-    "delete",
-    "g1t does not start runs when a branch or tag is deleted yet, so the `delete` trigger never starts it. New branches and tags start `create` and `push` workflows.",
+    "label",
+    "g1t does not start runs when a label is created, edited or deleted yet, so the `label` trigger never starts it. Putting a label on an issue or a pull request starts `issues` and `pull_request` workflows with the `labeled` type.",
 )];
 
 /// The `types` each event has when a workflow gives none, as on GitHub.
@@ -769,10 +770,10 @@ jobs:
 
     #[test]
     fn events_g1t_never_sends_are_said_and_pull_request_target_is_the_base() {
-        let workflow = parse("on: [create, delete, repository_dispatch, pull_request_target]\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
+        let workflow = parse("on: [create, delete, label, repository_dispatch, pull_request_target]\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
         let unsupported: Vec<&str> = workflow.notes.iter().filter(|n| n.severity == Severity::Unsupported).map(|n| n.message.as_str()).collect();
         assert_eq!(unsupported.len(), 1, "{unsupported:?}");
-        assert!(unsupported[0].contains("`delete`"));
+        assert!(unsupported[0].contains("`label`"));
         let target = workflow.notes.iter().find(|n| n.message.starts_with("`pull_request_target`")).unwrap();
         assert!(target.message.contains("default branch"));
         assert!(!target.message.contains("on the pull request's head"));

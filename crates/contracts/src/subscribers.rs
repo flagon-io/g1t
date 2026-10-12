@@ -75,6 +75,7 @@ pub const ROUTES: &[(&str, &[&str])] = &[
         "SUBSCRIBER_ACTIONS",
         &[
             "git.push",
+            "git.deleted",
             "pull.*",
             "issue.*",
             "comment.*",
