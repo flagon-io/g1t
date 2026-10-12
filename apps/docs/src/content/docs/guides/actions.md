@@ -989,7 +989,7 @@ those read g1t's the same way.
 | --- | --- |
 | `sub` | `repo:acme/web:environment:production` for a job with an `environment:`; `repo:acme/web:pull_request` for a pull request's run; otherwise `repo:acme/web:ref:refs/heads/main` (or `refs/tags/v1.2.0`) |
 | `repository`, `repository_owner` | `acme/web`, `acme` |
-| `repository_id`, `repository_owner_id` | g1t's ids for them, such as `rep_01kpw0…` |
+| `repository_id`, `repository_owner_id` | g1t's ids for them, such as `rep_01kpw0…` (not the numbers `github.repository_id` and `github.repository_owner_id` give, so trust policies already written keep matching) |
 | `repository_visibility` | `public` or `private` |
 | `ref`, `ref_type`, `ref_protected`, `sha` | `refs/heads/main`, `branch`, `"true"`, the commit |
 | `head_ref`, `base_ref` | A pull request's branches |
@@ -1404,6 +1404,46 @@ g1t made, `pull_request.user` is g1t (`login` `g1t`, `type` `Bot`), and
 `pull_request.requested_by` names the person who asked for it; it is `null`
 on anyone else's. `github.event.issue.requested_by` does the same for an
 issue g1t's agent filed. `sender` is whoever caused the event.
+
+## The event payload
+
+`github.event`, and the file at `GITHUB_EVENT_PATH`, hold the webhook
+payload GitHub would send for the event, with the same keys and types.
+
+- **Ids are numbers.** `repository.id`, `pull_request.id`, `issue.id`,
+  `review.id`, `sender.id`, every `user.id` and `owner.id` are whole
+  numbers, the same for an object wherever it appears and below 2^53, so
+  JavaScript reads them exactly. `node_id` is g1t's own id, such as
+  `rep_01kpw0…`. A person's or workspace's number comes from their name,
+  so it changes when they are renamed. `github.repository_id`,
+  `github.repository_owner_id`, `github.actor_id` and their
+  `GITHUB_REPOSITORY_ID`, `GITHUB_REPOSITORY_OWNER_ID` and
+  `GITHUB_ACTOR_ID` variables are the same numbers, as text.
+- **What the API takes by id keeps g1t's id.** `comment.id`,
+  `release.id`, `deployment.id`, `deployment_status.id`,
+  `workflow_run.id` and `workflow_run.workflow_id` are g1t's ids
+  (`cmt_…`, `rel_…`, `run_…`, `wfl_…`), so you can pass them straight
+  back, as in `PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}`
+  or `run-id: ${{ github.event.workflow_run.id }}`.
+- **`repository.owner.type`** is `User` for a repository in a person's
+  own workspace and `Organization` for any other workspace's.
+- **On `push`,** `created` is true for a new branch or tag, and `forced`
+  is true when the commit before the push is not in the new commit's
+  history. g1t reads the 20 latest commits to tell, so a forced push onto
+  a longer history says `false`. `head_commit` is the commit pushed and
+  `commits` lists at most 20, oldest first.
+- **On pull request events,** `pull_request.base.sha` is the tip of the
+  branch it merges into when the event happened, and
+  `pull_request.merge_commit_sha` is set only once it is merged, to the
+  commit it landed as.
+- **On `workflow_run`,** `workflow_run` has the followed run's `name`,
+  `path`, `event`, `status`, `conclusion`, `head_branch`, `head_sha`,
+  `head_commit`, `run_number`, `run_attempt`, `actor`, `created_at`,
+  `updated_at`, `html_url`, `repository` and `pull_requests` (each with
+  its `number` and `url`).
+
+Labels on `issue` and `pull_request` have their `id` and `name` but no
+`color`; a `labeled` event's own `label` has its color.
 
 ## Checks
 

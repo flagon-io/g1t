@@ -568,6 +568,37 @@ impl Actions {
         contexts
     }
 
+    /// Whether `namespace` is a person's own workspace: usernames and
+    /// workspaces share one namespace, so it is when someone has that
+    /// username. Kept in the isolate for a few minutes, so a burst of
+    /// runs asks identity once.
+    async fn personal_namespace(&self, namespace: &str) -> Result<bool> {
+        const KEEP_MS: u64 = 5 * 60 * 1000;
+        thread_local! {
+            static PERSONAL: std::cell::RefCell<std::collections::HashMap<String, (bool, u64)>> = Default::default();
+        }
+        let now = now_ms();
+        let key = namespace.to_ascii_lowercase();
+        if let Some(personal) = PERSONAL.with(|kept| kept.borrow().get(&key).filter(|(_, at)| now.saturating_sub(*at) < KEEP_MS).map(|(personal, _)| *personal)) {
+            return Ok(personal);
+        }
+        let found: g1t_contracts::Viewer = g1t_kit::call(
+            &self.identity,
+            "user_by_username",
+            &g1t_contracts::identity::UsernameArgs { username: key.clone() },
+        )
+        .await?;
+        let personal = found.is_some_and(|user| user.username.eq_ignore_ascii_case(namespace));
+        PERSONAL.with(|kept| {
+            let mut kept = kept.borrow_mut();
+            if kept.len() > 1000 {
+                kept.clear();
+            }
+            kept.insert(key, (personal, now));
+        });
+        Ok(personal)
+    }
+
     /// Makes a run and its jobs, and starts what can start. `None` when the
     /// event already started this workflow.
     pub async fn create_run(&self, new: NewRun) -> Result<Option<String>> {
@@ -586,6 +617,10 @@ impl Actions {
             .map_or(1, |count| count.n);
         let id = new_id("run", now_ms());
         let mut info = new.info.clone();
+        // A personal workspace's repositories are a `User`'s, as on GitHub.
+        if self.personal_namespace(&new.repo.namespace).await? {
+            crate::payload::owned_by_person(&mut info.event, &new.repo.namespace);
+        }
         info.workflow = new.workflow.display_name(&new.path);
         info.workflow_path = new.path.clone();
         info.run_id = id.clone();

@@ -1,0 +1,52 @@
+{
+  "action": "completed",
+  "workflow_run": {
+    "id": 30433642,
+    "node_id": "MDEyOldvcmtmbG93IFJ1bjI2OTI4OQ==",
+    "name": "Build",
+    "display_title": "Update README.md",
+    "path": ".github/workflows/build.yml",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "workflow_id": 159038,
+    "head_sha": "acb5820ced9479c074f688cc328bf03f341a511d",
+    "head_branch": "main",
+    "head_commit": {
+      "id": "acb5820ced9479c074f688cc328bf03f341a511d",
+      "tree_id": "d23f6eedb1e1b9610bbc754ddb5197bfe7271223",
+      "message": "Update README.md",
+      "timestamp": "2026-05-15T15:20:30Z",
+      "author": { "name": "Ada", "email": "ada@example.com" },
+      "committer": { "name": "Ada", "email": "ada@example.com" }
+    },
+    "run_number": 562,
+    "run_attempt": 1,
+    "created_at": "2026-05-15T15:20:35Z",
+    "run_started_at": "2026-05-15T15:20:35Z",
+    "updated_at": "2026-05-15T15:21:10Z",
+    "actor": { "login": "ada", "id": 21031068, "type": "User", "html_url": "https://github.com/ada", "url": "https://api.github.com/users/ada" },
+    "triggering_actor": { "login": "ada", "id": 21031068, "type": "User", "html_url": "https://github.com/ada", "url": "https://api.github.com/users/ada" },
+    "html_url": "https://github.com/acme/web/actions/runs/30433642",
+    "url": "https://api.github.com/repos/acme/web/actions/runs/30433642",
+    "jobs_url": "https://api.github.com/repos/acme/web/actions/runs/30433642/jobs",
+    "logs_url": "https://api.github.com/repos/acme/web/actions/runs/30433642/logs",
+    "artifacts_url": "https://api.github.com/repos/acme/web/actions/runs/30433642/artifacts",
+    "workflow_url": "https://api.github.com/repos/acme/web/actions/workflows/159038",
+    "pull_requests": [
+      { "number": 2, "url": "https://api.github.com/repos/acme/web/pulls/2" }
+    ],
+    "repository": { "id": 186853002, "full_name": "acme/web", "owner": { "login": "acme", "id": 21031067, "type": "Organization" } },
+    "head_repository": { "id": 186853002, "full_name": "acme/web", "owner": { "login": "acme", "id": 21031067, "type": "Organization" } }
+  },
+  "workflow": {
+    "id": 159038,
+    "node_id": "MDg6V29ya2Zsb3cxNTkwMzg=",
+    "name": "Build",
+    "path": ".github/workflows/build.yml",
+    "state": "active",
+    "html_url": "https://github.com/acme/web/blob/main/.github/workflows/build.yml"
+  },
+  "repository": { "id": 186853002, "full_name": "acme/web", "owner": { "login": "acme", "id": 21031067, "type": "Organization" } },
+  "sender": { "login": "ada", "id": 21031068, "type": "User" }
+}

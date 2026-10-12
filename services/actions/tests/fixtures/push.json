@@ -1,0 +1,70 @@
+{
+  "ref": "refs/heads/main",
+  "before": "6113728f27ae82c7b1a177c8d03f9e96e0adf246",
+  "after": "0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c",
+  "created": false,
+  "deleted": false,
+  "forced": false,
+  "base_ref": null,
+  "compare": "https://github.com/acme/web/compare/6113728f27ae...0d1a26e67d8f",
+  "commits": [
+    {
+      "id": "0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c",
+      "tree_id": "f9d2a07e9488b91af2641b26b9407fe22a451433",
+      "distinct": true,
+      "message": "Update README.md",
+      "timestamp": "2026-05-15T15:20:30-05:00",
+      "url": "https://github.com/acme/web/commit/0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c",
+      "author": { "name": "Ada", "email": "ada@example.com" },
+      "committer": { "name": "Ada", "email": "ada@example.com" },
+      "added": [],
+      "removed": [],
+      "modified": ["README.md"]
+    }
+  ],
+  "head_commit": {
+    "id": "0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c",
+    "tree_id": "f9d2a07e9488b91af2641b26b9407fe22a451433",
+    "distinct": true,
+    "message": "Update README.md",
+    "timestamp": "2026-05-15T15:20:30-05:00",
+    "url": "https://github.com/acme/web/commit/0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c",
+    "author": { "name": "Ada", "email": "ada@example.com" },
+    "committer": { "name": "Ada", "email": "ada@example.com" },
+    "added": [],
+    "removed": [],
+    "modified": ["README.md"]
+  },
+  "repository": {
+    "id": 186853002,
+    "node_id": "MDEwOlJlcG9zaXRvcnkxODY4NTMwMDI=",
+    "name": "web",
+    "full_name": "acme/web",
+    "private": false,
+    "owner": {
+      "login": "acme",
+      "id": 21031067,
+      "type": "Organization",
+      "html_url": "https://github.com/acme",
+      "url": "https://api.github.com/users/acme"
+    },
+    "html_url": "https://github.com/acme/web",
+    "url": "https://api.github.com/repos/acme/web",
+    "clone_url": "https://github.com/acme/web.git",
+    "description": null,
+    "homepage": null,
+    "topics": [],
+    "default_branch": "main",
+    "fork": false,
+    "archived": false,
+    "visibility": "public"
+  },
+  "pusher": { "name": "ada", "email": "ada@example.com" },
+  "sender": {
+    "login": "ada",
+    "id": 21031068,
+    "type": "User",
+    "html_url": "https://github.com/ada",
+    "url": "https://api.github.com/users/ada"
+  }
+}

@@ -1,54 +1,145 @@
 //! `github.event`: the webhook-shaped payload GitHub gives a workflow,
 //! built from g1t's own records so `github.event.pull_request.number`,
 //! `github.event.issue.labels.*.name` and the like read as they do there.
+//!
+//! Ids are as GitHub's are: `id` a whole number, the same for an object
+//! wherever it appears ([`github_id`] of its g1t id, [`account_id`] of a
+//! person's or workspace's name), and `node_id` g1t's own id. What g1t's
+//! API addresses by its own id keeps that id as `id`, so a payload's id
+//! can be passed straight back to the API: a comment (`PATCH
+//! /repos/{owner}/{repo}/issues/comments/{comment_id}`), a release, a
+//! deployment and its statuses, and a workflow run.
 
+use g1t_actions::events::{account_id, github_id};
 use g1t_contracts::{PrincipalKind, User};
-use g1t_contracts::repos::{Commit, Repo};
+use g1t_contracts::repos::{Commit, Repo, RepoPath};
 use g1t_contracts::work::{Comment, Issue, MilestoneRef, Pull, PullStatus, State};
 use serde_json::{Value, json};
 
 use crate::{API, SITE};
 
+/// The commit hash GitHub gives for no commit: a branch made or deleted.
+pub const ZERO: &str = "0000000000000000000000000000000000000000";
+
+/// A repository's owner, as a workspace (an `Organization`). A personal
+/// workspace's repositories are owned by a `User` instead: see
+/// [`owned_by_person`].
+fn owner(login: &str) -> Value {
+    json!({
+        "login": login,
+        "id": account_id(login),
+        "type": "Organization",
+        "html_url": format!("{SITE}/{login}"),
+        "url": format!("{API}/users/{login}"),
+    })
+}
+
 pub fn repository(repo: &Repo) -> Value {
     let full_name = format!("{}/{}", repo.namespace, repo.name);
     json!({
-        "id": repo.id,
+        "id": github_id(&repo.id),
         "node_id": repo.id,
         "name": repo.name,
         "full_name": full_name,
         "private": repo.is_private,
-        "owner": { "login": repo.namespace, "type": "Organization" },
+        "owner": owner(&repo.namespace),
         "html_url": format!("{SITE}/{full_name}"),
         "url": format!("{API}/repos/{full_name}"),
         "clone_url": format!("{SITE}/{full_name}.git"),
         "description": repo.description,
+        "homepage": repo.website,
+        "topics": repo.topics,
         "default_branch": repo.default_branch,
         "fork": false,
+        "archived": repo.archived(),
+        "created_at": repo.created_at,
         "visibility": if repo.is_private { "private" } else { "public" },
     })
 }
 
+/// A pull request's fork, from what the pull request knows of it.
+fn fork_repository(fork: &RepoPath, id: Option<&str>) -> Value {
+    let full_name = format!("{}/{}", fork.namespace, fork.name);
+    json!({
+        "id": id.map(github_id),
+        "node_id": id,
+        "name": fork.name,
+        "full_name": full_name,
+        "owner": owner(&fork.namespace),
+        "html_url": format!("{SITE}/{full_name}"),
+        "url": format!("{API}/repos/{full_name}"),
+        "clone_url": format!("{SITE}/{full_name}.git"),
+        "fork": true,
+    })
+}
+
+/// Marks the owner of `namespace`'s repositories as a `User` everywhere
+/// in a payload: for a personal workspace, whose name is its person's.
+pub fn owned_by_person(payload: &mut Value, namespace: &str) {
+    match payload {
+        Value::Object(map) => {
+            if map.get("login").and_then(Value::as_str).is_some_and(|login| login.eq_ignore_ascii_case(namespace))
+                && map.get("type").and_then(Value::as_str) == Some("Organization")
+            {
+                map.insert("type".into(), json!("User"));
+            }
+            map.values_mut().for_each(|value| owned_by_person(value, namespace));
+        }
+        Value::Array(items) => items.iter_mut().for_each(|value| owned_by_person(value, namespace)),
+        _ => {}
+    }
+}
+
 pub fn user(login: &str) -> Value {
-    json!({ "login": login, "type": "User", "html_url": format!("{SITE}/{login}") })
+    json!({
+        "login": login,
+        "id": account_id(login),
+        "type": "User",
+        "html_url": format!("{SITE}/{login}"),
+        "url": format!("{API}/users/{login}"),
+    })
 }
 
 /// Someone as GitHub names them. g1t, the author of what it makes and
 /// files, is a `Bot`, as an app is there.
 fn person(user: &User) -> Value {
     let mut named = self::user(&user.username);
+    named["node_id"] = json!(user.id);
     if matches!(user.kind, PrincipalKind::Agent | PrincipalKind::System) {
         named["type"] = json!("Bot");
     }
     named
 }
 
-fn labels(names: &[String]) -> Value {
-    Value::Array(names.iter().map(|name| json!({ "name": name })).collect())
+fn people(logins: &[String]) -> Vec<Value> {
+    logins.iter().map(|login| user(login)).collect()
+}
+
+fn labels(repo: &Repo, names: &[String]) -> Value {
+    Value::Array(names.iter().map(|name| label(repo, name, None)).collect())
+}
+
+/// A label, by its name in `repo`.
+fn label(repo: &Repo, name: &str, color: Option<&Value>) -> Value {
+    let mut label = json!({ "id": github_id(&format!("{}:label:{name}", repo.id)), "name": name });
+    if let Some(color) = color {
+        label["color"] = color.clone();
+    }
+    label
 }
 
 /// A milestone as an issue or a pull request names it.
-fn milestone(milestone: Option<&MilestoneRef>) -> Value {
-    milestone.map_or(Value::Null, |milestone| json!({ "number": milestone.number, "title": milestone.title }))
+fn milestone(repo: &Repo, milestone: Option<&MilestoneRef>) -> Value {
+    milestone.map_or(Value::Null, |milestone| milestone_of(repo, milestone.number, &json!(milestone.title)))
+}
+
+fn milestone_of(repo: &Repo, number: u32, title: &Value) -> Value {
+    json!({
+        "id": github_id(&format!("{}:milestone:{number}", repo.id)),
+        "number": number,
+        "title": title,
+        "html_url": format!("{SITE}/{}/{}/milestones/{number}", repo.namespace, repo.name),
+    })
 }
 
 pub fn commit(repo: &Repo, commit: &Commit) -> Value {
@@ -61,22 +152,36 @@ pub fn commit(repo: &Repo, commit: &Commit) -> Value {
         "author": { "name": commit.author.name, "email": commit.author.email },
         "committer": { "name": commit.author.name, "email": commit.author.email },
         "distinct": true,
+        "added": [],
+        "removed": [],
+        "modified": [],
     })
 }
 
-pub fn push(repo: &Repo, git_ref: &str, before: Option<&str>, after: &str, commits: &[Commit], pusher: &str) -> Value {
-    let zero = "0000000000000000000000000000000000000000";
+/// A push. `forced` is whether `before` is not in `after`'s history, when
+/// that is known; a push whose history is too long to read says `false`.
+pub fn push(repo: &Repo, git_ref: &str, before: Option<&str>, after: &str, commits: &[Commit], pusher: &str, forced: bool) -> Value {
+    let before = before.unwrap_or(ZERO);
+    let created = before == ZERO;
+    let deleted = after == ZERO;
     let commits: Vec<Value> = commits.iter().map(|c| commit(repo, c)).collect();
+    let full_name = format!("{}/{}", repo.namespace, repo.name);
+    let compare = if created {
+        format!("{SITE}/{full_name}/commit/{after}")
+    } else {
+        format!("{SITE}/{full_name}/compare/{before}...{after}")
+    };
     json!({
         "ref": git_ref,
-        "before": before.unwrap_or(zero),
+        "before": before,
         "after": after,
-        "created": before.is_none(),
-        "deleted": false,
-        "forced": false,
+        "created": created,
+        "deleted": deleted,
+        "forced": forced && !created && !deleted,
         "base_ref": null,
-        "compare": format!("{SITE}/{}/{}/commit/{after}", repo.namespace, repo.name),
-        "head_commit": commits.first().cloned().unwrap_or(Value::Null),
+        "compare": compare,
+        // GitHub's head commit is the one pushed: the last.
+        "head_commit": commits.last().cloned().unwrap_or(Value::Null),
         "commits": commits,
         "pusher": { "name": pusher, "email": null },
         "repository": repository(repo),
@@ -87,69 +192,94 @@ pub fn push(repo: &Repo, git_ref: &str, before: Option<&str>, after: &str, commi
 pub fn issue(repo: &Repo, issue: &Issue) -> Value {
     let full_name = format!("{}/{}", repo.namespace, repo.name);
     json!({
-        "id": issue.id,
+        "id": github_id(&issue.id),
+        "node_id": issue.id,
         "number": issue.number,
         "title": issue.title,
         "body": issue.body,
         "state": if issue.state == State::Open { "open" } else { "closed" },
         "state_reason": issue.reason,
-        "labels": labels(&issue.labels),
-        "milestone": milestone(issue.milestone.as_ref()),
+        "locked": false,
+        "labels": labels(repo, &issue.labels),
+        "milestone": milestone(repo, issue.milestone.as_ref()),
         "user": person(&issue.author),
         // g1t's own field: for an issue its agent filed, who it worked for.
         "requested_by": issue.requested_by.as_ref().map(person),
-        "assignees": issue.assignees.iter().map(|a| user(a)).collect::<Vec<_>>(),
+        "assignee": issue.assignees.first().map(|a| user(a)),
+        "assignees": people(&issue.assignees),
         "comments": issue.comment_count,
         "created_at": issue.created_at,
         "updated_at": issue.updated_at,
         "closed_at": issue.closed_at,
         "html_url": format!("{SITE}/{full_name}/issues/{}", issue.number),
         "url": format!("{API}/repos/{full_name}/issues/{}", issue.number),
+        "repository_url": format!("{API}/repos/{full_name}"),
     })
 }
 
-/// A pull request, with its own labels.
+/// A pull request, with its own labels. `base.sha` is the pull request's
+/// merge base until the trigger sets the base branch's tip, as GitHub
+/// gives it (trigger.rs).
 pub fn pull(repo: &Repo, pull: &Pull) -> Value {
     let full_name = format!("{}/{}", repo.namespace, repo.name);
     let head_ref = head_ref(pull);
     let base_ref = pull.base_branch(&repo.default_branch);
-    let head_repo = match &pull.fork {
-        Some(fork) => json!({ "full_name": format!("{}/{}", fork.namespace, fork.name), "fork": true }),
-        None => json!({ "full_name": full_name, "fork": false }),
+    let (head_repo, head_owner) = match &pull.fork {
+        Some(fork) => (fork_repository(fork, pull.fork_repo_id.as_deref()), fork.namespace.as_str()),
+        None => (repository(repo), repo.namespace.as_str()),
+    };
+    let merged = pull.status == PullStatus::Merged;
+    let closed_at = match pull.status {
+        PullStatus::Merged => pull.merged_at.clone(),
+        PullStatus::Closed => Some(pull.updated_at.clone()),
+        _ => None,
     };
     json!({
-        "id": pull.id,
+        "id": github_id(&pull.id),
+        "node_id": pull.id,
         "number": pull.number,
         "title": pull.title,
         "body": pull.body,
         "state": if pull.status.is_active() { "open" } else { "closed" },
+        "locked": false,
         "draft": pull.status == PullStatus::Draft,
-        "merged": pull.status == PullStatus::Merged,
+        "merged": merged,
         "merged_at": pull.merged_at,
         "merged_by": pull.merged_by.as_deref().map(user),
-        "merge_commit_sha": if pull.status == PullStatus::Merged { pull.head_commit.clone() } else { None },
-        "labels": labels(&pull.labels),
-        "milestone": milestone(pull.milestone.as_ref()),
+        // Only once merged, as on GitHub; the trigger sets the commit it
+        // landed as when the event says.
+        "merge_commit_sha": if merged { pull.head_commit.clone() } else { None },
+        "labels": labels(repo, &pull.labels),
+        "milestone": milestone(repo, pull.milestone.as_ref()),
         "user": person(&pull.author),
         // g1t's own field: for a change g1t made, who asked for it.
         "requested_by": pull.requested_by.as_ref().map(person),
-        "assignees": pull.assignees.iter().map(|a| user(a)).collect::<Vec<_>>(),
-        "requested_reviewers": pull.reviewers.iter().map(|r| user(r)).collect::<Vec<_>>(),
+        "assignee": pull.assignees.first().map(|a| user(a)),
+        "assignees": people(&pull.assignees),
+        "requested_reviewers": people(&pull.reviewers),
         "head": {
             "ref": head_ref,
             "sha": pull.head_commit,
-            "label": format!("{}:{head_ref}", repo.namespace),
+            "label": format!("{head_owner}:{head_ref}"),
+            "user": owner(head_owner),
             "repo": head_repo,
         },
         "base": {
             "ref": base_ref,
             "sha": pull.merge_base,
             "label": format!("{}:{base_ref}", repo.namespace),
+            "user": owner(&repo.namespace),
             "repo": repository(repo),
         },
+        "changed_files": pull.files.len(),
+        "additions": pull.files.iter().map(|f| u64::from(f.additions)).sum::<u64>(),
+        "deletions": pull.files.iter().map(|f| u64::from(f.deletions)).sum::<u64>(),
+        "created_at": pull.created_at,
+        "updated_at": pull.updated_at,
+        "closed_at": closed_at,
         "html_url": format!("{SITE}/{full_name}/pull/{}", pull.number),
         "url": format!("{API}/repos/{full_name}/pulls/{}", pull.number),
-        "issue_url": pull.issue.map(|n| format!("{API}/repos/{full_name}/issues/{n}")),
+        "issue_url": format!("{API}/repos/{full_name}/issues/{}", pull.number),
     })
 }
 
@@ -159,15 +289,18 @@ pub fn pull(repo: &Repo, pull: &Pull) -> Value {
 /// one event for them all, GitHub one each), and for a new base,
 /// `changes.base.ref.from` is not known, so only the new base is in
 /// `pull_request.base`.
-pub fn changed(payload: &mut Value, data: &Value) {
+pub fn changed(repo: &Repo, payload: &mut Value, data: &Value) {
     if let Some(first) = data["added"].as_array().and_then(|added| added.first()).and_then(Value::as_str) {
         payload["assignee"] = user(first);
     }
-    if let Some(label) = data.get("label").filter(|label| label.is_object()) {
-        payload["label"] = json!({ "name": label["name"], "color": label["color"] });
+    if let Some(found) = data.get("label").filter(|label| label.is_object()) {
+        payload["label"] = label(repo, found["name"].as_str().unwrap_or_default(), Some(&found["color"]));
     }
-    if let Some(milestone) = data.get("milestone").filter(|milestone| milestone.is_object()) {
-        payload["milestone"] = json!({ "number": milestone["number"], "title": milestone["title"] });
+    if let Some(found) = data.get("milestone").filter(|milestone| milestone.is_object()) {
+        payload["milestone"] = match found["number"].as_u64() {
+            Some(number) => milestone_of(repo, number as u32, &found["title"]),
+            None => json!({ "number": found["number"], "title": found["title"] }),
+        };
     }
 }
 
@@ -176,36 +309,71 @@ pub fn head_ref(pull: &Pull) -> String {
     pull.branch.clone().unwrap_or_else(|| format!("pull/{}", pull.number))
 }
 
+/// A comment. Its `id` is g1t's (`cmt_…`), as the API takes it back to
+/// edit or delete it.
 pub fn comment(repo: &Repo, number: u32, comment: &Comment, on_pull: bool) -> Value {
     let full_name = format!("{}/{}", repo.namespace, repo.name);
     let page = if on_pull { "pull" } else { "issues" };
     json!({
         "id": comment.id,
+        "node_id": comment.id,
         "body": comment.body,
         "user": person(&comment.author),
         "created_at": comment.created_at,
-        "updated_at": comment.created_at,
+        "updated_at": comment.edited_at.as_deref().unwrap_or(&comment.created_at),
         "path": comment.path,
         "line": comment.line,
         "html_url": format!("{SITE}/{full_name}/{page}/{number}#{}", comment.id),
+        "url": format!("{API}/repos/{full_name}/issues/comments/{}", comment.id),
+        "issue_url": format!("{API}/repos/{full_name}/issues/{number}"),
+    })
+}
+
+/// A review, for `pull_request_review`: g1t keeps a review as a comment
+/// with a verdict, and its id is that comment's.
+pub fn review(repo: &Repo, pull: &Pull, review: Option<&Comment>) -> Value {
+    let full_name = format!("{}/{}", repo.namespace, repo.name);
+    let Some(review) = review else {
+        return json!({ "state": null, "body": null, "user": null });
+    };
+    json!({
+        "id": github_id(&review.id),
+        "node_id": review.id,
+        "state": review.verdict.map(review_state),
+        "body": review.body,
+        "user": person(&review.author),
+        "commit_id": pull.head_commit,
+        "submitted_at": review.created_at,
+        "html_url": format!("{SITE}/{full_name}/pull/{}#{}", pull.number, review.id),
+        "pull_request_url": format!("{API}/repos/{full_name}/pulls/{}", pull.number),
     })
 }
 
 /// An issue as `issue_comment` gives it for a pull request: the pull
-/// request's number and title, with `pull_request` set.
+/// request's number and title, with `pull_request` set. Its id is not the
+/// pull request's, as on GitHub, where the two are different objects.
 pub fn pull_as_issue(repo: &Repo, pull: &Pull) -> Value {
     let full_name = format!("{}/{}", repo.namespace, repo.name);
     json!({
-        "id": pull.id,
+        "id": github_id(&format!("issue:{}", pull.id)),
+        "node_id": pull.id,
         "number": pull.number,
         "title": pull.title,
         "body": pull.body,
         "state": if pull.status.is_active() { "open" } else { "closed" },
-        "labels": labels(&pull.labels),
-        "milestone": milestone(pull.milestone.as_ref()),
+        "locked": false,
+        "draft": pull.status == PullStatus::Draft,
+        "labels": labels(repo, &pull.labels),
+        "milestone": milestone(repo, pull.milestone.as_ref()),
         "user": person(&pull.author),
         "requested_by": pull.requested_by.as_ref().map(person),
+        "assignee": pull.assignees.first().map(|a| user(a)),
+        "assignees": people(&pull.assignees),
+        "created_at": pull.created_at,
+        "updated_at": pull.updated_at,
         "html_url": format!("{SITE}/{full_name}/pull/{}", pull.number),
+        "url": format!("{API}/repos/{full_name}/issues/{}", pull.number),
+        "repository_url": format!("{API}/repos/{full_name}"),
         "pull_request": {
             "url": format!("{API}/repos/{full_name}/pulls/{}", pull.number),
             "html_url": format!("{SITE}/{full_name}/pull/{}", pull.number),
@@ -223,18 +391,90 @@ pub fn deleted_comment(repo: &Repo, number: u32, kept: &Value, on_pull: bool) ->
     let login = kept["author"]["username"].as_str().unwrap_or_default();
     json!({
         "id": id,
+        "node_id": id,
         "body": kept["body"],
         "user": user(login),
         "created_at": kept["createdAt"],
-        "updated_at": kept["createdAt"],
+        "updated_at": kept["editedAt"].as_str().map_or(kept["createdAt"].clone(), |at| json!(at)),
         "path": kept["path"],
         "line": kept["line"],
         "html_url": format!("{SITE}/{full_name}/{page}/{number}#{id}"),
+        "url": format!("{API}/repos/{full_name}/issues/comments/{id}"),
+        "issue_url": format!("{API}/repos/{full_name}/issues/{number}"),
+    })
+}
+
+/// What `workflow_run` is told of the run it follows: the
+/// `workflow.completed` event's data, and the run's row when it is still
+/// there. Its `id` and `workflow_id` are g1t's (`run_…`, `wfl_…`), which
+/// `GITHUB_RUN_ID` and the API use too, so `actions/download-artifact`
+/// with `run-id: ${{ github.event.workflow_run.id }}` finds its artifacts.
+pub struct FollowedRun<'a> {
+    pub data: &'a Value,
+    pub workflow_id: Option<&'a str>,
+    pub attempt: Option<u64>,
+    pub created_at: Option<&'a str>,
+    pub started_at: Option<&'a str>,
+    pub updated_at: Option<&'a str>,
+    pub actor: Option<&'a str>,
+    pub triggering_actor: Option<&'a str>,
+    pub title: Option<&'a str>,
+    pub head_commit: Option<&'a Commit>,
+}
+
+pub fn workflow_run(repo: &Repo, run: &FollowedRun) -> Value {
+    let full_name = format!("{}/{}", repo.namespace, repo.name);
+    let data = run.data;
+    let id = data["runId"].as_str().unwrap_or_default();
+    let name = data["workflow"].as_str().unwrap_or_default();
+    let head_branch = data["ref"].as_str().unwrap_or_default().trim_start_matches("refs/heads/").to_owned();
+    let url = format!("{API}/repos/{full_name}/actions/runs/{id}");
+    let actor = run.actor.map(user);
+    json!({
+        "id": id,
+        "node_id": id,
+        "name": name,
+        "display_title": run.title.unwrap_or(name),
+        "path": data["path"],
+        "event": data["event"],
+        "status": "completed",
+        "conclusion": data["conclusion"],
+        "workflow_id": run.workflow_id,
+        "head_sha": data["sha"],
+        "head_branch": head_branch,
+        "head_commit": run.head_commit.map(|c| json!({
+            "id": c.hash,
+            "tree_id": c.tree_hash,
+            "message": c.message,
+            "timestamp": c.authored_at,
+            "author": { "name": c.author.name, "email": c.author.email },
+            "committer": { "name": c.author.name, "email": c.author.email },
+        })),
+        "run_number": data["number"],
+        "run_attempt": run.attempt.unwrap_or(1),
+        "created_at": run.created_at,
+        "run_started_at": run.started_at.or(run.created_at),
+        "updated_at": run.updated_at.or(run.created_at),
+        "actor": actor,
+        "triggering_actor": run.triggering_actor.map(user).or_else(|| run.actor.map(user)),
+        "html_url": format!("{SITE}/{full_name}/actions/runs/{id}"),
+        "url": url,
+        "jobs_url": format!("{url}/jobs"),
+        "logs_url": format!("{url}/logs"),
+        "artifacts_url": format!("{url}/artifacts"),
+        "workflow_url": run.workflow_id.map(|w| format!("{API}/repos/{full_name}/actions/workflows/{w}")),
+        "pull_requests": data["pull"].as_u64().map(|n| vec![json!({
+            "number": n,
+            "url": format!("{API}/repos/{full_name}/pulls/{n}"),
+        })]).unwrap_or_default(),
+        "repository": repository(repo),
+        "head_repository": repository(repo),
     })
 }
 
 /// A release, from what a `release.*` event carries
-/// (`g1t_contracts::about::Release`).
+/// (`g1t_contracts::about::Release`). Its `id` is g1t's, as
+/// `/repos/{owner}/{repo}/releases/{id}` takes it.
 pub fn release(repo: &Repo, release: &Value) -> Value {
     let full_name = format!("{}/{}", repo.namespace, repo.name);
     let tag = release["tagName"].as_str().unwrap_or_default();
@@ -254,6 +494,7 @@ pub fn release(repo: &Repo, release: &Value) -> Value {
         "assets": [],
         "html_url": format!("{SITE}/{full_name}/releases/tag/{tag}"),
         "url": format!("{API}/repos/{full_name}/releases/{id}"),
+        "zipball_url": format!("{SITE}/{full_name}/archive/{tag}.zip"),
     })
 }
 
@@ -322,5 +563,311 @@ mod review_tests {
     fn review_states_are_spelled_as_githubs() {
         assert_eq!(review_state(g1t_contracts::work::Verdict::Approve), "approved");
         assert_eq!(review_state(g1t_contracts::work::Verdict::RequestChanges), "changes_requested");
+    }
+}
+
+/// g1t's payloads against GitHub's: each fixture in `tests/fixtures` is a
+/// trimmed webhook payload in GitHub's documented shape, and every key it
+/// has must be in g1t's payload for the same event with the same JSON type
+/// (a whole number where GitHub's is one). `null` in a fixture takes any
+/// type. Where g1t differs on purpose, `KNOWN` says how and why.
+#[cfg(test)]
+mod github_shapes {
+    use super::*;
+    use g1t_contracts::work::Verdict;
+
+    /// Paths where g1t's payload differs from GitHub's on purpose, and
+    /// what g1t has there: a JSON type, or `absent`.
+    const KNOWN: &[(&str, &str, &str)] = &[
+        // The API addresses these by g1t's own id, so the payload gives
+        // that id, to be passed straight back.
+        ("issue_comment", "comment.id", "string"),
+        ("release", "release.id", "string"),
+        ("workflow_run", "workflow_run.id", "string"),
+        ("workflow_run", "workflow_run.workflow_id", "string"),
+        ("workflow_run", "workflow.id", "string"),
+        // g1t keeps labels by name on issues and pull requests; only a
+        // `labeled` event's own `label` has its color.
+        ("pull_request", "pull_request.labels[].color", "absent"),
+        ("issues", "issue.labels[].color", "absent"),
+        // A push names who pushed, not their address.
+        ("push", "pusher.email", "null"),
+    ];
+
+    fn kind(value: &Value) -> &'static str {
+        match value {
+            Value::Null => "null",
+            Value::Bool(_) => "boolean",
+            Value::Number(_) => "number",
+            Value::String(_) => "string",
+            Value::Array(_) => "array",
+            Value::Object(_) => "object",
+        }
+    }
+
+    fn compare(event: &str, github: &Value, ours: Option<&Value>, path: &str, problems: &mut Vec<String>) {
+        if let Some((_, _, known)) = KNOWN.iter().find(|(e, p, _)| *e == event && *p == path) {
+            let had = ours.map_or("absent", kind);
+            if had != *known {
+                problems.push(format!("{path}: g1t is known to have {known} here, but has {had}"));
+            }
+            return;
+        }
+        let Some(ours) = ours else {
+            problems.push(format!("{path}: missing"));
+            return;
+        };
+        if github.is_null() {
+            return;
+        }
+        if kind(github) != kind(ours) {
+            problems.push(format!("{path}: GitHub's is {}, g1t's {}", kind(github), kind(ours)));
+            return;
+        }
+        match github {
+            Value::Number(n) if n.is_u64() => {
+                if !ours.as_u64().is_some_and(|n| n < 1 << 53) {
+                    problems.push(format!("{path}: GitHub's is a whole number, g1t's {ours}"));
+                }
+            }
+            Value::Object(map) => {
+                for (key, inner) in map {
+                    let at = if path.is_empty() { key.clone() } else { format!("{path}.{key}") };
+                    compare(event, inner, ours.get(key), &at, problems);
+                }
+            }
+            Value::Array(items) => {
+                if let (Some(first), Some(our_first)) = (items.first(), ours.as_array().and_then(|o| o.first())) {
+                    compare(event, first, Some(our_first), &format!("{path}[]"), problems);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn repo() -> Repo {
+        serde_json::from_value(json!({
+            "id": "rep_01kpw0aaaaaaaaaaaaaaaaaaaa", "namespace": "acme", "name": "web", "description": null, "isPrivate": false,
+            "ownerId": "wsp_1", "defaultBranch": "main", "forkOf": null, "createdAt": "2026-05-15T15:19:25Z"
+        }))
+        .unwrap()
+    }
+
+    fn someone(id: &str, username: &str) -> User {
+        User { id: id.into(), username: username.into(), kind: PrincipalKind::User, ..User::default() }
+    }
+
+    fn a_pull() -> Pull {
+        serde_json::from_value(json!({
+            "id": "pr_01kq000000000000000000000a", "repoId": "rep_1", "number": 2, "issue": null,
+            "title": "Update the README with new information.", "body": "A simple change.",
+            "agent": "", "runtime": "external", "status": "open",
+            "fork": null, "forkRepoId": null, "branch": "changes",
+            "headCommit": "ec26c3e57ca3a959ca5aad62de7213c562f8c821", "mergeBase": "f95f852bd8fca8fcc58a9a2d6c842781e32a215e",
+            "mergedBy": null, "mergedAt": null, "supersededBy": null, "checkStatus": null,
+            "files": [{ "path": "README.md", "additions": 1, "deletions": 1 }],
+            "assignees": ["bo"], "reviewers": ["cy"], "labels": ["bug"], "milestone": { "number": 1, "title": "v1.0" },
+            "author": someone("usr_1", "ada"), "requestedBy": null,
+            "createdAt": "2026-05-15T15:20:33Z", "updatedAt": "2026-05-15T15:20:33Z"
+        }))
+        .unwrap()
+    }
+
+    fn an_issue() -> Issue {
+        serde_json::from_value(json!({
+            "id": "iss_01kq000000000000000000000a", "repoId": "rep_1", "number": 1,
+            "title": "Spelling error in the README file", "body": "Two t's.", "labels": ["bug"], "state": "open",
+            "reason": null, "resolvedBy": null, "author": someone("usr_1", "ada"), "requestedBy": null,
+            "createdAt": "2026-05-15T15:20:18Z", "updatedAt": "2026-05-15T15:20:18Z", "closedAt": null,
+            "pullCount": 0, "commentCount": 0, "assignees": ["bo"], "milestone": { "number": 1, "title": "v1.0" }
+        }))
+        .unwrap()
+    }
+
+    fn a_comment(verdict: Option<Verdict>) -> Comment {
+        serde_json::from_value(json!({
+            "id": "cmt_01kq000000000000000000000a", "author": someone("usr_3", "cy"), "body": "Looks good.",
+            "path": null, "line": null, "verdict": verdict, "createdAt": "2026-05-15T15:20:38Z"
+        }))
+        .unwrap()
+    }
+
+    fn a_commit() -> Commit {
+        serde_json::from_value(json!({
+            "hash": "0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c", "treeHash": "f9d2a07e9488b91af2641b26b9407fe22a451433",
+            "message": "Update README.md", "author": { "name": "Ada", "email": "ada@example.com" },
+            "parents": ["6113728f27ae82c7b1a177c8d03f9e96e0adf246"], "authoredAt": "2026-05-15T15:20:30Z"
+        }))
+        .unwrap()
+    }
+
+    /// g1t's payload for each event, put together as trigger.rs does.
+    fn payloads() -> Vec<(&'static str, Value)> {
+        let repo = repo();
+        let pull = a_pull();
+        let push = push(&repo, "refs/heads/main", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), &a_commit().hash, &[a_commit()], "ada", false);
+        let pull_request = json!({
+            "action": "opened", "number": 2, "pull_request": self::pull(&repo, &pull),
+            "repository": repository(&repo), "sender": user("ada"),
+        });
+        let review = json!({
+            "action": "submitted", "review": self::review(&repo, &pull, Some(&a_comment(Some(Verdict::Approve)))),
+            "pull_request": self::pull(&repo, &pull), "repository": repository(&repo), "sender": user("cy"),
+        });
+        let mut issues = json!({ "action": "labeled", "issue": issue(&repo, &an_issue()), "repository": repository(&repo), "sender": user("ada") });
+        changed(&repo, &mut issues, &json!({ "label": { "name": "bug", "color": "d73a4a" } }));
+        let mut on_pull = pull.clone();
+        on_pull.labels.clear();
+        on_pull.assignees.clear();
+        on_pull.milestone = None;
+        let mut comment = a_comment(None);
+        comment.author = someone("usr_1", "ada");
+        let issue_comment = json!({
+            "action": "created", "issue": pull_as_issue(&repo, &on_pull), "comment": self::comment(&repo, 2, &comment, true),
+            "repository": repository(&repo), "sender": user("ada"),
+        });
+        let data = json!({
+            "runId": "run_01kq000000000000000000000a", "workflow": "Build", "path": ".g1t/workflows/build.yml", "number": 562,
+            "event": "push", "conclusion": "success", "ref": "refs/heads/main", "sha": "acb5820ced9479c074f688cc328bf03f341a511d", "pull": 2,
+        });
+        let head = Commit { hash: "acb5820ced9479c074f688cc328bf03f341a511d".into(), ..a_commit() };
+        let followed = FollowedRun {
+            data: &data,
+            workflow_id: Some("wfl_1"),
+            attempt: Some(1),
+            created_at: Some("2026-05-15T15:20:35Z"),
+            started_at: Some("2026-05-15T15:20:35Z"),
+            updated_at: Some("2026-05-15T15:21:10Z"),
+            actor: Some("ada"),
+            triggering_actor: None,
+            title: Some("Update README.md"),
+            head_commit: Some(&head),
+        };
+        // As trigger.rs gives it.
+        let workflow_run = json!({
+            "action": "completed",
+            "workflow_run": self::workflow_run(&repo, &followed),
+            "workflow": { "id": "wfl_1", "node_id": "wfl_1", "name": "Build", "path": data["path"], "state": "active", "html_url": "https://g1t.sh/acme/web/actions" },
+            "repository": repository(&repo),
+            "sender": user("ada"),
+        });
+        let release = json!({
+            "action": "published",
+            "release": self::release(&repo, &json!({ "id": "rel_1", "tagName": "v1.2.0", "target": "main", "name": "v1.2.0", "body": "Notes",
+                "draft": false, "prerelease": false, "author": "ada", "createdAt": "2026-05-15T15:19:53Z", "publishedAt": "2026-05-15T15:20:05Z" })),
+            "repository": repository(&repo),
+            "sender": user("ada"),
+        });
+        vec![
+            ("push", push),
+            ("pull_request", pull_request),
+            ("pull_request_review", review),
+            ("issues", issues),
+            ("issue_comment", issue_comment),
+            ("workflow_run", workflow_run),
+            ("release", release),
+        ]
+    }
+
+    fn fixture(event: &str) -> Value {
+        let text = match event {
+            "push" => include_str!("../tests/fixtures/push.json"),
+            "pull_request" => include_str!("../tests/fixtures/pull_request.json"),
+            "pull_request_review" => include_str!("../tests/fixtures/pull_request_review.json"),
+            "issues" => include_str!("../tests/fixtures/issues.json"),
+            "issue_comment" => include_str!("../tests/fixtures/issue_comment.json"),
+            "workflow_run" => include_str!("../tests/fixtures/workflow_run.json"),
+            "release" => include_str!("../tests/fixtures/release.json"),
+            other => panic!("no fixture for {other}"),
+        };
+        serde_json::from_str(text).unwrap()
+    }
+
+    #[test]
+    fn payloads_have_githubs_keys_and_types() {
+        let mut problems = Vec::new();
+        for (event, ours) in payloads() {
+            let mut found = Vec::new();
+            compare(event, &fixture(event), Some(&ours), "", &mut found);
+            problems.extend(found.into_iter().map(|problem| format!("{event}: {problem}")));
+        }
+        assert!(problems.is_empty(), "g1t's payloads differ from GitHub's:\n{}", problems.join("\n"));
+    }
+
+    #[test]
+    fn the_comparison_finds_what_differs() {
+        let mut found = Vec::new();
+        let github = json!({ "id": 1, "user": { "login": "a" }, "labels": [{ "name": "x" }], "body": null });
+        compare("x", &github, Some(&json!({ "id": "pr_1", "labels": [{}], "body": 3 })), "", &mut found);
+        assert_eq!(found, ["id: GitHub's is number, g1t's string", "user: missing", "labels[].name: missing"]);
+        found.clear();
+        compare("x", &json!({ "id": 1 }), Some(&json!({ "id": 1.5 })), "", &mut found);
+        assert_eq!(found, ["id: GitHub's is a whole number, g1t's 1.5"]);
+    }
+
+    #[test]
+    fn the_same_object_has_the_same_number_everywhere() {
+        let all = payloads();
+        let by = |event: &str| all.iter().find(|(e, _)| *e == event).map(|(_, v)| v.clone()).unwrap();
+        let (pr, issues, run) = (by("pull_request"), by("issues"), by("workflow_run"));
+        let repo_id = &pr["repository"]["id"];
+        assert_eq!(repo_id, &json!(github_id(&repo().id)), "github.repository_id is the same number");
+        assert_eq!(&pr["pull_request"]["base"]["repo"]["id"], repo_id);
+        assert_eq!(&run["workflow_run"]["repository"]["id"], repo_id);
+        // ada as sender, author and run actor; acme as owner and head user.
+        assert_eq!(pr["sender"]["id"], pr["pull_request"]["user"]["id"]);
+        assert_eq!(pr["sender"]["id"], run["workflow_run"]["actor"]["id"]);
+        assert_eq!(pr["sender"]["id"], json!(account_id("ada")), "github.actor_id is the same number");
+        assert_eq!(pr["repository"]["owner"]["id"], pr["pull_request"]["head"]["user"]["id"]);
+        assert_eq!(pr["repository"]["owner"]["id"], json!(account_id("acme")));
+        assert_eq!(pr["pull_request"]["labels"][0]["id"], issues["label"]["id"]);
+        // A pull request's own id and its issue's are different objects.
+        assert_ne!(pull_as_issue(&repo(), &a_pull())["id"], pr["pull_request"]["id"]);
+        assert_eq!(pr["pull_request"]["node_id"], a_pull().id);
+    }
+
+    #[test]
+    fn a_personal_workspaces_repositories_are_a_users() {
+        let mut event = json!({ "pull_request": pull(&repo(), &a_pull()), "repository": repository(&repo()), "sender": user("ada") });
+        assert_eq!(event["repository"]["owner"]["type"], "Organization");
+        owned_by_person(&mut event, "Acme");
+        assert_eq!(event["repository"]["owner"]["type"], "User");
+        assert_eq!(event["pull_request"]["base"]["repo"]["owner"]["type"], "User");
+        assert_eq!(event["pull_request"]["head"]["user"]["type"], "User");
+        // Nobody else changes, a bot least of all.
+        assert_eq!(event["sender"]["type"], "User");
+        let mut bot = json!({ "user": { "login": "acme", "type": "Bot" } });
+        owned_by_person(&mut bot, "acme");
+        assert_eq!(bot["user"]["type"], "Bot");
+    }
+
+    #[test]
+    fn a_push_says_whether_it_made_deleted_or_forced_its_ref() {
+        let repo = repo();
+        let after = "0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c";
+        let made = push(&repo, "refs/heads/new", None, after, &[a_commit()], "ada", false);
+        assert_eq!((made["created"].clone(), made["deleted"].clone(), made["forced"].clone()), (json!(true), json!(false), json!(false)));
+        assert_eq!(made["before"], ZERO);
+        let forced = push(&repo, "refs/heads/main", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), after, &[a_commit()], "ada", true);
+        assert_eq!(forced["forced"], true);
+        assert_eq!(forced["compare"], format!("https://g1t.sh/acme/web/compare/6113728f27ae82c7b1a177c8d03f9e96e0adf246...{after}"));
+        assert_eq!(forced["head_commit"]["id"], after);
+        let gone = push(&repo, "refs/heads/old", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), ZERO, &[], "ada", true);
+        assert_eq!((gone["deleted"].clone(), gone["forced"].clone()), (json!(true), json!(false)));
+    }
+
+    #[test]
+    fn a_pull_request_from_a_fork_names_the_fork() {
+        let mut pull = a_pull();
+        pull.fork = Some(RepoPath { namespace: "ana".into(), name: "web".into() });
+        pull.fork_repo_id = Some("rep_f".into());
+        pull.branch = None;
+        let event = self::pull(&repo(), &pull);
+        assert_eq!(event["head"]["repo"]["full_name"], "ana/web");
+        assert_eq!(event["head"]["repo"]["fork"], true);
+        assert_eq!(event["head"]["repo"]["id"], json!(github_id("rep_f")));
+        assert_eq!(event["head"]["label"], "ana:pull/2");
+        assert_eq!(event["head"]["user"]["login"], "ana");
+        assert_eq!(event["merge_commit_sha"], Value::Null, "only once merged");
     }
 }

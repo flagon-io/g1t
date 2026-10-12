@@ -1,0 +1,41 @@
+{
+  "action": "created",
+  "issue": {
+    "id": 444500041,
+    "node_id": "MDU6SXNzdWU0NDQ1MDAwNDE=",
+    "number": 2,
+    "title": "Update the README with new information.",
+    "body": "This is a pretty simple change that we need to pull into main.",
+    "state": "open",
+    "locked": false,
+    "draft": false,
+    "labels": [],
+    "milestone": null,
+    "user": { "login": "ada", "id": 21031068, "type": "User", "html_url": "https://github.com/ada", "url": "https://api.github.com/users/ada" },
+    "assignee": null,
+    "assignees": [],
+    "created_at": "2026-05-15T15:20:18Z",
+    "updated_at": "2026-05-15T15:20:21Z",
+    "html_url": "https://github.com/acme/web/pull/2",
+    "url": "https://api.github.com/repos/acme/web/issues/2",
+    "repository_url": "https://api.github.com/repos/acme/web",
+    "pull_request": {
+      "url": "https://api.github.com/repos/acme/web/pulls/2",
+      "html_url": "https://github.com/acme/web/pull/2",
+      "merged_at": null
+    }
+  },
+  "comment": {
+    "id": 492700400,
+    "node_id": "MDEyOklzc3VlQ29tbWVudDQ5MjcwMDQwMA==",
+    "body": "You are totally right! I'll get this fixed right away.",
+    "user": { "login": "ada", "id": 21031068, "type": "User", "html_url": "https://github.com/ada", "url": "https://api.github.com/users/ada" },
+    "created_at": "2026-05-15T15:20:21Z",
+    "updated_at": "2026-05-15T15:20:21Z",
+    "html_url": "https://github.com/acme/web/pull/2#issuecomment-492700400",
+    "url": "https://api.github.com/repos/acme/web/issues/comments/492700400",
+    "issue_url": "https://api.github.com/repos/acme/web/issues/2"
+  },
+  "repository": { "id": 186853002, "full_name": "acme/web", "owner": { "login": "acme", "id": 21031067, "type": "Organization" } },
+  "sender": { "login": "ada", "id": 21031068, "type": "User" }
+}
