@@ -22,6 +22,9 @@ pub struct Assignment {
     pub token: Option<String>,
     #[serde(default)]
     pub env: Option<Map<String, Value>>,
+    /// `public` or `private`; none from an older g1t.
+    #[serde(default)]
+    pub visibility: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]

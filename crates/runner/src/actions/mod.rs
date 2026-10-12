@@ -750,6 +750,10 @@ fn run_job(job: &mut Job) {
             job.docker_hosted = false;
         }
     }
+    // A self-hosted runner's word on how this job was run (selfhosted/exec.rs).
+    if let Ok(notice) = std::env::var("G1T_JOB_NOTICE") {
+        job.log.line(&format!("##[warning]{notice}"));
+    }
     let containers_started = job.start_containers();
     job.log.flush();
 

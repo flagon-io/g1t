@@ -5,7 +5,7 @@
 //!
 //! | Route | Body |
 //! | --- | --- |
-//! | `POST /runners/register` | `token`, `name`, `labels`, `os`, `arch`, `version`, `ephemeral`, `group`, `replace` |
+//! | `POST /runners/register` | `token`, `name`, `labels`, `os`, `arch`, `version`, `ephemeral`, `group`, `replace`, `isolation` |
 //! | `POST /runners/{id}/poll` | `version`, `running`, `wait_ms` |
 //! | `POST /runners/{id}/finished` | `id`, `exit_code`, `reason` |
 //! | `POST /runners/{id}/remove` | nothing |
@@ -56,6 +56,7 @@ pub async fn handle(request: &mut Request, services: &Services, path: &str) -> R
             "ephemeral": body["ephemeral"].as_bool().unwrap_or(false),
             "group": body["group"].as_str(),
             "replace": body["replace"].as_bool().unwrap_or(false),
+            "isolation": body["isolation"].as_str(),
         });
         return Ok(Some(answer(services, "runner_register", &args).await?));
     }

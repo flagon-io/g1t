@@ -826,14 +826,16 @@ impl Actions {
         } else if total >= model::MAX_RUNNERS {
             return Ok(fail(FailureCode::Conflict, format!("A workspace has at most {} self-hosted runners.", model::MAX_RUNNERS)));
         }
+        // How it keeps work from its machine, if it said (older runners do not).
+        let isolation = a.isolation.as_deref().filter(|level| model::ISOLATIONS.contains(level));
         let id = new_id("rnr", at);
         let credential = format!("{}{}", model::CREDENTIAL_PREFIX, random_hex(32));
         let created = rfc3339(at);
         self.db
             .prepare(
                 "INSERT INTO runners (id, workspace, repo_id, repo, group_id, name, labels, os, arch, version, ephemeral, credential_hash,
-                   rotated_at, last_seen_at, created_at, created_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   rotated_at, last_seen_at, created_at, created_by, isolation)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -852,6 +854,7 @@ impl Actions {
                 created.as_str().into(),
                 created.as_str().into(),
                 JsValue::NULL,
+                optional(isolation),
             ])?
             .run()
             .await?;
@@ -1073,6 +1076,7 @@ impl Actions {
             // A job that deploys: its run's deployment is under way.
             self.job_started(&job.id).await?;
             let image = self.job_image(&job).await?;
+            let visibility = self.visibility(&job.repo_id).await;
             return Ok(Some(Assignment {
                 kind: "workflow".into(),
                 id: job.id.clone(),
@@ -1082,6 +1086,7 @@ impl Actions {
                 image,
                 token: Some(token),
                 env: None,
+                visibility,
             }));
         }
 
@@ -1144,6 +1149,10 @@ impl Actions {
                 format!("The self-hosted runner {} took agent work: {}.", runner.name, task.title),
             )])
             .await;
+            let visibility = match &task.repo_id {
+                Some(repo_id) => self.visibility(repo_id).await,
+                None => None,
+            };
             return Ok(Some(Assignment {
                 kind: "agent".into(),
                 id: task.id.clone(),
@@ -1153,9 +1162,19 @@ impl Actions {
                 image: None,
                 token: None,
                 env: Some(env),
+                visibility,
             }));
         }
         Ok(None)
+    }
+
+    /// A repository's visibility for a runner, `public` or `private`; none
+    /// when it cannot be read, and the runner decides without it.
+    async fn visibility(&self, repo_id: &str) -> Option<String> {
+        match self.repo_by_id(repo_id).await {
+            Ok(Some((repo, _))) => Some(if repo.is_private { "private" } else { "public" }.to_owned()),
+            _ => None,
+        }
     }
 
     /// The image a job's `container:` names, when it names one plainly.
