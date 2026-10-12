@@ -20,6 +20,12 @@
 //! - `down` as g1t quits or the person stops it; `down --drain` when they
 //!   choose another way of running jobs; `down --delete` when the
 //!   registration is no longer the one wanted.
+//! - `up --only linux` and `down --only windows` when the person starts
+//!   or stops one kind of job in settings: the other is left as it is.
+//!   Every `up` names the kinds that are on (`--only`), so the launcher
+//!   never starts one the person stopped. A launcher from before `--only`
+//!   says no `turned_off` in its status, and is never sent `down --only`,
+//!   which it would read as `down`, stopping everything.
 //! - `update`, while nothing runs: the newest signed image, the same
 //!   registration.
 //!
@@ -45,6 +51,9 @@ pub const STATUS_EVERY: Duration = Duration::from_secs(8);
 pub const WSL_INSTALL: &str = "wsl --install --no-distribution";
 /// What installs vfkit on a Mac.
 pub const VFKIT_INSTALL: &str = "brew install vfkit";
+/// How often the app looks again for a release with the sandbox's images,
+/// while the newest is published without them.
+pub const IMAGES_AGAIN: Duration = Duration::from_secs(5 * 60);
 
 /// A sandbox's, or one capability's, state.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -95,6 +104,15 @@ pub struct Capability {
     pub cause: Option<String>,
     /// What to do about it, in a sentence.
     pub fix: Option<String>,
+    /// The person stopped it (`down --only`): stopped, not failing. None
+    /// from a launcher before it could stop one kind of job on its own.
+    pub turned_off: Option<bool>,
+}
+
+impl Capability {
+    pub fn off(&self) -> bool {
+        self.turned_off == Some(true)
+    }
 }
 
 /// `g1t-runner sandbox status --json`. The top-level fields are the Linux
@@ -144,11 +162,23 @@ impl Status {
         if self.capabilities.is_empty() { self.linux().available } else { self.capabilities.iter().any(|c| c.available) }
     }
 
-    /// A capability that can be had here but was never set up: registering
-    /// it needs a token.
+    /// A capability that can be had here, and is on, but was never set
+    /// up: registering it needs a token.
     pub fn unregistered(&self) -> bool {
-        let wanting = |c: &Capability| c.available && c.state == State::Absent;
+        let wanting = |c: &Capability| c.available && !c.off() && c.state == State::Absent;
         if self.capabilities.is_empty() { wanting(&self.linux()) } else { self.capabilities.iter().any(wanting) }
+    }
+
+    /// Whether this launcher starts and stops each kind of job on its own
+    /// (`--only`), which it says by saying which are turned off.
+    pub fn per_kind(&self) -> bool {
+        !self.capabilities.is_empty() && self.capabilities.iter().all(|c| c.turned_off.is_some())
+    }
+
+    /// Whether everything that could run here was turned off by the person.
+    pub fn all_off(&self) -> bool {
+        let available: Vec<&Capability> = self.capabilities.iter().filter(|c| c.available || c.off()).collect();
+        !available.is_empty() && available.iter().all(|c| c.off())
     }
 
     /// What a runner is running, the Linux one's first.
@@ -168,6 +198,10 @@ impl Status {
     /// else why the capability is unavailable.
     pub fn trouble(&self) -> Option<(String, Option<String>)> {
         let linux = self.linux();
+        // Stopped by the person: nothing is wrong with it.
+        if linux.off() {
+            return None;
+        }
         if !linux.available {
             let cause = linux.cause.or_else(|| self.error.clone())?;
             return Some((cause, linux.fix));
@@ -203,6 +237,27 @@ pub fn starts_status(line: &str) -> bool {
     line.starts_with('{')
 }
 
+/// How far the sandbox's image has downloaded, from the launcher's log.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Download {
+    /// `wsl-x64`.
+    pub key: String,
+    pub percent: u8,
+}
+
+/// Reads `Fetching the sandbox's wsl-x64 image (612 MB)`, the start of a
+/// download, and `Fetching the sandbox's wsl-x64 image: 40% of 612 MB`,
+/// each tenth of it (the launcher's image.rs), after the log's time.
+pub fn download(line: &str) -> Option<Download> {
+    let (_, rest) = line.split_once("Fetching the sandbox's ")?;
+    let (key, rest) = rest.split_once(" image")?;
+    let percent = match rest.strip_prefix(": ") {
+        Some(said) => said.split_once('%')?.0.trim().parse::<u8>().ok()?.min(100),
+        None => 0,
+    };
+    Some(Download { key: key.to_owned(), percent })
+}
+
 /// What `up` is told the first time, and again on every start (the
 /// launcher keeps what it was told, and `--token` only matters once).
 #[derive(Clone, PartialEq, Eq)]
@@ -212,12 +267,20 @@ pub struct Up<'a> {
     pub labels: &'a str,
     /// The registration token: only for a sandbox that has no registration yet.
     pub token: Option<&'a str>,
+    /// The kinds of job to start (`--only`): those the person has on.
+    pub only: Vec<&'a str>,
 }
 
 // Never print a token, in a log or a panic.
 impl std::fmt::Debug for Up<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Up").field("url", &self.url).field("name", &self.name).field("labels", &self.labels).field("token", &self.token.map(|_| "…")).finish()
+        f.debug_struct("Up")
+            .field("url", &self.url)
+            .field("name", &self.name)
+            .field("labels", &self.labels)
+            .field("token", &self.token.map(|_| "…"))
+            .field("only", &self.only)
+            .finish()
     }
 }
 
@@ -235,6 +298,10 @@ pub fn up_args(dir: &Path, up: &Up) -> Vec<OsString> {
     for (name, value) in [("--url", up.url), ("--name", up.name), ("--labels", up.labels)] {
         args.push(name.into());
         args.push(value.into());
+    }
+    if !up.only.is_empty() {
+        args.push("--only".into());
+        args.push(up.only.join(",").into());
     }
     args
 }
@@ -268,6 +335,15 @@ pub fn down_args(dir: &Path, how: Down) -> Vec<OsString> {
     args
 }
 
+/// `down --only <kind>`: that kind of job stops, and stays off; the others
+/// are left as they are. Only for a launcher whose status is [`Status::per_kind`].
+pub fn down_only_args(dir: &Path, kind: &str) -> Vec<OsString> {
+    let mut args = args("down", dir);
+    args.push("--only".into());
+    args.push(kind.into());
+    args
+}
+
 pub fn status_args(dir: &Path) -> Vec<OsString> {
     args("status", dir)
 }
@@ -293,10 +369,15 @@ pub fn command(binary: &Path, args: Vec<OsString>) -> Command {
 /// Runs a short launcher command to its end and reads its status, which
 /// it prints whether it worked or not.
 fn run(binary: &Path, args: Vec<OsString>) -> Result<Status, String> {
+    run_done(binary, args).map(|(status, _)| status)
+}
+
+/// [`run`], and whether the command did what it was asked (its exit code).
+fn run_done(binary: &Path, args: Vec<OsString>) -> Result<(Status, bool), String> {
     let out = command(binary, args).output().map_err(|e| format!("g1t-runner could not start: {e}"))?;
     let printed = String::from_utf8_lossy(&out.stdout);
     match parse(&printed) {
-        Ok(status) => Ok(status),
+        Ok(status) => Ok((status, out.status.success())),
         Err(_) if !out.status.success() && !out.stderr.is_empty() => Err(String::from_utf8_lossy(&out.stderr).trim().trim_start_matches("g1t-runner: ").to_owned()),
         Err(why) => Err(why),
     }
@@ -307,15 +388,23 @@ pub fn status(binary: &Path, dir: &Path) -> Result<Status, String> {
     run(binary, status_args(dir))
 }
 
-/// Stops the sandbox, waiting for it.
-pub fn down(binary: &Path, dir: &Path, how: Down) -> Result<(), String> {
+/// Stops the sandbox, waiting for it: how it is now.
+pub fn down(binary: &Path, dir: &Path, how: Down) -> Result<Status, String> {
+    down_with(binary, down_args(dir, how))
+}
+
+/// Stops one kind of job, and keeps it off, waiting for it.
+pub fn down_only(binary: &Path, dir: &Path, kind: &str) -> Result<Status, String> {
+    down_with(binary, down_only_args(dir, kind))
+}
+
+fn down_with(binary: &Path, args: Vec<OsString>) -> Result<Status, String> {
     if !binary.exists() {
         return Err("g1t-runner isn't installed".into());
     }
-    let status = run(binary, down_args(dir, how))?;
-    match status.error {
-        Some(error) => Err(error),
-        None => Ok(()),
+    match run_done(binary, args)? {
+        (status, true) => Ok(status),
+        (status, false) => Err(status.error.unwrap_or_else(|| "g1t-runner sandbox down failed.".into())),
     }
 }
 
@@ -330,6 +419,9 @@ pub enum Why {
     NoVfkit,
     /// Linux, with neither Sysbox in Docker nor KVM.
     NoSysboxOrKvm,
+    /// The newest release is published without the sandbox's images (for
+    /// this computer), so there is nothing to download yet.
+    NoImages,
     /// The sandbox's image couldn't be downloaded, or isn't the release's.
     Image,
     /// g1t refused the registration token.
@@ -346,6 +438,16 @@ pub enum Why {
     MacNotReleased,
     /// Anything else: shown in the launcher's own words.
     Other,
+}
+
+/// The release a "has no sandbox images" sentence names, and the image
+/// it lacks when it is only this computer's: `release 0.3.0 has no
+/// sandbox image vm-arm64-disk for this machine`.
+pub fn missing_images(text: &str) -> Option<(String, Option<String>)> {
+    let (before, after) = text.split_once(" has no sandbox image")?;
+    let version = before.rsplit("release ").next()?.trim().to_owned();
+    let image = after.strip_prefix(' ').and_then(|rest| rest.split_whitespace().next()).map(str::to_owned);
+    (!version.is_empty() && !version.contains(' ')).then_some((version, image))
 }
 
 pub fn why(text: &str) -> Why {
@@ -373,6 +475,8 @@ pub fn why(text: &str) -> Why {
         Why::Forgotten
     } else if has("is not registered") {
         Why::Unregistered
+    } else if has("has no sandbox image") {
+        Why::NoImages
     } else if has("sandbox image") || has("sandbox's images") || has("no sandbox images") || has("sha-256") || has("signature") || has("release key") || has("could not fetch") || has("broke off") {
         Why::Image
     } else if has("windows sandbox is not turned on") {
@@ -515,7 +619,9 @@ mod tests {
             ("This machine has neither Sysbox nor KVM, so there is nothing to sandbox the runner with.", Why::NoSysboxOrKvm),
             ("the sandbox image wsl-x64.tar.gz's SHA-256 is not the release's; not using it", Why::Image),
             ("could not fetch https://g1t.sh/downloads/runner/0.3.0/wsl-x64.tar.gz: dns error", Why::Image),
-            ("release 0.3.0 has no sandbox images", Why::Image),
+            ("release 0.3.0 has no sandbox images", Why::NoImages),
+            ("Windows jobs are sandboxed and running, but Linux jobs are not: release 0.3.0 has no sandbox images", Why::NoImages),
+            ("release 0.3.0 has no sandbox image vm-arm64-disk for this machine", Why::NoImages),
             ("The registration token is not valid, or has expired.", Why::TokenRefused),
             ("g1t no longer knows this runner (401 unauthorized). Register it again.", Why::Forgotten),
             ("the sandbox's runner is not registered, and no --url and --token were given", Why::Unregistered),
@@ -528,23 +634,57 @@ mod tests {
     }
 
     #[test]
+    fn a_kind_turned_off_is_stopped_by_the_person() {
+        let status = parse(
+            r#"{"schema":1,"state":"stopped","capabilities":[
+              {"id":"linux","available":true,"state":"stopped","turned_off":true},
+              {"id":"windows","available":true,"state":"absent","turned_off":false}]}"#,
+        )
+        .unwrap();
+        assert!(status.per_kind());
+        assert!(status.capability("linux").unwrap().off());
+        assert!(!status.all_off());
+        assert_eq!(status.trouble(), None);
+        // Only Windows, never set up, wants registering; Linux is off.
+        assert!(status.unregistered());
+        let all = parse(r#"{"schema":1,"state":"stopped","capabilities":[{"id":"linux","available":true,"state":"stopped","turned_off":true},{"id":"windows","available":false,"state":"absent","turned_off":false}]}"#).unwrap();
+        assert!(all.all_off());
+        assert!(!all.unregistered());
+        // A launcher from before `--only` says nothing of it.
+        assert!(!parse(RUNNING).unwrap().per_kind());
+    }
+
+    #[test]
+    fn a_download_says_how_far_it_is() {
+        assert_eq!(download("2026-10-12T08:00:00Z Fetching the sandbox's wsl-x64 image (612 MB)"), Some(Download { key: "wsl-x64".into(), percent: 0 }));
+        assert_eq!(download("2026-10-12T08:01:00Z Fetching the sandbox's wsl-x64 image: 40% of 612 MB"), Some(Download { key: "wsl-x64".into(), percent: 40 }));
+        assert_eq!(download("2026-10-12T08:01:00Z Took build (acme/web)"), None);
+        assert_eq!(missing_images("release 0.3.0 has no sandbox images"), Some(("0.3.0".into(), None)));
+        assert_eq!(missing_images("Windows jobs are sandboxed and running, but Linux jobs are not: release 0.3.0 has no sandbox images"), Some(("0.3.0".into(), None)));
+        assert_eq!(missing_images("release 0.4.0 has no sandbox image vm-arm64-disk for this machine"), Some(("0.4.0".into(), Some("vm-arm64-disk".into()))));
+        assert_eq!(missing_images("could not fetch"), None);
+    }
+
+    #[test]
     fn the_commands_are_the_launchers() {
         let dir = PathBuf::from("data").join("runner").join(FOLDER);
         let text = |args: Vec<OsString>| args.iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>();
-        let first = Up { url: "https://g1t.sh", name: "build-box", labels: "desktop", token: Some("g1trt_secret") };
+        let first = Up { url: "https://g1t.sh", name: "build-box", labels: "desktop", token: Some("g1trt_secret"), only: vec!["linux", "windows"] };
         let up = text(up_args(&dir, &first));
         assert_eq!(&up[..4], ["sandbox", "up", "--json", "--state-dir"]);
         assert_eq!(up[4], dir.to_string_lossy());
         // Never the token: it goes in the environment, out of the process list.
-        assert_eq!(&up[5..], ["--url", "https://g1t.sh", "--name", "build-box", "--labels", "desktop"]);
+        assert_eq!(&up[5..], ["--url", "https://g1t.sh", "--name", "build-box", "--labels", "desktop", "--only", "linux,windows"]);
+        assert_eq!(text(down_only_args(&dir, "windows"))[5..], ["--only", "windows"]);
         assert!(!up.iter().any(|a| a == "--token" || a.starts_with("g1trt_")));
         let mut command = command(Path::new("g1t-runner"), up_args(&dir, &first));
         with_token(&mut command, first.token);
         assert!(command.get_envs().any(|(name, value)| name == "G1T_RUNNER_TOKEN" && value == Some(std::ffi::OsStr::new("g1trt_secret"))));
         assert!(!command.get_args().any(|a| a.to_string_lossy().contains("g1trt_")));
         // Its name and labels as the app has them: the launcher adds `-linux` and the OS labels.
-        assert!(!up.iter().any(|a| a.ends_with("-linux") || a.contains("windows")));
-        let again = text(up_args(&dir, &Up { token: None, ..first.clone() }));
+        assert!(!up.iter().any(|a| a.ends_with("-linux")));
+        let again = text(up_args(&dir, &Up { token: None, only: vec![], ..first.clone() }));
+        assert!(!again.iter().any(|a| a == "--only"));
         assert!(!again.iter().any(|a| a == "--token" || a.starts_with("g1trt_")));
         assert!(!format!("{first:?}").contains("g1trt_secret"));
         assert_eq!(text(down_args(&dir, Down::Now))[..3], ["sandbox", "down", "--json"]);

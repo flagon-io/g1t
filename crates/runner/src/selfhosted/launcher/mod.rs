@@ -5,9 +5,9 @@
 //! ```text
 //! g1t-runner sandbox up [--url https://g1t.sh --token g1trt_…] [--name NAME]
 //!     [--labels a,b] [--group GROUP] [--cpus N] [--memory 8g] [--disk 64g]
-//!     [--no-native | --native] [--state-dir DIR] [--json]
+//!     [--only linux,windows] [--no-native | --native] [--state-dir DIR] [--json]
 //!     [--image-file PATH] [--runner-image REF] [--runner-image-file TAR]
-//! g1t-runner sandbox down [--drain] [--delete] [--json]
+//! g1t-runner sandbox down [--only linux,windows] [--drain] [--delete] [--json]
 //! g1t-runner sandbox status [--json]
 //! g1t-runner sandbox update [--image-file PATH] [--json]
 //! ```
@@ -35,6 +35,13 @@
 //! as `linux`, the native one as `windows` only when Windows Sandbox is
 //! there. Nothing here advertises a native label for host mode.
 //!
+//! Each capability starts and stops on its own. `up --only windows` turns
+//! Windows jobs on and starts them, leaving Linux jobs as they are; `down
+//! --only windows` stops them and keeps them off, so a later `up` (with no
+//! `--only`) starts only what is on. `down` with no `--only` stops
+//! everything and turns nothing off. `--no-native` and `--native` turn the
+//! OS's own capability off and on, as `--only` does.
+//!
 //! ## `status --json`
 //!
 //! The desktop app runs `g1t-runner sandbox status --json` and shows what
@@ -55,9 +62,9 @@
 //!   "resources": { "cpus": 4, "memory_mib": 8192, "disk_gib": 64 },
 //!   "capabilities": [
 //!     { "id": "linux", "available": true, "state": "running", "isolation": "nested-container",
-//!       "runner_version": "0.3.0", "job": null, "cause": null, "fix": null },
+//!       "runner_version": "0.3.0", "job": null, "cause": null, "fix": null, "turned_off": false },
 //!     { "id": "windows", "available": false, "state": "absent", "isolation": "vm",
-//!       "runner_version": null, "job": null,
+//!       "runner_version": null, "job": null, "turned_off": false,
 //!       "cause": "Windows Sandbox is not turned on, or this edition of Windows has none (Home does not).",
 //!       "fix": "On Windows 11 Pro, Enterprise or Education, turn on Windows Sandbox under Settings, …" }
 //!   ],
@@ -68,8 +75,11 @@
 //! The top-level fields are the Linux VM's. `state` is one of `absent`
 //! (never made, or deleted), `stopped`, `starting`, `running`, `updating`
 //! or `error`; `error` is a sentence for a person, set whenever something
-//! is wrong, and `cause`/`fix` say why a capability is unavailable and
-//! what to do. `job` is what the runner is running now, or null. Fields
+//! is wrong, and `cause`/`fix` say why a capability is unavailable, or for
+//! a native one in `error` why it didn't start, and what to do.
+//! `turned_off` is true for a capability someone stopped (`down --only`,
+//! `--no-native`), whose state is then `stopped`: stopped by a person, not
+//! failing. `job` is what the runner is running now, or null. Fields
 //! are only ever added; `schema` changes if one changes meaning. `up`,
 //! `down` and `update` print the same object with `--json` when they are
 //! done, and exit 1 with `error` set when they fail.
@@ -163,9 +173,16 @@ pub struct Saved {
     pub image_version: Option<String>,
     #[serde(default)]
     pub runner_image: Option<String>,
-    /// The native capability was turned off (`--no-native`).
+    /// The capabilities turned off (`down --only`, `--no-native`), kept
+    /// until `up --only` (or `--native`) turns them on again.
     #[serde(default)]
+    pub off: Vec<String>,
+    /// From a launcher before `off`: the native capability turned off.
+    #[serde(default, skip_serializing)]
     pub no_native: bool,
+    /// Why the native capability's runner didn't start, until it does.
+    #[serde(default)]
+    pub native_error: Option<String>,
     /// `starting` or `updating`, while a launcher (`phase_pid`) does it.
     #[serde(default)]
     pub phase: Option<String>,
@@ -182,7 +199,28 @@ impl Saved {
     }
 
     pub fn load(dir: &Path) -> Saved {
-        std::fs::read(Saved::path(dir)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        let mut saved: Saved = std::fs::read(Saved::path(dir)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        // An earlier launcher's `--no-native`, said the way this one says it.
+        if std::mem::take(&mut saved.no_native)
+            && let Some(native) = native_id()
+        {
+            saved.turn(native, false);
+        }
+        saved
+    }
+
+    /// Whether a capability was turned off.
+    pub fn is_off(&self, id: &str) -> bool {
+        self.off.iter().any(|o| o == id)
+    }
+
+    /// Turns a capability on or off, until said otherwise.
+    pub fn turn(&mut self, id: &str, on: bool) {
+        self.off.retain(|o| o != id);
+        if !on {
+            self.off.push(id.to_owned());
+            self.off.sort();
+        }
     }
 
     pub fn save(&self, dir: &Path) -> Result<()> {
@@ -224,6 +262,9 @@ pub struct Capability {
     pub job: Option<JobStatus>,
     pub cause: Option<String>,
     pub fix: Option<String>,
+    /// Someone stopped it (`down --only`, `--no-native`): `stopped` until
+    /// `up --only` turns it on again. Older launchers leave it out.
+    pub turned_off: bool,
 }
 
 pub fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -393,13 +434,62 @@ pub fn backend(dir: &Path) -> Box<dyn Backend> {
 
 // --- The native capability ------------------------------------------------------
 
-/// What this OS's native sandbox is called, and whether it is here.
-fn native_capability() -> Option<(&'static str, Availability)> {
+/// What this OS's native capability is called: `windows`, `macos`, or none on Linux.
+fn native_id() -> Option<&'static str> {
     match std::env::consts::OS {
-        "windows" => Some(("windows", WsbFound::look().availability())),
-        "macos" => Some(("macos", MacVm::availability())),
+        "windows" => Some("windows"),
+        "macos" => Some("macos"),
         _ => None,
     }
+}
+
+/// What this OS's native sandbox is called, and whether it is here.
+fn native_capability() -> Option<(&'static str, Availability)> {
+    match native_id()? {
+        "windows" => Some(("windows", WsbFound::look().availability())),
+        os => Some((os, MacVm::availability())),
+    }
+}
+
+/// The capabilities this computer has, by id: `linux`, and its OS's own.
+fn kinds() -> Vec<&'static str> {
+    let mut kinds = vec!["linux"];
+    kinds.extend(native_id());
+    kinds
+}
+
+/// How a capability is said to a person: `Windows`.
+fn kind_name(id: &str) -> &str {
+    match id {
+        "linux" => "Linux",
+        "windows" => "Windows",
+        "macos" => "macOS",
+        other => other,
+    }
+}
+
+/// `--only linux,windows`: the capabilities a command is for, of those
+/// this computer has (`native` is its OS's own), or None for all of them.
+fn only(options: &Options) -> Result<Option<Vec<&'static str>>> {
+    let Some(given) = options.value("only") else { return Ok(None) };
+    only_of(given, &kinds()).map(Some)
+}
+
+fn only_of(given: &str, have: &[&'static str]) -> Result<Vec<&'static str>> {
+    let mut chosen: Vec<&'static str> = Vec::new();
+    for word in given.split(',').map(str::trim).filter(|w| !w.is_empty()) {
+        let word = if word == "native" { have.iter().copied().find(|k| *k != "linux").unwrap_or(word) } else { word };
+        let Some(kind) = have.iter().find(|k| **k == word) else {
+            bail!("--only takes {} on this computer, not {word}", have.join(" or "));
+        };
+        if !chosen.contains(kind) {
+            chosen.push(kind);
+        }
+    }
+    if chosen.is_empty() {
+        bail!("--only takes {} on this computer", have.join(" or "));
+    }
+    Ok(chosen)
 }
 
 fn native_dir(dir: &Path) -> PathBuf {
@@ -506,8 +596,13 @@ pub fn status(dir: &Path) -> Status {
     if !available.available && error.is_none() {
         error = available.cause.clone();
     }
-    let state = linux_state(available.available, exists, running, saved.phase.as_deref(), guest.as_ref(), error.as_deref());
-    if state == "running" {
+    let linux_off = saved.is_off("linux");
+    let mut state = linux_state(available.available, exists, running, saved.phase.as_deref(), guest.as_ref(), error.as_deref());
+    // Turned off and not running is stopped by a person: nothing is wrong.
+    if linux_off && saved.phase.is_none() && !running {
+        state = "stopped";
+    }
+    if state == "running" || (linux_off && state == "stopped") {
         error = None;
     }
     let linux = Capability {
@@ -519,6 +614,7 @@ pub fn status(dir: &Path) -> Status {
         job: runner.as_ref().and_then(|r| r.job.clone()),
         cause: available.cause.clone(),
         fix: available.fix.clone(),
+        turned_off: linux_off,
     };
     let mut capabilities = vec![linux.clone()];
     if let Some((os, found)) = native_capability() {
@@ -526,25 +622,23 @@ pub fn status(dir: &Path) -> Status {
         let native_status: Option<RunnerStatus> = std::fs::read(super::status_path(&folder)).ok().and_then(|b| serde_json::from_slice(&b).ok());
         let registered = config::load(&folder).is_ok();
         let alive = native_running(dir);
-        let state = match (registered, alive) {
-            (false, _) => "absent",
-            (true, false) => "stopped",
-            (true, true) => "running",
-        };
-        let (cause, fix) = if saved.no_native && found.available {
-            (Some("Turned off with --no-native.".to_owned()), Some("Run `g1t-runner sandbox up` without --no-native.".to_owned()))
-        } else {
-            (found.cause.clone(), found.fix.clone())
+        let off = saved.is_off(os);
+        let failed = saved.native_error.clone().filter(|_| !alive && !off && found.available);
+        let state = native_state(registered, alive, off, failed.is_some());
+        let (cause, fix) = match failed {
+            Some(error) => (Some(error), None),
+            None => (found.cause.clone(), found.fix.clone()),
         };
         capabilities.push(Capability {
             id: os.into(),
-            available: found.available && !saved.no_native,
+            available: found.available,
             state: state.into(),
             isolation: Some("vm".into()),
             runner_version: native_status.as_ref().filter(|_| alive).map(|s| s.version.clone()),
             job: native_status.filter(|_| alive).and_then(|s| s.job),
             cause,
             fix,
+            turned_off: off,
         });
     }
     Status {
@@ -564,6 +658,23 @@ pub fn status(dir: &Path) -> Status {
     }
 }
 
+/// The native capability's state: running while its runner lives;
+/// stopped when turned off, or registered and not running; `error` when
+/// it didn't start; `absent` before it is registered.
+pub fn native_state(registered: bool, alive: bool, off: bool, failed: bool) -> &'static str {
+    if alive {
+        "running"
+    } else if off {
+        "stopped"
+    } else if failed {
+        "error"
+    } else if registered {
+        "stopped"
+    } else {
+        "absent"
+    }
+}
+
 fn print(status: &Status, json: bool) {
     if json {
         println!("{}", serde_json::to_string_pretty(status).unwrap_or_default());
@@ -571,12 +682,17 @@ fn print(status: &Status, json: bool) {
     }
     println!("Sandbox: {} ({})", status.state, status.backend.as_deref().unwrap_or("none"));
     for capability in &status.capabilities {
-        let mut line = format!("  {:8} {}", capability.id, if capability.available { capability.state.as_str() } else { "unavailable" });
+        let said = match (capability.turned_off, capability.available) {
+            (true, _) => "stopped (turned off; `up --only` turns it on)",
+            (false, true) => capability.state.as_str(),
+            (false, false) => "unavailable",
+        };
+        let mut line = format!("  {:8} {said}", capability.id);
         if let Some(job) = &capability.job {
             line.push_str(&format!(", running {} in {}", job.name, job.repo));
         }
         println!("{line}");
-        if !capability.available {
+        if !capability.turned_off && (!capability.available || capability.state == "error") {
             if let Some(cause) = &capability.cause {
                 println!("           {cause}");
             }
@@ -596,8 +712,9 @@ const HELP: &str = "g1t-runner sandbox: self-hosted runners on your own computer
 
   g1t-runner sandbox up [--url https://g1t.sh --token <registration token>]
       [--name NAME] [--labels a,b] [--group GROUP]
-      [--cpus N] [--memory 8g] [--disk 64g] [--no-native | --native] [--json]
-  g1t-runner sandbox down [--drain] [--delete] [--json]
+      [--cpus N] [--memory 8g] [--disk 64g] [--only linux,windows]
+      [--no-native | --native] [--json]
+  g1t-runner sandbox down [--only linux,windows] [--drain] [--delete] [--json]
   g1t-runner sandbox status [--json]
   g1t-runner sandbox update [--json]
 
@@ -609,7 +726,10 @@ reaches this computer's files, programs or Docker.
 
 The first `up` needs --url and --token (make a token under Settings,
 Runners). `down` stops now, cutting a running job short; --drain waits
-for it. `update` drains, swaps in the newest signed image, and starts
+for it. Each kind of job starts and stops on its own: `down --only
+windows` stops Windows jobs and keeps them off, leaving Linux jobs
+running, until `up --only windows` turns them on again. `update` drains,
+swaps in the newest signed image, and starts
 again, keeping the registration. Every command takes --state-dir DIR
 (default ~/.g1t-runner/sandbox).
 Docs: https://docs.g1t.sh/guides/self-hosted-runners/#sandbox-on-your-computer";
@@ -628,6 +748,7 @@ const SANDBOX_VALUES: &[&str] = &[
     "runner-image",
     "runner-image-file",
     "wait",
+    "only",
 ];
 
 /// `g1t-runner sandbox <command>`: the process's exit code.
@@ -720,12 +841,24 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
         resources.disk_gib = parse_gib(disk).filter(|g| *g >= 16).ok_or_else(|| anyhow!("--disk takes a size of 16g or more, such as 64g, not {disk}"))?;
     }
     saved.resources = resources;
-    // Kept until said otherwise.
-    if options.flag("no-native") {
-        saved.no_native = true;
-    } else if options.flag("native") {
-        saved.no_native = false;
+    // Each capability on or off, kept until said otherwise: `--only` turns
+    // on what it names and leaves the rest as they are.
+    let only = only(options)?;
+    if let Some(native) = native_id() {
+        if options.flag("no-native") {
+            saved.turn(native, false);
+        } else if options.flag("native") {
+            saved.turn(native, true);
+        }
     }
+    for kind in only.iter().flatten() {
+        saved.turn(kind, true);
+    }
+    let wanted = |kind: &str| match &only {
+        Some(only) => only.contains(&kind),
+        None => !saved.is_off(kind),
+    };
+    let (want_linux, native) = (wanted("linux"), native_capability().filter(|(os, _)| wanted(os)));
     if let Some(image) = options.value("runner-image") {
         saved.runner_image = Some(image.to_owned());
     }
@@ -738,10 +871,16 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
         .map(str::to_owned)
         .or_else(|| std::env::var("G1T_RUNNER_TOKEN").ok().filter(|token| !token.trim().is_empty()));
 
+    if !want_linux && native.is_none() {
+        log("Every kind of job is turned off here: `g1t-runner sandbox up --only linux` turns Linux jobs on again.");
+        return Ok(());
+    }
     let backend = backend(dir);
     let found = backend.availability();
-    let linux = if found.available {
-        in_phase(dir, "starting", |saved| {
+    let linux = if !want_linux {
+        None
+    } else if found.available {
+        Some(in_phase(dir, "starting", |saved| {
             let fresh = !backend.exists();
             if fresh {
                 let local = obtain_image(options, saved, backend.as_ref(), dir)?;
@@ -777,19 +916,29 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
             })?;
             backend.start()?;
             wait_running(backend.as_ref(), Duration::from_secs(if fresh { 600 } else { 180 }))
-        })
+        }))
     } else {
-        Err(anyhow!("{} {}", found.cause.unwrap_or_default(), found.fix.unwrap_or_default()))
+        Some(Err(anyhow!("{} {}", found.cause.unwrap_or_default(), found.fix.unwrap_or_default())))
     };
-    let native = match native_capability() {
-        Some((os, found)) if found.available && !saved.no_native => native_up(dir, &Saved::load(dir), token.as_deref(), os).map(|()| true),
-        _ => Ok(false),
+    let native = match native {
+        Some((os, found)) if found.available => {
+            let started = native_up(dir, &Saved::load(dir), token.as_deref(), os);
+            // Why it didn't start is the capability's, for `status`, until it does.
+            let mut kept = Saved::load(dir);
+            kept.native_error = started.as_ref().err().map(|e| format!("{e:#}"));
+            kept.save(dir)?;
+            Some((os, started))
+        }
+        // Asked for by name, and not here: why, rather than nothing.
+        Some((os, found)) if only.is_some() => Some((os, Err(anyhow!("{} {}", found.cause.unwrap_or_default(), found.fix.unwrap_or_default()).context(format!("{} jobs can't run here", kind_name(os)))))),
+        _ => None,
     };
     match (linux, native) {
-        (Ok(()), Ok(_)) => Ok(()),
-        (Err(linux), Ok(true)) => Err(linux.context("Windows jobs are sandboxed and running, but Linux jobs are not")),
-        (Err(linux), _) => Err(linux),
-        (Ok(()), Err(native)) => Err(native.context("Linux jobs are sandboxed and running, but jobs native to this OS are not")),
+        (None | Some(Ok(())), None | Some((_, Ok(())))) => Ok(()),
+        (Some(Err(linux)), Some((os, Ok(())))) => Err(linux.context(format!("{} jobs are sandboxed and running, but Linux jobs are not", kind_name(os)))),
+        (Some(Err(linux)), _) => Err(linux),
+        (Some(Ok(())), Some((os, Err(native)))) => Err(native.context(format!("Linux jobs are sandboxed and running, but {} jobs are not", kind_name(os)))),
+        (None, Some((_, Err(native)))) => Err(native),
     }
 }
 
@@ -833,6 +982,9 @@ fn obtain_image(options: &Options, saved: &Saved, backend: &dyn Backend, dir: &P
 
 fn down(options: &Options, dir: &Path) -> Result<()> {
     let mode = if options.flag("drain") { StopMode::Drain } else { StopMode::Now };
+    if let Some(only) = only(options)? {
+        return down_only(dir, mode, &only, options.flag("delete"));
+    }
     native_down(dir, mode);
     let backend = backend(dir);
     if options.flag("delete") {
@@ -852,7 +1004,36 @@ fn down(options: &Options, dir: &Path) -> Result<()> {
     }
     let mut saved = Saved::load(dir);
     saved.error = None;
+    saved.native_error = None;
     saved.save(dir)
+}
+
+/// `down --only`: stops those capabilities and turns them off, leaving the
+/// others as they are, running or not.
+fn down_only(dir: &Path, mode: StopMode, only: &[&'static str], delete: bool) -> Result<()> {
+    if delete {
+        bail!("--delete removes the whole sandbox, so it takes no --only");
+    }
+    for kind in only {
+        if *kind == "linux" {
+            let backend = backend(dir);
+            if backend.exists() && backend.running() {
+                backend.stop(mode)?;
+            }
+        } else {
+            native_down(dir, mode);
+        }
+        let mut saved = Saved::load(dir);
+        if *kind == "linux" {
+            saved.error = None;
+        } else {
+            saved.native_error = None;
+        }
+        saved.turn(kind, false);
+        saved.save(dir)?;
+        log(&format!("Stopped {} jobs; they stay off until `g1t-runner sandbox up --only {kind}`.", kind_name(kind)));
+    }
+    Ok(())
 }
 
 fn update_sandbox(options: &Options, dir: &Path) -> Result<()> {
@@ -972,7 +1153,7 @@ mod tests {
         for field in ["schema", "state", "backend", "runner_version", "launcher_version", "image_version", "isolation", "job", "error", "resources", "capabilities", "state_dir"] {
             assert!(value.get(field).is_some(), "{field}");
         }
-        for field in ["id", "available", "state", "isolation", "runner_version", "job", "cause", "fix"] {
+        for field in ["id", "available", "state", "isolation", "runner_version", "job", "cause", "fix", "turned_off"] {
             assert!(value["capabilities"][0].get(field).is_some(), "{field}");
         }
         assert_eq!(value["resources"]["memory_mib"], 0);
@@ -986,6 +1167,49 @@ mod tests {
         // A launcher that died mid-update leaves no phase in the status.
         assert_ne!(status(&dir).state, "updating");
         assert_eq!(status(&dir).state_dir, dir.display().to_string());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_names_what_this_computer_has() {
+        let windows = ["linux", "windows"];
+        assert_eq!(only_of("windows", &windows).unwrap(), ["windows"]);
+        assert_eq!(only_of("linux, windows,linux", &windows).unwrap(), ["linux", "windows"]);
+        assert_eq!(only_of("native", &windows).unwrap(), ["windows"]);
+        assert!(only_of("macos", &windows).unwrap_err().to_string().contains("linux or windows"));
+        assert!(only_of(",", &windows).is_err());
+        // Linux has no native capability: `native` is not one of its kinds.
+        assert!(only_of("native", &["linux"]).unwrap_err().to_string().contains("not native"));
+    }
+
+    #[test]
+    fn a_capability_turned_off_stays_off_and_reads_as_stopped() {
+        let mut saved = Saved::default();
+        saved.turn("windows", false);
+        saved.turn("windows", false);
+        assert_eq!(saved.off, ["windows"]);
+        assert!(saved.is_off("windows") && !saved.is_off("linux"));
+        saved.turn("windows", true);
+        assert!(saved.off.is_empty());
+        // Stopped by a person is not failing, and running is running whatever it says.
+        assert_eq!(native_state(true, false, true, true), "stopped");
+        assert_eq!(native_state(true, true, true, false), "running");
+        assert_eq!(native_state(true, false, false, true), "error");
+        assert_eq!(native_state(true, false, false, false), "stopped");
+        assert_eq!(native_state(false, false, false, false), "absent");
+    }
+
+    #[test]
+    fn an_earlier_no_native_is_read_as_turned_off() {
+        let dir = std::env::temp_dir().join(format!("g1t-sandbox-off-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("sandbox.json"), r#"{"no_native":true,"labels":[]}"#).unwrap();
+        let saved = Saved::load(&dir);
+        assert!(!saved.no_native);
+        assert_eq!(saved.off, native_id().into_iter().collect::<Vec<_>>());
+        saved.save(&dir).unwrap();
+        let written = std::fs::read_to_string(dir.join("sandbox.json")).unwrap();
+        assert!(!written.contains("no_native"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

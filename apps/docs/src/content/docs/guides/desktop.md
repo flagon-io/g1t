@@ -139,6 +139,7 @@ notify you among them, stay on g1t, in [your settings](/guides/notifications/#se
 | **Download updates by themselves** | On | Off, the app never checks on its own; **Check for updates** still does. The runner's updates follow it too. |
 | **Run jobs on this computer while g1t is open** | On | Starts [the runner](#the-runner) a few seconds after the window. Off, nothing runs. |
 | **How jobs run** | Sandboxed | Sandboxed, in Docker, or directly on this computer. See [how jobs run](#how-jobs-run). |
+| **Linux jobs**, **Windows jobs** (sandboxed) | Both on | Each kind of job's card has its own **Stop** and **Start**, which leave the other kind as it is. See [the runner](#the-runner). |
 | **Workspace** | The one you were in when it first registered | The workspace whose jobs the runner runs. Lists the workspaces you own. |
 
 The settings window also shows the app's version and whether it is up to
@@ -154,10 +155,16 @@ registered or started by hand. It starts a few seconds after the window
 opens, and stops when g1t quits. Time on it is free, as on any of your
 runners.
 
-To stop it, press **Stop** in the settings window's Runner section, or
-**Stop running jobs** in the tray; it starts again with **Start**, or the
-next time g1t opens. To keep it off, turn off **Run jobs on this computer
-while g1t is open** in [the settings](#settings).
+To stop it, press **Stop running jobs** in the tray; it starts again with
+**Start running jobs**, or the next time g1t opens. To keep it off, turn
+off **Run jobs on this computer while g1t is open** in
+[the settings](#settings).
+
+Sandboxed, each kind of job is a card of its own in the settings' Runner
+section, **Linux jobs** and **Windows jobs**, each with its own **Stop**
+and **Start**. Stopping Windows jobs leaves Linux jobs running, and the
+other way round; a kind you stop stays stopped, across restarts, until you
+start it again. Both are on until you stop one.
 
 A job still runs only on a runner with every label it names. The app's
 runner has `self-hosted`, its OS and architecture (`linux` for a runner
@@ -201,7 +208,10 @@ copy of `g1t-runner` and its state in the app's data folder
 | --- | --- |
 | A few seconds after g1t opens | `g1t-runner sandbox up --json --state-dir <data folder>/sandbox --url <server> --name <computer> --labels desktop`, with the registration token the first time only, in its environment as `G1T_RUNNER_TOKEN`, never on its command line, where anyone on the computer could read it. The first `up` downloads and checks the sandbox's image and makes the VM, which takes a few minutes. |
 | Every few seconds while it runs | `g1t-runner sandbox status --json`, for the tray, the settings and the Runners page. |
-| When g1t quits, or you press **Stop** | `g1t-runner sandbox down`: a job that is running is cut short. |
+| When g1t quits, or you press **Stop running jobs** | `g1t-runner sandbox down`: a job that is running is cut short. |
+| When you press **Stop** on one kind of job's card | `g1t-runner sandbox down --only windows` (or `linux`): that kind stops, a job of its own cut short, and stays off; the other runs on. Every `up` names the kinds that are on, `--only linux,windows`, so one you stopped never starts by itself. |
+| When you press **Start** on one kind of job's card | `g1t-runner sandbox up --only windows` (or `linux`), leaving the other as it is. A kind never registered is registered first, with a token as above. |
+| While one kind of job runs and the other should and doesn't | `g1t-runner sandbox up --only` it again, by itself: every five minutes while the newest release has no sandbox images, else after a wait that grows each time, up to ten minutes. **Retry** or **Check now** tries at once. |
 | When you choose another way of running jobs | `g1t-runner sandbox down --drain`, once the job that is running ends. The sandbox keeps its registration, so choosing Sandboxed again needs no new one. |
 | With a new release, while it has no job | `g1t-runner sandbox update`: the newest signed image, the same registration. |
 
@@ -247,8 +257,8 @@ was. Turning off **Download updates by themselves** turns these off too.
 | Where | What it shows |
 | --- | --- |
 | The tray | A row with what the runner is doing, *Runner: Waiting for jobs*, which opens the settings; **Stop running jobs** or **Start running jobs** under it. The icon's hover text says it too. |
-| The settings window | What it is doing; when it isn't running, why and how to fix it, with the fix's buttons; sandboxed, a line for each kind of job, *Linux jobs: Waiting for jobs*, *Windows jobs: Not available* and why; how jobs run; the workspace; your computer's name and the runner's version; **View on g1t**; and the runner's recent log, with **Open the whole log**. |
-| The workspace's [Runners page](/guides/self-hosted-runners/#the-runners-page) | **Desktops**: every computer with the app in the workspace, with what each is doing, or why it isn't running and the fix, in the same words, and each kind of job a sandboxed one runs. Inside the app, this computer comes first, live, with its buttons. A computer whose g1t is closed says *g1t is closed on* its name. |
+| The settings window | Sandboxed, a card for each kind of job this computer can have, side by side: its state (*Running a job*, *Waiting for jobs*, *Starting*, *Downloading image* with how far, *Updating*, *Waiting for image*, *Stopped*, *Not available*, *Problem*), what it is, the job it is running with a link to it, and when it isn't running why and the fix, with the fix's buttons and its own **Stop** or **Start**; below, its runner's name on g1t, version and isolation. Above the cards, only what is about the whole runner: signed out, no workspace, turned off, stopped, the sandbox down. Then how jobs run; the workspace; your computer's name and the runner's version; **View on g1t**; and the runner's recent log, with **Open the whole log**. In Docker or directly on this computer, one line says what it is doing, or why it isn't running and the fix. |
+| The workspace's [Runners page](/guides/self-hosted-runners/#the-runners-page) | **Desktops**: every computer with the app in the workspace, with what each is doing, or why it isn't running and the fix, in the same words; a sandboxed one's kinds of job as cards of their own, as in the settings, with a link to the run each is running. Inside the app, this computer comes first, live, with its buttons, each kind's **Stop** or **Start** among them. A computer whose g1t is closed says *g1t is closed on* its name. |
 
 ### When it isn't running
 
@@ -261,7 +271,10 @@ the settings and the Runners page.
 | *Running* a job | It is running that job. | Nothing; the Runners page links to its run. |
 | *Starting*, *Registering with* a workspace, *Updating* | It is on its way. | Wait a few seconds. |
 | *Not running: turned off* | **Run jobs on this computer while g1t is open** is off. | **Turn on**. |
-| *Not running: stopped* | You pressed **Stop**. | **Start**, or open g1t again. |
+| *Not running: stopped* | You pressed **Stop running jobs** in the tray. | **Start**, or open g1t again. |
+| *Not running: every kind of job is stopped* | You stopped Linux jobs and Windows jobs, each on its card. | **Start** on one. |
+| *Linux jobs: Stopped*, *Windows jobs: Stopped*, *You stopped* them | You pressed **Stop** on that card. The other kind runs on. | **Start** on the card. |
+| *Linux jobs: Waiting for image*: *Waiting for the sandbox's image* | The newest `g1t-runner` is published without the sandbox's images yet (or without this kind of computer's), so there is nothing to download. | Nothing: g1t looks again every five minutes and starts Linux jobs once they're out. **Check now** looks at once. |
 | *Not running: signed out* | It isn't registered yet, and registering needs you signed in. | **Sign in**, as an owner of the workspace. |
 | *Not running: no workspace to run jobs for* | You don't own a workspace, and only owners add runners. | Ask an owner, or **Create a workspace**. |
 | *Couldn't register with* a workspace: *only its owners can* | You aren't an owner of it. | Ask an owner to make you one, or **Choose workspace**. |
@@ -272,14 +285,17 @@ the settings and the Runners page.
 | *Not running: virtualization is off* | The sandbox is a small VM, and virtualization is off in your computer's firmware, or Virtual Machine Platform is off in Windows features. | Turn them on (**Open Windows features** on Windows), then restart. |
 | *Not running: vfkit isn't installed* | macOS: the sandbox's VM runs under vfkit. | Run `brew install vfkit` (**Copy command**). It starts by itself once vfkit is there. |
 | *Not running: no Sysbox or KVM* | Linux: the sandbox needs Sysbox in Docker, or QEMU with KVM. | **Install Sysbox**, or turn on virtualization and install QEMU. |
-| *Not running: the sandbox's image didn't download* | The image couldn't be fetched, or its signature or SHA-256 wasn't the release's, with the reason. | It tries again by itself; check the connection, or **Report** it. |
+| *Not running: the sandbox's image didn't download* | The image couldn't be fetched from g1t, with the reason. | It tries again by itself, waiting longer each time; check that your computer can reach g1t. **Retry** tries now. |
+| *Not running: the sandbox's image didn't check out* | The image that downloaded isn't the one the release signed (its signature or SHA-256), so it wasn't used. | It downloads it again by itself. If it keeps happening, something between your computer and g1t, such as a proxy or antivirus, is changing downloads: **Report** it. |
 | *Not running: the sandbox can't run here* | Something else the sandbox needs, in its own words. | What it says. |
 | *Not running: the sandbox failed* | The sandbox stopped, or didn't start, with its reason. | It starts again by itself, waiting longer each time. **Retry**, or **View log**. |
 | *Not running: this computer has another sandbox* | A sandbox you made with `g1t-runner sandbox up`; a computer has one. | Remove it with `g1t-runner sandbox down --delete`, then **Retry**; or keep it, and turn the app's runner off. |
 | *Not running: this g1t-runner has no sandbox* | The app's `g1t-runner` is from before the sandbox. | It downloads a newer one by itself; **Retry** looks now. |
-| *Windows jobs: Not available* | Windows Sandbox is off, this Windows is Home, or it is older than 24H2. Linux jobs still run. | On Pro, Enterprise or Education, turn on Windows Sandbox (**Open Windows features**) and restart, or update Windows. |
+| *Windows jobs: Not available*: *Windows Sandbox is off*, *Windows needs an update* | Windows Sandbox is off, this Windows is Home, or it is older than 24H2. Linux jobs still run. | On Pro, Enterprise or Education, turn on Windows Sandbox (**Open Windows features**) and restart, or update Windows. |
+| *Windows jobs: Problem*: *Its runner didn't start* or *Its runner stopped* | The runner for Windows jobs didn't start, with why, or stopped by itself, while Linux jobs run. | It is started again by itself in a few minutes; **Retry** now, or **View log**. |
+| *macOS jobs: Not available*: *Not released yet* | Sandboxed macOS jobs aren't released. | Nothing: they come with a `g1t-runner` update, which the app downloads by itself. |
 | *Offline:* the server *unreachable* | Your computer can't reach g1t. | Check the connection; it carries on by itself. **Retry** tries now. |
-| *Update failed* | A new version couldn't be downloaded, or its SHA-256 wasn't the release's. | It keeps running the version it has. **Retry**, or **Report** it. |
+| *Update failed* | A new version couldn't be downloaded, or its SHA-256 wasn't the release's. | It keeps running the version it has, and tries again in a few hours. **Retry** now; **Report** it if it keeps failing. |
 | *Runner stopped (exit code* N*)* | The runner ended by itself, with the reason from its log. | It starts again by itself, waiting longer each time. **Restart** now, or **View log**. |
 | *g1t is closed on* a computer | Seen on the Runners page: g1t hasn't been open on that computer for ten minutes. | Open g1t there. |
 

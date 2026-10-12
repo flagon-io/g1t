@@ -9,6 +9,12 @@
 	--accent: #b6a8ff;
 	--accent-ink: #15112e;
 	--error: #ff8a8a;
+	/* States, as dots and labels: running, on its way, needs a look, failing. */
+	--ok: #4ade80;
+	--working: #60a5fa;
+	--warning: #fbbf24;
+	--raised: #1e1e24;
+	--line-strong: #34343c;
 	color-scheme: dark;
 }
 * {
@@ -69,7 +75,7 @@ body.framed .page {
 	overflow-y: auto;
 }
 main {
-	max-width: 36rem;
+	max-width: 38rem;
 	margin: 0 auto;
 	padding: 1.5rem 1.25rem 1.25rem;
 }
@@ -261,26 +267,8 @@ code {
 .diagnosis-text .buttons:empty {
 	display: none;
 }
-/* With the sandbox, each kind of job it runs: Linux jobs, Windows jobs. */
-.capabilities {
-	display: flex;
-	flex-direction: column;
-	gap: 0.5rem;
-	margin: 0.5rem 0 0;
-	padding: 0.5rem 0 0;
-	border-top: 1px solid var(--line);
-	list-style: none;
-}
-.capabilities[hidden] {
+.diagnosis[hidden] {
 	display: none;
-}
-.capabilities li {
-	display: flex;
-	align-items: flex-start;
-	gap: 0.5rem;
-}
-.capabilities .dot {
-	margin-top: 0.3rem;
 }
 .dot {
 	flex: none;
@@ -291,19 +279,321 @@ code {
 	background: var(--muted);
 }
 .dot.ok {
-	background: #4ade80;
+	background: var(--ok);
 }
 .dot.working {
-	background: #60a5fa;
+	background: var(--working);
 }
 .dot.warning {
-	background: #fbbf24;
+	background: var(--warning);
 }
 .dot.problem {
 	background: var(--error);
 }
 .warning-note {
-	color: #fbbf24;
+	color: var(--warning);
+}
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* Sandboxed, each kind of job it runs, side by side: Linux jobs, Windows
+   jobs. Two to a row where they fit, one under the other where they don't. */
+.kinds {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(15.5rem, 1fr));
+	gap: 0.75rem;
+	margin: 0.5rem 0 0.75rem;
+}
+.kinds[hidden] {
+	display: none;
+}
+.kinds.single {
+	grid-template-columns: 1fr;
+}
+.kind {
+	display: flex;
+	flex-direction: column;
+	gap: 0.625rem;
+	min-width: 0;
+	padding: 0.875rem;
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	background: var(--surface);
+	transition: border-color 0.2s;
+}
+/* A kind that needs a look says so with its edge as well as its label. */
+.kind[data-tone="problem"] {
+	border-color: rgba(255, 138, 138, 0.35);
+}
+.kind[data-tone="warning"] {
+	border-color: rgba(251, 191, 36, 0.3);
+}
+/* Its icon, and beside it its name over its state. */
+.kind-head {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+.kind-icon {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 40px;
+	height: 40px;
+	border-radius: 10px;
+	background: var(--raised);
+	color: var(--fg);
+}
+.kind.off .kind-icon {
+	color: var(--muted);
+}
+.kind-name {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.25rem;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+.kind-name h3 {
+	margin: 0;
+	font-size: 0.9375rem;
+	font-weight: 600;
+	letter-spacing: -0.005em;
+}
+.kind-about {
+	margin: 0;
+	color: var(--muted);
+	font-size: 0.8125rem;
+	line-height: 1.4;
+}
+/* Its state, as a label: a dot in its tone, and a few words. */
+.pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	flex: none;
+	padding: 0.0625rem 0.5rem 0.0625rem 0.4375rem;
+	border: 1px solid var(--line-strong);
+	border-radius: 999px;
+	color: var(--muted);
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1.4;
+	white-space: nowrap;
+}
+.pill-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: currentColor;
+}
+.pill[data-tone="ok"] {
+	border-color: rgba(74, 222, 128, 0.35);
+	background: rgba(74, 222, 128, 0.1);
+	color: var(--ok);
+}
+.pill[data-tone="working"] {
+	border-color: rgba(96, 165, 250, 0.35);
+	background: rgba(96, 165, 250, 0.1);
+	color: var(--working);
+}
+.pill[data-tone="warning"] {
+	border-color: rgba(251, 191, 36, 0.35);
+	background: rgba(251, 191, 36, 0.1);
+	color: var(--warning);
+}
+.pill[data-tone="problem"] {
+	border-color: rgba(255, 138, 138, 0.4);
+	background: rgba(255, 138, 138, 0.1);
+	color: var(--error);
+}
+/* On its way (running a job, starting, downloading): the dot breathes. */
+.pill.live .pill-dot {
+	animation: breathe 1.6s ease-in-out infinite;
+}
+@keyframes breathe {
+	50% {
+		opacity: 0.35;
+	}
+}
+.kind-body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	font-size: 0.8125rem;
+	line-height: 1.45;
+}
+.kind-body[hidden] {
+	display: none;
+}
+.kind-body p {
+	margin: 0;
+}
+.kind-headline {
+	color: var(--fg);
+	font-size: 0.875rem;
+	font-weight: 500;
+}
+.kind-cause {
+	color: var(--muted);
+}
+.kind-fix {
+	color: var(--fg);
+}
+.kind-body code,
+.diagnosis-text code {
+	padding: 0.0625rem 0.3125rem;
+	border-radius: 5px;
+	background: var(--raised);
+	color: var(--fg);
+	font-size: 0.75rem;
+	overflow-wrap: anywhere;
+	user-select: text;
+}
+.kind-job {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+	padding: 0.5rem 0.625rem;
+	border-radius: 8px;
+	background: var(--raised);
+}
+.kind-job-label {
+	color: var(--muted);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+}
+.kind-job-what {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.kind-job-what a {
+	color: var(--fg);
+	font-weight: 500;
+}
+.kind-job-what a:hover {
+	color: var(--accent);
+}
+.kind-progress {
+	display: flex;
+	align-items: center;
+	gap: 0.625rem;
+}
+.kind-progress .bar {
+	flex: 1;
+	height: 6px;
+	overflow: hidden;
+	border-radius: 999px;
+	background: var(--line);
+}
+.kind-progress .bar span {
+	display: block;
+	height: 100%;
+	border-radius: 999px;
+	background: var(--accent);
+	transition: width 0.4s ease;
+}
+.kind-progress .small {
+	min-width: 2.5rem;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+/* What it is on g1t: there to read, never in the way. */
+.kind-details {
+	display: grid;
+	gap: 0.125rem;
+	margin: 0;
+	padding-top: 0.5rem;
+	border-top: 1px solid var(--line);
+	font-size: 0.75rem;
+}
+.kind-details[hidden] {
+	display: none;
+}
+.kind-details div {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	min-width: 0;
+}
+.kind-details dt {
+	flex: none;
+	width: 4.25rem;
+	color: var(--muted);
+}
+.kind-details dd {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 0 0.5rem;
+	min-width: 0;
+	margin: 0;
+	color: var(--fg);
+	overflow-wrap: anywhere;
+	user-select: text;
+}
+button.link {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--fg);
+	font-size: inherit;
+	font-weight: 400;
+	text-decoration: underline;
+	text-decoration-color: var(--line-strong);
+	text-underline-offset: 3px;
+}
+button.link:hover {
+	color: var(--accent);
+	text-decoration-color: currentColor;
+}
+button.link svg {
+	flex: none;
+	color: var(--muted);
+}
+.kind-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	margin-top: auto;
+}
+.kind-actions[hidden] {
+	display: none;
+}
+.kind-actions .end {
+	margin-left: auto;
+}
+button.quiet {
+	background: transparent;
+	color: var(--muted);
+}
+button.quiet:hover {
+	color: var(--fg);
+}
+@media (prefers-reduced-motion: reduce) {
+	.pill.live .pill-dot {
+		animation: none;
+	}
+	.kind,
+	.kind-progress .bar span {
+		transition: none;
+	}
 }
 details.log {
 	padding: 0.75rem 0;

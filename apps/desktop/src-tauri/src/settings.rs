@@ -51,6 +51,49 @@ pub struct Settings {
     pub runner_backend: crate::runner::Backend,
     /// The workspace it runs for; the one the person is in when it first registers.
     pub runner_workspace: Option<String>,
+    /// Sandboxed, each kind of job on or off on its own: Linux jobs can
+    /// run while Windows jobs are stopped. All on unless someone stops one.
+    pub runner_capabilities: RunnerCapabilities,
+}
+
+/// Each kind of job the sandbox runs, on or off (`runnerCapabilities` in
+/// desktop.json: `{"linux": true, "windows": false}`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RunnerCapabilities {
+    pub linux: bool,
+    pub windows: bool,
+    pub macos: bool,
+}
+
+impl Default for RunnerCapabilities {
+    fn default() -> Self {
+        Self { linux: true, windows: true, macos: true }
+    }
+}
+
+impl RunnerCapabilities {
+    /// Whether a kind of job is on; one this app doesn't know is.
+    pub fn on(&self, id: &str) -> bool {
+        match id {
+            "linux" => self.linux,
+            "windows" => self.windows,
+            "macos" => self.macos,
+            _ => true,
+        }
+    }
+
+    /// Turns a kind of job on or off: false for a kind this app doesn't know.
+    pub fn set(&mut self, id: &str, on: bool) -> bool {
+        let kind = match id {
+            "linux" => &mut self.linux,
+            "windows" => &mut self.windows,
+            "macos" => &mut self.macos,
+            _ => return false,
+        };
+        *kind = on;
+        true
+    }
 }
 
 impl Default for Settings {
@@ -67,6 +110,7 @@ impl Default for Settings {
             runner: true,
             runner_backend: crate::runner::Backend::Sandboxed,
             runner_workspace: None,
+            runner_capabilities: RunnerCapabilities::default(),
         }
     }
 }
@@ -126,7 +170,8 @@ pub fn apply(app: &AppHandle, mut settings: Settings) -> Result<(), String> {
     if before.badge != settings.badge {
         crate::badge::refresh(app);
     }
-    if (before.runner, before.runner_backend, &before.runner_workspace) != (settings.runner, settings.runner_backend, &settings.runner_workspace) {
+    let runner = |s: &Settings| (s.runner, s.runner_backend, s.runner_workspace.clone(), s.runner_capabilities.clone());
+    if runner(&before) != runner(&settings) {
         crate::runner::settings_changed(app);
     }
     Ok(())
@@ -188,7 +233,7 @@ fn show(app: &AppHandle, check: bool) {
     let builder = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App(page.into()))
         .title("g1t settings");
     let built = crate::frame::dialog(builder, custom)
-        .inner_size(560.0, 680.0)
+        .inner_size(620.0, 720.0)
         .min_inner_size(440.0, 420.0)
         .maximizable(false)
         .minimizable(false)
@@ -221,6 +266,14 @@ mod tests {
         assert!(!chosen.runner);
         assert_eq!(chosen.runner_backend, crate::runner::Backend::Host);
         assert_eq!(chosen.runner_workspace.as_deref(), Some("acme"));
+        // Every kind of job is on until someone stops one; a kind left out is on.
+        assert!(chosen.runner_capabilities.on("linux") && chosen.runner_capabilities.on("windows"));
+        let one_off: Settings = serde_json::from_str(r#"{"runnerCapabilities":{"windows":false}}"#).unwrap();
+        assert!(one_off.runner_capabilities.on("linux"));
+        assert!(!one_off.runner_capabilities.on("windows"));
+        let mut kinds = one_off.runner_capabilities.clone();
+        assert!(kinds.set("windows", true) && kinds.on("windows"));
+        assert!(!kinds.set("plan9", false));
     }
 
     #[test]

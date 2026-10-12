@@ -309,7 +309,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
         title="Desktops"
         about="Computers with the g1t desktop app, whose runner runs while g1t is open there: what each is doing, and when it isn't running, why and the fix."
       >
-        <DesktopRunners desktops={data.desktops} slug={slug} />
+        <DesktopRunners desktops={data.desktops} slug={slug} runners={own} />
       </Section>
 
       <Section title="Where work runs" about="For every project in the workspace, unless a project says otherwise in its own settings.">

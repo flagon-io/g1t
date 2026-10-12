@@ -15,7 +15,7 @@ use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry,
 use g1t_contracts::billing::{ComputeKind, RecordSandboxArgs};
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::runners::{
-    self as model, ACTIVITY_LIMIT, CloudJob, DesktopCapability, DesktopDiagnosis, DesktopRunner, DesktopRunnersArgs, ReportDesktopArgs, HandedOverTask, RunnerActivity, RunnerActivityArgs, StuckJob, StuckJobsArgs, Assignment, CancelTaskArgs, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs, EnqueueTaskArgs, FinishedArgs,
+    self as model, ACTIVITY_LIMIT, CloudJob, DesktopCapability, DesktopDiagnosis, DesktopJob, DesktopRunner, DesktopRunnersArgs, ReportDesktopArgs, HandedOverTask, RunnerActivity, RunnerActivityArgs, StuckJob, StuckJobsArgs, Assignment, CancelTaskArgs, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs, EnqueueTaskArgs, FinishedArgs,
     ListRunnersArgs, Poll, PollArgs, RegisterArgs, Registered, RegistrationToken, RemoveRunnerArgs, RemoveSelfArgs, RouteArgs, Runner,
     RunnerAuth, RunnerGroup, RunnerGroupsArgs, RunnerSettings, RunnerSettingsArgs, RunnerWork, RunnersOwner, SetRunnerGroupArgs,
     SetRunnerSettingsArgs, Wanted,
@@ -737,8 +737,17 @@ impl Actions {
                     title: clip(&c.title, 200),
                     cause: c.cause.as_deref().map(|t| clip(t, 1000)),
                     fix: c.fix.as_deref().map(|t| clip(t, 1000)),
+                    state: c.state.as_deref().map(|t| clip(t, 20)),
+                    headline: c.headline.as_deref().map(|t| clip(t, 200)),
+                    about: c.about.as_deref().map(|t| clip(t, 200)),
+                    enabled: c.enabled,
+                    job: c.job.as_ref().map(|j| DesktopJob { kind: clip(&j.kind, 20), name: clip(&j.name, 200), repo: clip(&j.repo, 200) }),
+                    runner: c.runner.as_deref().map(|t| clip(t, 80)),
+                    isolation: c.isolation.as_deref().map(|t| clip(t, 40)),
+                    version: c.version.as_deref().map(|t| clip(t, 40)),
                 })
                 .collect(),
+            in_capabilities: d.in_capabilities && !d.capabilities.is_empty(),
         };
         let at = now_ms();
         let known = self

@@ -263,9 +263,16 @@ pub struct DesktopDiagnosis {
     /// can run while Windows jobs cannot. Empty for the other backends.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capabilities: Vec<DesktopCapability>,
+    /// The kinds of job say all of this, each for itself: a page showing
+    /// them shows no line of the whole runner's as well.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub in_capabilities: bool,
 }
 
-/// One kind of job a sandboxed desktop runs, as its app says it.
+/// One kind of job a sandboxed desktop runs, as its app says it. Each
+/// starts and stops on its own: `enabled` is false for one the person
+/// stopped, which is not failing. The fields after `fix` come from newer
+/// apps; older ones leave them out.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DesktopCapability {
     /// `linux`, `windows` or `macos`.
@@ -279,6 +286,39 @@ pub struct DesktopCapability {
     pub cause: Option<String>,
     #[serde(default)]
     pub fix: Option<String>,
+    /// `busy`, `idle`, `starting`, `downloading`, `updating`, `waiting`,
+    /// `stopped`, `unavailable` or `problem`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    /// What is wrong, in a few words: `WSL isn't installed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headline: Option<String>,
+    /// What it is, in a line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub about: Option<String>,
+    /// On in the person's settings; false when they stopped it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job: Option<DesktopJob>,
+    /// Its runner's name on g1t: `build-box-linux`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runner: Option<String>,
+    /// `nested-container` or `vm`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isolation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+/// What a desktop's kind of job is running.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopJob {
+    /// `workflow` or `agent`.
+    pub kind: String,
+    pub name: String,
+    /// `acme/web`.
+    pub repo: String,
 }
 
 /// The most kinds of job a desktop reports.
