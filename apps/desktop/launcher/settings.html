@@ -44,6 +44,49 @@
 					</label>
 				</section>
 
+				<section aria-labelledby="runner-heading" id="runner-section">
+					<h2 id="runner-heading">Runner</h2>
+					<label class="setting">
+						<span
+							><strong>Run jobs on this computer while g1t is open</strong
+							><span class="muted">Your workspace's <code>runs-on: self-hosted</code> jobs run here, at no cost, while g1t is open.</span></span
+						>
+						<input type="checkbox" role="switch" id="runner" />
+					</label>
+					<!-- What it is doing; when it isn't running, why and how to fix it (src/runner/diagnosis.rs). -->
+					<div class="diagnosis" id="runner-diagnosis" aria-live="polite">
+						<span class="dot" id="runner-dot" aria-hidden="true"></span>
+						<span class="diagnosis-text">
+							<strong id="runner-title">Runner</strong>
+							<span class="muted" id="runner-cause"></span>
+							<span id="runner-fix"></span>
+							<span class="buttons" id="runner-actions"></span>
+						</span>
+						<button type="button" id="runner-toggle">Stop</button>
+					</div>
+					<label class="setting">
+						<span><strong>How jobs run</strong><span class="muted" id="runner-backend-note">&nbsp;</span></span>
+						<select id="runnerBackend">
+							<option value="sandboxed">Sandboxed (recommended)</option>
+							<option value="docker">In Docker</option>
+							<option value="host">Directly on this computer</option>
+						</select>
+					</label>
+					<label class="setting">
+						<span><strong>Workspace</strong><span class="muted" id="runner-workspace-note">The workspace whose jobs it runs. Only a workspace's owners can add runners to it.</span></span>
+						<select id="runnerWorkspace"></select>
+					</label>
+					<div class="setting">
+						<span><strong id="runner-machine">This computer</strong><span class="muted" id="runner-version">&nbsp;</span></span>
+						<span class="buttons"><button type="button" id="runner-view">View on g1t</button></span>
+					</div>
+					<details class="log">
+						<summary>Recent log</summary>
+						<pre id="runner-log">Nothing yet.</pre>
+						<button type="button" id="runner-open-log">Open the whole log</button>
+					</details>
+				</section>
+
 				<section aria-labelledby="notifications-heading">
 					<h2 id="notifications-heading">Notifications</h2>
 					<label class="setting">

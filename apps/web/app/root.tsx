@@ -53,6 +53,7 @@ import { useStuckNavigationRescue } from "./lib/stuck";
 import { isNeedsSignIn } from "./lib/website-token";
 import { offerTicket, setLiveViaToken } from "./lib/live-socket";
 import { socketTicketFor } from "./lib/socket-ticket.server";
+import { DesktopRunnerLink } from "./components/desktop-runner-link";
 import { LiveNotifications } from "./components/notifications/live-notifications";
 import { THEME_COLOR, THEME_COOKIE, readTheme, themeAttribute, useThemeChoice } from "./lib/theme";
 
@@ -459,6 +460,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
             inbox={root?.shell?.inbox?.unread ?? null}
             sounds={root?.sounds ?? null}
             me={{ id: user.id, username: user.username }}
+          />
+        )}
+        {/* Inside the desktop app: who its runner runs for, and its registration (lib/desktop-runner.ts). */}
+        {(!user || !awaitsConfirmation(user)) && (
+          <DesktopRunnerLink
+            offer={{
+              signedIn: user != null,
+              workspaces: (user?.workspaces ?? []).filter((m) => m.role === "owner").map((m) => ({ slug: m.slug, name: m.name ?? null })),
+              current: root?.shell?.workspace?.slug ?? null,
+            }}
           />
         )}
         <AnalyticsConsent />

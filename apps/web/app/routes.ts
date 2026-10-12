@@ -75,6 +75,8 @@ export default [
   route("invitations", "routes/invitations.tsx"),
   // People to invite, as the People page's invite form searches them.
   route("-/people.json", "routes/people-json.ts"),
+  // The desktop app's runner: its registration token, and its reports (lib/desktop-runner.ts).
+  route("-/desktop/runner", "routes/desktop-runner.ts"),
   // Trust pages: reserved names, like the rest above.
   route("policies", "routes/policies.tsx"),
   route("policies/:policy", "routes/policy.tsx"),

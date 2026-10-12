@@ -7,6 +7,7 @@ import { RUN_KIND_LABEL, type Runner, type RunKind } from "@g1t/contracts";
 import { money } from "../lib/money";
 import { type CloudWork, machineTime, perMinute } from "../lib/runners";
 import type { RunnersAction, RunnersPageData } from "../lib/runners.server";
+import { DesktopRunners } from "./desktop-runners";
 import { Groups, NewRunner, RunnerRow, RunnerSettingsForm, STATUS } from "./runners";
 import { EmptyState, ErrorText, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
@@ -303,6 +304,14 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
         )}
       </Section>
 
+      <Section
+        id="desktops"
+        title="Desktops"
+        about="Computers with the g1t desktop app, whose runner runs while g1t is open there: what each is doing, and when it isn't running, why and the fix."
+      >
+        <DesktopRunners desktops={data.desktops} slug={slug} />
+      </Section>
+
       <Section title="Where work runs" about="For every project in the workspace, unless a project says otherwise in its own settings.">
         <div className="grid gap-3 md:grid-cols-3">
           <WhereCard icon={<Workflow size={15} />} title="Workflow jobs">
@@ -315,8 +324,9 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
               ? `Agent runs, checks, reviews and the merge queue run on your runners labelled ${data.settings.agentLabels.join(", ")}.`
               : "Agent runs, checks, reviews and the merge queue run on g1t cloud. Switch them to your runners below."}
           </WhereCard>
-          <WhereCard icon={<Laptop size={15} />} title="Your desktop" coming>
-            The desktop app will include a runner: for a logged-in browser, a simulator or a tool only your network reaches. It asks before each task.
+          <WhereCard icon={<Laptop size={15} />} title="Your desktop">
+            The g1t desktop app runs a runner while it&apos;s open, sandboxed and labelled <code className="font-mono text-fg-soft">desktop</code>, for jobs that ask for{" "}
+            <code className="font-mono text-fg-soft">self-hosted</code>. Each desktop is under <a href="#desktops" className="underline underline-offset-2">Desktops</a>.
           </WhereCard>
         </div>
         <RunnerSettingsForm
@@ -354,13 +364,12 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
   );
 }
 
-function WhereCard({ icon, title, coming, children }: { icon: ReactNode; title: string; coming?: boolean; children: ReactNode }) {
+function WhereCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
-    <div className={`rounded-2xl border p-4 ${coming ? "border-dashed border-line" : "border-line bg-surface"}`}>
+    <div className="rounded-2xl border border-line bg-surface p-4">
       <h3 className="flex items-center gap-2 text-sm font-medium">
         <span className="text-muted">{icon}</span>
         {title}
-        {coming && <span className="ml-auto"><Coming /></span>}
       </h3>
       <p className="mt-2 text-sm leading-relaxed text-muted">{children}</p>
     </div>

@@ -230,6 +230,74 @@ pub struct DeleteRunnerGroupArgs {
     pub id: String,
 }
 
+// --- The desktop app's runners ----------------------------------------------
+
+/// The desktop app keeps a runner on a person's computer while it is open
+/// (apps/desktop/src-tauri/src/runner). What it says of that runner, as it
+/// says it in its tray and settings (its diagnosis.rs, the one catalogue
+/// of those words), is kept here per computer, so the workspace's Runners
+/// page lists every desktop with the same state, why, and the fix. A
+/// desktop not heard from for `DESKTOP_OPEN_WITHIN_MS` has g1t closed, and
+/// shows `closed`, which the app sent too.
+pub const DESKTOP_OPEN_WITHIN_MS: u64 = 10 * 60 * 1000;
+/// The most desktops a workspace keeps reports for.
+pub const MAX_DESKTOPS: u32 = 200;
+
+/// A diagnosis, as the app made it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopDiagnosis {
+    /// `idle`, `busy`, `no_docker`, `no_sandbox`, `not_allowed`, …
+    pub code: String,
+    /// `ok`, `working`, `off`, `warning` or `problem`.
+    pub tone: String,
+    pub title: String,
+    #[serde(default)]
+    pub cause: Option<String>,
+    #[serde(default)]
+    pub fix: Option<String>,
+}
+
+/// One person's computer, as its desktop app last said.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopRunner {
+    pub workspace: String,
+    /// The computer's name, which its runner has too.
+    pub machine: String,
+    /// Whose computer: their username.
+    pub person: String,
+    /// `sandboxed`, `docker` or `host`.
+    pub backend: String,
+    pub version: Option<String>,
+    pub diagnosis: DesktopDiagnosis,
+    /// What to show while g1t is closed on it.
+    pub closed: DesktopDiagnosis,
+    /// Heard from within `DESKTOP_OPEN_WITHIN_MS`: g1t is open there.
+    pub open: bool,
+    pub reported_at: String,
+}
+
+/// `report_desktop`: the person's own desktop app, through the site, for a
+/// workspace they own. Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReportDesktopArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub machine: String,
+    pub backend: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    pub diagnosis: DesktopDiagnosis,
+    pub closed: DesktopDiagnosis,
+}
+
+/// `desktop_runners`: owners of the workspace. Returns `Outcome<Vec<DesktopRunner>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DesktopRunnersArgs {
+    pub actor: User,
+    pub workspace: String,
+}
+
 /// `runner_settings`: members of the workspace, or admins of the
 /// repository. Returns `Outcome<RunnerSettings>`.
 #[derive(Debug, Serialize, Deserialize)]

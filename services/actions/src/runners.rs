@@ -15,7 +15,7 @@ use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry,
 use g1t_contracts::billing::{ComputeKind, RecordSandboxArgs};
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::runners::{
-    self as model, ACTIVITY_LIMIT, CloudJob, HandedOverTask, RunnerActivity, RunnerActivityArgs, StuckJob, StuckJobsArgs, Assignment, CancelTaskArgs, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs, EnqueueTaskArgs, FinishedArgs,
+    self as model, ACTIVITY_LIMIT, CloudJob, DesktopDiagnosis, DesktopRunner, DesktopRunnersArgs, ReportDesktopArgs, HandedOverTask, RunnerActivity, RunnerActivityArgs, StuckJob, StuckJobsArgs, Assignment, CancelTaskArgs, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs, EnqueueTaskArgs, FinishedArgs,
     ListRunnersArgs, Poll, PollArgs, RegisterArgs, Registered, RegistrationToken, RemoveRunnerArgs, RemoveSelfArgs, RouteArgs, Runner,
     RunnerAuth, RunnerGroup, RunnerGroupsArgs, RunnerSettings, RunnerSettingsArgs, RunnerWork, RunnersOwner, SetRunnerGroupArgs,
     SetRunnerSettingsArgs, Wanted,
@@ -123,6 +123,9 @@ struct RegistrationRow {
     repo: Option<String>,
     group_id: Option<String>,
     expires_at: String,
+    /// Who made the token: the runners it registers are theirs.
+    #[serde(default)]
+    created_by: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -703,6 +706,103 @@ impl Actions {
         Ok(Outcome::Ok(self.effective_runner_settings(&place.workspace, place.repo.as_ref().map(|r| r.id.as_str())).await?))
     }
 
+    /// `report_desktop`: what a person's desktop app says of its runner,
+    /// in a workspace they own. Kept per computer, replaced each time.
+    pub async fn report_desktop(&self, a: ReportDesktopArgs) -> Result<Outcome<bool>> {
+        let owner = RunnersOwner { repo: None, workspace: Some(a.workspace.clone()) };
+        let place = check!(self.runner_place(&a.actor, &owner, true).await?);
+        let machine = match valid_name(&a.machine) {
+            Ok(name) => name,
+            Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
+        };
+        if !matches!(a.backend.as_str(), "sandboxed" | "docker" | "host") {
+            return Ok(fail(FailureCode::Invalid, "A desktop runs jobs sandboxed, in Docker or on the host."));
+        }
+        let clip = |text: &str, most: usize| text.chars().take(most).collect::<String>();
+        let tidy = |d: &DesktopDiagnosis| DesktopDiagnosis {
+            code: clip(&d.code, 40),
+            tone: clip(&d.tone, 20),
+            title: clip(&d.title, 200),
+            cause: d.cause.as_deref().map(|t| clip(t, 1000)),
+            fix: d.fix.as_deref().map(|t| clip(t, 1000)),
+        };
+        let at = now_ms();
+        let known = self
+            .db
+            .prepare("SELECT COUNT(*) AS n FROM desktop_runners WHERE workspace = ? AND lower(machine) <> lower(?)")
+            .bind(&[place.workspace.as_str().into(), machine.as_str().into()])?
+            .first::<Count>(None)
+            .await?
+            .map_or(0, |c| c.n);
+        if known >= model::MAX_DESKTOPS {
+            // The oldest report makes room: a computer long gone.
+            self.db
+                .prepare("DELETE FROM desktop_runners WHERE rowid IN (SELECT rowid FROM desktop_runners WHERE workspace = ? ORDER BY reported_at LIMIT 1)")
+                .bind(&[place.workspace.as_str().into()])?
+                .run()
+                .await?;
+        }
+        self.db
+            .prepare(
+                "INSERT INTO desktop_runners (workspace, machine, person, backend, version, diagnosis, closed, reported_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT (workspace, machine) DO UPDATE SET person = ?3, backend = ?4, version = ?5, diagnosis = ?6, closed = ?7, reported_at = ?8",
+            )
+            .bind(&[
+                place.workspace.as_str().into(),
+                machine.as_str().into(),
+                a.actor.username.as_str().into(),
+                a.backend.as_str().into(),
+                optional(a.version.as_deref().map(|v| clip(v, 40)).as_deref()),
+                serde_json::to_string(&tidy(&a.diagnosis))?.into(),
+                serde_json::to_string(&tidy(&a.closed))?.into(),
+                rfc3339(at).into(),
+            ])?
+            .run()
+            .await?;
+        Ok(Outcome::Ok(true))
+    }
+
+    /// `desktop_runners`: the workspace's desktops, as each app last said.
+    pub async fn desktop_runners(&self, a: DesktopRunnersArgs) -> Result<Outcome<Vec<DesktopRunner>>> {
+        let owner = RunnersOwner { repo: None, workspace: Some(a.workspace.clone()) };
+        let place = check!(self.runner_place(&a.actor, &owner, false).await?);
+        #[derive(Deserialize)]
+        struct Row {
+            workspace: String,
+            machine: String,
+            person: String,
+            backend: String,
+            version: Option<String>,
+            diagnosis: String,
+            closed: String,
+            reported_at: String,
+        }
+        let rows = self
+            .db
+            .prepare("SELECT * FROM desktop_runners WHERE workspace = ? ORDER BY lower(machine)")
+            .bind(&[place.workspace.as_str().into()])?
+            .all()
+            .await?
+            .results::<Row>()?;
+        let open_since = rfc3339(now_ms().saturating_sub(model::DESKTOP_OPEN_WITHIN_MS));
+        Ok(Outcome::Ok(
+            rows.into_iter()
+                .map(|row| DesktopRunner {
+                    open: row.reported_at.as_str() > open_since.as_str(),
+                    diagnosis: serde_json::from_str(&row.diagnosis).unwrap_or_default(),
+                    closed: serde_json::from_str(&row.closed).unwrap_or_default(),
+                    workspace: row.workspace,
+                    machine: row.machine,
+                    person: row.person,
+                    backend: row.backend,
+                    version: row.version,
+                    reported_at: row.reported_at,
+                })
+                .collect(),
+        ))
+    }
+
     /// `set_runner_settings`.
     pub async fn set_runner_settings(&self, a: SetRunnerSettingsArgs) -> Result<Outcome<RunnerSettings>> {
         let place = check!(self.runner_place(&a.actor, &a.owner, true).await?);
@@ -866,7 +966,8 @@ impl Actions {
                 created.as_str().into(),
                 created.as_str().into(),
                 created.as_str().into(),
-                JsValue::NULL,
+                // The person who made the token: a desktop's runner is theirs.
+                optional(registration.created_by.as_deref()),
                 optional(isolation),
             ])?
             .run()

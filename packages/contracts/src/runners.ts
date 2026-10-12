@@ -123,7 +123,56 @@ export interface RunnersApi {
   deleteGroup(actor: User, workspace: string, id: string): Promise<Result<boolean>>;
   settings(actor: User, owner: RunnersOwner): Promise<Result<RunnerSettings>>;
   setSettings(actor: User, owner: RunnersOwner, change: RunnerSettingsChange): Promise<Result<RunnerSettings>>;
+  /** What the person's own desktop app says of its runner, in a workspace they own. */
+  reportDesktop(actor: User, report: DesktopReport): Promise<Result<boolean>>;
+  /** The workspace's desktops, as each app last said. Owners. */
+  desktops(actor: User, workspace: string): Promise<Result<DesktopRunner[]>>;
 }
+
+/**
+ * The desktop app keeps a runner on a person's computer while it is open.
+ * What it says of that runner (its state, why, and the fix) comes from one
+ * catalogue in the app (apps/desktop/src-tauri/src/runner/diagnosis.rs),
+ * and the site shows it word for word: `closed` is what to show once g1t
+ * is closed on that computer, which the app sends too.
+ */
+export type DesktopDiagnosis = {
+  code: string;
+  tone: "ok" | "working" | "off" | "warning" | "problem";
+  title: string;
+  cause: string | null;
+  fix: string | null;
+};
+
+/** How a desktop runs jobs. */
+export type DesktopBackend = "sandboxed" | "docker" | "host";
+
+export type DesktopReport = {
+  workspace: string;
+  machine: string;
+  backend: DesktopBackend;
+  version: string | null;
+  diagnosis: DesktopDiagnosis;
+  closed: DesktopDiagnosis;
+};
+
+/** One person's computer, as its desktop app last said. */
+export type DesktopRunner = {
+  workspace: string;
+  machine: string;
+  /** Whose computer: their username. */
+  person: string;
+  backend: DesktopBackend;
+  version: string | null;
+  diagnosis: DesktopDiagnosis;
+  closed: DesktopDiagnosis;
+  /** Heard from in the last ten minutes: g1t is open there. */
+  open: boolean;
+  reportedAt: string;
+};
+
+/** The label every desktop app's runner has. */
+export const DESKTOP_LABEL = "desktop";
 
 /**
  * The runner's container image: `g1t-runner` and the Docker CLI, for

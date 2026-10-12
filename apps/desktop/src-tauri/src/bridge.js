@@ -53,6 +53,31 @@
       .catch(function () {});
   }
 
+  // An app event, to a listener; returns what stops listening.
+  function on(name, listener) {
+    var events = window.__TAURI__ && window.__TAURI__.event;
+    if (!events || typeof events.listen !== "function") return function () {};
+    var stop = null;
+    var stopped = false;
+    events
+      .listen(name, function (event) {
+        try {
+          listener(event && event.payload);
+        } catch (error) {
+          console.warn("g1t desktop: a " + name + " listener failed", error);
+        }
+      })
+      .then(function (unlisten) {
+        if (stopped) unlisten();
+        else stop = unlisten;
+      })
+      .catch(function () {});
+    return function () {
+      stopped = true;
+      if (stop) stop();
+    };
+  }
+
   var bridge = {
     version: VERSION,
     platform: PLATFORM,
@@ -101,6 +126,46 @@
     // Whether g1t draws the title bar, and how tall it is: 0 under the system's.
     // The page is below it, never under it: this says only that the bar is there.
     titleBarHeight: FRAME === "custom" ? 36 : 0,
+    // The runner the app keeps on this computer (src/runner/mod.rs).
+    runner: Object.freeze({
+      // What it is doing: its diagnosis (why it isn't running, and the
+      // fix), the workspace, how jobs run, and its last log lines.
+      status: function () {
+        return invoke("runner_status");
+      },
+      // Who is signed in, the workspaces they own, and the one they are in;
+      // resolves to the workspace a registration token is wanted for, or null.
+      offer: function (offer) {
+        return invoke("runner_offer", {
+          signedIn: !!offer.signedIn,
+          workspaces: (offer.workspaces || []).map(function (w) {
+            return { slug: String(w.slug), name: w.name == null ? null : String(w.name) };
+          }),
+          current: offer.current == null ? null : String(offer.current),
+        });
+      },
+      // A registration token for the workspace the app asked for, or why there is none.
+      register: function (answer) {
+        return invoke("runner_register", {
+          workspace: String(answer.workspace),
+          token: answer.token == null ? null : String(answer.token),
+          allowed: answer.allowed !== false,
+          error: answer.error == null ? null : String(answer.error),
+        });
+      },
+      // Start, stop, or a diagnosis's fix, by its id.
+      act: function (action) {
+        return invoke("runner_control", { action: String(action) });
+      },
+      // The app wants a registration token for a workspace.
+      onWanted: function (listener) {
+        return on("g1t-runner-wanted", listener);
+      },
+      // The runner's status changed.
+      onStatus: function (listener) {
+        return on("g1t-runner-status", listener);
+      },
+    }),
   };
   Object.defineProperty(window, "g1tDesktop", { value: Object.freeze(bridge), writable: false, configurable: false });
 
