@@ -29,13 +29,17 @@ pub enum ProtectionOp {
     CreateRepositoryDispatch,
     GetWorkspaceWorkflowPermissions,
     SetWorkspaceWorkflowPermissions,
+    ListWorkspaceManagedWorkflows,
+    CreateWorkspaceManagedWorkflow,
+    UpdateWorkspaceManagedWorkflow,
+    DeleteWorkspaceManagedWorkflow,
 }
 
 impl ProtectionOp {
     /// Every one: `Op::ALL` lists each as `Op::Protection(…)`, which a test
     /// checks against this.
     #[cfg(test)]
-    pub const ALL: [ProtectionOp; 14] = [
+    pub const ALL: [ProtectionOp; 18] = [
         ProtectionOp::UpdateEnvironment,
         ProtectionOp::DeleteEnvironment,
         ProtectionOp::GetPendingDeployments,
@@ -50,6 +54,10 @@ impl ProtectionOp {
         ProtectionOp::CreateRepositoryDispatch,
         ProtectionOp::GetWorkspaceWorkflowPermissions,
         ProtectionOp::SetWorkspaceWorkflowPermissions,
+        ProtectionOp::ListWorkspaceManagedWorkflows,
+        ProtectionOp::CreateWorkspaceManagedWorkflow,
+        ProtectionOp::UpdateWorkspaceManagedWorkflow,
+        ProtectionOp::DeleteWorkspaceManagedWorkflow,
     ];
 
     pub fn name(self) -> &'static str {
@@ -68,13 +76,28 @@ impl ProtectionOp {
             ProtectionOp::CreateRepositoryDispatch => "create_repository_dispatch",
             ProtectionOp::GetWorkspaceWorkflowPermissions => "get_workspace_workflow_permissions",
             ProtectionOp::SetWorkspaceWorkflowPermissions => "set_workspace_workflow_permissions",
+            ProtectionOp::ListWorkspaceManagedWorkflows => "list_workspace_managed_workflows",
+            ProtectionOp::CreateWorkspaceManagedWorkflow => "create_workspace_managed_workflow",
+            ProtectionOp::UpdateWorkspaceManagedWorkflow => "update_workspace_managed_workflow",
+            ProtectionOp::DeleteWorkspaceManagedWorkflow => "delete_workspace_managed_workflow",
         }
     }
 
     /// Whether it is about one repository, named by `repo`; the rest are a
     /// workspace's.
     pub fn needs_repo(self) -> bool {
-        !matches!(self, ProtectionOp::GetWorkspaceWorkflowPermissions | ProtectionOp::SetWorkspaceWorkflowPermissions)
+        !self.managed() && !matches!(self, ProtectionOp::GetWorkspaceWorkflowPermissions | ProtectionOp::SetWorkspaceWorkflowPermissions)
+    }
+
+    /// Whether it is about a workspace's managed workflows.
+    fn managed(self) -> bool {
+        matches!(
+            self,
+            ProtectionOp::ListWorkspaceManagedWorkflows
+                | ProtectionOp::CreateWorkspaceManagedWorkflow
+                | ProtectionOp::UpdateWorkspaceManagedWorkflow
+                | ProtectionOp::DeleteWorkspaceManagedWorkflow
+        )
     }
 
     pub fn title(self) -> &'static str {
@@ -93,6 +116,10 @@ impl ProtectionOp {
             ProtectionOp::CreateRepositoryDispatch => "Create a repository dispatch event",
             ProtectionOp::GetWorkspaceWorkflowPermissions => "Get a workspace's default workflow permissions",
             ProtectionOp::SetWorkspaceWorkflowPermissions => "Set a workspace's default workflow permissions",
+            ProtectionOp::ListWorkspaceManagedWorkflows => "List the workflows a workspace manages",
+            ProtectionOp::CreateWorkspaceManagedWorkflow => "Add a workflow a workspace manages",
+            ProtectionOp::UpdateWorkspaceManagedWorkflow => "Update a workflow a workspace manages",
+            ProtectionOp::DeleteWorkspaceManagedWorkflow => "Remove a workflow a workspace manages",
         }
     }
 
@@ -111,6 +138,10 @@ impl ProtectionOp {
             ProtectionOp::SetActionsAccess => "Set access_level: none, or organization to let the workspace's other private repositories use this repository's actions and reusable workflows (user is read as organization). Needs the Admin role.",
             ProtectionOp::GetWorkspaceWorkflowPermissions => "A workspace's policy for its repositories' job tokens: default_workflow_permissions (read, the default, or write) is what a repository made from now on gets until it chooses; max_workflow_permissions (write, the default, or read) is the most any repository's default may be, so read holds every repository to read-only; can_approve_pull_request_reviews (off by default) lets its repositories allow jobs to open and approve pull requests. Members only.",
             ProtectionOp::SetWorkspaceWorkflowPermissions => "Change a workspace's default_workflow_permissions, max_workflow_permissions and can_approve_pull_request_reviews; fields left out stay as they are. A maximum of read makes the default read too. Owners only.",
+            ProtectionOp::ListWorkspaceManagedWorkflows => "The workflows a workspace's owners added to its repositories, g1t's required workflows: each runs in every repository it targets as that repository's own workflow (its token, its secrets, its checks), under the path managed/<name>.yml, from a copy of its source file taken when it was saved. Each has name, path, workflow_name (its `name:`), source (owner/repo/path@ref), source_sha (the commit it was copied at), source_private, mode, repositories, visibility, content (the copy that runs) and when and by whom it was last saved. Owners only.",
+            ProtectionOp::CreateWorkspaceManagedWorkflow => "Add a workflow to a workspace's repositories. name (lowercase letters, digits and hyphens) makes its path managed/<name>.yml. source is a workflow file in one of the workspace's repositories, owner/repo/.g1t/workflows/file.yml@ref; g1t copies it at the commit ref names, and the copy runs until it is copied again (update_workspace_managed_workflow with refresh). mode is required (a repository's workflow of the same `name:` is set aside, and no one in the repository can turn it off, so its check can be required by a ruleset) or default (a repository's own workflow of the same name runs in its place, and the repository's admins can turn it off). repositories lists names and patterns (* matches any characters, ! excludes), read in order, the last match deciding; empty or left out is every repository. visibility is all (the default), public or private. A source in a private repository runs in private repositories only, so visibility must be private. Owners only. Returns the workflow.",
+            ProtectionOp::UpdateWorkspaceManagedWorkflow => "Change a workflow a workspace manages: its source, mode, repositories or visibility; fields left out stay as they are. Giving source, or refresh: true, copies the source again at the commit its ref names now. Owners only. Returns the workflow.",
+            ProtectionOp::DeleteWorkspaceManagedWorkflow => "Take a workflow out of every repository of the workspace. Its runs stay. Owners only.",
             ProtectionOp::CreateRepositoryDispatch => "Start the default branch's workflows that run `on: repository_dispatch` for event_type (those listing it under types, or with none). client_payload, a JSON object of at most 10 properties and 64 KB, is github.event.client_payload; github.event.action is event_type. A workflow job's own token may send one: with workflow_dispatch, it is how one workflow starts another. Needs the Write role (code:write). Returns how many runs started.",
         }
     }
@@ -124,6 +155,7 @@ impl ProtectionOp {
                 | ProtectionOp::GetForkPrApproval
                 | ProtectionOp::GetActionsAccess
                 | ProtectionOp::GetWorkspaceWorkflowPermissions
+                | ProtectionOp::ListWorkspaceManagedWorkflows
         )
     }
 
@@ -201,7 +233,31 @@ impl ProtectionOp {
                 }),
                 &["repo"],
             ),
-            ProtectionOp::GetWorkspaceWorkflowPermissions => (json!({ "workspace": workspace }), &["workspace"]),
+            ProtectionOp::GetWorkspaceWorkflowPermissions | ProtectionOp::ListWorkspaceManagedWorkflows => (json!({ "workspace": workspace }), &["workspace"]),
+            ProtectionOp::CreateWorkspaceManagedWorkflow => (
+                json!({
+                    "workspace": workspace,
+                    "name": { "type": "string", "description": "Lowercase letters, digits and hyphens: its path is managed/<name>.yml." },
+                    "source": managed_source(),
+                    "mode": managed_mode(),
+                    "repositories": managed_repositories(),
+                    "visibility": managed_visibility(),
+                }),
+                &["workspace", "name", "source", "mode"],
+            ),
+            ProtectionOp::UpdateWorkspaceManagedWorkflow => (
+                json!({
+                    "workspace": workspace,
+                    "workflow": managed_name(),
+                    "source": managed_source(),
+                    "mode": managed_mode(),
+                    "repositories": managed_repositories(),
+                    "visibility": managed_visibility(),
+                    "refresh": { "type": "boolean", "description": "Copy the source again, at the commit its ref names now." },
+                }),
+                &["workspace", "workflow"],
+            ),
+            ProtectionOp::DeleteWorkspaceManagedWorkflow => (json!({ "workspace": workspace, "workflow": managed_name() }), &["workspace", "workflow"]),
             ProtectionOp::SetWorkspaceWorkflowPermissions => (
                 json!({
                     "workspace": workspace,
@@ -229,6 +285,89 @@ impl ProtectionOp {
         };
         json!({ "type": "object", "properties": properties, "required": required })
     }
+}
+
+fn managed_name() -> Value {
+    json!({ "type": "string", "description": "The managed workflow's name, as in managed/<name>.yml." })
+}
+
+fn managed_source() -> Value {
+    json!({ "type": "string", "description": "A workflow file in one of the workspace's repositories: owner/repo/.g1t/workflows/file.yml@ref." })
+}
+
+fn managed_mode() -> Value {
+    json!({ "type": "string", "enum": ["required", "default"], "description": "required: a repository cannot take its place or turn it off. default: a repository's workflow of the same name takes its place." })
+}
+
+fn managed_repositories() -> Value {
+    json!({ "type": "array", "items": { "type": "string" }, "description": "Repository names and patterns (* matches any characters, ! excludes); empty is every repository." })
+}
+
+fn managed_visibility() -> Value {
+    json!({ "type": "string", "enum": ["all", "public", "private"], "description": "Which repositories, by visibility. A private source needs private." })
+}
+
+/// A workspace's managed workflow, in the API's shape.
+fn managed_view(workflow: &Value) -> Value {
+    json!({
+        "name": workflow["name"],
+        "path": workflow["path"],
+        "workflow_name": workflow["workflowName"],
+        "source": workflow["source"],
+        "source_sha": workflow["sourceSha"],
+        "source_private": workflow["sourcePrivate"],
+        "mode": workflow["mode"],
+        "repositories": workflow["repositories"],
+        "visibility": workflow["visibility"],
+        "content": workflow["content"],
+        "created_at": workflow["createdAt"],
+        "updated_at": workflow["updatedAt"],
+        "updated_by": workflow["updatedBy"],
+    })
+}
+
+/// A workspace's managed workflows: listed, added, changed and removed.
+async fn run_managed(op: ProtectionOp, actions: &worker::Fetcher, viewer: &Viewer, actor: g1t_contracts::User, workspace: String, input: &Value) -> Result<Outcome<Value>> {
+    let strings = |key: &str| -> Option<Vec<String>> {
+        input.get(key).and_then(Value::as_array).map(|items| items.iter().filter_map(Value::as_str).map(str::to_owned).collect())
+    };
+    Ok(match op {
+        ProtectionOp::ListWorkspaceManagedWorkflows => {
+            let listed: Outcome<Vec<Value>> = g1t_kit::call(actions, "workspace_managed_workflows", &json!({ "viewer": viewer, "workspace": workspace })).await?;
+            map(listed, |list| json!({ "total_count": list.len(), "managed_workflows": list.iter().map(managed_view).collect::<Vec<_>>() }))
+        }
+        ProtectionOp::CreateWorkspaceManagedWorkflow | ProtectionOp::UpdateWorkspaceManagedWorkflow => {
+            let create = op == ProtectionOp::CreateWorkspaceManagedWorkflow;
+            let name = if create { text(input, "name") } else { text(input, "workflow") };
+            let saved: Outcome<Value> = g1t_kit::call(
+                actions,
+                "set_workspace_managed_workflow",
+                &json!({
+                    "actor": actor,
+                    "workspace": workspace,
+                    "name": name.unwrap_or_default(),
+                    "create": create,
+                    "source": text(input, "source"),
+                    "mode": text(input, "mode"),
+                    "repositories": strings("repositories"),
+                    "visibility": text(input, "visibility"),
+                    "refresh": flag(input, "refresh").unwrap_or(false),
+                }),
+            )
+            .await?;
+            map(saved, |workflow| managed_view(&workflow))
+        }
+        ProtectionOp::DeleteWorkspaceManagedWorkflow => {
+            let removed: Outcome<bool> = g1t_kit::call(
+                actions,
+                "remove_workspace_managed_workflow",
+                &json!({ "actor": actor, "workspace": workspace, "name": text(input, "workflow").unwrap_or_default() }),
+            )
+            .await?;
+            map(removed, |removed| json!({ "deleted": removed }))
+        }
+        _ => Outcome::fail(FailureCode::Invalid, "Not a managed workflow operation."),
+    })
 }
 
 fn text(input: &Value, key: &str) -> Option<String> {
@@ -455,6 +594,9 @@ pub async fn run(op: ProtectionOp, services: &Services, viewer: &Viewer, input: 
         let Some(workspace) = text(input, "workspace") else {
             return Ok(Outcome::fail(FailureCode::Invalid, "Name the workspace."));
         };
+        if op.managed() {
+            return run_managed(op, actions, viewer, actor(), workspace, input).await;
+        }
         let settings: Outcome<Value> = if op == ProtectionOp::GetWorkspaceWorkflowPermissions {
             g1t_kit::call(actions, "workspace_actions_settings", &json!({ "viewer": viewer, "workspace": workspace })).await?
         } else {
@@ -587,9 +729,12 @@ pub async fn run(op: ProtectionOp, services: &Services, viewer: &Viewer, input: 
             map(started, |runs| json!({ "runs": runs }))
         }
         // Answered above, before a repository is read.
-        ProtectionOp::GetWorkspaceWorkflowPermissions | ProtectionOp::SetWorkspaceWorkflowPermissions => {
-            Outcome::fail(FailureCode::Invalid, "Name the workspace.")
-        }
+        ProtectionOp::GetWorkspaceWorkflowPermissions
+        | ProtectionOp::SetWorkspaceWorkflowPermissions
+        | ProtectionOp::ListWorkspaceManagedWorkflows
+        | ProtectionOp::CreateWorkspaceManagedWorkflow
+        | ProtectionOp::UpdateWorkspaceManagedWorkflow
+        | ProtectionOp::DeleteWorkspaceManagedWorkflow => Outcome::fail(FailureCode::Invalid, "Name the workspace."),
     })
 }
 

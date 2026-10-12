@@ -47,6 +47,25 @@ pub struct Workflow {
     /// `on.workflow_dispatch.inputs` as written, when it can be run by hand.
     pub dispatch: Option<Value>,
     pub last_run: Option<WorkflowRun>,
+    /// For a managed workflow (`managed/<name>.yml`): what installed it.
+    #[serde(default)]
+    pub managed_by: Option<ManagedBy>,
+}
+
+/// What installed a managed workflow in a repository.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedBy {
+    /// `g1t` for one g1t's services installed (such as a project's deploy
+    /// workflow), or the workspace's name for one its owners added.
+    pub origin: String,
+    /// The workspace's: `required` or `default`. Empty for g1t's.
+    #[serde(default)]
+    pub mode: String,
+    /// The workspace's: the file it was copied from, as
+    /// `owner/repo/path@ref`.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -801,6 +820,85 @@ pub struct SetManagedDeployArgs {
     pub output_dir: String,
     pub previews: bool,
     pub production: bool,
+}
+
+/// A workflow a workspace's owners added to its repositories
+/// (`g1t_actions::managed::Target`): it runs in each repository it targets
+/// as that repository's own, with its token and secrets, under the path
+/// `managed/<name>.yml`, from a copy of its source taken when it was saved.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceManagedWorkflow {
+    /// Lowercase letters, digits and hyphens: its path is
+    /// `managed/<name>.yml`.
+    pub name: String,
+    pub path: String,
+    /// Its `name:`, as repositories list it; a repository's workflow of
+    /// this name takes a default one's place.
+    pub workflow_name: String,
+    /// Where it was copied from: `owner/repo/path@ref`, a repository of the
+    /// same workspace.
+    pub source: String,
+    /// The commit it was copied at.
+    pub source_sha: Option<String>,
+    /// Whether the source repository is private, so the workflow runs in
+    /// private repositories only.
+    pub source_private: bool,
+    /// `required` or `default`.
+    pub mode: String,
+    /// Names and patterns of the repositories it runs in; empty is every one.
+    pub repositories: Vec<String>,
+    /// `all`, `public` or `private`.
+    pub visibility: String,
+    /// The copy that runs.
+    pub content: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub updated_by: String,
+}
+
+/// `workspace_managed_workflows`: owners only. Returns
+/// `Outcome<Vec<WorkspaceManagedWorkflow>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceManagedWorkflowsArgs {
+    pub viewer: Viewer,
+    pub workspace: String,
+}
+
+/// `set_workspace_managed_workflow`: owners only. Adds one (`create`, which
+/// needs `source` and `mode`) or changes one; fields left out stay as they
+/// are. The source is copied again when it is given or `refresh` is set.
+/// Refused when the source is not a workflow file in a repository of the
+/// workspace, or is private while the workflow could run in a public
+/// repository. Returns `Outcome<WorkspaceManagedWorkflow>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetWorkspaceManagedWorkflowArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub name: String,
+    #[serde(default)]
+    pub create: bool,
+    /// `owner/repo/.g1t/workflows/file.yml@ref`.
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub repositories: Option<Vec<String>>,
+    #[serde(default)]
+    pub visibility: Option<String>,
+    #[serde(default)]
+    pub refresh: bool,
+}
+
+/// `remove_workspace_managed_workflow`: owners only. Its runs stay.
+/// Returns `Outcome<bool>`, whether there was one.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RemoveWorkspaceManagedWorkflowArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub name: String,
 }
 
 /// `remove_managed_workflow`: takes a managed workflow out of a repository.

@@ -834,6 +834,11 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
     workspaceActionsSettings: (workspace, viewer) => call("workspace_actions_settings", { workspace, viewer }),
     setWorkspaceActionsSettings: (actor, workspace, change) =>
       call("set_workspace_actions_settings", { actor, workspace, ...change }),
+    workspaceManagedWorkflows: (workspace, viewer) => call("workspace_managed_workflows", { workspace, viewer }),
+    setWorkspaceManagedWorkflow: (actor, workspace, name, change, create = false) =>
+      call("set_workspace_managed_workflow", { actor, workspace, name, create, ...change }),
+    removeWorkspaceManagedWorkflow: (actor, workspace, name) =>
+      call("remove_workspace_managed_workflow", { actor, workspace, name }),
     environments: (repo, viewer) => call("environments", { repo, viewer }),
     setEnvironment: (actor, repo, name, change) => call("set_environment", { actor, repo, name, ...change }),
     deleteEnvironment: (actor, repo, name) => call("delete_environment", { actor, repo, name }),

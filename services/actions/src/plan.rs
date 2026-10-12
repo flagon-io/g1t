@@ -2604,6 +2604,11 @@ impl Actions {
 
     pub async fn on_minute(&self, now_ms: u64) -> Result<()> {
         let minute = now_ms / 60_000 * 60_000;
+        // Repositories a workspace's managed workflows changed in, beyond
+        // those synced at once (managed.rs): their schedules wait for it.
+        if let Err(error) = self.catch_up_syncs().await {
+            worker::console_error!("actions: catching up syncs failed: {error}");
+        }
         // Staff (or billing's usage watcher) paused scheduled runs across
         // g1t: this minute's schedules are skipped, not queued for later.
         // Kept 30 seconds in the isolate (g1t_kit::pause).

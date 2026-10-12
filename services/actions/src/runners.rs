@@ -210,10 +210,10 @@ fn entry(actor: AuditActor, action: &str, workspace: &str, repo: Option<String>,
 impl Actions {
     // --- Shared ------------------------------------------------------------
 
-    async fn audit(&self, entries: Vec<NewAuditEntry>) {
+    pub(crate) async fn audit(&self, entries: Vec<NewAuditEntry>) {
         let recorded: Result<u32> = g1t_kit::call(&self.events, "audit_record", &RecordAuditArgs { entries }).await;
         if let Err(error) = recorded {
-            worker::console_error!("actions: runner audit entries not recorded: {error}");
+            worker::console_error!("actions: audit entries not recorded: {error}");
         }
     }
 

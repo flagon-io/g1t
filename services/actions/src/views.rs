@@ -135,6 +135,12 @@ impl Actions {
             .await?
             .map(|run| run.summary());
         let parsed = workflow::parse(&row.source).ok();
+        let managed_by = if g1t_actions::managed::is_managed(&row.path) {
+            let workspace = row.repo.split_once('/').map_or(row.repo.as_str(), |(workspace, _)| workspace);
+            self.managed_by(workspace, &row.path, &row.source).await?
+        } else {
+            None
+        };
         Ok(Workflow {
             id: row.id.clone(),
             path: row.path.clone(),
@@ -149,6 +155,7 @@ impl Actions {
                 .and_then(|w| w.trigger("workflow_dispatch"))
                 .map(|t| serde_json::Value::Object(t.inputs.clone())),
             last_run,
+            managed_by,
         })
     }
 
@@ -164,11 +171,12 @@ impl Actions {
         // A file that is gone stays listed while it has runs, unless one in
         // the folder now has its name: then it would read as a second copy.
         // Files outside the folder are from before g1t stopped reading
-        // `.github`; their runs stay under All workflows.
+        // `.github`; their runs stay under All workflows. Managed
+        // workflows (managed.rs) are listed with the folder's.
         let rows = self
             .db
             .prepare(
-                "SELECT * FROM workflows w WHERE w.repo_id = ?1 AND w.path LIKE ?2
+                "SELECT * FROM workflows w WHERE w.repo_id = ?1 AND (w.path LIKE ?2 OR w.path LIKE 'managed/%')
                    AND (w.error IS NULL OR w.error NOT LIKE 'Its file is%'
                         OR (w.id IN (SELECT workflow_id FROM runs WHERE repo_id = ?1)
                             AND NOT EXISTS (SELECT 1 FROM workflows o WHERE o.repo_id = ?1 AND o.id <> w.id
@@ -476,9 +484,10 @@ impl Actions {
     }
 
     pub async fn set_workflow_enabled(&self, a: SetWorkflowEnabledArgs) -> Result<Outcome<Workflow>> {
-        if let Outcome::Fail(refused) = self.may(&a.actor, &a.repo, Capability::ManageSettings).await? {
-            return Ok(Outcome::Fail(refused));
-        }
+        let repo = match self.may(&a.actor, &a.repo, Capability::ManageSettings).await? {
+            Outcome::Ok(repo) => repo,
+            Outcome::Fail(refused) => return Ok(Outcome::Fail(refused)),
+        };
         let wanted = a.workflow.trim_start_matches(".g1t/workflows/");
         let row = self
             .db
@@ -493,6 +502,13 @@ impl Actions {
         let Some(row) = row else {
             return Ok(fail(FailureCode::NotFound, "No such workflow."));
         };
+        // A workspace's required workflow (managed.rs) stays on.
+        if !a.enabled && self.required_here(&repo, &row.path).await? {
+            return Ok(fail(
+                FailureCode::Forbidden,
+                format!("{} is required by {}: only its owners can change where it runs, under its Settings, Actions.", row.name, repo.namespace),
+            ));
+        }
         let state = if a.enabled { "active" } else { "disabled" };
         self.db.prepare("UPDATE workflows SET state = ? WHERE id = ?").bind(&[state.into(), row.id.as_str().into()])?.run().await?;
         let row = WorkflowRow { state: state.to_owned(), ..row };

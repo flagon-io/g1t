@@ -1194,6 +1194,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // A workspace's policy for its repositories' tokens.
     ("get_workspace_workflow_permissions", Scope::WorkspaceRead),
     ("set_workspace_workflow_permissions", Scope::WorkspaceAdmin),
+    // The workflows a workspace runs in its repositories: its owners'.
+    ("list_workspace_managed_workflows", Scope::WorkspaceRead),
+    ("create_workspace_managed_workflow", Scope::WorkspaceAdmin),
+    ("update_workspace_managed_workflow", Scope::WorkspaceAdmin),
+    ("delete_workspace_managed_workflow", Scope::WorkspaceAdmin),
     // A workspace's rules for personal access tokens, and the members'
     // tokens that reach it: who has access.
     ("get_token_policy", Scope::WorkspaceRead),

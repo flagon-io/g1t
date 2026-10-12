@@ -711,7 +711,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 380] = [
+    pub const ALL: [Op; 384] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1052,6 +1052,10 @@ impl Op {
         Op::Protection(ProtectionOp::CreateRepositoryDispatch),
         Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
         Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
+        Op::Protection(ProtectionOp::ListWorkspaceManagedWorkflows),
+        Op::Protection(ProtectionOp::CreateWorkspaceManagedWorkflow),
+        Op::Protection(ProtectionOp::UpdateWorkspaceManagedWorkflow),
+        Op::Protection(ProtectionOp::DeleteWorkspaceManagedWorkflow),
         Op::Tokens(TokenOp::GetTokenPolicy),
         Op::Tokens(TokenOp::SetTokenPolicy),
         Op::Tokens(TokenOp::ListMemberTokens),
