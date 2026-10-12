@@ -1,5 +1,5 @@
 //! The app's own settings: how it starts, what closing the window does,
-//! how it tells the person something arrived, the menu bar, zoom and
+//! how it tells the person something arrived, its title bar, zoom and
 //! updates. They live in their own window (`launcher/settings.html`),
 //! opened from the menu, the tray, or the site's account menu, and are
 //! kept with the server in `desktop.json` (config.rs). Whether g1t opens
@@ -36,8 +36,9 @@ pub struct Settings {
     pub flash: bool,
     /// What needs the person, counted on the icon.
     pub badge: bool,
-    /// The menu bar under the title (Windows and Linux; macOS has its own at the top).
-    pub menu_bar: bool,
+    /// The system's title bar, and on Windows and Linux its menu bar, in
+    /// place of g1t's own (frame.rs). Takes effect when g1t restarts.
+    pub system_title_bar: bool,
     /// The site's zoom, 1 for as it is.
     pub zoom: f64,
     /// Updates download by themselves; a person can still check from the menu.
@@ -46,7 +47,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { start_hidden: true, close_to_tray: true, notifications: true, flash: true, badge: true, menu_bar: true, zoom: 1.0, auto_update: true }
+        Self { start_hidden: true, close_to_tray: true, notifications: true, flash: true, badge: true, system_title_bar: false, zoom: 1.0, auto_update: true }
     }
 }
 
@@ -71,6 +72,8 @@ pub struct View {
     pub update_ready: Option<String>,
     /// When the app last asked for updates and heard back, in milliseconds since 1970.
     pub checked_at: Option<u64>,
+    /// The title bar setting differs from the one the windows have: a restart applies it.
+    pub title_bar_changed: bool,
 }
 
 pub fn view(app: &AppHandle) -> View {
@@ -82,6 +85,7 @@ pub fn view(app: &AppHandle) -> View {
         server: config::server(app).to_string(),
         update_ready: crate::updates::ready(app),
         checked_at: crate::updates::checked_at(app),
+        title_bar_changed: crate::frame::started(app) != crate::frame::custom(app),
     }
 }
 
@@ -90,13 +94,8 @@ pub fn apply(app: &AppHandle, mut settings: Settings) -> Result<(), String> {
     settings.zoom = Settings::clamp_zoom(settings.zoom);
     let before = config::settings(app);
     config::set_settings(app, settings.clone())?;
-    if let Some(window) = app.get_webview_window(WINDOW) {
-        if before.menu_bar != settings.menu_bar {
-            let _ = if settings.menu_bar { window.show_menu() } else { window.hide_menu() };
-        }
-        if before.zoom != settings.zoom {
-            let _ = window.set_zoom(settings.zoom);
-        }
+    if let Some(window) = app.get_webview_window(WINDOW).filter(|_| before.zoom != settings.zoom) {
+        let _ = window.set_zoom(settings.zoom);
     }
     if before.badge != settings.badge {
         crate::badge::refresh(app);
@@ -156,8 +155,11 @@ fn show(app: &AppHandle, check: bool) {
     }
     // A window still loading has no listener yet: the address asks instead.
     let page = if check { "settings.html?check" } else { "settings.html" };
-    let built = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App(page.into()))
+    let custom = crate::frame::started(app);
+    let builder = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App(page.into()))
         .title("g1t settings")
+        .initialization_script(crate::bridge::script(SETTINGS, custom));
+    let built = crate::frame::style(builder, custom)
         .inner_size(560.0, 680.0)
         .min_inner_size(440.0, 420.0)
         .maximizable(false)

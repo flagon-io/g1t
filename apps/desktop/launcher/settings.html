@@ -51,10 +51,17 @@
 
 			<section aria-labelledby="window-heading">
 				<h2 id="window-heading">Window</h2>
-				<label class="setting" id="menu-bar-row">
-					<span><strong>Show the menu bar</strong><span class="muted">File, Edit, View, Go, Window and Help, under the title.</span></span>
-					<input type="checkbox" role="switch" id="menuBar" />
+				<label class="setting">
+					<span
+						><strong>Use the system's title bar</strong
+						><span class="muted" id="system-title-bar-note">In place of g1t's own, with the menu bar under it.</span></span
+					>
+					<input type="checkbox" role="switch" id="systemTitleBar" />
 				</label>
+				<div class="setting" id="restart-row" hidden>
+					<span><strong>Restart to change the title bar</strong><span class="muted">g1t opens again where you were.</span></span>
+					<button type="button" id="restart-app" class="primary">Restart now</button>
+				</div>
 				<label class="setting">
 					<span><strong>Zoom</strong><span class="muted" id="zoom-note">The View menu changes it too.</span></span>
 					<select id="zoom">

@@ -17,9 +17,13 @@ use crate::{WINDOW, badge, config, updates};
 
 const SCRIPT: &str = include_str!("bridge.js");
 
-/// The bridge, run at the start of every page the window loads.
-pub fn script() -> String {
+/// The bridge, run at the start of every page a window loads: `window` is
+/// its label, and `custom` whether it draws g1t's title bar (frame.rs).
+pub fn script(window: &str, custom: bool) -> String {
     SCRIPT
+        .replace("__WINDOW__", window)
+        .replace("__FRAME__", if custom { "custom" } else { "system" })
+        .replace("\"__HEIGHT__\"", &crate::frame::HEIGHT.to_string())
         .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
         .replace("__PLATFORM__", std::env::consts::OS)
         .replace("\"__OUTSIDE__\"", &serde_json::to_string(crate::navigation::OUTSIDE).expect("a list of paths is JSON"))
@@ -59,6 +63,17 @@ fn from_settings(webview: &Webview) -> Result<(), String> {
 
 fn from_either(app: &AppHandle, webview: &Webview) -> Result<(), String> {
     from_site(app, webview).or_else(|_| from_launcher(webview))
+}
+
+/// The page asking is one the title bar is drawn on: the site's, the
+/// app's own, or GitHub's while signing in.
+fn from_frame(app: &AppHandle, webview: &Webview) -> Result<(), String> {
+    let url = caller(webview)?;
+    if config::is_server(app, &url) || config::is_launcher(&url) || crate::navigation::signing_in(&url) {
+        Ok(())
+    } else {
+        Err("only g1t's own pages may ask that".into())
+    }
 }
 
 #[tauri::command]
@@ -139,6 +154,34 @@ pub async fn check_for_updates(app: AppHandle, webview: Webview) -> Result<Strin
     updates::check(&app, webview.label() != settings::SETTINGS).await
 }
 
+/// A title bar button: `minimize`, `maximize` (which toggles), `close`,
+/// `drag`, or `maximized` to ask. Answers whether the window is maximized.
+#[tauri::command]
+pub fn window_control(app: AppHandle, webview: Webview, action: String) -> Result<bool, String> {
+    from_frame(&app, &webview)?;
+    let window = app.get_webview_window(webview.label()).ok_or("no such window")?;
+    crate::frame::control(&app, &window, &action)
+}
+
+/// The title bar's menu button: the app's menu, at that place in the window.
+#[tauri::command]
+pub fn window_menu(app: AppHandle, webview: Webview, x: f64, y: f64) -> Result<(), String> {
+    from_frame(&app, &webview)?;
+    let window = app.get_webview_window(WINDOW).filter(|_| webview.label() == WINDOW).ok_or("only the main window has a menu")?;
+    crate::frame::menu(&window, x, y)
+}
+
+/// Restarts g1t, installing a downloaded update on the way: the settings
+/// window offers it after a change that needs one.
+#[tauri::command]
+pub fn restart(app: AppHandle, webview: Webview) -> Result<(), String> {
+    from_settings(&webview)?;
+    if updates::ready(&app).is_some() {
+        updates::restart(&app);
+    }
+    app.restart()
+}
+
 /// The settings window's "Restart now": installs the downloaded update and starts it.
 #[tauri::command]
 pub fn restart_to_update(app: AppHandle, webview: Webview) -> Result<(), String> {
@@ -193,8 +236,12 @@ pub fn change_server(app: AppHandle, webview: Webview) -> Result<(), String> {
 mod tests {
     #[test]
     fn the_bridge_has_nothing_left_to_fill_in() {
-        let script = super::script();
-        assert!(!script.contains("__VERSION__") && !script.contains("__PLATFORM__") && !script.contains("__OUTSIDE__"));
+        let script = super::script("main", true);
+        for placeholder in ["__VERSION__", "__PLATFORM__", "__OUTSIDE__", "__WINDOW__", "__FRAME__", "__HEIGHT__"] {
+            assert!(!script.contains(placeholder), "{placeholder} is left in the bridge");
+        }
+        assert!(script.contains(r#"var HEIGHT = 36;"#) && script.contains(r#"var FRAME = "custom";"#));
+        assert!(super::script("settings", false).contains(r#"var FRAME = "system";"#));
         assert!(script.contains(r#"var OUTSIDE = ["/pricing""#));
     }
 }

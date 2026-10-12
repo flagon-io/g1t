@@ -137,6 +137,23 @@ pub fn is_launcher(url: &Url) -> bool {
     url.scheme() == "tauri" || (matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost"))
 }
 
+/// What the server's pages may call: the bridge's commands (bridge.rs).
+const SITE: &[&str] = &[
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-desktop-info",
+    "allow-notify",
+    "allow-set-badge",
+    "allow-open-url",
+    "allow-check-for-updates",
+    "allow-open-settings",
+    "allow-window-control",
+    "allow-window-menu",
+];
+
+/// What GitHub's pages may call while someone signs in: the title bar's buttons.
+const FRAME: &[&str] = &["allow-window-control", "allow-window-menu"];
+
 /// Lets the server's pages call the app: a capability for its origin,
 /// added once. Pages from anywhere else get no IPC at all, and bridge.rs
 /// checks the caller again on every command.
@@ -147,13 +164,19 @@ pub fn allow_site(app: &AppHandle) -> tauri::Result<()> {
     if allowed.iter().any(|known| *known == origin) {
         return Ok(());
     }
-    app.add_capability(
-        CapabilityBuilder::new(format!("site-{}", allowed.len()))
-            .window(WINDOW)
-            .remote(format!("{origin}/*"))
-            .permission("core:event:allow-listen")
-            .permission("core:event:allow-unlisten"),
-    )?;
+    let mut site = CapabilityBuilder::new(format!("site-{}", allowed.len())).window(WINDOW).remote(format!("{origin}/*"));
+    for permission in SITE {
+        site = site.permission(*permission);
+    }
+    app.add_capability(site)?;
+    // Signing in with GitHub: its pages get the title bar's buttons, and nothing else.
+    if allowed.is_empty() {
+        let mut sign_in = CapabilityBuilder::new("sign-in").window(WINDOW).remote("https://github.com/*".to_string());
+        for permission in FRAME {
+            sign_in = sign_in.permission(*permission);
+        }
+        app.add_capability(sign_in)?;
+    }
     allowed.push(origin);
     Ok(())
 }

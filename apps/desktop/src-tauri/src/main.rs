@@ -15,6 +15,7 @@
 mod badge;
 mod bridge;
 mod config;
+mod frame;
 mod links;
 mod menu;
 mod navigation;
@@ -58,6 +59,9 @@ fn main() {
             bridge::set_open_at_login,
             bridge::change_server,
             bridge::restart_to_update,
+            bridge::restart,
+            bridge::window_control,
+            bridge::window_menu,
         ])
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .setup(|app| {
@@ -66,12 +70,13 @@ fn main() {
             config::allow_site(&handle)?;
             let hidden = settings::starts_hidden(&handle);
             let prefs = config::settings(&handle);
+            let custom = frame::started(&handle);
             let builder = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("index.html".into()))
                 .title("g1t")
                 .inner_size(1280.0, 840.0)
                 .min_inner_size(720.0, 480.0)
                 .visible(false)
-                .initialization_script(bridge::script())
+                .initialization_script(bridge::script(WINDOW, custom))
                 .on_navigation({
                     let handle = handle.clone();
                     move |url| navigation::allowed(&handle, url)
@@ -85,15 +90,13 @@ fn main() {
             app.set_menu(menu::build(&handle)?)?;
             #[cfg(not(target_os = "macos"))]
             let builder = builder.menu(menu::build(&handle)?);
-            let window = builder.build()?;
+            let window = frame::style(builder, custom).build()?;
             // Opened at sign-in, g1t waits in the tray; otherwise the window comes up where it was.
             let _ = window.restore_state(StateFlags::all() - StateFlags::VISIBLE);
+            #[cfg(not(target_os = "macos"))]
+            frame::menu_bar(&window, custom);
             if !hidden {
                 let _ = window.show();
-            }
-            #[cfg(not(target_os = "macos"))]
-            if !prefs.menu_bar {
-                let _ = window.hide_menu();
             }
             if prefs.zoom != 1.0 {
                 let _ = window.set_zoom(prefs.zoom);

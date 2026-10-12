@@ -2,7 +2,7 @@
 // the moment it is made. Everything it asks is a command in
 // src/bridge.rs, answered only to this window.
 (function () {
-  var SWITCHES = ["startHidden", "closeToTray", "notifications", "flash", "badge", "menuBar", "autoUpdate"];
+  var SWITCHES = ["startHidden", "closeToTray", "notifications", "flash", "badge", "systemTitleBar", "autoUpdate"];
   var current = null;
 
   function byId(id) {
@@ -33,8 +33,8 @@
   function platform(name) {
     byId("flash-label").textContent =
       name === "macos" ? "Bounce the dock icon" : name === "windows" ? "Flash the taskbar icon" : "Ask for attention";
-    // macOS keeps its menu bar at the top of the screen, always there.
-    byId("menu-bar-row").hidden = name === "macos";
+    // macOS keeps its menu bar at the top of the screen, whichever title bar the window has.
+    if (name === "macos") byId("system-title-bar-note").textContent = "In place of g1t's own, which sits under the window's buttons.";
     if (name === "macos") byId("zoom-note").textContent = "The View menu changes it too: ⌘+, ⌘− and ⌘0.";
     else byId("zoom-note").textContent = "The View menu changes it too: Ctrl+=, Ctrl+− and Ctrl+0.";
   }
@@ -49,6 +49,8 @@
     // Starting in the tray only means something when g1t starts at sign-in.
     byId("startHidden").disabled = !view.openAtLogin;
     byId("startHidden").closest(".setting").classList.toggle("off", !view.openAtLogin);
+    // The title bar changes when g1t restarts.
+    byId("restart-row").hidden = !view.titleBarChanged;
     var zoom = byId("zoom");
     zoom.value = String(view.zoom);
     if (zoom.value === "") zoom.value = "1";
@@ -155,6 +157,14 @@
       })
       .catch(function () {});
   }
+
+  byId("restart-app").addEventListener("click", function () {
+    byId("restart-app").disabled = true;
+    invoke("restart").catch(function (error) {
+      byId("restart-app").disabled = false;
+      fail(error);
+    });
+  });
 
   byId("change-server").addEventListener("click", function () {
     invoke("change_server").catch(fail);

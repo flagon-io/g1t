@@ -3,5 +3,15 @@
 	"identifier": "launcher",
 	"description": "The launcher page bundled with the app, which finds the server and goes there. The site's own pages get their capability at run time, for the server that is configured (src/config.rs).",
 	"windows": ["main"],
-	"permissions": ["core:default"]
+	"permissions": [
+		"core:default",
+		"allow-desktop-info",
+		"allow-reachable",
+		"allow-set-server",
+		"allow-open-url",
+		"allow-check-for-updates",
+		"allow-open-settings",
+		"allow-window-control",
+		"allow-window-menu"
+	]
 }

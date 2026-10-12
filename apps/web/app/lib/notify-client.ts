@@ -17,7 +17,7 @@
  * workspace shows (`presence`) and your own (`me`), and `setPresence`
  * changes yours (lib/presence.ts, components/presence.tsx).
  */
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences, OwnPresence, PresenceChange, PresenceEntry } from "@g1t/contracts";
 
@@ -71,6 +71,12 @@ import {
  *   // Opens the app's own settings (starting with the computer, closing to
  *   // the tray, notifications, the badge, zoom, updates) in their window.
  *   openSettings() {},
+ *   // The search in the middle of the app's own title bar: its label, and
+ *   // what it opens. Returns what takes it away.
+ *   setSearch(label, open) { return () => {} },
+ *   // How tall the app's own title bar is, 0 under the system's. The page
+ *   // also finds it as <html data-titlebar> and --titlebar-h (app.css).
+ *   titleBarHeight: 36,
  * };
  *
  * The app also opens the site's pages for reading about g1t (pricing,
@@ -88,6 +94,8 @@ export type DesktopBridge = {
   onNavigate?(listener: (href: string) => void): () => void;
   checkForUpdates?(): Promise<string>;
   openSettings?(): void;
+  setSearch?(label: string, open: () => void): () => void;
+  titleBarHeight?: number;
 };
 
 declare global {
@@ -107,6 +115,27 @@ const never = () => () => {};
 /** Whether this page is inside the desktop app: false on the server, and until hydrated. */
 export function useDesktopApp(): boolean {
   return useSyncExternalStore(never, () => !!desktopBridge(), () => false);
+}
+
+/**
+ * Puts search in the desktop app's title bar while mounted. True when the
+ * bar has it, so the page can leave out its own search button.
+ */
+export function useTitleBarSearch(label: string, open: () => void): boolean {
+  const [shown, setShown] = useState(false);
+  const opener = useRef(open);
+  opener.current = open;
+  useEffect(() => {
+    const bridge = desktopBridge();
+    if (!bridge?.setSearch || !bridge.titleBarHeight) return;
+    const remove = bridge.setSearch(label, () => opener.current());
+    setShown(true);
+    return () => {
+      remove();
+      setShown(false);
+    };
+  }, [label]);
+  return shown;
 }
 
 // ── Sinks ────────────────────────────────────────────────────────────────

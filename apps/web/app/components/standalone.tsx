@@ -19,7 +19,7 @@ export function StandaloneFrame({ children }: { children: ReactNode }) {
   const terms = POLICIES.find((policy) => policy.slug === "terms");
   const privacy = POLICIES.find((policy) => policy.slug === "privacy");
   return (
-    <div className="flex min-h-dvh flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+    <div className="flex min-h-dvh flex-col pt-[max(env(safe-area-inset-top),var(--titlebar-h))] pb-[env(safe-area-inset-bottom)]">
       <Progress />
       <div id="content" tabIndex={-1} {...leaving} className={`flex grow flex-col items-center px-4 pt-[max(2.5rem,9vh)] pb-10 outline-none ${leaving.className}`}>
         <Link to="/" aria-label="g1t" className="flex rounded-md p-1 outline-none focus-visible:ring-2 focus-visible:ring-accent">

@@ -25,6 +25,11 @@ pub fn outside(path: &str) -> bool {
     OUTSIDE.iter().any(|page| if page.ends_with('/') { path.starts_with(page) } else { path == *page })
 }
 
+/// Whether a page is one of signing in with GitHub's.
+pub fn signing_in(url: &Url) -> bool {
+    url.scheme() == "https" && url.host_str().is_some_and(|host| SIGN_IN_HOSTS.contains(&host))
+}
+
 /// Whether the window may load `url`.
 pub fn allowed(app: &AppHandle, url: &Url) -> bool {
     match url.scheme() {
@@ -35,7 +40,7 @@ pub fn allowed(app: &AppHandle, url: &Url) -> bool {
     if config::is_launcher(url) || (config::is_server(app, url) && !outside(url.path())) {
         return true;
     }
-    if url.host_str().is_some_and(|host| SIGN_IN_HOSTS.contains(&host)) {
+    if signing_in(url) {
         return true;
     }
     let _ = app.opener().open_url(url.as_str(), None::<&str>);

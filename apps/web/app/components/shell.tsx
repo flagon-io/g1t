@@ -7,7 +7,7 @@ import { type Abilities, type ChatSidebarEntry, type InboxCounts, type Workspace
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
 import { NotificationsBell } from "./inbox";
-import { desktopBridge, useDesktopApp } from "../lib/notify-client";
+import { desktopBridge, useDesktopApp, useTitleBarSearch } from "../lib/notify-client";
 import { SpendPill } from "./spend";
 import { PinButton } from "./pin-button";
 import { Hint } from "./ui/hint";
@@ -1998,6 +1998,8 @@ export function AppShell({
   // A new page closes the drawer.
   useEffect(() => setDrawer(false), [pathname]);
   usePaletteShortcut(() => setPalette((open) => !open));
+  // In the desktop app, search is in the middle of its title bar, as in Slack, and not in the top bar too.
+  const titleSearch = useTitleBarSearch(`Search ${shell.workspace?.name ?? shell.workspace?.slug ?? "g1t"}`, () => setPalette(true));
   const leaving = useLeaving();
   useVisualViewport();
   const going = useNavigation().location?.pathname;
@@ -2092,7 +2094,7 @@ export function AppShell({
     <SidebarProvider open={!closed} onOpenChange={(open) => setClosed(!open)} openMobile={drawer} onOpenMobileChange={setDrawer} toggleSidebar={toggleSidebar}>
       <Progress />
       {ws && (
-        <div className="fixed inset-y-0 left-0 z-40 hidden md:block">
+        <div className="fixed top-(--frame-top) bottom-0 left-0 z-40 hidden md:block">
           <Rail workspace={ws} pins={shell.pins ?? []} unread={unread} account={<AccountMenu user={user} />} />
         </div>
       )}
@@ -2100,7 +2102,7 @@ export function AppShell({
         <Sidebar
           role="complementary"
           aria-label={`${MODE_MENU[panel]} sidebar`}
-          className={`fixed inset-y-0 z-40 max-lg:hidden ${ws ? "left-14" : "left-0"}`}
+          className={`fixed top-(--frame-top) bottom-0 z-40 max-lg:hidden ${ws ? "left-14" : "left-0"}`}
         >
           {sidebarTop(false)}
           <div className="min-h-0 grow">{sidebarNode()}</div>
@@ -2142,9 +2144,11 @@ export function AppShell({
             {/* Search, then what's yours (spend, Ask g1t), then the bell and Create new: one height, one rhythm. */}
             <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
               {/* With the sidebar open, search is at its top. */}
-              <span className={`flex ${inline && sidebarSearch ? "lg:hidden" : ""}`}>
-                <SearchButton place="bar" onClick={() => setPalette(true)} />
-              </span>
+              {!titleSearch && (
+                <span className={`flex ${inline && sidebarSearch ? "lg:hidden" : ""}`}>
+                  <SearchButton place="bar" onClick={() => setPalette(true)} />
+                </span>
+              )}
               {/* Your spend this month, or the workspace's for owners and billing managers; on a phone it is on Spend. */}
               {ws && (
                 <span className="flex max-md:hidden">

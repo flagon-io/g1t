@@ -75,10 +75,34 @@ running when the window closes** in [the app's settings](#settings).
 The tray menu also holds **Settings…**, **Check for updates…**, **Use
 another g1t…** and, when an update is downloaded, **Restart to update**.
 
+### The title bar
+
+g1t draws its own title bar, as Slack and Discord do, so the whole window
+is g1t and looks the same on Windows, macOS and Linux. It takes the
+colours of g1t's rail, in light and dark.
+
+| Part | What it does |
+| --- | --- |
+| **☰** (Windows and Linux) | Opens the app's [menu](#the-menu). |
+| **← →** | Back and forward through the pages you have been on. |
+| **Search** | In the middle: searches your workspace, as **Ctrl+K** or **⌘K** does. Before you are signed in, it shows the page's title. |
+| **Minimize, maximize, close** (Windows and Linux) | At the right. Close keeps g1t in the tray unless [the settings](#settings) say it quits. On macOS the window's own buttons sit at the left of the bar. |
+
+Drag the bar to move the window, and double-click it to maximize or
+restore it. The bar is there on every page the window shows, signing in
+with GitHub included.
+
+To have the system's title bar instead, turn on **Use the system's title
+bar** in [the settings](#settings). On Windows and Linux the menu bar
+comes back under it. g1t restarts to change it: the settings window offers
+**Restart now**.
+
 ### The menu
 
-The app has the menus a desktop app has: under the window's title on
-Windows and Linux, at the top of the screen on macOS.
+The app has the menus a desktop app has: under **☰** at the left of the
+title bar on Windows and Linux, or under the system's title bar if you
+use it, and at the top of the screen on macOS. Their shortcuts work
+either way.
 
 | Menu | What is in it |
 | --- | --- |
@@ -89,9 +113,6 @@ Windows and Linux, at the top of the screen on macOS.
 | **Window** | Minimize and maximize |
 | **Help** | **Desktop app guide** and **g1t.sh status**, in your browser; **Check for updates…**; **Restart to update**, once one is downloaded; **About g1t** |
 
-On Windows and Linux, **Show the menu bar** in the settings hides it; the
-tray's **Settings…** and your account menu still open the settings to bring
-it back.
 
 ## Settings
 
@@ -109,7 +130,7 @@ notify you among them, stay on g1t, in [your settings](/guides/notifications/#se
 | **Show notifications** | On | Notifications from your system. Off, nothing pops up from the app, whatever your account's settings say. |
 | **Flash the taskbar icon** (**Bounce the dock icon** on macOS) | On | Asks for your attention with a notification while the window is not in front. |
 | **Show a badge on the icon** | On | The count, or the dot on Windows. Off, the icon stays clean; the tray's hover text still counts. |
-| **Show the menu bar** | On | Windows and Linux only. |
+| **Use the system's title bar** | Off | The system's title bar in place of [g1t's own](#the-title-bar), with the menu bar under it on Windows and Linux. Takes effect when g1t restarts. |
 | **Zoom** | 100% | How large g1t is drawn, from 67% to 200%. The View menu changes it too. |
 | **Download updates by themselves** | On | Off, the app never checks on its own; **Check for updates** still does. |
 

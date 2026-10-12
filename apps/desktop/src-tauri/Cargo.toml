@@ -38,6 +38,11 @@ url = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1", features = ["time"] }
 
+# Keeping the menu bar hidden under g1t's own title bar (src/frame.rs); the
+# same GTK that Tauri brings.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+
 [profile.release]
 strip = "debuginfo"
 lto = "thin"
