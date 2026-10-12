@@ -711,7 +711,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 371] = [
+    pub const ALL: [Op; 379] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -940,6 +940,14 @@ impl Op {
         Op::Security(SecurityOp::GetWorkspaceSettings),
         Op::Security(SecurityOp::UpdateWorkspaceSettings),
         Op::Security(SecurityOp::GetOverview),
+        Op::Security(SecurityOp::ListAdvisories),
+        Op::Security(SecurityOp::GetAdvisory),
+        Op::Security(SecurityOp::CreateAdvisory),
+        Op::Security(SecurityOp::UpdateAdvisory),
+        Op::Security(SecurityOp::SetAdvisoryState),
+        Op::Security(SecurityOp::ListReports),
+        Op::Security(SecurityOp::ReportVulnerability),
+        Op::Security(SecurityOp::ReviewReport),
         Op::Rules(RulesOp::ListRepoRulesets),
         Op::Rules(RulesOp::GetRepoRuleset),
         Op::Rules(RulesOp::CreateRepoRuleset),

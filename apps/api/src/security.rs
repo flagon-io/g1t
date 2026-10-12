@@ -12,6 +12,10 @@
 //! need the g1t plan, which Security and quality comes with (a 402 says so); this module
 //! reads the input and gives each answer its public shape.
 
+use g1t_contracts::advisories::{
+    Advisory, AdvisoryInput, CreateAdvisoryArgs, GetAdvisoryArgs, ListAdvisoriesArgs, ListReportsArgs, ReportVulnerabilityArgs, ReviewReportArgs,
+    SetAdvisoryStateArgs, UpdateAdvisoryArgs,
+};
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::security::{AlertChange, AlertState, DismissArgs, DismissReason, ReopenArgs, SecretFinding, SecurityOverview, Vulnerability};
 use g1t_contracts::security_suite::*;
@@ -57,13 +61,21 @@ pub enum SecurityOp {
     GetWorkspaceSettings,
     UpdateWorkspaceSettings,
     GetOverview,
+    ListAdvisories,
+    GetAdvisory,
+    CreateAdvisory,
+    UpdateAdvisory,
+    SetAdvisoryState,
+    ListReports,
+    ReportVulnerability,
+    ReviewReport,
 }
 
 impl SecurityOp {
     /// Every one: `Op::ALL` lists each as `Op::Security(…)`, which a test
     /// checks against this.
     #[cfg(test)]
-    pub const ALL: [SecurityOp; 31] = [
+    pub const ALL: [SecurityOp; 39] = [
         SecurityOp::ListSecretAlerts,
         SecurityOp::GetSecretAlert,
         SecurityOp::UpdateSecretAlert,
@@ -95,6 +107,14 @@ impl SecurityOp {
         SecurityOp::GetWorkspaceSettings,
         SecurityOp::UpdateWorkspaceSettings,
         SecurityOp::GetOverview,
+        SecurityOp::ListAdvisories,
+        SecurityOp::GetAdvisory,
+        SecurityOp::CreateAdvisory,
+        SecurityOp::UpdateAdvisory,
+        SecurityOp::SetAdvisoryState,
+        SecurityOp::ListReports,
+        SecurityOp::ReportVulnerability,
+        SecurityOp::ReviewReport,
     ];
 
     pub fn name(self) -> &'static str {
@@ -130,6 +150,14 @@ impl SecurityOp {
             SecurityOp::GetWorkspaceSettings => "get_workspace_security_settings",
             SecurityOp::UpdateWorkspaceSettings => "update_workspace_security_settings",
             SecurityOp::GetOverview => "get_security_overview",
+            SecurityOp::ListAdvisories => "list_security_advisories",
+            SecurityOp::GetAdvisory => "get_security_advisory",
+            SecurityOp::CreateAdvisory => "create_security_advisory",
+            SecurityOp::UpdateAdvisory => "update_security_advisory",
+            SecurityOp::SetAdvisoryState => "set_security_advisory_state",
+            SecurityOp::ListReports => "list_vulnerability_reports",
+            SecurityOp::ReportVulnerability => "report_vulnerability",
+            SecurityOp::ReviewReport => "review_vulnerability_report",
         }
     }
 
@@ -167,6 +195,14 @@ impl SecurityOp {
             SecurityOp::GetWorkspaceSettings => "Get a workspace's security settings",
             SecurityOp::UpdateWorkspaceSettings => "Update a workspace's security settings",
             SecurityOp::GetOverview => "Get the security overview",
+            SecurityOp::ListAdvisories => "List security advisories",
+            SecurityOp::GetAdvisory => "Get a security advisory",
+            SecurityOp::CreateAdvisory => "Create a security advisory",
+            SecurityOp::UpdateAdvisory => "Update a security advisory",
+            SecurityOp::SetAdvisoryState => "Publish or withdraw a security advisory",
+            SecurityOp::ListReports => "List vulnerability reports",
+            SecurityOp::ReportVulnerability => "Report a vulnerability privately",
+            SecurityOp::ReviewReport => "Accept or decline a vulnerability report",
         }
     }
 
@@ -198,11 +234,19 @@ impl SecurityOp {
             SecurityOp::GetDependencyGraph => "Get the dependency graph: every package the lockfiles on the default branch resolve, per lockfile, with whether it is direct or transitive (where the lockfile says), for development, its license when recorded, its package URL and its open vulnerability alerts.",
             SecurityOp::GetSbom => "Export the dependency graph as an SPDX 2.3 JSON document, in sbom. Every package is named by its package URL.",
             SecurityOp::CompareDependencies => "Compare the dependencies at two commits, branches or tags (basehead, as base...head): what was added and removed per lockfile, with the known vulnerabilities of what was added and whether it passes the repository's dependency review policy. Needs the g1t plan on a private repository.",
-            SecurityOp::GetSettings => "Get a repository's security settings: when the Code scanning check fails, dependency review and its policy, its workspace's settings, and whether the paid features are on for it.",
-            SecurityOp::UpdateSettings => "Change a repository's security settings: code_scanning_gate (none, errors, critical, high, medium or any), dependency_review, review_fail_on (critical, high, medium, low or none), review_deny_licenses (SPDX ids) and review_comment. Takes the Admin role, or a security manager of the workspace. Require the Code scanning and Dependency review checks in branch protection to gate merges on them.",
+            SecurityOp::GetSettings => "Get a repository's security settings: when the Code scanning check fails, dependency review and its policy, whether secrets in the history open alerts, whether it takes private vulnerability reports, its workspace's settings, and whether the paid features are on for it.",
+            SecurityOp::UpdateSettings => "Change a repository's security settings: code_scanning_gate (none, errors, critical, high, medium or any), dependency_review, review_fail_on (critical, high, medium, low or none), review_deny_licenses (SPDX ids), review_comment, history_alerts (whether secrets found in the history open alerts; push protection stays on) and private_vulnerability_reporting. Takes the Admin role, or a security manager of the workspace. Require the Code scanning and Dependency review checks in branch protection to gate merges on them.",
             SecurityOp::GetWorkspaceSettings => "Get a workspace's security settings (delegated bypass, validity checks) and whether it has Security and quality, which comes with the g1t plan.",
             SecurityOp::UpdateWorkspaceSettings => "Turn delegated bypass and validity checks on or off for a workspace. Owners only.",
             SecurityOp::GetOverview => "Get a workspace's security overview: open alerts by type and severity, how many opened and closed in the last days (7 to 90, 30 by default), a daily trend, and for each repository which features are on and what is open, most in need first. Private repositories count only on the g1t plan.",
+            SecurityOp::ListAdvisories => "List a repository's security advisories, newest first: what it says about vulnerabilities in what it ships. Anyone who can see the repository sees the published ones; those who see its findings (Write, or a security manager) see drafts and withdrawn ones too. Filter by state (draft, published, withdrawn).",
+            SecurityOp::GetAdvisory => "Get one security advisory by its adv_… id or its G1TSA-… id, with the same visibility as the list.",
+            SecurityOp::CreateAdvisory => "Create a draft security advisory: title, description (Markdown), severity (critical, high, medium or low), and optionally cvss_vector and cvss_score, cve_id, the package affected (ecosystem, package, affected_versions, patched_versions) and credits. Admin on the repository, or a security manager of its workspace. Nobody is told of a draft.",
+            SecurityOp::UpdateAdvisory => "Change an advisory's fields, in any state; what is not given stays as it is. A published advisory's change is visible at once. Admin, or a security manager.",
+            SecurityOp::SetAdvisoryState => "Publish a draft (state published), withdraw a published advisory (state withdrawn), or publish a withdrawn one again. Publishing needs a description, tells webhooks (security_advisory.published) and the repository's watchers who chose security alerts, and makes the advisory visible to anyone who can see the repository. Admin, or a security manager.",
+            SecurityOp::ListReports => "List the vulnerability reports people sent the repository's maintainers privately, new ones first. Those who see findings (Write, or a security manager). Filter by state (new, accepted, declined). Reporters never see this list.",
+            SecurityOp::ReportVulnerability => "Report a vulnerability privately to a repository's maintainers: title, description and, if you like, severity. Needs private vulnerability reporting on for the repository. Anyone who can see the repository may report; on a public one you may report without a token by giving an email the maintainers can answer at. At most 5 reports a day per reporter and repository. The workspace's owners and security managers are told at once. You see only your own report.",
+            SecurityOp::ReviewReport => "Accept a report (decision accept), which makes a draft advisory from it crediting the reporter, or decline it (decision decline), with an optional note. Admin, or a security manager.",
         }
     }
 
@@ -248,6 +292,21 @@ impl SecurityOp {
             properties
         };
         let workspace = || json!({ "type": "string", "description": "The workspace's slug, e.g. \"flagon-io\"." });
+        let advisory_fields = |mut properties: Value| {
+            properties["title"] = json!({ "type": "string", "description": "One line: what the vulnerability is. At most 200 characters." });
+            properties["description"] = json!({ "type": "string", "description": "Markdown: what is affected, how it is exploited, what to do. At most 20,000 characters." });
+            properties["severity"] = json!({ "type": "string", "enum": ["critical", "high", "medium", "low"], "description": "How bad it is." });
+            properties["cvss_vector"] = json!({ "type": "string", "description": "A CVSS vector string, when scored: CVSS:3.1/AV:N/…" });
+            properties["cvss_score"] = json!({ "type": "number", "description": "The CVSS base score, 0 to 10." });
+            properties["cve_id"] = json!({ "type": "string", "description": "CVE-2026-12345, when one was issued elsewhere." });
+            properties["ecosystem"] = json!({ "type": "string", "description": "How the affected package is distributed: npm, crates.io, Go, PyPI, or how the project ships." });
+            properties["package"] = json!({ "type": "string", "description": "The package affected." });
+            properties["affected_versions"] = json!({ "type": "string", "description": "The versions affected, as a range: >= 1.2.0, < 1.4.1" });
+            properties["patched_versions"] = json!({ "type": "string", "description": "The versions that fix it: >= 1.4.1" });
+            properties["credits"] = json!({ "type": "array", "items": { "type": "string" }, "description": "Who found or fixed it: usernames or names, up to 20." });
+            properties
+        };
+        let advisory_id = || json!({ "type": "string", "description": "The advisory's id: adv_…, or its G1TSA-… id." });
         let (properties, required): (Value, &[&str]) = match self {
             SecurityOp::ListSecretAlerts => (
                 either(json!({
@@ -394,6 +453,8 @@ impl SecurityOp {
                     "review_fail_on": { "type": "string", "enum": ["critical", "high", "medium", "low", "none"], "description": "The lowest severity of a known vulnerability in an added package that fails the review." },
                     "review_deny_licenses": { "type": "array", "items": { "type": "string" }, "description": "SPDX license ids an added package may not have." },
                     "review_comment": { "type": "boolean", "description": "Whether the review comments its summary on the pull request." },
+                    "history_alerts": { "type": "boolean", "description": "Whether secrets found in the history, and in pushes too large to scan first, open alerts and tell people. Push protection stays on either way." },
+                    "private_vulnerability_reporting": { "type": "boolean", "description": "Whether anyone who can see the repository may report a vulnerability privately to its maintainers." },
                 }),
                 &["repo"],
             ),
@@ -409,6 +470,44 @@ impl SecurityOp {
             SecurityOp::GetOverview => (
                 json!({ "workspace": workspace(), "days": { "type": "integer", "description": "Days of trend, 7 to 90. Default 30." } }),
                 &["workspace"],
+            ),
+            SecurityOp::ListAdvisories => (
+                json!({ "repo": repo(), "state": { "type": "string", "enum": ["draft", "published", "withdrawn"], "description": "Only advisories in this state." } }),
+                &["repo"],
+            ),
+            SecurityOp::GetAdvisory => (json!({ "repo": repo(), "id": advisory_id() }), &["repo", "id"]),
+            SecurityOp::CreateAdvisory => (advisory_fields(json!({ "repo": repo() })), &["repo", "title", "severity"]),
+            SecurityOp::UpdateAdvisory => (advisory_fields(json!({ "repo": repo(), "id": advisory_id() })), &["repo", "id"]),
+            SecurityOp::SetAdvisoryState => (
+                json!({
+                    "repo": repo(),
+                    "id": advisory_id(),
+                    "state": { "type": "string", "enum": ["published", "withdrawn"], "description": "published to publish (or publish again), withdrawn to withdraw." },
+                }),
+                &["repo", "id", "state"],
+            ),
+            SecurityOp::ListReports => (
+                json!({ "repo": repo(), "state": { "type": "string", "enum": ["new", "accepted", "declined"], "description": "Only reports in this state." } }),
+                &["repo"],
+            ),
+            SecurityOp::ReportVulnerability => (
+                json!({
+                    "repo": repo(),
+                    "title": { "type": "string", "description": "One line: what you found. At most 200 characters." },
+                    "description": { "type": "string", "description": "What is affected and how to reproduce it. At most 20,000 characters." },
+                    "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"], "description": "How bad you think it is, if you like." },
+                    "email": { "type": "string", "description": "Without a token: where the maintainers can answer you." },
+                }),
+                &["repo", "title", "description"],
+            ),
+            SecurityOp::ReviewReport => (
+                json!({
+                    "repo": repo(),
+                    "id": { "type": "string", "description": "The report's id: vrp_…" },
+                    "decision": { "type": "string", "enum": ["accept", "decline"], "description": "accept makes a draft advisory from it; decline closes it." },
+                    "note": { "type": "string", "description": "A note for the record, in a sentence. At most 1,000 characters." },
+                }),
+                &["repo", "id", "decision"],
             ),
         };
         let mut schema = json!({ "type": "object", "properties": properties });
@@ -599,6 +698,41 @@ async fn pass<A: Serialize>(services: &Services, method: &str, args: &A) -> Resu
 
 fn path_of(input: &Value) -> Option<RepoPath> {
     crate::operations::repo_path(input)
+}
+
+/// An advisory's fields as given, over `current` for what is not.
+pub(crate) fn advisory_input(input: &Value, current: &AdvisoryInput) -> AdvisoryInput {
+    let given = |key: &str, now: &Option<String>| if input.get(key).is_some() { text(input, key) } else { now.clone() };
+    AdvisoryInput {
+        title: text(input, "title").unwrap_or_else(|| current.title.clone()),
+        description: input["description"].as_str().map(str::to_owned).unwrap_or_else(|| current.description.clone()),
+        severity: text(input, "severity").map(|severity| severity.to_lowercase()).unwrap_or_else(|| current.severity.clone()),
+        cvss_vector: given("cvss_vector", &current.cvss_vector),
+        cvss_score: if input.get("cvss_score").is_some() { input["cvss_score"].as_f64() } else { current.cvss_score },
+        cve_id: given("cve_id", &current.cve_id),
+        ecosystem: given("ecosystem", &current.ecosystem),
+        package: given("package", &current.package),
+        affected_versions: given("affected_versions", &current.affected_versions),
+        patched_versions: given("patched_versions", &current.patched_versions),
+        credits: if input["credits"].is_array() { strings(input, "credits") } else { current.credits.clone() },
+    }
+}
+
+/// An advisory as it stands, as input to change it from.
+fn advisory_as_input(advisory: &Advisory) -> AdvisoryInput {
+    AdvisoryInput {
+        title: advisory.title.clone(),
+        description: advisory.description.clone(),
+        severity: advisory.severity.clone(),
+        cvss_vector: advisory.cvss_vector.clone(),
+        cvss_score: advisory.cvss_score,
+        cve_id: advisory.cve_id.clone(),
+        ecosystem: advisory.ecosystem.clone(),
+        package: advisory.package.clone(),
+        affected_versions: advisory.affected_versions.clone(),
+        patched_versions: advisory.patched_versions.clone(),
+        credits: advisory.credits.clone(),
+    }
 }
 
 pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &Value) -> Result<Outcome<Value>> {
@@ -945,7 +1079,82 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
             if let Some(on) = flag(input, "review_comment") {
                 settings.review_comment = on;
             }
+            if let Some(on) = flag(input, "history_alerts") {
+                settings.history_alerts = on;
+            }
+            if let Some(on) = flag(input, "private_vulnerability_reporting") {
+                settings.private_vulnerability_reporting = on;
+            }
             pass(services, "set_security_settings", &SetSecuritySettingsArgs { actor: actor(), repo, settings }).await
+        }
+        SecurityOp::ListAdvisories => {
+            let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
+            let state = match one_of(input, "state", &["draft", "published", "withdrawn"]) {
+                Ok(state) => state,
+                Err(message) => return failed(FailureCode::Invalid, &message),
+            };
+            pass(services, "list_advisories", &ListAdvisoriesArgs { viewer: viewer.clone(), repo, state }).await
+        }
+        SecurityOp::GetAdvisory => {
+            let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
+            pass(services, "get_advisory", &GetAdvisoryArgs { viewer: viewer.clone(), repo, id: text(input, "id").unwrap_or_default() }).await
+        }
+        SecurityOp::CreateAdvisory => {
+            let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
+            let advisory = advisory_input(input, &AdvisoryInput::default());
+            pass(services, "create_advisory", &CreateAdvisoryArgs { actor: actor(), repo, advisory }).await
+        }
+        SecurityOp::UpdateAdvisory => {
+            let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
+            let id = text(input, "id").unwrap_or_default();
+            // What is not given stays as it is.
+            let current: Outcome<Advisory> = call(services, "get_advisory", &GetAdvisoryArgs { viewer: viewer.clone(), repo: repo.clone(), id: id.clone() }).await?;
+            let current = match current {
+                Outcome::Ok(advisory) => advisory,
+                Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+            };
+            let advisory = advisory_input(input, &advisory_as_input(&current));
+            pass(services, "update_advisory", &UpdateAdvisoryArgs { actor: actor(), repo, id, advisory }).await
+        }
+        SecurityOp::SetAdvisoryState => {
+            let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
+            let state = match one_of(input, "state", &["published", "withdrawn"]) {
+                Ok(Some(state)) => state,
+                Ok(None) => return failed(FailureCode::Invalid, "state is published or withdrawn."),
+                Err(message) => return failed(FailureCode::Invalid, &message),
+            };
+            pass(services, "set_advisory_state", &SetAdvisoryStateArgs { actor: actor(), repo, id: text(input, "id").unwrap_or_default(), state }).await
+        }
+        SecurityOp::ListReports => {
+            let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
+            let state = match one_of(input, "state", &["new", "accepted", "declined"]) {
+                Ok(state) => state,
+                Err(message) => return failed(FailureCode::Invalid, &message),
+            };
+            pass(services, "list_vulnerability_reports", &ListReportsArgs { viewer: viewer.clone(), repo, state }).await
+        }
+        SecurityOp::ReportVulnerability => {
+            let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
+            let args = ReportVulnerabilityArgs {
+                viewer: viewer.clone(),
+                repo,
+                title: text(input, "title").unwrap_or_default(),
+                description: text(input, "description").unwrap_or_default(),
+                severity: text(input, "severity").map(|severity| severity.to_lowercase()),
+                email: text(input, "email"),
+            };
+            pass(services, "report_vulnerability", &args).await
+        }
+        SecurityOp::ReviewReport => {
+            let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
+            let args = ReviewReportArgs {
+                actor: actor(),
+                repo,
+                id: text(input, "id").unwrap_or_default(),
+                decision: text(input, "decision").unwrap_or_default().to_lowercase(),
+                note: text(input, "note").unwrap_or_default(),
+            };
+            pass(services, "review_vulnerability_report", &args).await
         }
         SecurityOp::GetWorkspaceSettings => {
             let Some(workspace) = workspace else { return failed(FailureCode::Invalid, "Give the workspace.") };

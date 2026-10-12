@@ -480,7 +480,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "security",
         title: "Security",
-        description: "A repository's security: secret scanning alerts and push protection bypasses, custom secret patterns, code scanning alerts and SARIF uploads, vulnerability alerts, the dependency graph and its SBOM, dependency review, settings, and a workspace's overview. Fix an alert with g1t. Findings are shown to those who can change the code only. Give `repo` (owner/name), or `workspace` for lists across one.",
+        description: "A repository's security: secret scanning alerts and push protection bypasses, custom secret patterns, code scanning alerts and SARIF uploads, vulnerability alerts, the dependency graph and its SBOM, dependency review, settings, a workspace's overview, security advisories and private vulnerability reports. Fix an alert with g1t. Findings are shown to those who can change the code only; published advisories to anyone who can see the repository. Give `repo` (owner/name), or `workspace` for lists across one.",
         default_action: Some("secret_alerts"),
         actions: &[
             a("secret_alerts", Op::Security(SecurityOp::ListSecretAlerts), "Secret scanning alerts; by state, secret_type, validity, bypassed"),
@@ -514,6 +514,14 @@ pub const TOOLS: &[Tool] = &[
             a("workspace_settings", Op::Security(SecurityOp::GetWorkspaceSettings), "A workspace's delegated bypass and validity checks"),
             a("update_workspace_settings", Op::Security(SecurityOp::UpdateWorkspaceSettings), "Turn delegated bypass or validity checks on or off"),
             a("overview", Op::Security(SecurityOp::GetOverview), "A workspace's alerts, trends and coverage"),
+            a("advisories", Op::Security(SecurityOp::ListAdvisories), "A repository's security advisories; by state"),
+            a("advisory", Op::Security(SecurityOp::GetAdvisory), "One advisory by adv_… or G1TSA-… id"),
+            a("create_advisory", Op::Security(SecurityOp::CreateAdvisory), "Draft a security advisory"),
+            a("update_advisory", Op::Security(SecurityOp::UpdateAdvisory), "Change an advisory's fields"),
+            a("set_advisory_state", Op::Security(SecurityOp::SetAdvisoryState), "Publish or withdraw an advisory"),
+            a("reports", Op::Security(SecurityOp::ListReports), "Vulnerability reports sent to the maintainers; by state"),
+            a("report_vulnerability", Op::Security(SecurityOp::ReportVulnerability), "Report a vulnerability privately to a repository's maintainers"),
+            a("review_report", Op::Security(SecurityOp::ReviewReport), "Accept a report as a draft advisory, or decline it"),
         ],
     },
     Tool {

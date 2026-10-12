@@ -256,6 +256,15 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/workspaces/:workspace/security/settings", Op::Security(SecurityOp::GetWorkspaceSettings), &[]),
     route("PATCH", "/workspaces/:workspace/security/settings", Op::Security(SecurityOp::UpdateWorkspaceSettings), &[]),
     route("GET", "/workspaces/:workspace/security/overview", Op::Security(SecurityOp::GetOverview), &[("days", "days")]),
+    // Reporting: a repository's advisories, and the vulnerability reports sent to its maintainers.
+    route("GET", "/repos/:owner/:name/security/advisories", Op::Security(SecurityOp::ListAdvisories), &[("state", "state")]),
+    route("POST", "/repos/:owner/:name/security/advisories", Op::Security(SecurityOp::CreateAdvisory), &[]),
+    route("GET", "/repos/:owner/:name/security/advisories/:id", Op::Security(SecurityOp::GetAdvisory), &[]),
+    route("PATCH", "/repos/:owner/:name/security/advisories/:id", Op::Security(SecurityOp::UpdateAdvisory), &[]),
+    route("POST", "/repos/:owner/:name/security/advisories/:id/state", Op::Security(SecurityOp::SetAdvisoryState), &[]),
+    route("GET", "/repos/:owner/:name/security/reports", Op::Security(SecurityOp::ListReports), &[("state", "state")]),
+    route("POST", "/repos/:owner/:name/security/reports", Op::Security(SecurityOp::ReportVulnerability), &[]),
+    route("PATCH", "/repos/:owner/:name/security/reports/:id", Op::Security(SecurityOp::ReviewReport), &[]),
     route("GET", "/repos", Op::ListRepos, &[("q", "query")]),
     route(
         "GET",

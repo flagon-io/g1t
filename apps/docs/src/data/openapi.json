@@ -315,6 +315,20 @@
       ]
     },
     {
+      "name": "Security advisories",
+      "description": "What a repository says about vulnerabilities in what it ships: advisories drafted, published and withdrawn by its maintainers, and the vulnerability reports people send them privately when the repository takes them.",
+      "x-tools": [
+        "list_security_advisories",
+        "create_security_advisory",
+        "get_security_advisory",
+        "update_security_advisory",
+        "set_security_advisory_state",
+        "list_vulnerability_reports",
+        "report_vulnerability",
+        "review_vulnerability_report"
+      ]
+    },
+    {
       "name": "Rules",
       "description": "Rulesets: what may happen to a repository's branches and tags and what a pull request needs before it merges, for a repository or across a workspace; the rules that hold for one branch; and how they judged each push and merge, with insights.",
       "x-tools": [
@@ -23084,7 +23098,7 @@
           "Security settings"
         ],
         "summary": "Get a repository's security settings",
-        "description": "Get a repository's security settings: when the Code scanning check fails, dependency review and its policy, its workspace's settings, and whether the paid features are on for it.",
+        "description": "Get a repository's security settings: when the Code scanning check fails, dependency review and its policy, whether secrets in the history open alerts, whether it takes private vulnerability reports, its workspace's settings, and whether the paid features are on for it.",
         "x-operation": "get_security_settings",
         "x-mcp-tool": "security",
         "x-mcp-action": "settings",
@@ -23130,7 +23144,9 @@
                     "review_deny_licenses": [
                       "AGPL-3.0-only"
                     ],
-                    "review_comment": true
+                    "review_comment": true,
+                    "history_alerts": true,
+                    "private_vulnerability_reporting": false
                   },
                   "workspace": {
                     "delegated_bypass": true,
@@ -23195,7 +23211,7 @@
           "Security settings"
         ],
         "summary": "Update a repository's security settings",
-        "description": "Change a repository's security settings: code_scanning_gate (none, errors, critical, high, medium or any), dependency_review, review_fail_on (critical, high, medium, low or none), review_deny_licenses (SPDX ids) and review_comment. Takes the Admin role, or a security manager of the workspace. Require the Code scanning and Dependency review checks in branch protection to gate merges on them.\n\nOnly what you send changes. The `Code scanning` and `Dependency review` checks gate merges once you require them in branch protection.",
+        "description": "Change a repository's security settings: code_scanning_gate (none, errors, critical, high, medium or any), dependency_review, review_fail_on (critical, high, medium, low or none), review_deny_licenses (SPDX ids), review_comment, history_alerts (whether secrets found in the history open alerts; push protection stays on) and private_vulnerability_reporting. Takes the Admin role, or a security manager of the workspace. Require the Code scanning and Dependency review checks in branch protection to gate merges on them.\n\nOnly what you send changes. The `Code scanning` and `Dependency review` checks gate merges once you require them in branch protection.",
         "x-operation": "update_security_settings",
         "x-mcp-tool": "security",
         "x-mcp-action": "update_settings",
@@ -23241,7 +23257,9 @@
                     "review_deny_licenses": [
                       "AGPL-3.0-only"
                     ],
-                    "review_comment": true
+                    "review_comment": true,
+                    "history_alerts": true,
+                    "private_vulnerability_reporting": true
                   },
                   "workspace": {
                     "delegated_bypass": true,
@@ -23349,6 +23367,14 @@
                   "review_comment": {
                     "type": "boolean",
                     "description": "Whether the review comments its summary on the pull request."
+                  },
+                  "history_alerts": {
+                    "type": "boolean",
+                    "description": "Whether secrets found in the history, and in pushes too large to scan first, open alerts and tell people. Push protection stays on either way."
+                  },
+                  "private_vulnerability_reporting": {
+                    "type": "boolean",
+                    "description": "Whether anyone who can see the repository may report a vulnerability privately to its maintainers."
                   }
                 }
               },
@@ -23766,6 +23792,1346 @@
         },
         "x-example-query": {
           "days": "30"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/security/advisories": {
+      "get": {
+        "operationId": "list_security_advisories",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "List security advisories",
+        "description": "List a repository's security advisories, newest first: what it says about vulnerabilities in what it ships. Anyone who can see the repository sees the published ones; those who see its findings (Write, or a security manager) see drafts and withdrawn ones too. Filter by state (draft, published, withdrawn).\n\nWithout a token, or with one that has no Write on the repository, only published advisories are listed. `state` filters to `draft`, `published` or `withdrawn`; drafts and withdrawn advisories are shown only to those who see the repository's findings.",
+        "x-operation": "list_security_advisories",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "advisories",
+        "x-scope": "security:read",
+        "security": [
+          {
+            "token": [
+              "security:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "withdrawn"
+              ]
+            },
+            "description": "Only advisories in this state."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                    "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo": "flagon-io/hello",
+                    "title": "Path traversal in the archive reader",
+                    "description": "A crafted archive could write outside the directory it is extracted to.\n\nUpgrade to 1.4.1.",
+                    "severity": "high",
+                    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                    "cvss_score": 8.1,
+                    "cve_id": "CVE-2026-12345",
+                    "ecosystem": "npm",
+                    "package": "@flagon/hello",
+                    "affected_versions": ">= 1.2.0, < 1.4.1",
+                    "patched_versions": ">= 1.4.1",
+                    "state": "published",
+                    "credits": [
+                      "ana"
+                    ],
+                    "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-06T09:14:02.118Z",
+                    "updated_at": "2026-10-07T15:02:40.000Z",
+                    "published_at": "2026-10-07T15:02:40.000Z",
+                    "withdrawn_at": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        },
+        "x-example-query": {
+          "state": "published"
+        }
+      },
+      "post": {
+        "operationId": "create_security_advisory",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Create a security advisory",
+        "description": "Create a draft security advisory: title, description (Markdown), severity (critical, high, medium or low), and optionally cvss_vector and cvss_score, cve_id, the package affected (ecosystem, package, affected_versions, patched_versions) and credits. Admin on the repository, or a security manager of its workspace. Nobody is told of a draft.\n\nThe advisory starts as a draft nobody but the maintainers sees; publish it with `POST …/advisories/{id}/state`. Takes the Admin role, or a security manager of the workspace. A title or severity that is missing, or a `cve_id` that is not of the form `CVE-2026-12345`, is `422`.",
+        "x-operation": "create_security_advisory",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "create_advisory",
+        "x-scope": "security:write",
+        "security": [
+          {
+            "token": [
+              "security:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                  "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo": "flagon-io/hello",
+                  "title": "Path traversal in the archive reader",
+                  "description": "A crafted archive could write outside the directory it is extracted to.",
+                  "severity": "high",
+                  "cvss_vector": null,
+                  "cvss_score": null,
+                  "cve_id": null,
+                  "ecosystem": "npm",
+                  "package": "@flagon/hello",
+                  "affected_versions": ">= 1.2.0, < 1.4.1",
+                  "patched_versions": ">= 1.4.1",
+                  "state": "draft",
+                  "credits": [
+                    "ana"
+                  ],
+                  "report_id": null,
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-06T09:14:02.118Z",
+                  "updated_at": "2026-10-06T09:14:02.118Z",
+                  "published_at": null,
+                  "withdrawn_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "One line: what the vulnerability is. At most 200 characters."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Markdown: what is affected, how it is exploited, what to do. At most 20,000 characters."
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "high",
+                      "medium",
+                      "low"
+                    ],
+                    "description": "How bad it is."
+                  },
+                  "cvss_vector": {
+                    "type": "string",
+                    "description": "A CVSS vector string, when scored: CVSS:3.1/AV:N/…"
+                  },
+                  "cvss_score": {
+                    "type": "number",
+                    "description": "The CVSS base score, 0 to 10."
+                  },
+                  "cve_id": {
+                    "type": "string",
+                    "description": "CVE-2026-12345, when one was issued elsewhere."
+                  },
+                  "ecosystem": {
+                    "type": "string",
+                    "description": "How the affected package is distributed: npm, crates.io, Go, PyPI, or how the project ships."
+                  },
+                  "package": {
+                    "type": "string",
+                    "description": "The package affected."
+                  },
+                  "affected_versions": {
+                    "type": "string",
+                    "description": "The versions affected, as a range: >= 1.2.0, < 1.4.1"
+                  },
+                  "patched_versions": {
+                    "type": "string",
+                    "description": "The versions that fix it: >= 1.4.1"
+                  },
+                  "credits": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Who found or fixed it: usernames or names, up to 20."
+                  }
+                },
+                "required": [
+                  "title",
+                  "severity"
+                ]
+              },
+              "example": {
+                "title": "Path traversal in the archive reader",
+                "description": "A crafted archive could write outside the directory it is extracted to.",
+                "severity": "high",
+                "ecosystem": "npm",
+                "package": "@flagon/hello",
+                "affected_versions": ">= 1.2.0, < 1.4.1",
+                "patched_versions": ">= 1.4.1",
+                "credits": [
+                  "ana"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/security/advisories/{id}": {
+      "get": {
+        "operationId": "get_security_advisory",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Get a security advisory",
+        "description": "Get one security advisory by its adv_… id or its G1TSA-… id, with the same visibility as the list.\n\n`id` is the advisory's `adv_…` id or its `G1TSA-…` id. A draft or withdrawn advisory is `404` to anyone who does not see the repository's findings.",
+        "x-operation": "get_security_advisory",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "advisory",
+        "x-scope": "security:read",
+        "security": [
+          {
+            "token": [
+              "security:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The advisory's id: adv_…, or its G1TSA-… id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                  "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo": "flagon-io/hello",
+                  "title": "Path traversal in the archive reader",
+                  "description": "A crafted archive could write outside the directory it is extracted to.\n\nUpgrade to 1.4.1.",
+                  "severity": "high",
+                  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                  "cvss_score": 8.1,
+                  "cve_id": "CVE-2026-12345",
+                  "ecosystem": "npm",
+                  "package": "@flagon/hello",
+                  "affected_versions": ">= 1.2.0, < 1.4.1",
+                  "patched_versions": ">= 1.4.1",
+                  "state": "published",
+                  "credits": [
+                    "ana"
+                  ],
+                  "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-06T09:14:02.118Z",
+                  "updated_at": "2026-10-07T15:02:40.000Z",
+                  "published_at": "2026-10-07T15:02:40.000Z",
+                  "withdrawn_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "G1TSA-2026-h7kd-3mqw"
+        }
+      },
+      "patch": {
+        "operationId": "update_security_advisory",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Update a security advisory",
+        "description": "Change an advisory's fields, in any state; what is not given stays as it is. A published advisory's change is visible at once. Admin, or a security manager.\n\nWhat the request leaves out stays as it is. A published advisory may be changed; its page shows the change at once.",
+        "x-operation": "update_security_advisory",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "update_advisory",
+        "x-scope": "security:write",
+        "security": [
+          {
+            "token": [
+              "security:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The advisory's id: adv_…, or its G1TSA-… id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                  "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo": "flagon-io/hello",
+                  "title": "Path traversal in the archive reader",
+                  "description": "A crafted archive could write outside the directory it is extracted to.",
+                  "severity": "high",
+                  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                  "cvss_score": 8.1,
+                  "cve_id": "CVE-2026-12345",
+                  "ecosystem": "npm",
+                  "package": "@flagon/hello",
+                  "affected_versions": ">= 1.2.0, < 1.4.1",
+                  "patched_versions": ">= 1.4.1",
+                  "state": "draft",
+                  "credits": [
+                    "ana"
+                  ],
+                  "report_id": null,
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-06T09:14:02.118Z",
+                  "updated_at": "2026-10-06T10:30:00.000Z",
+                  "published_at": null,
+                  "withdrawn_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "One line: what the vulnerability is. At most 200 characters."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Markdown: what is affected, how it is exploited, what to do. At most 20,000 characters."
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "high",
+                      "medium",
+                      "low"
+                    ],
+                    "description": "How bad it is."
+                  },
+                  "cvss_vector": {
+                    "type": "string",
+                    "description": "A CVSS vector string, when scored: CVSS:3.1/AV:N/…"
+                  },
+                  "cvss_score": {
+                    "type": "number",
+                    "description": "The CVSS base score, 0 to 10."
+                  },
+                  "cve_id": {
+                    "type": "string",
+                    "description": "CVE-2026-12345, when one was issued elsewhere."
+                  },
+                  "ecosystem": {
+                    "type": "string",
+                    "description": "How the affected package is distributed: npm, crates.io, Go, PyPI, or how the project ships."
+                  },
+                  "package": {
+                    "type": "string",
+                    "description": "The package affected."
+                  },
+                  "affected_versions": {
+                    "type": "string",
+                    "description": "The versions affected, as a range: >= 1.2.0, < 1.4.1"
+                  },
+                  "patched_versions": {
+                    "type": "string",
+                    "description": "The versions that fix it: >= 1.4.1"
+                  },
+                  "credits": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Who found or fixed it: usernames or names, up to 20."
+                  }
+                }
+              },
+              "example": {
+                "cve_id": "CVE-2026-12345",
+                "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                "cvss_score": 8.1
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/security/advisories/{id}/state": {
+      "post": {
+        "operationId": "set_security_advisory_state",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Publish or withdraw a security advisory",
+        "description": "Publish a draft (state published), withdraw a published advisory (state withdrawn), or publish a withdrawn one again. Publishing needs a description, tells webhooks (security_advisory.published) and the repository's watchers who chose security alerts, and makes the advisory visible to anyone who can see the repository. Admin, or a security manager.\n\nPublishing a draft with no description is `422`. Publishing sends `security_advisory.published` to webhooks and tells the repository's watchers who chose security alerts; withdrawing (`state` `withdrawn`) sends `security_advisory.withdrawn`. A withdrawn advisory can be published again. Asking for the state it already has is `409`.",
+        "x-operation": "set_security_advisory_state",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "set_advisory_state",
+        "x-scope": "security:write",
+        "security": [
+          {
+            "token": [
+              "security:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The advisory's id: adv_…, or its G1TSA-… id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                  "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo": "flagon-io/hello",
+                  "title": "Path traversal in the archive reader",
+                  "description": "A crafted archive could write outside the directory it is extracted to.",
+                  "severity": "high",
+                  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                  "cvss_score": 8.1,
+                  "cve_id": "CVE-2026-12345",
+                  "ecosystem": "npm",
+                  "package": "@flagon/hello",
+                  "affected_versions": ">= 1.2.0, < 1.4.1",
+                  "patched_versions": ">= 1.4.1",
+                  "state": "published",
+                  "credits": [
+                    "ana"
+                  ],
+                  "report_id": null,
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-06T09:14:02.118Z",
+                  "updated_at": "2026-10-07T15:02:40.000Z",
+                  "published_at": "2026-10-07T15:02:40.000Z",
+                  "withdrawn_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "published",
+                      "withdrawn"
+                    ],
+                    "description": "published to publish (or publish again), withdrawn to withdraw."
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "example": {
+                "state": "published"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/security/reports": {
+      "get": {
+        "operationId": "list_vulnerability_reports",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "List vulnerability reports",
+        "description": "List the vulnerability reports people sent the repository's maintainers privately, new ones first. Those who see findings (Write, or a security manager). Filter by state (new, accepted, declined). Reporters never see this list.\n\nNew reports first. Those who see the repository's findings (Write, or a security manager) read them; a reporter never sees another's. `state` is `new`, `accepted` or `declined`.",
+        "x-operation": "list_vulnerability_reports",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "reports",
+        "x-scope": "security:read",
+        "security": [
+          {
+            "token": [
+              "security:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "new",
+                "accepted",
+                "declined"
+              ]
+            },
+            "description": "Only reports in this state."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo": "flagon-io/hello",
+                    "reporter": null,
+                    "reporter_email": "finder@example.com",
+                    "title": "Path traversal in the archive reader",
+                    "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+                    "severity": "high",
+                    "state": "new",
+                    "advisory_id": null,
+                    "created_at": "2026-10-06T08:40:11.000Z",
+                    "reviewed_by": null,
+                    "reviewed_at": null,
+                    "review_note": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        },
+        "x-example-query": {
+          "state": "new"
+        }
+      },
+      "post": {
+        "operationId": "report_vulnerability",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Report a vulnerability privately",
+        "description": "Report a vulnerability privately to a repository's maintainers: title, description and, if you like, severity. Needs private vulnerability reporting on for the repository. Anyone who can see the repository may report; on a public one you may report without a token by giving an email the maintainers can answer at. At most 5 reports a day per reporter and repository. The workspace's owners and security managers are told at once. You see only your own report.\n\nNeeds private vulnerability reporting on for the repository (`409` otherwise). With a token, the report is yours by username; without one, on a public repository, give `email`, or the request is `422`. The workspace's owners and security managers are told at once. More than 5 reports a day from one reporter to one repository, or a repository with 50 new reports waiting, is refused.",
+        "x-operation": "report_vulnerability",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "report_vulnerability",
+        "x-scope": "security:write",
+        "security": [
+          {
+            "token": [
+              "security:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo": "flagon-io/hello",
+                  "reporter": null,
+                  "reporter_email": "finder@example.com",
+                  "title": "Path traversal in the archive reader",
+                  "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+                  "severity": "high",
+                  "state": "new",
+                  "advisory_id": null,
+                  "created_at": "2026-10-06T08:40:11.000Z",
+                  "reviewed_by": null,
+                  "reviewed_at": null,
+                  "review_note": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "One line: what you found. At most 200 characters."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "What is affected and how to reproduce it. At most 20,000 characters."
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "high",
+                      "medium",
+                      "low"
+                    ],
+                    "description": "How bad you think it is, if you like."
+                  },
+                  "email": {
+                    "type": "string",
+                    "description": "Without a token: where the maintainers can answer you."
+                  }
+                },
+                "required": [
+                  "title",
+                  "description"
+                ]
+              },
+              "example": {
+                "title": "Path traversal in the archive reader",
+                "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+                "severity": "high",
+                "email": "finder@example.com"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/security/reports/{id}": {
+      "patch": {
+        "operationId": "review_vulnerability_report",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Accept or decline a vulnerability report",
+        "description": "Accept a report (decision accept), which makes a draft advisory from it crediting the reporter, or decline it (decision decline), with an optional note. Admin, or a security manager.\n\n`accept` makes a draft advisory from the report, in the report's words and crediting the reporter, for the maintainers to finish and publish; `advisory` is that draft. `decline` closes the report; `advisory` is null. A report that was reviewed already is `409`. Takes the Admin role, or a security manager of the workspace.",
+        "x-operation": "review_vulnerability_report",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "review_report",
+        "x-scope": "security:write",
+        "security": [
+          {
+            "token": [
+              "security:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The report's id: vrp_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "report": {
+                    "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo": "flagon-io/hello",
+                    "reporter": null,
+                    "reporter_email": "finder@example.com",
+                    "title": "Path traversal in the archive reader",
+                    "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+                    "severity": "high",
+                    "state": "accepted",
+                    "advisory_id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "created_at": "2026-10-06T08:40:11.000Z",
+                    "reviewed_by": "syntaqx",
+                    "reviewed_at": "2026-10-06T09:14:02.118Z",
+                    "review_note": "Confirmed on 1.4.0."
+                  },
+                  "advisory": {
+                    "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                    "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo": "flagon-io/hello",
+                    "title": "Path traversal in the archive reader",
+                    "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+                    "severity": "high",
+                    "cvss_vector": null,
+                    "cvss_score": null,
+                    "cve_id": null,
+                    "ecosystem": null,
+                    "package": null,
+                    "affected_versions": null,
+                    "patched_versions": null,
+                    "state": "draft",
+                    "credits": [
+                      "finder@example.com"
+                    ],
+                    "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-06T09:14:02.118Z",
+                    "updated_at": "2026-10-06T09:14:02.118Z",
+                    "published_at": null,
+                    "withdrawn_at": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "accept",
+                      "decline"
+                    ],
+                    "description": "accept makes a draft advisory from it; decline closes it."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "A note for the record, in a sentence. At most 1,000 characters."
+                  }
+                },
+                "required": [
+                  "decision"
+                ]
+              },
+              "example": {
+                "decision": "accept",
+                "note": "Confirmed on 1.4.0."
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r"
         }
       }
     },
@@ -40213,7 +41579,13 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
+                        "secret_scanning_alert.summary",
+                        "code_scanning_alert.summary",
                         "vulnerability_alert.reopened",
+                        "vulnerability_alert.summary",
+                        "security_advisory.published",
+                        "security_advisory.withdrawn",
+                        "security_advisory.reported",
                         "mirror.unreachable",
                         "mirror.reachable",
                         "mirror.state_changed",
@@ -40488,7 +41860,13 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
+                        "secret_scanning_alert.summary",
+                        "code_scanning_alert.summary",
                         "vulnerability_alert.reopened",
+                        "vulnerability_alert.summary",
+                        "security_advisory.published",
+                        "security_advisory.withdrawn",
+                        "security_advisory.reported",
                         "mirror.unreachable",
                         "mirror.reachable",
                         "mirror.state_changed",
@@ -41409,7 +42787,13 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
+                        "secret_scanning_alert.summary",
+                        "code_scanning_alert.summary",
                         "vulnerability_alert.reopened",
+                        "vulnerability_alert.summary",
+                        "security_advisory.published",
+                        "security_advisory.withdrawn",
+                        "security_advisory.reported",
                         "mirror.unreachable",
                         "mirror.reachable",
                         "mirror.state_changed",
@@ -41670,7 +43054,13 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
+                        "secret_scanning_alert.summary",
+                        "code_scanning_alert.summary",
                         "vulnerability_alert.reopened",
+                        "vulnerability_alert.summary",
+                        "security_advisory.published",
+                        "security_advisory.withdrawn",
+                        "security_advisory.reported",
                         "mirror.unreachable",
                         "mirror.reachable",
                         "mirror.state_changed",

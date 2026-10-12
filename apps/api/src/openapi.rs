@@ -285,6 +285,20 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Security advisories",
+        "What a repository says about vulnerabilities in what it ships: advisories drafted, published and withdrawn by its maintainers, and the vulnerability reports people send them privately when the repository takes them.",
+        &[
+            Op::Security(SecurityOp::ListAdvisories),
+            Op::Security(SecurityOp::CreateAdvisory),
+            Op::Security(SecurityOp::GetAdvisory),
+            Op::Security(SecurityOp::UpdateAdvisory),
+            Op::Security(SecurityOp::SetAdvisoryState),
+            Op::Security(SecurityOp::ListReports),
+            Op::Security(SecurityOp::ReportVulnerability),
+            Op::Security(SecurityOp::ReviewReport),
+        ],
+    ),
+    (
         "Rules",
         "Rulesets: what may happen to a repository's branches and tags and what a pull request needs before it merges, for a repository or across a workspace; the rules that hold for one branch; and how they judged each push and merge, with insights.",
         &[
