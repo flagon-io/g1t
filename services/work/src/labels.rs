@@ -525,11 +525,6 @@ impl Work {
         };
         let wanted = changed_labels(item.labels(), &given, a.change);
         let labels = check!(self.relabel(&a.actor, &repo, &item, &wanted).await?);
-        if let Item::Issue(issue) = &item
-            && let Some(now) = self.issue(&repo.id, issue.number).await?
-        {
-            self.apply_label_rule(&a.actor, &now, &issue.labels).await?;
-        }
         Ok(Outcome::Ok(labels))
     }
 }

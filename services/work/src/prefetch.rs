@@ -2,16 +2,15 @@
 //!
 //! A pull request's page used to cost about twenty queries one after
 //! another: the repository, the pull request, its issue, then where it
-//! stands (its progress, latest review, settings, statuses, verdicts,
-//! queue entry, the confidence signals), its comments, checks and
-//! messages. Each is a round trip to the database, and from most places a
+//! stands (its progress, settings, statuses, verdicts and queue entry),
+//! its comments and checks. Each is a round trip to the database, and from most places a
 //! round trip is 20 to 40 ms. Here they go as one D1 batch, keyed by the
 //! repository's id and the pull request's number, and the batch starts
 //! while the repos service is still deciding whether the viewer may see
 //! the repository ([`Work::repo_then`]).
 //!
 //! The helpers that answer those questions (`settings`, `statuses`,
-//! `review_pending`, `approvals_gap` and the rest) look here first, so the
+//! `approvals_gap` and the rest) look here first, so the
 //! code that decides a pull request's lifecycle is the same code whether
 //! its rows were batched or read one at a time. Only reads are kept; a
 //! helper that writes and reads back (mergeability) reads the database.
@@ -22,22 +21,16 @@ use std::future::Future;
 use std::rc::Rc;
 
 use g1t_contracts::repos::{Repo, RepoPath};
-use g1t_contracts::time::rfc3339;
 use g1t_contracts::{Outcome, Viewer};
-use g1t_kit::now_ms;
 use serde::de::DeserializeOwned;
 use worker::wasm_bindgen::JsValue;
 use worker::{D1PreparedStatement, D1Result, Result};
 
-use crate::reviews::AGENT_ID;
 use crate::rows::PULL_COLUMNS;
 use crate::{ISSUE_COLUMNS, Work};
 
 /// The pull request's id, from the batch's `?1` (repository) and `?2` (number).
 const PULL_ID: &str = "(SELECT id FROM pulls WHERE repo_id = ?1 AND number = ?2)";
-
-/// How long a review that never reported is waited for (reviews.rs).
-pub(crate) const REVIEW_PENDING_MS: u64 = 30 * 60 * 1000;
 
 /// Each statement of a pull request's batch, in order.
 #[derive(Clone, Copy)]
@@ -47,21 +40,10 @@ pub(crate) enum Slot {
     Comments,
     Verdicts,
     Runs,
-    RunHistory,
-    Review,
-    ReviewComments,
-    ReviewPending,
     Statuses,
     Settings,
-    Hold,
-    Messages,
     Others,
     Queued,
-    LatestRun,
-    Halted,
-    Denials,
-    Unanswered,
-    Planned,
     Rulesets,
     Adopted,
 }
@@ -208,38 +190,6 @@ impl Work {
                 &format!("SELECT * FROM check_runs WHERE pull_id = {PULL_ID} ORDER BY id DESC LIMIT ?3"),
                 &with(RECENT_RUNS.into()),
             )?,
-            // Slot::RunHistory (confidence.rs `signals`)
-            self.statement(
-                &format!("SELECT head_commit, status FROM check_runs WHERE pull_id = {PULL_ID} ORDER BY id LIMIT 50"),
-                &key(),
-            )?,
-            // Slot::Review (lifecycle.rs `assess_now`)
-            self.statement(
-                &format!(
-                    "SELECT finished_at, verdict FROM review_runs
-                     WHERE pull_id = {PULL_ID} AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1"
-                ),
-                &key(),
-            )?,
-            // Slot::ReviewComments: lines that latest review commented on
-            // (confidence.rs `review_comments`).
-            self.statement(
-                &format!(
-                    "SELECT count(*) AS n FROM comments
-                     WHERE repo_id = ?1 AND number = ?2 AND author_id = ?3 AND path IS NOT NULL
-                       AND created_at = (SELECT finished_at FROM review_runs
-                         WHERE pull_id = {PULL_ID} AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1)"
-                ),
-                &with(AGENT_ID.into()),
-            )?,
-            // Slot::ReviewPending (reviews.rs `review_pending`)
-            self.statement(
-                &format!(
-                    "SELECT id AS value FROM review_runs
-                     WHERE pull_id = {PULL_ID} AND finished_at IS NULL AND created_at > ?3 LIMIT 1"
-                ),
-                &with(rfc3339(now_ms().saturating_sub(REVIEW_PENDING_MS)).into()),
-            )?,
             // Slot::Statuses: on its head (statuses.rs `statuses`).
             self.statement(
                 "SELECT context, state, description, target_url, updated_at, source, check_run_id FROM commit_statuses
@@ -247,14 +197,8 @@ impl Work {
                  ORDER BY context",
                 &key(),
             )?,
-            // Slot::Settings and Slot::Hold (settings.rs `settings`)
+            // Slot::Settings (settings.rs `settings`)
             self.statement("SELECT * FROM repo_settings WHERE repo_id = ?1", &repo_only())?,
-            self.statement("SELECT hold_low AS n FROM confidence_rules WHERE repo_id = ?1", &repo_only())?,
-            // Slot::Messages (messages.rs `messages`)
-            self.statement(
-                &format!("SELECT * FROM agent_messages WHERE pull_id = {PULL_ID} ORDER BY created_at, id"),
-                &key(),
-            )?,
             // Slot::Others (reviews.rs `overlaps`)
             self.statement(
                 "SELECT number, title, issue_number, files FROM pulls
@@ -268,47 +212,6 @@ impl Work {
                     "SELECT * FROM queue_entries
                      WHERE pull_id = {PULL_ID} AND state IN ('waiting', 'testing', 'passed') LIMIT 1"
                 ),
-                &key(),
-            )?,
-            // Slot::LatestRun, Halted, Denials, Unanswered, Planned
-            // (confidence.rs `signals`)
-            self.statement(
-                &format!(
-                    "SELECT r.id, r.cost_usd, r.budget_usd, r.time_cap_minutes,
-                       (julianday(COALESCE(r.finished_at, r.updated_at)) - julianday(COALESCE(r.started_at, r.created_at))) * 1440 AS minutes,
-                       c.self_level, c.uncertain_about
-                     FROM agent_runs r LEFT JOIN run_confidence c ON c.run_id = r.id
-                     WHERE r.pull_id = {PULL_ID} AND r.kind IN ('implement', 'revise')
-                     ORDER BY r.created_at DESC LIMIT 1"
-                ),
-                &key(),
-            )?,
-            self.statement(
-                &format!(
-                    "SELECT halted FROM agent_runs WHERE pull_id = {PULL_ID} AND halted IS NOT NULL
-                     ORDER BY created_at DESC LIMIT 1"
-                ),
-                &key(),
-            )?,
-            self.statement(
-                &format!(
-                    "SELECT count(*) AS n FROM session_entries
-                     WHERE pull_id = {PULL_ID} AND kind = 'note' AND text LIKE 'Denied:%'"
-                ),
-                &key(),
-            )?,
-            self.statement(
-                "SELECT count(*) AS n FROM agent_messages
-                 WHERE repo_id = ?1 AND from_number = ?2 AND kind IN ('question', 'handoff')
-                   AND answered_at IS NULL",
-                &key(),
-            )?,
-            self.statement(
-                "SELECT json_extract(planned.value, '$.files') AS files
-                 FROM plans, json_each(plans.issues) AS planned
-                 WHERE plans.repo_id = ?1 AND plans.status = 'applied'
-                   AND json_extract(planned.value, '$.number') = (SELECT issue_number FROM pulls WHERE repo_id = ?1 AND number = ?2)
-                 LIMIT 1",
                 &key(),
             )?,
             // Slot::Rulesets and Slot::Adopted (rulesets.rs `rulesets_for`)

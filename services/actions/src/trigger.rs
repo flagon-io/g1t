@@ -128,10 +128,9 @@ fn nobody_added(data: &Value) -> bool {
 }
 
 /// Whether whoever a pull request is for is trusted without asking
-/// identity: g1t's agent in work nobody asked it for, or someone whose
-/// role here is known to allow pushing.
+/// identity: someone whose role here is known to allow pushing.
 fn trusted_outright(owner: &User, repo: &Repo) -> bool {
-    owner.id == AGENT_ID || access::can(Some(owner), repo, Capability::Push)
+    access::can(Some(owner), repo, Capability::Push)
 }
 
 impl Actions {

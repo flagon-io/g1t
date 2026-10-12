@@ -17,9 +17,6 @@ use crate::Work;
 
 const MAX_REQUIRED_APPROVALS: u32 = 6;
 const MAX_REVISIONS: u32 = 5;
-/// The most times in a day people's mentions may send g1t back to one pull
-/// request. They outrank `MAX_REVISIONS` and a stall, but not this.
-pub(crate) const MAX_MENTION_REVISIONS_PER_DAY: u32 = 10;
 
 #[derive(Deserialize)]
 struct SettingsRow {
@@ -57,8 +54,8 @@ impl From<SettingsRow> for RepoSettings {
             agent_review: row.agent_review != 0,
             max_revisions: row.max_revisions,
             merge_queue: row.merge_queue != 0,
-            // Kept in its own table (confidence.rs), read beside this row.
-            hold_low_confidence: true,
+            // Nothing is held for low confidence any more.
+            hold_low_confidence: false,
             require_code_owner_review: row.require_code_owner_review != 0,
             updated_by: Some(row.updated_by),
             updated_at: Some(row.updated_at),
@@ -73,26 +70,15 @@ impl Work {
     pub(crate) async fn settings(&self, repo_id: &str) -> Result<RepoSettings> {
         if let Some(found) = self.prefetched_repo(repo_id) {
             let row = found.first::<SettingsRow>(crate::prefetch::Slot::Settings)?;
-            let hold = found
-                .first::<crate::rows::NumberRow>(crate::prefetch::Slot::Hold)?
-                .is_none_or(|row| row.n != 0);
-            return Ok(RepoSettings {
-                hold_low_confidence: hold,
-                ..row.map_or_else(RepoSettings::default, RepoSettings::from)
-            });
+            return Ok(row.map_or_else(RepoSettings::default, RepoSettings::from));
         }
-        let row = async {
-            self.db
-                .prepare("SELECT * FROM repo_settings WHERE repo_id = ?")
-                .bind(&[repo_id.into()])?
-                .first::<SettingsRow>(None)
-                .await
-        };
-        let (row, hold) = futures_util::future::try_join(row, self.holds_low_confidence(repo_id)).await?;
-        Ok(RepoSettings {
-            hold_low_confidence: hold,
-            ..row.map_or_else(RepoSettings::default, RepoSettings::from)
-        })
+        let row = self
+            .db
+            .prepare("SELECT * FROM repo_settings WHERE repo_id = ?")
+            .bind(&[repo_id.into()])?
+            .first::<SettingsRow>(None)
+            .await?;
+        Ok(row.map_or_else(RepoSettings::default, RepoSettings::from))
     }
 
     /// The default branch's settings: the stored ones, with branch
@@ -182,13 +168,6 @@ impl Work {
             ])?
             .run()
             .await?;
-        self.set_hold_low_confidence(
-            &repo.id,
-            settings.hold_low_confidence,
-            settings.updated_by.as_deref().unwrap_or_default(),
-            settings.updated_at.as_deref().unwrap_or_default(),
-        )
-        .await?;
         if protection_changed(&before, &settings) {
             self.write_branch_protection(&repo, &settings, &a.actor).await?;
         }

@@ -1,5 +1,5 @@
 //! Repositories that are archived, deleted or purged, and branches
-//! renamed: what issues, pull requests and agents do about each.
+//! renamed: what issues, pull requests and runs do about each.
 //!
 //! An archived repository is read-only: its issues and pull requests are
 //! locked and nothing new starts on it. So is a mirror standing by (see
@@ -80,42 +80,15 @@ pub(crate) const PURGED: &[&str] = &[
     "DELETE FROM guardrails WHERE scope <> 'workspace' AND scope_key = ?1",
 ];
 
-/// A repository renamed or transferred (see `g1t_kit::transfer`): runs
-/// waiting for an agent slot name it by path in their payload, at `$.repo`
-/// or `$.job.repo`; they follow it, into its workspace's queue now.
-pub(crate) const WAITS_MOVED: &[&str] = &[
-    "UPDATE agent_waits SET workspace = lower(?3),
-       payload = json_set(payload, '$.repo.namespace', ?3, '$.repo.name', ?6)
-     WHERE json_valid(payload)
-       AND lower(json_extract(payload, '$.repo.namespace')) = lower(?4)
-       AND lower(json_extract(payload, '$.repo.name')) = lower(?7)",
-    "UPDATE agent_waits SET workspace = lower(?3),
-       payload = json_set(payload, '$.job.repo.namespace', ?3, '$.job.repo.name', ?6)
-     WHERE json_valid(payload)
-       AND lower(json_extract(payload, '$.job.repo.namespace')) = lower(?4)
-       AND lower(json_extract(payload, '$.job.repo.name')) = lower(?7)",
-];
-
 /// What a run stopped because its repository was archived or deleted says
 /// as its last step; [`Work::runs_in_repo`] finds such runs by it.
 const STOPPED_STEP: &str = "Stopped: the repository was archived or deleted.";
 
-/// `repo.deleted` and `repo.archived`: the repository's agent runs that
+/// `repo.deleted` and `repo.archived`: the repository's runs that
 /// are queued or running stop, `?1` the step they end on, `?2` the time,
 /// `?3` its id.
 const STOP_RUNS: &str = "UPDATE agent_runs SET status = 'stopped', step = ?1, finished_at = ?2, updated_at = ?2
      WHERE repo_id = ?3 AND status IN ('queued', 'running')";
-
-/// And runs waiting for an agent slot in it are dropped: `?1` its
-/// workspace, `?2` its name, as the payload names it (see [`WAITS_MOVED`]).
-const DROP_WAITS: &[&str] = &[
-    "DELETE FROM agent_waits WHERE json_valid(payload)
-       AND lower(json_extract(payload, '$.repo.namespace')) = lower(?1)
-       AND lower(json_extract(payload, '$.repo.name')) = lower(?2)",
-    "DELETE FROM agent_waits WHERE json_valid(payload)
-       AND lower(json_extract(payload, '$.job.repo.namespace')) = lower(?1)
-       AND lower(json_extract(payload, '$.job.repo.name')) = lower(?2)",
-];
 
 /// `runs_in_repo` (internal, for the runner): the agent runs of a
 /// repository whose sandboxes should be stopped: those queued or running,
@@ -201,21 +174,15 @@ impl Work {
             .results::<RepoRun>()
     }
 
-    /// `repo.deleted` and `repo.archived`: its agent runs stop (the runner
-    /// stops their sandboxes, see [`RunsInRepoArgs`]) and runs waiting for
-    /// a slot in it are dropped. Rows are kept, for a restore.
-    async fn stop_runs_in(&self, repo_id: &str, namespace: &str, name: &str) -> Result<()> {
+    /// `repo.deleted` and `repo.archived`: its runs stop (the runner stops
+    /// their sandboxes, see [`RunsInRepoArgs`]). Rows are kept, for a restore.
+    async fn stop_runs_in(&self, repo_id: &str) -> Result<()> {
         let now = rfc3339(now_ms());
-        let mut batch = vec![self
-            .db
+        self.db
             .prepare(STOP_RUNS)
-            .bind(&[STOPPED_STEP.into(), now.as_str().into(), repo_id.into()])?];
-        if !namespace.is_empty() && !name.is_empty() {
-            for sql in DROP_WAITS {
-                batch.push(self.db.prepare(*sql).bind(&[namespace.into(), name.into()])?);
-            }
-        }
-        self.db.batch(batch).await?;
+            .bind(&[STOPPED_STEP.into(), now.as_str().into(), repo_id.into()])?
+            .run()
+            .await?;
         Ok(())
     }
 
@@ -225,8 +192,8 @@ impl Work {
         if g1t_kit::lifecycle::on_purged(&self.db, event, PURGED).await? {
             return Ok(true);
         }
-        if let Some((repo_id, namespace, name)) = stopping(event) {
-            self.stop_runs_in(&repo_id, &namespace, &name).await?;
+        if let Some((repo_id, _, _)) = stopping(event) {
+            self.stop_runs_in(&repo_id).await?;
             return Ok(true);
         }
         if event.kind != "branch.renamed" {
@@ -324,16 +291,10 @@ mod tests {
         assert_eq!(stopping(&event("repo.unarchived", unarchived.clone())), None);
         assert_eq!(stopping(&event("repo.archived", unarchived)), None);
         assert_eq!(STOP_RUNS.matches('?').count(), 4);
-        for sql in DROP_WAITS {
-            assert_eq!(g1t_kit::transfer::parameters(sql), 2, "{sql}");
-        }
     }
 
     #[test]
-    fn waiting_runs_follow_with_the_names_they_bind() {
-        for sql in WAITS_MOVED {
-            assert_eq!(g1t_kit::transfer::parameters(sql), 7, "{sql}");
-        }
+    fn renamed_branches_bind_three_names() {
         assert_eq!(g1t_kit::transfer::parameters(BRANCH_RENAMED), 3);
     }
 }

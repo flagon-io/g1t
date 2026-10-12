@@ -195,11 +195,8 @@ impl Actions {
 
     /// The repository at `path`, when `actor` may do `capability` in it:
     /// not found when they cannot read it, forbidden when their role falls
-    /// short. Agents never may: people and tokens run and change workflows.
+    /// short.
     async fn may(&self, actor: &User, path: &RepoPath, capability: Capability) -> Result<Outcome<Repo>> {
-        if actor.kind == PrincipalKind::Agent {
-            return Ok(fail(FailureCode::Forbidden, "An agent cannot do that. Ask a person."));
-        }
         let Some(repo) = self.visible_repo(path, &Some(actor.clone())).await? else {
             return Ok(fail(FailureCode::NotFound, "There is no such repository."));
         };

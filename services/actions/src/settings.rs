@@ -227,9 +227,6 @@ struct Place {
 
 impl Actions {
     async fn place(&self, actor: &User, owner: &SettingsOwner, changing: bool) -> Result<Outcome<Place>> {
-        if actor.kind == PrincipalKind::Agent {
-            return Ok(fail(FailureCode::Forbidden, "Agents cannot read or change secrets and variables."));
-        }
         // A workspace's tokens, G1T_TOKEN among them, read the names but
         // never change them: a workflow must not rewrite what it runs with.
         if changing && actor.kind == PrincipalKind::Workspace {

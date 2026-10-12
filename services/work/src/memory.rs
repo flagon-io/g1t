@@ -5,9 +5,9 @@
 //!
 //! A workspace's memory is members-only, since it can hold internal
 //! knowledge; a project's is for whoever can read the project, and changed
-//! by whoever can push to it. It never holds a secret: text that looks like a key or a token is refused. Every
-//! g1t agent run is given it (`memory_context`): pinned first, then what
-//! was used most recently, within a size budget.
+//! by whoever can push to it. It never holds a secret: text that looks like a key or a token is refused.
+//! Agents read it with `recall` and add to it with `remember` (MCP), and
+//! people manage it on the Memory pages.
 
 use g1t_contracts::access::{self, Capability};
 use g1t_contracts::agents::*;
@@ -20,7 +20,6 @@ use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
 use crate::Work;
-use crate::runs::member_of;
 
 /// A workspace renamed: its runs and memories move to the slug it has now.
 /// `?1` is the current slug, `?2` a stale one (see `g1t_kit::rename`).
@@ -48,21 +47,16 @@ pub(crate) const TRANSFERRED: &[&str] = &[
 pub(crate) const DELETED: &[&str] = &[
     "DELETE FROM memories WHERE scope = 'workspace' AND scope_key = ?1",
     "DELETE FROM guardrails WHERE scope = 'workspace' AND scope_key = ?1",
-    "DELETE FROM agent_waits WHERE workspace = ?1",
 ];
 
 /// The most memories one project, or one workspace, keeps.
 const MAX_PER_SCOPE: u32 = 500;
-/// What an agent is given by default, in characters.
-const DEFAULT_BUDGET: u32 = 6000;
-const MAX_BUDGET: u32 = 20_000;
 const DEFAULT_RECALL: u32 = 20;
 
 #[derive(Deserialize)]
 pub(crate) struct MemoryRow {
     id: String,
     pub(crate) scope: String,
-    pub(crate) scope_key: String,
     workspace: String,
     repo: Option<String>,
     text: String,
@@ -76,7 +70,8 @@ pub(crate) struct MemoryRow {
     created_at: String,
     updated_at: String,
     last_used_at: Option<String>,
-    // What capture adds (capture.rs, migration 0019).
+    // What automatic capture added (migration 0019); read for memories
+    // kept from before it was removed.
     #[serde(default)]
     status: Option<String>,
     #[serde(default)]
@@ -184,64 +179,15 @@ fn may_write(actor: &User, workspace: &str, repo_id: Option<&str>) -> bool {
 /// used or changed.
 const ORDER: &str = "pinned DESC, COALESCE(last_used_at, updated_at) DESC, created_at DESC";
 
-/// What an agent is told about memory, ahead of the memories themselves.
-const PREAMBLE: &str = "What people and agents have learned here before you, kept as memory. Treat it as notes from colleagues: usually right, sometimes out of date. Where it disagrees with the code, the code wins; say so in your summary.";
-
-/// How an agent is told to add to memory.
-const HOW_TO_REMEMBER: &str = "When you learn something the next agent here would need (how to build or test, a convention, a decision and why, a trap), save it with the remember tool: scope project for this codebase, workspace for what holds across the workspace's projects. One short fact each. Never a secret, a key or a token. recall searches what is kept.";
-
-/// The context an agent gets: as many memories as fit in `budget`, each
-/// level labelled, and the ids of those given.
-fn compose(workspace: &[Memory], project: &[Memory], repo: &RepoPath, budget: usize) -> (Option<String>, Vec<String>) {
-    let line = |memory: &Memory| {
-        format!(
-            "- [{}{}] {}",
-            memory.kind.as_str(),
-            if memory.pinned { ", pinned" } else { "" },
-            memory.text.replace('\n', " ")
-        )
-    };
-    let mut used = PREAMBLE.len() + HOW_TO_REMEMBER.len() + 200;
-    let mut given = Vec::new();
-    let mut sections = Vec::new();
-    // Pinned memories of either level go in before anything else does.
-    let mut take = |memories: &[Memory], pinned: bool, out: &mut Vec<String>| {
-        for memory in memories.iter().filter(|memory| memory.pinned == pinned) {
-            let text = line(memory);
-            if used + text.len() + 1 > budget {
-                continue;
-            }
-            used += text.len() + 1;
-            given.push(memory.id.clone());
-            out.push(text);
-        }
-    };
-    let (mut ws, mut own) = (Vec::new(), Vec::new());
-    take(workspace, true, &mut ws);
-    take(project, true, &mut own);
-    take(project, false, &mut own);
-    take(workspace, false, &mut ws);
-    if ws.is_empty() && own.is_empty() {
-        return (None, given);
-    }
-    sections.push(PREAMBLE.to_owned());
-    if !ws.is_empty() {
-        sections.push(format!(
-            "Workspace memory (true across the {} workspace's projects):\n{}",
-            repo.namespace,
-            ws.join("\n")
-        ));
-    }
-    if !own.is_empty() {
-        sections.push(format!(
-            "Project memory ({}/{}):\n{}",
-            repo.namespace,
-            repo.name,
-            own.join("\n")
-        ));
-    }
-    sections.push(HOW_TO_REMEMBER.to_owned());
-    (Some(sections.join("\n\n")), given)
+/// A memory's text folded for comparing: lowercase words and digits, one
+/// space apart, so wording that differs only in case, punctuation or
+/// spacing is the same memory.
+fn fingerprint(text: &str) -> String {
+    text.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 impl Work {
@@ -249,7 +195,7 @@ impl Work {
         Ok(self
             .db
             .prepare(format!(
-                // Only what is kept: candidates wait for review (capture.rs).
+                // Only what is kept: candidates captured before are not shown.
                 "SELECT * FROM memories WHERE scope = ? AND scope_key = ? AND status = 'kept' ORDER BY {ORDER} LIMIT ?"
             ))
             .bind(&[scope.as_str().into(), key.into(), limit.into()])?
@@ -357,7 +303,7 @@ impl Work {
         // by hand, a candidate or a dismissed one with the same words is
         // kept.
         let now = rfc3339(now_ms());
-        let print = g1t_contracts::capture::fingerprint(&text);
+        let print = fingerprint(&text);
         let same = self
             .db
             .prepare(
@@ -368,8 +314,6 @@ impl Work {
             .first::<String>(Some("value"))
             .await?;
         if let Some(id) = same {
-            let repo_id = repo.as_ref().filter(|_| a.scope == MemoryScope::Project).map(|repo| repo.id.clone());
-            self.memory_changed(&id, &workspace, "kept", repo_id.as_deref()).await;
             return Ok(match self.memory_row(&workspace, &id).await? {
                 Some(memory) => Outcome::Ok(memory),
                 None => Outcome::fail(FailureCode::NotFound, "Memory not found."),
@@ -388,28 +332,19 @@ impl Work {
                 format!("This {} already keeps {MAX_PER_SCOPE} memories. Remove some that no longer hold first.", a.scope.as_str()),
             ));
         }
-        // Where it came from: a person, or an agent, and the run it was in.
+        // Where it came from: a person, or an agent working for one.
         let from = match (&repo, a.from_number) {
             (Some(repo), Some(number)) => Some((repo, number)),
             _ => None,
         };
-        let run = match (a.actor.kind, from) {
-            (PrincipalKind::Agent, Some((repo, number))) => self.active_run_on(&repo.id, number).await?,
-            _ => None,
-        };
-        let source_kind = match (a.actor.kind, &run) {
-            (PrincipalKind::User, _) => "person",
-            (_, Some(_)) => "run",
+        let source_kind = match a.actor.kind {
+            PrincipalKind::User => "person",
             _ => "agent",
         };
         let id = new_id("mem", now_ms());
         let repo_text = repo.as_ref().map(|repo| format!("{}/{}", repo.namespace, repo.name));
-        // Its source, as capture counts sources (capture.rs).
-        let reference = match &run {
-            Some(run) => format!("run:{run}"),
-            None => format!("{source_kind}:{}", a.actor.username),
-        };
-        let changed_repo = repo.as_ref().filter(|_| a.scope == MemoryScope::Project).map(|repo| repo.id.clone());
+        // Its source, as earlier memories record theirs.
+        let reference = format!("{source_kind}:{}", a.actor.username);
         self.db
             .prepare(
                 "INSERT INTO memories
@@ -429,7 +364,7 @@ impl Work {
                 text.into(),
                 a.kind.as_str().into(),
                 source_kind.into(),
-                run.map_or(JsValue::NULL, JsValue::from),
+                JsValue::NULL,
                 repo_text.map_or(JsValue::NULL, JsValue::from),
                 from.map_or(JsValue::NULL, |(_, number)| number.into()),
                 a.actor.username.as_str().into(),
@@ -442,7 +377,6 @@ impl Work {
             ])?
             .run()
             .await?;
-        self.memory_changed(&id, &workspace, "kept", changed_repo.as_deref()).await;
         Ok(match self.memory_row(&workspace, &id).await? {
             Some(memory) => Outcome::Ok(memory),
             None => Outcome::fail(FailureCode::NotFound, "Memory not found."),
@@ -455,15 +389,15 @@ impl Work {
         if !may_write(&a.actor, &workspace, repo_id.as_deref()) || a.actor.kind == PrincipalKind::Agent {
             return Ok(Outcome::fail(FailureCode::Forbidden, CHANGE_DENIED));
         }
-        let Some(before) = self.memory_row(&workspace, &a.id).await? else {
+        if self.memory_row(&workspace, &a.id).await?.is_none() {
             return Ok(Outcome::fail(FailureCode::NotFound, "Memory not found."));
-        };
+        }
         let text = match a.text.as_deref().map(valid_text) {
             Some(Err(message)) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
             Some(Ok(text)) => Some(text),
             None => None,
         };
-        let print = text.as_deref().map(g1t_contracts::capture::fingerprint);
+        let print = text.as_deref().map(fingerprint);
         self.db
             .prepare(
                 "UPDATE memories SET text = COALESCE(?, text), kind = COALESCE(?, kind),
@@ -481,7 +415,6 @@ impl Work {
             ])?
             .run()
             .await?;
-        self.memory_changed(&a.id, &workspace, before.status.as_str(), repo_id.as_deref()).await;
         Ok(match self.memory_row(&workspace, &a.id).await? {
             Some(memory) => Outcome::Ok(memory),
             None => Outcome::fail(FailureCode::NotFound, "Memory not found."),
@@ -501,10 +434,7 @@ impl Work {
             .first::<String>(Some("value"))
             .await?;
         Ok(match gone {
-            Some(_) => {
-                self.memory_changed(&a.id, &workspace, "deleted", repo_id.as_deref()).await;
-                Outcome::Ok(true)
-            }
+            Some(_) => Outcome::Ok(true),
             None => Outcome::fail(FailureCode::NotFound, "Memory not found."),
         })
     }
@@ -553,67 +483,11 @@ impl Work {
         self.mark_used(&ids).await?;
         Ok(Outcome::Ok(found))
     }
-
-    pub(crate) async fn memory_context(&self, a: MemoryContextArgs) -> Result<MemoryContext> {
-        let service = User {
-            id: "g1t_runner".into(),
-            username: "g1t".into(),
-            ..User::default()
-        };
-        let Outcome::Ok(repo) = self.repo(&a.repo, &member_of(&service, &a.repo.namespace)).await? else {
-            return Ok(MemoryContext::default());
-        };
-        // The workspace's memory is its members': a run for an outside
-        // collaborator is told only the project's.
-        let workspace = if workspace_memory_for(a.requester.as_ref(), &repo.namespace) {
-            self.memories_of(MemoryScope::Workspace, &repo.namespace.to_lowercase(), MAX_PER_SCOPE)
-                .await?
-        } else {
-            Vec::new()
-        };
-        let project = self.memories_of(MemoryScope::Project, &repo.id, MAX_PER_SCOPE).await?;
-        let budget = a.budget.unwrap_or(DEFAULT_BUDGET).clamp(500, MAX_BUDGET) as usize;
-        let path = RepoPath {
-            namespace: repo.namespace.clone(),
-            name: repo.name.clone(),
-        };
-        let (text, given) = compose(&workspace, &project, &path, budget);
-        self.mark_used(&given).await?;
-        Ok(MemoryContext {
-            text,
-            count: given.len() as u32,
-        })
-    }
-}
-
-/// Whether a run for `requester` in `namespace` is told the workspace's
-/// memory: for its members, and for the workspace's own steps (no
-/// requester), never for an outside collaborator.
-fn workspace_memory_for(requester: Option<&User>, namespace: &str) -> bool {
-    requester.is_none_or(|user| user.is_member(&namespace.to_lowercase()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn workspace_memory_is_for_members_runs_only() {
-        let member = User {
-            id: "u_ana".into(),
-            username: "ana".into(),
-            workspaces: vec![g1t_contracts::Membership::member("acme")],
-            ..User::default()
-        };
-        let outside = User {
-            id: "u_oli".into(),
-            username: "oli".into(),
-            ..User::default()
-        };
-        assert!(workspace_memory_for(None, "acme"));
-        assert!(workspace_memory_for(Some(&member), "Acme"));
-        assert!(!workspace_memory_for(Some(&outside), "acme"));
-    }
 
     #[test]
     fn transfer_and_deletion_statements_take_what_they_name() {
@@ -626,63 +500,11 @@ mod tests {
         }
     }
 
-    fn memory(id: &str, text: &str, pinned: bool) -> Memory {
-        Memory {
-            id: id.into(),
-            scope: MemoryScope::Project,
-            workspace: "acme".into(),
-            repo: None,
-            text: text.into(),
-            kind: MemoryKind::Fact,
-            source: MemorySource::default(),
-            created_by: "ana".into(),
-            pinned,
-            created_at: String::new(),
-            updated_at: String::new(),
-            last_used_at: None,
-            status: MemoryStatus::Kept,
-            confidence: None,
-            seen: 1,
-        }
-    }
-
-    fn repo() -> RepoPath {
-        RepoPath {
-            namespace: "acme".into(),
-            name: "web".into(),
-        }
-    }
-
     #[test]
     fn rename_statements_take_the_two_slugs() {
         for sql in RENAMED {
             assert_eq!(g1t_kit::rename::parameters(sql), 2, "{sql}");
         }
-    }
-
-    #[test]
-    fn nothing_kept_is_nothing_said() {
-        assert_eq!(compose(&[], &[], &repo(), 6000), (None, Vec::new()));
-    }
-
-    #[test]
-    fn levels_are_labelled_and_pinned_come_first() {
-        let workspace = [memory("w1", "We use pnpm everywhere.", false)];
-        let project = [memory("p1", "Tests need TZ=UTC.", false), memory("p2", "Never edit generated.rs.", true)];
-        let (text, given) = compose(&workspace, &project, &repo(), 6000);
-        let text = text.unwrap();
-        assert!(text.contains("Workspace memory (true across the acme workspace's projects)"));
-        assert!(text.contains("Project memory (acme/web)"));
-        assert!(text.find("Never edit").unwrap() < text.find("Tests need").unwrap());
-        assert_eq!(given, ["p2", "p1", "w1"]);
-    }
-
-    #[test]
-    fn the_budget_is_kept() {
-        let project: Vec<Memory> = (0..100).map(|n| memory(&format!("p{n}"), &"x".repeat(200), false)).collect();
-        let (text, given) = compose(&[], &project, &repo(), 3000);
-        assert!(text.unwrap().len() <= 3000);
-        assert!(given.len() < 100 && !given.is_empty());
     }
 
     #[test]

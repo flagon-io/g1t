@@ -9,15 +9,13 @@
 //!
 //! | Event | Who | Reason | Severity |
 //! | --- | --- | --- | --- |
-//! | `agent.asked`, `pull.stalled` | the pull request's owner, and its issue's owner and assignees | agent | warning |
+//! | `pull.stalled` | the pull request's owner, and its issue's owner and assignees | agent | warning |
 //! | `pull.review_requested` | the reviewers asked, and the people each team asked tells | review_requested | warning |
 //! | `issue.assigned`, `pull.assigned` | the people newly assigned | assign | info |
 //! | `checks.completed`, failed or errored | the pull request's owner | ci_activity | error |
 //! | `workflow.completed`, failed | the pull request's owner, or whoever pushed | ci_activity | error |
 //! | `deployment.failed` | the pull request's owner, or whoever pushed; watchers | ci_activity | error |
 //! | `deployment.succeeded` after a failure | the same | ci_activity | success |
-//! | `review.completed` by g1t | the pull request's owner | author | success, or info for changes asked |
-//! | `pull.ready` for a change g1t made | whoever asked g1t for it | author | success |
 //! | `pull.merged`, `pull.closed`, `issue.closed`, `issue.reopened` | everyone subscribed | state_change | success for a merge, else info |
 //! | `comment.created` | everyone mentioned, the people of teams mentioned, then everyone subscribed | mention, team_mention, or why they are subscribed | info (success for an approval) |
 //! | `comment.created` by a workspace's agent | the same, shown as "Margo (agent)"; a review also tells the owner, "(advisory)" | the same, or author | the same |
@@ -133,15 +131,11 @@ pub fn wants(event: &Event) -> Option<Wanted> {
         })
     };
     match event.kind.as_str() {
-        "agent.asked" | "pull.stalled" | "pull.merged" | "pull.closed" | "pull.ready" | "pull.opened"
+        "pull.stalled" | "pull.merged" | "pull.closed" | "pull.opened"
         | "pull.review_requested" | "pull.assigned" | "issue.opened" | "issue.closed" | "issue.reopened"
         | "issue.assigned" => on(Some(number("number")?), None),
         "checks.completed" => match data["status"].as_str() {
             Some("failed" | "errored") => on(Some(number("number")?), None),
-            _ => None,
-        },
-        "review.completed" => match data["verdict"].as_str() {
-            Some("approve" | "request_changes") => on(Some(number("number")?), None),
             _ => None,
         },
         "workflow.completed" => match data["conclusion"].as_str() {
@@ -407,8 +401,7 @@ fn names(data: &serde_json::Value, key: &str) -> Vec<String> {
 
 /// Who is told of `event`, in `repo` (`owner/name`), given what it names
 /// and who follows it. `actor` is who caused it; outcomes nobody chose
-/// (checks, workflows, deployments, a review, an agent finishing or
-/// stopping) are told whoever caused them.
+/// (checks, workflows, deployments, g1t stopping) are told whoever caused them.
 pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxSubject>, audience: &Audience) -> Vec<Notice> {
     let nobody = Actor::default();
     let data = &event.data;
@@ -421,9 +414,6 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
         event.kind.as_str(),
         "checks.completed"
             | "workflow.completed"
-            | "review.completed"
-            | "pull.ready"
-            | "agent.asked"
             | "pull.stalled"
             | "deployment.failed"
             | "deployment.succeeded"
@@ -439,13 +429,9 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
     let who = actor.name().unwrap_or("g1t");
 
     match (event.kind.as_str(), subject) {
-        ("agent.asked" | "pull.stalled", Some(pull)) => {
-            let (title, body) = if event.kind == "agent.asked" {
-                (format!("An agent is waiting on {at}"), pull.title.clone())
-            } else {
-                let detail = data["detail"].as_str().map(str::trim).filter(|detail| !detail.is_empty());
-                (format!("g1t stopped on {at} and needs you"), detail.unwrap_or(&pull.title).to_owned())
-            };
+        ("pull.stalled", Some(pull)) => {
+            let detail = data["detail"].as_str().map(str::trim).filter(|detail| !detail.is_empty());
+            let (title, body) = (format!("g1t stopped on {at} and needs you"), detail.unwrap_or(&pull.title).to_owned());
             told.tell_person(pull.owner(), Reason::Agent, Severity::Warning, &title, &body, true);
             if let Some(issue) = &pull.issue {
                 told.tell_person(issue.owner(), Reason::Agent, Severity::Warning, &title, &body, true);
@@ -568,20 +554,6 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
                 }
             }
             told.tell_watchers("deployments", severity, &title, &body);
-        }
-        ("review.completed", Some(pull)) => {
-            let (title, severity) = match data["verdict"].as_str() {
-                Some("approve") => (format!("g1t approved {at}"), Severity::Success),
-                _ => (format!("g1t asked for changes on {at}"), Severity::Info),
-            };
-            told.tell_person(pull.owner(), Reason::Author, severity, &title, &pull.title, true);
-        }
-        ("pull.ready", Some(pull)) => {
-            // A change g1t made is ready: the agent's run is over.
-            if let Some(owner) = pull.requested_by.as_ref().filter(|_| is_g1t_id(&pull.author.id) || is_g1t(&pull.author.username)) {
-                let title = format!("g1t finished {at}");
-                told.tell_person(owner, Reason::Author, Severity::Success, &title, &pull.title, true);
-            }
         }
         ("pull.merged" | "pull.closed" | "issue.closed" | "issue.reopened", Some(on)) => {
             let (verb, severity) = match event.kind.as_str() {
@@ -1445,7 +1417,6 @@ pub(crate) const BUMP: &str = "INSERT INTO inbox_items (id, username, thread, ev
 /// from where it links, and the item's title and first line.
 pub fn live_notification(event_id: &str, notice: &Notice, url: &str, at: &str) -> serde_json::Value {
     let kind = match notice.reason {
-        Reason::Agent => "agent_waiting",
         Reason::ReviewRequested => "approval",
         Reason::Mention | Reason::TeamMention => "mention",
         // A critical or high alert, a refused push, a report or a bypass to
@@ -2170,7 +2141,8 @@ mod tests {
             Some(Wanted { repo_id: "rep_1".into(), number: Some(4), comment_id: None })
         );
         assert_eq!(asked("checks.completed", json!({ "repoId": "rep_1", "number": 4, "status": "passed" })), None);
-        assert_eq!(asked("review.completed", json!({ "repoId": "rep_1", "number": 4 })), None);
+        assert_eq!(asked("review.completed", json!({ "repoId": "rep_1", "number": 4, "verdict": "approve" })), None);
+        assert_eq!(asked("agent.asked", json!({ "repoId": "rep_1", "number": 4 })), None);
         assert_eq!(asked("workflow.completed", json!({ "repoId": "rep_1", "conclusion": "success" })), None);
         assert_eq!(
             asked("workflow.completed", json!({ "repoId": "rep_1", "conclusion": "failure" })),
@@ -2188,9 +2160,9 @@ mod tests {
     }
 
     #[test]
-    fn a_waiting_or_stopped_agent_needs_the_pull_requests_and_the_issues_people_first() {
-        let asked = event("agent.asked", Some("usr_agent"), json!({ "number": 7 }));
-        let notices_ = notices(&asked, "acme/rocket", &Actor::default(), Some(&pull()), &nobody());
+    fn a_stopped_pull_request_needs_its_people_and_its_issues_people_first() {
+        let stalled = event("pull.stalled", None, json!({ "number": 7 }));
+        let notices_ = notices(&stalled, "acme/rocket", &Actor::default(), Some(&pull()), &nobody());
         assert_eq!(
             told(&notices_),
             vec![
@@ -2199,7 +2171,7 @@ mod tests {
                 ("dee", Reason::Agent, Severity::Warning),
             ]
         );
-        assert_eq!(notices_[0].title, "An agent is waiting on acme/rocket#7");
+        assert_eq!(notices_[0].title, "g1t stopped on acme/rocket#7 and needs you");
         assert_eq!(notices_[0].body, "Add the inbox");
         // Stopping says why; even someone who unsubscribed hears of it.
         let stalled = event("pull.stalled", None, json!({ "number": 7, "detail": "Its checks could not be run." }));
@@ -2637,28 +2609,6 @@ mod tests {
     }
 
     #[test]
-    fn g1t_finishing_or_reviewing_tells_the_person_it_worked_for() {
-        // The agent acts as the person it works for: still an outcome they hear of.
-        let ready = event("pull.ready", Some("usr_ana"), json!({ "number": 7 }));
-        let notices_ = notices(&ready, "acme/rocket", &actor("usr_ana", "ana"), Some(&g1t_pull()), &nobody());
-        assert_eq!(told(&notices_), vec![("ana", Reason::Author, Severity::Success)]);
-        assert_eq!(notices_[0].title, "g1t finished acme/rocket#7");
-        // A person's draft marked ready is not news to them.
-        assert!(notices(&ready, "acme/rocket", &actor("usr_ana", "ana"), Some(&pull()), &nobody()).is_empty());
-
-        let approve = event("review.completed", None, json!({ "number": 7, "verdict": "approve" }));
-        assert_eq!(
-            told(&notices(&approve, "acme/rocket", &Actor::default(), Some(&pull()), &nobody())),
-            vec![("ana", Reason::Author, Severity::Success)]
-        );
-        let changes = event("review.completed", None, json!({ "number": 7, "verdict": "request_changes" }));
-        assert_eq!(
-            told(&notices(&changes, "acme/rocket", &Actor::default(), Some(&pull()), &nobody())),
-            vec![("ana", Reason::Author, Severity::Info)]
-        );
-    }
-
-    #[test]
     fn an_agent_s_review_is_shown_by_its_name_and_marked_advisory() {
         // Margo (@margo), acting for bo, asks for changes on ana's pull request.
         let created = event("comment.created", Some("usr_bo"), json!({ "number": 7, "commentId": "cmt_1" }));
@@ -2808,7 +2758,8 @@ mod tests {
         };
         let live = live_notification("evt_1", &notice, "/Acme/api/pull/4#c1", "2026-10-08T00:00:00Z");
         assert_eq!(live["id"], "inbox:evt_1");
-        assert_eq!(live["kind"], "agent_waiting");
+        // A stop that needs a person is an ordinary inbox item.
+        assert_eq!(live["kind"], "inbox");
         assert_eq!(live["workspace"], "acme");
         assert_eq!(live["href"], "/Acme/api/pull/4#c1");
         assert_eq!(live["actor"]["name"], "acme/api");

@@ -1453,12 +1453,12 @@ impl<S: GitStore> Repos<S> {
             Some(_) => not_found(),
             None => Outcome::fail(FailureCode::Unauthenticated, "Authentication required."),
         };
-        // An agent's token works through the API only: its sandbox has its
+        // A run's token works through the API only: its sandbox has its
         // own way to push, to its own pull request.
         if a.viewer.as_ref().is_some_and(|user| user.kind == PrincipalKind::Agent) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "A g1t agent's token cannot be used with git.",
+                "A run's token cannot be used with git this way.",
             ));
         }
         if let (true, Some(user)) = (write, &a.viewer)

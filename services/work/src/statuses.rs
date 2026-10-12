@@ -5,10 +5,7 @@
 //! must pass (rulesets.rs; `RepoSettings::required_checks` as they stack):
 //! a required check that failed, is still running or has not reported
 //! refuses the merge, for everyone and for the merge queue (`g1t_rules`
-//! says so). Where g1t sees an agent's pull request through,
-//! any check that failed sends the agent back to fix it, with what the
-//! failing jobs printed; once it is out of revisions, only a required
-//! check holds the pull request for a person.
+//! says so).
 
 use g1t_contracts::checks::StatusEvent;
 use g1t_contracts::events::ChecksEvent;

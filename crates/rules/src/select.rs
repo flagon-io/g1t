@@ -175,9 +175,10 @@ pub fn team_key(name: &str, workspace: &str) -> String {
 fn names(entry: &BypassActor, who: &ActorFacts, workspace: &str) -> bool {
     let value = entry.value.trim();
     match entry.kind {
-        // g1t's agents act through run tokens (`Agent`), and g1t on its own
-        // as `System`.
-        ActorKind::G1t => who.kind.is_agent(),
+        // g1t on its own, as `System`: the merge queue, security updates,
+        // a merge its settings make. An agent acting through a token is
+        // named only by that token.
+        ActorKind::G1t => who.kind == Who::G1t,
         ActorKind::Token => {
             (value.eq_ignore_ascii_case("workspace") && who.kind == Who::Token)
                 || who.token_id.as_deref().is_some_and(|id| !value.is_empty() && id == value)
@@ -415,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn agents_bypass_only_when_g1t_or_their_token_is_listed() {
+    fn agents_bypass_only_when_their_token_is_listed() {
         let agent = ActorFacts {
             username: "g1t".into(),
             kind: Who::Agent,
@@ -426,7 +427,7 @@ mod tests {
         };
         let admins = [entry(ActorKind::Role, "admin", BypassMode::Always), entry(ActorKind::Role, "owner", BypassMode::Always)];
         assert_eq!(bypass(&admins, &agent, "acme"), None, "an agent does not take its person's role");
-        assert_eq!(bypass(&[entry(ActorKind::G1t, "", BypassMode::Always)], &agent, "acme"), Some(BypassMode::Always));
+        assert_eq!(bypass(&[entry(ActorKind::G1t, "", BypassMode::Always)], &agent, "acme"), None, "g1t names g1t itself, not agents");
         assert_eq!(bypass(&[entry(ActorKind::Token, "tok_1", BypassMode::Always)], &agent, "acme"), Some(BypassMode::Always));
         assert_eq!(bypass(&[entry(ActorKind::Token, "tok_2", BypassMode::Always)], &agent, "acme"), None);
         let system = ActorFacts { kind: Who::G1t, ..ActorFacts::default() };

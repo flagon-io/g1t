@@ -310,7 +310,7 @@ fn rule_problems(rule: &Rule, facts: &MergeFacts<'_>) -> Vec<Problem> {
             if below && approvals < rule.required_approvals.max(1) {
                 let rated = match facts.confidence {
                     Some(level) => format!("g1t rates this agent's change {} confidence", level.as_str()),
-                    None => "g1t has not rated this agent's change yet".to_owned(),
+                    None => "This is an agent's change and has no confidence rating".to_owned(),
                 };
                 vec![Problem::new(
                     format!(

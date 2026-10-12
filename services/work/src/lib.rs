@@ -4,26 +4,19 @@
 //! `g1t_contracts::work` for the methods and their arguments. It also
 //! consumes its queue of events from the bus.
 
-mod agent_comments;
 mod authored;
-mod capture;
 mod checks;
 mod ghost;
 mod codeowners;
 mod commit_checks;
-mod compute;
 mod contributions;
-mod confidence;
 mod guardrails;
 mod inbox;
 mod labels;
 mod lifecycle;
 mod memory;
-mod mentions;
 mod mergeability;
 mod milestones;
-mod plans;
-mod messages;
 mod prefetch;
 mod queue;
 mod retired;
@@ -478,34 +471,11 @@ impl Work {
             author: Some((&pull.author).into()),
             requested_by: pull.requested_by.as_ref().map(Into::into),
             issue: pull.issue,
-            confidence: pull.confidence.clone(),
             ..PullEvent::default()
         }
     }
 
     // --- Issues ------------------------------------------------------------
-
-    /// Opens an issue for g1t to take at once: refused before
-    /// anything is opened unless the actor may put agents to work here. The
-    /// runner's `delegate` starts the agent on it.
-    async fn delegate_issue(&self, a: DelegateIssueArgs) -> Result<Outcome<Issue>> {
-        let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
-        check!(writable(&repo));
-        check!(allowed(Some(&a.actor), &repo, Capability::Run));
-        if let Some(refused) = mentions::refuse_job_token(&a.actor) {
-            return Ok(refused);
-        }
-        self.open_issue(OpenIssueArgs {
-            actor: a.actor,
-            repo: a.repo,
-            title: a.title,
-            body: a.body,
-            labels: a.labels,
-            checks: a.checks,
-            milestone: None,
-        })
-        .await
-    }
 
     async fn open_issue(&self, a: OpenIssueArgs) -> Result<Outcome<Issue>> {
         if !a.actor.verified {
@@ -533,8 +503,8 @@ impl Work {
             }
             None => None,
         };
-        // Commands given the old way are words for the agent now: added to
-        // the body under "Definition of done". What has to pass to merge is
+        // Commands given the old way are words now: added to the body
+        // under "Definition of done". What has to pass to merge is
         // the branch's required checks.
         let body = with_definition_of_done(&a.body, &commands_pass(&a.checks));
 
@@ -542,7 +512,6 @@ impl Work {
         let id = new_id("iss", now);
         let number = self.next_number(&repo.id).await?;
         let timestamp = rfc3339(now);
-        // What g1t's agent files at work is g1t's, for the person it works for.
         let (author, requested_by) = authorship(&a.actor, false);
         self.db
             .prepare(
@@ -572,7 +541,6 @@ impl Work {
         let Some(issue) = self.issue(&repo.id, number).await? else {
             return Ok(no_issue());
         };
-        self.apply_label_rule(&a.actor, &issue, &[]).await?;
         self.publish(
             "issue.opened",
             &repo.id,
@@ -738,11 +706,9 @@ impl Work {
             .run()
             .await?;
         let before = issue.assignees.clone();
-        let labels_before = issue.labels.clone();
         let Some(issue) = self.issue(&issue.repo_id, issue.number).await? else {
             return Ok(no_issue());
         };
-        self.apply_label_rule(&a.actor, &issue, &labels_before).await?;
         self.publish(
             "issue.updated",
             &issue.repo_id,
@@ -972,9 +938,6 @@ impl Work {
         check!(writable(&repo));
         // The number names an issue or a pull request, never both.
         let mut pull_id = None;
-        // A command to g1t on a dependency update it opened (`@g1t rebase`)
-        // is the security service's to act on, not a mention for an agent.
-        let mut update_command = false;
         let table = if self.issue(&repo.id, a.number).await?.is_some() {
             if path.is_some() || a.verdict.is_some() {
                 return Ok(Outcome::fail(
@@ -991,8 +954,6 @@ impl Work {
                 ));
             }
             pull_id = Some(pull.id.clone());
-            update_command = pull.author.is_system()
-                && g1t_contracts::updates::update_command(body).is_some();
             "pulls"
         } else {
             return Ok(Outcome::fail(
@@ -1049,9 +1010,6 @@ impl Work {
                     ])?,
             ])
             .await?;
-        if !update_command {
-            self.note_mention(&a.actor, &repo, a.number, &comment, pull_id.as_deref()).await?;
-        }
         self.publish(
             "comment.created",
             &repo.id,
@@ -1191,11 +1149,6 @@ impl Work {
         }
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
         check!(writable(&repo));
-        // g1t's own agent at work spends the workspace's compute; a pull
-        // request anyone else's agent makes is like any other.
-        if matches!(a.runtime, Runtime::Hosted) {
-            check!(allowed(Some(&a.actor), &repo, Capability::Run));
-        }
         let issue = match a.issue {
             Some(number) => match self.issue(&repo.id, number).await? {
                 Some(issue) if issue.state == State::Open => Some(issue),
@@ -1322,10 +1275,7 @@ impl Work {
 
         let number = self.next_number(&repo.id).await?;
         let timestamp = rfc3339(now);
-        // A change g1t makes is g1t's, for whoever asked for it. This is
-        // what lifecycle::made_by_g1t reads back.
-        let by_g1t = matches!(a.runtime, Runtime::Hosted) && agent == reviews::AGENT_NAME && fork.is_some();
-        let (author, requested_by) = authorship(&a.actor, by_g1t);
+        let (author, requested_by) = authorship(&a.actor, false);
         self.db
             .prepare(
                 "INSERT INTO pulls
@@ -1365,21 +1315,8 @@ impl Work {
             return Ok(no_pull());
         };
         fill_base(&mut pull, &repo);
-        self.manage(&pull).await?;
-        // Someone is on it now, so it is no longer waiting for an agent.
         if let Some(issue) = pull.issue {
-            self.db
-                .prepare("UPDATE issues SET queued_by = NULL WHERE repo_id = ? AND number = ?")
-                .bind(&[repo.id.as_str().into(), issue.into()])?
-                .run()
-                .await?;
-        }
-        if let Some(issue) = pull.issue {
-            let text = if lifecycle::made_by_g1t(&pull) {
-                format!("assigned this to g1t, which opened #{}", pull.number)
-            } else {
-                format!("opened #{} for this", pull.number)
-            };
+            let text = format!("opened #{} for this", pull.number);
             self.note(&repo.id, issue, (&a.actor.id, &a.actor.username), &text)
                 .await?;
         }
@@ -1586,25 +1523,15 @@ impl Work {
                 }
             };
             let (merge, behind) = try_join(self.mergeability(&pull), behind).await?;
-            let assessed = self.assess_with_confidence(&pull, &issue, behind).await?;
-            let confidence = assessed.as_ref().and_then(|(_, _, confidence)| confidence.clone());
-            let lifecycle = assessed.map(|(lifecycle, _, _)| lifecycle);
-            Ok::<_, worker::Error>((behind, (lifecycle, confidence), merge))
+            let lifecycle = self.assess(&pull, &issue, behind).await?.map(|(lifecycle, _)| lifecycle);
+            Ok::<_, worker::Error>((behind, lifecycle, merge))
         };
-        let (((behind, (lifecycle, confidence), (mergeable, conflicts)), (landing, stalled), comments), (checks, overlaps, review_pending)) =
+        let (((behind, lifecycle, (mergeable, conflicts)), (landing, stalled), comments), (checks, overlaps)) =
             try_join(
                 try_join3(standing, self.landing_state(&pull.id), async { Ok(comments) }),
-                try_join3(
-                    self.latest_checks(&pull.id),
-                    self.overlaps(&pull),
-                    self.review_pending(&pull.id),
-                ),
+                try_join(self.latest_checks(&pull.id), self.overlaps(&pull)),
             )
             .await?;
-        // As just worked out, rather than as it was read.
-        if confidence.is_some() {
-            pull.confidence = confidence;
-        }
         // The rules of the branch it merges into, as they stack, and which
         // of them it does not meet yet, for whoever is looking.
         let (statuses, settings, gate) = try_join3(
@@ -1634,11 +1561,11 @@ impl Work {
             checks,
             overlaps,
             behind,
-            review_pending,
+            review_pending: false,
             lifecycle,
             landing,
             stalled,
-            messages: self.messages(&pull.id).await?,
+            messages: Vec::new(),
             statuses,
             mergeable,
             conflicts,
@@ -1769,20 +1696,9 @@ impl Work {
         };
         let reviewers = match a_reviewers {
             Some(names) => {
-                // g1t is not an account; everyone else has to be.
-                let agent = names
-                    .iter()
-                    .any(|name| name.trim().eq_ignore_ascii_case(reviews::AGENT_NAME));
-                let people = names
-                    .into_iter()
-                    .filter(|name| !name.trim().eq_ignore_ascii_case(reviews::AGENT_NAME))
-                    .collect();
-                let mut reviewers = check!(self.valid_assignees(people).await?);
+                let mut reviewers = check!(self.valid_assignees(names).await?);
                 // Nobody is asked to review their own, nor what they had g1t make.
                 reviewers.retain(|name| *name != pull.owner().username);
-                if agent {
-                    reviewers.insert(0, reviews::AGENT_NAME.to_owned());
-                }
                 Some(reviewers)
             }
             None => None,
@@ -2189,7 +2105,7 @@ impl Work {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
                 format!(
-                    "This branch has conflicts with {base}{named} that must be resolved first. Have g1t resolve them, or merge {base} into it, fix them and push."
+                    "This branch has conflicts with {base}{named} that must be resolved first. Merge {base} into it, fix them and push."
                 ),
             ));
         }
@@ -2222,9 +2138,42 @@ impl Work {
             }
             check!(allowed(Some(&a.actor), &repo, Capability::Merge));
             self.record_merge_evaluations(&repo, &pull, &gate).await;
+            // Brought up to date here, without a sandbox: the merge is
+            // recorded first, and lands when the push that catches it up
+            // arrives (lifecycle.rs `land_if_requested`).
             self.request_landing(&pull, &a.actor, a.keep_issue_open)
                 .await?;
-            return Ok(Outcome::Ok(pull));
+            let updated: Outcome<PullBranchUpdate> = g1t_kit::call(
+                &self.repos,
+                "update_pull_branch",
+                &UpdatePullBranchArgs {
+                    source_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
+                    branch: pull.branch.clone(),
+                    number: pull.number,
+                    actor: a.actor.clone(),
+                    target_branch: pull.base.clone(),
+                },
+            )
+            .await?;
+            match updated {
+                Outcome::Ok(PullBranchUpdate::Updated { .. }) => return Ok(Outcome::Ok(pull)),
+                // Moved again in between, or already caught up: land it now.
+                Outcome::Ok(PullBranchUpdate::UpToDate { .. }) => self.forget_landing(&pull.id).await?,
+                Outcome::Ok(PullBranchUpdate::NeedsAgent { paths, .. }) => {
+                    self.forget_landing(&pull.id).await?;
+                    let named = if paths.is_empty() { String::new() } else { format!(" ({})", paths.join(", ")) };
+                    return Ok(Outcome::fail(
+                        FailureCode::Conflict,
+                        format!(
+                            "{base} has moved since this pull request was made, and both changed the same files{named}. Merge {base} into it, resolve any conflicts, push, and merge again."
+                        ),
+                    ));
+                }
+                Outcome::Fail(failure) => {
+                    self.forget_landing(&pull.id).await?;
+                    return Ok(Outcome::Fail(failure));
+                }
+            }
         }
 
         // Whether the actor may write to the repository is decided by repos.
@@ -2500,36 +2449,6 @@ impl Work {
         Ok(Outcome::Ok(Appended { count }))
     }
 
-    /// Adds entries to a pull request's session, each taking the next
-    /// sequence number, without announcing it.
-    pub(crate) async fn append_entries(&self, pull: &Pull, entries: &[NewSessionEntry]) -> Result<()> {
-        let now = rfc3339(now_ms());
-        let mut statements = Vec::with_capacity(entries.len());
-        for entry in entries {
-            let kind = serde_json::to_value(entry.kind)?;
-            let text: String = entry.text.chars().take(MAX_ENTRY_CHARS).collect();
-            statements.push(
-                self.db
-                    .prepare(
-                        "INSERT INTO session_entries (pull_id, seq, kind, text, tool, \"commit\", at)
-                         SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?
-                         FROM session_entries WHERE pull_id = ?",
-                    )
-                    .bind(&[
-                        pull.id.as_str().into(),
-                        kind.as_str().unwrap_or("note").into(),
-                        text.into(),
-                        optional(&entry.tool),
-                        optional(&entry.commit.clone().or_else(|| pull.head_commit.clone())),
-                        now.as_str().into(),
-                        pull.id.as_str().into(),
-                    ])?,
-            );
-        }
-        self.db.batch(statements).await?;
-        Ok(())
-    }
-
     async fn read_session(&self, a: ViewArgs) -> Result<Outcome<Vec<SessionEntry>>> {
         let (_, pull) = check!(self.pull_at(&a.repo, a.number, &a.viewer).await?);
         let rows = self
@@ -2722,8 +2641,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 
     let answered = match method.as_str() {
         "open_issue" => reply(&work.open_issue(args(body)?).await?),
-        "delegate_issue" => reply(&work.delegate_issue(args(body)?).await?),
-        "report_confidence" => reply(&work.report_confidence(args(body)?).await?),
         "list_issues" => reply(&work.list_issues(args(body)?).await?),
         "get_issue" => reply(&work.get_issue(args(body)?).await?),
         "update_issue" => reply(&work.update_issue(args(body)?).await?),
@@ -2742,10 +2659,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
         "edit_comment" => reply(&work.edit_comment(args(body)?).await?),
         "delete_comment" => reply(&work.delete_comment(args(body)?).await?),
-        // A workspace's own agents, as themselves (agent_comments.rs). For
-        // the agents service; never reachable with a person's token.
-        "workspace_agent_comment" => reply(&work.workspace_agent_comment(args(body)?).await?),
-        "workspace_agent_review" => reply(&work.workspace_agent_review(args(body)?).await?),
         "start_checks" => reply(&work.start_checks(args(body)?).await?),
         "seen_checks" => reply(&work.seen_checks(args(body)?).await?),
         "report_checks" => reply(&work.report_checks(args(body)?).await?),
@@ -2764,7 +2677,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "rerequest_check_suite" => reply(&work.rerequest_check_suite(args(body)?).await?),
         "request_check_action" => reply(&work.request_check_action(args(body)?).await?),
         "commit_checks" => reply(&work.commit_checks(args(body)?).await?),
-        "start_review" => reply(&work.start_review(args(body)?).await?),
         "advance" => reply(&work.advance(args(body)?).await?),
         "stall" => reply(&work.stall(args(body)?).await?),
         "managed_pulls" => reply(&work.managed_pulls(args(body)?).await?),
@@ -2772,17 +2684,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "queue_build" => reply(&work.queue_build(args(body)?).await?),
         "report_queue" => reply(&work.report_queue(args(body)?).await?),
         "remove_from_queue" => reply(&work.remove_from_queue(args(body)?).await?),
-        "message_agent" => reply(&work.message_agent(args(body)?).await?),
         "locate_pull" => reply(&work.locate_pull(args(body)?).await?),
         "inbox_subject" => reply(&work.inbox_subject(args(body)?).await?),
-        "answer_message" => reply(&work.answer_message(args(body)?).await?),
-        "take_messages" => reply(&work.take_messages(args(body)?).await?),
-        "wake_for_messages" => reply(&work.wake_for_messages(args(body)?).await?),
-        "catch_up_job" => reply(&work.catch_up_job(args(body)?).await?),
         "get_settings" => reply(&work.get_settings(args(body)?).await?),
         "codeowners_errors" => reply(&work.codeowners_errors(args(body)?).await?),
         "update_settings" => reply(&work.update_settings(args(body)?).await?),
-        "report_review" => reply(&work.report_review(args(body)?).await?),
         "open_pull" => reply(&work.open_pull(args(body)?).await?),
         "list_pulls" => reply(&work.list_pulls(args(body)?).await?),
         "pulls_for_repos" => reply(&work.pulls_for_repos(args(body)?).await?),
@@ -2797,55 +2703,27 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_active_pulls" => reply(&work.list_active_pulls(args(body)?).await?),
         "by_author" => reply(&work.by_author(args(body)?).await?),
         "contributions" => reply(&work.contributions(args(body)?).await?),
-        "start_plan" => reply(&work.start_plan(args(body)?).await?),
-        "report_plan" => reply(&work.report_plan(args(body)?).await?),
-        "get_plan" => reply(&work.get_plan(args(body)?).await?),
-        "list_plans" => reply(&work.list_plans(args(body)?).await?),
-        "apply_plan" => reply(&work.apply_plan(args(body)?).await?),
-        "queue_issue" => reply(&work.queue_issue(args(body)?).await?),
-        "ready_issues" => reply(&work.ready_issues(args(body)?).await?),
         "list_assigned_issues" => reply(&work.list_assigned_issues(args(body)?).await?),
         "append_session" => reply(&work.append_session(args(body)?).await?),
         "read_session" => reply(&work.read_session(args(body)?).await?),
-        // Agents at work, their sessions, and memory (runs.rs, memory.rs).
+        // Runs of sandboxes, and memory (runs.rs, memory.rs).
         "open_run" => reply(&work.open_run(args(body)?).await?),
         "report_run" => reply(&work.report_run(args(body)?).await?),
-        "stop_run" => reply(&work.stop_run(args(body)?).await?),
         "list_runs" => reply(&work.list_runs(args(body)?).await?),
         "get_run" => reply(&work.get_run(args(body)?).await?),
-        "list_sessions" => reply(&work.list_sessions(args(body)?).await?),
-        "get_session" => reply(&work.get_session(args(body)?).await?),
         "list_memories" => reply(&work.list_memories(args(body)?).await?),
         "add_memory" => reply(&work.add_memory(args(body)?).await?),
         "update_memory" => reply(&work.update_memory(args(body)?).await?),
         "delete_memory" => reply(&work.delete_memory(args(body)?).await?),
         "recall" => reply(&work.recall(args(body)?).await?),
-        "memory_context" => reply(&work.memory_context(args(body)?).await?),
-        // What agents may do in a sandbox (guardrails.rs).
+        // What a sandbox may reach (guardrails.rs).
         "get_guardrails" => reply(&work.get_guardrails(args(body)?).await?),
         "update_guardrails" => reply(&work.update_guardrails(args(body)?).await?),
         "run_guardrails" => reply(&work.run_guardrails(args(body)?).await?),
-        // Plan caps the runner applies (compute.rs).
-        "active_agents" => reply(&work.active_agents(args(body)?).await?),
-        "issue_spend" => reply(&work.issue_spend(args(body)?).await?),
-        "wait_for_slot" => reply(&work.wait_for_slot(args(body)?).await?),
-        "agent_comment" => reply(&work.agent_comment(args(body)?).await?),
-        "add_wait" => reply(&work.add_wait(args(body)?).await?),
-        "waiting_workspaces" => reply(&work.waiting_workspaces(args(body)?).await?),
-        "take_wait" => reply(&work.take_wait(args(body)?).await?),
         // The runs whose sandboxes stop with their repository (retired.rs).
         "runs_in_repo" => reply(&work.runs_in_repo(args(body)?).await?),
-        "run_cost" => reply(&work.run_cost(args(body)?).await?),
         "start_mergecheck" => reply(&work.start_mergecheck(args(body)?).await?),
         "report_mergecheck" => reply(&work.report_mergecheck(args(body)?).await?),
-        // Memory that fills itself, and its review queue (capture.rs).
-        method if capture::METHODS.contains(&method) => capture::dispatch(&work, method, body).await,
-        // @g1t in comments, and the label rule (mentions.rs).
-        "take_mention" => reply(&work.take_mention(args(body)?).await?),
-        "mention_revision" => reply(&work.mention_revision(args(body)?).await?),
-        "reply_mention" => reply(&work.reply_mention(args(body)?).await?),
-        "get_agent_rules" => reply(&work.get_agent_rules(args(body)?).await?),
-        "set_agent_rules" => reply(&work.set_agent_rules(args(body)?).await?),
         // Rulesets (rulesets.rs): kept here, enforced here on merge and by
         // repos on push.
         "list_rulesets" => reply(&work.list_rulesets(args(body)?).await?),
@@ -2867,14 +2745,14 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let work = service(&env)?;
     for message in batch.messages()? {
-        // A workspace renamed: its agent runs and memory move to the slug it has now.
+        // A workspace renamed: its runs and memory move to the slug it has now.
         if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &[memory::RENAMED, guardrails::RENAMED, rulesets::RENAMED].concat()).await? {
             message.ack();
             continue;
         }
-        // A repository renamed or transferred: its runs, memory, guardrails
-        // and runs waiting for a slot follow.
-        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), &[memory::TRANSFERRED, guardrails::TRANSFERRED, retired::WAITS_MOVED].concat()).await? {
+        // A repository renamed or transferred: its runs, memory and
+        // guardrails follow.
+        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), &[memory::TRANSFERRED, guardrails::TRANSFERRED].concat()).await? {
             message.ack();
             continue;
         }
@@ -2895,7 +2773,6 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
             message.ack();
             continue;
         }
-        capture::on_event(&work, message.body()).await;
         work.on_event(message.body()).await?;
         message.ack();
     }
@@ -2926,7 +2803,7 @@ mod owner_rules {
     #[test]
     fn what_an_author_could_do_without_a_role() {
         // manageable_pull (update, ready, close), catch_up_pull on a fork,
-        // append_session, and steering with message_agent: theirs to do.
+        // and append_session: theirs to do.
         let made = pull(G1T, Some(ASKER));
         assert!(made.is_owned_by(ASKER.0));
         assert!(!made.is_owned_by(SOMEONE), "anyone else still needs the role");

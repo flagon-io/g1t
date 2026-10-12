@@ -206,8 +206,7 @@ impl Work {
     }
 
     /// Says that a pull request's mergeability settled, so that the runner
-    /// looks again at one g1t is seeing through: a conflict is the agent's
-    /// to resolve.
+    /// looks again at one g1t is seeing through.
     async fn announce_mergeability(&self, pull: &Pull) -> Result<()> {
         self.publish_as("pull.mergeability", &pull.repo_id, None, Self::pull_event(pull))
             .await

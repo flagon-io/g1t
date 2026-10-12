@@ -236,12 +236,9 @@ impl Actions {
     /// Where `owner` points, if `actor` may see it (`manage` false) or
     /// change it (`manage` true): a workspace's runners are seen by its
     /// members and changed by its owners; a repository's own, by its
-    /// admins. Agents and workspace tokens never change them, so a
-    /// workflow's `G1T_TOKEN` cannot add a machine to run its own jobs.
+    /// admins. Workspace tokens never change them, so a workflow's
+    /// `G1T_TOKEN` cannot add a machine to run its own jobs.
     async fn runner_place(&self, actor: &User, owner: &RunnersOwner, manage: bool) -> Result<Outcome<Place>> {
-        if actor.kind == PrincipalKind::Agent {
-            return Ok(fail(FailureCode::Forbidden, "Agents cannot see or change self-hosted runners."));
-        }
         if manage && actor.kind == PrincipalKind::Workspace {
             return Ok(fail(
                 FailureCode::Forbidden,

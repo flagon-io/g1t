@@ -144,11 +144,9 @@ impl<S: GitStore> Repos<S> {
                 entry: None,
             });
         };
-        let run_scope = user
-            .acting
-            .as_ref()
-            .filter(|_| user.kind == PrincipalKind::Agent)
-            .map(|acting| acting.scope.clone());
+        // A run credential carries its scope; whatever kind of principal
+        // it resolves as, it is held to that scope.
+        let run_scope = user.acting.as_ref().map(|acting| acting.scope.clone());
         let entry = |target: AuditTarget, decision: &Decision| {
             NewAuditEntry::new(
                 AuditActor::of(&user),

@@ -1,8 +1,12 @@
-//! Guardrails: what a workspace lets its agents do in a sandbox, as its
-//! defaults and each project's overrides. The runner service reads what a
-//! run gets (`run_guardrails`) and enforces it; this service keeps the
-//! settings and ends a run that reached a cap (`halt_run`, from
+//! Guardrails: which hosts a sandbox may reach (the network rules and
+//! workflow-only domains) and how long each kind of run may take, as a
+//! workspace's defaults and each project's overrides. The runner service
+//! reads what a run gets (`run_guardrails`) and enforces it; this service
+//! keeps the settings and ends a run that reached a cap (`halt_run`, from
 //! `report_run`).
+//!
+//! Command rules, deny patterns and cost caps were for g1t's own agents:
+//! they are no longer kept or given to runs.
 //!
 //! See `g1t_contracts::guardrails` for the rules and how levels merge.
 
@@ -12,7 +16,6 @@ use g1t_contracts::agents::RunStatus;
 use g1t_contracts::guardrails::*;
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::StallArgs;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, Viewer, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -20,7 +23,7 @@ use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
 use crate::Work;
-use crate::reviews::{AGENT_ID, AGENT_NAME};
+use crate::lifecycle::{POLICY_ACTOR_ID, POLICY_ACTOR_NAME};
 use crate::runs::member_of;
 
 /// Statements that move a renamed workspace's guardrails to its new slug.
@@ -164,6 +167,7 @@ impl Work {
         };
         settings.updated_by = None;
         settings.updated_at = None;
+        without_agent_rules(&mut settings);
         let (scope, key) = match &repo {
             Some(repo) => ("project", repo.id.clone()),
             None => ("workspace", workspace.clone()),
@@ -224,7 +228,11 @@ impl Work {
         };
         let level = self.guardrail_level("workspace", &workspace).await?;
         let project = self.guardrail_level("project", &repo.id).await?;
-        Ok(Outcome::Ok(Guardrails::merge(&level, Some(&project))))
+        let mut merged = Guardrails::merge(&level, Some(&project));
+        merged.rules.clear();
+        merged.deny.clear();
+        merged.budget_usd = None;
+        Ok(Outcome::Ok(merged))
     }
 
     /// The project a run's guardrails come from, where it is now. By id
@@ -296,30 +304,25 @@ impl Work {
             return Ok(Outcome::Ok(RunStatus::Stopped));
         }
         self.add_step(run_id, &now, &said)?.run().await?;
-        if let (Some(pull_id), Some(number)) = (pull_id, number) {
-            let (reason, noted) = match halt {
-                Halt::Abuse => (
-                    format!("g1t stopped the agent's {kind} run for unusual CPU use and is holding it for review. Contact hey@flagon.io if this was a real job."),
-                    format!("stopped its {kind} run for unusual CPU use"),
-                ),
-                Halt::Budget | Halt::Time => {
-                    let cap = if halt == Halt::Budget { "cost cap" } else { "time cap" };
-                    (
-                        format!("g1t stopped the agent's {kind} run when it reached its {cap}. Raise the cap under Settings, Guardrails, then ask for a review, a revision or a catch-up to start again."),
-                        format!("stopped its {kind} run at its {cap}"),
-                    )
-                }
+        // Said on its pull request, if it was for one.
+        if let (Some(_), Some(number)) = (pull_id, number) {
+            let noted = match halt {
+                Halt::Abuse => format!("stopped its {kind} run for unusual CPU use"),
+                Halt::Budget => format!("stopped its {kind} run at its cost cap"),
+                Halt::Time => format!("stopped its {kind} run at its time cap"),
             };
-            self.stall(StallArgs {
-                pull_id: pull_id.to_owned(),
-                reason,
-                by: None,
-            })
-            .await?;
-            self.note(repo_id, number, (AGENT_ID, AGENT_NAME), &noted).await?;
+            self.note(repo_id, number, (POLICY_ACTOR_ID, POLICY_ACTOR_NAME), &noted).await?;
         }
         Ok(Outcome::Ok(RunStatus::Stopped))
     }
+}
+
+/// Clears what only g1t's own agents used: command rules, deny patterns
+/// and the cost cap.
+fn without_agent_rules(settings: &mut GuardrailSettings) {
+    settings.rules.clear();
+    settings.deny.clear();
+    settings.budget_usd = None;
 }
 
 /// What a change to one level did, for the audit log: the workflow-only

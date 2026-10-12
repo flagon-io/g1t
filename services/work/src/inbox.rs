@@ -12,13 +12,90 @@ use g1t_contracts::work::{Comment, CommentKind, Issue, Pull};
 use worker::Result;
 
 use crate::Work;
-use crate::mentions::spoken;
 use crate::rows::CommentRow;
 
 /// The most people one comment notifies by name.
 const MAX_MENTIONS: usize = 20;
 /// About one line of a comment, shown under its title.
 const EXCERPT_CHARS: usize = 140;
+
+/// What a comment says in its own words: fenced code blocks, code spans
+/// and quoted lines are left out, so that quoting or showing a mention
+/// does not make one.
+pub(crate) fn spoken(body: &str) -> String {
+    let mut out = String::new();
+    // The fence that opened the code block being skipped, if one is.
+    let mut fence: Option<String> = None;
+    for line in body.lines() {
+        let trimmed = line.trim_start();
+        if let Some(marker) = &fence {
+            if trimmed.starts_with(marker.as_str()) {
+                fence = None;
+            }
+            out.push('\n');
+            continue;
+        }
+        if let Some(first) = trimmed.chars().next()
+            && (first == '`' || first == '~')
+        {
+            let run = trimmed.chars().take_while(|c| *c == first).count();
+            if run >= 3 {
+                fence = Some(std::iter::repeat_n(first, run).collect());
+                out.push('\n');
+                continue;
+            }
+        }
+        if trimmed.starts_with('>') {
+            out.push('\n');
+            continue;
+        }
+        out.push_str(&without_code_spans(line));
+        out.push('\n');
+    }
+    out
+}
+
+/// A line with its code spans blanked: a run of backticks opens one, and
+/// the next run of the same length closes it. An unclosed run is text.
+fn without_code_spans(line: &str) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let run_at = |at: usize| chars[at..].iter().take_while(|c| **c == '`').count();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] != '`' {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        let open = run_at(i);
+        let mut j = i + open;
+        let mut closed = None;
+        while j < chars.len() {
+            if chars[j] == '`' {
+                let run = run_at(j);
+                if run == open {
+                    closed = Some(j + run);
+                    break;
+                }
+                j += run;
+            } else {
+                j += 1;
+            }
+        }
+        match closed {
+            Some(end) => {
+                out.push(' ');
+                i = end;
+            }
+            None => {
+                out.extend(std::iter::repeat_n('`', open));
+                i += open;
+            }
+        }
+    }
+    out
+}
 
 /// The people a comment mentions by name in its own words (not in code or
 /// a quote), lowercased, each once. Not an email address, a package scope

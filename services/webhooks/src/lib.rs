@@ -212,14 +212,11 @@ impl Webhooks {
     /// and the repository when they are a repository's. A repository's
     /// need the Admin role on it, to see as to change, since they carry
     /// its events out; the workspace's are its members' to see and its
-    /// owners' to change. An agent's token changes neither.
+    /// owners' to change.
     async fn allowed(&self, viewer: &Viewer, owner: &HookOwner, managing: bool) -> Result<Outcome<Option<Repo>>> {
         let Some(user) = viewer.as_ref() else {
             return Ok(fail(FailureCode::Forbidden, "Sign in to see webhooks."));
         };
-        if managing && user.kind == PrincipalKind::Agent {
-            return Ok(fail(FailureCode::Forbidden, "An agent cannot manage webhooks."));
-        }
         if owner.repo.is_some() {
             let Some(repo) = self.repository(owner, viewer).await? else {
                 return Ok(fail(FailureCode::NotFound, "There is no such repository in this workspace."));

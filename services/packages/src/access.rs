@@ -17,8 +17,9 @@
 //! selection; a workspace's own token is a member with Write unless an
 //! owner gave it Admin. A workflow job's token reaches a package only from
 //! the repository it is linked to (Write) or from a repository listed under
-//! the package's Manage Actions access, with that role. An agent's run
-//! token may push only where its run may push code. A deploy key never
+//! the package's Manage Actions access, with that role. A sandbox run's
+//! token (checks, the merge queue, a deployment) may push only where its
+//! run may push code. A deploy key never
 //! reaches packages.
 
 use g1t_contracts::access::{self, RepoRef, RepoRole};
@@ -186,7 +187,7 @@ fn reaches(token: Option<&TokenAccess>, target: &Target<'_>) -> bool {
 }
 
 /// `user`'s role on the package, and the rule it comes from. A person (or
-/// an agent's run, as the person it works for) only; tokens are checked
+/// a sandbox run, as the person it works for) only; tokens are checked
 /// before.
 pub fn role_of(user: &User, target: &Target<'_>) -> (Option<PackageRole>, &'static str) {
     let public = target.is_public().then_some(PackageRole::Read);
@@ -292,17 +293,17 @@ pub fn decide(viewer: Option<&User>, target: &Target<'_>, action: Action) -> Dec
         };
     };
 
-    // An agent's run token: only where its run may read or push code, and
+    // A sandbox run's token: only where its run may read or push code, and
     // then as the person it works for.
-    if user.kind == PrincipalKind::Agent {
+    if user.kind == PrincipalKind::Agent || user.acting.is_some() {
         let Some(scope) = user.acting.as_ref().map(|acting| acting.scope.clone()) else {
-            return Decision::deny("agent", "This agent token cannot use packages.");
+            return Decision::deny("agent", "This run's token cannot use packages.");
         };
         if action.administers() {
-            return Decision::deny("agent", "A g1t agent cannot delete packages or change their settings.");
+            return Decision::deny("agent", "A run's token cannot delete packages or change their settings.");
         }
         let Some(repo) = target.repo else {
-            return Decision::deny("agent", "A g1t agent can use only the packages of the repository it works on.");
+            return Decision::deny("agent", "A run's token can use only the packages of the repository it runs in.");
         };
         let path = RepoPath { namespace: target.workspace.to_owned(), name: repo.name.to_owned() };
         let decision = credentials::decide_git(&scope, &path, action == Action::Push);
@@ -311,7 +312,7 @@ pub fn decide(viewer: Option<&User>, target: &Target<'_>, action: Action) -> Dec
         }
         match credentials::as_person(&user) {
             Some(person) => user = person,
-            None => return Decision::deny("agent", "This agent token cannot use packages."),
+            None => return Decision::deny("agent", "This run's token cannot use packages."),
         }
     }
 
@@ -722,7 +723,7 @@ mod tests {
                     repo: path("web"),
                     operations: vec![],
                     run: Some(RunBinding {
-                        kind: RunCredentialKind::Implement,
+                        kind: RunCredentialKind::Checks,
                         usage: CredentialUse::Runner,
                         run_id: None,
                         number: None,

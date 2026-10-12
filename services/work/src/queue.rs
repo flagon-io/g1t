@@ -9,8 +9,8 @@
 //! on that commit, and the default branch's required checks must pass
 //! there. Entries land in order, each by moving the default branch to its
 //! tested state, once everything ahead has landed. One that fails leaves
-//! the queue with a failed check run, which sends a g1t agent back to fix
-//! it; the entries behind it are tested again without it.
+//! the queue with a failed check run; the entries behind it are tested
+//! again without it.
 
 use futures_util::future::try_join_all;
 use g1t_contracts::events::{ChecksEvent, QueueChanged};
@@ -614,7 +614,7 @@ impl Work {
 
     /// An entry whose combined state failed: the entries tested on top of
     /// it are tested again without it, and the failure is recorded as a
-    /// failed check run of its pull request, so a g1t agent is sent back.
+    /// failed check run of its pull request.
     async fn eject(&self, row: &EntryRow, report: &ReportQueueArgs) -> Result<()> {
         self.drop_branch(row).await;
         let active = self.entries(&row.repo_id, true).await?;

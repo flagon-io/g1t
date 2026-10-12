@@ -23,7 +23,6 @@ use g1t_contracts::actions::{
     EnvironmentsArgs, MAX_ENVIRONMENT_REVIEWERS, MAX_WAIT_MINUTES, PendingDeployment, PendingDeploymentsArgs, ReviewDeploymentsArgs,
     RunActionArgs, RunApproval, SetActionsSettingsArgs, SetEnvironmentArgs, WorkflowRun,
 };
-use g1t_contracts::identity::AGENT_ID;
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, User, Viewer};
@@ -1080,7 +1079,7 @@ impl Actions {
     /// repository's policy, whoever the pull request is for (its owner).
     pub(crate) async fn approval_needed(&self, repo: &Repo, owner: &User, ws: &User) -> Result<Option<String>> {
         // g1t's own work, nobody asked for, is the workspace's.
-        if owner.id == AGENT_ID || owner.kind == PrincipalKind::System {
+        if owner.kind == PrincipalKind::System {
             return Ok(None);
         }
         let policy = self.approval_policy(&repo.id).await?;

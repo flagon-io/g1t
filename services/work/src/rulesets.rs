@@ -809,14 +809,13 @@ impl Work {
         });
         let owners_settings = RepoSettings { require_code_owner_review: true, ..RepoSettings::default() };
         let teams = g1t_rules::merge::named_teams(&applicable);
-        let (verdicts, statuses, behind, code_owners, spent, team_members, commits) = futures_util::try_join!(
+        let (verdicts, statuses, behind, code_owners, team_members, commits) = futures_util::try_join!(
             self.verdict_rows(pull),
             self.statuses(&pull.repo_id, pull.head_commit.as_deref()),
             self.is_behind(&repo.id, pull),
             async {
                 if needs_owners { self.code_owners_gap(&owners_settings, pull).await } else { Ok(None) }
             },
-            self.pull_spend(pull),
             async {
                 if teams.is_empty() { Ok(HashMap::new()) } else { self.team_people(&teams, &repo.namespace, &repo.id).await }
             },
@@ -845,8 +844,10 @@ impl Work {
             behind,
             files: &files,
             commits: commits.as_ref(),
-            confidence: pull.confidence.as_ref().map(|confidence| confidence.level),
-            spent_usd: spent,
+            // Confidence and cost caps were about g1t's own agents: neither
+            // is known for a change any more, so neither rule holds one.
+            confidence: None,
+            spent_usd: 0.0,
             now_ms: now_ms(),
             method: Some(MergeMethod::Merge),
             team_members: Some(&team_members),
@@ -879,22 +880,6 @@ impl Work {
                 .results::<Row>()?,
         };
         Ok(rows.into_iter().map(|row| (row.author_id, row.author_name, row.verdict, row.created_at)).collect())
-    }
-
-    /// What agents have spent on a pull request, in US dollars.
-    pub(crate) async fn pull_spend(&self, pull: &Pull) -> Result<f64> {
-        #[derive(Deserialize)]
-        struct Row {
-            spent: Option<f64>,
-        }
-        Ok(self
-            .db
-            .prepare("SELECT sum(cost_usd) AS spent FROM agent_runs WHERE pull_id = ?")
-            .bind(&[pull.id.as_str().into()])?
-            .first::<Row>(None)
-            .await?
-            .and_then(|row| row.spent)
-            .unwrap_or(0.0))
     }
 
     /// The commits a pull request would land, read as rules look at them.
