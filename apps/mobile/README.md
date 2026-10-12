@@ -147,7 +147,10 @@ The development build is `g1t (dev)` (`sh.g1t.app.dev`), with
 computer, signs in through `g1t://oauth/callback`, and gets notifications
 once Firebase is set up ([below](#push-notifications-on-android)). Build
 it again only when a native module or `app.config.ts` changes; code
-changes reload live. With Android Studio, `APP_VARIANT=development npx expo
+changes reload live. `.g1t/workflows/mobile-build.yml` builds it by hand
+(Run workflow, `development`); its default, `preview`, is what testers
+install, and main builds that again when the native side changes. The
+run's summary links the build on expo.dev, whose QR code installs it. With Android Studio, `APP_VARIANT=development npx expo
 run:android` builds the same app on your computer instead (it makes
 `android/`, ignored by git).
 

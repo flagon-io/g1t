@@ -1,0 +1,71 @@
+# Builds the phone app for Android on EAS, to install from a link or a QR
+# code before it is in Google Play. Nothing is published: the run's summary
+# links the build's page on expo.dev, which shows the QR code, and the APK.
+#
+# - `preview` (default): g1t (beta), sh.g1t.app.preview, a standalone signed
+#   APK that needs no computer: what testers install, from the build page's
+#   QR code. Code changes reach it over the air (`eas update --channel
+#   preview`), so it is built again only when the native side changes; on
+#   main that happens by itself (the paths below). mobile-release.yml
+#   publishes these on g1t.sh/download.
+# - `development`: g1t (dev), sh.g1t.app.dev, with expo-dev-client. It loads
+#   the app's code from `npx expo start` on your computer.
+#
+# Needs the repository secret EXPO_TOKEN (an Expo access token with access
+# to @flagon-io/g1t).
+name: Mobile build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/mobile/app.config.ts
+      - apps/mobile/eas.json
+      - apps/mobile/package.json
+      - apps/mobile/assets/images/**
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "The EAS build profile"
+        type: choice
+        options: [preview, development]
+        default: preview
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-build-${{ inputs.profile || 'preview' }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Android (${{ inputs.profile || 'preview' }}) on EAS
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PROFILE: ${{ inputs.profile || 'preview' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build on EAS
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx --yes eas-cli@24.12.1 build --platform android --profile "$PROFILE" \
+            --non-interactive --wait --json > build.json
+          node -e '
+            const [build] = JSON.parse(require("fs").readFileSync("build.json", "utf8"));
+            const page = `https://expo.dev/accounts/flagon-io/projects/g1t/builds/${build.id}`;
+            const lines = [
+              `### g1t for Android, ${process.env.PROFILE} build`,
+              "",
+              `- Status: ${build.status}`,
+              `- Version: ${build.appVersion} (versionCode ${build.appBuildVersion})`,
+              `- Install: open [the build on expo.dev](${page}) and scan its QR code with the phone`,
+              build.artifacts?.buildUrl ? `- APK: ${build.artifacts.buildUrl}` : "",
+            ];
+            console.log(lines.join("\n"));
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+            if (build.status !== "FINISHED") process.exit(1);
+          '
