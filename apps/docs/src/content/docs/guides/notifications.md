@@ -177,6 +177,7 @@ and comments appear as they happen.
 | --- | --- |
 | **Overview** and **Files** | A branch or tag is pushed, created or deleted, a check or run reports on a commit, a release is published, or a deployment moves. |
 | **Commits** | Commits are pushed to the branch. They wait under a **3 new commits · Show** bar at the top instead of moving the list while you read; checks on the commits shown update in place. |
+| **Branches** | A branch is pushed, created, renamed or deleted. |
 | **Tags** | A tag is pushed or deleted, or a release is published. |
 | **Pull requests** and **Issues** | One is opened, updated, reviewed, commented on, checked, merged or closed. |
 | A **pull request** | Commits are pushed to it, its checks report, someone reviews or comments, or it is merged or closed. New items join its timeline where you are reading; if you are at the end of the page, it follows them down. |

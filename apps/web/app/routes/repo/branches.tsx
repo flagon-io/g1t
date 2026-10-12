@@ -22,6 +22,8 @@ import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { refusal, requireRepo, requireWritableRepo } from "../../lib/access.server";
 import { type BranchTab, branchSections, branchTab, driftScale } from "../../lib/branches";
 import { readBranches } from "../../lib/branches.server";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { page } from "../../lib/meta";
 import { deployments, repos, work } from "../../lib/services.server";
@@ -134,6 +136,8 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
   const { tab, query, main, branches, total, matched, unread, names, checks, username, now, can, unprotected } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const navigate = useNavigate();
+  // New, moved and deleted branches show as they happen (lib/use-repo-live.ts).
+  useRepoLive({ match: repoPages.refs() });
   // Branches deleted on this visit, kept to restore until the page is left.
   const [deleted, setDeleted] = useState<Record<string, ActiveBranch>>({});
   const [notice, setNotice] = useState<{ tone: "danger" | "success"; text: string } | null>(null);
