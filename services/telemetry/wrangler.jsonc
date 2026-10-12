@@ -21,6 +21,12 @@
 	// project and deployment), read to file a request the dispatcher saw
 	// before its note reached it, and Cloudflare's own export. Read only.
 	"kv_namespaces": [{ "binding": "DOMAINS", "id": "14bc5c233d4c46a5bbf23b5367cce5fd" }],
+	// Whether a project's workspace has the plan: a free one's projects send
+	// FREE_TELEMETRY_BYTES_PER_MONTH (1 GiB) a month, a thirtieth a day; past
+	// it OTLP is answered 429 and tail events keep their requests only
+	// (src/quota.ts). 0 is no cap.
+	"services": [{ "binding": "BILLING", "service": "g1t-billing" }],
+	"vars": { "FREE_TELEMETRY_BYTES_PER_MONTH": "1073741824" },
 	// Secret, optional: CLOUDFLARE_EXPORT_KEY, which a Workers
 	// Observability destination on the account sends as x-g1t-export-key
 	// to https://otel.g1t.sh/cloudflare/v1/{traces,logs}.

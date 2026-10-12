@@ -23,6 +23,7 @@
 import { TELEMETRY_TAG, type Attributes, type TelemetryLog, type TelemetryRequest } from "@g1t/contracts/telemetry";
 
 import { emptyBatch, type Batch } from "./batch.ts";
+import { sizeOf } from "./quota.ts";
 import { clip, hostPath, randomId, route, severityNumber, severityOf, text } from "./shape.ts";
 
 /** The first argument of the dispatcher's line for each request. */
@@ -144,7 +145,7 @@ export function readTail(events: readonly TraceItem[]): TailGroup[] {
         country: cf.country ?? null,
         trace_id: mark.trace_id || null,
       });
-      g.batch.bytes += 256;
+      g.batch.bytes += sizeOf(g.halves[g.halves.length - 1]);
       continue;
     }
 
@@ -228,7 +229,7 @@ export function readTail(events: readonly TraceItem[]): TailGroup[] {
       log_count: logs.length,
       error: first ? { name: first.name, message: clip(first.message, 2048) } : item.outcome !== "ok" && item.outcome !== "canceled" ? { name: item.outcome, message: outcomeText(item.outcome) } : null,
     });
-    g.batch.bytes += logs.reduce((n, l) => n + l.body.length, 256);
+    g.batch.bytes += sizeOf(g.halves[g.halves.length - 1]) + logs.reduce((n, l) => n + sizeOf(l), 0);
   }
   return [...groups.values()];
 }

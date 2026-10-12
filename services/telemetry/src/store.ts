@@ -46,6 +46,7 @@ import { fingerprint } from "./errors.ts";
 import { exportEndpointProblem, otlpBodies, send } from "./export.ts";
 import { addInto, bucketOf, decode, emptyHistogram, encode, percentiles } from "./histogram.ts";
 import { FTS, MIGRATIONS, ROLLUP_DAYS } from "./schema.ts";
+import { overCap, sizeOf } from "./quota.ts";
 import { SEVERITY_FLOOR, randomId, severityOf } from "./shape.ts";
 import type { RequestHalf } from "./tail.ts";
 
@@ -79,6 +80,11 @@ async function sha256(text: string): Promise<string> {
 
 function month(us = Date.now() * 1000): string {
   return new Date(us / 1000).toISOString().slice(0, 7);
+}
+
+/** `2026-10-12`: the UTC day, for a free workspace's daily share. */
+function day(us = Date.now() * 1000): string {
+  return new Date(us / 1000).toISOString().slice(0, 10);
 }
 
 /** A page's cursor: the last row's time and id, so the next page starts after it. */
@@ -179,6 +185,23 @@ export class Store {
     return this.settings();
   }
 
+  /** The workspace the project is in, by slug, as the site last said; null before it has. */
+  workspaceOf(): string | null {
+    const row = this.rows("SELECT value FROM settings WHERE key = 'workspace'")[0];
+    return row ? String(row.value) : null;
+  }
+
+  setWorkspace(slug: string): void {
+    const clean = slug.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]{0,38}$/.test(clean) || clean === this.workspaceOf()) return;
+    this.sql.exec("INSERT INTO settings (key, value) VALUES ('workspace', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", clean);
+  }
+
+  /** Bytes that arrived today (UTC). */
+  todayBytes(): number {
+    return Number(this.rows("SELECT ingested_bytes FROM usage_days WHERE day = ?", day())[0]?.ingested_bytes ?? 0);
+  }
+
   // ---- Tokens -------------------------------------------------------------
 
   tokenRow(row: Row): IngestToken {
@@ -249,10 +272,18 @@ export class Store {
    * Adds what arrived. `token` is checked first when given (the OTLP door);
    * tail events come from Cloudflare and need none. Returns false for a
    * token that is not this project's, or when this kind of telemetry is off.
+   *
+   * `dailyCap`, for a project of a workspace without the plan, is the
+   * day's share of its free observability (../quota.ts): past it, OTLP is
+   * refused (`quota`), and tail events keep their requests without logs.
    */
-  async ingest(batch: Batch, halves: RequestHalf[] = [], token?: string): Promise<{ accepted: boolean; reason?: string }> {
+  async ingest(batch: Batch, halves: RequestHalf[] = [], token?: string, dailyCap?: number | null): Promise<{ accepted: boolean; reason?: string }> {
     if (token !== undefined && !(await this.checkToken(token))) return { accepted: false, reason: "token" };
     if (token === undefined && !this.settings().deployments) return { accepted: false, reason: "off" };
+    if (overCap(this.todayBytes(), batch.bytes, dailyCap)) {
+      if (token !== undefined) return { accepted: false, reason: "quota" };
+      batch = { ...batch, logs: [], spans: [], metrics: [], errors: [], bytes: sizeOf(halves) + sizeOf(batch.requests) };
+    }
 
     const live: LiveItem[] = [];
     for (const h of halves) this.putHalf(h);
@@ -304,6 +335,10 @@ export class Store {
        ON CONFLICT (month) DO UPDATE SET ingested_bytes = ingested_bytes + excluded.ingested_bytes, requests = requests + excluded.requests,
          logs = logs + excluded.logs, spans = spans + excluded.spans, metric_points = metric_points + excluded.metric_points`,
       month(), batch.bytes, requestCount, batch.logs.length, batch.spans.length, batch.metrics.length,
+    );
+    this.sql.exec(
+      "INSERT INTO usage_days (day, ingested_bytes) VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET ingested_bytes = ingested_bytes + excluded.ingested_bytes",
+      day(), batch.bytes,
     );
 
     // Requests go live (and to exports) whole: once both halves are in, or
@@ -533,6 +568,7 @@ export class Store {
     this.sql.exec("DELETE FROM metric_points WHERE time_us < ?", keep);
     this.sql.exec("DELETE FROM rollups WHERE minute < ?", Math.floor((now - ROLLUP_DAYS * DAY_US) / MINUTE_US));
     this.sql.exec("DELETE FROM error_groups WHERE last_us < ? AND issue_number IS NULL", now - ROLLUP_DAYS * DAY_US);
+    this.sql.exec("DELETE FROM usage_days WHERE day < ?", day(now - 40 * DAY_US));
     // Over its size, the store sheds a day at a time from the oldest.
     for (let i = 0; i < 30 && this.state.storage.sql.databaseSize > MAX_BYTES; i++) {
       const oldest = Number(this.rows("SELECT MIN(time_us) AS t FROM logs")[0]?.t ?? now);
@@ -950,6 +986,7 @@ export class Store {
       spans: Number(row?.spans ?? 0),
       metric_points: Number(row?.metric_points ?? 0),
       stored_bytes: this.state.storage.sql.databaseSize,
+      today_bytes: this.todayBytes(),
     };
   }
 

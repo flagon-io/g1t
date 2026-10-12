@@ -23,6 +23,7 @@
  * project; and `GET /live?project_id=…`, a project's live tail.
  */
 import { type RateLimitBinding, clientAddress, isLimited } from "@g1t/contracts/rate-limits";
+import { dailyCap, freeMonthlyBytes, overCapMessage } from "./quota.ts";
 import { TELEMETRY_TOKEN_PREFIX, type ErrorGroup } from "@g1t/contracts/telemetry";
 
 import { emptyBatch, type Batch } from "./batch.ts";
@@ -41,7 +42,43 @@ type Env = {
   CLOUDFLARE_EXPORT_KEY?: string;
   /** OTLP requests per client address (RATE_LIMITS in packages/contracts). Fails open without it. */
   TELEMETRY_INGEST_LIMIT?: RateLimitBinding;
+  /** Whether a project's workspace has the plan, for the free cap (./quota.ts). Without it, no cap. */
+  BILLING?: { fetch: typeof fetch };
+  /** A free workspace's project's observability a month, in bytes (./quota.ts); 0 is no cap. */
+  FREE_TELEMETRY_BYTES_PER_MONTH?: string;
 };
+
+/** Each project's daily cap (null: none), kept ten minutes in this isolate. */
+const caps = new Map<string, { at: number; cap: number | null }>();
+const CAP_TTL_MS = 10 * 60_000;
+
+/**
+ * The day's share a project may send, or null: only for a project whose
+ * workspace (as the site last told its store) is on the free plan. A
+ * project whose workspace is not known yet, or a billing that does not
+ * answer, gets none, so nobody's telemetry stops on g1t's account.
+ */
+async function capFor(env: Env, projectId: string): Promise<number | null> {
+  const cached = caps.get(projectId);
+  if (cached && Date.now() - cached.at < CAP_TTL_MS) return cached.cap;
+  let cap: number | null = null;
+  const daily = dailyCap(freeMonthlyBytes(env.FREE_TELEMETRY_BYTES_PER_MONTH));
+  if (daily && env.BILLING) {
+    try {
+      const workspace = await store(env, projectId).workspaceOf();
+      if (workspace) {
+        const { billingClient } = await import("@g1t/contracts");
+        const free = await billingClient(env.BILLING as never).freeWorkspaces([workspace]);
+        if (free.map((slug) => slug.toLowerCase()).includes(workspace)) cap = daily;
+      }
+    } catch (error) {
+      console.error("could not tell whether the project's workspace is free", projectId, error);
+    }
+  }
+  caps.set(projectId, { at: Date.now(), cap });
+  if (caps.size > 5000) caps.delete(caps.keys().next().value!);
+  return cap;
+}
 
 const DEPLOYMENTS_DOMAIN = "g1t.page";
 
@@ -114,9 +151,9 @@ async function onTail(events: readonly TraceItem[], env: Env): Promise<void> {
     byProject.set(project, into);
   }
   await Promise.all(
-    [...byProject].map(([project, { batch, halves }]) =>
+    [...byProject].map(async ([project, { batch, halves }]) =>
       store(env, project)
-        .ingest(batch, halves)
+        .ingest(batch, halves, undefined, await capFor(env, project))
         .catch((error: unknown) => console.error("could not keep tail events", project, error)),
     ),
   );
@@ -150,7 +187,9 @@ async function otlp(request: Request, env: Env, signal: Signal): Promise<Respons
     if (error instanceof IngestError) return refused(error.status, error.message);
     throw error;
   }
-  const done = await store(env, project).ingest(read.batch, [], token);
+  const cap = await capFor(env, project);
+  const done = await store(env, project).ingest(read.batch, [], token, cap);
+  if (!done.accepted && done.reason === "quota" && cap) return refused(429, overCapMessage(cap));
   if (!done.accepted) return refused(401, "That token is not one of the project's, or it was revoked.");
   return accepted(read.protobuf);
 }
@@ -202,6 +241,12 @@ async function rpc(env: Env, method: string, args: Record<string, any>): Promise
   const projectId = String(args.project_id ?? "");
   if (!projectId) throw new IngestError(400, "No project_id.");
   const s = store(env, projectId);
+  // The site says which workspace the project is in when it shows its
+  // settings and makes a token: the store keeps it, for the free cap.
+  if (typeof args.workspace === "string" && (method === "settings" || method === "create_token" || method === "usage")) {
+    await s.setWorkspace(args.workspace);
+    caps.delete(projectId);
+  }
   switch (method) {
     case "overview":
       return s.overview(args);

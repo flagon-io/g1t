@@ -191,6 +191,14 @@ export const MIGRATIONS: string[] = [
     metric_points INTEGER NOT NULL DEFAULT 0
   );
   `,
+  // What arrived each day (UTC), for a free workspace's daily share
+  // (../quota.ts). Kept a little over a month.
+  `
+  CREATE TABLE usage_days (
+    day TEXT PRIMARY KEY,
+    ingested_bytes INTEGER NOT NULL DEFAULT 0
+  );
+  `,
 ];
 
 /**
