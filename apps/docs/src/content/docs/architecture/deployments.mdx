@@ -1,0 +1,92 @@
+---
+title: Deployments, packages and telemetry
+description: How apps are built and served on g1t.page, how the package registries are routed and stored, and where a project's logs, traces and metrics go.
+---
+
+import Diagram from '../../../components/Diagram.astro';
+
+## Deployments
+
+`deployments` (`services/deployments`, TypeScript, D1 `g1t-deployments`)
+builds apps and puts them live. `pages` (`services/pages`) serves them.
+Neither runs your app as a server that waits: each app is a Worker, which
+runs only while it answers a request, so an app nobody visits costs
+nothing.
+
+<Diagram name="deployment-path" />
+
+### Building
+
+Every push to the default branch makes a production deployment, and every
+open pull request gets a preview. `deployments` reads pushes from its
+event queue and asks `runner` for a sandbox in `deploy` mode
+([Actions, runners and sandboxes](/architecture/compute/#other-work-in-sandboxes)).
+The sandbox works out what the app is, in this order:
+
+1. a Workers project, from `wrangler deploy --dry-run`;
+2. a framework it knows, such as Vite, Astro, Next.js or SvelteKit;
+3. a container, which g1t.sh does not run yet (`CONTAINERS` is `off`);
+4. a static site.
+
+The sandbox is given a key that can upload the app's static files and
+nothing else. `deployments` uploads the built Worker itself to the Workers
+for Platforms dispatch namespace `g1t-deployments`. A site with only static
+files gets a Worker that serves just its assets. A workflow can build
+instead and hand over the result, with
+`POST /repos/{owner}/{repo}/deployments/builds` or the `g1t/deploy` action.
+
+### Serving
+
+| | Hostname |
+| --- | --- |
+| Production | `<project>-<workspace>.g1t.page` |
+| A preview | `<project>-git-<branch>-<workspace>.g1t.page` |
+| Your domain | A CNAME to `domains.g1t.page`, a custom hostname on g1t.page's zone |
+
+`pages` answers every one of those hostnames. It reads the app's name from
+the hostname, or looks a custom domain up in the `g1t-domains` KV, which
+`deployments` writes, and hands the request to that app's Worker with
+`env.APPS.get(app)`. Each request to an app may use 50 ms of CPU and 50
+subrequests. A preview comes down when its pull request closes, or after it
+has been idle for a number of days you choose (7 by default).
+
+## Packages
+
+`packages` (`services/packages`, Rust, D1 `g1t-packages`) is every package
+registry g1t has. The site recognises a registry's path and passes the
+request on whole, as it does for git:
+
+| Registry | Path on `g1t.sh` |
+| --- | --- |
+| Container images (OCI Distribution 1.1) | `/v2/`, with tokens at `/v2/token` |
+| npm | `/-/npm/` |
+| Cargo, sparse index | `/-/cargo/<workspace>/` |
+| Composer | `/-/composer/` |
+| Maven | `/-/maven/` |
+| NuGet | `/-/nuget/<workspace>/v3/index.json` |
+| RubyGems | `/-/rubygems/` |
+
+Files are stored in the `g1t-packages` bucket by their digest, so a layer
+or a tarball pushed twice is kept once. The bucket sits behind the
+`BlobStore` port, so a self-hosted installation keeps them in any S3
+store. Large downloads are answered with a signed URL to the bucket.
+[Packages](/guides/packages/) has each registry's setup.
+
+## Telemetry
+
+`telemetry` (`services/telemetry`, TypeScript) keeps each project's logs,
+traces, metrics and errors in a Durable Object of its own,
+`TelemetryStore`, in that object's SQLite storage. A project's data never
+shares a database with another's.
+
+It has three ways in:
+
+| Door | From |
+| --- | --- |
+| `otel.g1t.sh/v1/traces`, `/v1/logs`, `/v1/metrics` | Your software, as OpenTelemetry over HTTP, JSON or protobuf, with a `g1to_…` token |
+| Tail events | Apps on `g1t.page`: `telemetry` is `pages`' tail consumer, and apps name it as their Tail Worker |
+| `/otlp/v1/*` on the API | The same as `otel.g1t.sh`, passed on as it is; the only door on a self-hosted installation |
+
+A store keeps up to 4 GiB and sheds its oldest day past that. You choose
+how long raw data is kept, from 1 to 30 days; rollups are kept 90 days.
+[Observability](/guides/observability/) shows what you can do with it.

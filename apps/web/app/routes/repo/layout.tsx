@@ -9,10 +9,9 @@ import type { Route } from "./+types/layout";
 import { Topics } from "../../components/topics";
 import { page } from "../../lib/meta";
 import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
-import { SoonPill } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Hint } from "../../components/ui/hint";
-import { TabStrip } from "../../components/ui/tab-strip";
+import { NavTab, NavTabs } from "../../components/ui/nav-tabs";
 import { ProjectStrip } from "../../components/mobile";
 import { seesSettings } from "../../lib/access";
 import { WatchMenu } from "../../components/notifications";
@@ -103,13 +102,12 @@ export function useProject() {
   return useRouteLoaderData<typeof loader>("routes/repo/layout");
 }
 
-/** A repository's topics, each a way into Explore. */
-function Header({ project, isPrivate, archived, namespace, name, description, large, actions }: {
+/** The project's name row: its kind, owner and name, visibility, and Pin, Watch and Star at the end. */
+function Header({ project, isPrivate, archived, namespace, name, large, actions }: {
   project: Project | null;
   isPrivate: boolean;
   namespace: string;
   name: string;
-  description: string | null;
   archived?: boolean;
   large?: boolean;
   /** At the end of the row: Pin, Watch and Star. */
@@ -134,17 +132,16 @@ function Header({ project, isPrivate, archived, namespace, name, description, la
       </h1>
       <Badge size="md">{isPrivate ? "private" : "public"}</Badge>
       {archived && <Badge size="md">archived</Badge>}
-      {/* On a phone, on its own line under the name and the Watch menu. */}
-      {description && <p className="order-last min-w-0 basis-full truncate text-sm text-muted sm:order-none sm:basis-0 sm:flex-1">{description}</p>}
       {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
   );
 }
 
 /**
- * The views of the page the project is on, as tabs across its top: Files,
- * Commits and what is coming under Code, and so on. Soon tabs open their
- * roadmap page, under the same tabs.
+ * The views of the section the page is in (Files, Commits and the rest
+ * under Code, and so on), at the top of the page's content: a secondary
+ * row that belongs to what is under it, not a second header. Soon tabs
+ * open their roadmap page, under the same tabs.
  */
 function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
   const { pathname } = useLocation();
@@ -152,30 +149,15 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
   const current = (tab: PageTab) =>
     [tab.path, ...(tab.also ?? [])].some((path) => rest === path || (!tab.exact && rest.startsWith(`${path}/`)));
   return (
-    <TabStrip label="Views" className="-mb-px gap-1">
+    <NavTabs label="Views" variant="pill" className="mb-6">
       {tabs.map((tab) => (
         <Hint key={tab.path} label={tab.about}>
-          <Link
-            to={`${base}/${tab.path}`}
-            prefetch="intent"
-            // Current by the tab's own rule: a link's address alone would also
-            // mark Overview current on every page under it.
-            aria-current={current(tab) ? "page" : undefined}
-            data-active={current(tab) || undefined}
-            className={`flex items-center gap-1.5 border-b-2 px-3 pt-1 pb-2.5 text-sm transition-colors ${
-              current(tab)
-                ? "border-accent font-medium text-fg"
-                : tab.soon
-                  ? "border-transparent text-faint hover:text-muted"
-                  : "border-transparent text-muted hover:text-fg"
-            }`}
-          >
+          <NavTab variant="pill" to={`${base}/${tab.path}`} current={current(tab)} soon={tab.soon}>
             {tab.label}
-            {tab.soon && <SoonPill />}
-          </Link>
+          </NavTab>
         </Hint>
       ))}
-    </TabStrip>
+    </NavTabs>
   );
 }
 
@@ -189,20 +171,20 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   const tabs = tabsFor(rest, member, access.can);
   // The files' own About says what it is and its topics, as the one place.
   const filesPage = /^(code|tree|blob|commits?|branches|tags|releases|compare)(\/|$)/.test(rest);
-  // Everyone, signed in or not, finds the project's pages in the sidebar;
-  // the page shows its name, and the views of the page it is on as tabs.
+  // One row of tabs for the project's pages, along the header's border (a
+  // member's sidebar has them on a computer), and the views of the section
+  // the page is in as a quieter row at the top of its content.
   return (
     <>
       <div data-page-head className="border-b border-line">
-        <div className={`mx-auto max-w-6xl px-4 sm:px-5 ${tabs ? "pt-3" : "py-3"}`}>
+        {/* The project's pages close the header for a visitor, and on a phone; a member's sidebar lists them from 768px. */}
+        <div className={`mx-auto max-w-6xl px-4 pt-4 sm:px-5 ${signedIn ? "pb-4 max-md:pb-0" : ""}`}>
           <Header
             project={project}
             isPrivate={repo.isPrivate}
             archived={Boolean(repo.archivedAt)}
             namespace={repo.namespace}
             name={repo.name}
-            // The files' own About says it there, as the one place.
-            description={filesPage ? null : description}
             actions={
               watching || stars || (project && pinned != null) ? (
                 <>
@@ -215,20 +197,16 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
               ) : null
             }
           />
-          {/* On the files' pages, About shows them. */}
-          {!filesPage && <Topics topics={repo.topics} />}
-          {/* A phone, or a visitor: the project's pages, which the sidebar lists for someone signed in. */}
+          {/* On the files' pages, About says what it is and shows its topics, as the one place. */}
+          {!filesPage && description && <p className="mt-2 line-clamp-2 max-w-3xl text-sm text-muted">{description}</p>}
+          {!filesPage && <Topics topics={repo.topics} className="mt-3" />}
           <div className={signedIn ? "mt-3 md:hidden" : "mt-3"}>
             <ProjectStrip base={base} member={member} can={access.can} settings={seesSettings(access)} counts={loaderData.open} always={!signedIn} />
           </div>
-          {tabs && (
-            <div className="mt-3">
-              <PageTabs base={base} tabs={tabs} />
-            </div>
-          )}
         </div>
       </div>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-5">
+        {tabs && <PageTabs base={base} tabs={tabs} />}
         {welcome && (
           <div className="mb-6">
             <WelcomeBanner title={`You're in ${repo.namespace}/${repo.name}`}>

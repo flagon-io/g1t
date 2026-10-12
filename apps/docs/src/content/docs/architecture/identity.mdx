@@ -1,0 +1,99 @@
+---
+title: Identity and access
+description: How every kind of credential becomes one viewer, what the viewer carries, and how each service decides access with the same compiled-in rules instead of asking identity.
+---
+
+import Aside from '../../../components/Aside.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+`identity` (`services/identity`, Rust, D1 `g1t`) is the only service that
+knows about credentials. It holds accounts, sessions, workspaces and their
+members, teams, repository roles and invitations, access tokens, OAuth,
+device sign-in and two-factor authentication. Every other service learns
+who is asking from the viewer it is handed.
+
+<Diagram name="identity-flow" />
+
+## Credentials
+
+| Credential | Looks like | Used by | Resolved with |
+| --- | --- | --- | --- |
+| Session cookie | `g1t_session`, 64 hex characters, 30 days | The site | `user_for_session` |
+| Access token | `g1t_…`, personal or a workspace's, with scopes | The API, MCP, git, the CLI | `user_for_access_token` |
+| OAuth access token | Issued by `POST /oauth/token`, refreshed with `g1r_…` | MCP clients, the phone app, apps you authorise | `user_for_access_token` |
+| Job token | `G1T_TOKEN` in a workflow job | Actions, for that job alone | `user_for_access_token` |
+| Run credential | Made per sandbox run, up to 6 hours | Sandboxes | `user_for_access_token` |
+| git password | Your account's password | git, only without two-factor authentication | `user_for_git_credentials` |
+
+The CLI signs in with the device flow of RFC 8628 (`/device/code`, then
+`/device/token`) and keeps its token in the system keychain. Session
+cookies and access tokens are stored as their SHA-256, so neither can be
+read back.
+
+## The viewer
+
+`identity` answers with a `User` (`crates/contracts/src/lib.rs`), and the
+edge hands it to every service it calls, as `viewer` in the call's
+arguments. It is `null` for someone signed out.
+
+| Field | Holds |
+| --- | --- |
+| `kind` | `User`, `Workspace`, `Agent` or `System`: what kind of principal this is |
+| `workspaces` | Each membership: the role, the workspace's base permission, organisation roles such as billing or security manager, and privileges |
+| `grants` | Roles on repositories, directly or through teams |
+| `acting` | For a job or run token: the narrower scope it acts within |
+
+A service never asks `identity` whether someone may do something. Each
+calls `can` in `g1t_contracts::access`, the same rules compiled into every
+Rust service, with `packages/contracts/src/access.ts` as the TypeScript
+mirror, which a test keeps identical. That takes `identity` out of every
+request after the first call, and means access is decided by the service
+that owns the data, next to it.
+
+<Aside title="Why the viewer can be trusted">
+	The viewer is passed as plain JSON, not signed. That is safe because
+	services can be reached only through service bindings: none is on
+	`workers.dev`, and the only routes in the core are `telemetry`'s and
+	`og`'s public endpoints, which take no viewer. A Worker can only be
+	called by the Workers bound to it, and those are the edge Workers and
+	other services, which resolved the viewer themselves.
+</Aside>
+
+## Roles
+
+| Level | Roles |
+| --- | --- |
+| Workspace | Owner and member, plus organisation roles (billing manager, security manager) and member privileges |
+| Repository | Read, Triage, Write, Maintain and Admin, given to a person, a team, or everyone in the workspace as its base permission |
+| Outside collaborators | A repository role for someone who is not a member |
+
+The rules live in `crates/contracts/src/access.rs`; the grants live in
+`identity`. [Access and roles](/guides/access-and-roles/) explains each
+role from a person's side.
+
+## Scopes
+
+A token can do no more than its owner, and often less. Scopes are written
+`resource:level`, where `admin` includes `write` and `write` includes
+`read` (`crates/contracts/src/scopes.rs`). A token's reach is every
+workspace its owner belongs to, one of them, or none. The API checks the
+scopes before it calls any service, and the MCP server lists only the
+tools they allow ([How a request is served](/architecture/requests/#scopes)).
+
+## Sign-in hardening
+
+| | |
+| --- | --- |
+| Two-factor | TOTP (RFC 6238), with ten recovery codes stored as SHA-256. A workspace can require it. |
+| Sudo mode | Sensitive changes ask you to prove it is you again (`Identity::proof`) |
+| Lockouts | Wrong passwords are throttled per account and per address |
+| Unconfirmed email | Can sign in, but cannot push |
+| GitHub sign-in | A GitHub App's OAuth web flow with PKCE, keyed on your GitHub account's numeric id |
+| Staff | `sudo.g1t.sh` checks the Cloudflare Access token against a staff list, and is the only caller of `identity`'s admin methods |
+
+## Events
+
+`identity` publishes `user.*`, `workspace.*`, `team.*` and `invite.*`
+events. Lifecycle events, such as a workspace being
+deleted or renamed, go to every subscriber, so each service cleans up or
+renames its own data ([Events](/architecture/events/#subscriber-queues)).

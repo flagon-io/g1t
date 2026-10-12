@@ -210,6 +210,22 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Architecture',
+					items: [
+						{ label: 'Overview', slug: 'architecture/overview' },
+						{ label: 'How a request is served', slug: 'architecture/requests' },
+						{ label: 'Services and contracts', slug: 'architecture/services' },
+						{ label: 'Git', slug: 'architecture/git' },
+						{ label: 'Events', slug: 'architecture/events' },
+						{ label: 'Work and the merge queue', slug: 'architecture/work' },
+						{ label: 'Actions, runners and sandboxes', slug: 'architecture/compute' },
+						{ label: 'Deployments and telemetry', slug: 'architecture/deployments' },
+						{ label: 'Data and storage', slug: 'architecture/data' },
+						{ label: 'Identity and access', slug: 'architecture/identity' },
+						{ label: 'How g1t ships', slug: 'architecture/shipping' },
+					],
+				},
+				{
 					label: 'Reference',
 					items: [
 						{ label: 'API overview', slug: 'reference/api' },

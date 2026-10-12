@@ -1,0 +1,194 @@
+---
+title: Git
+description: Where g1t keeps repositories, what happens on a push and a clone, the caches in front of the git store, pull request forks, merges, and backups.
+---
+
+import Aside from '../../../components/Aside.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+Every repository on g1t.sh is an ordinary git repository in Cloudflare
+Artifacts, a git store. One service, `repos` (`services/repos`, Rust),
+holds the only binding to it. Everything else that reads code, the site
+and the API included, asks `repos`.
+
+## Where repositories live
+
+`repos` talks to the store through a port: the `GitStore` and `GitRepo`
+traits in `services/repos/src/store.rs`, with `ArtifactsStore` as the
+adapter for Artifacts. Self-hosted installations bind a different adapter
+in its place ([Data and storage](/architecture/data/#ports-and-adapters)).
+Every call to the store goes through one function that meters it, retries
+reads, and trips a circuit breaker when the store struggles
+(`resilience.rs`).
+
+### Namespaces and sharding
+
+An Artifacts namespace takes a fixed number of control requests per 10
+seconds, and its jurisdiction, US or EU, is set when it is made. So g1t
+can spread repositories across several namespaces, each its own binding
+(`services/repos/src/shards.rs`):
+
+| Setting | What it decides |
+| --- | --- |
+| `GITSTORE_NAMESPACES` | The namespaces and their bindings, such as `GITSTORE_1` and `GITSTORE_EU` |
+| `GITSTORE_NEW_REPOS` | Where new repositories go |
+| `GITSTORE_EU_NAMESPACE` | Where an EU workspace's repositories go |
+
+A repository's row in D1 records its store key, `namespace/owner--name`.
+A key with no namespace is in the first, `g1t`. Moving a repository
+between namespaces is an operator task, in `moves.rs`.
+
+### What D1 holds
+
+`g1t-repos` keeps what git does not: each repository's row (store key,
+size, default branch, visibility, `refs_version`), renames and their
+redirects, releases, stars, stats, backups, moves, the commits each push
+brought for the contribution calendar, and the meter of every git
+operation.
+
+## A push
+
+<Diagram name="push-path" />
+
+The site recognises a git path and hands the whole request to `repos`
+(steps 1 and 2), after the git rate limits. From there, `repos` does the
+work in `answer_git` (`services/repos/src/lib.rs`):
+
+1. **Who is pushing.** HTTP Basic credentials go to `identity`
+   (steps 3 and 4). A secret with the token prefix is an access token, and
+   the username is ignored. Anything else is a password, which `identity`
+   refuses for anyone with two-factor authentication on, so they push
+   with a token. The repository's row is read at the same time.
+2. **Which repository.** Renames redirect, transfers resolve, and a pull
+   request's fork that was retired is made again.
+3. **Whether they may.** The access check, then the workspace's limits.
+4. **The rules.** `repos` asks `work` for the rulesets that apply
+   (step 5).
+5. **The checks** (step 6). The pack is read once, and four checks run on
+   it side by side; their verdicts are taken in this order:
+
+   | Check | Where | Refuses |
+   | --- | --- | --- |
+   | Workflow gate | `workflow_gate.rs` | A token without the workflow permission changing `.g1t/workflows` |
+   | Rules | `rules.rs`, judged by `crates/rules` | What a ruleset forbids, with a `remote:` line naming the rule |
+   | Sizes | `pack_limits.rs` | A file over 32 MB, a repository over 950 MB, a push over 100 MB |
+   | Push protection | `secret_scan.rs`, using `crates/scan` | Secrets, private email addresses, and the workspace's own patterns |
+
+6. **The store** (steps 7 and 8). The pack goes to Artifacts with a
+   short-lived store credential.
+7. **The answer** (steps 9 and 10). Once the store reports, `refs_version`
+   goes up, which invalidates every cached ref listing, and only then
+   does git get its answer.
+
+After the answer, in `waitUntil`, `repos` checks with the store's log that
+each ref really moved, adds the repository's new size, counts commits, and
+publishes `git.push` for each branch (step 11 and 12). Everything that
+reacts to a push, from workflows to search to deployments, starts from
+that event ([Events](/architecture/events/)).
+
+<Aside title="Large pushes">
+	A push up to 24 MiB is scanned before it is stored. A larger one is
+	streamed straight to the store, its `git.push` events say
+	`unscanned: true`, and `security` scans it after it lands.
+</Aside>
+
+A few details that keep pushes fast and correct:
+
+- **`no-thin`.** g1t advertises that it wants whole packs, so the checks
+  never have to read objects from the store. A client that sends a thin
+  pack anyway still works: up to 200 bases are fetched.
+- **Hidden refs.** `refs/pull/*` belong to g1t. A push to one is refused
+  for that ref alone.
+- **Announcements are capped.** A push with more than three tags announces
+  none of them, and one with more than 1,000 branches announces only the
+  default branch.
+
+### Timing
+
+Every git answer carries `Server-Timing`, with a step for each stage:
+`repo`, `access`, `mint` (a store credential), `store`, `checks` (with
+`read`, `rules`, `scan` and `gate`), `refs`, `total` and more. Run
+`GIT_CURL_VERBOSE=1 git push` to see where a slow push spent its time.
+
+## A clone or fetch
+
+<Diagram name="clone-path" />
+
+A fetch is answered from the first place that can:
+
+| Order | From | Holds | Kept |
+| --- | --- | --- | --- |
+| 1 | R2, `g1t-git-packs` | Whole packs for fresh clones: a request with wants and no haves, shallow ones included | 7 days, or until a ref moves |
+| 2 | The colo's cache | Ref listings, and trees and blobs up to 1 MiB, which never change | Refs 60 s; objects forever |
+| 3 | KV, `g1t-repos-git-cache` | Ref listings and store credentials, shared by every isolate | 60 s |
+| 4 | Artifacts | Everything | |
+
+Every cached ref listing is keyed by the repository's `refs_version`, so a
+push makes the old one unreachable at once. A change can take up to 5
+seconds to reach every fetch, while a repository's row is reused.
+
+**Packs are cached as they stream.** On a miss, the store's answer goes
+to git and to R2 at the same time, never held whole: in one `put` when
+small, in 5 MiB parts when large, completed only after a check. A pack
+over 200 MiB is not cached, at most two fills run at once, and a
+repository fills at most 30 times a minute. A hit never touches the store.
+
+**What is in KV is sealed.** Each value is encrypted with AES-256-GCM under
+the `REPOS_KEY` secret, with its own key as associated data, so a value
+copied to another key will not open (`services/repos/src/shared.rs`).
+
+When the store is busy, git gets 429 or 503 with `Retry-After`. Pushes are
+never retried on your behalf.
+
+## Pull request forks
+
+A pull request made for an issue gets a fork of its own
+([Forks and branches](/concepts/forks/)). `fork_for_pull` makes it in the
+same namespace as its source, as `pulls--<pull request id>`, with
+Artifacts' own fork of the default branch, and it is served at
+`g1t.sh/pulls/<id>.git`. Anyone who can read the source can read the fork.
+
+A day after the pull request merges or closes, an hourly job retires the
+fork: its head is kept in the source as `refs/pull/<id>/head`, and its data
+is removed. Reads of a retired fork are answered from the source, and any
+write makes the fork again first.
+
+## Merging
+
+The Artifacts binding reads but does not write, so `repos` lands a merge
+over git itself (`services/repos/src/land.rs`). It asks the fork for a pack
+with exactly the objects the target lacks, and streams it into a push to
+the target, without parsing it or holding it whole.
+
+`repos` also builds the test merge for every pull request,
+`refs/pull/<n>/merge`, without a sandbox, using a line-level merge on
+files up to 1 MiB (`test_merge.rs`). When a pull request is behind and the
+two sides changed different files, **Catch up with main** is done the same
+way (`catch_up.rs`). Testing several pull requests together is the merge
+queue's job ([Work and the merge queue](/architecture/work/#the-merge-queue)).
+
+## Backups
+
+At 02:53 UTC, `repos` queues up to 200 repositories whose refs moved since
+their last backup, oldest first. The runner cuts them: each job gets a
+sandbox that clones with a read-only store credential valid for a few
+minutes, writes a `git bundle`, and uploads it in 32 MiB parts to the
+`g1t-backups` bucket. Every thirtieth backup is full and the rest are
+incremental.
+
+| Path | Holds |
+| --- | --- |
+| `backups/<repo id>/manifest.json` | The repository's bundles, in order |
+| `backups/<repo id>/<time>-full.bundle` | Every ref and object |
+| `backups/<repo id>/<time>-incr.bundle` | What changed since the bundle before |
+
+`scripts/ops/backup-restore-drill.mjs` restores from them, and
+`scripts/ops/restore-to-gitstore.mjs` can rebuild repositories into a
+self-hosted git store, which g1t.sh can then read from if Artifacts is
+unavailable (`fallback.rs`).
+
+## SSH
+
+`crates/sshd` is an SSH front end for git that authenticates your key with
+`identity` and bridges to the store. It is not deployed: git on g1t is
+HTTPS only for now. You can already add deploy keys.

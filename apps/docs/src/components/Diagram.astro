@@ -1,0 +1,72 @@
+---
+// A diagram from src/diagrams, by name: drawn as an inline SVG in the g1t
+// tokens, with its caption, a key, and Expand, which opens it at full size
+// in a dialog. See src/diagrams/engine.ts.
+import { DIAGRAMS } from '../diagrams/index.ts';
+import { render } from '../diagrams/engine.ts';
+import LucideIcon from './LucideIcon.astro';
+
+interface Props {
+	name: string;
+}
+
+const { name } = Astro.props;
+const spec = DIAGRAMS[name];
+if (!spec) throw new Error(`No diagram named "${name}". Add it to src/diagrams/index.ts.`);
+// The dialog's copy has its own ids, so its arrowheads and title never
+// point at the page's copy.
+const svg = render(`d-${name}`, spec);
+const large = render(`d-${name}-full`, spec);
+const asyncUsed = spec.kind === 'graph' ? spec.edges.some((e) => e.async) : spec.steps.some((s) => 'from' in s && (s.async || s.reply));
+---
+
+<figure class="g1t-diagram not-content" data-diagram>
+	<div class="g1t-diagram__scroll" tabindex="0" role="group" aria-label={`${spec.caption}. Scrolls sideways on a narrow screen.`}>
+		<Fragment set:html={svg} />
+	</div>
+	<figcaption>
+		<span>{spec.caption}</span>
+		<span class="g1t-diagram__tools">
+			<span class="g1t-diagram__key" aria-hidden="true">
+				<span><svg width="22" height="8"><line x1="1" y1="4" x2="21" y2="4" class="d-key" /></svg>
+					{spec.kind === 'sequence' ? 'call' : 'calls'}</span>
+				{
+					asyncUsed && (
+						<span><svg width="22" height="8"><line x1="1" y1="4" x2="21" y2="4" class="d-key d-async" /></svg>
+							{spec.kind === 'sequence' ? 'answer or event' : 'event, queue or stream'}</span>
+					)
+				}
+			</span>
+			<button type="button" class="g1t-diagram__expand" data-diagram-open aria-haspopup="dialog">
+				<LucideIcon name="maximize-2" size="0.875rem" />
+				Expand
+			</button>
+		</span>
+	</figcaption>
+	<dialog class="g1t-diagram__dialog" aria-label={spec.caption}>
+		<div class="g1t-diagram__dialog-bar">
+			<span>{spec.caption}</span>
+			<button type="button" class="g1t-diagram__expand" data-diagram-close>
+				<LucideIcon name="x" size="0.875rem" />
+				Close
+			</button>
+		</div>
+		<div class="g1t-diagram g1t-diagram__dialog-body">
+			<div class="g1t-diagram__scroll"><Fragment set:html={large} /></div>
+		</div>
+	</dialog>
+</figure>
+
+<script>
+	// Expand opens the figure's dialog; Close, Escape or a click on the
+	// backdrop closes it.
+	for (const figure of document.querySelectorAll<HTMLElement>('[data-diagram]')) {
+		const dialog = figure.querySelector('dialog');
+		if (!dialog) continue;
+		figure.querySelector('[data-diagram-open]')?.addEventListener('click', () => dialog.showModal());
+		dialog.querySelector('[data-diagram-close]')?.addEventListener('click', () => dialog.close());
+		dialog.addEventListener('click', (event) => {
+			if (event.target === dialog) dialog.close();
+		});
+	}
+</script>

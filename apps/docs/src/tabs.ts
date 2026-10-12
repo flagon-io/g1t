@@ -15,6 +15,7 @@ export const TABS: Tab[] = [
 	{ label: 'Projects', groups: ['Projects'] },
 	{ label: 'Workspaces', groups: ['Workspaces', 'Connect your tools'] },
 	{ label: 'Self-hosting', groups: ['Run g1t yourself'] },
+	{ label: 'Architecture', groups: ['Architecture'] },
 	{ label: 'API reference', groups: [] },
 ];
 

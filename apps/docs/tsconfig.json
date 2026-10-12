@@ -1,5 +1,8 @@
 {
   "extends": "astro/tsconfigs/strict",
   "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist"]
+  "exclude": ["dist"],
+  // src/diagrams imports its modules with their .ts extension, so Node's
+  // test runner can load them as they are.
+  "compilerOptions": { "allowImportingTsExtensions": true }
 }

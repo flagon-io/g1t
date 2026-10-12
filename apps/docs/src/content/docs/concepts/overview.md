@@ -218,6 +218,7 @@ Every state change in g1t is published as an event: a push, an issue being
 opened, a pull request being merged, a session growing. Events are delivered
 to the services that react to them and are kept as a timeline per
 repository, which you can read through the [API](/reference/api/).
+[Events](/architecture/events/) in the Architecture section shows how.
 
 ## What is not built yet
 

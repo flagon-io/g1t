@@ -1,0 +1,112 @@
+---
+title: Data and storage
+description: Which service owns which database, bucket and Durable Object, the few stores that are shared, how schema changes ship, and the ports that let the same code run on Cloudflare or in Docker.
+---
+
+import Aside from '../../../components/Aside.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+## Who owns what
+
+Each D1 database is bound by exactly one Worker. If you need another
+service's data, call that service; never read its tables.
+
+| Service | D1 | Other storage |
+| --- | --- | --- |
+| `identity` | `g1t` | Writes the avatars KV |
+| `repos` | `g1t-repos` | The git store (Artifacts), the git cache KV, the `g1t-git-packs` and `g1t-backups` buckets |
+| `work` | `g1t-work` | |
+| `events` | `g1t-events` | The `g1t-events` queue, which it produces and consumes, and the subscriber queues it produces |
+| `actions` | `g1t-actions` | Lists and expires the `g1t-actions-cache` bucket |
+| `billing` | `g1t-billing` | |
+| `integrations` | `g1t-integrations` | |
+| `webhooks` | `g1t-webhooks` | |
+| `security` | `g1t-security` | |
+| `search` | `g1t-search` | The `g1t-search-jobs` queue |
+| `packages` | `g1t-packages` | The `g1t-packages` bucket |
+| `projects` | `g1t-projects` | Writes project images to the avatars KV |
+| `chat` | `g1t-chat` | A `ChannelRoom` Durable Object per channel; writes custom emoji to the avatars KV |
+| `artifacts` | `g1t-docs` | The `g1t-docs-files` bucket, the `g1t-docs` and `g1t-folios` Vectorize indexes, `PageRoom` and `FolioRoom` Durable Objects |
+| `deployments` | `g1t-deployments` | Writes the domains KV; the `g1t-deployments` dispatch namespace |
+| `apps/status` | `g1t-status` | |
+| `notify` | | `Feed`, `Room` and `Topic` Durable Objects |
+| `telemetry` | | A `TelemetryStore` Durable Object per project |
+| `runner` | | The sandbox Container classes |
+| `og` | | The `g1t-screenshots` bucket |
+| `apps/web` | | The `g1t-downloads` bucket |
+
+### The shared stores
+
+Three stores are shared on purpose, each with a single writer per key
+prefix:
+
+| Store | Written by | Read by |
+| --- | --- | --- |
+| `g1t-avatars` KV | `identity` (people and workspaces), `projects` (`production/`), `chat` (`emoji/`) | The site, `og` |
+| `g1t-domains` KV | `deployments` | `pages`, `telemetry` |
+| `g1t-actions-cache` R2 | The API, as jobs upload | `actions`, which decides what is kept |
+
+## Durable Objects
+
+Durable Objects are used where something has to be live, or where data
+belongs to one thing and grows on its own: a chat channel, an open doc, a
+person's open tabs, a project's telemetry. Each object keeps its own
+SQLite storage. A rule from CONTRIBUTING.md: never wake an object for a
+read that D1 can answer.
+
+## Secrets at rest
+
+Secrets that g1t has to use later, such as webhook secrets, Actions
+secrets, GitHub tokens of linked accounts and two-factor seeds, are sealed
+with AES-256-GCM by `Sealer` in `crates/secrets`, with the row's id as
+associated data. A sealed value copied into another row will not open.
+Each service seals with its own key (`IDENTITY_KEY`, `ACTIONS_KEY`,
+`REPOS_KEY`, …), set as a Worker secret.
+
+Access tokens and session cookies are not stored at all: only their
+SHA-256 is.
+
+## Schema changes
+
+Each database's migrations live beside its service, in
+`services/<name>/migrations`, numbered. A deploy applies every pending
+migration before any code ships
+([How g1t ships](/architecture/shipping/)), so for a minute or more the old
+code runs against the new schema. Three rules follow:
+
+1. Add tables and columns. Never rename or drop one that live code reads.
+2. Change what a value means in two deploys: first code that reads both
+   forms, then the change.
+3. Remove what nothing reads anymore only after the code that read it is
+   gone.
+
+## Ports and adapters
+
+Each Cloudflare product a service depends on sits behind a port: a trait
+in Rust, or a binding whose shape a stand-in can copy. g1t.sh binds
+Cloudflare's adapters. A self-hosted installation, built from the same
+source, binds open ones, and the service code does not change.
+
+<Diagram name="ports-and-adapters" />
+
+| Port | Defined in | g1t.sh | Self-hosted |
+| --- | --- | --- | --- |
+| `GitStore`, `GitRepo` | `services/repos/src/store.rs` | `ArtifactsStore` | A Worker with the same API as the Artifacts binding (`deploy/self-host/workers/gitstore`), in front of a server of bare repositories using `git http-backend` |
+| `BlobStore` | `crates/blobstore` | `R2Store` | `S3Store`, with AWS Signature V4, for RustFS, MinIO, Ceph, Garage or AWS S3 |
+| `PackStore` | `services/repos/src/pack_cache.rs` | R2 | S3, with `PACK_STORE=s3` |
+| `EMAIL` | A `send_email` binding | Cloudflare Email Sending | A mail Worker that hands each message to Mailpit |
+| `RUNNER` | A service binding | `services/runner` on Containers | A Worker that answers that the feature is off |
+| D1, KV, Queues, Durable Objects | Workers bindings | Cloudflare | workerd, with SQLite files on a volume |
+
+`deploy/self-host/configs.mjs` writes each Worker's self-hosted config from
+its `wrangler.jsonc`, so the two never drift apart: it drops routes and
+placement, binds the stand-ins above, points buckets at S3, and replaces
+g1t.sh's addresses with yours. What runs and what is off comes from each
+unit's `self_host` field in `deploy/stack.jsonc`.
+
+<Aside title="Adding a dependency on a Cloudflare product">
+	Put it behind a port first, and give the self-hosted build an adapter
+	or a stand-in in the same pull request. [How a self-hosted g1t
+	runs](/guides/self-hosting-architecture/) is the self-hosted side of
+	this table.
+</Aside>

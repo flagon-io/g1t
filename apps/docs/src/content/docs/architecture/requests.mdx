@@ -1,0 +1,181 @@
+---
+title: How a request is served
+description: What happens between a request reaching g1t.sh or api.g1t.sh and its answer leaving, step by step, with the deadlines, caches, rate limits and timings along the way.
+---
+
+import Aside from '../../../components/Aside.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+Two Workers answer almost everything you send g1t: the site, `apps/web`
+on `g1t.sh`, and the API, `apps/api` on `api.g1t.sh` and `mcp.g1t.sh`.
+Neither keeps data. Each works out who is asking, then calls the services
+that own the answer.
+
+## The site
+
+`apps/web/workers/app.ts` is the site's entry point. It sorts each request
+before any page code runs:
+
+1. A request for `g1tusercontent.com` goes to `serveUsercontent`, which
+   never reads or sets the session cookie.
+2. `go get` lookups get their meta page.
+3. **git over HTTPS** (paths ending in `info/refs`, `git-upload-pack` or
+   `git-receive-pack`) passes the git rate limits, then goes to `repos`
+   whole, through `env.REPOS.fetch`. The site never parses git
+   ([Git](/architecture/git/)).
+4. **Package registries** (`/v2/`, `/-/npm/`, `/-/cargo/` and the others)
+   go to `packages` whole. A 404 is tried once more under the workspace's
+   current name, so a renamed workspace's old URLs keep working.
+5. Everything else passes the page rate limit and reaches React Router.
+
+### A page
+
+<Diagram name="page-request" />
+
+The root route's middleware, `viewerMiddleware` in
+`apps/web/app/lib/session.server.ts`, resolves the viewer once (steps 2
+and 3). The `g1t_session` cookie is 64 hex characters, `HttpOnly`,
+`Secure` and `SameSite=Lax`, and lasts 30 days; `identity` stores only its
+SHA-256. A request can send `Authorization: Bearer` with an access token
+that has the **website** permission instead of the cookie. The same
+middleware enforces the email confirmation, workspace and Code access
+gates.
+
+Loaders then call their services together (steps 4 to 7). They use the
+typed clients in `@g1t/contracts`, built in `app/lib/services.server.ts`,
+and pass the viewer in each call's arguments. Nothing waits on a call it
+does not need.
+
+### Deadlines
+
+Each binding is wrapped by `instrumented()` in `app/lib/perf.server.ts`,
+which gives every call a deadline (`app/lib/deadline.ts`). A call that
+outlives it is aborted and throws `DeadlineExceeded`, so one slow service
+cannot hold a page forever.
+
+| Call | Deadline |
+| --- | --- |
+| A read | 15 s |
+| A write, or a read named in `SLOW_READS` | 60 s |
+| A long job, named in `LONG_CALLS` | 600 s |
+
+### Reading your own writes
+
+D1 has read replicas. The site uses D1's Sessions API with the services
+that support it (`identity`, `repos`, `work`, `search`, `billing`,
+`projects`, `deployments`) by sending an `x-d1-bookmark` header on each
+call. The latest bookmark is kept in the `g1t_d1` cookie for 5 minutes,
+and for 30 seconds after a write, reads go to the primary. You never see a
+page older than a change you just made. The service side is
+`crates/kit/src/d1.rs`; TypeScript services use
+`packages/contracts/src/d1.ts`.
+
+### The public page cache
+
+A signed-out `GET` with no cookie and no `Authorization` header, for a
+public page, can be answered from the colo's cache. It is fresh for 30
+seconds, then served stale while it refreshes in the background, for up
+to 5 minutes. Before a cached repository page is served, the site asks
+`repos` whether the repository is still public, so making it private
+takes effect at once.
+
+### Server-Timing
+
+Every page carries a `Server-Timing` header: the total, each loader, each
+service's calls and time, and the database time each service reports
+about itself (`svc`, `db` and `rpc`, from `Served` in
+`crates/kit/src/d1.rs`). A cached page says
+`cache;desc="hit, Ns old"`. Open your browser's network panel on any page
+to see where its time went.
+
+<Aside title="Where it runs">
+	Every Worker runs with placement off, in the data centre nearest the
+	visitor. `scripts/perf/placement-probe.mjs` measures the alternative,
+	and CONTRIBUTING.md's **Speed** section has the rules this design
+	follows: start calls together, add no round trips, and never wake a
+	Durable Object for a read D1 can answer.
+</Aside>
+
+## The API and MCP
+
+`apps/api` serves both `api.g1t.sh` and `mcp.g1t.sh` from one Worker; a
+host starting `mcp.` is the MCP server. It sorts each request in this
+order (`apps/api/src/lib.rs`):
+
+1. OTLP at `/otlp/v1/*` goes to `telemetry` as it is.
+2. Requests that bring their own credentials are handled before any g1t
+   token is read: the Stripe webhook, inbound integration hooks at
+   `/hooks/<id>`, deployment build jobs, the Actions toolkit and OIDC
+   issuer, a job's artifacts, cache and brokered requests, and the runner
+   protocol at `/runners/*`.
+3. Rate limits.
+4. The token.
+5. OAuth.
+6. MCP, when the host says so.
+7. The REST routes.
+
+<Diagram name="api-request" />
+
+A token is sent as `Authorization: Bearer g1t_…` (or `token g1t_…`) and
+resolved by `identity` (step 3). A wrong or expired one gets a 401 with a
+`www-authenticate` header that points at the OAuth metadata, as RFC 9728
+describes, so an MCP client can start signing in by itself.
+
+### Scopes
+
+Scopes are written `resource:level`, and `admin` includes `write`, which
+includes `read`. They are defined in `crates/contracts/src/scopes.rs`, and
+`packages/contracts/src/scopes.ts` mirrors them. The token's scopes decide
+which operations it may call (step 5), and the MCP server lists only the
+tools those scopes allow. A workflow job's token carries the job's own,
+narrower scope.
+
+### One table for every operation
+
+`apps/api/src/operations.rs` lists every operation once. The REST routes,
+the MCP tools and the OpenAPI document at
+[`/openapi.json`](https://api.g1t.sh/openapi.json) are all generated from
+it; an operation without a description does not compile. The docs'
+[API reference](/reference/api/) is built from that document, and the
+CLI's command table from the reference, so the four cannot disagree.
+
+### snake_case at the edge
+
+Inside g1t, contracts are camelCase. The API's `reply()` turns every
+answer to snake_case on the way out (`g1t_kit::wire::snake_case`), leaving
+user-named keys such as inputs, env, secrets and headers as they were
+written. Errors keep one shape, `{"error": {"code", "message"}}`, with the
+status that the failure's code maps to.
+
+### OAuth 2.1
+
+The API is the OAuth issuer. It supports authorization code with PKCE for
+public clients only, with no client secrets, and dynamic registration at
+`POST /oauth/register`, whose client id encodes the client's name and
+redirect addresses. The person approves on the site, at
+`g1t.sh/oauth/authorize`; the token endpoint, `POST /oauth/token`, asks
+`identity` to exchange and refresh. Refresh tokens rotate.
+
+### MCP
+
+The MCP server speaks streamable HTTP with no session state: each `POST`
+gets one JSON-RPC answer. It supports protocol versions 2025-06-18,
+2025-03-26 and 2024-11-05. Its tools are resources with an `action`, as
+[MCP tools](/reference/mcp/) lists.
+
+## Rate limits
+
+Every limit is a Workers rate-limit binding, and
+`packages/contracts/src/rate-limits.ts` is the table of record: a test
+checks every `wrangler.jsonc` against it.
+
+| Where | Limit | Counted by |
+| --- | --- | --- |
+| The API, without a token | 60 a minute | The client's address |
+| The API, with a token | 1,000 a minute | The token, hashed |
+| REST and MCP | Counted separately | |
+| Sandbox and runner reports | Not counted | |
+
+When the limiter itself cannot answer, the request goes through: the
+limits fail open. The [rate limits page](/reference/rate-limits/) lists
+every limit you can hit.

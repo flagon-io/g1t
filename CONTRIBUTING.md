@@ -17,6 +17,7 @@ docs in the same pull request:
 | How agents behave | `guides/working-with-g1t.md`, and `apps/web/public/llms.txt` |
 | Settings, limits or prices | The page that names them, and the table it is in |
 | A new feature | A section in the guide that owns it, linked from the docs home if it is a new task |
+| How g1t is put together: a service, a binding, a store, an event route, the path of a request | Its page in the docs' Architecture section (`apps/docs/src/content/docs/architecture/`), and its diagram in `apps/docs/src/diagrams/architecture.ts`. [How g1t ships](https://docs.g1t.sh/architecture/shipping/#keeping-this-section-true) says which page covers what. |
 
 The style, in short: plain sentences, second person, no marketing words,
 sentence-case headings, a numbered list for steps, a table for options, and
@@ -112,8 +113,9 @@ should match.
 Pushes to `main` deploy themselves: `.g1t/workflows/deploy.yml` runs
 `scripts/deploy.mjs`, which deploys only the parts that changed, migrations
 first. Every deployable part is listed in `deploy/stack.jsonc`; a new service
-or app goes there, and in the table on
-[How a self-hosted g1t runs](https://docs.g1t.sh/guides/self-hosting-architecture/#each-part)
+or app goes there, in the table on
+[How a self-hosted g1t runs](https://docs.g1t.sh/guides/self-hosting-architecture/#each-part),
+and in the one on [Services and contracts](https://docs.g1t.sh/architecture/services/#every-unit)
 (`npm run test:deploy` says what is missing).
 [Deploy g1t to Cloudflare](https://docs.g1t.sh/guides/deploy-to-cloudflare/)
 covers the tool, the workflow, rollbacks, adding a unit and first-time

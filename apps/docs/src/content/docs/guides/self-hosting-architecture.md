@@ -6,7 +6,8 @@ description: What runs inside the Docker Compose installation, what stands in fo
 [Run g1t yourself](/guides/self-hosting/) starts g1t with Docker Compose.
 This page is for the person who keeps that installation running: what is
 inside it, what stands in for each Cloudflare service g1t.sh uses, and
-where the limits are.
+where the limits are. How the services themselves work, wherever they
+run, is in the [Architecture](/architecture/overview/) section.
 
 ## The shape
 

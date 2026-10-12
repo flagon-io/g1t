@@ -633,3 +633,290 @@ starlight-tabs [role='tab'][aria-selected='true'] {
 	color: var(--g1t-fg);
 	font-weight: 600;
 }
+
+/* --- Diagrams --------------------------------------------------------------
+   <Diagram name="..."> (components/Diagram.astro) draws a spec from
+   src/diagrams as an inline SVG. Every colour is a token, so a diagram
+   follows the theme like the rest of the page. On a narrow screen it keeps
+   its size and scrolls sideways, rather than shrinking its text away. */
+
+.g1t-diagram {
+	/* A grid or flex item grows to fit its content unless told not to: without
+	   this, the SVG's minimum width widens the whole page on a phone. */
+	min-width: 0;
+	max-width: 100%;
+	margin: 1.75rem 0;
+	border: 1px solid var(--g1t-line);
+	border-radius: 0.875rem;
+	background:
+		radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--g1t-line-strong) 45%, transparent) 1px, transparent 0) 0 0 / 20px 20px,
+		var(--g1t-surface);
+}
+.g1t-diagram__scroll {
+	overflow-x: auto;
+	padding: 1.25rem;
+}
+.g1t-diagram__scroll:focus-visible {
+	outline: 2px solid var(--g1t-accent);
+	outline-offset: -2px;
+	border-radius: 0.875rem;
+}
+.g1t-diagram svg.d-svg {
+	display: block;
+	margin: 0 auto;
+	max-width: 100%;
+	height: auto;
+	/* Below this the labels get too small to read: scroll instead. */
+	min-width: 600px;
+	font-family: var(--g1t-font-sans);
+	overflow: visible;
+}
+.g1t-diagram figcaption {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem 1rem;
+	border-top: 1px solid var(--g1t-line);
+	padding: 0.625rem 1rem;
+	color: var(--g1t-muted);
+	font-size: 0.8125rem;
+	line-height: 1.5;
+}
+.g1t-diagram__tools {
+	display: inline-flex;
+	align-items: center;
+	gap: 1rem;
+}
+.g1t-diagram__expand {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	border: 1px solid var(--g1t-line);
+	border-radius: 0.5rem;
+	background: var(--g1t-raised);
+	padding: 0.25rem 0.625rem;
+	color: var(--g1t-fg-soft);
+	font: inherit;
+	font-size: 0.75rem;
+	font-weight: 500;
+	cursor: pointer;
+}
+.g1t-diagram__expand:hover {
+	border-color: var(--g1t-line-strong);
+	color: var(--g1t-fg);
+}
+.g1t-diagram__expand:focus-visible {
+	outline: 2px solid var(--g1t-accent);
+	outline-offset: 2px;
+}
+
+/* The diagram at full size. On a wide screen it is drawn larger than in
+   the page, so its smallest labels read easily. */
+.g1t-diagram__dialog {
+	/* Starlight's reset takes a dialog's margins away; put the centring back. */
+	margin: auto;
+	width: min(96vw, 1400px);
+	max-width: none;
+	max-height: 92vh;
+	border: 1px solid var(--g1t-line-strong);
+	border-radius: 1rem;
+	background: var(--g1t-surface);
+	padding: 0;
+	color: var(--g1t-fg);
+	box-shadow: var(--g1t-docs-menu-shadow);
+}
+.g1t-diagram__dialog::backdrop {
+	background: rgb(0 0 0 / 0.6);
+	backdrop-filter: blur(2px);
+}
+.g1t-diagram__dialog-bar {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	border-bottom: 1px solid var(--g1t-line);
+	background: var(--g1t-surface);
+	padding: 0.75rem 1rem;
+	color: var(--g1t-muted);
+	font-size: 0.875rem;
+}
+.g1t-diagram.g1t-diagram__dialog-body {
+	margin: 0;
+	border: 0;
+	border-radius: 0;
+}
+.g1t-diagram__dialog-body svg.d-svg {
+	width: 100%;
+	max-width: none;
+	min-width: 900px;
+}
+.g1t-diagram__key {
+	display: inline-flex;
+	gap: 1rem;
+	color: var(--g1t-faint);
+	font-size: 0.75rem;
+}
+.g1t-diagram__key > span {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+}
+.g1t-diagram .d-key {
+	stroke: var(--g1t-faint);
+	stroke-width: 1.5;
+}
+
+/* Boxes. */
+.g1t-diagram .d-node {
+	fill: var(--g1t-raised);
+	stroke: var(--g1t-line-strong);
+	stroke-width: 1;
+}
+.g1t-diagram .d-node.d-tone-accent {
+	fill: var(--g1t-accent-low);
+	stroke: color-mix(in srgb, var(--g1t-accent) 65%, transparent);
+}
+.g1t-diagram .d-node.d-tone-success {
+	fill: var(--g1t-success-low);
+	stroke: color-mix(in srgb, var(--g1t-success-dim) 80%, transparent);
+}
+.g1t-diagram .d-node.d-tone-warn {
+	fill: color-mix(in srgb, var(--g1t-warn) 12%, var(--g1t-surface));
+	stroke: color-mix(in srgb, var(--g1t-warn) 60%, transparent);
+}
+.g1t-diagram .d-node.d-tone-store {
+	fill: var(--g1t-surface);
+	stroke: var(--g1t-line-strong);
+}
+.g1t-diagram .d-node.d-tone-external {
+	fill: var(--g1t-bg);
+	stroke: var(--g1t-line-strong);
+	stroke-dasharray: 4 3;
+}
+.g1t-diagram .d-rim {
+	fill: none;
+	stroke: var(--g1t-line-strong);
+}
+.g1t-diagram .d-title {
+	fill: var(--g1t-fg);
+	font-size: 12.5px;
+	font-weight: 600;
+}
+.g1t-diagram .d-sub {
+	fill: var(--g1t-muted);
+	font-family: var(--g1t-font-mono);
+	font-size: 10px;
+}
+.g1t-diagram .d-mono {
+	font-family: var(--g1t-font-mono);
+	font-size: 0.92em;
+}
+
+/* Frames around a group of boxes. */
+.g1t-diagram .d-group {
+	fill: color-mix(in srgb, var(--g1t-bg) 55%, transparent);
+	stroke: var(--g1t-line-strong);
+	stroke-dasharray: 2 4;
+	stroke-linecap: round;
+}
+.g1t-diagram .d-group.d-tone-accent {
+	fill: color-mix(in srgb, var(--g1t-accent-low) 45%, transparent);
+	stroke: color-mix(in srgb, var(--g1t-accent) 45%, transparent);
+}
+.g1t-diagram .d-group.d-tone-success {
+	fill: color-mix(in srgb, var(--g1t-success-low) 45%, transparent);
+	stroke: color-mix(in srgb, var(--g1t-success-dim) 55%, transparent);
+}
+.g1t-diagram .d-group-label {
+	fill: var(--g1t-faint);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+}
+.g1t-diagram .d-group-label.d-tone-accent {
+	fill: var(--g1t-accent);
+}
+.g1t-diagram .d-group-label.d-tone-success {
+	fill: var(--g1t-success-dim);
+}
+
+/* Arrows. */
+.g1t-diagram .d-edge,
+.g1t-diagram .d-msg {
+	fill: none;
+	stroke: var(--g1t-faint);
+	stroke-width: 1.4;
+	stroke-linejoin: round;
+}
+.g1t-diagram .d-edge.d-tone-accent,
+.g1t-diagram .d-msg:not(.d-reply) {
+	stroke: var(--g1t-accent);
+}
+.g1t-diagram .d-edge.d-tone-success {
+	stroke: var(--g1t-success-dim);
+}
+.g1t-diagram .d-edge.d-tone-warn {
+	stroke: var(--g1t-warn);
+}
+.g1t-diagram .d-async {
+	stroke-dasharray: 5 4;
+}
+.g1t-diagram .d-head {
+	fill: var(--g1t-faint);
+}
+.g1t-diagram .d-head.d-tone-accent {
+	fill: var(--g1t-accent);
+}
+.g1t-diagram .d-head.d-tone-success {
+	fill: var(--g1t-success-dim);
+}
+.g1t-diagram .d-head.d-tone-warn {
+	fill: var(--g1t-warn);
+}
+.g1t-diagram .d-label,
+.g1t-diagram .d-phase-label {
+	fill: var(--g1t-fg-soft);
+	font-weight: 500;
+}
+.g1t-diagram .d-label-bg,
+.g1t-diagram .d-phase-label-bg {
+	fill: var(--g1t-surface);
+	stroke: var(--g1t-line);
+}
+
+/* Sequences. */
+.g1t-diagram .d-lifeline {
+	stroke: var(--g1t-line-strong);
+	stroke-width: 1.25;
+}
+.g1t-diagram .d-msg-label {
+	fill: var(--g1t-fg-soft);
+	font-size: 11.5px;
+}
+.g1t-diagram .d-badge {
+	fill: var(--g1t-accent);
+}
+.g1t-diagram .d-badge-text {
+	fill: var(--g1t-bg);
+	font-size: 9.5px;
+	font-weight: 700;
+}
+.g1t-diagram .d-note {
+	fill: color-mix(in srgb, var(--g1t-warn) 9%, var(--g1t-surface));
+	stroke: color-mix(in srgb, var(--g1t-warn) 35%, transparent);
+}
+.g1t-diagram .d-note-text {
+	fill: var(--g1t-fg-soft);
+	font-size: 11px;
+}
+.g1t-diagram .d-phase {
+	stroke: var(--g1t-line-strong);
+}
+.g1t-diagram .d-phase-label {
+	fill: var(--g1t-muted);
+	font-weight: 600;
+}

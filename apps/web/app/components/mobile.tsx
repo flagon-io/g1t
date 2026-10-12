@@ -25,7 +25,7 @@ import { CountBadge, ShortcutsDialog } from "./rail";
 import { Mark } from "./logo";
 
 import { Avatar } from "./ui/avatar";
-import { TabStrip } from "./ui/tab-strip";
+import { NavTab, NavTabs } from "./ui/nav-tabs";
 import { StatusDialog } from "./presence";
 import { ThemeSwitch } from "./theme-switch";
 import { type BuiltinApp, type PinnableApp, appOf } from "../lib/apps";
@@ -518,10 +518,11 @@ const SOON_PAGES: Record<string, ProjectPage> = Object.fromEntries(
 );
 
 /**
- * A project's pages on a phone, under its name: the sidebar's own list
- * (lib/chrome.ts) as a row of tabs that scrolls sideways, the current one
- * kept in view, so Issues and Pull requests are one tap away. From 768px
- * the sidebar has them.
+ * A project's pages along the bottom of its header: the sidebar's own list
+ * (lib/chrome.ts) as a row of tabs that scrolls sideways on a phone, the
+ * current one underlined on the header's border and kept in view, so Issues
+ * and Pull requests are one tap away. From 768px a member's sidebar has
+ * them; a visitor, who has none, always sees the row.
  */
 export function ProjectStrip({
   base,
@@ -547,30 +548,21 @@ export function ProjectStrip({
   const pages: (ProjectPage | "overview")[] = ["overview", ...projectPages(member, can).filter((page) => page !== "observability" && page !== "settings"),
     ...(settings ?? member ? (["settings"] as const) : []),
   ];
-  const pill = (current: boolean) =>
-    `flex h-9 items-center gap-1.5 rounded-full px-3.5 text-sm transition-colors ${
-      current ? "bg-raised font-medium text-fg ring-1 ring-line-strong" : "text-muted active:bg-raised/60"
-    }`;
   return (
-    <TabStrip label="Project" className={`-mx-4 gap-1 px-4 ${always ? "" : "md:hidden"}`}>
+    <NavTabs label="Project" className={always ? undefined : "md:hidden"}>
       {pages.map((page) => {
-        const current = at === page;
         const link = page === "overview" ? { label: "Overview", path: "" } : PROJECT_PAGE_LINKS[page];
-        const count = page === "issues" ? counts?.issues : page === "pulls" ? counts?.pulls : undefined;
         return (
-          <Link
+          <NavTab
             key={page}
             to={link.path ? `${base}/${link.path}` : base}
-            prefetch="intent"
-            aria-current={current ? "page" : undefined}
-            data-active={current || undefined}
-            className={pill(current)}
+            current={at === page}
+            count={page === "issues" ? counts?.issues : page === "pulls" ? counts?.pulls : undefined}
           >
             {link.label}
-            {count != null && count > 0 && <span className="rounded-full bg-line px-1.5 text-xs tabular-nums text-muted">{count}</span>}
-          </Link>
+          </NavTab>
         );
       })}
-    </TabStrip>
+    </NavTabs>
   );
 }

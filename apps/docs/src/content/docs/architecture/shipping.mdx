@@ -1,0 +1,106 @@
+---
+title: How g1t ships
+description: The monorepo's layout, how each kind of unit is built, how a push to main becomes a staged deploy on g1t's own Actions, the tests that guard it, and how this section stays true.
+---
+
+import Aside from '../../../components/Aside.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+g1t is built on g1t. Its source is at
+[g1t.sh/flagon-io/g1t](https://g1t.sh/flagon-io/g1t), every change is a
+pull request with required checks, and its own workflows deploy it.
+
+## The repository
+
+| Folder | Holds |
+| --- | --- |
+| `apps/` | What people open: `web` (the site), `api`, `status`, `sudo`, `docs`, and the `desktop` (Tauri) and `mobile` (Expo) apps |
+| `services/` | The services, one folder each, with their `wrangler.jsonc` and `migrations` |
+| `crates/` | Shared Rust: `contracts`, `kit`, `rules`, `scan`, `secrets`, `blobstore`, `actions`, the `runner` binary and the `g1t` CLI |
+| `packages/` | Shared TypeScript: `contracts` and `theme` (the design tokens) |
+| `deploy/` | `stack.jsonc`, the inventory; `self-host`, the Docker Compose installation; `runner` and `sandbox`, the self-hosted runner's images |
+| `scripts/` | `deploy.mjs` and its helpers, releases, operations |
+| `plugins/` | The [Claude Code plugin](/guides/claude-code-plugin/), and setup for other coding agents |
+| `.g1t/workflows/` | CI, deploys and releases, run by g1t Actions |
+| `conformance/` | Checks that a job's environment matches what workflows expect |
+
+## Building
+
+`deploy/stack.jsonc` gives each unit a kind, and each kind builds its own
+way:
+
+| Kind | Built by | Units |
+| --- | --- | --- |
+| `rust-worker` | `scripts/build-rust-worker.mjs`: `worker-build` to WebAssembly, then `wasm-opt` | The Rust services and `apps/api` |
+| `ts-worker` | Wrangler's bundler | The TypeScript services |
+| `react-router` | `vite build`, then Wrangler | `apps/web`, `apps/sudo` |
+| `astro` | `astro build` | `apps/docs` |
+
+The runner's image is built in two layers: a large base with every
+toolchain, rebuilt only when its folder changes and recorded in
+`services/runner/base.json`, and a thin layer on top with the static
+`g1t-runner` binary.
+
+## Deploying
+
+<Diagram name="deploy-stages" />
+
+A push to `main` starts `.g1t/workflows/deploy.yml`, one run at a time,
+never cancelled:
+
+1. **Check and plan.** The manifest is checked against every config and
+   `npm run test:deploy` runs. Beside it, `scripts/deploy.mjs plan` works
+   out which units changed since the commit each one is running.
+2. **Migrations.** Every pending D1 migration, before any code.
+3. **Core, edge, front.** The units in each stage deploy in parallel; a
+   stage starts only when the one before succeeded. A unit binds only to
+   units in its own stage or an earlier one, which a test checks, so new
+   code never calls a service that has not shipped yet.
+4. **Smoke.** `scripts/ops/smoke.mjs` checks that sign-in and sign-up still
+   work, without making an account.
+
+Each run is one `production` deployment, shown on the commit as the
+`deploy / production` status. Only units whose inputs changed are
+deployed: their folder, or a crate or package they are built from, which
+`deploy.mjs` reads from Cargo's and npm's workspace metadata.
+[Deploy g1t to Cloudflare](/guides/deploy-to-cloudflare/) covers the
+tool, rollbacks and a first deploy.
+
+## Tests that guard the architecture
+
+Some of what this section describes is enforced by tests, so a change that
+breaks it fails CI:
+
+| Test | Fails when |
+| --- | --- |
+| `npm run test:deploy` | A unit is missing from `stack.jsonc`, a binding crosses stages the wrong way, a unit is missing from [How a self-hosted g1t runs](/guides/self-hosting-architecture/), or [Services and contracts](/architecture/services/) disagrees with a `wrangler.jsonc` |
+| `cargo test -p g1t-contracts` | The Rust and TypeScript access rules or scopes differ |
+| `cargo test -p g1t-api openapi` | The docs' copy of the OpenAPI document is out of date |
+| `app/lib/front-door-limits.test.ts` in `apps/web` | A `wrangler.jsonc` and `packages/contracts/src/rate-limits.ts` disagree |
+| `npm test` in `apps/docs` | A diagram's arrow names a box that does not exist, two boxes overlap, or a label does not fit its box |
+
+CI (`.g1t/workflows/ci.yml`) runs the Rust tests, the TypeScript checks and
+tests, and builds the site, sudo and these docs on every pull request.
+
+## Keeping this section true
+
+These pages describe the code on `main`. When you change how g1t is put
+together, change them in the same pull request:
+
+| If you change | Update |
+| --- | --- |
+| A service's bindings, storage or job | Its row in [Services and contracts](/architecture/services/#every-unit) and [Data and storage](/architecture/data/) |
+| A request's path, a limit or a deadline | [How a request is served](/architecture/requests/) |
+| An event type or a route to a subscriber | [Events](/architecture/events/) |
+| The push, fetch or merge path | [Git](/architecture/git/) and [Work and the merge queue](/architecture/work/) |
+| Sandboxes, runners or egress | [Actions, runners and sandboxes](/architecture/compute/) |
+| A new dependency on a Cloudflare product | Its port in [Data and storage](/architecture/data/#ports-and-adapters) |
+
+Diagrams are data, in `apps/docs/src/diagrams/architecture.ts`. Change the
+spec, and both the picture and the page's Markdown copy change with it.
+
+<Aside title="Run it yourself">
+	`docker compose -f deploy/self-host/docker-compose.yml up --build`
+	builds every unit from source and starts the site on port 8787 and the
+	API on 8789. [Run g1t yourself](/guides/self-hosting/) has the rest.
+</Aside>

@@ -1,0 +1,124 @@
+---
+title: Architecture overview
+description: How g1t is put together, from the four public Workers at the edge to the nineteen services behind them, the event bus that connects them, and the platform each one runs on.
+---
+
+import { CardGrid } from '@astrojs/starlight/components';
+import Aside from '../../../components/Aside.astro';
+import Diagram from '../../../components/Diagram.astro';
+import LinkCard from '../../../components/LinkCard.astro';
+
+g1t is a set of small programs, each with one job, that run on Cloudflare
+Workers. A few face the internet. Almost all the rest can be reached only by the
+Workers that are bound to them. Every service that keeps data keeps it in its own
+database, and services learn what happened elsewhere from events instead of
+calling each other to find out.
+
+This section is for developers: people building on g1t, contributing to it,
+or running it themselves. It names the files, bindings and limits that
+decide how g1t behaves, so you can read the code next to it.
+
+<Diagram name="platform-map" />
+
+## The layers
+
+| Layer | What is in it | Reached by |
+| --- | --- | --- |
+| **Clients** | Browsers, the [desktop](/guides/desktop/) and [phone](/guides/mobile/) apps, git, the [CLI](/guides/cli/), coding agents, [self-hosted runners](/guides/self-hosted-runners/), and visitors to apps deployed on g1t. | The internet |
+| **Edge** | Four Workers with public routes: the site (`apps/web`), the API and MCP server (`apps/api`), the status page (`apps/status`) and the app dispatcher (`services/pages`). | Their hostnames |
+| **Core** | Nineteen services, each a Worker with `workers_dev` off. Seventeen have no route at all; `telemetry` takes OTLP at `otel.g1t.sh` and `og` draws social cards at `og.g1t.sh`. | Service bindings from the Workers that name them |
+| **Platform** | D1, Durable Objects, Queues, R2, KV, Artifacts for git, and Containers for sandboxes. | The one service that owns each, through its bindings |
+
+The edge does three things: it works out who is asking, enforces rate
+limits, and turns a request into calls to the services that own the
+answer. It keeps no state of its own. The services do the work and own the
+data.
+
+## Where each hostname goes
+
+| Hostname | Worker | Serves |
+| --- | --- | --- |
+| `g1t.sh` | `g1t` (`apps/web`) | The site, git over HTTPS, and the package registries, which it passes whole to `repos` and `packages` |
+| `g1tusercontent.com` | `g1t` (`apps/web`) | Raw files, avatars and attachments, on a domain that never sees the session cookie |
+| `api.g1t.sh`, `mcp.g1t.sh` | `g1t-api` (`apps/api`) | The REST API, the MCP server, OAuth, the runner protocol, and OTLP |
+| `*.g1t.page` and custom domains | `g1t-pages` (`services/pages`) | Apps deployed on g1t |
+| `otel.g1t.sh` | `g1t-telemetry` | OpenTelemetry from your software |
+| `status.g1t.sh` | `g1t-status` (`apps/status`) | The status page, with a database of its own so it answers when the rest does not |
+| `docs.g1t.sh` | `g1t-docs` (`apps/docs`) | These pages |
+
+`sudo.g1t.sh`, g1t's staff console, sits behind Cloudflare Access and is
+not part of what you can call.
+
+## Calls, events and ownership
+
+Three rules shape the code:
+
+- **A service owns its data.** Each of the sixteen D1 databases is bound
+  by exactly one Worker. To read another service's data, you call that
+  service. Three stores are deliberately shared, each with one writer:
+  the avatars KV, the custom domains KV, and the Actions cache bucket
+  ([Data and storage](/architecture/data/)).
+- **Calls are for answers; events are for news.** When the site needs a pull
+  request, it calls `work`. When a push lands, `repos` does not call the
+  dozen services that care: it publishes `git.push`, and each of them gets
+  its own copy on its own queue ([Events](/architecture/events/)).
+- **The viewer travels with the call.** The edge resolves the person or
+  token once, and passes the result to every service in the call's
+  arguments. Each service decides access itself with the same rules,
+  compiled in, rather than asking `identity` again
+  ([Identity and access](/architecture/identity/)).
+
+A call is an HTTP request over a service binding: `POST /rpc/<method>`
+with a JSON body. An expected failure, such as "not found" or "not
+allowed", comes back as a value, `{ "ok": false, "error": { "code",
+"message" } }`, with status 200. Only something unexpected, a thrown error
+or a busy store, becomes a non-200 status
+([Services and contracts](/architecture/services/)).
+
+## Rust and TypeScript
+
+The services that hold accounts, repositories, work, events, money and the
+API are written in Rust, compiled to WebAssembly with `worker-build`. The
+web apps and the services built around Durable Objects and live rooms are
+TypeScript.
+
+| Rust | TypeScript |
+| --- | --- |
+| `identity`, `repos`, `work`, `events`, `actions`, `packages`, `security`, `search`, `billing`, `integrations`, `webhooks`, and `apps/api` | `runner`, `deployments`, `projects`, `chat`, `artifacts`, `notify`, `telemetry`, `og`, `pages`, and `apps/web`, `apps/sudo`, `apps/status` |
+
+Both sides share their types through contracts: `crates/contracts` in Rust
+and `packages/contracts` in TypeScript. Where the two must agree exactly,
+such as the access rules and the scopes, a Rust test reads the TypeScript
+file and fails if they differ.
+
+## One codebase, two homes
+
+The same source runs on g1t.sh and in a [self-hosted
+installation](/guides/self-hosting/). Each Cloudflare product a service
+uses sits behind a port, and the self-hosted build binds an open
+adapter in its place: bare repositories served by `git http-backend` for
+Artifacts, any S3 store for R2, Mailpit for email. The service code does
+not change. [Data and storage](/architecture/data/#ports-and-adapters)
+shows each one.
+
+<Aside type="tip" title="Read the code next to this">
+	Every unit g1t deploys is listed in `deploy/stack.jsonc`, with its
+	language, its stage and what a self-hosted installation does with it.
+	Each service's `wrangler.jsonc` lists its bindings: its database, the
+	services it calls, and the queues it reads.
+</Aside>
+
+## In this section
+
+<CardGrid>
+	<LinkCard title="How a request is served" href="/architecture/requests/" icon="route" description="The site and the API, from the first byte to Server-Timing." />
+	<LinkCard title="Services and contracts" href="/architecture/services/" icon="boxes" description="Every unit, what it owns, what it calls, and how calls work." />
+	<LinkCard title="Git" href="/architecture/git/" icon="git-branch" description="Where repositories live, the push path, caches and forks." />
+	<LinkCard title="Events" href="/architecture/events/" icon="radio-tower" description="The bus, the log, fan-out, webhooks and following live." />
+	<LinkCard title="Work and the merge queue" href="/architecture/work/" icon="git-merge" description="Issues, pull requests, checks, merging and the queue." />
+	<LinkCard title="Actions, runners and sandboxes" href="/architecture/compute/" icon="cpu" description="Workflow jobs, hosted and self-hosted, and what walls them in." />
+	<LinkCard title="Deployments and telemetry" href="/architecture/deployments/" icon="rocket" description="Apps on g1t.page, packages, and observability." />
+	<LinkCard title="Data and storage" href="/architecture/data/" icon="database" description="Who owns what, migrations, and the ports that make self-hosting work." />
+	<LinkCard title="Identity and access" href="/architecture/identity/" icon="key-round" description="Credentials, the viewer, scopes, and where access is decided." />
+	<LinkCard title="How g1t ships" href="/architecture/shipping/" icon="ship" description="The monorepo, builds, staged deploys, and keeping these pages true." />
+</CardGrid>

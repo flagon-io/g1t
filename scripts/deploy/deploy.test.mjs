@@ -51,6 +51,7 @@ import {
   npmCiArgs,
   npmWorkspace,
   outsideImports,
+  parseJsonc,
   pick,
   problems,
   resolveStack,
@@ -783,6 +784,21 @@ test("the self-hosting architecture page names every unit", () => {
   const page = "apps/docs/src/content/docs/guides/self-hosting-architecture.md";
   const doc = readFileSync(join(ROOT, page), "utf8");
   for (const u of stack.units) assert.ok(doc.includes(`| \`${u.path}\` |`), `${u.path} is missing from ${page}`);
+});
+
+test("the architecture's services page names every unit, with the services it binds to", () => {
+  const page = "apps/docs/src/content/docs/architecture/services.md";
+  const doc = readFileSync(join(ROOT, page), "utf8");
+  for (const u of stack.units) {
+    const row = doc.split(/\r?\n/).find((line) => line.startsWith(`| \`${u.path}\` |`));
+    assert.ok(row, `${u.path} is missing from ${page}`);
+    // The last cell lists the services it calls, by name without "g1t-".
+    const cells = row.split("|").map((cell) => cell.trim());
+    const listed = [...cells[cells.length - 2].matchAll(/`([a-z-]+)`/g)].map((m) => m[1]).sort();
+    const config = parseJsonc(readFileSync(join(ROOT, u.path, "wrangler.jsonc"), "utf8"));
+    const bound = [...new Set((config.services ?? []).map((s) => s.service.replace(/^g1t-/, "")))].sort();
+    assert.deepEqual(listed, bound, `${page}: the Calls cell for ${u.path} should list ${bound.join(", ") || "none"}`);
+  }
 });
 
 test("resolveStack works on a manifest with no workspace crates or packages", () => {

@@ -1,0 +1,158 @@
+---
+title: Events
+description: How a state change in one service reaches every other that cares, through one log and a queue per subscriber, and how webhooks, live pages and followers read it.
+---
+
+import Aside from '../../../components/Aside.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+Every state change in g1t is published as an event: a push, an issue
+opened, a pull request merged, a workflow finished, a workspace renamed.
+Services do not call each other to announce what happened. They publish,
+and the `events` service (`services/events`, Rust) delivers.
+
+## The envelope
+
+Every event has the same shape, which follows CloudEvents
+(`crates/contracts/src/events.rs`, `packages/contracts/src/events.ts`):
+
+| Field | What it is |
+| --- | --- |
+| `id` | `evt_` and a UUIDv7: sortable by the time it was made |
+| `type` | Such as `git.push`, `pull.merged`, `workflow.completed` |
+| `source` | The service that published it |
+| `time` | When, in RFC 3339 |
+| `repoId` | The repository it is about, or none |
+| `actor` | The account that caused it, or none |
+| `data` | The type's own fields, in its contract |
+
+Coordination has its own events, published by `work`: sessions starting
+and ending, claims, hand-offs, dependencies, overlaps, and the merge
+queue's verdicts (`integration.failed`, `integration.passed`,
+`decision.recorded`). They reach webhooks and followers like any other
+([Work and the merge queue](/architecture/work/#coordination)).
+
+Two fields in `data` matter everywhere:
+
+- `causedByJob` marks an event caused by a workflow's own token, so it
+  does not start more workflows.
+- `truncated: true` marks an event that was too big for a queue message
+  (96 KB) and had its long strings cut, step by step, until it fit.
+
+## From publish to every subscriber
+
+<Diagram name="event-fanout" />
+
+1. A service calls `events`' `publish` with a batch of events. `events`
+   gives each its id and time and puts them on the `g1t-events` queue, then
+   returns. Publishing never waits on a subscriber.
+2. `events` reads its own queue, 100 messages at a time, and for each
+   batch:
+   - writes the events to the log with `INSERT OR IGNORE`, so a batch that
+     comes round twice is written once;
+   - sends each subscriber queue the events routed to it;
+   - tells `notify`, so open pages of that repository refresh, and puts
+     items in people's inboxes, at most once per person per event.
+3. If a send to a subscriber fails, `events` notes which queues already
+   have the batch (`fanout_sent`, kept a day) and throws. The retry skips
+   those queues.
+4. After three tries, a batch goes to `g1t-events-dlq`.
+
+Every subscriber's consumer is set up the same way: three tries, then the
+dead-letter queue.
+
+### Subscriber queues
+
+Each service that reacts to events has its own queue,
+`g1t-events-<service>`. It gets only the types it needs, as `ROUTES` in
+`crates/contracts/src/subscribers.rs` says, plus every lifecycle event
+(renames, transfers and deletions of repositories, workspaces and users),
+which every subscriber gets.
+
+| Queue | Read by | Gets |
+| --- | --- | --- |
+| `g1t-events-work` | `work` | `git.push`, `branch.renamed`, `repo.created`, `repo.archived`, `repo.default_branch_changed`, `pull.merged`, `comment.created` |
+| `g1t-events-runner` | `runner` | Pull request changes, `checks.completed`, `queue.changed`, `comment.created`, issue changes, `repo.archived` |
+| `g1t-events-actions` | `actions` | `git.push`, `git.deleted`, `pull.*`, `issue.*`, `comment.*`, `release.*`, deployments, `workflow.completed`, `repo.archived` |
+| `g1t-events-webhooks` | `webhooks` | Everything |
+| `g1t-events-security` | `security` | `git.push`, pull request changes, `comment.created`, `repo.created`, `repo.visibility_changed` |
+| `g1t-events-search` | `search` | `git.push`, `repo.*`, `issue.*`, `pull.*`, `user.*`, `workspace.*` |
+| `g1t-events-deployments` | `deployments` | Pushes, the pull request lifecycle, workspace deletion and restore |
+| `g1t-events-projects` | `projects` | Repositories, packages and deployments |
+| `g1t-events-repos` | `repos` | `pull.merged`, `pull.closed`, `pull.reopened`, deletions and restores |
+| `g1t-events-packages` | `packages` | `git.push`, `repo.visibility_changed`, workspace and team changes |
+| `g1t-events-integrations` | `integrations` | `issue.closed`, `pull.opened` |
+| `g1t-events-billing` | `billing` | Lifecycle events only |
+| `g1t-events-docs` | `artifacts` | `git.push`, `pull.merged` |
+
+A subscriber should treat every event as possibly delivered twice, and
+make its handling idempotent: most do it with a unique key on the event's
+`id`.
+
+## The log
+
+`g1t-events`' D1 database keeps the log. Each event gets a `seq` as it is
+written, one higher than the last; the log has one writer, the consumer
+above. Ids are made by publishers in many places, so they can arrive out
+of order. Reading "everything after this event" therefore follows `seq`,
+not `id`.
+
+You can read a repository's log with the API's `list_events`, newest
+first, 50 a page and up to 200, filtered by type. Status and check events
+are left out unless you ask for their type. The same database keeps the
+audit log, for 400 days.
+
+### Following
+
+Pass `after`, an event id, and `list_events` returns what the log wrote
+after it, oldest first. Add `wait`, up to 25 seconds, and the call waits
+for something to arrive:
+
+<Diagram name="follow-events" />
+
+The API asks the log about once a second while it waits (`apps/api/src/follow.rs`).
+`g1t work events --follow` runs this in a loop, starting each call from the
+last event it saw, so it misses nothing between calls. Coding agents get
+the same over MCP, with the `list_events` tool.
+
+## Webhooks
+
+`webhooks` reads every event and delivers those each subscription asks
+for:
+
+| | |
+| --- | --- |
+| **Request** | `POST` with JSON, to public addresses only, with a 10 second timeout. Anything but a 2xx is a failure. |
+| **Headers** | `x-g1t-event`, `x-g1t-delivery`, `x-g1t-hook`, and `x-g1t-signature-256: sha256=<HMAC-SHA256 of the body>` |
+| **Body** | `{ id, type, time, workspace, repository: { id, full_name }, actor: { id, username }, data }`, in snake_case |
+| **Retries** | After 1 minute, 5 minutes, 30 minutes, 2 hours and 5 hours: six attempts in about seven and a half hours |
+| **At most once** | A delivery is unique on the subscription and the event's `id` |
+| **Kept** | 14 days |
+
+Each subscription's secret is sealed in D1. [Webhooks](/guides/webhooks/)
+shows how to check a signature.
+
+## Live pages
+
+`notify` (TypeScript) keeps three kinds of Durable Object:
+
+| Object | One per | Holds |
+| --- | --- | --- |
+| `Feed` | Person | Their open tabs' sockets, notifications, counts and push subscriptions |
+| `Room` | Workspace | Who is here |
+| `Topic` | Repository | The pages open on it, told by `repo_changed` to refresh |
+
+Sockets use the WebSocket Hibernation API, so an idle tab costs nothing
+while it waits. Browser push uses VAPID, and phones get Expo push; both are
+sent to live 12 hours.
+
+`chat` and `artifacts` work the same way with rooms of their own: a
+`ChannelRoom` per channel, and a `PageRoom` per doc that syncs edits as a
+Yjs document and saves them to D1 a few seconds after a burst of typing.
+
+<Aside title="Scheduled jobs">
+	Some work runs on a clock rather than on events: webhook retries every
+	minute, Actions schedules every minute, fork retirement hourly, backups
+	nightly, the event log's purge daily. Each service's `wrangler.jsonc`
+	lists its `crons`.
+</Aside>

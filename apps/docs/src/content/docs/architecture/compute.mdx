@@ -1,0 +1,158 @@
+---
+title: Actions, runners and sandboxes
+description: How a workflow job is planned and run, on g1t's runners or yours, what walls each job in, how secrets reach a job without the job holding them, and what else runs in a sandbox.
+---
+
+import Aside from '../../../components/Aside.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+Everything that runs code you did not write runs in a sandbox: workflow
+jobs, merge queue builds, deployments, dependency updates, backups. Three
+pieces share the work.
+
+| Piece | Is | Does |
+| --- | --- | --- |
+| `services/actions` | A Rust Worker, D1 `g1t-actions` | Reads workflows, starts runs, plans jobs, keeps logs, secrets and self-hosted runners |
+| `services/runner` | A TypeScript Worker on Cloudflare Containers | Starts a sandbox per job, and owns what leaves it |
+| `crates/runner` | The `g1t-runner` binary | Runs inside every sandbox and on every self-hosted runner, does one job, and exits |
+
+`crates/actions` holds the workflow language itself, with no I/O:
+syntax, `${{ }}` expressions, filters, matrices and cron. The Worker plans
+with it and the sandbox runs with it, so the two cannot read a workflow
+differently.
+
+## A workflow job
+
+<Diagram name="actions-job" />
+
+1. **Trigger.** `actions` reads its event queue, `g1t-events-actions`, ten
+   at a time (step 1), and matches each event to the workflows read from
+   the default branch's `.g1t/workflows` (or `.github/workflows`). The
+   files are GitHub Actions syntax, unchanged; [GitHub
+   Actions](/guides/actions/) lists what is supported.
+2. **Plan.** It expands matrices, orders jobs by `needs`, and reports the
+   run as pending on the commit (steps 2 and 3).
+3. **Start.** A hosted job is taken by flipping its row from `queued` to
+   `in_progress` in one statement, so two starters can never both take it.
+   `actions` asks `runner` for a sandbox (step 4), and `runner` starts a
+   Container for that job alone (step 5).
+4. **Run.** The sandbox reports its steps and logs to the API, with the
+   job's own token (step 6), which passes them to `actions` (step 7). The
+   answer can tell the job to stop, which is how **Cancel** reaches a
+   running job (step 8).
+5. **Finish.** The run's conclusion goes onto the commit as a status
+   (step 9), where [required checks](/architecture/work/#checks-and-statuses)
+   find it, and `workflow.completed` is published (step 10).
+
+A job that says nothing for 10 minutes is taken as lost. A cron in
+`actions` runs every minute for schedules, jobs waiting for room, and
+jobs whose runner went quiet.
+
+### Limits
+
+| | |
+| --- | --- |
+| Hosted jobs running at once | 4 per workspace |
+| A hosted job's timeout | 60 minutes at most |
+| A self-hosted job's timeout | 24 hours at most |
+| Logs | 4 MiB a job, kept 90 days |
+| Workflows per repository | 50 |
+| Schedules | Paused after 60 days without a push |
+
+### Logs, caches and artifacts
+
+Logs are kept in D1, in chunks, deduplicated so a report sent twice is
+stored once. Cache entries and artifacts go to the R2 bucket
+`g1t-actions-cache`, uploaded through the API: cache entries under `c/`
+for 30 days, artifacts under `a/` for 91. `actions` lists them and decides
+what is kept.
+
+## Sandboxes on g1t's runners
+
+`runner` defines three Container classes, picked by `runs-on`:
+
+| `runs-on` | Class | Size |
+| --- | --- | --- |
+| Any other hosted label, and every other kind of work | `AttemptSandbox` | Cloudflare's `standard-1` |
+| `g1t-2core` | `Sandbox2Core` | 2 vCPU, 8 GiB memory, 16 GB disk |
+| `g1t-4core` | `Sandbox4Core` | 4 vCPU, 12 GiB memory, 20 GB disk |
+
+Every sandbox starts from one image: `services/runner/base/Dockerfile`,
+which has Node, Python, Go, Rust, Java, .NET, Ruby and Docker, with the
+`g1t-runner` binary on top. Hosted runners are Linux only.
+
+<Diagram name="sandboxes" />
+
+### Egress
+
+A sandbox starts with no internet. Every HTTP and HTTPS request it makes
+goes through the runner Worker's outbound handler (`src/egress.ts`,
+`src/guard.ts`), which decides what may leave. Other protocols have no
+route out at all.
+
+### Secrets a job never holds
+
+A secret can be **brokered**: the job sees a stand-in, `g1tsec_…`, and
+the egress handler swaps in the real value only on a request to a host
+the secret allows (`src/broker.ts`). On a self-hosted runner, the job sends
+the request to `POST /actions/jobs/{job}/broker` instead, and g1t makes
+it, so the value never reaches your machine at all.
+
+## Runners of your own
+
+A [self-hosted runner](/guides/self-hosted-runners/) only ever calls out,
+over HTTPS, so it needs no open port:
+
+| Call | What it does |
+| --- | --- |
+| `POST /runners/register` | Trades a registration token, `g1trt_…`, valid for an hour, for a runner credential, `g1tr_…` |
+| `POST /runners/{id}/poll` | Waits up to 20 seconds for a job; doubles as the heartbeat |
+| `POST /runners/{id}/finished` | Says the job is over |
+| `POST /runners/{id}/remove` | Signs the runner out |
+
+The runner credential is stored only as a hash and rotates every day on a
+poll. A runner that has not polled for 90 seconds is offline; one offline
+for 14 days is removed. A job goes to a runner that has every one of its
+`runs-on` labels and whose group allows the repository, and waits up to 24
+hours for one.
+
+### Three walls
+
+On your machine, `g1t-runner` puts three walls between a job and the
+host:
+
+1. **A VM.** WSL2 on Windows, with drives, interop and the Windows `PATH`
+   turned off, vfkit on macOS, or QEMU on Linux (`deploy/sandbox`).
+2. **A Sysbox container**, the runner itself, with its own dockerd.
+   It refuses to start if the host's `docker.sock` is mounted
+   (`deploy/runner`).
+3. **A container per job**, new each time.
+
+Native Windows jobs run in Windows Sandbox instead. Each runner reports
+its isolation, `nested-container`, `vm`, `container` or `host`, and a
+`host` runner never gets a public repository's jobs. The [desktop
+app](/guides/desktop/) runs the sandboxed runner by default while it is
+open; Docker or direct execution happen only if you choose them.
+
+## Other work in sandboxes
+
+`g1t-runner` takes a `MODE`, so the same image does more than workflows:
+
+| Mode | Started by | Does |
+| --- | --- | --- |
+| `actions` | `actions` | A workflow job |
+| `queue` | `runner`, when the queue changes | Builds a merge queue candidate |
+| `mergecheck` | `runner`, when a pull request changes | Checks whether a pull request merges cleanly |
+| `deploy` | `deployments` | Builds an app ([Deployments](/architecture/deployments/)) |
+| `bump` | `security` | Makes a dependency update |
+| `backup` | `runner`'s sweep, every 5 minutes | Cuts a repository backup ([Git](/architecture/git/#backups)) |
+
+Compute is admitted through billing: a sandbox starts only after
+`billing` holds its estimated cost (`reserve`), and the hold is settled
+with the real cost when it ends (`settle`).
+
+<Aside type="caution" title="Self-hosted installations">
+	A [self-hosted g1t](/guides/self-hosting-architecture/) binds `runner`
+	to a Worker that answers that it is off, so workflows, the merge queue
+	and deployments do not run there yet.
+</Aside>

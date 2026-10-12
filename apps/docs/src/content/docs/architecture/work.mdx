@@ -1,0 +1,175 @@
+---
+title: Work and the merge queue
+description: How the work service keeps issues, pull requests, checks and rulesets, coordinates sessions and claims, decides and lands a merge, and tests many changes at once in the merge queue.
+---
+
+import Aside from '../../../components/Aside.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+`work` (`services/work`, Rust) keeps everything about a change that is not
+the code itself: issues, pull requests, comments, reviews, labels,
+milestones, rulesets, checks and commit statuses, CODEOWNERS, and the
+merge queue. Its database is `g1t-work`. The code lives in `repos`, and
+`work` asks `repos` whenever it needs it.
+
+## Issues and pull requests
+
+Issues and pull requests share one sequence of numbers per repository
+(the `counters` table), so `#12` names exactly one of them. A pull request
+records where its head is: a fork of its own, `pulls--<id>` in the git
+store, or a branch in the repository ([Git](/architecture/git/#pull-request-forks)).
+
+`work` reads every push from its event queue. A push to a pull request's
+head updates it: the new head, the files it changes, whether it is behind
+the base, and which other open pull requests change the same files, the
+overlap shown on each.
+
+When a pull request merges, its issue closes and records which pull
+request resolved it, and the issue's other open pull requests close as
+superseded ([How g1t works](/concepts/overview/#several-pull-requests-for-one-issue)).
+
+## Coordination
+
+Many agents and people can work on one repository at once. `work` keeps
+what lets them see each other, around the issue, which is the unit of
+work (`services/work/src/coordination/`):
+
+| Table | Holds | Module |
+| --- | --- | --- |
+| `sessions` | One run of someone's own harness (`claude_code`, `codex`, `cursor`, `copilot` or `other`), attached to an issue, a pull request and a branch | `sessions.rs` |
+| `session_entries` | What a session recorded: prompts, reasoning, tool calls, notes, each with an idempotency `key` | `sessions.rs` |
+| `claims` | An advisory, expiring "I'm working on #12" | `claims.rs` |
+| Issues' `blocked_by` | The issues that have to land first, refused if it would make a cycle | `dependencies.rs` |
+| `overlap_pairs` | Pairs of open pull requests changing the same files, announced once per pair | `overlaps.rs` |
+
+<Diagram name="coordination" />
+
+Three choices shape it:
+
+- **Nothing is a lock.** A claim is advice: anyone may claim an issue
+  someone else holds, is told about them, and decides. Nothing is ever
+  refused because of a claim (step 9 in the diagram).
+- **Nothing waits on a harness.** No cron sweeps for quiet sessions or
+  stale claims. The next read or change of a repository's coordination
+  finds them (`sweep`) and announces them then: a session quiet for 15
+  minutes is idle, one quiet for 2 hours has ended, and a claim not renewed
+  within its time (30 minutes unless asked, at most 240) has expired.
+- **Everything can be sent twice.** Starting a session is idempotent on the
+  harness's own session id, and each entry on its `key`, so a hook can call
+  every time without checking first, and a retry after a lost answer does
+  no harm.
+
+`get_work` gathers an issue's whole context in one call (`context.rs`): the
+issue, its definition of done, the required checks, claims, sessions,
+pull requests with their checks, overlaps and place in the queue, what it
+is blocked by and blocks, its decision records, and its latest
+coordination events. A session's entries on a pull request are what
+**Blame** reads to show the agent's account of a line ([Sessions and
+why-blame](/guides/why-blame/)). [Sessions, claims and
+dependencies](/guides/sessions/) has the calls.
+
+## Checks and statuses
+
+Anything can report on a commit: a workflow, an integration, g1t itself.
+Each report is a status with a `context` (its name) and a state, kept per
+commit in `commit_statuses`; richer reports are check runs and suites.
+
+Actions reports one status per run, named `<workflow> / <event>`, such as
+`CI / pull_request` (`services/actions/src/plan.rs`). A required check
+named `CI` is met by a status of that name for any event:
+`check_name` in `crates/contracts/src/work.rs` reads the name before the
+last ` / `. One that failed fails the check, even if another passed.
+
+## Deciding a merge
+
+Rulesets are stored in `work`, and judged by `crates/rules`, which does no
+I/O and so can be tested in full. The same rules run in two places:
+
+| When | Who asks | What is judged |
+| --- | --- | --- |
+| A push | `repos`, before anything is stored | Which refs may move, and how: deletion, force-push, signed commits, file paths |
+| A merge | `work` | Required reviews, required checks, CODEOWNERS, up to date, the merge queue |
+
+`requirements` gathers every rule that applies to the target branch, and
+`judge` returns, for each, whether it passes, fails or is still waiting,
+and whether the person asking may bypass it. A merge happens only when
+none fails or waits, for people and coding agents alike.
+
+When everything passes, `work` asks `repos` to land the pull request's
+head on the base, and publishes `pull.merged`.
+
+## The merge queue
+
+Two changes can merge without a conflict and still break each other. A
+repository whose rules require the merge queue tests each pull request
+together with the ones ahead of it, and moves `main` only to a state whose
+required checks passed (`services/work/src/queue.rs`).
+
+<Diagram name="merge-queue" />
+
+1. **Build.** Up to `max_entries_to_build` entries (4 by default) are
+   tested at once. For each, a sandbox merges the default branch with that
+   entry and every entry ahead of it, and pushes the result to
+   `g1t-queue/<entry>` in the repository.
+2. **Test.** Workflows that run on `merge_group` run on each of those
+   commits, and the required checks have to pass there.
+3. **Land.** Entries land in order. Once everything ahead of it has landed,
+   an entry moves the default branch to the very commit that was tested.
+4. **Eject.** An entry whose checks fail leaves the queue with a failed
+   check run on its pull request, and the entries behind it are tested
+   again without it.
+
+| State | Means |
+| --- | --- |
+| `waiting` | In the queue, not yet being built |
+| `testing` | Built, its checks running |
+| `passed` | Its checks passed; it lands when those ahead have |
+| `failed` | Its checks failed; it leaves the queue |
+| `landed` | On the default branch |
+| `removed` | Taken out by hand |
+
+### Who answers for a failure
+
+A combined state can fail because of the entry itself, or because of an
+entry ahead of it. `integration.rs` works out which:
+
+- **Held, not blamed.** A state that fails while an entry ahead is still
+  being tested is held. If that entry fails too, the held one is tested
+  again without it and is not blamed. Only once everything ahead has
+  passed does the held entry answer for the failure, so a broken change is
+  blamed on itself, never on what was queued behind it.
+- **Narrowed down.** An entry whose own checks pass but whose combination
+  fails breaks *with* some of the entries ahead. `work` builds the default
+  branch with half of them and the entry, and halves again, within three
+  extra builds (`PROBE_BUDGET`), recorded in `queue_probes`. The builds run
+  on `merge_group` like any queued state and never land. What is left is
+  reported as the `suspects`.
+- **Told everywhere.** The answer goes on the pull request's and the
+  issue's timelines, into the pull request's session, as a decision record
+  (`integration_failure`, confidence `tested`, in `decisions`), and as the
+  `integration.failed` event. A passing combination is recorded as
+  `integration.passed`.
+- **Rejoining.** A pull request the queue took out keeps its merge
+  request. Once a new commit's checks pass, it is merged again, into the
+  queue, as whoever queued it, by the rules as they are then.
+
+[The merge queue](/guides/merge-queue/#who-answers-for-it) has the table of
+outcomes from a person's side.
+
+<Aside title="What a merge queue needs">
+	Building candidates takes sandboxes, so the merge queue needs a paid or
+	trial workspace, or the open-source pool for a public repository.
+	[The merge queue](/guides/merge-queue/) has the settings.
+</Aside>
+
+## Events it publishes and reads
+
+`work` publishes what happens to issues, pull requests, comments, checks
+and the queue (`issue.*`, `pull.*`, `comment.*`, `status.created`,
+`queue.changed` and the like), and the coordination events:
+`session.started`, `session.ended`, `work.claimed`, `work.released`,
+`work.claim_expired`, `work.handoff_requested`, `dependency.changed`,
+`overlap.detected`, `integration.failed`, `integration.passed` and
+`decision.recorded`. It reads
+`git.push` and a few repository events from `g1t-events-work`
+([Events](/architecture/events/#subscriber-queues)).

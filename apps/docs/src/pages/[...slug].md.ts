@@ -2,6 +2,15 @@ import type { APIRoute, GetStaticPaths } from 'astro';
 import { getCollection } from 'astro:content';
 
 import { AGENTS, AGENTS_WITH_TOKEN, type AgentSetup } from '../data/agents';
+import { DIAGRAMS } from '../diagrams';
+import { toMarkdown } from '../diagrams/engine';
+
+/** A diagram, as the text it is drawn from. */
+function diagramMarkdown(name: string): string {
+	const spec = DIAGRAMS[name];
+	if (!spec) throw new Error(`No diagram named "${name}".`);
+	return toMarkdown(spec);
+}
 
 /** The agent toggle, as plain Markdown: each agent's snippet under its name. */
 function agentsMarkdown(agents: AgentSetup[]): string {
@@ -39,6 +48,13 @@ export const GET: APIRoute = ({ props }) => {
 		.replace(/^([ \t]*)<TabItem label="([^"]+)"[^>]*>[ \t]*$/gm, '$1**$2**\n')
 		.replace(/^([ \t]*)<AgentSetup( variant="token")? \/>$/gm, (_match, indent: string, token?: string) =>
 			agentsMarkdown(token ? AGENTS_WITH_TOKEN : AGENTS)
+				.split('\n')
+				.map((line) => (line ? indent + line : line))
+				.join('\n'),
+		)
+		// A diagram reads as its boxes and arrows, or its numbered steps.
+		.replace(/^([ \t]*)<Diagram name="([^"]+)" \/>$/gm, (_match, indent: string, name: string) =>
+			diagramMarkdown(name)
 				.split('\n')
 				.map((line) => (line ? indent + line : line))
 				.join('\n'),
