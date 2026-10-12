@@ -16,7 +16,7 @@
 use g1t_contracts::events::{NewEvent, Publish, WorkspaceRenamed};
 use g1t_contracts::identity::*;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, is_valid_namespace};
+use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, is_action_owner_name, is_valid_namespace};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -69,6 +69,12 @@ pub fn check(facts: &Facts) -> std::result::Result<(), (FailureCode, String)> {
         return refuse(
             FailureCode::Invalid,
             "Workspace names use lowercase letters, digits and single hyphens, up to 39 characters, and cannot be a reserved word.",
+        );
+    }
+    if is_action_owner_name(facts.wanted) {
+        return refuse(
+            FailureCode::Invalid,
+            "That name is a GitHub account whose actions workflows use, so it is kept for that account. If it is yours, contact support to prove it.",
         );
     }
     if facts.wanted == facts.current {
@@ -356,6 +362,14 @@ mod tests {
             assert_eq!(refused(&facts("acme", name)), FailureCode::Invalid, "{name}");
         }
         assert!(check(&facts("acme", "g1t-fans")).is_ok());
+    }
+
+    #[test]
+    fn no_workspace_is_renamed_to_a_github_action_owner() {
+        for name in ["actions", "docker", "aws-actions"] {
+            assert_eq!(refused(&facts("acme", name)), FailureCode::Invalid, "{name}");
+        }
+        assert!(check(&facts("acme", "actions-team")).is_ok());
     }
 
     #[test]

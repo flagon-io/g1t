@@ -129,6 +129,30 @@ async fn fetch_capped(url: &str, max: usize) -> Option<Vec<u8>> {
     Some(body)
 }
 
+/// The status GitHub answers a GET with, or None when it doesn't answer.
+async fn status_of(url: &str) -> Option<u16> {
+    let headers = worker::Headers::new();
+    headers.set("user-agent", "git/2.47.0 (g1t)").ok()?;
+    let mut init = worker::RequestInit::new();
+    init.with_method(worker::Method::Get).with_headers(headers);
+    let request = worker::Request::new_with_init(url, &init).ok()?;
+    let response = worker::Fetch::Request(request).send().await.ok()?;
+    Some(response.status_code())
+}
+
+/// What GitHub's answer to a repository's advertisement says about it:
+/// Some(true) when it publishes the repository, Some(false) when it says
+/// there is none it will show (GitHub answers 401 for a repository that
+/// doesn't exist as for a private one), None for anything else, such as a
+/// rate limit or an error.
+pub(crate) fn published_by(status: Option<u16>) -> Option<bool> {
+    match status? {
+        200 => Some(true),
+        401 | 404 => Some(false),
+        _ => None,
+    }
+}
+
 #[derive(Deserialize)]
 struct RefRow {
     sha: String,
@@ -150,6 +174,23 @@ impl Actions {
         };
         let archive = self.keep_archive(&repository, &sha, now).await?;
         Ok(json!({ "source": "github", "sha": sha, "archive": archive, "note": note }))
+    }
+
+    /// Whether GitHub publishes `repository` (`owner/repo`): Some(true) when
+    /// it does, or once named a commit of it for a job; Some(false) when it
+    /// says it has no such repository; None when it could not say.
+    pub(crate) async fn github_publishes(&self, repository: &str) -> Result<Option<bool>> {
+        let repository = repository.to_ascii_lowercase();
+        let seen = self
+            .db
+            .prepare("SELECT sha FROM action_refs WHERE repository = ? LIMIT 1")
+            .bind(&[repository.as_str().into()])?
+            .first::<Value>(None)
+            .await?;
+        if seen.is_some() {
+            return Ok(Some(true));
+        }
+        Ok(published_by(status_of(&format!("https://github.com/{repository}.git/info/refs?service=git-upload-pack")).await))
     }
 
     /// The commit `git_ref` names in GitHub's `repository`, and a note when
@@ -335,6 +376,17 @@ mod tests {
         bytes.extend(pkt(&format!("{V4_COMMIT} refs/tags/v4^{{}}\n")));
         bytes.extend_from_slice(b"0000");
         bytes
+    }
+
+    #[test]
+    fn only_an_answer_from_github_says_it_has_no_such_repository() {
+        assert_eq!(published_by(Some(200)), Some(true));
+        assert_eq!(published_by(Some(401)), Some(false));
+        assert_eq!(published_by(Some(404)), Some(false));
+        // A rate limit, an error or no answer says nothing, so the name stays GitHub's.
+        assert_eq!(published_by(Some(429)), None);
+        assert_eq!(published_by(Some(503)), None);
+        assert_eq!(published_by(None), None);
     }
 
     #[test]

@@ -17,7 +17,12 @@ makes a different name, though: `ana-lopez` is the same person and can't
 be registered by anyone else, signing in works in any case,
 `g1t.sh/u/ANA-LOPEZ` opens the same profile, and an `@ana-lopez` mention
 reaches you. Addresses and git URLs use the lowercase form. Reserved words
-(such as `settings`, `api` or `g1t`) are reserved in every case.
+(such as `settings`, `api` or `g1t`) are reserved in every case. So are
+the names of the GitHub accounts whose actions workflows use most, such as
+`actions`, `docker` and `aws-actions`, so that nobody on g1t is mistaken
+for them; see [actions from other repositories](/guides/actions/#actions-and-workflows-from-other-repositories).
+Signing up with a GitHub account of one of those names suggests the name
+with `-gh` added.
 
 Before you can do anything else, you [confirm your email
 address](#confirming-your-email-address) with the code g1t emails you,
