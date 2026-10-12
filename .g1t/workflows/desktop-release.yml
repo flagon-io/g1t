@@ -174,13 +174,17 @@ jobs:
           done
           [ "$ok" = 1 ]
           # cargo-xwin compiles C (ring's, among others) with clang-cl and
-          # links with lld-link and llvm-lib, which Debian installs under
-          # versioned names only (clang-cl-19 in /usr/lib/llvm-19/bin).
-          for tool in clang-cl lld-link llvm-lib; do
-            command -v "$tool" >/dev/null && continue
-            found="$(ls /usr/lib/llvm-*/bin/"$tool" 2>/dev/null | sort -V | tail -1)"
-            [ -n "$found" ] || { echo "::error::$tool is not installed"; exit 1; }
-            sudo ln -sf "$found" "/usr/local/bin/$tool"
+          # links with lld-link and llvm-lib. Each is a mode of a tool
+          # Debian does install, chosen by the name it is run as: clang-cl
+          # is clang, lld-link is lld, and llvm-lib is llvm-ar. Debian ships
+          # none of the three names, so each is linked to its tool.
+          for pair in clang-cl:clang lld-link:lld llvm-lib:llvm-ar; do
+            name="${pair%%:*}" tool="${pair##*:}"
+            command -v "$name" >/dev/null && continue
+            found="$(command -v "$tool" || ls /usr/lib/llvm-*/bin/"$tool" 2>/dev/null | sort -V | tail -1)"
+            [ -n "$found" ] || { echo "::error::$tool is not installed, so there is no $name"; exit 1; }
+            sudo ln -sf "$(readlink -f "$found")" "/usr/local/bin/$name"
+            echo "$name: $(readlink -f "$found")"
           done
           cargo install --locked cargo-xwin
       - uses: actions/cache@v4
