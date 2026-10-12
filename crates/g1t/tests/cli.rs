@@ -803,3 +803,92 @@ fn help_and_version_succeed() {
     assert_eq!(out.code, 0);
     assert!(out.stdout.contains("_g1t"));
 }
+
+#[test]
+fn login_approves_a_code_in_the_browser() {
+    let polls = Arc::new(Mutex::new(0));
+    let counter = polls.clone();
+    let mock = Mock::start(move |r| match r.path() {
+        "/device/code" => (
+            200,
+            json!({ "device_code": "dev_1", "user_code": "WDJB-MJHT", "verification_uri": "https://g1t.sh/device",
+                    "verification_uri_complete": "https://g1t.sh/device?code=WDJB-MJHT", "expires_in": 60, "interval": 1 }),
+        ),
+        "/device/token" => {
+            let mut n = counter.lock().unwrap();
+            *n += 1;
+            if *n < 2 {
+                (200, json!({ "status": "pending" }))
+            } else {
+                (
+                    200,
+                    json!({ "status": "approved", "token": "g1t_device", "username": "ana" }),
+                )
+            }
+        }
+        _ => (404, json!({ "error": { "message": "No such endpoint." } })),
+    });
+    let dir = temp_dir("device");
+    let out = g1t(&mock, &dir, &["auth", "login", "--no-browser"], None, None);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("WDJB-MJHT"), "{}", out.stderr);
+    assert!(
+        out.stderr.contains("https://g1t.sh/device?code=WDJB-MJHT"),
+        "{}",
+        out.stderr
+    );
+    let seen = mock.requests();
+    assert!(
+        seen[0].json()["client_name"]
+            .as_str()
+            .unwrap()
+            .starts_with("g1t CLI on ")
+    );
+    assert!(
+        seen.iter()
+            .filter(|r| r.path() == "/device/token")
+            .all(|r| r.json() == json!({ "device_code": "dev_1" }))
+    );
+    let out = g1t(&mock, &dir, &["auth", "token"], None, None);
+    assert_eq!(out.stdout, "g1t_device\n");
+}
+
+#[test]
+fn the_repository_comes_from_the_git_remote() {
+    let mock = Mock::start(|_| (200, json!([])));
+    let dir = temp_dir("remote");
+    let git = |args: &[&str]| {
+        let ok = Command::new("git")
+            .args(args)
+            .current_dir(&dir)
+            .output()
+            .unwrap()
+            .status
+            .success();
+        assert!(ok, "git {args:?}");
+    };
+    git(&["init", "--quiet"]);
+    git(&["remote", "add", "mine", "https://g1t.sh/ana/web.git"]);
+    git(&["remote", "add", "origin", "git@g1t.sh:acme/web.git"]);
+    git(&[
+        "remote",
+        "add",
+        "elsewhere",
+        "https://example.com/acme/other.git",
+    ]);
+    let out = g1t(
+        &mock,
+        &dir,
+        &["issue", "list", "--json"],
+        None,
+        Some("g1t_test"),
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(out.stdout, "[]\n");
+    assert_eq!(mock.requests()[0].path(), "/repos/acme/web/issues");
+    // Outside any repository, and without --repo, it says what to do.
+    let bare = temp_dir("bare");
+    let out = g1t(&mock, &bare, &["issue", "list"], None, Some("g1t_test"));
+    assert_eq!(out.code, 2);
+    assert!(out.stderr.contains("--repo"), "{}", out.stderr);
+}
