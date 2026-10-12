@@ -33,15 +33,16 @@ session is as visible as the repository, so do not put secrets in one.
 
 Your coding agent records its session in one of two ways.
 
-**With the hook installer**, for Claude Code. Every session is recorded
-without the agent having to remember:
+**With g1t's Claude Code plugin.** Every session is recorded without the
+agent having to remember:
 
 ```sh
-curl -fsSL https://g1t.sh/install/claude.sh | sh
+claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
+claude plugin install g1t@g1t
 ```
 
-See [recording sessions automatically](/guides/bring-your-own-agent/#recording-sessions-automatically)
-for what it installs and how to remove it.
+See [Claude Code plugin](/guides/claude-code-plugin/) for what it records,
+what it never records and how to opt out.
 
 **With the `pull_request` tool's `record_session` action**, from any agent. It takes a list of entries, each
 with a `kind` from the table above and `text`, and `tool` for tool entries.

@@ -153,6 +153,7 @@ export default defineConfig({
 					label: 'Coding agents',
 					items: [
 						{ label: 'Connect a coding agent', slug: 'guides/bring-your-own-agent' },
+						{ label: 'Claude Code plugin', slug: 'guides/claude-code-plugin' },
 						{ label: 'Sessions and why-blame', slug: 'guides/why-blame' },
 						{ label: 'Memory', slug: 'guides/memory' },
 					],

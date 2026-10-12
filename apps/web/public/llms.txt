@@ -124,14 +124,29 @@ are created and approved only in their browser.
    Or let git ask: the username is the g1t username and the password is the
    token.
 
-8. **Record Claude Code sessions automatically** (optional). This installs
-   hooks that record prompts, tool calls and replies onto the g1t pull
-   request for the branch being worked on. The person runs it, because it
-   signs them in through their browser:
+8. **Record Claude Code sessions automatically** (optional). g1t's Claude
+   Code plugin records each session on g1t (prompts, up to 2,000
+   characters; tool names and what they were called with, never what they
+   returned; pushes), gives Claude the issue's work context when a session
+   starts, and adds g1t's MCP server and the `/g1t:claim`, `/g1t:status`
+   and `/g1t:handoff` commands. Its hooks use the g1t CLI
+   (`curl -fsSL https://g1t.sh/install | sh`, then `g1t auth login`). The
+   person installs it:
 
    ```sh
-   curl -fsSL https://g1t.sh/install/claude.sh | sh
+   claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
+   claude plugin install g1t@g1t
    ```
+
+   `G1T_RECORD_PROMPTS=0` keeps prompts back; `G1T_RECORD=0` records
+   nothing. Guide: https://docs.g1t.sh/guides/claude-code-plugin/
+
+   Other agents with a shell record the same way with the CLI:
+   `g1t session start --harness codex` when they start,
+   `g1t work context N` and `g1t work claim N` before working on issue N,
+   `g1t session log --kind note TEXT` for decisions, `g1t session heartbeat`
+   while working, `g1t work handoff N --note TEXT` if they stop early, and
+   `g1t session end` at the end.
 
 ## Do work
 
@@ -292,9 +307,7 @@ scope but `runners:read` and `chat:read`, plus `code:write`,
 `notifications:write`). For CI, the CI preset (`repo:read`, `code:read`,
 `code:write`, `packages:read`, `packages:write`, `workflows:read`,
 `workflows:write`, `checks:read`, `checks:write`, `deployments:read`,
-`deployments:write`). A token or application given `agents:run`,
-`models:read` or `models:write` before keeps working for its other scopes;
-those three grant nothing.
+`deployments:write`).
 `chat:read` and `chat:write` are in no preset either: with them a person's
 token, OAuth or personal, uses Chat's JSON routes (`/{workspace}/-/chat/api`)
 and live sockets on the website without "Use the website as you", and
