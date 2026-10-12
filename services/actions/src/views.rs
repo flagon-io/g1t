@@ -322,10 +322,7 @@ impl Actions {
             }));
         }
         let pending_deployments = self.pending_for(&run, &a.viewer).await?;
-        // Jobs held at an environment's rules: the run waits, as on GitHub.
-        if matches!(summary.status.as_str(), "queued" | "in_progress") && jobs.iter().any(|job| job.status == "pending") {
-            summary.status = "waiting".to_owned();
-        }
+        summary.status = shown_status(&summary.status, jobs.iter().map(|job| job.status.as_str()));
         Ok(Outcome::Ok(RunDetail {
             notes: notes(&run.source),
             run: summary,
@@ -580,3 +577,45 @@ impl Actions {
 
 /// The most runs `check_runs` reads for a set of commits.
 const CHECK_RUNS_LIMIT: u32 = 200;
+
+/// How the run's current attempt stands on its page: as its row says, and
+/// `waiting`, as on GitHub, while a job is held at an environment's rules.
+/// A job queued for a runner, or waiting for the jobs it needs, leaves a
+/// run that has started `in_progress`: it is still going.
+fn shown_status<'a>(status: &str, mut jobs: impl Iterator<Item = &'a str>) -> String {
+    if matches!(status, "queued" | "in_progress") && jobs.any(|job| job == "pending") {
+        "waiting".to_owned()
+    } else {
+        status.to_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shown(status: &str, jobs: &[&str]) -> String {
+        shown_status(status, jobs.iter().copied())
+    }
+
+    #[test]
+    fn a_job_queued_for_a_self_hosted_runner_keeps_its_run_going() {
+        // A re-run of failed jobs: the job that failed now succeeded, and the
+        // one that needs it waits for a runner with labels no runner has.
+        assert_eq!(shown("in_progress", &["completed", "queued"]), "in_progress");
+        assert_eq!(shown("queued", &["waiting", "waiting"]), "queued");
+    }
+
+    #[test]
+    fn a_job_held_at_an_environment_makes_its_run_wait() {
+        assert_eq!(shown("in_progress", &["completed", "pending"]), "waiting");
+        assert_eq!(shown("queued", &["pending"]), "waiting");
+    }
+
+    #[test]
+    fn a_finished_or_held_run_reads_as_its_row_says() {
+        assert_eq!(shown("completed", &["completed"]), "completed");
+        assert_eq!(shown("action_required", &["waiting"]), "action_required");
+        assert_eq!(shown("pending", &["pending"]), "pending");
+    }
+}
