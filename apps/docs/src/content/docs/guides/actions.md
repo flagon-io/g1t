@@ -1168,6 +1168,15 @@ page asks for more every second while a step is running.
   logs** shows or hides the times; your browser remembers which.
 - A download (the job's `log.txt` and the run's zip) has the time at the
   start of every line, as GitHub's downloaded logs do.
+- Each line's number links to it, as on GitHub: `#step:3:12` is line 12
+  of step 3 (0 is **Set up job**). Opening the link opens the step and
+  any group the line is in, scrolls to the line and marks it.
+- A long step's log stays fast. Each new piece of a running step's log is
+  read once as it arrives, and a step of more than 2,000 lines draws only
+  the lines on screen and a few around them. Search, groups, line links,
+  following the newest line and **Jump to latest** work as they do on a
+  short log. Your browser's own find (Ctrl+F) only sees the lines that are
+  drawn, so use **Search logs** in a long log.
 - The runner numbers each batch of the log it sends. When it sends a
   batch again because g1t's answer didn't reach it, g1t keeps the batch
   once, so a line never shows twice.

@@ -58,43 +58,153 @@ export function classify(stamped: string): Line | "group-end" | { group: string;
   return lineOf("text", raw, at);
 }
 
+/** A line and its number in the step's log. */
+export type Numbered = { line: Line; number: number };
+
+/**
+ * A step's log, read as it arrives (`appendLog`): each chunk's lines are
+ * read once, however long the log grows, and a group a chunk leaves open
+ * holds the next chunk's lines until its `##[endgroup]`.
+ */
+export type StepLog = {
+  /** Plain lines and groups, as `blocks` reads them. */
+  blocks: Block[];
+  /** Every line in order, groups' lines among them: `lines[n - 1]` is line `n`. */
+  lines: Numbered[];
+  /** The index in `blocks` of the block that holds each line, by the same index. */
+  blockOf: number[];
+  /** The group still open at the end of what has arrived, by its index in `blocks`. */
+  group: number | null;
+  /** What came after the last newline: a line still being written, shown as `tail` meanwhile. */
+  partial: string;
+  tail?: Numbered;
+  /** The time of the last stamped line. */
+  lastAt?: string;
+  /** Whether any line holds more than spaces. */
+  hasText: boolean;
+};
+
+export function emptyLog(): StepLog {
+  return { blocks: [], lines: [], blockOf: [], group: null, partial: "", hasText: false };
+}
+
+/**
+ * `log` with `text` added to its end. Only the new lines are read: the
+ * answer shares `log`'s arrays, adding to them, so `log` is not to be read
+ * or added to again.
+ */
+export function appendLog(log: StepLog, text: string): StepLog {
+  const next: StepLog = { ...log };
+  delete next.tail;
+  const joined = next.partial + text;
+  const end = joined.lastIndexOf("\n");
+  const whole = end === -1 ? "" : joined.slice(0, end);
+  next.partial = end === -1 ? joined : joined.slice(end + 1);
+  if (end !== -1) {
+    for (const raw of whole.split("\n")) readLine(next, raw);
+  }
+  // A line that may yet be a group's marker (`##[gro`) waits to end.
+  if (next.partial.trim() && !splitStamp(next.partial).rest.startsWith("##")) {
+    const line = classify(next.partial);
+    if (typeof line === "object" && !("group" in line)) next.tail = { line, number: next.lines.length + 1 };
+  }
+  return next;
+}
+
+/** Reads one whole line into `log`, in place. */
+function readLine(log: StepLog, raw: string): void {
+  // A log ends with a newline; nothing follows the last one.
+  if (raw === "" && log.lines.length === 0) return;
+  const line = classify(raw);
+  if (line === "group-end") {
+    log.group = null;
+    return;
+  }
+  if ("group" in line) {
+    log.group = log.blocks.length;
+    log.blocks.push(line.at ? { kind: "group", title: line.group, lines: [], at: line.at } : { kind: "group", title: line.group, lines: [] });
+    return;
+  }
+  const entry = { line, number: log.lines.length + 1 };
+  log.lines.push(entry);
+  if (line.at) log.lastAt = line.at;
+  if (!log.hasText && line.text.trim()) log.hasText = true;
+  const open = log.group === null ? undefined : log.blocks[log.group];
+  if (open?.kind === "group") {
+    open.lines.push(entry);
+    log.blockOf.push(log.group!);
+  } else {
+    log.blockOf.push(log.blocks.length);
+    log.blocks.push({ kind: "line", ...entry });
+  }
+}
+
+/** A whole log, read at once. */
+export function readLog(text: string): StepLog {
+  return appendLog(emptyLog(), text.endsWith("\n") || text === "" ? text : `${text}\n`);
+}
+
 /** Lines into blocks: plain lines, and groups that fold. Lines are numbered from 1, group markers aside. */
 export function blocks(text: string): Block[] {
-  const out: Block[] = [];
-  let group: Extract<Block, { kind: "group" }> | null = null;
-  let number = 0;
-  // A log ends with a newline; nothing follows the last one.
-  for (const raw of (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n")) {
-    if (raw === "" && number === 0) continue;
-    const line = classify(raw);
-    if (line === "group-end") {
-      group = null;
-      continue;
-    }
-    if ("group" in line) {
-      group = line.at ? { kind: "group", title: line.group, lines: [], at: line.at } : { kind: "group", title: line.group, lines: [] };
-      out.push(group);
-      continue;
-    }
-    number += 1;
-    if (group) group.lines.push({ line, number });
-    else out.push({ kind: "line", line, number });
+  return readLog(text).blocks;
+}
+
+/** The last search of each log, so a step's count and its lines are found once a change. */
+const searched = new WeakMap<StepLog, { query: string; found: Numbered[] }>();
+
+/** The lines of a step's log holding `query` (any case), in order, folded groups' lines among them. */
+export function searchStepLog(log: StepLog, query: string): Numbered[] {
+  const wanted = query.trim().toLowerCase();
+  if (!wanted) return [];
+  const known = searched.get(log);
+  if (known && known.query === wanted) return known.found;
+  const found: Numbered[] = [];
+  for (const entry of log.lines) {
+    if (entry.line.text.toLowerCase().includes(wanted)) found.push(entry);
   }
-  return out;
+  if (log.tail && log.tail.line.text.toLowerCase().includes(wanted)) found.push(log.tail);
+  searched.set(log, { query: wanted, found });
+  return found;
 }
 
 /** The lines of a log holding `query` (any case), numbered as `blocks` numbers them, folded groups opened. */
-export function searchLog(text: string, query: string): { line: Line; number: number }[] {
-  const wanted = query.trim().toLowerCase();
-  if (!wanted) return [];
-  const found: { line: Line; number: number }[] = [];
-  for (const block of blocks(text)) {
-    const lines = block.kind === "line" ? [{ line: block.line, number: block.number }] : block.lines;
-    for (const entry of lines) {
-      if (entry.line.text.toLowerCase().includes(wanted)) found.push(entry);
+export function searchLog(text: string, query: string): Numbered[] {
+  return searchStepLog(readLog(text), query);
+}
+
+/**
+ * What a step's log draws, one row each, top to bottom: its lines, and
+ * each group's title, with the lines of the groups in `open` (by their
+ * index in `blocks`) under it.
+ */
+export type Row =
+  | { kind: "line"; entry: Numbered }
+  | { kind: "group"; block: number; title: string; at?: string; open: boolean; size: number };
+
+export function logRows(log: StepLog, open: ReadonlySet<number>): Row[] {
+  const rows: Row[] = [];
+  log.blocks.forEach((block, index) => {
+    if (block.kind === "line") {
+      rows.push({ kind: "line", entry: block });
+      return;
     }
-  }
-  return found;
+    const isOpen = open.has(index);
+    rows.push({ kind: "group", block: index, title: block.title, at: block.at, open: isOpen, size: block.lines.length });
+    if (isOpen) for (const entry of block.lines) rows.push({ kind: "line", entry });
+  });
+  if (log.tail) rows.push({ kind: "line", entry: log.tail });
+  return rows;
+}
+
+/** The group that holds line `number`, by its index in `blocks`, or null when it is no group's. */
+export function groupOf(log: StepLog, number: number): number | null {
+  const index = log.blockOf[number - 1];
+  return index !== undefined && log.blocks[index]?.kind === "group" ? index : null;
+}
+
+/** A row's key, the same however the rows above it change. */
+export function rowKey(row: Row): string {
+  return row.kind === "line" ? `L${row.entry.number}` : `G${row.block}`;
 }
 
 /** `text` cut where `query` (any case) appears, each piece marked as a match or not. */
