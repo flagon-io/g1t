@@ -59,7 +59,7 @@ gives their values out, so they cannot be copied across.
 | `run:` with `bash`, `sh`, `python` or a custom shell | The same. |
 | JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
 | Composite actions | The same. |
-| Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository) | The same: `with:` inputs, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, and nesting up to four deep. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
+| Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository) | The same: `with:` inputs checked against their `type`, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, `strategy.matrix` on the calling job (one call for each combination), `concurrency` on the calling job, and up to ten levels of workflows with at most 50 different reusable workflows in a run. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
 | `actions/checkout` | Checks out from g1t, with `ref`, `fetch-depth`, `path`, `repository`, `token` and `submodules`. |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. Step summaries show on the run's page; see [job summaries](#job-summaries). |
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run, and [masked](#masking-secrets) values stay hidden. |
@@ -224,6 +224,56 @@ jobs:
 `vars` are the calling repository's, and a called workflow's jobs run
 with the calling run's `github` context: `actions/checkout` checks out the
 calling repository.
+
+A secret passed by name that the called workflow does not declare under
+`on.workflow_call.secrets` fails the calling job: `Invalid secret: … is
+not defined in …`.
+
+### Inputs for a called workflow
+
+The values under `with:` are checked against the `type` each input has
+under `on.workflow_call.inputs`, before anything runs:
+
+- A `boolean` input takes `true` or `false`, and a `number` input a
+  number. Text such as `'true'` or a job's output (outputs are always
+  text) fails the calling job: pass `${{ fromJSON(needs.build.outputs.count) }}`
+  to give its value.
+- A `string` input takes text; a number or a boolean becomes its text.
+- An input you leave out takes its `default`, else `false`, `0` or `''`
+  by its type. A `required: true` input you leave out fails the calling
+  job.
+- A name under `with:` that the called workflow does not declare fails the
+  calling job: `Invalid input: … is not defined in …`.
+
+### A matrix of calls
+
+A job that calls a reusable workflow may have a `strategy`. Each
+combination of its matrix calls the workflow once, with `matrix` read in
+`with:` and `secrets:`:
+
+```yaml
+jobs:
+  test:
+    strategy:
+      matrix:
+        node: [20, 22]
+      max-parallel: 1
+    uses: ./.g1t/workflows/test.yml
+    with:
+      node-version: ${{ matrix.node }}
+```
+
+The called workflow's jobs are named under the combination's call:
+`test (20) / unit`, `test (22) / unit`. `max-parallel` limits how many
+calls run at a time, and with `fail-fast` (the default) a call that fails
+cancels the calls still running or waiting. `concurrency` on the calling
+job holds its group while the called workflow runs, as a job's own does.
+
+A run connects at most ten levels of workflows: the workflow it started
+from and nine levels of reusable workflows below it. It calls at most 50
+different reusable workflows; a workflow called again, as by each
+combination of a matrix, counts once. A call past either limit fails the
+calling job and says why.
 
 ## Releases
 
@@ -982,7 +1032,7 @@ that as few connectors as possible cross.
 | A job | Its status, its name and how long it took. Click it to open its steps and logs. |
 | A job that deploys | Its environment's address (`environment.url`), as a link, under its name. |
 | A matrix | One node with how many jobs it made (`test · 6 jobs`) and how they stand together. Click it to list each combination; click one to open it. |
-| A reusable workflow | A box under the job that calls it, named with the called file, holding the called workflow's jobs laid out the same way. The jobs that need the calling job connect to the box. |
+| A reusable workflow | A box under the job that calls it, named with the called file, holding the called workflow's jobs laid out the same way; a matrix of calls shares one box, each call's jobs named with its combination. The jobs that need the calling job connect to the box. |
 
 Connectors run from a job to each job that needs it. They are red from a
 job that failed, and move while the job they lead to is running (they

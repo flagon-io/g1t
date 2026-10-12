@@ -454,13 +454,6 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
                 );
             }
         }
-        if uses.is_some() && spec.contains_key("strategy") {
-            note(
-                Severity::Warning,
-                Some(id),
-                "`strategy` on a job that calls a reusable workflow: g1t runs the called workflow once, not once for each combination of the matrix.".to_owned(),
-            );
-        }
         if spec.contains_key("services") {
             note(
                 Severity::Info,
@@ -709,7 +702,7 @@ jobs:
         };
         assert!(warned("arm", "runs on x64"));
         assert!(warned("arm", "stopped at 60 minutes"));
-        assert!(warned("call", "runs the called workflow once"));
+        assert!(!workflow.notes.iter().any(|n| n.job.as_deref() == Some("call") && n.severity == Severity::Warning));
         assert!(!workflow.notes.iter().any(|n| matches!(n.job.as_deref(), Some("short" | "mine")) && n.severity == Severity::Warning));
         let artifacts = parse("on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{ uses: actions/upload-artifact@v4 }]").unwrap();
         assert!(artifacts.notes.iter().any(|n| n.message.contains("5 GiB each")));

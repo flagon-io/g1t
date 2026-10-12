@@ -254,9 +254,62 @@ pub fn rerun_keys(order: &[&str], needs: impl Fn(&str) -> Vec<String>, succeeded
 }
 
 /// The key under `jobs:` a job belongs to: a called workflow's jobs
-/// (`build/test`) run again with the job that calls it (`build`).
+/// (`build/test`, or `build[1]/test` for a matrix's second call) run again
+/// with the job that calls it (`build`).
 pub fn top_key(key: &str) -> &str {
-    key.split('/').next().unwrap_or(key)
+    let first = key.split('/').next().unwrap_or(key);
+    first.split('[').next().unwrap_or(first)
+}
+
+/// What the keys of the jobs a caller's call makes start with: the
+/// caller's key, and for a matrix the combination's index after it
+/// (`build[1]`), so each combination's call has jobs of its own. A job id
+/// has no `[`, so the two never meet.
+fn call_prefix(key: &str, index: Option<usize>) -> String {
+    match index {
+        Some(index) => format!("{key}[{index}]"),
+        None => key.to_owned(),
+    }
+}
+
+/// Whether a run may call one more reusable workflow, `file`, `depth`
+/// levels below the workflow it started from, having called `called`
+/// already (one name per call; repeats are one workflow). As on GitHub: ten
+/// levels of workflows at most, the top one and nine reusable ones below
+/// it, and 50 different reusable workflows in a run.
+fn call_allowed(depth: u64, called: &[&str], file: &str) -> std::result::Result<(), String> {
+    if depth > MAX_CALL_DEPTH {
+        return Err(format!(
+            "`{file}` would be the {}th level of workflows: a run connects at most ten, the workflow it started from and nine levels of reusable workflows below it.",
+            depth + 1
+        ));
+    }
+    let mut unique: Vec<&str> = called.to_vec();
+    unique.push(file);
+    unique.sort_unstable();
+    unique.dedup();
+    if unique.len() > MAX_CALLED_WORKFLOWS {
+        return Err(format!("Calling `{file}` would make {} reusable workflows in this run: a run calls at most {MAX_CALLED_WORKFLOWS} different ones.", unique.len()));
+    }
+    Ok(())
+}
+
+/// What a job is shown as: its `name` (else its id), under the job whose
+/// call made it (`caller`), read with its matrix when it has an
+/// expression, else with the matrix's values after it.
+fn shown_name(job: &workflow::Job, caller: Option<&str>, combination: &Map<String, Value>, scope: &Scope) -> String {
+    let base = job.name.clone().unwrap_or(job.id.clone());
+    let base = match caller {
+        Some(caller) => format!("{caller} / {base}"),
+        None => base,
+    };
+    if expr::has_expression(&base) {
+        expr::interpolate(&base, scope).unwrap_or(base)
+    } else if job.matrix.is_some() {
+        matrix::job_name(&base, combination)
+    } else {
+        base
+    }
 }
 
 /// Debug logging for a job, as a re-run with it turned on gives GitHub's:
@@ -279,6 +332,20 @@ impl JobRow {
         self.call.as_deref().and_then(|call| serde_json::from_str(call).ok())
     }
 
+    /// For a job that calls a reusable workflow: what the keys of the jobs
+    /// its call makes start with (`call_prefix`).
+    pub fn call_prefix(&self) -> Option<String> {
+        let call = self.call().filter(|call| call["role"] == "caller")?;
+        Some(call["prefix"].as_str().unwrap_or(&self.key).to_owned())
+    }
+
+    /// A job that calls a reusable workflow and has not called it yet: it
+    /// waits for room under its matrix's `max-parallel`, or in its
+    /// concurrency group.
+    pub fn holds_call(&self) -> bool {
+        self.status == "waiting" && self.call_prefix().is_some()
+    }
+
     /// For a job of a called workflow: that workflow, the job's own id in
     /// it, and the job.
     pub fn callee(&self) -> Option<(Workflow, workflow::Job, Value)> {
@@ -293,8 +360,11 @@ impl JobRow {
 /// (name in `needs`, key of the jobs).
 type Unit = (String, workflow::Job, Vec<(String, String)>);
 
-/// How deep reusable workflows may call one another, as on GitHub.
-const MAX_CALL_DEPTH: u64 = 4;
+/// How many levels of reusable workflows may sit below the workflow a run
+/// started from, as on GitHub (ten levels of workflows in all).
+const MAX_CALL_DEPTH: u64 = 9;
+/// How many different reusable workflows a run may call, as on GitHub.
+const MAX_CALLED_WORKFLOWS: usize = 50;
 
 /// What the jobs of one key came to, for `needs.<key>`.
 fn key_result(rows: &[&JobRow]) -> &'static str {
@@ -755,7 +825,7 @@ impl Actions {
             let key_failed = |key: &str| key_result(&jobs.iter().filter(|row| row.key == key).collect::<Vec<_>>()) == "failure";
             for (key, job, needs) in &units {
                 let rows: Vec<&JobRow> = jobs.iter().filter(|row| &row.key == key).collect();
-                if rows.is_empty() || !rows.iter().all(|row| row.status == "waiting") {
+                if rows.is_empty() || !rows.iter().all(|row| row.status == "waiting" && !row.holds_call()) {
                     continue;
                 }
                 let needed: Vec<(&String, Vec<&JobRow>)> =
@@ -769,12 +839,29 @@ impl Actions {
             }
             // A job that called a workflow finishes with that workflow's jobs.
             for row in jobs.iter().filter(|row| row.status == "calling") {
+                let prefix = row.call_prefix().unwrap_or(row.key.clone());
                 let children: Vec<&JobRow> = jobs
                     .iter()
-                    .filter(|child| child.call().is_some_and(|call| call["role"] == "callee" && call["parent"].as_str() == Some(row.key.as_str())))
+                    .filter(|child| child.call().is_some_and(|call| call["role"] == "callee" && call["parent"].as_str() == Some(prefix.as_str())))
                     .collect();
                 if !children.is_empty() && children.iter().all(|child| child.status == "completed") {
-                    self.finish_call(row, &children).await?;
+                    self.finish_call(&run, row, &children).await?;
+                    changed = true;
+                }
+            }
+            // Calls that wait start while their matrix's `max-parallel` and
+            // their concurrency group have room.
+            let mut calling: std::collections::HashMap<&str, u32> = std::collections::HashMap::new();
+            for row in jobs.iter().filter(|row| row.status == "calling") {
+                *calling.entry(row.key.as_str()).or_default() += 1;
+            }
+            for row in jobs.iter().filter(|row| row.holds_call()) {
+                let running = calling.get(row.key.as_str()).copied().unwrap_or(0);
+                if row.max_parallel.is_some_and(|max| running >= max) || self.group_busy(row).await? {
+                    continue;
+                }
+                if self.start_call(row).await? {
+                    calling.insert(row.key.as_str(), running + 1);
                     changed = true;
                 }
             }
@@ -794,7 +881,10 @@ impl Actions {
         let mut contexts = Self::base_contexts(run, &vars, &job.id);
         // A called workflow's jobs read the inputs they were called with.
         let call = row.call();
-        let parent = call.as_ref().filter(|c| c["role"] == "callee").and_then(|c| c["parent"].as_str().map(str::to_owned));
+        // Shown under the job whose call made it, by that job's name.
+        let caller = call.as_ref().filter(|c| c["role"] == "callee").and_then(|c| {
+            c["title"].as_str().map(str::to_owned).or_else(|| c["parent"].as_str().map(|parent| parent.replace('/', " / ")))
+        });
         if let Some(call) = call.as_ref().filter(|c| c["role"] == "callee") {
             contexts.insert("inputs".into(), call["inputs"].clone());
         }
@@ -826,10 +916,6 @@ impl Actions {
             Ok(false) => return self.skip_job(row, None).await,
             Err(problem) => return self.fail_job(row, &format!("Its `if` does not read: {problem}")).await,
         }
-        if let Some(uses) = &job.uses {
-            return self.call_workflow(run, job, row, uses, &scope).await;
-        }
-
         // Its matrix, which may come from a needed job's outputs.
         let combinations = match &job.matrix {
             None => vec![Map::new()],
@@ -845,6 +931,10 @@ impl Actions {
                 }
             }
         };
+        // A job that calls a reusable workflow calls it once for each.
+        if let Some(uses) = &job.uses {
+            return self.call_workflow(run, job, row, uses, &contexts, &combinations, caller.as_deref()).await;
+        }
         let total = combinations.len();
         let raw = job.raw.as_object().cloned().unwrap_or_default();
         // Whether pull requests from forks may use self-hosted runners here,
@@ -865,19 +955,7 @@ impl Actions {
                 status: Status::Success,
                 hash_files: None,
             };
-            let base_name = job.name.clone().unwrap_or(job.id.clone());
-            // A called workflow's job is shown under the job that called it.
-            let base_name = match &parent {
-                Some(parent) => format!("{} / {base_name}", parent.replace('/', " / ")),
-                None => base_name,
-            };
-            let name = if expr::has_expression(&base_name) {
-                expr::interpolate(&base_name, &scope).unwrap_or(base_name)
-            } else if job.matrix.is_some() {
-                matrix::job_name(&base_name, combination)
-            } else {
-                base_name
-            };
+            let name = shown_name(job, caller.as_deref(), combination, &scope);
             let runs_on = expr::interpolate_value(&job.runs_on, &scope).unwrap_or(Value::Null);
             let labels = match &runs_on {
                 Value::String(label) => vec![label.clone()],
@@ -1066,13 +1144,14 @@ impl Actions {
         for (group, cancel) in groups {
             let others = self
                 .db
-                .prepare("SELECT * FROM jobs WHERE repo_id = ? AND concurrency_group = ? AND status IN ('queued', 'pending', 'in_progress')")
+                // A call that waits in the group, or calls, is in it too.
+                .prepare("SELECT * FROM jobs WHERE repo_id = ? AND concurrency_group = ? AND status IN ('waiting', 'queued', 'pending', 'in_progress', 'calling')")
                 .bind(&[run.repo_id.as_str().into(), group.as_str().into()])?
                 .all()
                 .await?
                 .results::<JobRow>()?;
             for other in others.iter().filter(|other| !mine.contains(&other.id)) {
-                if *cancel || other.status == "queued" {
+                if *cancel || matches!(other.status.as_str(), "queued" | "waiting") {
                     self.stop_job(other, "A newer job in the same concurrency group replaced it.").await?;
                     if !moved.contains(&other.run_id) {
                         moved.push(other.run_id.clone());
@@ -1087,17 +1166,42 @@ impl Actions {
     }
 
     /// A job that calls a reusable workflow, in the repository or another
-    /// (reach.rs): that workflow's jobs join the run under it, with the
-    /// inputs and secrets it passes.
-    async fn call_workflow(&self, run: &RunRow, job: &workflow::Job, row: &JobRow, uses: &str, scope: &Scope<'_>) -> Result<()> {
+    /// (reach.rs): once for each combination of its matrix, as on GitHub,
+    /// each with the inputs and secrets it passes read with that
+    /// combination's `matrix`. Each call waits (`holds_call`) until its
+    /// matrix's `max-parallel` and its concurrency group have room, when
+    /// `start_call` puts the workflow's jobs in the run under it.
+    #[allow(clippy::too_many_arguments)]
+    async fn call_workflow(
+        &self,
+        run: &RunRow,
+        job: &workflow::Job,
+        row: &JobRow,
+        uses: &str,
+        contexts: &Map<String, Value>,
+        combinations: &[Map<String, Value>],
+        caller: Option<&str>,
+    ) -> Result<()> {
         let depth = row.call().and_then(|c| c["depth"].as_u64()).unwrap_or(0) + 1;
         if depth > MAX_CALL_DEPTH {
-            return self.fail_job(row, &format!("Reusable workflows call each other more than {MAX_CALL_DEPTH} deep.")).await;
+            return self.fail_job(row, &call_allowed(depth, &[], uses).unwrap_err()).await;
         }
         let (file, source, origin) = match self.called_workflow(run, row, uses).await? {
             Ok(found) => found,
             Err(why) => return self.fail_job(row, &why).await,
         };
+        let jobs = self.job_rows(&run.id).await?;
+        // Each call so far, by the workflow it called.
+        let called_paths: Vec<String> = jobs
+            .iter()
+            .filter(|other| other.call_prefix().is_some())
+            .filter_map(JobRow::call)
+            .filter_map(|call| call["path"].as_str().map(str::to_owned))
+            .collect();
+        let called_already: Vec<&str> = called_paths.iter().map(String::as_str).collect();
+        if let Err(why) = call_allowed(depth, &called_already, &file) {
+            return self.fail_job(row, &why).await;
+        }
         let called = match workflow::parse(&source) {
             Ok(called) => called,
             Err(problem) => return self.fail_job(row, &format!("`{file}` does not read: {problem}")).await,
@@ -1105,39 +1209,156 @@ impl Actions {
         let Some(trigger) = called.trigger("workflow_call") else {
             return self.fail_job(row, &format!("`{file}` cannot be called: it has no `on: workflow_call`.")).await;
         };
-        // Inputs: what the caller passes, else the called workflow's defaults.
-        let given = match job.raw.get("with") {
-            Some(with) => match expr::interpolate_value(with, scope) {
-                Ok(Value::Object(given)) => given,
-                Ok(_) => Map::new(),
-                Err(problem) => return self.fail_job(row, &format!("Its `with` does not read: {problem}")).await,
-            },
-            None => Map::new(),
-        };
-        let mut inputs = Map::new();
-        for (name, spec) in &trigger.inputs {
-            let value = given.get(name).cloned().or_else(|| spec.get("default").cloned()).unwrap_or(Value::Null);
-            if value.is_null() && spec.get("required").and_then(Value::as_bool) == Some(true) {
-                return self.fail_job(row, &format!("`{file}` needs the input `{name}`.")).await;
-            }
-            inputs.insert(name.clone(), value);
-        }
-        for (name, value) in given {
-            inputs.entry(name).or_insert(value);
-        }
         // Secrets: none but the job's token unless `secrets:` passes them,
         // by name or with `inherit`; read when each job starts (job_spec).
         let outer = row.call().filter(|c| c["role"] == "callee").and_then(|c| c.get("secrets").cloned());
-        let secrets = crate::reach::secrets_plan(&job.raw, scope.contexts, outer);
-        if let Some(name) = crate::reach::missing_secrets(&called.raw, &secrets).first() {
-            return self.fail_job(row, &format!("`{file}` needs the secret `{name}`: pass it under `secrets:`, or use `secrets: inherit`.")).await;
+        let total = combinations.len();
+        let mut groups: Vec<(String, bool)> = Vec::new();
+        let mut statements = Vec::new();
+        for (index, combination) in combinations.iter().enumerate() {
+            let mut contexts = contexts.clone();
+            contexts.insert("matrix".into(), Value::Object(combination.clone()));
+            contexts.insert(
+                "strategy".into(),
+                json!({ "fail-fast": job.fail_fast, "job-index": index, "job-total": total, "max-parallel": job.max_parallel.unwrap_or(total as u32) }),
+            );
+            let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
+            let name = shown_name(job, caller, combination, &scope);
+            // Inputs: what `with:` passes, as the called workflow types them.
+            let given = match job.raw.get("with") {
+                Some(with) => match expr::interpolate_value(with, &scope) {
+                    Ok(Value::Object(given)) => Ok(given),
+                    Ok(_) => Ok(Map::new()),
+                    Err(problem) => Err(format!("Its `with` does not read: {problem}")),
+                },
+                None => Ok(Map::new()),
+            };
+            let inputs = given.and_then(|given| crate::reach::call_inputs(&file, &trigger.inputs, &given));
+            let secrets = crate::reach::secrets_plan(&job.raw, &contexts, outer.clone());
+            let problem = match &inputs {
+                Err(why) => Some(why.clone()),
+                Ok(_) => crate::reach::missing_secrets(&called.raw, &secrets)
+                    .first()
+                    .map(|name| format!("`{file}` needs the secret `{name}`: pass it under `secrets:`, or use `secrets: inherit`."))
+                    .or_else(|| {
+                        crate::reach::undeclared_secrets(&called.raw, &secrets)
+                            .first()
+                            .map(|name| format!("Invalid secret: `{name}` is not defined in `{file}`."))
+                    }),
+            };
+            // Its own concurrency group, which it holds while its workflow runs.
+            let group = job
+                .concurrency
+                .as_ref()
+                .and_then(|c| expr::interpolate(&c.group, &scope).ok())
+                .map(|group| group.trim().to_owned())
+                .filter(|group| !group.is_empty());
+            let cancel = job
+                .concurrency
+                .as_ref()
+                .and_then(|c| expr::interpolate_value(&c.cancel_in_progress, &scope).ok())
+                .is_some_and(|value| expr::truthy(&value));
+            if problem.is_none()
+                && let Some(group) = &group
+                && !groups.iter().any(|(known, _)| known == group)
+            {
+                groups.push((group.clone(), cancel));
+            }
+            let call = json!({
+                "role": "caller", "path": file, "source": source, "origin": origin, "depth": depth,
+                "prefix": call_prefix(&row.key, job.matrix.is_some().then_some(index)), "title": name,
+                "inputs": inputs.unwrap_or_default(), "secrets": secrets, "fail_fast": job.fail_fast,
+            });
+            let (status, conclusion, finished) = match &problem {
+                Some(_) => ("completed", Some("failure"), Some(now())),
+                None => ("waiting", None, None),
+            };
+            let values: Vec<worker::wasm_bindgen::JsValue> = vec![
+                name.as_str().into(),
+                serde_json::to_string(combination)?.into(),
+                status.into(),
+                optional(conclusion),
+                optional(problem.as_deref()),
+                job.max_parallel.map(|max| max.max(1)).map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
+                optional(finished.as_deref()),
+                optional(group.as_deref()),
+                u32::from(cancel).into(),
+                serde_json::to_string(&call)?.into(),
+            ];
+            if index == 0 {
+                let mut bound = values;
+                bound.push(row.id.as_str().into());
+                statements.push(
+                    self.db
+                        .prepare(
+                            "UPDATE jobs SET name = ?, matrix = ?, status = ?, conclusion = ?, reason = ?, max_parallel = ?, finished_at = ?,
+                               concurrency_group = ?, cancel_in_progress = ?, call = ? WHERE id = ?",
+                        )
+                        .bind(&bound)?,
+                );
+            } else {
+                let mut bound: Vec<worker::wasm_bindgen::JsValue> = vec![
+                    new_id("job", now_ms()).into(),
+                    row.run_id.as_str().into(),
+                    row.repo_id.as_str().into(),
+                    row.namespace.as_str().into(),
+                    row.key.as_str().into(),
+                    (index as u32).into(),
+                    row.needs.as_str().into(),
+                ];
+                bound.extend(values);
+                statements.push(
+                    self.db
+                        .prepare(
+                            "INSERT INTO jobs (id, run_id, repo_id, namespace, key, ordinal, needs, name, matrix, status, conclusion, reason,
+                               max_parallel, finished_at, concurrency_group, cancel_in_progress, call)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        )
+                        .bind(&bound)?,
+                );
+            }
+        }
+        self.db.batch(statements).await?;
+        self.replace_in_groups(run, &row.key, &groups).await
+    }
+
+    /// Whether another job of `row`'s concurrency group runs, or calls a
+    /// workflow, so that `row` waits for it.
+    async fn group_busy(&self, row: &JobRow) -> Result<bool> {
+        let Some(group) = &row.concurrency_group else { return Ok(false) };
+        let busy = self
+            .db
+            .prepare("SELECT COUNT(*) AS n FROM jobs WHERE repo_id = ? AND concurrency_group = ? AND status IN ('in_progress', 'calling') AND id != ?")
+            .bind(&[row.repo_id.as_str().into(), group.as_str().into(), row.id.as_str().into()])?
+            .first::<Count>(None)
+            .await?
+            .map_or(0, |count| count.n);
+        Ok(busy > 0)
+    }
+
+    /// A call that waited (`holds_call`) is made: the called workflow's
+    /// jobs join the run under it, named under its name and keyed under its
+    /// prefix. False when it no longer waits.
+    async fn start_call(&self, row: &JobRow) -> Result<bool> {
+        let Some(call) = row.call() else { return Ok(false) };
+        let Some(prefix) = row.call_prefix() else { return Ok(false) };
+        let Some(called) = call["source"].as_str().and_then(|source| workflow::parse(source).ok()) else { return Ok(false) };
+        let file = call["path"].as_str().unwrap_or_default();
+        let started = self
+            .db
+            .prepare("UPDATE jobs SET status = 'calling', reason = ?, started_at = ? WHERE id = ? AND status = 'waiting' RETURNING id")
+            .bind(&[format!("Calls `{file}`.").into(), now().into(), row.id.as_str().into()])?
+            .first::<Value>(None)
+            .await?;
+        if started.is_none() {
+            return Ok(false);
         }
         let mut statements = Vec::new();
         for called_job in &called.jobs {
-            let needs: Vec<String> = called_job.needs.iter().map(|n| format!("{}/{n}", row.key)).collect();
-            let call = json!({
-                "role": "callee", "parent": row.key, "job": called_job.id, "path": file,
-                "source": source, "inputs": inputs, "depth": depth, "origin": origin, "secrets": secrets,
+            let needs: Vec<String> = called_job.needs.iter().map(|n| format!("{prefix}/{n}")).collect();
+            let callee = json!({
+                "role": "callee", "parent": prefix, "title": row.name, "job": called_job.id, "path": file,
+                "source": call["source"], "inputs": call["inputs"], "depth": call["depth"], "origin": call["origin"], "secrets": call["secrets"],
             });
             statements.push(
                 self.db
@@ -1147,30 +1368,43 @@ impl Actions {
                         row.run_id.as_str().into(),
                         row.repo_id.as_str().into(),
                         row.namespace.as_str().into(),
-                        format!("{}/{}", row.key, called_job.id).into(),
+                        format!("{prefix}/{}", called_job.id).into(),
                         format!("{} / {}", row.name, called_job.name.clone().unwrap_or(called_job.id.clone())).into(),
                         serde_json::to_string(&needs)?.into(),
-                        serde_json::to_string(&call)?.into(),
+                        serde_json::to_string(&callee)?.into(),
                     ])?,
             );
         }
-        statements.push(
-            self.db
-                .prepare("UPDATE jobs SET status = 'calling', call = ?, reason = ?, started_at = ? WHERE id = ?")
-                .bind(&[
-                    serde_json::to_string(&json!({ "role": "caller", "path": file, "source": source }))?.into(),
-                    format!("Calls `{file}`.").into(),
-                    now().into(),
-                    row.id.as_str().into(),
-                ])?,
-        );
-        self.db.batch(statements).await?;
+        if !statements.is_empty() {
+            self.db.batch(statements).await?;
+        }
+        Ok(true)
+    }
+
+    /// The runs with a call waiting in `group`, but `run_id`, moved along
+    /// now that a job of the group has finished.
+    async fn wake_group(&self, repo_id: &str, group: &str, run_id: &str) -> Result<()> {
+        #[derive(Deserialize)]
+        struct RunId {
+            run_id: String,
+        }
+        let waiting = self
+            .db
+            .prepare("SELECT DISTINCT run_id FROM jobs WHERE repo_id = ? AND concurrency_group = ? AND status = 'waiting' AND run_id != ?")
+            .bind(&[repo_id.into(), group.into(), run_id.into()])?
+            .all()
+            .await?
+            .results::<RunId>()?;
+        for other in waiting {
+            Box::pin(self.advance(&other.run_id)).await?;
+        }
         Ok(())
     }
 
     /// A job that called a workflow, finished with its jobs: their result,
-    /// and the outputs the workflow declares.
-    async fn finish_call(&self, row: &JobRow, children: &[&JobRow]) -> Result<()> {
+    /// and the outputs the workflow declares. A failed call of a fail-fast
+    /// matrix stops the matrix's other calls.
+    async fn finish_call(&self, run: &RunRow, row: &JobRow, children: &[&JobRow]) -> Result<()> {
         let call = row.call().unwrap_or_default();
         let called = call["source"].as_str().and_then(|s| workflow::parse(s).ok());
         let mut jobs_context = Map::new();
@@ -1206,11 +1440,30 @@ impl Actions {
             }
         }
         let conclusion = key_result(children);
-        self.db
-            .prepare("UPDATE jobs SET status = 'completed', conclusion = ?, outputs = ?, finished_at = ? WHERE id = ? AND status = 'calling'")
+        let finished = self
+            .db
+            .prepare("UPDATE jobs SET status = 'completed', conclusion = ?, outputs = ?, finished_at = ? WHERE id = ? AND status = 'calling' RETURNING id")
             .bind(&[conclusion.into(), serde_json::to_string(&outputs)?.into(), now().into(), row.id.as_str().into()])?
-            .run()
+            .first::<Value>(None)
             .await?;
+        if finished.is_none() {
+            return Ok(());
+        }
+        if conclusion == "failure" && row.matrix.as_deref().is_some_and(|m| m != "{}") && call["fail_fast"] != json!(false) {
+            let siblings = self
+                .db
+                .prepare("SELECT * FROM jobs WHERE run_id = ? AND key = ? AND status != 'completed'")
+                .bind(&[row.run_id.as_str().into(), row.key.as_str().into()])?
+                .all()
+                .await?
+                .results::<JobRow>()?;
+            for sibling in siblings {
+                self.stop_job(&sibling, "Another job of its matrix failed, and the matrix is fail-fast.").await?;
+            }
+        }
+        if let Some(group) = &row.concurrency_group {
+            self.wake_group(&run.repo_id, group, &run.id).await?;
+        }
         Ok(())
     }
 
@@ -1296,7 +1549,7 @@ impl Actions {
             if let Some(group) = &job.concurrency_group {
                 let running = self
                     .db
-                    .prepare("SELECT COUNT(*) AS n FROM jobs WHERE repo_id = ? AND concurrency_group = ? AND status = 'in_progress' AND id != ?")
+                    .prepare("SELECT COUNT(*) AS n FROM jobs WHERE repo_id = ? AND concurrency_group = ? AND status IN ('in_progress', 'calling') AND id != ?")
                     .bind(&[job.repo_id.as_str().into(), group.as_str().into(), job.id.as_str().into()])?
                     .first::<Count>(None)
                     .await?
@@ -1420,11 +1673,8 @@ impl Actions {
         // fail-fast: one failed combination stops the rest of its matrix.
         if conclusion == "failure" && job.continue_on_error == 0 && job.matrix.as_deref().is_some_and(|m| m != "{}") {
             let run = self.run_row(&job.run_id).await?;
-            let fail_fast = run
-                .as_ref()
-                .and_then(|run| workflow::parse(&run.source).ok())
-                .and_then(|workflow| workflow.jobs.into_iter().find(|j| j.id == job.key))
-                .is_none_or(|j| j.fail_fast);
+            // As its workflow, or the workflow it is a job of, says.
+            let fail_fast = run.as_ref().and_then(|run| job_spec(run, &job)).is_none_or(|j| j.fail_fast);
             if fail_fast {
                 let siblings = self
                     .db
@@ -1438,6 +1688,10 @@ impl Actions {
                 }
             }
         }
+        // A call waiting in its concurrency group, in another run, may start.
+        if let Some(group) = &job.concurrency_group {
+            self.wake_group(&job.repo_id, group, &job.run_id).await?;
+        }
         Box::pin(self.advance(&job.run_id)).await
     }
 
@@ -1446,6 +1700,15 @@ impl Actions {
     /// steps and its post steps before it ends `cancelled`; one that has
     /// not started is cancelled at once.
     async fn stop_job(&self, job: &JobRow, reason: &str) -> Result<()> {
+        // A job calling a workflow stops with that workflow's jobs.
+        if job.status == "calling"
+            && let Some(prefix) = job.call_prefix()
+        {
+            let under = format!("{prefix}/");
+            for child in self.job_rows(&job.run_id).await?.iter().filter(|child| child.key.starts_with(&under) && child.status != "completed") {
+                Box::pin(self.stop_job(child, reason)).await?;
+            }
+        }
         if job.status == "in_progress" && job.started_at.is_some() {
             self.db
                 .prepare("UPDATE jobs SET cancel_requested_at = COALESCE(cancel_requested_at, ?), reason = ? WHERE id = ? AND status = 'in_progress'")
@@ -1852,11 +2115,12 @@ impl Actions {
         ];
         for key in &again {
             statements.push(self.db.prepare("DELETE FROM jobs WHERE run_id = ? AND key = ? AND ordinal > 0").bind(&[run.id.as_str().into(), key.as_str().into()])?);
-            // The jobs of a workflow it called are made again when it calls it again.
+            // The jobs of a workflow it called (each matrix combination's
+            // under `key[i]/`) are made again when it calls it again.
             statements.push(
                 self.db
-                    .prepare("DELETE FROM jobs WHERE run_id = ? AND key LIKE ?")
-                    .bind(&[run.id.as_str().into(), format!("{key}/%").into()])?,
+                    .prepare("DELETE FROM jobs WHERE run_id = ? AND (key LIKE ? OR key LIKE ?)")
+                    .bind(&[run.id.as_str().into(), format!("{key}/%").into(), format!("{key}[%").into()])?,
             );
             statements.push(
                 self.db
@@ -1948,7 +2212,7 @@ impl Actions {
         let (default, pull_requests) = self.token_policy(&run.repo_id).await?;
         let mut permissions = spec.permissions(&workflow, default);
         if let Some(parent) = &job.call().filter(|c| c["role"] == "callee").and_then(|c| c["parent"].as_str().map(str::to_owned)) {
-            let top = parent.split('/').next().unwrap_or(parent);
+            let top = top_key(parent);
             if let Some(caller_job) = caller.jobs.iter().find(|j| j.id == top) {
                 permissions = permissions.capped_by(&caller_job.permissions(&caller, default));
             }
@@ -2327,6 +2591,21 @@ impl Actions {
                 self.finish_job(&job.id, "failure", Some(&reason), None).await?;
             }
         }
+        // Calls of reusable workflows waiting in a concurrency group, in
+        // case the job they waited for was cancelled in another run.
+        #[derive(Deserialize)]
+        struct RunId {
+            run_id: String,
+        }
+        let held = self
+            .db
+            .prepare("SELECT DISTINCT run_id FROM jobs WHERE status = 'waiting' AND concurrency_group IS NOT NULL LIMIT 20")
+            .all()
+            .await?
+            .results::<RunId>()?;
+        for run in held {
+            self.advance(&run.run_id).await?;
+        }
         if let Err(error) = self.sweep_runners(now_ms).await {
             worker::console_error!("actions: the runners' sweep failed: {error}");
         }
@@ -2479,7 +2758,7 @@ mod deployments {
 mod reruns {
     use serde_json::{Map, Value, json};
 
-    use super::{MAX_SUMMARIES, MAX_SUMMARY_BYTES, Rerun, debug_logging, rerun_keys, summary_fits, top_key};
+    use super::{MAX_SUMMARIES, MAX_SUMMARY_BYTES, Rerun, Scope, Status, call_allowed, call_prefix, debug_logging, rerun_keys, shown_name, summary_fits, top_key};
 
     /// build ← test ← deploy, and lint on its own.
     fn keys(which: Rerun, failed: &[&str]) -> Vec<String> {
@@ -2512,6 +2791,42 @@ mod reruns {
         assert_eq!(top_key("build/test"), "build");
         assert_eq!(top_key("build/inner/test"), "build");
         assert_eq!(top_key("lint"), "lint");
+        // A matrix's calls each have their own jobs, under `key[i]/`.
+        assert_eq!(top_key("build[1]/test"), "build");
+        assert_eq!(top_key("build/inner[0]/test"), "build");
+        assert_eq!(call_prefix("build", Some(1)), "build[1]");
+        assert_eq!(call_prefix("build/inner", None), "build/inner");
+    }
+
+    #[test]
+    fn a_run_connects_ten_levels_of_workflows_and_fifty_reusable_ones() {
+        assert!(call_allowed(1, &[], "a.yml").is_ok());
+        assert!(call_allowed(9, &[], "a.yml").is_ok());
+        let deep = call_allowed(10, &[], "a.yml").unwrap_err();
+        assert!(deep.contains("at most ten") && deep.contains("nine levels"), "{deep}");
+        let names: Vec<String> = (0..50).map(|n| format!("w{n}.yml")).collect();
+        let fifty: Vec<&str> = names.iter().map(String::as_str).collect();
+        // A workflow called again, as by each combination of a matrix, is one.
+        assert!(call_allowed(1, &fifty, "w3.yml").is_ok());
+        assert!(call_allowed(1, &fifty, "another.yml").unwrap_err().contains("at most 50 different"));
+    }
+
+    #[test]
+    fn a_matrixs_calls_are_named_by_the_caller_and_its_values() {
+        let workflow = super::workflow::parse(
+            "on: push\njobs:\n  build:\n    name: Build\n    strategy:\n      matrix: { os: [linux], node: [20] }\n    uses: ./.g1t/workflows/b.yml\n  plain:\n    uses: ./.g1t/workflows/b.yml\n  test:\n    name: Test ${{ matrix.os }}\n    strategy:\n      matrix: { os: [linux] }\n    runs-on: ubuntu-latest\n    steps: [{ run: 'true' }]",
+        )
+        .unwrap();
+        let job = |id: &str| workflow.jobs.iter().find(|job| job.id == id).unwrap();
+        let combination: Map<String, Value> = serde_json::from_value(json!({ "os": "linux", "node": 20 })).unwrap();
+        let mut contexts = Map::new();
+        contexts.insert("matrix".into(), Value::Object(combination.clone()));
+        let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
+        assert_eq!(shown_name(job("build"), None, &combination, &scope), "Build (linux, 20)");
+        assert_eq!(shown_name(job("plain"), None, &Map::new(), &scope), "plain");
+        // A called workflow's job, under the call that made it.
+        assert_eq!(shown_name(job("plain"), Some("Build (linux, 20)"), &Map::new(), &scope), "Build (linux, 20) / plain");
+        assert_eq!(shown_name(job("test"), Some("Build"), &combination, &scope), "Build / Test linux");
     }
 
     #[test]
