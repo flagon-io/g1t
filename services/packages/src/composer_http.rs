@@ -277,7 +277,7 @@ impl Packages {
         let listed: FileList = g1t_kit::call(
             &self.repos,
             "list_files",
-            &ListFilesArgs { repo_id: repo_id.clone(), git_ref: Some(commit.to_owned()), skip_dirs: Vec::new(), limit: MAX_LISTED_FILES },
+            &ListFilesArgs { repo_id: repo_id.clone(), git_ref: Some(commit.to_owned()), skip_dirs: Vec::new(), limit: MAX_LISTED_FILES, links: false },
         )
         .await?;
         if listed.truncated {

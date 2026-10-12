@@ -66,7 +66,7 @@ gives their values out, so they cannot be copied across.
 | JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. An action that declares `node20` runs on Node 20 where the machine has one. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories) and [an action's pre and post](#an-actions-pre-and-post). |
 | Composite actions | The same. |
 | Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository) | The same: `with:` inputs checked against their `type`, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, `strategy.matrix` on the calling job (one call for each combination), `concurrency` on the calling job, and up to ten levels of workflows with at most 50 different reusable workflows in a run. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
-| `actions/checkout` | The action itself, at the version the step names, fetching from g1t with the job's token: every input and output, its post step that removes the credential, and a pull request's [test merge commit](#what-a-pull-requests-run-builds), which g1t keeps in the repository. `lfs` finds no Git LFS files: g1t keeps none. |
+| `actions/checkout` | The action itself, at the version the step names, fetching from g1t with the job's token: every input and output, its post step that removes the credential, and a pull request's [test merge commit](#what-a-pull-requests-run-builds), which g1t keeps in the repository. In a job container without git it downloads the commit as a tarball from [`GET /repos/{owner}/{repo}/tarball/{ref}`](/reference/api/repositories/download-tarball-archive/), as on GitHub, up to 10,000 files and 24 MB. `lfs` finds no Git LFS files: g1t keeps none. |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. Step summaries show on the run's page; see [job summaries](#job-summaries). |
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::`, `::echo::on` | The same: errors and warnings become annotations on the run, with their `file`, `line`, `col`, `endLine` and `endColumn`, and [masked](#masking-secrets) values stay hidden. |
 | Problem matchers (`::add-matcher::`, `::remove-matcher::`) | The same, so `actions/setup-node`, `setup-go` and `setup-python` turn compiler and linter output into annotations. See [problem matchers](#problem-matchers). |
@@ -105,9 +105,6 @@ anything in it that runs differently.
   the `pull_request` types `unassigned`, `locked` and `unlocked`, `edited`
   for a new title or description, or the `issues` types `unassigned`,
   `locked`, `unlocked`, `pinned` and `unpinned`.
-- **`actions/checkout` in a job container without git.** The action
-  then downloads a tarball through the API, which g1t does not serve yet.
-  Use an image with git, or install it in an earlier step.
 - **Background steps.** A step with `background: true`, or a `wait`,
   `wait-all`, `cancel` or `parallel` step, is refused: g1t does not run
   them yet.

@@ -990,6 +990,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Repositories.
     ("list_repos", Scope::RepoRead),
     ("get_repo", Scope::RepoRead),
+    // A repository's files, as clone and fetch need.
+    ("download_tarball_archive", Scope::CodeRead),
+    ("download_zipball_archive", Scope::CodeRead),
     // Projects follow their repositories.
     ("list_projects", Scope::RepoRead),
     ("get_project", Scope::RepoRead),

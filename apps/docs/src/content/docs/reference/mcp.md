@@ -247,6 +247,8 @@ out.
 | --- | --- | --- | --- |
 | [`list`](/reference/api/repositories/list-repos/) | Repositories you can see, optionally filtered by `query`. | None | `repo:read` |
 | [`get`](/reference/api/repositories/get-repo/) | One repository's details. | `repo` | `repo:read` |
+| [`tarball`](/reference/api/repositories/download-tarball-archive/) | A link to a branch, tag or commit (`ref`, the default branch when left out) as a `.tar.gz` that needs no token, good for 10 minutes, as `url`, with the `commit` it is of. | `repo` | `code:read` |
+| [`zipball`](/reference/api/repositories/download-zipball-archive/) | The same as a `.zip`. | `repo` | `code:read` |
 | [`create`](/reference/api/repositories/create-repo/) | Create a repository in one of your workspaces, empty or as a copy of a public git repository (`import_url`). `workspace` may be left out if you belong to exactly one. | `name` | `repo:write` |
 | [`update`](/reference/api/repositories/update-repo/) | Change its `description`, `website`, `topics` and `default_branch`, whether its default branch is `protected`, and whether it is `private`. Maintain role; `protected`, `private` and `default_branch` need Admin, and `private` the [member privileges](/guides/workspaces/#member-privileges) unless you are an owner. | `repo` | `repo:write` |
 | [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: how g1t's agents are reviewed, revised and merged, and the default branch's required checks, approvals, bypassing checks, being up to date and merge queue as its [rulesets](/guides/rules/) stack. | `repo` | `repo:read` |

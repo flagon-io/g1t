@@ -44,6 +44,19 @@ pub async fn changed<R: GitRepo>(
     skip: &[String],
     limit: u32,
 ) -> Result<(Vec<FileEntry>, bool)> {
+    changed_with(repo, old, new, skip, limit, false).await
+}
+
+/// [`changed`], with symlinks among the files when `links` is set.
+pub async fn changed_with<R: GitRepo>(
+    repo: &R,
+    old: Option<&str>,
+    new: &str,
+    skip: &[String],
+    limit: u32,
+    links: bool,
+) -> Result<(Vec<FileEntry>, bool)> {
+    let listed = |entry: &TreeEntry| is_file(entry) || (links && entry.kind == EntryKind::Symlink);
     let limit = limit.clamp(1, MAX_LISTED_FILES) as usize;
     let skipped = |name: &str| skip.iter().any(|dir| dir.eq_ignore_ascii_case(name));
     let mut files = Vec::new();
@@ -69,7 +82,7 @@ pub async fn changed<R: GitRepo>(
                 if (old_dir.is_some() || new_dir.is_some()) && !skipped(name) {
                     next.push((format!("{path}/"), old_dir, new_dir));
                 }
-                let (old_file, new_file) = (was.filter(|e| is_file(e)), now.filter(|e| is_file(e)));
+                let (old_file, new_file) = (was.filter(|e| listed(e)), now.filter(|e| listed(e)));
                 if old_file.is_none() && new_file.is_none() {
                     continue;
                 }
@@ -79,6 +92,7 @@ pub async fn changed<R: GitRepo>(
                 files.push(FileEntry {
                     path,
                     hash: new_file.map(|entry| entry.hash.clone()),
+                    kind: new_file.map(|entry| entry.kind),
                 });
             }
         }
@@ -97,24 +111,28 @@ pub async fn resolve<R: GitRepo>(repo: &R, git_ref: &str) -> Result<Option<(Stri
         .map(|commit| (commit.hash, commit.tree_hash)))
 }
 
-/// Every file on `git_ref`, or what changed from `base` to it.
+/// Every file on `git_ref`, or what changed from `base` to it; symlinks
+/// too with `links`.
 pub async fn list<R: GitRepo>(
     repo: &R,
     base: Option<&str>,
     head: &str,
     skip: &[String],
     limit: u32,
+    links: bool,
 ) -> Result<FileList> {
-    let Some((commit, tree)) = resolve(repo, head).await? else {
+    let Some(head_commit) = repo.log(head, 1).await?.into_iter().next() else {
         return Ok(FileList::default());
     };
+    let (commit, tree, date) = (head_commit.hash, head_commit.tree_hash, head_commit.authored_at);
     let base_tree = match base {
         Some(base) => resolve(repo, base).await?.map(|(_, tree)| tree),
         None => None,
     };
-    let (files, truncated) = changed(repo, base_tree.as_deref(), &tree, skip, limit).await?;
+    let (files, truncated) = changed_with(repo, base_tree.as_deref(), &tree, skip, limit, links).await?;
     Ok(FileList {
         commit: Some(commit),
+        date: Some(date),
         files,
         truncated,
     })
@@ -255,7 +273,7 @@ mod tests {
     #[test]
     fn lists_every_file_but_skipped_directories() {
         let fake = repo();
-        let listed = run(list(&fake, None, "c1", &["node_modules".into()], 100)).unwrap();
+        let listed = run(list(&fake, None, "c1", &["node_modules".into()], 100, false)).unwrap();
         assert_eq!(listed.commit.as_deref(), Some("c1"));
         assert_eq!(
             paths(&listed),
@@ -266,7 +284,7 @@ mod tests {
     #[test]
     fn lists_only_what_changed() {
         let fake = repo();
-        let listed = run(list(&fake, Some("c1"), "c2", &[], 100)).unwrap();
+        let listed = run(list(&fake, Some("c1"), "c2", &[], 100, false)).unwrap();
         assert_eq!(
             paths(&listed),
             vec![
@@ -279,9 +297,29 @@ mod tests {
     }
 
     #[test]
+    fn an_archive_listing_has_symlinks_and_each_files_kind() {
+        let fake = repo();
+        let listed = run(list(&fake, None, "c2", &[], 100, true)).unwrap();
+        let kinds: Vec<(&str, Option<EntryKind>)> = listed.files.iter().map(|f| (f.path.as_str(), f.kind)).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ("link", Some(EntryKind::Symlink)),
+                ("node_modules/x.js", Some(EntryKind::Blob)),
+                ("src/a.rs", Some(EntryKind::Blob)),
+                ("src/b.rs", Some(EntryKind::Exec)),
+            ]
+        );
+        assert_eq!(listed.date.as_deref(), Some(""));
+        // Without links, as search and the sidebar read it.
+        let plain = run(list(&fake, None, "c2", &[], 100, false)).unwrap();
+        assert!(plain.files.iter().all(|f| f.path != "link"));
+    }
+
+    #[test]
     fn says_when_the_list_was_cut_short() {
         let fake = repo();
-        let listed = run(list(&fake, Some("c1"), "c2", &[], 2)).unwrap();
+        let listed = run(list(&fake, Some("c1"), "c2", &[], 2, false)).unwrap();
         assert_eq!(listed.files.len(), 2);
         assert!(listed.truncated);
     }

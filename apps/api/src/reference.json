@@ -13211,6 +13211,32 @@
     },
     "notes": "Over REST the answer is `302 Found` with the link in `Location`, as GitHub's is, so `curl -L -o web-dist.zip …/zip` saves the file; the body above is what the MCP `workflow` tool's `download_artifact` returns. The link needs no token and stops working after 10 minutes."
   },
+  "download_tarball_archive": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "ref": "main"
+    },
+    "response": {
+      "url": "https://g1t.sh/flagon-io/hello/archive/7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7.tar.gz?token=…",
+      "commit": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+      "expires_at": "2026-10-12T15:13:00.000Z"
+    },
+    "notes": "Over REST the answer is `302 Found` with the link in `Location`, as GitHub's is, so `curl -L -H \"Authorization: Bearer g1t_…\" -o hello.tar.gz https://api.g1t.sh/repos/flagon-io/hello/tarball/main` saves the file and `tar -xzf hello.tar.gz` makes one folder, `flagon-io-hello-7c1e9a4/`; the body above is what the MCP `repository` tool's `tarball` returns. The link is for the commit the ref named when you asked, needs no token and stops working after 10 minutes. `actions/checkout` uses this route in a job container without git."
+  },
+  "download_zipball_archive": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "ref": "v1.2.0"
+    },
+    "response": {
+      "url": "https://g1t.sh/flagon-io/hello/archive/7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7.zip?token=…",
+      "commit": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+      "expires_at": "2026-10-12T15:13:00.000Z"
+    },
+    "notes": "Over REST the answer is `302 Found` with the link in `Location`, as GitHub's is, so `curl -L -o hello.zip …/zipball/v1.2.0` saves the file, with one folder, `flagon-io-hello-7c1e9a4/`; the body above is what the MCP `repository` tool's `zipball` returns. The link needs no token and stops working after 10 minutes."
+  },
   "delete_artifact": {
     "params": {
       "owner": "flagon-io",

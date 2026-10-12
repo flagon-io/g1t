@@ -413,7 +413,7 @@ mod tests {
     use super::*;
 
     fn file(path: &str) -> FileEntry {
-        FileEntry { path: path.into(), hash: Some("h".into()) }
+        FileEntry { path: path.into(), hash: Some("h".into()), kind: None }
     }
 
     #[test]

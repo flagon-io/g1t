@@ -136,11 +136,13 @@
     },
     {
       "name": "Repositories",
-      "description": "A repository, how it handles pull requests, and its timeline: renaming, archiving, moving and deleting it.",
+      "description": "A repository, how it handles pull requests, and its timeline: renaming, archiving, moving and deleting it; and its files at a branch, tag or commit as a tarball or zipball.",
       "x-tools": [
         "list_repos",
         "create_repo",
         "get_repo",
+        "download_tarball_archive",
+        "download_zipball_archive",
         "update_repo",
         "rename_repo",
         "rename_branch",
@@ -25970,6 +25972,228 @@
               }
             }
           }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/tarball/{ref}": {
+      "get": {
+        "operationId": "download_tarball_archive",
+        "tags": [
+          "Repositories"
+        ],
+        "summary": "Download a repository archive (tar)",
+        "description": "A link to download a branch, tag or commit as a gzipped tar archive (the default branch without ref), good for 10 minutes and needing no token. Over REST, GET …/tarball/{ref} answers 302 with the link in Location, as GitHub does: `curl -L` follows it. Over MCP the link is returned as url, with commit and expires_at. The archive holds one folder, <owner>-<repo>-<first 7 of the commit>/, with executable files and symlinks as git has them and the commit in its pax header. Up to 10,000 files and 24 MB; clone a larger repository. Needs the Read role; a public repository's are open to anyone.\n\nOver REST the answer is `302 Found` with the link in `Location`, as GitHub's is, so `curl -L -H \"Authorization: Bearer g1t_…\" -o hello.tar.gz https://api.g1t.sh/repos/flagon-io/hello/tarball/main` saves the file and `tar -xzf hello.tar.gz` makes one folder, `flagon-io-hello-7c1e9a4/`; the body above is what the MCP `repository` tool's `tarball` returns. The link is for the commit the ref named when you asked, needs no token and stops working after 10 minutes. `actions/checkout` uses this route in a job container without git.",
+        "x-operation": "download_tarball_archive",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "tarball",
+        "x-scope": "code:read",
+        "security": [
+          {
+            "token": [
+              "code:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A branch, tag or commit; the default branch when left out. A branch with slashes is sent URL-encoded as one path segment."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "url": "https://g1t.sh/flagon-io/hello/archive/7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7.tar.gz?token=…",
+                  "commit": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+                  "expires_at": "2026-10-12T15:13:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "ref": "main"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/zipball/{ref}": {
+      "get": {
+        "operationId": "download_zipball_archive",
+        "tags": [
+          "Repositories"
+        ],
+        "summary": "Download a repository archive (zip)",
+        "description": "A link to download a branch, tag or commit as a zip archive (the default branch without ref), good for 10 minutes and needing no token. Over REST, GET …/zipball/{ref} answers 302 with the link in Location, as GitHub does: `curl -L` follows it. Over MCP the link is returned as url, with commit and expires_at. The archive holds one folder, <owner>-<repo>-<first 7 of the commit>/. Up to 10,000 files and 24 MB; clone a larger repository. Needs the Read role; a public repository's are open to anyone.\n\nOver REST the answer is `302 Found` with the link in `Location`, as GitHub's is, so `curl -L -o hello.zip …/zipball/v1.2.0` saves the file, with one folder, `flagon-io-hello-7c1e9a4/`; the body above is what the MCP `repository` tool's `zipball` returns. The link needs no token and stops working after 10 minutes.",
+        "x-operation": "download_zipball_archive",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "zipball",
+        "x-scope": "code:read",
+        "security": [
+          {
+            "token": [
+              "code:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A branch, tag or commit; the default branch when left out. A branch with slashes is sent URL-encoded as one path segment."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "url": "https://g1t.sh/flagon-io/hello/archive/7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7.zip?token=…",
+                  "commit": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+                  "expires_at": "2026-10-12T15:13:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "ref": "v1.2.0"
         }
       }
     },

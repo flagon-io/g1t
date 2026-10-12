@@ -6,6 +6,7 @@
 //! request is treated as git's smart HTTP protocol.
 
 mod about;
+mod archive_links;
 mod backups;
 mod blame;
 mod catch_up;
@@ -442,14 +443,46 @@ impl<S: GitStore> Repos<S> {
         };
         let git = self.store.open(&store_key(&repo)).await?;
         let head = a.git_ref.unwrap_or_else(|| repo.default_branch.clone());
-        listing::list(&git, None, &head, &a.skip_dirs, a.limit).await
+        listing::list(&git, None, &head, &a.skip_dirs, a.limit, a.links).await
+    }
+
+    /// A link to download a branch, tag or commit as an archive, good for
+    /// a few minutes with no session or token (archive_links.rs).
+    async fn archive_link(&self, a: ArchiveLinkArgs, sealer: Option<&g1t_secrets::Sealer>) -> Result<Outcome<ArchiveLink>> {
+        let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
+            return Ok(not_found());
+        };
+        let Some(sealer) = sealer else {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Archive downloads are not set up on this installation."));
+        };
+        let git = self.read_git(&repo).await?;
+        let git_ref = a.git_ref.filter(|git_ref| !git_ref.is_empty()).unwrap_or_else(|| repo.default_branch.clone());
+        let Some(head) = git.log(&git_ref, 1).await?.into_iter().next() else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "No such branch, tag or commit."));
+        };
+        let (token, expires) = archive_links::seal(sealer, &repo.id, &head.hash, now_ms());
+        Ok(Outcome::Ok(ArchiveLink { repo, commit: head.hash, token, expires_at: rfc3339(expires) }))
+    }
+
+    /// What an archive link's token lets its holder download.
+    async fn open_archive_token(&self, a: OpenArchiveTokenArgs, sealer: Option<&g1t_secrets::Sealer>) -> Result<Option<ArchiveGrant>> {
+        let Some(sealer) = sealer else {
+            return Ok(None);
+        };
+        let Some(repo) = self.registry.by_path(&a.path).await? else {
+            return Ok(None);
+        };
+        let Some(commit) = archive_links::open(sealer, &repo.id, &a.token, now_ms()) else {
+            return Ok(None);
+        };
+        Ok(Some(ArchiveGrant { repo_id: repo.id, namespace: repo.namespace, name: repo.name, commit }))
     }
 
     async fn changed_files(&self, a: ChangedFilesArgs) -> Result<FileList> {
         let Some(git) = self.stored(&a.repo_id).await? else {
             return Ok(FileList::default());
         };
-        listing::list(&git, a.base.as_deref(), &a.head, &a.skip_dirs, a.limit).await
+        listing::list(&git, a.base.as_deref(), &a.head, &a.skip_dirs, a.limit, false).await
     }
 
     /// Branches and tags with their commits, for g1t's own services.
@@ -2680,6 +2713,15 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "match_pattern" => reply(&repos.match_pattern(args(body)?).await?),
         "check_secret" => reply(&repos.check_secret(args(body)?).await?),
         "list_files" => reply(&repos.list_files(args(body)?).await?),
+        // The API's tarball and zipball links, and the site opening them (archive_links.rs).
+        "archive_link" => {
+            let sealer = env.secret("REPOS_KEY").ok().and_then(|key| g1t_secrets::Sealer::new(&key.to_string()));
+            reply(&repos.archive_link(args(body)?, sealer.as_ref()).await?)
+        }
+        "open_archive_token" => {
+            let sealer = env.secret("REPOS_KEY").ok().and_then(|key| g1t_secrets::Sealer::new(&key.to_string()));
+            reply(&repos.open_archive_token(args(body)?, sealer.as_ref()).await?)
+        }
         "changed_files" => reply(&repos.changed_files(args(body)?).await?),
         "read_blobs" => reply(&repos.read_blobs(args(body)?).await?),
         // Services only: what the Composer registry builds packages from.

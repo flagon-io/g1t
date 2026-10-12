@@ -370,6 +370,8 @@ export const OPERATION_SCOPES = [
   ["buy_ai_credit", "billing:write"],
   ["list_repos", "repo:read"],
   ["get_repo", "repo:read"],
+  ["download_tarball_archive", "code:read"],
+  ["download_zipball_archive", "code:read"],
   // Projects follow their repositories.
   ["list_projects", "repo:read"],
   ["get_project", "repo:read"],

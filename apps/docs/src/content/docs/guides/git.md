@@ -76,9 +76,25 @@ exist says **No one on g1t goes by that name**, since profiles are public.
 On a repository's **Files** page, **Code** → **Download ZIP** downloads the
 branch shown as one zip, its files in a folder named `<repo>-<branch>`. It
 works for anyone who can see the repository, and for any branch, tag or
-commit at `g1t.sh/<workspace>/<repo>/archive/<ref>.zip`. A ZIP holds the
-files, not the history; clone for that. A repository with more than 10,000
-files or over 24 MB is too large to download this way, so clone it instead.
+commit at `g1t.sh/<workspace>/<repo>/archive/<ref>.zip`, or as a gzipped
+tar at `…/archive/<ref>.tar.gz`. Executable files and symlinks stay as
+they are in git. An archive holds the files, not the history; clone for
+that. A repository with more than 10,000 files or over 24 MB is too large
+to download this way, so clone it instead.
+
+The API serves the same archives at GitHub's addresses,
+[`GET /repos/{owner}/{repo}/tarball/{ref}`](/reference/api/repositories/download-tarball-archive/)
+and [`/zipball/{ref}`](/reference/api/repositories/download-zipball-archive/):
+each answers with a redirect to a link that needs no token, good for 10
+minutes, for the commit the ref names. Its files are in one folder named
+as GitHub names it, `<workspace>-<repo>-<first 7 of the commit>`, which is
+what `actions/checkout` expects when it downloads a repository in a job
+container without git. With a token, a private repository's work too:
+
+```sh
+curl -L -H "Authorization: Bearer $G1T_TOKEN" -o hello.tar.gz \
+  https://api.g1t.sh/repos/flagon-io/hello/tarball/main
+```
 
 ## Raw files
 

@@ -119,6 +119,8 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::Deployments(_) => return as_is,
         // Artifacts are shaped by the API itself, in `snake_case`.
         Op::Artifacts(_) => return as_is,
+        // So are archive links.
+        Op::Archives(_) => return as_is,
         // Deploy keys travel in `snake_case` from identity.
         Op::DeployKeys(DeployKeysOp::ListDeployKeys) => return through::<Vec<g1t_contracts::deploy_keys::DeployKey>>(op, as_is),
         Op::DeployKeys(DeployKeysOp::GetDeployKey | DeployKeysOp::CreateDeployKey) => {

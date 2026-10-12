@@ -616,6 +616,7 @@ impl Security {
                 git_ref: target_of(entry, &loaded.default_branch),
                 skip_dirs: SKIPPED_DIRECTORIES.iter().map(|dir| (*dir).to_owned()).collect(),
                 limit: g1t_contracts::repos::MAX_LISTED_FILES,
+                links: false,
             },
         )
         .await?;

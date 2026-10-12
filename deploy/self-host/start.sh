@@ -38,6 +38,11 @@ fi
 if ! grep -q '^USERCONTENT_KEY=' "$KEYS"; then
   echo "USERCONTENT_KEY=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
 fi
+# The repos service's key, which seals the API's tarball and zipball
+# links and what its isolates share.
+if ! grep -q '^REPOS_KEY=' "$KEYS"; then
+  echo "REPOS_KEY=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
+fi
 # The packages service's key, which signs registry tokens.
 if ! grep -q '^PACKAGES_TOKEN_SECRET=' "$KEYS"; then
   echo "PACKAGES_TOKEN_SECRET=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
