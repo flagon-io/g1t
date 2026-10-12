@@ -104,6 +104,72 @@ impl crate::Actions {
     }
 }
 
+/// What a free workspace is told when an upload would take its artifacts
+/// and cache past `cap`, holding `held` and adding `adding`. None while it
+/// fits, or with no cap.
+pub fn storage_refusal(held: u64, adding: u64, cap: u64) -> Option<String> {
+    (cap > 0 && held.saturating_add(adding) > cap).then(|| {
+        format!(
+            "This workspace's artifacts and cache hold {} of the {} a workspace on the free plan keeps, so this upload is not kept. Delete artifacts you no longer need, let old cache entries expire, or start the g1t plan, which has no such cap.",
+            shown_bytes(held),
+            shown_bytes(cap)
+        )
+    })
+}
+
+impl crate::Actions {
+    /// Why an upload of `adding` bytes to the workspace's artifacts or
+    /// cache is refused: only past FREE_ACTIONS_STORAGE_BYTES, and only
+    /// without the plan. Billing is asked only once the workspace is past
+    /// the cap, and when it does not answer the upload goes ahead.
+    pub(crate) async fn storage_refused(&self, namespace: &str, adding: u64) -> worker::Result<Option<String>> {
+        let cap = self.limits.free_actions_storage_bytes;
+        if cap == 0 {
+            return Ok(None);
+        }
+        #[derive(serde::Deserialize)]
+        struct Held {
+            bytes: Option<f64>,
+        }
+        let held = self
+            .db
+            .prepare(
+                "SELECT SUM(size) AS bytes FROM (
+                   SELECT size FROM cache_entries WHERE namespace = ?1 AND status IN ('ready', 'pending')
+                   UNION ALL SELECT size FROM artifacts WHERE namespace = ?1 AND status IN ('ready', 'pending')
+                 )",
+            )
+            .bind(&[namespace.into()])?
+            .first::<Held>(None)
+            .await?
+            .and_then(|held| held.bytes)
+            .unwrap_or(0.0) as u64;
+        let Some(why) = storage_refusal(held, adding, cap) else {
+            return Ok(None);
+        };
+        Ok(match self.standing(namespace).await {
+            Some(standing) if !standing.has_plan => Some(why),
+            _ => None,
+        })
+    }
+}
+
+#[cfg(test)]
+mod storage_tests {
+    use super::storage_refusal;
+
+    const GB: u64 = 1024 * 1024 * 1024;
+
+    #[test]
+    fn a_free_workspace_keeps_two_gigabytes_of_artifacts_and_cache() {
+        assert_eq!(storage_refusal(GB, GB, 2 * GB), None);
+        let refused = storage_refusal(2 * GB - 10, 100, 2 * GB).unwrap();
+        assert!(refused.contains("of the 2 GB"), "{refused}");
+        assert!(refused.contains("start the g1t plan"), "{refused}");
+        assert_eq!(storage_refusal(100 * GB, GB, 0), None);
+    }
+}
+
 #[cfg(test)]
 mod room_tests {
     use super::self_hosted_room;
