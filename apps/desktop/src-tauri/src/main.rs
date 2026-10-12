@@ -23,7 +23,8 @@ mod settings;
 mod tray;
 mod updates;
 
-use tauri::{RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::webview::WebviewBuilder;
+use tauri::{RunEvent, WebviewUrl, WindowEvent};
 use tauri_plugin_window_state::{StateFlags, WindowExt};
 
 /// What the window keeps between launches: its size, place, and whether it
@@ -58,6 +59,7 @@ fn main() {
         // Opening at sign-in, which settings turn on; the argument tells that start from someone's.
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![settings::AT_LOGIN])))
         .manage(config::State::default())
+        .manage(frame::State::default())
         .invoke_handler(tauri::generate_handler![
             bridge::desktop_info,
             bridge::notify,
@@ -75,6 +77,9 @@ fn main() {
             bridge::restart,
             bridge::window_control,
             bridge::window_menu,
+            bridge::title_bar_page,
+            bridge::title_bar_current,
+            bridge::title_bar_act,
         ])
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .setup(|app| {
@@ -85,12 +90,9 @@ fn main() {
             let hidden = settings::starts_hidden(&handle);
             let prefs = config::settings(&handle);
             let custom = frame::started(&handle);
-            let builder = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("index.html".into()))
-                .title("g1t")
-                .inner_size(1280.0, 840.0)
-                .min_inner_size(720.0, 480.0)
-                .visible(false)
-                .initialization_script(bridge::script(WINDOW, custom))
+            // The site's web view: the launcher first, which goes on to the server.
+            let site = WebviewBuilder::new(frame::SITE, WebviewUrl::App("index.html".into()))
+                .initialization_script(bridge::script(custom))
                 .on_navigation({
                     let handle = handle.clone();
                     move |url| navigation::allowed(&handle, url)
@@ -99,30 +101,40 @@ fn main() {
                     let handle = handle.clone();
                     move |_webview, payload| config::at(&handle, payload.url().clone())
                 });
+            let builder = frame::main_window(app, custom)?;
             // macOS has one menu bar, the app's; elsewhere the menu is the window's own.
             #[cfg(target_os = "macos")]
             app.set_menu(menu::build(&handle)?)?;
             #[cfg(not(target_os = "macos"))]
             let builder = builder.menu(menu::build(&handle)?);
-            let window = frame::style(builder, custom).build()?;
+            let window = builder.build()?;
             // Opened at sign-in, g1t waits in the tray; otherwise the window comes up where it was.
             let _ = window.restore_state(KEPT - StateFlags::VISIBLE);
+            frame::fill(&window, custom, site)?;
+            frame::layout(&window);
             #[cfg(not(target_os = "macos"))]
             frame::menu_bar(&window, custom);
             if !hidden {
                 let _ = window.show();
+                if let Some(site) = frame::site(&handle) {
+                    let _ = site.set_focus();
+                }
             }
-            if prefs.zoom != 1.0 {
-                let _ = window.set_zoom(prefs.zoom);
+            if let Some(site) = frame::site(&handle).filter(|_| prefs.zoom != 1.0) {
+                let _ = site.set_zoom(prefs.zoom);
             }
-            // Closing the window keeps g1t running, for notifications, unless settings say it quits.
+            // Closing the window keeps g1t running, for notifications, unless
+            // settings say it quits. A new size gives the bar and the site theirs.
             window.on_window_event({
                 let handle = handle.clone();
-                move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
+                let window = window.clone();
+                move |event| match event {
+                    WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
                         tray::close(&handle);
                     }
+                    WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => frame::layout(&window),
+                    _ => {}
                 }
             });
             tray::install(&handle)?;

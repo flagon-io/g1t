@@ -4,11 +4,11 @@
 //! started the app is read on the way up; one that arrives while it runs
 //! comes through the deep-link plugin, from a second launch too.
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, EventTarget};
 use tauri_plugin_deep_link::DeepLinkExt;
 use url::Url;
 
-use crate::{WINDOW, config, tray};
+use crate::{config, frame, tray};
 
 /// What the page listens for (bridge.js).
 pub const EVENT: &str = "g1t-navigate";
@@ -60,13 +60,11 @@ pub fn open(app: &AppHandle, url: &Url) {
 pub fn go(app: &AppHandle, path: &str) {
     tray::show(app);
     if config::on_site(app) {
-        let _ = app.emit_to(WINDOW, EVENT, path.to_string());
+        let _ = app.emit_to(EventTarget::webview(frame::SITE), EVENT, path.to_string());
         return;
     }
-    if let Some(window) = app.get_webview_window(WINDOW) {
-        if let Ok(target) = config::server(app).join(path.trim_start_matches('/')) {
-            let _ = window.navigate(target);
-        }
+    if let (Some(site), Ok(target)) = (frame::site(app), config::server(app).join(path.trim_start_matches('/'))) {
+        let _ = site.navigate(target);
     }
 }
 

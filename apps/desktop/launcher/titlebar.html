@@ -1,0 +1,23 @@
+<!doctype html>
+<!--
+  The title bar: a page of its own, across the top of the main window,
+  above the site's (src/frame.rs). It shows what the site's page reports
+  (its title, its search, whether there is a way back, its colours), and
+  its buttons act on the window and on that page through the app.
+-->
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>g1t</title>
+		<link rel="stylesheet" href="titlebar.css" />
+	</head>
+	<body>
+		<div class="bar" id="bar" role="toolbar" aria-label="Window">
+			<div class="side" id="left"></div>
+			<div class="middle" id="middle"></div>
+			<div class="side end" id="right"></div>
+		</div>
+		<script src="titlebar.js"></script>
+	</body>
+</html>

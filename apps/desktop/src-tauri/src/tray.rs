@@ -8,9 +8,9 @@ use std::sync::Mutex;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Wry};
 
-use crate::{WINDOW, config, updates};
+use crate::{config, updates};
 
 pub const TRAY: &str = "g1t";
 
@@ -71,10 +71,13 @@ pub fn update_ready(version: &str) {
 }
 
 pub fn show(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window(WINDOW) {
+    if let Some(window) = crate::frame::window(app) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+    }
+    if let Some(site) = crate::frame::site(app) {
+        let _ = site.set_focus();
     }
 }
 
@@ -88,7 +91,7 @@ pub fn close(app: &AppHandle) {
 }
 
 pub fn hide(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window(WINDOW) {
+    if let Some(window) = crate::frame::window(app) {
         let _ = window.hide();
     }
 }
@@ -106,8 +109,8 @@ pub fn launcher_url(query: &str) -> url::Url {
 
 /// Takes the window to the launcher: `change` to choose another server.
 pub fn launcher(app: &AppHandle, query: &str) {
-    if let Some(window) = app.get_webview_window(WINDOW) {
-        let _ = window.navigate(launcher_url(query));
+    if let Some(site) = crate::frame::site(app) {
+        let _ = site.navigate(launcher_url(query));
         show(app);
     }
 }

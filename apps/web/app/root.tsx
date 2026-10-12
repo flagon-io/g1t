@@ -443,8 +443,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         ) : (
           <>
             <Progress />
-            {/* Under the desktop app's title bar, the header starts below it. */}
-            <div aria-hidden="true" className="h-(--titlebar-h) shrink-0" />
             <PublicHeader user={user} />
             {banner}
             <div id="content" tabIndex={-1} {...leaving} className={`grow outline-none ${leaving.className}`}>

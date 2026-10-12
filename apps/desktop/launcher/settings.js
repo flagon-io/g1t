@@ -178,8 +178,25 @@
     invoke("open_url", { url: anchor.href }).catch(function () {});
   });
 
+  // g1t's own title bar, when the window has no system frame.
+  function frame(view) {
+    if (!view.customFrame) return;
+    if (view.platform === "macos") document.documentElement.classList.add("mac");
+    var bar = byId("titlebar");
+    bar.hidden = false;
+    document.body.classList.add("framed");
+    bar.addEventListener("mousedown", function (event) {
+      if (event.button !== 0 || event.target.closest("button")) return;
+      invoke("window_control", { action: "drag" }).catch(function () {});
+    });
+    byId("close-window").addEventListener("click", function () {
+      invoke("window_control", { action: "close" }).catch(function () {});
+    });
+  }
+
   invoke("get_settings")
     .then(function (view) {
+      frame(view);
       platform(view.platform);
       render(view);
       // Opened by "Check for updates…" in a menu.

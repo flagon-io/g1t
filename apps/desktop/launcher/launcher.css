@@ -29,13 +29,6 @@ body {
 	user-select: none;
 	cursor: default;
 }
-/* Under the app's own title bar (src/frame.rs): the page fills what is below it. */
-html[data-titlebar] {
-	padding-top: 0;
-}
-html[data-titlebar] body {
-	padding-top: 36px;
-}
 main {
 	width: min(26rem, calc(100vw - 2rem));
 	text-align: center;

@@ -13,98 +13,110 @@
 		<link rel="stylesheet" href="settings.css" />
 	</head>
 	<body>
-		<main>
-			<h1>Settings</h1>
-			<p class="muted lede">For the desktop app on this computer. Your account's settings, notifications included, are on g1t itself.</p>
+		<!-- Its title bar, when g1t draws its own (src/frame.rs): drag it to move the window. -->
+		<header class="titlebar" id="titlebar" hidden>
+			<span>Settings</span>
+			<button type="button" id="close-window" class="caption" aria-label="Close" title="Close" tabindex="-1">
+				<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" aria-hidden="true">
+					<line x1="4" y1="4" x2="12" y2="12" />
+					<line x1="12" y1="4" x2="4" y2="12" />
+				</svg>
+			</button>
+		</header>
+		<div class="page">
+			<main>
+				<h1>Settings</h1>
+				<p class="muted lede">For the desktop app on this computer. Your account's settings, notifications included, are on g1t itself.</p>
 
-			<section aria-labelledby="general-heading">
-				<h2 id="general-heading">Starting and closing</h2>
-				<label class="setting">
-					<span><strong>Open g1t when you sign in</strong><span class="muted" id="open-at-login-note">g1t starts with your computer.</span></span>
-					<input type="checkbox" role="switch" id="openAtLogin" />
-				</label>
-				<label class="setting">
-					<span><strong>Start in the tray</strong><span class="muted" id="start-hidden-note">Opened at sign-in, g1t waits in the tray without opening its window.</span></span>
-					<input type="checkbox" role="switch" id="startHidden" />
-				</label>
-				<label class="setting">
-					<span><strong>Keep g1t running when the window closes</strong><span class="muted">It stays in the tray for notifications. Turned off, closing the window quits.</span></span>
-					<input type="checkbox" role="switch" id="closeToTray" />
-				</label>
-			</section>
+				<section aria-labelledby="general-heading">
+					<h2 id="general-heading">Starting and closing</h2>
+					<label class="setting">
+						<span><strong>Open g1t when you sign in</strong><span class="muted" id="open-at-login-note">g1t starts with your computer.</span></span>
+						<input type="checkbox" role="switch" id="openAtLogin" />
+					</label>
+					<label class="setting">
+						<span><strong>Start in the tray</strong><span class="muted" id="start-hidden-note">Opened at sign-in, g1t waits in the tray without opening its window.</span></span>
+						<input type="checkbox" role="switch" id="startHidden" />
+					</label>
+					<label class="setting">
+						<span><strong>Keep g1t running when the window closes</strong><span class="muted">It stays in the tray for notifications. Turned off, closing the window quits.</span></span>
+						<input type="checkbox" role="switch" id="closeToTray" />
+					</label>
+				</section>
 
-			<section aria-labelledby="notifications-heading">
-				<h2 id="notifications-heading">Notifications</h2>
-				<label class="setting">
-					<span><strong>Show notifications</strong><span class="muted">From your system, for what needs you while g1t is behind another window. Which things notify you is set on g1t.</span></span>
-					<input type="checkbox" role="switch" id="notifications" />
-				</label>
-				<label class="setting">
-					<span><strong id="flash-label">Flash the taskbar icon</strong><span class="muted">When a notification arrives and the window is not in front.</span></span>
-					<input type="checkbox" role="switch" id="flash" />
-				</label>
-				<label class="setting">
-					<span><strong>Show a badge on the icon</strong><span class="muted">How many things are waiting for you.</span></span>
-					<input type="checkbox" role="switch" id="badge" />
-				</label>
-			</section>
+				<section aria-labelledby="notifications-heading">
+					<h2 id="notifications-heading">Notifications</h2>
+					<label class="setting">
+						<span><strong>Show notifications</strong><span class="muted">From your system, for what needs you while g1t is behind another window. Which things notify you is set on g1t.</span></span>
+						<input type="checkbox" role="switch" id="notifications" />
+					</label>
+					<label class="setting">
+						<span><strong id="flash-label">Flash the taskbar icon</strong><span class="muted">When a notification arrives and the window is not in front.</span></span>
+						<input type="checkbox" role="switch" id="flash" />
+					</label>
+					<label class="setting">
+						<span><strong>Show a badge on the icon</strong><span class="muted">How many things are waiting for you.</span></span>
+						<input type="checkbox" role="switch" id="badge" />
+					</label>
+				</section>
 
-			<section aria-labelledby="window-heading">
-				<h2 id="window-heading">Window</h2>
-				<label class="setting">
-					<span
-						><strong>Use the system's title bar</strong
-						><span class="muted" id="system-title-bar-note">In place of g1t's own, with the menu bar under it.</span></span
-					>
-					<input type="checkbox" role="switch" id="systemTitleBar" />
-				</label>
-				<div class="setting" id="restart-row" hidden>
-					<span><strong>Restart to change the title bar</strong><span class="muted">g1t opens again where you were.</span></span>
-					<button type="button" id="restart-app" class="primary">Restart now</button>
-				</div>
-				<label class="setting">
-					<span><strong>Zoom</strong><span class="muted" id="zoom-note">The View menu changes it too.</span></span>
-					<select id="zoom">
-						<option value="0.67">67%</option>
-						<option value="0.75">75%</option>
-						<option value="0.8">80%</option>
-						<option value="0.9">90%</option>
-						<option value="1">100%</option>
-						<option value="1.1">110%</option>
-						<option value="1.25">125%</option>
-						<option value="1.5">150%</option>
-						<option value="1.75">175%</option>
-						<option value="2">200%</option>
-					</select>
-				</label>
-			</section>
+				<section aria-labelledby="window-heading">
+					<h2 id="window-heading">Window</h2>
+					<label class="setting">
+						<span
+							><strong>Use the system's title bar</strong
+							><span class="muted" id="system-title-bar-note">In place of g1t's own, with the menu bar under it.</span></span
+						>
+						<input type="checkbox" role="switch" id="systemTitleBar" />
+					</label>
+					<div class="setting" id="restart-row" hidden>
+						<span><strong>Restart to change the title bar</strong><span class="muted">g1t opens again where you were.</span></span>
+						<button type="button" id="restart-app" class="primary">Restart now</button>
+					</div>
+					<label class="setting">
+						<span><strong>Zoom</strong><span class="muted" id="zoom-note">The View menu changes it too.</span></span>
+						<select id="zoom">
+							<option value="0.67">67%</option>
+							<option value="0.75">75%</option>
+							<option value="0.8">80%</option>
+							<option value="0.9">90%</option>
+							<option value="1">100%</option>
+							<option value="1.1">110%</option>
+							<option value="1.25">125%</option>
+							<option value="1.5">150%</option>
+							<option value="1.75">175%</option>
+							<option value="2">200%</option>
+						</select>
+					</label>
+				</section>
 
-			<section aria-labelledby="updates-heading">
-				<h2 id="updates-heading">Updates</h2>
-				<label class="setting">
-					<span><strong>Download updates by themselves</strong><span class="muted">Each one installs when you restart or quit g1t, never in the middle of something.</span></span>
-					<input type="checkbox" role="switch" id="autoUpdate" />
-				</label>
-				<div class="setting" id="updates-row">
-					<span><strong id="version">g1t</strong><span class="muted" id="update-status" aria-live="polite">&nbsp;</span></span>
-					<span class="buttons">
-						<button type="button" id="restart" class="primary" hidden>Restart now</button>
-						<button type="button" id="check">Check for updates</button>
-					</span>
-				</div>
-			</section>
+				<section aria-labelledby="updates-heading">
+					<h2 id="updates-heading">Updates</h2>
+					<label class="setting">
+						<span><strong>Download updates by themselves</strong><span class="muted">Each one installs when you restart or quit g1t, never in the middle of something.</span></span>
+						<input type="checkbox" role="switch" id="autoUpdate" />
+					</label>
+					<div class="setting" id="updates-row">
+						<span><strong id="version">g1t</strong><span class="muted" id="update-status" aria-live="polite">&nbsp;</span></span>
+						<span class="buttons">
+							<button type="button" id="restart" class="primary" hidden>Restart now</button>
+							<button type="button" id="check">Check for updates</button>
+						</span>
+					</div>
+				</section>
 
-			<section aria-labelledby="server-heading">
-				<h2 id="server-heading">Server</h2>
-				<div class="setting">
-					<span><strong id="server">g1t.sh</strong><span class="muted">The g1t this app opens. Change it if you run g1t yourself.</span></span>
-					<button type="button" id="change-server">Change…</button>
-				</div>
-			</section>
+				<section aria-labelledby="server-heading">
+					<h2 id="server-heading">Server</h2>
+					<div class="setting">
+						<span><strong id="server">g1t.sh</strong><span class="muted">The g1t this app opens. Change it if you run g1t yourself.</span></span>
+						<button type="button" id="change-server">Change…</button>
+					</div>
+				</section>
 
-			<p class="error" id="error" role="alert" hidden></p>
-			<p class="muted small foot"><a href="https://docs.g1t.sh/guides/desktop/">About the desktop app</a></p>
-		</main>
+				<p class="error" id="error" role="alert" hidden></p>
+				<p class="muted small foot"><a href="https://docs.g1t.sh/guides/desktop/">About the desktop app</a></p>
+			</main>
+		</div>
 		<script src="settings.js"></script>
 	</body>
 </html>

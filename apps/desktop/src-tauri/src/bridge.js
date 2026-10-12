@@ -9,11 +9,10 @@
   if (window.g1tDesktop) return;
   var VERSION = "__VERSION__";
   var PLATFORM = "__PLATFORM__";
-  // Which window this is ("main" or "settings"), whether it draws g1t's
-  // own title bar ("custom") or has the system's, and the bar's height.
-  var WINDOW = "__WINDOW__";
+  // Whether g1t's own title bar is above this page ("custom"), or the
+  // system's ("system"). The bar is a page of its own (src/frame.rs); this
+  // page only tells it what to show (`report`), and is never under it.
   var FRAME = "__FRAME__";
-  var HEIGHT = "__HEIGHT__";
   // The site's pages for reading about g1t, not using it, which open in
   // the browser (navigation.rs); one ending in "/" is every page under it.
   var OUTSIDE = "__OUTSIDE__";
@@ -91,16 +90,17 @@
     setSearch: function (label, open) {
       var mine = typeof open === "function" ? { label: String(label || "Search"), open: open } : null;
       search = mine;
-      drawSearch();
+      report();
       return function () {
         if (search === mine) {
           search = null;
-          drawSearch();
+          report();
         }
       };
     },
     // Whether g1t draws the title bar, and how tall it is: 0 under the system's.
-    titleBarHeight: FRAME === "custom" ? HEIGHT : 0,
+    // The page is below it, never under it: this says only that the bar is there.
+    titleBarHeight: FRAME === "custom" ? 36 : 0,
   };
   Object.defineProperty(window, "g1tDesktop", { value: Object.freeze(bridge), writable: false, configurable: false });
 
@@ -154,261 +154,101 @@
   };
 
   // ── The title bar ─────────────────────────────────────────────────────
-  // g1t's own, in place of the system's (src/frame.rs), on every page the
-  // window shows: the menu button, back and forward, search in the middle,
-  // and the window's buttons; on macOS the system's traffic lights sit at
-  // its left. It is drawn in a closed shadow root, so no page's styles
-  // reach it, in the colours of the site's rail where the page has them.
-  // `data-titlebar` on <html> tells the page to make room: the site does
-  // (`--frame-top`, apps/web/app/app.css); any other page is pushed down.
+  // What the bar above the page shows of it: the title, the search the
+  // site handed over (`setSearch`), whether there is a page to go back or
+  // forward to, and the page's colours, so the bar is the colour of g1t's
+  // rail, light or dark, or of whatever page is showing. Sent whenever any
+  // of it changes; the bar's search comes back as an event.
   var search = null;
-  var drawSearch = function () {};
+  var report = function () {};
   if (FRAME !== "custom") return;
-  var MAC = PLATFORM === "macos";
-  var MAIN = WINDOW === "main";
 
-  function whenThere(test, then) {
-    if (test()) return then();
-    var watch = new MutationObserver(function () {
-      if (!test()) return;
-      watch.disconnect();
-      then();
-    });
-    watch.observe(document, { childList: true, subtree: true });
+  // A colour the page names, resolved: `var(--color-rail)` is light-dark(…) until it is drawn.
+  var probe = null;
+  function resolve(value) {
+    if (!document.body) return "";
+    if (!probe) {
+      probe = document.createElement("span");
+      probe.setAttribute("aria-hidden", "true");
+      probe.style.cssText = "position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;";
+    }
+    if (probe.parentNode !== document.body) document.body.appendChild(probe);
+    probe.style.color = "";
+    probe.style.color = value;
+    var color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }
+  function opaque(color) {
+    return !!color && color !== "transparent" && !/rgba\(.*,\s*0\)$/.test(color);
+  }
+  function luminance(color) {
+    var parts = (color.match(/[\d.]+/g) || []).map(Number);
+    return parts.length < 3 ? 0 : (0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2]) / 255;
+  }
+  // g1t's pages name their colours (apps/web/app/app.css); any other page has its own background and text.
+  function colors() {
+    if (!document.body) return null;
+    var root = getComputedStyle(document.documentElement);
+    var ours = root.getPropertyValue("--color-rail").trim() !== "";
+    var body = getComputedStyle(document.body);
+    var background = ours ? resolve("var(--color-rail)") : body.backgroundColor;
+    if (!opaque(background)) background = root.backgroundColor;
+    if (!opaque(background)) return null;
+    var foreground = ours ? resolve("var(--color-fg)") : body.color;
+    return {
+      background: background,
+      foreground: foreground,
+      muted: ours ? resolve("var(--color-muted)") : foreground,
+      accent: ours ? resolve("var(--color-accent)") : foreground,
+      dark: luminance(background) < 0.5,
+    };
   }
 
-  // Room for the bar, before the page paints. With no specificity of its
-  // own, any rule of the page's for the same thing wins.
-  var ROOM = ":where(html[data-titlebar]) { padding-top: " + HEIGHT + "px; }";
-  try {
-    var sheet = new CSSStyleSheet();
-    sheet.replaceSync(ROOM);
-    document.adoptedStyleSheets = document.adoptedStyleSheets.concat(sheet);
-  } catch (error) {
-    whenThere(
-      function () {
-        return document.head;
-      },
-      function () {
-        var style = document.createElement("style");
-        style.textContent = ROOM;
-        document.head.appendChild(style);
-      },
-    );
-  }
-  whenThere(
-    function () {
-      return document.documentElement;
-    },
-    function () {
-      document.documentElement.setAttribute("data-titlebar", PLATFORM);
-    },
-  );
-
-  function svg(body) {
-    return '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + body + "</svg>";
-  }
-  // Drawn here, from lines and boxes, as each system draws its own.
-  var ICONS = {
-    menu: svg('<line x1="3" y1="4.5" x2="13" y2="4.5"/><line x1="3" y1="8" x2="13" y2="8"/><line x1="3" y1="11.5" x2="13" y2="11.5"/>'),
-    back: svg('<polyline points="9.5,3.5 5,8 9.5,12.5"/><line x1="5" y1="8" x2="13" y2="8"/>'),
-    forward: svg('<polyline points="6.5,3.5 11,8 6.5,12.5"/><line x1="3" y1="8" x2="11" y2="8"/>'),
-    search: svg('<circle cx="7" cy="7" r="4"/><line x1="10" y1="10" x2="13" y2="13"/>'),
-    minimize: svg('<line x1="3.5" y1="8" x2="12.5" y2="8"/>'),
-    maximize: svg('<rect x="3.5" y="3.5" width="9" height="9" rx="1"/>'),
-    restore: svg('<rect x="3.5" y="5.5" width="7" height="7" rx="1"/><path d="M5.5 5.5V4.5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-1"/>'),
-    close: svg('<line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/>'),
+  var sent = "";
+  var waiting = 0;
+  report = function () {
+    clearTimeout(waiting);
+    waiting = setTimeout(function () {
+      var nav = window.navigation;
+      var page = {
+        title: document.title || "g1t",
+        search: search ? search.label : null,
+        canGoBack: nav && typeof nav.canGoBack === "boolean" ? nav.canGoBack : null,
+        canGoForward: nav && typeof nav.canGoForward === "boolean" ? nav.canGoForward : null,
+        colors: colors(),
+      };
+      var text = JSON.stringify(page);
+      if (text === sent) return;
+      sent = text;
+      invoke("title_bar_page", { page: page }).catch(function () {});
+    }, 30);
   };
 
-  var STYLE =
-    ":host{position:fixed;top:0;left:0;right:0;height:" + HEIGHT + "px;z-index:2147483646;display:block;}" +
-    ".bar{box-sizing:border-box;height:100%;display:flex;align-items:center;gap:2px;padding:0 0 0 6px;" +
-    "background:var(--color-rail,#050507);color:var(--color-muted,#a0a0a8);" +
-    "font:500 12px/1 system-ui,'Segoe UI',-apple-system,Roboto,sans-serif;user-select:none;-webkit-user-select:none;cursor:default;}" +
-    ".mac .bar{padding-left:78px;}" +
-    ".side{display:flex;align-items:center;gap:2px;flex:1 1 0;min-width:0;}" +
-    ".end{justify-content:flex-end;}" +
-    ".middle{flex:0 1 560px;min-width:0;display:flex;justify-content:center;}" +
-    "button{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;color:inherit;}" +
-    ".icon{width:28px;height:26px;border-radius:6px;}" +
-    ".icon:hover{background:color-mix(in srgb,var(--color-fg,#ededef) 10%,transparent);color:var(--color-fg,#ededef);}" +
-    ".icon:disabled{opacity:.35;background:none;color:inherit;}" +
-    ".search{width:100%;height:24px;gap:8px;padding:0 10px;justify-content:flex-start;border-radius:6px;" +
-    "background:color-mix(in srgb,var(--color-fg,#ededef) 9%,transparent);" +
-    "box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--color-fg,#ededef) 8%,transparent);}" +
-    ".search:hover{background:color-mix(in srgb,var(--color-fg,#ededef) 14%,transparent);color:var(--color-fg,#ededef);}" +
-    ".search span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}" +
-    ".title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 8px;}" +
-    ".caption{width:46px;height:" + HEIGHT + "px;}" +
-    ".caption:hover{background:color-mix(in srgb,var(--color-fg,#ededef) 10%,transparent);color:var(--color-fg,#ededef);}" +
-    ".caption.close:hover{background:#c42b1c;color:#fff;}" +
-    "button:focus-visible{outline:2px solid var(--color-accent,#b6a8ff);outline-offset:-2px;}";
-
-  function button(kind, label, onClick, extra) {
-    var b = document.createElement("button");
-    b.type = "button";
-    b.tabIndex = -1;
-    b.className = kind + (extra ? " " + extra : "");
-    b.setAttribute("aria-label", label);
-    b.title = label;
-    b.addEventListener("click", function (event) {
-      event.stopPropagation();
-      onClick(event, b);
-    });
-    return b;
-  }
-
-  function control(action) {
-    return invoke("window_control", { action: action });
-  }
-
-  var host = document.createElement("g1t-titlebar");
-  var shadow = host.attachShadow({ mode: "closed" });
-  var frame = document.createElement("div");
-  frame.className = MAC ? "mac" : "";
-  frame.style.height = "100%";
-  var styleEl = document.createElement("style");
-  styleEl.textContent = STYLE;
-  var bar = document.createElement("div");
-  bar.className = "bar";
-  bar.setAttribute("role", "toolbar");
-  bar.setAttribute("aria-label", "Window");
-  var left = document.createElement("div");
-  left.className = "side";
-  var middle = document.createElement("div");
-  middle.className = "middle";
-  var right = document.createElement("div");
-  right.className = "side end";
-  bar.append(left, middle, right);
-  frame.append(styleEl, bar);
-  shadow.append(frame);
-
-  var back = null;
-  var forward = null;
-  if (MAIN) {
-    if (!MAC) {
-      left.append(
-        button("icon", "Menu", function (event, b) {
-          var box = b.getBoundingClientRect();
-          quietly(invoke("window_menu", { x: box.left, y: box.bottom }));
-        }),
-      );
-    }
-    back = button("icon", "Back", function () {
-      history.back();
-    });
-    forward = button("icon", "Forward", function () {
-      history.forward();
-    });
-    back.innerHTML = ICONS.back;
-    forward.innerHTML = ICONS.forward;
-    left.append(back, forward);
-    if (!MAC) left.firstChild.innerHTML = ICONS.menu;
-  }
-
-  // Back and forward, greyed when there is nowhere to go, where the web view can tell.
-  function drawHistory() {
-    if (!back) return;
-    var nav = window.navigation;
-    if (!nav || typeof nav.canGoBack !== "boolean") return;
-    back.disabled = !nav.canGoBack;
-    forward.disabled = !nav.canGoForward;
+  document.addEventListener("DOMContentLoaded", function () {
+    report();
+    if (document.head) new MutationObserver(report).observe(document.head, { subtree: true, childList: true, characterData: true });
+    // The site's Light, Dark or Auto (data-theme on <html>), and the system's own.
+    new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  });
+  window.addEventListener("load", report);
+  window.addEventListener("pageshow", report);
+  window.addEventListener("popstate", report);
+  if (window.matchMedia) {
+    var scheme = window.matchMedia("(prefers-color-scheme: dark)");
+    if (typeof scheme.addEventListener === "function") scheme.addEventListener("change", report);
   }
   if (window.navigation && typeof window.navigation.addEventListener === "function") {
-    window.navigation.addEventListener("currententrychange", drawHistory);
-  }
-  drawHistory();
-
-  // The middle: the site's search when it has handed one over, otherwise the page's title.
-  var title = document.createElement("span");
-  title.className = "title";
-  drawSearch = function () {
-    middle.textContent = "";
-    if (search) {
-      var pill = button("search", search.label, function () {
-        search.open();
-      });
-      pill.innerHTML = ICONS.search;
-      var text = document.createElement("span");
-      text.textContent = search.label;
-      pill.append(text);
-      middle.append(pill);
-    } else {
-      title.textContent = document.title || "g1t";
-      middle.append(title);
-    }
-  };
-  drawSearch();
-  {
-    var retitle = function () {
-      if (!search) title.textContent = document.title || "g1t";
-    };
-    document.addEventListener("DOMContentLoaded", retitle);
-    whenThere(
-      function () {
-        return document.head;
-      },
-      function () {
-        retitle();
-        new MutationObserver(retitle).observe(document.head, { subtree: true, childList: true, characterData: true });
-      },
-    );
+    window.navigation.addEventListener("currententrychange", report);
   }
 
-  // The window's buttons, at the right as Windows and Linux put them; macOS has its own.
-  if (!MAC) {
-    if (MAIN) {
-      var minimize = button("caption", "Minimize", function () {
-        quietly(control("minimize"));
-      });
-      minimize.innerHTML = ICONS.minimize;
-      var maximize = button("caption", "Maximize", function () {
-        control("maximize").then(drawMaximized, function () {});
-      });
-      maximize.innerHTML = ICONS.maximize;
-      right.append(minimize, maximize);
-      var drawMaximized = function (maximized) {
-        maximize.innerHTML = maximized ? ICONS.restore : ICONS.maximize;
-        maximize.setAttribute("aria-label", maximized ? "Restore" : "Maximize");
-        maximize.title = maximized ? "Restore" : "Maximize";
-      };
-      var resizing = 0;
-      window.addEventListener("resize", function () {
-        clearTimeout(resizing);
-        resizing = setTimeout(function () {
-          control("maximized").then(drawMaximized, function () {});
-        }, 120);
-      });
-      control("maximized").then(drawMaximized, function () {});
-    }
-    var close = button("caption", "Close", function () {
-      quietly(control("close"));
-    }, "close");
-    close.innerHTML = ICONS.close;
-    right.append(close);
+  // The bar's search was clicked: the site's search opens.
+  var events = window.__TAURI__ && window.__TAURI__.event;
+  if (events && typeof events.listen === "function") {
+    events
+      .listen("g1t-search", function () {
+        if (search) search.open();
+      })
+      .catch(function () {});
   }
-
-  // Dragging the bar moves the window; a double click maximizes it, as a system's title bar does.
-  bar.addEventListener("mousedown", function (event) {
-    if (event.button !== 0 || event.target.closest("button")) return;
-    if (event.detail === 2) {
-      if (MAIN) control("maximize").then(drawMaximized || function () {}, function () {});
-      return;
-    }
-    quietly(control("drag"));
-  });
-
-  // In the page from as early as there is a page, and back if a page's script takes it out.
-  function attach() {
-    if (host.parentNode !== document.documentElement) document.documentElement.appendChild(host);
-  }
-  whenThere(
-    function () {
-      return document.body;
-    },
-    function () {
-      attach();
-      new MutationObserver(attach).observe(document.documentElement, { childList: true });
-    },
-  );
 })();

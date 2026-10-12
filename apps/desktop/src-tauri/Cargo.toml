@@ -16,7 +16,9 @@ description = "The g1t desktop app: g1t in a window of its own, with native noti
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+# `unstable`: a window holding more than one web view, so the title bar
+# and the site sit one above the other (src/frame.rs).
+tauri = { version = "2", features = ["tray-icon", "image-png", "unstable"] }
 # Updates: a signed manifest at g1t.sh/downloads/desktop/latest.json.
 tauri-plugin-updater = "2"
 # Native notifications, from the site's live feed.
