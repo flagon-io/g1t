@@ -1,0 +1,25 @@
+{
+  "action": "submitted",
+  "review": {
+    "id": 237895671,
+    "node_id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MjM3ODk1Njcx",
+    "user": { "login": "cy", "id": 21031070, "node_id": "MDQ6VXNlcjIxMDMxMDcw", "type": "User", "html_url": "https://github.com/cy", "url": "https://api.github.com/users/cy" },
+    "body": "Looks good.",
+    "commit_id": "ec26c3e57ca3a959ca5aad62de7213c562f8c821",
+    "submitted_at": "2026-05-15T15:20:38Z",
+    "state": "approved",
+    "html_url": "https://github.com/acme/web/pull/2#pullrequestreview-237895671",
+    "pull_request_url": "https://api.github.com/repos/acme/web/pulls/2"
+  },
+  "pull_request": {
+    "id": 279147437,
+    "node_id": "MDExOlB1bGxSZXF1ZXN0Mjc5MTQ3NDM3",
+    "number": 2,
+    "state": "open",
+    "title": "Update the README with new information.",
+    "head": { "ref": "changes", "sha": "ec26c3e57ca3a959ca5aad62de7213c562f8c821" },
+    "base": { "ref": "main", "sha": "f95f852bd8fca8fcc58a9a2d6c842781e32a215e" }
+  },
+  "repository": { "id": 186853002, "full_name": "acme/web", "owner": { "login": "acme", "id": 21031067, "type": "Organization" } },
+  "sender": { "login": "cy", "id": 21031070, "type": "User" }
+}

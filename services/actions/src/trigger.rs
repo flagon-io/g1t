@@ -8,7 +8,7 @@ use g1t_contracts::access::{self, Capability};
 use g1t_contracts::actions::{DispatchArgs, RepositoryDispatchArgs, WorkflowRun};
 use g1t_contracts::events::{Event, caused_by_job};
 use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
-use g1t_contracts::repos::{Commit, CompareArgs, Comparison, LogArgs, Repo, RepoPath};
+use g1t_contracts::repos::{Commit, CompareArgs, Comparison, LogArgs, PullMergeRef, PullMergeRefArgs, Repo, RepoPath};
 use g1t_contracts::work::{IssueDetail, PullDetail, ViewArgs};
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
 use g1t_contracts::time::rfc3339;
@@ -19,6 +19,10 @@ use worker::Result;
 use crate::plan::NewRun;
 use crate::sync::{Read, WorkflowRow};
 use crate::{API, Actions, SITE, check, fail, payload};
+
+/// How many commits a push's log reads: its `commits`, and how far back
+/// `before` is looked for to tell a forced push.
+const PUSH_LOG: u32 = 20;
 
 /// What an event is about, worked out once for every workflow it starts.
 struct Subject {
@@ -43,6 +47,10 @@ struct Subject {
     /// Why its runs wait for approval first: a pull request from outside,
     /// by the repository's approval policy (protection.rs).
     approval: Option<String>,
+    /// What the run builds when it is not `sha`: a pull request's test
+    /// merge commit (`refs/pull/<n>/merge`), as on GitHub, which becomes
+    /// `github.sha` while statuses and checks stay on `sha`, its head.
+    merge: Option<String>,
 }
 
 /// Whether a deployment's `ref` is a commit's full hash rather than a
@@ -69,6 +77,28 @@ fn branch_or_tag(git_ref: &str) -> Option<(&'static str, &str)> {
 /// Events GitHub takes no `branches`, `tags` or `paths` filters on.
 fn unfiltered(event_name: &str) -> bool {
     matches!(event_name, "create" | "delete")
+}
+
+/// What a pull request's run builds, given its test merge commit.
+#[derive(Debug, PartialEq, Eq)]
+enum PullBuild {
+    /// The merge commit, as on GitHub.
+    Merge(String),
+    /// The head: g1t could not make the merge commit itself, or a
+    /// conflicting pull request's event that still runs without one.
+    Head,
+    /// No run: GitHub starts no `pull_request` workflow while the pull
+    /// request has conflicts, since there is no merge commit to build. The
+    /// pull request's checks say so (apps/web `pull.tsx`).
+    Nothing,
+}
+
+fn pull_build(event_name: &str, action: Option<&str>, made: &PullMergeRef) -> PullBuild {
+    match made {
+        PullMergeRef::Merged { merge, .. } => PullBuild::Merge(merge.clone()),
+        PullMergeRef::Conflict { .. } if event_name == "pull_request" && action != Some("closed") => PullBuild::Nothing,
+        PullMergeRef::Conflict { .. } | PullMergeRef::Unavailable { .. } => PullBuild::Head,
+    }
 }
 
 /// Whether an `*.assigned` event added nobody: g1t says so for a change
@@ -124,6 +154,14 @@ impl Actions {
     }
 
     async fn commits(&self, repo: &Repo, actor: &User, after: &str, before: Option<&str>) -> Result<Vec<Commit>> {
+        Ok(self.pushed_commits(repo, actor, after, before).await?.0)
+    }
+
+    /// The commits a push added, oldest first, and whether it was forced:
+    /// `before` is not in `after`'s history. Known only when that history
+    /// is read whole (it is shorter than the [`PUSH_LOG`] commits read);
+    /// a longer one says not forced.
+    async fn pushed_commits(&self, repo: &Repo, actor: &User, after: &str, before: Option<&str>) -> Result<(Vec<Commit>, bool)> {
         let log: Outcome<Vec<Commit>> = g1t_kit::call(
             &self.repos,
             "log",
@@ -134,30 +172,38 @@ impl Actions {
                 },
                 viewer: Some(actor.clone()),
                 git_ref: Some(after.to_owned()),
-                limit: 20,
+                limit: PUSH_LOG,
             },
         )
         .await?;
         let mut commits: Vec<Commit> = log.into_result().unwrap_or_default();
-        if let Some(before) = before
-            && let Some(at) = commits.iter().position(|commit| commit.hash == before)
-        {
-            commits.truncate(at);
+        let whole = commits.len() < PUSH_LOG as usize;
+        let mut forced = false;
+        if let Some(before) = before.filter(|before| *before != payload::ZERO) {
+            match commits.iter().position(|commit| commit.hash == before) {
+                Some(at) => commits.truncate(at),
+                None => forced = whole && !commits.is_empty(),
+            }
         }
         // GitHub lists them oldest first, with the head commit last.
         commits.reverse();
-        Ok(commits)
+        Ok((commits, forced))
     }
 
     /// The message of the commit `sha` in `path`, when it can be read.
     async fn head_message(&self, path: &RepoPath, actor: &User, sha: &str) -> Result<Option<String>> {
+        Ok(self.commit_at(path, actor, sha).await?.map(|commit| commit.message))
+    }
+
+    /// The commit `sha` in `path`, when it can be read.
+    async fn commit_at(&self, path: &RepoPath, actor: &User, sha: &str) -> Result<Option<Commit>> {
         let log: Outcome<Vec<Commit>> = g1t_kit::call(
             &self.repos,
             "log",
             &LogArgs { path: path.clone(), viewer: Some(actor.clone()), git_ref: Some(sha.to_owned()), limit: 1 },
         )
         .await?;
-        Ok(log.into_result().ok().and_then(|commits| commits.into_iter().next()).map(|commit| commit.message))
+        Ok(log.into_result().ok().and_then(|commits| commits.into_iter().next()))
     }
 
     async fn changed_paths(&self, repo: &Repo, actor: &User, base: Option<String>, head: String) -> Result<Vec<String>> {
@@ -177,15 +223,39 @@ impl Actions {
     }
 
     async fn default_head(&self, repo: &Repo) -> Result<Option<String>> {
+        self.branch_head(repo, &repo.default_branch).await
+    }
+
+    /// The commit `branch` points to now.
+    async fn branch_head(&self, repo: &Repo, branch: &str) -> Result<Option<String>> {
         g1t_kit::call(
             &self.repos,
             "head",
             &g1t_contracts::repos::HeadArgs {
                 repo_id: repo.id.clone(),
-                branch: repo.default_branch.clone(),
+                branch: branch.to_owned(),
             },
         )
         .await
+    }
+
+    /// The pull request's test merge commit for `head` (repos
+    /// `pull_merge_ref`), made or moved now. A failure to ask is
+    /// unavailable, so that its runs still start, on the head.
+    async fn test_merge(&self, repo: &Repo, pull: &g1t_contracts::work::Pull, head: &str, base_ref: &str) -> PullMergeRef {
+        let asked: Result<PullMergeRef> = g1t_kit::call(
+            &self.repos,
+            "pull_merge_ref",
+            &PullMergeRefArgs {
+                repo_id: repo.id.clone(),
+                source_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
+                head: head.to_owned(),
+                number: pull.number,
+                target_branch: Some(base_ref.to_owned()),
+            },
+        )
+        .await;
+        asked.unwrap_or_else(|error| PullMergeRef::Unavailable { reason: error.to_string() })
     }
 
     /// Whether `name` is one of the repository's branches.
@@ -228,6 +298,7 @@ impl Actions {
             title,
             trusted: true,
             approval: None,
+            merge: None,
         };
         let view = |number: u32| ViewArgs {
             repo: path.clone(),
@@ -245,12 +316,9 @@ impl Actions {
                     return Ok(None);
                 }
                 let before = data["before"].as_str();
-                let commits = self.commits(repo, ws, after, before).await?;
+                let (commits, forced) = self.pushed_commits(repo, ws, after, before).await?;
                 let title = commits.last().map(|c| c.message.lines().next().unwrap_or_default().to_owned()).unwrap_or_default();
-                let mut payload = payload::push(repo, git_ref, before, after, &commits, sender);
-                if let Some(head) = commits.last() {
-                    payload["head_commit"] = payload::commit(repo, head);
-                }
+                let payload = payload::push(repo, git_ref, before, after, &commits, sender, forced);
                 Some(Subject {
                     source: path.clone(),
                     source_ref: Some(after.to_owned()),
@@ -266,6 +334,7 @@ impl Actions {
                     title,
                     trusted: true,
                     approval: None,
+                    merge: None,
                 })
             }
             // A branch or tag was made: its own commit, as on GitHub.
@@ -301,6 +370,7 @@ impl Actions {
                     title: format!("Created {ref_type} {name}"),
                     trusted: true,
                     approval: None,
+                    merge: None,
                 })
             }
             // A branch or tag was deleted: on the default branch's latest
@@ -337,14 +407,21 @@ impl Actions {
                     "repository": payload::repository(repo),
                     "sender": payload::user(sender),
                 });
-                payload::changed(&mut payload, data);
+                payload::changed(repo, &mut payload, data);
+                // `base.sha` is the base branch's tip now, as GitHub gives
+                // it, not where the two last agreed.
+                if let Some(tip) = self.branch_head(repo, &base_ref).await? {
+                    payload["pull_request"]["base"]["sha"] = json!(tip);
+                }
+                // A merge's commit, once it has landed.
+                if pull.status == g1t_contracts::work::PullStatus::Merged
+                    && let Some(commit) = data["commit"].as_str()
+                {
+                    payload["pull_request"]["merge_commit_sha"] = json!(commit);
+                }
                 if event_name == "pull_request_review" {
                     let review = detail.comments.iter().rev().find(|c| c.verdict.is_some() && !c.advisory);
-                    payload["review"] = json!({
-                        "state": review.and_then(|r| r.verdict).map(payload::review_state),
-                        "body": review.map(|r| r.body.clone()),
-                        "user": review.map(|r| payload::user(&r.author.username)),
-                    });
+                    payload["review"] = payload::review(repo, pull, review);
                 }
                 let trusted = self.insider(pull.owner(), repo, ws).await?;
                 // A pull request from outside may wait for approval before
@@ -379,13 +456,38 @@ impl Actions {
                     (None, None, Some(head)) => head.clone(),
                     (None, None, None) => return Ok(None),
                 };
-                let source = match landed {
-                    Some(_) => path.clone(),
-                    None => pull.fork.clone().unwrap_or_else(|| path.clone()),
+                // Otherwise it builds the head merged into the base's tip,
+                // as on GitHub: the test merge commit at refs/pull/<n>/merge,
+                // in the repository, whose workflows it reads.
+                let merge = match landed {
+                    Some(_) => None,
+                    None => {
+                        let made = self.test_merge(repo, pull, &sha, &base_ref).await;
+                        match pull_build(event_name, action, &made) {
+                            PullBuild::Merge(merge) => Some(merge),
+                            PullBuild::Nothing => {
+                                worker::console_log!("actions: pull request #{} conflicts with {base_ref}: {made:?}; no pull_request workflows run", pull.number);
+                                return Ok(None);
+                            }
+                            PullBuild::Head => {
+                                worker::console_log!("actions: no merge commit for pull request #{}: {made:?}; its head is built", pull.number);
+                                None
+                            }
+                        }
+                    }
+                };
+                if let Some(merge) = &merge {
+                    payload["pull_request"]["merge_commit_sha"] = json!(merge);
+                }
+                let (source, source_ref) = match (&landed, &merge) {
+                    (Some(_), _) => (path.clone(), sha.clone()),
+                    (None, Some(merge)) => (path.clone(), merge.clone()),
+                    (None, None) => (pull.fork.clone().unwrap_or_else(|| path.clone()), sha.clone()),
                 };
                 Some(Subject {
                     source,
-                    source_ref: Some(sha.clone()),
+                    source_ref: Some(source_ref),
+                    merge,
                     git_ref: format!("refs/pull/{}/merge", pull.number),
                     sha,
                     head_ref: Some(head_ref),
@@ -410,22 +512,38 @@ impl Actions {
                 let Some(sha) = self.default_head(repo).await? else { return Ok(None) };
                 let head_branch = data["ref"].as_str().unwrap_or_default().trim_start_matches("refs/heads/").to_owned();
                 let name = data["workflow"].as_str().unwrap_or_default();
+                // The followed run's row, for what the event does not carry.
+                let row = match data["runId"].as_str() {
+                    Some(id) => self.db.prepare("SELECT * FROM runs WHERE id = ?").bind(&[id.into()])?.first::<crate::plan::RunRow>(None).await?,
+                    None => None,
+                };
+                let head_commit = match data["sha"].as_str() {
+                    Some(head) => self.commit_at(&path, ws, head).await?.filter(|commit| commit.hash == head),
+                    None => None,
+                };
+                let followed = payload::FollowedRun {
+                    data,
+                    workflow_id: row.as_ref().map(|r| r.workflow_id.as_str()),
+                    attempt: row.as_ref().map(|r| r.attempt),
+                    created_at: row.as_ref().map(|r| r.created_at.as_str()),
+                    started_at: row.as_ref().and_then(|r| r.started_at.as_deref()),
+                    updated_at: row.as_ref().and_then(|r| r.finished_at.as_deref()),
+                    actor: row.as_ref().and_then(|r| r.actor.as_deref()),
+                    triggering_actor: row.as_ref().and_then(|r| r.triggering_actor.as_deref()),
+                    title: row.as_ref().map(|r| r.title.as_str()),
+                    head_commit: head_commit.as_ref(),
+                };
                 let payload = json!({
                     "action": "completed",
-                    "workflow_run": {
-                        "id": data["runId"],
+                    "workflow_run": payload::workflow_run(repo, &followed),
+                    "workflow": {
+                        "id": followed.workflow_id,
+                        "node_id": followed.workflow_id,
                         "name": name,
                         "path": data["path"],
-                        "event": data["event"],
-                        "status": "completed",
-                        "conclusion": data["conclusion"],
-                        "head_sha": data["sha"],
-                        "head_branch": head_branch,
-                        "run_number": data["number"],
-                        "html_url": format!("{SITE}/{}/{}/actions/runs/{}", repo.namespace, repo.name, data["runId"].as_str().unwrap_or_default()),
-                        "pull_requests": data["pull"].as_u64().map(|n| vec![json!({ "number": n })]).unwrap_or_default(),
+                        "state": "active",
+                        "html_url": format!("{SITE}/{}/{}/actions", repo.namespace, repo.name),
                     },
-                    "workflow": { "name": name, "path": data["path"] },
                     "repository": payload::repository(repo),
                     "sender": payload::user(sender),
                 });
@@ -455,7 +573,7 @@ impl Actions {
                     "repository": payload::repository(repo),
                     "sender": payload::user(sender),
                 });
-                payload::changed(&mut payload, data);
+                payload::changed(repo, &mut payload, data);
                 if event_name == "issue_comment" {
                     let comment_id = data["commentId"].as_str();
                     if action == Some("deleted") {
@@ -517,6 +635,7 @@ impl Actions {
                     title: format!("Release {name} {}", action.unwrap_or("changed")),
                     trusted: true,
                     approval: None,
+                    merge: None,
                 })
             }
             // A deployment, or a new status of one: at the commit deployed,
@@ -563,6 +682,7 @@ impl Actions {
                     title,
                     trusted: true,
                     approval: None,
+                    merge: None,
                 })
             }
             _ => None,
@@ -746,6 +866,7 @@ impl Actions {
                 actor: Some(sender.to_owned()),
                 trusted: subject.trusted,
                 approval: subject.approval.clone().or(held),
+                head_sha: subject.merge.as_ref().map(|_| subject.sha.clone()),
             })
             .await?;
         }
@@ -810,7 +931,7 @@ impl Actions {
             event_name: event_name.to_owned(),
             event: subject.payload.clone(),
             git_ref: subject.git_ref.clone(),
-            sha: subject.sha.clone(),
+            sha: subject.merge.clone().unwrap_or_else(|| subject.sha.clone()),
             head_ref: subject.head_ref.clone(),
             base_ref: subject.base_ref.clone(),
             actor: sender.to_owned(),
@@ -890,6 +1011,7 @@ impl Actions {
                 title: format!("Scheduled: {cron}"),
                 trusted: true,
                 approval: None,
+                merge: None,
             };
             subject.filter_ref = subject.git_ref.clone();
             let info = self.run_info(&repo, &workflow, "schedule", &subject, &repo.namespace, None);
@@ -908,6 +1030,7 @@ impl Actions {
                 actor: None,
                 trusted: true,
                 approval: None,
+                head_sha: None,
             })
             .await?;
         }
@@ -1007,6 +1130,7 @@ impl Actions {
             title: format!("{} run by {}", workflow.display_name(&file.path), a.actor.username),
             trusted: true,
             approval: None,
+            merge: None,
         };
         let info = self.run_info(&repo, &workflow, "workflow_dispatch", &subject, &a.actor.username, Some(&a.actor.id));
         let created = self
@@ -1025,6 +1149,7 @@ impl Actions {
                 actor: Some(a.actor.username.clone()),
                 trusted: true,
                 approval: None,
+                head_sha: None,
             })
             .await?;
         match created {
@@ -1097,6 +1222,7 @@ impl Actions {
                 title: event_type.clone(),
                 trusted: true,
                 approval: None,
+                merge: None,
             };
             let info = self.run_info(&repo, &workflow, "repository_dispatch", &subject, &a.actor.username, Some(&a.actor.id));
             let created = self
@@ -1115,6 +1241,7 @@ impl Actions {
                     actor: Some(a.actor.username.clone()),
                     trusted: true,
                     approval: None,
+                    head_sha: None,
                 })
                 .await?;
             if created.is_some() {
@@ -1193,6 +1320,7 @@ impl Actions {
                 title: format!("Merge queue: #{}{ahead}", a.number),
                 trusted: true,
                 approval: None,
+                merge: None,
             };
             let info = self.run_info(&repo, &workflow, "merge_group", &subject, &repo.namespace, None);
             let created = self
@@ -1211,6 +1339,7 @@ impl Actions {
                     actor: None,
                     trusted: true,
                     approval: None,
+                    head_sha: None,
                 })
                 .await?;
             if created.is_some() {
@@ -1323,6 +1452,24 @@ mod tests {
     }
     use g1t_contracts::{Membership, PrincipalKind};
 
+    #[test]
+    fn a_pull_request_builds_its_merge_commit_and_nothing_while_it_conflicts() {
+        let merged = PullMergeRef::Merged { head: "h".into(), base: "b".into(), merge: "m".into() };
+        let conflict = PullMergeRef::Conflict { head: "h".into(), base: "b".into(), paths: vec!["a".into()] };
+        let unavailable = PullMergeRef::Unavailable { reason: "too large".into() };
+        assert_eq!(pull_build("pull_request", Some("synchronize"), &merged), PullBuild::Merge("m".into()));
+        assert_eq!(pull_build("pull_request_review", Some("submitted"), &merged), PullBuild::Merge("m".into()));
+        // GitHub runs no pull_request workflow while it conflicts.
+        for action in ["opened", "synchronize", "reopened", "edited"] {
+            assert_eq!(pull_build("pull_request", Some(action), &conflict), PullBuild::Nothing);
+        }
+        // Closing it, or reviewing it, still runs, on the head.
+        assert_eq!(pull_build("pull_request", Some("closed"), &conflict), PullBuild::Head);
+        assert_eq!(pull_build("pull_request_review", Some("submitted"), &conflict), PullBuild::Head);
+        // What g1t could not merge itself runs on the head.
+        assert_eq!(pull_build("pull_request", Some("opened"), &unavailable), PullBuild::Head);
+    }
+
     fn repo() -> Repo {
         serde_json::from_value(json!({
             "id": "rep_1", "namespace": "acme", "name": "web", "description": null, "isPrivate": true,
@@ -1410,13 +1557,14 @@ mod tests {
         pull.milestone = Some(g1t_contracts::work::MilestoneRef { number: 2, title: "1.1".into() });
         let event = payload::pull(&repo(), &pull);
         assert_eq!(event["base"]["ref"], "release/1.x");
-        assert_eq!(event["labels"], serde_json::json!([{ "name": "bug" }]));
+        assert_eq!(event["labels"][0]["name"], "bug");
+        assert!(event["labels"][0]["id"].is_u64());
         assert_eq!(event["milestone"]["title"], "1.1");
         let mut labeled = serde_json::json!({ "action": "labeled" });
-        payload::changed(&mut labeled, &serde_json::json!({ "label": { "name": "bug", "color": "d73a4a" } }));
+        payload::changed(&repo(), &mut labeled, &serde_json::json!({ "label": { "name": "bug", "color": "d73a4a" } }));
         assert_eq!(labeled["label"]["color"], "d73a4a");
         let mut assigned = serde_json::json!({ "action": "assigned" });
-        payload::changed(&mut assigned, &serde_json::json!({ "assignees": ["ana", "bo"], "added": ["bo"] }));
+        payload::changed(&repo(), &mut assigned, &serde_json::json!({ "assignees": ["ana", "bo"], "added": ["bo"] }));
         assert_eq!(assigned["assignee"]["login"], "bo");
         assert!(nobody_added(&serde_json::json!({ "assignees": ["ana"], "added": [] })));
         assert!(!nobody_added(&serde_json::json!({ "assignees": ["ana"], "added": ["ana"] })));

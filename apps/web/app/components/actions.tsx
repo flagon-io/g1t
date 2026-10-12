@@ -4,7 +4,7 @@
  * its errors and warnings marked.
  */
 import { AlertTriangle, Ban, Check, ChevronRight, CircleDashed, CircleSlash, Clock, Hourglass, Info, Loader2, ShieldAlert, X } from "lucide-react";
-import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import type { CommitStatus, Conclusion, LogChunk, WorkflowNote } from "@g1t/contracts";
@@ -12,7 +12,8 @@ import type { CommitStatus, Conclusion, LogChunk, WorkflowNote } from "@g1t/cont
 import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { markSpans, parseAnsi, spanLook } from "../lib/ansi";
-import { type Line, blocks, searchLog } from "../lib/log-lines";
+import { type Line, type Row, type StepLog, appendLog, emptyLog, groupOf, logRows, rowKey, searchStepLog } from "../lib/log-lines";
+import { WINDOW_FROM, rowStarts, windowOf } from "../lib/log-window";
 import { type PollAnswer, nextPoll, retryAfterMs } from "../lib/log-poll";
 
 /**
@@ -147,16 +148,26 @@ function LineText({ text, ansi, query }: { text: string; ansi?: string; query: s
   );
 }
 
-/** One line of a step's log: its number, its time when asked for, and its text. Drawn again only when it changes. */
-type LogLineProps = { line: Line; number: number; query?: string; timestamps?: boolean };
+/** One line of a step's log: its number (a link to it), its time when asked for, and its text. Drawn again only when it changes. */
+type LogLineProps = { line: Line; number: number; query?: string; timestamps?: boolean; anchor?: string; targeted?: boolean };
 
-const LogLine = memo(function LogLine({ line, number, query = "", timestamps = false }: LogLineProps) {
+const LogLine = memo(function LogLine({ line, number, query = "", timestamps = false, anchor, targeted = false }: LogLineProps) {
   const label = /^(Error|Warning|Notice): /;
   const text = line.text.replace(label, "");
   const ansi = line.ansi?.replace(label, "");
+  const id = anchor ? `${anchor}:${number}` : undefined;
   return (
-    <div className={`flex gap-4 px-4 hover:bg-raised/40 ${line.kind === "error" ? "bg-danger/5" : ""}`}>
-      <span className="w-8 shrink-0 select-none text-right text-faint/70">{number}</span>
+    <div
+      id={id}
+      className={`flex scroll-mt-24 gap-4 px-4 hover:bg-raised/40 ${targeted ? "bg-accent/15" : line.kind === "error" ? "bg-danger/5" : ""}`}
+    >
+      {id ? (
+        <a href={`#${id}`} className="w-8 shrink-0 select-none text-right text-faint/70 hover:text-fg hover:underline">
+          {number}
+        </a>
+      ) : (
+        <span className="w-8 shrink-0 select-none text-right text-faint/70">{number}</span>
+      )}
       {timestamps && (
         <time dateTime={line.at} className="w-[24ch] shrink-0 select-none text-faint/70 tabular-nums">
           {line.at ? shownTime(line.at) : ""}
@@ -171,66 +182,196 @@ const LogLine = memo(function LogLine({ line, number, query = "", timestamps = f
   );
 }, sameLine);
 
-/** Whether a line would draw the same: a log read again as it grows makes new objects of the lines it had. */
+/** Whether a line would draw the same: a log that grows keeps its lines, but a search finds them again. */
 function sameLine(a: LogLineProps, b: LogLineProps): boolean {
   return (
     a.number === b.number &&
     a.query === b.query &&
     a.timestamps === b.timestamps &&
-    a.line.kind === b.line.kind &&
-    a.line.text === b.line.text &&
-    a.line.ansi === b.line.ansi &&
-    a.line.at === b.line.at
+    a.anchor === b.anchor &&
+    a.targeted === b.targeted &&
+    a.line === b.line
+  );
+}
+
+/** A group's title: a row that folds and opens the lines under it. */
+function GroupRow({ row, timestamps, onToggle }: { row: Extract<Row, { kind: "group" }>; timestamps: boolean; onToggle: (block: number) => void }) {
+  return (
+    <button
+      type="button"
+      aria-expanded={row.open}
+      onClick={() => onToggle(row.block)}
+      className="flex w-full cursor-pointer items-center gap-1.5 px-4 text-left text-fg/85 hover:bg-raised/40"
+    >
+      <span className="w-8 shrink-0" />
+      {timestamps && (
+        <time dateTime={row.at} className="ml-2.5 w-[24ch] shrink-0 select-none text-faint/70 tabular-nums">
+          {row.at ? shownTime(row.at) : ""}
+        </time>
+      )}
+      <ChevronRight size={12} className={`shrink-0 text-faint transition-transform ${row.open ? "rotate-90" : ""}`} />
+      <span className="min-w-0 whitespace-pre-wrap break-all">{row.title}</span>
+    </button>
   );
 }
 
 /**
  * A step's log. With `query`, only the lines holding it (any case), groups
  * opened, each match marked. With `timestamps`, each line's time beside it.
+ * `anchor` names the step in each line's link (`step:3` gives `#step:3:12`),
+ * and `target` is the line such a link names: its group opens, and it is
+ * scrolled to and marked. A log of more than a few thousand rows draws only
+ * those on screen (lib/log-window.ts).
  */
-export function LogText({ text, query = "", timestamps = false }: { text: string; query?: string; timestamps?: boolean }) {
-  const parsed = useMemo(() => blocks(text), [text]);
-  const found = useMemo(() => searchLog(text, query), [text, query]);
-  if (!text.trim()) return <p className="px-4 py-2 text-xs text-faint">No output.</p>;
-  if (query.trim()) {
+export function LogText({
+  log,
+  query = "",
+  timestamps = false,
+  anchor,
+  target = null,
+}: {
+  log: StepLog;
+  query?: string;
+  timestamps?: boolean;
+  anchor?: string;
+  target?: number | null;
+}) {
+  const [open, setOpen] = useState<ReadonlySet<number>>(() => new Set());
+  const searching = query.trim().length > 0;
+  const found = useMemo(() => searchStepLog(log, query), [log, query]);
+  const rows = useMemo<Row[]>(() => (searching ? found.map((entry) => ({ kind: "line", entry })) : logRows(log, open)), [searching, found, log, open]);
+  // A link to a line in a folded group opens the group.
+  const targetGroup = target === null ? null : groupOf(log, target);
+  useEffect(() => {
+    if (targetGroup !== null) setOpen((known) => (known.has(targetGroup) ? known : new Set(known).add(targetGroup)));
+  }, [targetGroup]);
+  const toggle = useCallback((block: number) => {
+    setOpen((known) => {
+      const next = new Set(known);
+      if (!next.delete(block)) next.add(block);
+      return next;
+    });
+  }, []);
+  if (!log.hasText && !log.tail) return <p className="px-4 py-2 text-xs text-faint">No output.</p>;
+  return <LogRows rows={rows} query={searching ? query : ""} timestamps={timestamps} anchor={anchor} target={target} onToggle={toggle} />;
+}
+
+/** The rows of a step's log, every one, or past `WINDOW_FROM` those on screen and a few around them. */
+function LogRows({
+  rows,
+  query,
+  timestamps,
+  anchor,
+  target,
+  onToggle,
+}: {
+  rows: Row[];
+  query: string;
+  timestamps: boolean;
+  anchor?: string;
+  target: number | null;
+  onToggle: (block: number) => void;
+}) {
+  const windowed = rows.length > WINDOW_FROM;
+  const box = useRef<HTMLDivElement>(null);
+  /** Each drawn row's height, by its key, as it was last measured. */
+  const heights = useRef(new Map<string, number>());
+  const [measured, setMeasured] = useState(0);
+  /** The part of the log on screen, from its top, in steps of `VIEW_STEP` pixels. */
+  const [view, setView] = useState<[number, number]>([0, 0]);
+  const starts = useMemo(
+    () => (windowed ? rowStarts(rows.length, (index) => heights.current.get(rowKey(rows[index]!))) : null),
+    // `measured` changes when a row's height does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [windowed, rows, measured],
+  );
+  const [from, to] = starts ? windowOf(starts, view[0], view[1]) : [0, rows.length];
+  // Follow the screen: the view, as the window scrolls or is resized.
+  useEffect(() => {
+    if (!windowed) return;
+    let frame = 0;
+    const look = () => {
+      frame = 0;
+      const rect = box.current?.getBoundingClientRect();
+      if (!rect) return;
+      const top = Math.floor(-rect.top / VIEW_STEP) * VIEW_STEP;
+      const bottom = Math.ceil((window.innerHeight - rect.top) / VIEW_STEP) * VIEW_STEP;
+      setView((known) => (known[0] === top && known[1] === bottom ? known : [top, bottom]));
+    };
+    const soon = () => {
+      if (!frame) frame = requestAnimationFrame(look);
+    };
+    look();
+    window.addEventListener("scroll", soon, { passive: true });
+    window.addEventListener("resize", soon);
+    // A step folded or opened moves the log without a scroll.
+    document.addEventListener("toggle", soon, true);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", soon);
+      window.removeEventListener("resize", soon);
+      document.removeEventListener("toggle", soon, true);
+    };
+  }, [windowed]);
+  // Measure what was drawn; a row whose height is not what was kept for it
+  // has its space corrected.
+  useLayoutEffect(() => {
+    if (!windowed || !box.current) return;
+    let changed = false;
+    for (const element of box.current.querySelectorAll<HTMLElement>("[data-row]")) {
+      const height = element.offsetHeight;
+      const key = element.dataset.row!;
+      if (height > 0 && heights.current.get(key) !== height) {
+        heights.current.set(key, height);
+        changed = true;
+      }
+    }
+    if (changed) setMeasured((n) => n + 1);
+  });
+  // A link to a line: scroll to it once it is in the log.
+  const targetRow = target === null ? -1 : rows.findIndex((row) => row.kind === "line" && row.entry.number === target);
+  const scrolledTo = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (targetRow === -1 || scrolledTo.current === target || !box.current) return;
+    scrolledTo.current = target;
+    const top = box.current.getBoundingClientRect().top + window.scrollY + (starts ? starts[targetRow]! : 0);
+    if (starts) window.scrollTo({ top: Math.max(0, top - window.innerHeight / 3) });
+    else document.getElementById(`${anchor}:${target}`)?.scrollIntoView({ block: "center" });
+  }, [targetRow, target, starts, anchor]);
+  const drawn = rows.slice(from, to).map((row) => {
+    const key = rowKey(row);
     return (
-      <div className="py-1 font-mono text-xs leading-5">
-        {found.map(({ line, number }) => (
-          <LogLine key={number} line={line} number={number} query={query} timestamps={timestamps} />
-        ))}
+      <div key={key} data-row={windowed ? key : undefined}>
+        {row.kind === "line" ? (
+          <LogLine
+            line={row.entry.line}
+            number={row.entry.number}
+            query={query}
+            timestamps={timestamps}
+            anchor={anchor}
+            targeted={row.entry.number === target}
+          />
+        ) : (
+          <GroupRow row={row} timestamps={timestamps} onToggle={onToggle} />
+        )}
       </div>
     );
-  }
+  });
   return (
-    <div className="py-1 font-mono text-xs leading-5">
-      {parsed.map((block, index) =>
-        block.kind === "line" ? (
-          <LogLine key={index} line={block.line} number={block.number} timestamps={timestamps} />
-        ) : (
-          <details key={index} className="group/log">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 text-fg/85 hover:bg-raised/40">
-              <span className="w-8 shrink-0" />
-              {timestamps && (
-                <time dateTime={block.at} className="ml-2.5 w-[24ch] shrink-0 select-none text-faint/70 tabular-nums">
-                  {block.at ? shownTime(block.at) : ""}
-                </time>
-              )}
-              <ChevronRight size={12} className="shrink-0 text-faint transition-transform group-open/log:rotate-90" />
-              {block.title}
-            </summary>
-            {block.lines.map(({ line, number }) => (
-              <LogLine key={number} line={line} number={number} timestamps={timestamps} />
-            ))}
-          </details>
-        ),
-      )}
+    <div ref={box} className="py-1 font-mono text-xs leading-5">
+      {starts && <div aria-hidden style={{ height: starts[from] }} />}
+      {drawn}
+      {starts && <div aria-hidden style={{ height: starts[rows.length]! - starts[to]! }} />}
     </div>
   );
 }
 
-/** A job's log as the page has it: each step's text (0 is the job's setup), when each last grew, and whether asking for more is failing. */
+/** How finely the view of a windowed log is followed, in pixels: a scroll of less draws nothing new. */
+const VIEW_STEP = 200;
+
+/** A job's log as the page has it: each step's log, read as it came (0 is the job's setup), when each last grew, and whether asking for more is failing. */
 export type JobLog = {
-  byStep: Map<number, string>;
+  byStep: Map<number, StepLog>;
   /** When a chunk of each step's last arrived, by this browser's clock. */
   grewAt: Map<number, number>;
   /** The last ask failed, and the page is waiting to ask again. */
@@ -244,7 +385,10 @@ export type JobLog = {
  * `running` is whether one of the job's steps is running now.
  */
 export function useJobLog(url: string, live: boolean, running: boolean): JobLog {
-  const [chunks, setChunks] = useState<LogChunk[]>([]);
+  // Each chunk is read once, into its step's log, as it arrives: a long
+  // step's log is not read again from its start for every chunk.
+  const steps = useRef(new Map<number, StepLog>());
+  const [byStep, setByStep] = useState<Map<number, StepLog>>(new Map());
   const [grewAt, setGrewAt] = useState<Map<number, number>>(new Map());
   const [retrying, setRetrying] = useState(false);
   const after = useRef(0);
@@ -252,7 +396,8 @@ export function useJobLog(url: string, live: boolean, running: boolean): JobLog 
   runningNow.current = running;
   useEffect(() => {
     after.current = 0;
-    setChunks([]);
+    steps.current = new Map();
+    setByStep(new Map());
     setGrewAt(new Map());
   }, [url]);
   useEffect(() => {
@@ -283,7 +428,8 @@ export function useJobLog(url: string, live: boolean, running: boolean): JobLog 
           if (page.chunks.length > 0) {
             after.current = page.chunks[page.chunks.length - 1]!.seq;
             const now = Date.now();
-            setChunks((known) => [...known, ...page.chunks]);
+            for (const chunk of page.chunks) steps.current.set(chunk.step, appendLog(steps.current.get(chunk.step) ?? emptyLog(), chunk.text));
+            setByStep(new Map(steps.current));
             setGrewAt((known) => {
               const next = new Map(known);
               for (const chunk of page.chunks) next.set(chunk.step, now);
@@ -315,11 +461,6 @@ export function useJobLog(url: string, live: boolean, running: boolean): JobLog 
       document.removeEventListener("visibilitychange", shown);
     };
   }, [url, live]);
-  const byStep = useMemo(() => {
-    const byStep = new Map<number, string>();
-    for (const chunk of chunks) byStep.set(chunk.step, (byStep.get(chunk.step) ?? "") + chunk.text);
-    return byStep;
-  }, [chunks]);
   return { byStep, grewAt, retrying };
 }
 

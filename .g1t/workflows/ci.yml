@@ -89,6 +89,8 @@ jobs:
         run: npm test --workspaces --if-present
       - name: The deploy tool's tests
         run: npm run test:deploy
+      - name: The conformance report's tests
+        run: npm run test:conformance
       - name: The ops scripts' tests
         run: npm run test:ops
       - name: The manifest matches every wrangler.jsonc

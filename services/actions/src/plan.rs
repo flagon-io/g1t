@@ -30,9 +30,13 @@ const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CHUNK_BYTES: usize = 256 * 1024;
 const MAX_ANNOTATIONS: usize = 50;
 /// A batch of a job's log, under the next `seq` of that job's, worked out
-/// in the same statement (SQLite runs one write at a time).
-const LOG_INSERT: &str =
-    "INSERT INTO logs (job_id, seq, step, text) SELECT ?1, COALESCE(MAX(seq), 0) + 1, ?2, ?3 FROM logs WHERE job_id = ?1";
+/// in the same statement (SQLite runs one write at a time). `?4` is the
+/// runner's number for the batch (null from runners that send none): a
+/// batch sent again, after an answer the runner did not hear, has the
+/// number of one already kept, and is not kept twice (migration 0016).
+const LOG_INSERT: &str = "INSERT INTO logs (job_id, seq, step, text, chunk)
+     SELECT ?1, COALESCE(MAX(seq), 0) + 1, ?2, ?3, ?4 FROM logs WHERE job_id = ?1
+     ON CONFLICT (job_id, chunk) DO NOTHING";
 /// The most one step's job summary keeps, in bytes, and how many steps of a
 /// job may have one, as on GitHub.
 pub(crate) const MAX_SUMMARY_BYTES: usize = 1024 * 1024;
@@ -82,6 +86,10 @@ pub struct NewRun {
     /// Why the run waits for someone with the Write role to approve it
     /// before anything starts: a pull request from outside (protection.rs).
     pub approval: Option<String>,
+    /// The commit the run is listed, and its statuses and checks reported,
+    /// on when it is not the one it builds (`info.sha`): a pull request's
+    /// head, when the run builds its test merge commit, as on GitHub.
+    pub head_sha: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -568,6 +576,37 @@ impl Actions {
         contexts
     }
 
+    /// Whether `namespace` is a person's own workspace: usernames and
+    /// workspaces share one namespace, so it is when someone has that
+    /// username. Kept in the isolate for a few minutes, so a burst of
+    /// runs asks identity once.
+    async fn personal_namespace(&self, namespace: &str) -> Result<bool> {
+        const KEEP_MS: u64 = 5 * 60 * 1000;
+        thread_local! {
+            static PERSONAL: std::cell::RefCell<std::collections::HashMap<String, (bool, u64)>> = Default::default();
+        }
+        let now = now_ms();
+        let key = namespace.to_ascii_lowercase();
+        if let Some(personal) = PERSONAL.with(|kept| kept.borrow().get(&key).filter(|(_, at)| now.saturating_sub(*at) < KEEP_MS).map(|(personal, _)| *personal)) {
+            return Ok(personal);
+        }
+        let found: g1t_contracts::Viewer = g1t_kit::call(
+            &self.identity,
+            "user_by_username",
+            &g1t_contracts::identity::UsernameArgs { username: key.clone() },
+        )
+        .await?;
+        let personal = found.is_some_and(|user| user.username.eq_ignore_ascii_case(namespace));
+        PERSONAL.with(|kept| {
+            let mut kept = kept.borrow_mut();
+            if kept.len() > 1000 {
+                kept.clear();
+            }
+            kept.insert(key, (personal, now));
+        });
+        Ok(personal)
+    }
+
     /// Makes a run and its jobs, and starts what can start. `None` when the
     /// event already started this workflow.
     pub async fn create_run(&self, new: NewRun) -> Result<Option<String>> {
@@ -586,6 +625,10 @@ impl Actions {
             .map_or(1, |count| count.n);
         let id = new_id("run", now_ms());
         let mut info = new.info.clone();
+        // A personal workspace's repositories are a `User`'s, as on GitHub.
+        if self.personal_namespace(&new.repo.namespace).await? {
+            crate::payload::owned_by_person(&mut info.event, &new.repo.namespace);
+        }
         info.workflow = new.workflow.display_name(&new.path);
         info.workflow_path = new.path.clone();
         info.run_id = id.clone();
@@ -640,7 +683,7 @@ impl Actions {
                 info.event_name.as_str().into(),
                 optional(new.action.as_deref()),
                 info.git_ref.as_str().into(),
-                info.sha.as_str().into(),
+                new.head_sha.as_deref().unwrap_or(&info.sha).into(),
                 new.pull.map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
                 if approval.is_some() { "action_required" } else { "queued" }.into(),
                 optional(new.actor.as_deref()),
@@ -2320,9 +2363,11 @@ impl Actions {
             debug_logging(&mut variables, &mut runner);
         }
 
-        // Where to check out: a pull request's fork, or the repository.
+        // Where to check out: the repository, which holds a pull request's
+        // test merge commit; a pull request's fork when the run builds its
+        // head instead (`run.sha` is the head, `info.sha` what is built).
         let clone_url = match run.pull {
-            Some(number) if run.event.starts_with("pull_request") && run.event != "pull_request_target" => {
+            Some(number) if run.event.starts_with("pull_request") && run.event != "pull_request_target" && info.sha == run.sha => {
                 let located: Outcome<g1t_contracts::work::PullDetail> = g1t_kit::call(
                     &self.work,
                     "get_pull",
@@ -2375,7 +2420,7 @@ impl Actions {
             "checkout": {
                 "repository": run.repo,
                 "url": clone_url,
-                "sha": run.sha,
+                "sha": info.sha,
                 "ref": run.git_ref,
                 "token": token,
             },
@@ -2474,7 +2519,12 @@ impl Actions {
                     // and lose a chunk to the primary key.
                     self.db
                         .prepare(LOG_INSERT)
-                        .bind(&[job.id.as_str().into(), (report["step"].as_u64().unwrap_or(0) as u32).into(), text.into()])?
+                        .bind(&[
+                            job.id.as_str().into(),
+                            (report["step"].as_u64().unwrap_or(0) as u32).into(),
+                            text.into(),
+                            report["chunk"].as_u64().map_or(worker::wasm_bindgen::JsValue::NULL, |n| (n as f64).into()),
+                        ])?
                         .run()
                         .await?;
                 }
@@ -2637,6 +2687,52 @@ impl Actions {
     }
 }
 
+
+#[cfg(test)]
+mod log_chunks {
+    use rusqlite::{Connection, params};
+
+    use super::LOG_INSERT;
+
+    /// The logs table as the migrations leave it.
+    fn database() -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        for name in ["0001_init.sql", "0016_log_chunks.sql"] {
+            let path = format!("{}/migrations/{name}", env!("CARGO_MANIFEST_DIR"));
+            db.execute_batch(&std::fs::read_to_string(path).unwrap()).unwrap();
+        }
+        db
+    }
+
+    fn log(db: &Connection, job: &str) -> Vec<(i64, i64, String)> {
+        let mut rows = db.prepare("SELECT seq, step, text FROM logs WHERE job_id = ? ORDER BY seq").unwrap();
+        rows.query_map([job], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).unwrap().map(Result::unwrap).collect()
+    }
+
+    #[test]
+    fn a_batch_sent_again_is_kept_once() {
+        let db = database();
+        let insert = |job: &str, step: i64, text: &str, chunk: Option<i64>| db.execute(LOG_INSERT, params![job, step, text, chunk]).unwrap();
+        assert_eq!(insert("job_1", 0, "one\n", Some(1)), 1);
+        // The runner did not hear the answer and sent the batch again.
+        assert_eq!(insert("job_1", 0, "one\n", Some(1)), 0);
+        assert_eq!(insert("job_1", 1, "two\n", Some(2)), 1);
+        // Another job numbers its batches from 1 too.
+        assert_eq!(insert("job_2", 0, "other\n", Some(1)), 1);
+        // A runner that numbers nothing has every batch kept, as before.
+        assert_eq!(insert("job_3", 0, "a\n", None), 1);
+        assert_eq!(insert("job_3", 0, "a\n", None), 1);
+        assert_eq!(log(&db, "job_1"), [(1, 0, "one\n".into()), (2, 1, "two\n".into())]);
+        assert_eq!(log(&db, "job_2"), [(1, 0, "other\n".into())]);
+        assert_eq!(log(&db, "job_3").len(), 2);
+        // A job run again moves its log aside (`{id}.{attempt}`), and the
+        // new attempt's runner numbers from 1 again.
+        db.execute("UPDATE logs SET job_id = job_id || '.1' WHERE job_id = 'job_1'", []).unwrap();
+        assert_eq!(insert("job_1", 0, "again\n", Some(1)), 1);
+        assert_eq!(log(&db, "job_1"), [(1, 0, "again\n".into())]);
+        assert_eq!(log(&db, "job_1.1").len(), 2);
+    }
+}
 
 #[cfg(test)]
 mod stopping {

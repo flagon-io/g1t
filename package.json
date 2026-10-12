@@ -15,6 +15,7 @@
     "deploy": "npm run deploy -w @g1t/web",
     "test:deploy": "node --test \"scripts/deploy/*.test.mjs\"",
     "test:ops": "node --test \"scripts/ops/*.test.mjs\"",
+    "test:conformance": "node --test \"conformance/*.test.mjs\"",
     "test:release": "node --test \"scripts/desktop-release.test.mjs\" \"scripts/mobile-release.test.mjs\""
   },
   "devDependencies": {

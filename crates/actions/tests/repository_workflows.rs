@@ -337,3 +337,15 @@ fn the_runner_base_rebuilds_weekly_on_a_machine_with_docker() {
     let job = base.jobs.iter().find(|j| j.id == "build").unwrap();
     assert_eq!(job.runs_on, json!(["self-hosted", "docker"]));
 }
+
+#[test]
+fn the_conformance_workflow_is_the_same_on_github_and_on_g1t() {
+    let root = workflows_dir().parent().unwrap().parent().unwrap().to_path_buf();
+    let ours = std::fs::read_to_string(root.join(".g1t/workflows/conformance.yml")).unwrap();
+    let theirs = std::fs::read_to_string(root.join(".github/workflows/conformance.yml")).unwrap();
+    assert_eq!(ours, theirs, "copy .g1t/workflows/conformance.yml over .github/workflows/conformance.yml");
+    // It runs only by hand, and reads nothing it could change.
+    let workflow = read("conformance.yml");
+    assert_eq!(workflow.triggers.iter().map(|t| t.event.as_str()).collect::<Vec<_>>(), ["workflow_dispatch"]);
+    assert!(!ours.contains("secrets."));
+}

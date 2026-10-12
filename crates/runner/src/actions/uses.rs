@@ -23,6 +23,9 @@ use super::process::{self, Commands, Ended};
 use super::{Frame, Job, Post, PostRun};
 
 const ACTIONS_DIR: &str = "/home/runner/_actions";
+/// How often a wait on g1t for an action says it is still waiting, as
+/// transfers say how far they have got.
+const WAITING_EVERY: Duration = Duration::from_secs(5);
 
 /// Where an action comes from.
 enum Source {
@@ -45,13 +48,9 @@ fn is_sha(text: &str) -> bool {
 fn native(name: &str, docker_hosted: bool) -> bool {
     matches!(
         name,
-        "actions/checkout"
-            | "actions/upload-artifact"
+        "actions/upload-artifact"
             | "actions/upload-artifact/merge"
             | "actions/download-artifact"
-            | "actions/cache"
-            | "actions/cache/restore"
-            | "actions/cache/save"
     ) || (docker_hosted && name == "docker/setup-buildx-action")
 }
 
@@ -103,115 +102,6 @@ impl Job {
         false
     }
 
-    /// `actions/checkout`, against g1t.
-    fn checkout(&mut self, with: &BTreeMap<String, String>) -> (bool, BTreeMap<String, String>) {
-        let checkout = self.spec["checkout"].clone();
-        let own = checkout["repository"].as_str().unwrap_or_default().to_owned();
-        let server = self.contexts["github"]["server_url"].as_str().unwrap_or("https://g1t.sh").to_owned();
-        let repository = with.get("repository").filter(|r| !r.is_empty()).cloned().unwrap_or(own.clone());
-        let same = repository.eq_ignore_ascii_case(&own);
-        let token = with.get("token").filter(|t| !t.is_empty()).cloned().or_else(|| checkout["token"].as_str().map(str::to_owned)).unwrap_or_default();
-        let url = if same { checkout["url"].as_str().unwrap_or_default().to_owned() } else { format!("{server}/{repository}.git") };
-        let path = with.get("path").filter(|p| !p.is_empty()).map_or(self.workspace.clone(), |p| self.workspace.join(p));
-        let depth: u32 = with.get("fetch-depth").and_then(|d| d.parse().ok()).unwrap_or(1);
-        let wanted_ref = with.get("ref").filter(|r| !r.is_empty()).cloned();
-        let auth = (!token.is_empty()).then(|| format!("AUTHORIZATION: basic {}", STANDARD.encode(format!("x-access-token:{token}"))));
-
-        self.log.line(&format!("Checking out {repository} into {}", path.display()));
-        if path.exists() {
-            let _ = std::fs::remove_dir_all(&path);
-        }
-        if let Err(error) = std::fs::create_dir_all(&path) {
-            self.log.line(&format!("##[error]Could not make {}: {error}", path.display()));
-            return (false, BTreeMap::new());
-        }
-        let _ = Command::new("git").args(["config", "--global", "--add", "safe.directory", "*"]).status();
-        if !self.git(&path, &["init", "--quiet"], None) || !self.git(&path, &["remote", "add", "origin", &url], None) {
-            return (false, BTreeMap::new());
-        }
-
-        // What to fetch, and which commit to end up on.
-        let run_ref = checkout["ref"].as_str().unwrap_or_default().to_owned();
-        let run_sha = checkout["sha"].as_str().unwrap_or_default().to_owned();
-        let is_sha = |r: &str| r.len() == 40 && r.chars().all(|c| c.is_ascii_hexdigit());
-        let (fetch, sha, branch): (String, Option<String>, Option<String>) = match &wanted_ref {
-            Some(r) if is_sha(r) => ("HEAD".into(), Some(r.clone()), None),
-            Some(r) if r.starts_with("refs/") => (r.clone(), None, r.strip_prefix("refs/heads/").map(str::to_owned)),
-            Some(r) => (r.clone(), None, Some(r.clone())),
-            // A pull request's merge ref, or no ref at all (a deployment of
-            // a bare commit): the commit itself.
-            None if same && (run_ref.starts_with("refs/pull/") || run_ref.is_empty()) => ("HEAD".into(), Some(run_sha.clone()), None),
-            None if same => (run_ref.clone(), Some(run_sha.clone()), run_ref.strip_prefix("refs/heads/").map(str::to_owned)),
-            None => ("HEAD".into(), None, None),
-        };
-        let depth_arg = format!("--depth={depth}");
-        let mut args = vec!["fetch", "--no-tags", "--prune", "--quiet"];
-        if depth > 0 {
-            args.push(&depth_arg);
-        }
-        if with.get("fetch-tags").is_some_and(|t| t == "true") {
-            args.retain(|a| *a != "--no-tags");
-        }
-        args.push("origin");
-        args.push(&fetch);
-        if !self.fetch_retrying(&path, &args, auth.as_deref()) {
-            self.log.line(&format!("##[error]Could not fetch {fetch} from {repository}."));
-            return (false, BTreeMap::new());
-        }
-        let target = sha.clone().unwrap_or_else(|| "FETCH_HEAD".into());
-        // The commit may be further back than a shallow fetch reaches: the
-        // branch moved on after the run began, say. Ask for the commit
-        // itself, and failing that the whole history; a plain fetch never
-        // reaches past a shallow boundary.
-        let has = |target: &str| Command::new("git").current_dir(&path).args(["cat-file", "-e", &format!("{target}^{{commit}}")]).status().is_ok_and(|s| s.success());
-        if !has(&target) {
-            let by_sha = sha.as_deref().is_some_and(|sha| {
-                let mut args = vec!["fetch", "--no-tags", "--quiet"];
-                if depth > 0 {
-                    args.push(&depth_arg);
-                }
-                args.extend(["origin", sha]);
-                self.git(&path, &args, auth.as_deref()) && has(sha)
-            });
-            let shallow = path.join(".git").join("shallow").exists();
-            let deepen: &[&str] = if shallow { &["fetch", "--no-tags", "--quiet", "--unshallow", "origin"] } else { &["fetch", "--no-tags", "--quiet", "origin"] };
-            if !by_sha && !self.fetch_retrying(&path, deepen, auth.as_deref()) {
-                return (false, BTreeMap::new());
-            }
-        }
-        let checked_out = match &branch {
-            Some(branch) => self.git(&path, &["checkout", "--quiet", "--force", "-B", branch, &target], None),
-            None => self.git(&path, &["checkout", "--quiet", "--force", "--detach", &target], None),
-        };
-        if !checked_out {
-            return (false, BTreeMap::new());
-        }
-        if with.get("persist-credentials").is_none_or(|p| p != "false")
-            && let Some(header) = &auth
-        {
-            let key = format!("http.{server}/.extraheader");
-            let _ = Command::new("git").current_dir(&path).args(["config", "--local", &key, header]).status();
-        }
-        if let Some(submodules) = with.get("submodules").filter(|s| *s == "true" || *s == "recursive") {
-            let mut args = vec!["submodule", "update", "--init", "--quiet"];
-            if submodules == "recursive" {
-                args.push("--recursive");
-            }
-            if !self.git(&path, &args, auth.as_deref()) {
-                self.log.line("##[warning]Submodules could not all be checked out; only those hosted on g1t can be.");
-            }
-        }
-        if with.get("lfs").is_some_and(|l| l == "true") {
-            self.log.line("##[warning]Git LFS files are not fetched on g1t yet.");
-        }
-        let commit = Command::new("git").current_dir(&path).args(["rev-parse", "HEAD"]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned()).unwrap_or_default();
-        self.log.line(&format!("Checked out {commit}"));
-        let mut outputs = BTreeMap::new();
-        outputs.insert("ref".into(), wanted_ref.unwrap_or(run_ref));
-        outputs.insert("commit".into(), commit);
-        (true, outputs)
-    }
-
     /// Fetches another repository's action, once per job: from g1t when
     /// g1t has the repository and this one may use it, otherwise from
     /// GitHub. A private repository on g1t that may not be used here fails
@@ -229,7 +119,18 @@ impl Job {
             self.log.line(&format!("##[error]`{owner}/{repo}@{git_ref}` is not a name g1t can fetch."));
             return None;
         }
-        match self.log.api.action(&format!("{owner}/{repo}"), git_ref) {
+        // The first job to use an action at a commit waits while g1t
+        // fetches its archive from GitHub, up to two minutes: the log says
+        // what it is waiting for, and that it still is, as GitHub's does.
+        self.log.line(&format!("Getting action download info for '{owner}/{repo}@{git_ref}'"));
+        let repository = format!("{owner}/{repo}");
+        let asked = (repository.clone(), git_ref.to_owned());
+        let found = self.log.waiting(
+            WAITING_EVERY,
+            move |api| api.action(&asked.0, &asked.1),
+            |seconds| format!("Waiting for g1t to fetch '{repository}@{git_ref}' ({seconds}s)"),
+        );
+        match found {
             Ok(found) if found["source"] == "g1t" => self.fetch_g1t_action(&on_g1t, owner, repo, git_ref, &found),
             Ok(found) => {
                 if let Some(note) = found["note"].as_str() {
@@ -293,7 +194,12 @@ impl Job {
         let dir = super::paths::under_home(ACTIONS_DIR).join(owner).join(repo).join(git_ref);
         self.log.line(&format!("Download action repository '{owner}/{repo}@{git_ref}' (SHA:{sha}) from g1t"));
         let archive = self.temp.join(format!("action{}.tar.gz", super::rand_id()));
-        let downloaded = self.log.api.action_archive(&format!("{owner}/{repo}"), sha, &archive);
+        let asked = (format!("{owner}/{repo}"), sha.to_owned(), archive.clone());
+        let downloaded = self.log.waiting(
+            WAITING_EVERY,
+            move |api| api.action_archive(&asked.0, &asked.1, &asked.2),
+            |seconds| format!("Downloading '{owner}/{repo}@{git_ref}' from g1t ({seconds}s)"),
+        );
         let unpacked = match downloaded {
             Ok(_) => {
                 let _ = std::fs::remove_dir_all(&dir);
@@ -478,13 +384,9 @@ impl Job {
             return self.setup_buildx(with);
         }
         match lower.as_str() {
-            "actions/checkout" => return self.checkout(with),
             "actions/upload-artifact" => return self.upload_artifact(with),
             "actions/upload-artifact/merge" => return self.merge_artifacts(with),
             "actions/download-artifact" => return self.download_artifact(with),
-            "actions/cache" => return self.cache(with, true, title),
-            "actions/cache/restore" => return self.cache(with, false, title),
-            "actions/cache/save" => return self.cache_save_now(with),
             _ => {}
         }
         let Some(found) = self.resolve_action(uses) else {
@@ -883,9 +785,11 @@ mod tests {
         let found = |uses: &str| remote_action(uses, true);
         assert_eq!(found("actions/setup-node@v4"), Some(("actions".into(), "setup-node".into(), "v4".into())));
         assert_eq!(found(" github/codeql-action/init@v3 "), Some(("github".into(), "codeql-action".into(), "v3".into())));
+        // actions/checkout and actions/cache are the real actions, fetched
+        // like any other.
+        assert_eq!(found("actions/checkout@v4"), Some(("actions".into(), "checkout".into(), "v4".into())));
+        assert_eq!(found("Actions/Cache/Restore@v4"), Some(("Actions".into(), "Cache".into(), "v4".into())));
         // Done by the runner itself, local, an image, or no version.
-        assert_eq!(found("actions/checkout@v4"), None);
-        assert_eq!(found("Actions/Cache/Restore@v4"), None);
         assert_eq!(found("docker/setup-buildx-action@v3"), None);
         assert!(remote_action("docker/setup-buildx-action@v3", false).is_some());
         assert_eq!(found("./.g1t/actions/setup"), None);

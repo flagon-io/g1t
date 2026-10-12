@@ -104,9 +104,27 @@ impl RunInfo {
         self.repository.split('/').next().unwrap_or_default()
     }
 
-    /// The owner's id, as the event's `repository.owner.id` gives it.
+    /// The owner's id, as the event's `repository.owner.id` gives it, or
+    /// else the number for the owner's name ([`account_id`]).
     fn owner_id(&self) -> String {
-        owner_id(&self.event).unwrap_or_default()
+        owner_id(&self.event).unwrap_or_else(|| match self.owner() {
+            "" => String::new(),
+            owner => account_id(owner).to_string(),
+        })
+    }
+
+    /// `github.repository_id`: the repository's number ([`github_id`]).
+    fn repository_number(&self) -> String {
+        id_text(&self.repository_id)
+    }
+
+    /// `github.actor_id`: the actor's number, as the event's `sender.id`
+    /// gives it ([`account_id`]).
+    fn actor_number(&self) -> String {
+        match self.actor.as_str() {
+            "" => id_text(&self.actor_id),
+            actor => account_id(actor).to_string(),
+        }
     }
 
     /// The `github` context for a job. `token` is `github.token` (and
@@ -118,7 +136,7 @@ impl RunInfo {
             "action_ref": "",
             "action_repository": "",
             "actor": self.actor,
-            "actor_id": self.actor_id,
+            "actor_id": self.actor_number(),
             "api_url": self.api_url,
             "base_ref": self.base_ref.clone().unwrap_or_default(),
             "env": "",
@@ -134,7 +152,7 @@ impl RunInfo {
             "ref_protected": self.ref_name() == self.default_branch,
             "ref_type": self.ref_type(),
             "repository": self.repository,
-            "repository_id": self.repository_id,
+            "repository_id": self.repository_number(),
             "repository_owner": self.owner(),
             "repository_owner_id": self.owner_id(),
             "repositoryUrl": format!("{}/{}.git", self.server_url, self.repository),
@@ -164,7 +182,7 @@ impl RunInfo {
         set("GITHUB_ACTIONS", "true".into());
         set("G1T", "true".into());
         set("GITHUB_ACTOR", self.actor.clone());
-        set("GITHUB_ACTOR_ID", self.actor_id.clone());
+        set("GITHUB_ACTOR_ID", self.actor_number());
         set("GITHUB_API_URL", self.api_url.clone());
         set("GITHUB_BASE_REF", self.base_ref.clone().unwrap_or_default());
         set("GITHUB_EVENT_NAME", self.event_name.clone());
@@ -177,7 +195,7 @@ impl RunInfo {
         set("GITHUB_REF_PROTECTED", (self.ref_name() == self.default_branch).to_string());
         set("GITHUB_REF_TYPE", self.ref_type().into());
         set("GITHUB_REPOSITORY", self.repository.clone());
-        set("GITHUB_REPOSITORY_ID", self.repository_id.clone());
+        set("GITHUB_REPOSITORY_ID", self.repository_number());
         set("GITHUB_REPOSITORY_OWNER", self.owner().to_owned());
         set("GITHUB_REPOSITORY_OWNER_ID", self.owner_id());
         set("GITHUB_RETENTION_DAYS", "14".into());
@@ -199,6 +217,40 @@ impl RunInfo {
         set("RUNNER_ENVIRONMENT", "github-hosted".into());
         set("RUNNER_WORKSPACE", RUNNER_WORKSPACE.into());
         vars
+    }
+}
+
+/// The whole number GitHub gives an object as its `id`, for a g1t id
+/// (`rep_01kpw0…`, `pr_01…`): the same number every time, positive, and
+/// below 2^53 so JavaScript reads it exactly. g1t's own id stays the
+/// object's `node_id`.
+pub fn github_id(id: &str) -> u64 {
+    // FNV-1a, 64 bits, cut to 53.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in id.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    (hash & ((1 << 53) - 1)).max(1)
+}
+
+/// The number of a person or workspace, by their name: usernames and
+/// workspaces share one namespace, so `sender.id`, `user.id`,
+/// `repository.owner.id`, `github.actor_id` and
+/// `github.repository_owner_id` agree wherever the same name appears, and
+/// a personal workspace's repositories are owned by its person's number,
+/// as on GitHub. Case does not matter.
+pub fn account_id(login: &str) -> u64 {
+    github_id(&format!("account:{}", login.to_ascii_lowercase()))
+}
+
+/// An id as text of a number: one that is already a number as it is,
+/// a g1t id as its [`github_id`], nothing as nothing.
+fn id_text(id: &str) -> String {
+    if id.is_empty() || id.bytes().all(|b| b.is_ascii_digit()) {
+        id.to_owned()
+    } else {
+        github_id(id).to_string()
     }
 }
 
@@ -301,7 +353,34 @@ mod tests {
         assert_eq!(vars["GITHUB_JOB"], "build");
         assert_eq!(vars["RUNNER_OS"], "Linux");
         assert_eq!(vars["RUNNER_WORKSPACE"], "/home/runner/work");
-        assert_eq!(vars["GITHUB_REPOSITORY_OWNER_ID"], "");
+        assert_eq!(vars["GITHUB_REPOSITORY_OWNER_ID"], account_id("acme").to_string());
+    }
+
+    #[test]
+    fn ids_are_whole_numbers_as_on_github() {
+        let id = github_id("rep_01kpw0abcdefghjkmnpqrstvwx");
+        assert_eq!(id, github_id("rep_01kpw0abcdefghjkmnpqrstvwx"), "the same every time");
+        assert!(id > 0 && id < 1 << 53, "a safe integer in JavaScript");
+        assert_ne!(id, github_id("rep_01kpw0abcdefghjkmnpqrstvwy"));
+        assert_eq!(account_id("Ada"), account_id("ada"));
+        assert_ne!(account_id("ada"), github_id("ada"));
+        let info = RunInfo {
+            repository: "acme/web".into(),
+            repository_id: "rep_1".into(),
+            actor: "ada".into(),
+            actor_id: "usr_1".into(),
+            ..RunInfo::default()
+        };
+        let github = info.context("build", "", None);
+        assert_eq!(github["repository_id"], github_id("rep_1").to_string());
+        assert_eq!(github["actor_id"], account_id("ada").to_string());
+        assert_eq!(github["repository_owner_id"], account_id("acme").to_string());
+        let vars = info.variables("build");
+        assert_eq!(vars["GITHUB_REPOSITORY_ID"], github["repository_id"]);
+        assert_eq!(vars["GITHUB_ACTOR_ID"], github["actor_id"]);
+        assert!(vars["GITHUB_REPOSITORY_ID"].as_str().unwrap().bytes().all(|b| b.is_ascii_digit()));
+        // A number already is one.
+        assert_eq!(RunInfo { repository_id: "42".into(), ..RunInfo::default() }.context("", "", None)["repository_id"], "42");
     }
 
     #[test]

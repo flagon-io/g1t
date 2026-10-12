@@ -239,6 +239,11 @@ impl Work {
         for id in ids {
             let assessed = async {
                 if let Some(pull) = self.pull_by_id(&id).await? {
+                    // A pull request whose head moved: its refs in the
+                    // repository move with it, before its events go out.
+                    if moved.contains(&id) {
+                        self.keep_pull_refs(&pull).await;
+                    }
                     self.assess_mergeability(&pull).await?;
                 }
                 Ok::<_, worker::Error>(())
@@ -246,6 +251,37 @@ impl Work {
             if let Err(error) = assessed.await {
                 worker::console_warn!("mergeability of {id}: {error}");
             }
+        }
+    }
+
+    /// Points `refs/pull/<n>/head` in the repository at the pull request's
+    /// head, its objects copied from a fork or working copy, and
+    /// `refs/pull/<n>/merge` at the head merged into its base, as GitHub
+    /// keeps them for every open pull request (repos `pull_merge_ref`), so
+    /// that both can be fetched from the repository itself. A failure is
+    /// logged: it never holds up the push.
+    pub(crate) async fn keep_pull_refs(&self, pull: &Pull) {
+        let (Some(head), true) = (pull.head_commit.clone(), pull.status.is_active()) else {
+            return;
+        };
+        let kept: Result<g1t_contracts::repos::PullMergeRef> = g1t_kit::call(
+            &self.repos,
+            "pull_merge_ref",
+            &g1t_contracts::repos::PullMergeRefArgs {
+                repo_id: pull.repo_id.clone(),
+                source_id: pull.fork_repo_id.clone().unwrap_or_else(|| pull.repo_id.clone()),
+                head,
+                number: pull.number,
+                target_branch: pull.base.clone().filter(|base| !base.is_empty()),
+            },
+        )
+        .await;
+        match kept {
+            Ok(g1t_contracts::repos::PullMergeRef::Unavailable { reason }) => {
+                worker::console_log!("refs of pull request {}: no merge commit: {reason}", pull.id);
+            }
+            Ok(_) => {}
+            Err(error) => worker::console_warn!("refs of pull request {} not kept: {error}", pull.id),
         }
     }
 

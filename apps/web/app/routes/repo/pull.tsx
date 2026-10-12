@@ -677,6 +677,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       earlier={earlierChecks}
       canRerunWorkflows={canMerge}
       settingsUrl={canProtect ? `${base}/settings/branches` : null}
+      conflicting={mergeable === "conflicting" && !noChecks}
       error={actionData?.action === "rerun-failed" || actionData?.action === "rerun-workflow" ? actionData.error : null}
       loading={loading}
     />

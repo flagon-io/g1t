@@ -79,6 +79,34 @@ cd apps/docs && npm run build
 - Look at what you changed in a browser. Screenshots catch what type
   checks do not.
 
+## Checking g1t against GitHub
+
+g1t runs GitHub Actions workflows as GitHub does. The Conformance
+workflow is how that is checked: `.g1t/workflows/conformance.yml` and
+`.github/workflows/conformance.yml` are the same file (a test in
+`crates/actions` fails when they differ), and each run's
+`conformance-report` artifact records what its jobs saw: which `GITHUB_*`
+and `RUNNER_*` variables were set and of what kind, every key of the
+contexts and the event and its type, how the workspace is laid out, and
+the values of outputs, files, caches, artifacts and expressions that
+should be the same everywhere. It reads no secrets and runs only by hand.
+
+1. Run it on both, at the same commit: **Actions → Conformance → Run
+   workflow** on GitHub and on g1t.sh.
+2. Download each run's `conformance-report` artifact, and name the two
+   files `github.json` and `g1t.json`.
+3. Compare them:
+
+   ```sh
+   node scripts/conformance-diff.mjs github.json g1t.json
+   ```
+
+It lists what GitHub has that g1t lacks or has otherwise, then what only
+g1t has, and exits 1 while there are differences. A difference is a bug in
+g1t, or belongs in [What g1t can't do yet](https://docs.g1t.sh/about/limitations/).
+Add a step and a `CHECK_` value to the workflow for anything new g1t
+should match.
+
 ## Deploying
 
 Pushes to `main` deploy themselves: `.g1t/workflows/deploy.yml` runs

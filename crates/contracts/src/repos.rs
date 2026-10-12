@@ -905,6 +905,56 @@ pub enum PullBranchUpdate {
     },
 }
 
+/// `pull_merge_ref`: points `refs/pull/<number>/head` in the repository a
+/// pull request merges into at its head, fetching the head's objects from
+/// the fork first when it comes from one, and `refs/pull/<number>/merge`
+/// at the commit that merges that head into the base branch's tip, made
+/// without a sandbox: what GitHub's `pull_request` runs build. For the
+/// actions service, which has already decided the pull request's events
+/// may start runs. Returns `PullMergeRef`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullMergeRefArgs {
+    /// The repository the pull request merges into.
+    pub repo_id: String,
+    /// The pull request's fork, or the repository itself for a branch.
+    pub source_id: String,
+    /// The pull request's head commit.
+    pub head: String,
+    pub number: u32,
+    /// The branch it merges into; the default branch when absent.
+    #[serde(default)]
+    pub target_branch: Option<String>,
+}
+
+/// What came of `pull_merge_ref`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum PullMergeRef {
+    /// `refs/pull/<number>/merge` is `merge`, whose parents are `base`
+    /// (the base branch's tip) and `head`.
+    Merged { head: String, base: String, merge: String },
+    /// The head and the base branch change the same lines, or the same
+    /// binary file, differently: there is no merge commit, and
+    /// `refs/pull/<number>/merge` is removed, as on GitHub.
+    Conflict { head: String, base: String, paths: Vec<String> },
+    /// g1t could not make the merge commit itself (a file renamed on one
+    /// side and changed on the other, a very large change, a history it
+    /// could not follow), or either side has no commits: `reason` says why.
+    Unavailable { reason: String },
+}
+
+/// The ref a pull request's head is kept at in the repository it merges
+/// into, as on GitHub.
+pub fn pull_head_ref(number: u32) -> String {
+    format!("refs/pull/{number}/head")
+}
+
+/// The ref of a pull request's test merge commit, as on GitHub.
+pub fn pull_merge_ref(number: u32) -> String {
+    format!("refs/pull/{number}/merge")
+}
+
 /// `head`: the commit a branch points to, or null. For services reacting
 /// to a push, which have no viewer; it reveals nothing but a commit hash.
 /// Returns `Option<String>`.

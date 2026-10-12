@@ -60,7 +60,6 @@ pub(crate) struct Post {
 
 pub(crate) enum PostRun {
     Node { action_dir: PathBuf, script: String, using: String },
-    CacheSave { key: String, paths: Vec<String>, version: String },
     /// A Docker action's `post-entrypoint`.
     Docker(containers::DockerRun),
 }
@@ -786,7 +785,12 @@ fn step_debug(contexts: &Map<String, Value>, variables: &Value) -> bool {
     named("ACTIONS_STEP_DEBUG") || variables.get("RUNNER_DEBUG").is_some_and(|v| expr::to_text(v) == "1")
 }
 
-fn setup(mut spec: Value, api: Api) -> Result<Job> {
+fn setup(spec: Value, api: Api) -> Result<Job> {
+    setup_in(spec, api, paths::under_home(WORKSPACE), paths::under_home(TEMP))
+}
+
+/// [`setup`] with the workspace and temporary folder given: a test's own.
+fn setup_in(mut spec: Value, api: Api, workspace: PathBuf, temp: PathBuf) -> Result<Job> {
     let masks: Vec<String> = spec["masks"].as_array().map(|m| m.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
     let mut log = Log::new(api, masks);
     // Variables GitHub sets that a g1t from before them does not send.
@@ -797,8 +801,6 @@ fn setup(mut spec: Value, api: Api) -> Result<Job> {
         paths::relocate(&mut spec[part]);
     }
     paths::relocate(&mut spec["contexts"]["runner"]);
-    let workspace = paths::under_home(WORKSPACE);
-    let temp = paths::under_home(TEMP);
     log.matchers.workspace = workspace.clone();
     std::fs::create_dir_all(&workspace).context("could not make the workspace")?;
     std::fs::create_dir_all(&temp).context("could not make the temporary folder")?;
@@ -1148,7 +1150,6 @@ fn run_job(job: &mut Job) {
         job.log.step_state(number, &post.name, "in_progress", None);
         let ok = match &post.run {
             PostRun::Node { action_dir, script, using } => job.run_node(action_dir, script, &post.env, using),
-            PostRun::CacheSave { key, paths, version } => job.cache_save(key, paths, version),
             PostRun::Docker(run) => job.run_docker(run).0,
         };
         job.log.step_state(number, &post.name, "completed", Some(if ok { "success" } else { "failure" }));

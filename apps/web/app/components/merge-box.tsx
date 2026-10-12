@@ -324,6 +324,7 @@ export function ChecksSection({
   earlier,
   canRerunWorkflows,
   settingsUrl,
+  conflicting = false,
   error,
   loading = false,
   settled = false,
@@ -341,6 +342,11 @@ export function ChecksSection({
   canRerunWorkflows: boolean;
   /** Where the required checks are chosen, for those who may. */
   settingsUrl?: string | null;
+  /**
+   * It conflicts with its target, so its `pull_request` workflows do not
+   * run: there is no merge commit to build, as on GitHub.
+   */
+  conflicting?: boolean;
   error?: string | null;
   /** The workflow runs' jobs are still being read: their rows wait, busy. */
   loading?: boolean;
@@ -350,7 +356,8 @@ export function ChecksSection({
    */
   settled?: boolean;
 }) {
-  if (!run && statuses.length === 0 && required.length === 0) return null;
+  const held = conflicting && !settled;
+  if (!run && statuses.length === 0 && required.length === 0 && !held) return null;
 
   // Every workflow row, so they can be counted the same way they are shown.
   const workflow: Standing[] = statuses.flatMap((status) => {
@@ -374,7 +381,9 @@ export function ChecksSection({
         ? `${pending} of ${total} ${total === 1 ? "check is" : "checks are"} still running`
         : total > 0
           ? "All checks have passed"
-          : "Checks";
+          : held
+            ? "Workflows have not run"
+            : "Checks";
   const others = [
     failed > 0 && `${failed} failed`,
     pending > 0 && `${pending} running`,
@@ -409,6 +418,8 @@ export function ChecksSection({
             <CircleX size={16} className="text-danger" />
           ) : standing === "running" ? (
             <LoaderCircle size={16} className="animate-spin text-warn" />
+          ) : held && total === 0 ? (
+            <CircleAlert size={16} className="text-warn" />
           ) : (
             <CircleCheck size={16} className="text-success" />
           )}
@@ -416,6 +427,13 @@ export function ChecksSection({
         <div className="min-w-0 grow">
           <p className="text-sm font-medium">{headline}</p>
           {sub && <p className="mt-0.5 text-xs text-muted">{sub}</p>}
+          {held && (
+            <p className="mt-0.5 text-xs text-muted">
+              It conflicts with the branch it merges into, so workflows that run on{" "}
+              <code className="font-mono">pull_request</code> do not start for it: they build the pull request
+              merged into that branch, and there is no such merge. They run again once the conflicts are resolved.
+            </p>
+          )}
           {!summary && !settled && settingsUrl && (
             <p className="mt-0.5 text-xs text-muted">
               <Link to={settingsUrl} className="text-fg hover:underline">

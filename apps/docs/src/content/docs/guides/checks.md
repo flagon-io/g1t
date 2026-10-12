@@ -208,6 +208,11 @@ report as **g1t Actions**:
       -d "{\"name\": \"coverage\", \"head_sha\": \"$GITHUB_SHA\", \"conclusion\": \"neutral\", \"output\": {\"title\": \"81% covered\", \"summary\": \"Up 2% from main.\"}}"
 ```
 
+On a pull request's run, `GITHUB_SHA` is its
+[test merge commit](/guides/actions/#what-a-pull-requests-run-builds), as on
+GitHub: to show the check on the pull request, report it on the head,
+`${{ github.event.pull_request.head.sha || github.sha }}`.
+
 A pull request's runs from someone without the Write role get no token
 that can write, so they cannot report checks.
 

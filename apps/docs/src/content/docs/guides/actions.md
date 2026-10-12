@@ -66,14 +66,14 @@ gives their values out, so they cannot be copied across.
 | JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. An action that declares `node20` runs on Node 20 where the machine has one. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories) and [an action's pre and post](#an-actions-pre-and-post). |
 | Composite actions | The same. |
 | Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository) | The same: `with:` inputs checked against their `type`, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, `strategy.matrix` on the calling job (one call for each combination), `concurrency` on the calling job, and up to ten levels of workflows with at most 50 different reusable workflows in a run. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
-| `actions/checkout` | Checks out from g1t, with `ref`, `fetch-depth`, `path`, `repository`, `token` and `submodules`. |
+| `actions/checkout` | The action itself, at the version the step names, fetching from g1t with the job's token: every input and output, its post step that removes the credential, and a pull request's [test merge commit](#what-a-pull-requests-run-builds), which g1t keeps in the repository. `lfs` finds no Git LFS files: g1t keeps none. |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. Step summaries show on the run's page; see [job summaries](#job-summaries). |
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::`, `::echo::on` | The same: errors and warnings become annotations on the run, with their `file`, `line`, `col`, `endLine` and `endColumn`, and [masked](#masking-secrets) values stay hidden. |
 | Problem matchers (`::add-matcher::`, `::remove-matcher::`) | The same, so `actions/setup-node`, `setup-go` and `setup-python` turn compiler and linter output into annotations. See [problem matchers](#problem-matchers). |
 | `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is [the job's own token](#the-jobs-token); `GITHUB_TOKEN` is its alias. |
 | `environment:` on a job | The job waits for the environment's [protection rules](#environments), then reads each key's row for that environment, as environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. The name may be an expression. |
 | `actions/upload-artifact`, `actions/download-artifact`, `actions/upload-artifact/merge` | The same inputs and outputs as version 4: `retention-days`, `overwrite`, `compression-level`, `include-hidden-files`, `!` exclusions, download by `pattern` with `merge-multiple`, and from another run with `run-id` and `github-token`. Up to 5 GiB each; see [artifacts](#artifacts). |
-| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository and branch, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GiB each; see [the cache](#the-cache). |
+| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | The actions themselves, at the version the step names, saving to and restoring from the repository's cache: kept per repository and branch, found by `key` or the newest under a `restore-keys` prefix. Up to 2 GiB each; see [the cache](#the-cache). |
 | Actions that cache through the toolkit, such as `actions/setup-node` with `cache: npm` or `Swatinem/rust-cache` | The same: they save to and restore from the repository's cache. See [actions built on the toolkit](#actions-built-on-the-toolkit). |
 | sccache with `SCCACHE_GHA_ENABLED` | The same: its entries go to the repository's cache. See [caching Rust builds](#caching-rust-builds). |
 | `permissions: id-token: write` | The job can ask for an OIDC token, and trade it for a cloud provider's credentials. See [OIDC tokens](#oidc-tokens). |
@@ -105,6 +105,9 @@ anything in it that runs differently.
   the `pull_request` types `unassigned`, `locked` and `unlocked`, `edited`
   for a new title or description, or the `issues` types `unassigned`,
   `locked`, `unlocked`, `pinned` and `unpinned`.
+- **`actions/checkout` in a job container without git.** The action
+  then downloads a tarball through the API, which g1t does not serve yet.
+  Use an image with git, or install it in an earlier step.
 - **Background steps.** A step with `background: true`, or a `wait`,
   `wait-all`, `cancel` or `parallel` step, is refused: g1t does not run
   them yet.
@@ -243,8 +246,10 @@ them from g1t rather than from GitHub:
    GitHub, a tag before a branch of the same name, and looks again at
    most every 5 minutes, so a tag that moves is followed within minutes.
 3. The first job to use an action at a commit has g1t fetch that commit's
-   archive from GitHub and keep it. Every later job, in any workspace,
-   downloads the same bytes from g1t.
+   archive from GitHub and keep it, which can take up to two minutes.
+   While it waits, **Set up job** says so every 5 seconds
+   (`Waiting for g1t to fetch 'actions/setup-node@v4' (10s)`). Every
+   later job, in any workspace, downloads the same bytes from g1t.
 
 While GitHub doesn't answer, a ref reads as the commit it last named, and
 the job says so in a warning; an action g1t keeps still downloads. An
@@ -613,8 +618,7 @@ usually `root`. A few things differ from GitHub's runner:
   language images have both). In an image without them, such as Alpine,
   they run beside the container, on g1t's runner, with the same files,
   and the log says so.
-- `actions/checkout`, `actions/cache` and the artifact actions run on
-  g1t's runner, with the same files.
+- The artifact actions run on g1t's runner, with the same files.
 
 ### Building and pushing images
 
@@ -783,20 +787,19 @@ role can delete one before it expires.
 
 ## Actions built on the toolkit
 
-Many actions save to the cache with GitHub's toolkit, `@actions/cache`,
-rather than through `actions/cache`: `actions/setup-node`,
-`actions/setup-python`, `actions/setup-go` and `actions/setup-java` with
-`cache:`, `Swatinem/rust-cache`, and others. They work on g1t as they
-are: every job gets `ACTIONS_RUNTIME_TOKEN`, `ACTIONS_CACHE_URL` and
+`actions/cache` and many other actions save to the cache with GitHub's
+toolkit, `@actions/cache`: `actions/setup-node`, `actions/setup-python`,
+`actions/setup-go` and `actions/setup-java` with `cache:`,
+`Swatinem/rust-cache`, and others. They work on g1t as they are: every job gets `ACTIONS_RUNTIME_TOKEN`, `ACTIONS_CACHE_URL` and
 `ACTIONS_RESULTS_URL`, and g1t answers the toolkit's requests from the
 repository's cache.
 
 - Their entries are the repository's, under [the cache's](#the-cache)
   limits, and are deleted the same way.
-- An entry is restored only by the same kind of save: the toolkit names a
-  version for each entry, from its paths and compression. An entry
-  `setup-node` saved is not restored by `actions/cache`, and the other way
-  round.
+- An entry is found by its key and by the version the toolkit names for
+  it, from its paths and compression, as on GitHub: an entry `setup-node`
+  saved is restored by `actions/cache` with the same key and paths, and
+  the other way round.
 - An entry the toolkit sends whole, which it does below 128 MB, is not
   saved when it is over 100 MB, the most g1t takes in one request. The
   step warns and the job goes on.
@@ -990,7 +993,7 @@ those read g1t's the same way.
 | --- | --- |
 | `sub` | `repo:acme/web:environment:production` for a job with an `environment:`; `repo:acme/web:pull_request` for a pull request's run; otherwise `repo:acme/web:ref:refs/heads/main` (or `refs/tags/v1.2.0`) |
 | `repository`, `repository_owner` | `acme/web`, `acme` |
-| `repository_id`, `repository_owner_id` | g1t's ids for them, such as `rep_01kpw0…` |
+| `repository_id`, `repository_owner_id` | g1t's ids for them, such as `rep_01kpw0…` (not the numbers `github.repository_id` and `github.repository_owner_id` give, so trust policies already written keep matching) |
 | `repository_visibility` | `public` or `private` |
 | `ref`, `ref_type`, `ref_protected`, `sha` | `refs/heads/main`, `branch`, `"true"`, the commit |
 | `head_ref`, `base_ref` | A pull request's branches |
@@ -1167,6 +1170,18 @@ page asks for more every second while a step is running.
   logs** shows or hides the times; your browser remembers which.
 - A download (the job's `log.txt` and the run's zip) has the time at the
   start of every line, as GitHub's downloaded logs do.
+- Each line's number links to it, as on GitHub: `#step:3:12` is line 12
+  of step 3 (0 is **Set up job**). Opening the link opens the step and
+  any group the line is in, scrolls to the line and marks it.
+- A long step's log stays fast. Each new piece of a running step's log is
+  read once as it arrives, and a step of more than 2,000 lines draws only
+  the lines on screen and a few around them. Search, groups, line links,
+  following the newest line and **Jump to latest** work as they do on a
+  short log. Your browser's own find (Ctrl+F) only sees the lines that are
+  drawn, so use **Search logs** in a long log.
+- The runner numbers each batch of the log it sends. When it sends a
+  batch again because g1t's answer didn't reach it, g1t keeps the batch
+  once, so a line never shows twice.
 - If the page cannot reach g1t for a moment, it says **Reconnecting to the
   log** and tries again, waiting longer each time up to half a minute.
   A tab you are not looking at stops asking, and catches up when you come
@@ -1397,6 +1412,51 @@ request's `branches` filter, `github.base_ref` and
 always the default branch: see
 [pull requests into other branches](/guides/base-branches/).
 
+### What a pull request's run builds
+
+As on GitHub, a `pull_request` run builds the pull request merged into
+its base branch, not its head alone:
+
+| | Is |
+| --- | --- |
+| `github.ref`, `GITHUB_REF` | `refs/pull/<number>/merge` |
+| `github.sha`, `GITHUB_SHA` | The test merge commit at `refs/pull/<number>/merge`: the head merged into the base branch's latest commit, its parents the base's commit and then the head, with the message `Merge <head> into <base>` |
+| `github.event.pull_request.head.sha` | The head commit |
+| `github.event.pull_request.merge_commit_sha` | The test merge commit |
+| `actions/checkout` with no `ref` | The test merge commit, fetched from the repository itself as `+<sha>:refs/remotes/pull/<number>/merge` |
+
+The workflow files the run uses are read from the test merge commit too.
+Its status, its check runs and the run itself stay on the pull request's
+head, so required checks hold the merge as before. `pull_request_review`
+runs build the same commit. `pull_request_target` runs are unchanged: they
+build the base branch, never the pull request's code.
+
+g1t keeps two refs in the repository for every open pull request, from a
+branch, a fork or a pull request g1t made: `refs/pull/<number>/head` at
+its head (a fork's head commit is copied into the repository), and
+`refs/pull/<number>/merge` at its test merge commit. Both move each time
+the head is pushed to, the pull request is opened or reopened, or its
+base branch changes, and both can be fetched like any branch:
+
+```sh
+git fetch origin refs/pull/12/head refs/pull/12/merge
+```
+
+The merge commit moves when the head does. When only the base branch
+moves, it moves at the pull request's next event, as on GitHub, where
+workflows do not run again because the base branch moved.
+
+**A pull request with conflicts runs no `pull_request` workflows**, as on
+GitHub: it has no merge commit to build. Its checks box says so, and the
+runs start once the conflicts are resolved and the head is pushed again.
+g1t merges the two the way git does: a file only one side changed is
+taken from it, and changes both made to the same file merge unless they
+change the same or neighbouring lines differently, or the file is binary.
+When g1t cannot make the merge itself (a file one side renamed or deleted
+while the other changed it, a file where the other side has a directory,
+more than 300 changed files, or a file over 1 MB that both changed), the
+run builds the head commit instead, as it did before.
+
 A pull request from outside the workspace may wait for approval before
 its workflows run: see [pull requests from outside](#pull-requests-from-outside).
 
@@ -1406,10 +1466,50 @@ g1t made, `pull_request.user` is g1t (`login` `g1t`, `type` `Bot`), and
 on anyone else's. `github.event.issue.requested_by` does the same for an
 issue g1t's agent filed. `sender` is whoever caused the event.
 
+## The event payload
+
+`github.event`, and the file at `GITHUB_EVENT_PATH`, hold the webhook
+payload GitHub would send for the event, with the same keys and types.
+
+- **Ids are numbers.** `repository.id`, `pull_request.id`, `issue.id`,
+  `review.id`, `sender.id`, every `user.id` and `owner.id` are whole
+  numbers, the same for an object wherever it appears and below 2^53, so
+  JavaScript reads them exactly. `node_id` is g1t's own id, such as
+  `rep_01kpw0…`. A person's or workspace's number comes from their name,
+  so it changes when they are renamed. `github.repository_id`,
+  `github.repository_owner_id`, `github.actor_id` and their
+  `GITHUB_REPOSITORY_ID`, `GITHUB_REPOSITORY_OWNER_ID` and
+  `GITHUB_ACTOR_ID` variables are the same numbers, as text.
+- **What the API takes by id keeps g1t's id.** `comment.id`,
+  `release.id`, `deployment.id`, `deployment_status.id`,
+  `workflow_run.id` and `workflow_run.workflow_id` are g1t's ids
+  (`cmt_…`, `rel_…`, `run_…`, `wfl_…`), so you can pass them straight
+  back, as in `PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}`
+  or `run-id: ${{ github.event.workflow_run.id }}`.
+- **`repository.owner.type`** is `User` for a repository in a person's
+  own workspace and `Organization` for any other workspace's.
+- **On `push`,** `created` is true for a new branch or tag, and `forced`
+  is true when the commit before the push is not in the new commit's
+  history. g1t reads the 20 latest commits to tell, so a forced push onto
+  a longer history says `false`. `head_commit` is the commit pushed and
+  `commits` lists at most 20, oldest first.
+- **On pull request events,** `pull_request.base.sha` is the tip of the
+  branch it merges into when the event happened, and
+  `pull_request.merge_commit_sha` is set only once it is merged, to the
+  commit it landed as.
+- **On `workflow_run`,** `workflow_run` has the followed run's `name`,
+  `path`, `event`, `status`, `conclusion`, `head_branch`, `head_sha`,
+  `head_commit`, `run_number`, `run_attempt`, `actor`, `created_at`,
+  `updated_at`, `html_url`, `repository` and `pull_requests` (each with
+  its `number` and `url`).
+
+Labels on `issue` and `pull_request` have their `id` and `name` but no
+`color`; a `labeled` event's own `label` has its color.
+
 ## Checks
 
 A pull request's checks are its workflows. Each workflow that runs on
-`pull_request` runs on every pull request's head, whoever opened it, a
+`pull_request` runs for every pull request, whoever opened it, a
 person or an agent, and its runs report a check named after the workflow:
 a workflow with `name: CI` reports `CI`, with the status context
 `CI / pull_request` (the workflow's name and the event). Each of its jobs
