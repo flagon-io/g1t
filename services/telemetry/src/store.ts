@@ -660,7 +660,8 @@ export class Store {
     const { clauses, args } = this.filter(q, "time_us");
     const { words, pairs } = parseSearch(q.text);
     this.pairs(pairs, ["method", "route", "status", "outcome", "region", "country", "trace_id", "service", "environment", "deployment_id", "commit_sha", "trigger"], clauses, args, "");
-    for (const w of words) clauses.push("(url LIKE ? OR error_message LIKE ? OR error_name LIKE ?)"), args.push(`%${w}%`, `%${w}%`, `%${w}%`);
+    // Software outside g1t.page often reports a route and no address: both are searched.
+    for (const w of words) clauses.push("(url LIKE ? OR route LIKE ? OR error_message LIKE ? OR error_name LIKE ?)"), args.push(`%${w}%`, `%${w}%`, `%${w}%`, `%${w}%`);
     if (q.status?.length) {
       const parts: string[] = [];
       for (const s of q.status) {

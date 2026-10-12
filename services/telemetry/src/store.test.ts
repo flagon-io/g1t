@@ -208,6 +208,14 @@ test("a trace joins the request on g1t.page with the app's own spans and logs", 
   const trace = store.trace(TRACE)!;
   assert.deepEqual(trace.spans.map((s) => [s.name, s.parent_span_id]), [["GET /users/:id", null], ["db.query", "ddddddddddddddd1"]]);
   assert.equal(trace.logs[0].body, "in handler");
+  // Found by its route too: an OTLP server span often has no address.
+  const { secret: other } = await store.createToken("prj_1", "api", null);
+  await store.ingest(
+    readTraces({ resourceSpans: [{ resource: { attributes: [{ key: "service.name", value: { stringValue: "billing" } }] }, scopeSpans: [{ spans: [{ traceId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", spanId: "bbbbbbbbbbbbbbbb", name: "POST", kind: 2, startTimeUnixNano: `${NOW_MS}000000`, attributes: [{ key: "http.route", value: { stringValue: "/invoices" } }] }] }] }] }, OTLP_DOOR, 10),
+    [],
+    other,
+  );
+  assert.equal(store.requests({ text: "invoices" }).items.length, 1);
   const list = store.traces({});
   assert.equal(list.items[0].trace_id, TRACE);
   assert.equal(list.items[0].name, "GET /users/:id");
