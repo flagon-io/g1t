@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, KanbanSquare, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorCog, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, SlidersHorizontal, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Bot, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Coins, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogOut, Mail, MonitorCog, MonitorDown, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, SlidersHorizontal, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -263,15 +263,6 @@ function SidebarSoonLink({
     </SidebarMenuItem>
   );
 }
-
-/** Icons for what spans projects. */
-const WORKSPACE_ICONS: Record<string, ReactNode> = {
-  board: <KanbanSquare size={15} />,
-  roadmap: <GanttChart size={15} />,
-  teams: <UsersRound size={15} />,
-  packages: <Package size={15} />,
-  fleet: <Bot size={15} />,
-};
 
 /** The Soon pages of a section, as paths, so its link is current on them. */
 function soonPaths(base: string, section: RoadmapItem["section"]): string[] {
@@ -1212,13 +1203,6 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
             {INSIGHTS.title}
           </SidebarSoonLink>
         )}
-        {roadmapIn("Workspace")
-          .filter((item) => item.key !== "insights" && item.key !== "teams" && item.key !== "fleet")
-          .map((item) => (
-            <SidebarSoonLink key={item.key} to={`/${slug}/-/soon/${item.key}`} icon={WORKSPACE_ICONS[item.key] ?? <Sparkles size={15} />} about={item.summary}>
-              {item.title === "Board" ? "Boards" : item.title}
-            </SidebarSoonLink>
-          ))}
       </NavRows>
       {shared.length > 0 && (
         <>

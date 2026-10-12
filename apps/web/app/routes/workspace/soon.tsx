@@ -32,7 +32,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   return { item, inProjects };
 }
 
-/** What a workspace will have across its projects: boards, the roadmap, packages, the fleet. */
+/** What a workspace will have across its projects. */
 export default function WorkspaceSoon({ loaderData, params }: Route.ComponentProps) {
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
