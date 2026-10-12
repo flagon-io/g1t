@@ -829,6 +829,10 @@ impl Work {
             },
         )?;
         let reviews = latest_reviews(verdicts);
+        // A required check named for a g1t Actions job is met by that job.
+        let requires_checks =
+            applicable.iter().any(|ruleset| ruleset.rules.iter().any(|entry| matches!(&entry.rule, Rule::RequiredStatusChecks(_))));
+        let statuses = if requires_checks { self.with_job_checks(&repo.id, pull.head_commit.as_deref(), statuses).await? } else { statuses };
         let facts = MergeFacts {
             git_ref: git_ref.clone(),
             agent_change: agent,

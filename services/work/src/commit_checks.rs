@@ -274,7 +274,7 @@ impl Work {
     }
 
     /// g1t Actions' runs and jobs, by commits, by a run or by a job.
-    async fn actions_runs(&self, args: ActionsChecksArgs) -> Result<Vec<RunDetail>> {
+    pub(crate) async fn actions_runs(&self, args: ActionsChecksArgs) -> Result<Vec<RunDetail>> {
         // Without the actions service a commit's other checks still show.
         Ok(g1t_kit::call(&self.actions, "check_runs", &args).await.unwrap_or_default())
     }
