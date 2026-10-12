@@ -298,8 +298,7 @@ fn page_items(body: &Value) -> Vec<Value> {
 fn list_ops(ctx: &Ctx, query: &str) -> Result<()> {
     let q = query.to_lowercase();
     let mapped = crate::mapping::by_operation();
-    let found: Vec<&Operation> = ops::OPERATIONS
-        .iter()
+    let found: Vec<&Operation> = ops::all()
         .filter(|op| {
             q.is_empty()
                 || op.id.contains(&q)

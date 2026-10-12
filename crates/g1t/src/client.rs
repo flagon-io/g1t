@@ -71,6 +71,19 @@ impl Client {
         }
     }
 
+    /// The same client, giving up sooner: for commands an agent's hooks run
+    /// in the background, which must not hang on a slow network.
+    pub fn with_timeouts(mut self, connect: Duration, read: Duration) -> Client {
+        self.agent = ureq::AgentBuilder::new()
+            .timeout_connect(connect)
+            .timeout_read(read)
+            .timeout_write(read)
+            .user_agent(&format!("g1t-cli/{}", env!("CARGO_PKG_VERSION")))
+            .redirects(5)
+            .build();
+        self
+    }
+
     pub fn has_token(&self) -> bool {
         self.token.is_some()
     }
@@ -175,6 +188,13 @@ impl Client {
     ) -> Result<Value> {
         let bytes = body.map(|b| serde_json::to_vec(b).expect("json"));
         let reply = self.raw(method, path, query, &[], bytes)?;
+        if older_server(&reply) {
+            return Err(Error::failed(format!(
+                "{} has no {method} {path}: the g1t server is older than this CLI ({}), and cannot do this yet.",
+                self.host.api,
+                env!("CARGO_PKG_VERSION")
+            )));
+        }
         if !(200..300).contains(&reply.status) {
             return Err(self.api_error(&reply));
         }
@@ -229,6 +249,16 @@ impl Client {
             format!(" --hostname {}", self.host.name)
         }
     }
+}
+
+/// Whether the API answered that it has no such route at all, as a server
+/// older than the CLI does for an operation it does not have, rather than
+/// that the thing asked about was not found.
+pub fn older_server(reply: &Reply) -> bool {
+    reply.status == 404
+        && reply
+            .json()
+            .is_some_and(|body| body["error"]["message"].as_str() == Some("No such endpoint."))
 }
 
 /// One call to an operation, its path filled in as it is built.

@@ -99,8 +99,16 @@ pub enum Command {
     Deploy(DeployCommand),
     /// A project's logs and errors.
     Logs(LogsArgs),
-    /// What needs you: your pull requests, reviews asked of you, your issues, failing checks.
+    /// What needs you: your pull requests, reviews asked of you, your issues, failing checks, and your sessions and claims here.
     Status(StatusArgs),
+    /// Sessions: one run of an agent's harness, recorded as it works.
+    #[command(subcommand)]
+    Session(SessionCommand),
+    /// Coordinate work on issues: context, claims, hand-offs, dependencies, events.
+    #[command(subcommand)]
+    Work(WorkCommand),
+    /// Why a file or line is as it is: its commit, pull request, issue, decisions and sessions.
+    Why(WhyArgs),
     /// Call any API operation or path, with your token.
     Api(ApiArgs),
     /// Open the repository, an issue or a pull request in the browser.
@@ -779,6 +787,274 @@ pub struct LogsArgs {
     pub follow: bool,
     #[arg(short = 'L', long, default_value_t = 50)]
     pub limit: usize,
+}
+
+// --- session ----------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Harness {
+    ClaudeCode,
+    Codex,
+    Cursor,
+    Copilot,
+    Other,
+}
+
+impl Harness {
+    pub fn name(self) -> &'static str {
+        match self {
+            Harness::ClaudeCode => "claude_code",
+            Harness::Codex => "codex",
+            Harness::Cursor => "cursor",
+            Harness::Copilot => "copilot",
+            Harness::Other => "other",
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SessionCommand {
+    /// Start a session and remember it for this working copy. Prints its id.
+    #[command(after_help = "\
+The id is kept in .git/g1t/session (each worktree has its own); G1T_SESSION overrides it.
+Starting again with the same --harness-session-id returns the same session.")]
+    Start(SessionStartArgs),
+    /// Say the current session is still working; renews its claims.
+    Heartbeat,
+    /// Record a note, prompt or message in the current session.
+    Log(SessionLogArgs),
+    /// Attach the current session to an issue, a pull request or a branch.
+    Attach(SessionAttachArgs),
+    /// End the current session.
+    End(SessionEndArgs),
+    /// List the repository's sessions.
+    List(SessionListArgs),
+    /// Show a session and what it recorded; the current one when left out.
+    View(SessionViewArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct SessionStartArgs {
+    /// The issue it works on.
+    #[arg(short, long)]
+    pub issue: Option<u64>,
+    /// The pull request it works on.
+    #[arg(short, long)]
+    pub pull: Option<u64>,
+    /// The harness running it.
+    #[arg(long, value_enum, default_value_t = Harness::Other)]
+    pub harness: Harness,
+    /// The harness's own id for the run, which makes starting again return the same session.
+    #[arg(long, value_name = "ID")]
+    pub harness_session_id: Option<String>,
+    #[arg(short, long)]
+    pub title: Option<String>,
+    /// The branch it works on; the current one when left out.
+    #[arg(short, long)]
+    pub branch: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum EntryKind {
+    Note,
+    Prompt,
+    Message,
+    ToolCall,
+}
+
+impl EntryKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            EntryKind::Note => "note",
+            EntryKind::Prompt => "prompt",
+            EntryKind::Message => "message",
+            EntryKind::ToolCall => "tool_call",
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct SessionLogArgs {
+    /// What to record; - reads it from stdin.
+    pub text: String,
+    #[arg(short, long, value_enum, default_value_t = EntryKind::Note)]
+    pub kind: EntryKind,
+    /// The tool, for a tool_call.
+    #[arg(long)]
+    pub tool: Option<String>,
+    /// A key that makes recording it again do nothing.
+    #[arg(long)]
+    pub key: Option<String>,
+}
+
+#[derive(Debug, Args)]
+#[command(group(clap::ArgGroup::new("what").required(true).multiple(true).args(["issue", "pull", "branch", "head_commit"])))]
+pub struct SessionAttachArgs {
+    #[arg(short, long)]
+    pub issue: Option<u64>,
+    #[arg(short, long)]
+    pub pull: Option<u64>,
+    #[arg(short, long)]
+    pub branch: Option<String>,
+    /// The commit it pushed last.
+    #[arg(long, value_name = "SHA")]
+    pub head_commit: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct SessionEndArgs {
+    /// Why it ended: done, abandoned, handed_off...
+    #[arg(short, long)]
+    pub reason: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum SessionState {
+    Active,
+    Idle,
+    Ended,
+}
+
+#[derive(Debug, Args)]
+pub struct SessionListArgs {
+    /// Only sessions in this state.
+    #[arg(short, long, value_enum)]
+    pub state: Option<SessionState>,
+    #[arg(short, long)]
+    pub issue: Option<u64>,
+    #[arg(short, long)]
+    pub pull: Option<u64>,
+    #[arg(short = 'L', long, default_value_t = 20)]
+    pub limit: usize,
+}
+
+#[derive(Debug, Args)]
+pub struct SessionViewArgs {
+    /// The session's id (ses_…); the current one when left out.
+    pub id: Option<String>,
+}
+
+// --- work -------------------------------------------------------------
+
+#[derive(Debug, Subcommand)]
+pub enum WorkCommand {
+    /// Everything about an issue's work: claims, sessions, pull requests, dependencies, decisions.
+    Context(WorkNumber),
+    /// Claim an issue: say you are working on it. Others are told, never stopped.
+    Claim(WorkClaimArgs),
+    /// Release your claim on an issue.
+    Release(WorkReleaseArgs),
+    /// Hand an issue over to someone else, or to anyone.
+    Handoff(WorkHandoffArgs),
+    /// Active claims and sessions in the repository.
+    List,
+    /// Say an issue waits on others: it is blocked by them.
+    Block(WorkBlockArgs),
+    /// Say an issue no longer waits on others.
+    Unblock(WorkBlockArgs),
+    /// The repository's events; --follow keeps printing them as they happen.
+    #[command(after_help = "\
+Examples:
+  g1t work events --follow --issue 12
+  g1t work events --follow --type integration.failed --type overlap.detected --json
+With --json, each event is one JSON object on a line of its own.")]
+    Events(WorkEventsArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct WorkNumber {
+    /// The issue's number.
+    pub number: u64,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkClaimArgs {
+    /// The issue's number.
+    pub number: u64,
+    /// What you are doing about it.
+    #[arg(short, long)]
+    pub note: Option<String>,
+    /// How long the claim lasts unless renewed: 30m, 2h (at most 4h).
+    #[arg(long, value_name = "DURATION", value_parser = parse_ttl)]
+    pub ttl: Option<u64>,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkReleaseArgs {
+    pub number: u64,
+    /// Why: done, blocked, abandoned...
+    #[arg(short, long)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkHandoffArgs {
+    pub number: u64,
+    /// Who takes it over; anyone when left out.
+    #[arg(long, value_name = "LOGIN")]
+    pub to: Option<String>,
+    /// Where it stands and what is left, for whoever takes it.
+    #[arg(short, long)]
+    pub note: String,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkBlockArgs {
+    /// The issue that waits.
+    pub number: u64,
+    /// The issue it waits on; repeat for more.
+    #[arg(long = "by", value_name = "NUMBER", required = true)]
+    pub by: Vec<u64>,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkEventsArgs {
+    /// Keep printing events as they happen, until stopped.
+    #[arg(short, long)]
+    pub follow: bool,
+    /// Only events of this type; repeat for more.
+    #[arg(short = 't', long = "type", value_name = "TYPE")]
+    pub types: Vec<String>,
+    /// Only events about this issue or pull request; repeat for more.
+    #[arg(short, long = "issue", value_name = "NUMBER")]
+    pub issues: Vec<u64>,
+    /// Only events since then: 15m, 2h, 1d, or a time like 2026-10-12T09:00:00Z.
+    #[arg(short, long)]
+    pub since: Option<String>,
+    /// Start after this event id, as a follow that stopped would resume.
+    #[arg(long, value_name = "EVENT_ID")]
+    pub after: Option<String>,
+    /// How many past events to show first.
+    #[arg(short = 'L', long, default_value_t = 20)]
+    pub limit: usize,
+}
+
+/// `30m`, `2h`, `90` (minutes) as minutes, from 1 minute to 4 hours.
+pub fn parse_ttl(text: &str) -> Result<u64, String> {
+    let text = text.trim();
+    let (number, unit) = text.split_at(text.find(|c: char| !c.is_ascii_digit()).unwrap_or(text.len()));
+    let wrong = || format!("`{text}` is not a duration: write it as 30m or 2h");
+    let number: u64 = number.parse().map_err(|_| wrong())?;
+    let minutes = match unit {
+        "" | "m" | "min" => number,
+        "h" => number * 60,
+        _ => return Err(wrong()),
+    };
+    if minutes == 0 || minutes > 240 {
+        return Err("a claim lasts from 1 minute to 4 hours".to_owned());
+    }
+    Ok(minutes)
+}
+
+// --- why --------------------------------------------------------------
+
+#[derive(Debug, Args)]
+pub struct WhyArgs {
+    /// A file, or a line of it as PATH:LINE.
+    pub target: String,
+    /// The branch, tag or commit to read it at; the default branch when left out.
+    #[arg(long = "ref", value_name = "REF")]
+    pub reference: Option<String>,
 }
 
 // --- status, api, browse ---------------------------------------------

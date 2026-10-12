@@ -65,8 +65,57 @@ impl Operation {
 }
 
 pub fn find(id: &str) -> Option<&'static Operation> {
-    OPERATIONS.iter().find(|op| op.id == id)
+    OPERATIONS
+        .iter()
+        .find(|op| op.id == id)
+        .or_else(|| PENDING.iter().find(|op| op.id == id))
 }
+
+/// Every operation the CLI can call: the generated table's, then the
+/// pending ones it does not have yet.
+pub fn all() -> impl Iterator<Item = &'static Operation> {
+    OPERATIONS
+        .iter()
+        .chain(PENDING.iter().filter(|op| !OPERATIONS.iter().any(|known| known.id == op.id)))
+}
+
+const OWNER: Param = Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] };
+const NAME: Param = Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] };
+const NUMBER: Param = Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] };
+const ID: Param = Param { name: "id", location: In::Path, kind: "string", required: true, values: &[] };
+
+const fn pending(
+    id: &'static str,
+    method: &'static str,
+    path: &'static str,
+    tag: &'static str,
+    summary: &'static str,
+    params: &'static [Param],
+) -> Operation {
+    Operation { id, method, path, tag, summary, scope: None, params, body: &[] }
+}
+
+/// Operations the coordination commands (`g1t session`, `g1t work`,
+/// `g1t why`) call that the API's OpenAPI document does not describe yet,
+/// with the paths the API serves them at. Once the generated table has one,
+/// its entry here must go (a test says so), and the table's is used.
+/// Against a server that does not have them, a call fails saying the
+/// server is older than the CLI ([`crate::client::Client::send`]).
+#[rustfmt::skip]
+pub static PENDING: &[Operation] = &[
+    pending("start_session", "POST", "/repos/{owner}/{name}/sessions", "Sessions", "Start a session", &[OWNER, NAME]),
+    pending("list_sessions", "GET", "/repos/{owner}/{name}/sessions", "Sessions", "List sessions", &[OWNER, NAME]),
+    pending("get_session", "GET", "/repos/{owner}/{name}/sessions/{id}", "Sessions", "Get a session", &[OWNER, NAME, ID]),
+    pending("update_session", "PATCH", "/repos/{owner}/{name}/sessions/{id}", "Sessions", "Update a session", &[OWNER, NAME, ID]),
+    pending("end_session", "POST", "/repos/{owner}/{name}/sessions/{id}/end", "Sessions", "End a session", &[OWNER, NAME, ID]),
+    pending("record_session_entries", "POST", "/repos/{owner}/{name}/sessions/{id}/entries", "Sessions", "Record session entries", &[OWNER, NAME, ID]),
+    pending("claim_issue", "POST", "/repos/{owner}/{name}/issues/{number}/claim", "Issues", "Claim an issue", &[OWNER, NAME, NUMBER]),
+    pending("release_claim", "POST", "/repos/{owner}/{name}/issues/{number}/release", "Issues", "Release a claim", &[OWNER, NAME, NUMBER]),
+    pending("hand_off_issue", "POST", "/repos/{owner}/{name}/issues/{number}/handoff", "Issues", "Hand off an issue", &[OWNER, NAME, NUMBER]),
+    pending("get_work", "GET", "/repos/{owner}/{name}/issues/{number}/work", "Issues", "Get an issue's work context", &[OWNER, NAME, NUMBER]),
+    pending("list_claims", "GET", "/repos/{owner}/{name}/claims", "Issues", "List claims", &[OWNER, NAME]),
+    pending("why", "GET", "/repos/{owner}/{name}/why", "Repositories", "Why a line is as it is", &[OWNER, NAME]),
+];
 
 /// The operation, which must exist: commands name only operations the
 /// mapping test has checked.
@@ -242,6 +291,22 @@ mod tests {
             have == want,
             "crates/g1t/src/ops_table.rs is out of date with apps/docs/src/data/openapi.json: run G1T_WRITE_OPS=1 cargo test -p g1t ops_table"
         );
+    }
+
+    #[test]
+    fn pending_operations_go_once_the_table_has_them() {
+        for op in PENDING {
+            assert!(
+                !OPERATIONS.iter().any(|known| known.id == op.id),
+                "the API now describes {}: remove it from PENDING in crates/g1t/src/ops.rs",
+                op.id
+            );
+            for p in op.path_params() {
+                assert!(op.path.contains(&format!("{{{}}}", p.name)), "{}: {}", op.id, p.name);
+            }
+        }
+        assert_eq!(find("get_work").unwrap().path, "/repos/{owner}/{name}/issues/{number}/work");
+        assert!(find("list_events").is_some());
     }
 
     #[test]
