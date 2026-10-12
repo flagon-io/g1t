@@ -1711,6 +1711,12 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         if message.body().kind == "git.push" && github::first_push_in_batch(&mut pushed, message.body()) {
             remotes::Mirrors::new(&env)?.on_event(message.body()).await?;
         }
+        // A status on a commit: reported to a GitHub mirror's commit there.
+        if message.body().kind == "status.created" {
+            remotes::Mirrors::new(&env)?.on_status(message.body()).await?;
+            message.ack();
+            continue;
+        }
         service.on_event(message.body()).await?;
         message.ack();
     }

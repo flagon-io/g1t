@@ -10,6 +10,7 @@
 //! failing jobs printed; once it is out of revisions, only a required
 //! check holds the pull request for a person.
 
+use g1t_contracts::checks::StatusEvent;
 use g1t_contracts::events::ChecksEvent;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{
@@ -184,8 +185,27 @@ impl Work {
             .collect())
     }
 
+    /// A status from another part of g1t: a workflow run, a deploy, a scan.
+    /// Published as `status.created`, as one set through the API is, so
+    /// webhooks hear it and a GitHub mirror's commit is told (integrations).
+    /// Publishing is best effort: the status is kept either way.
     pub(crate) async fn set_commit_status(&self, a: SetCommitStatusArgs) -> Result<Outcome<bool>> {
-        self.store_status(a, None).await
+        let event = StatusEvent {
+            repo_id: a.repo_id.clone(),
+            sha: a.sha.clone(),
+            context: a.context.clone(),
+            state: a.state.clone(),
+            description: a.description.clone(),
+            target_url: a.target_url.clone(),
+        };
+        let repo_id = a.repo_id.clone();
+        let stored = self.store_status(a, None).await?;
+        if matches!(stored, Outcome::Ok(_))
+            && let Err(error) = self.publish_as("status.created", &repo_id, None, event).await
+        {
+            worker::console_error!("status.created not published: {error}");
+        }
+        Ok(stored)
     }
 
     /// Sets a status, standing for check run `check_run_id` if it does,

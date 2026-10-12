@@ -192,6 +192,8 @@ export function mirrorSettingsFrom(form: FormLike, current: MirrorSettings): Mir
     keepCiWarm: on("keepCiWarm"),
     githubWorkflows: on("githubWorkflows"),
     holdDeploys: on("holdDeploys"),
+    // Only a GitHub mirror's form carries it.
+    reportChecks: form.get("provider") === "github" ? on("reportChecks") : current.reportChecks,
   };
 }
 

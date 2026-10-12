@@ -308,6 +308,12 @@ function LeaderCard({
             <span className="min-w-0 break-words">{remote.lastError}</span>
           </p>
         )}
+        {remote.checksProblem && remote.settings.reportChecks && (
+          <p className="mx-4 mb-3 flex items-start gap-2 rounded-lg border border-warn/40 bg-warn/5 px-3 py-2 text-xs text-fg-soft">
+            <TriangleAlert size={13} className="mt-px shrink-0 text-warn" aria-hidden="true" />
+            <span className="min-w-0 break-words">{remote.checksProblem}</span>
+          </p>
+        )}
         {canManage && state !== "handing_back" && (
           <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
             {(state === "standby" || state === "ci") && (
@@ -516,6 +522,7 @@ function LeaderSettings({
     <Form method="post" className="space-y-10">
       <input type="hidden" name="intent" value="settings" />
       <input type="hidden" name="kind" value="leader" />
+      <input type="hidden" name="provider" value={remote.provider} />
       <input type="hidden" name="remoteId" value={remote.id} />
       <fieldset disabled={!canManage} className="space-y-10">
         <Section
@@ -567,6 +574,12 @@ function LeaderSettings({
           <SettingToggle name="holdDeploys" on={settings.holdDeploys} title="Hold workflows that deploy for approval">
             A job that deploys waits for someone to approve it, so taking over never ships anything by surprise.
           </SettingToggle>
+          {remote.provider === "github" && (
+            <SettingToggle name="reportChecks" on={settings.reportChecks} title="Report checks to GitHub">
+              While g1t runs workflows here, each run and deploy shows on its commit on {remote.name} as a status such as g1t / CI /
+              push, linking back to g1t. Needs the GitHub App's Commit statuses permission.
+            </SettingToggle>
+          )}
         </Section>
       </fieldset>
       {canManage && (

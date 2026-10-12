@@ -27,10 +27,18 @@
 //! Nothing happens on its own unless someone asked for it in the link's
 //! settings: by default an unreachable remote is only shown on the
 //! repository, and a takeover starts when someone starts it.
+//!
+//! While g1t runs a GitHub mirror's workflows (CI failover, a takeover, CI
+//! kept warm), the statuses set on its commits go back to the commit on
+//! GitHub as `g1t / <context>` (`on_status`), unless the link's
+//! `report_checks` is off. GitHub's refusals that last, such as the App
+//! lacking the Commit statuses permission, are kept on the link
+//! (`checks_error`) for its page.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use g1t_contracts::access::{self, Capability};
+use g1t_contracts::checks::StatusEvent;
 use g1t_contracts::events::{NewEvent, Publish};
 use g1t_contracts::identity::{ListMembersArgs, Member};
 use g1t_contracts::mirrors::*;
@@ -116,6 +124,99 @@ pub fn clean_clone_url(url: &str) -> Option<String> {
 /// The web address of a clone address.
 pub fn web_url(clone_url: &str) -> String {
     clone_url.strip_suffix(".git").unwrap_or(clone_url).to_owned()
+}
+
+const CHECKS_PREFIX: &str = "g1t / ";
+/// The longest description GitHub keeps on a status.
+const GITHUB_DESCRIPTION_CHARS: usize = 140;
+/// What the mirror's page says when the GitHub App cannot set statuses.
+pub const CHECKS_PERMISSION: &str = "g1t can't report checks to GitHub: the GitHub App needs the Commit statuses permission (read and write). An owner of the GitHub account can accept it in the App's settings on GitHub.";
+
+/// What g1t's checks are called on GitHub: under `g1t / `, so they read
+/// apart from GitHub's own (`g1t / CI / push`). A context already named
+/// for g1t (`g1t / deploy`) keeps its name.
+pub fn github_context(context: &str) -> String {
+    let context = context.trim();
+    if context.starts_with(CHECKS_PREFIX) { context.to_owned() } else { format!("{CHECKS_PREFIX}{context}") }
+}
+
+/// A g1t commit status's state as GitHub takes it. The two name the same
+/// four; anything else is not sent.
+pub fn github_state(state: &str) -> Option<&'static str> {
+    Some(match state {
+        "pending" => "pending",
+        "success" => "success",
+        "failure" => "failure",
+        "error" => "error",
+        _ => return None,
+    })
+}
+
+/// Whether a link reports g1t's checks to its remote now: a mirror of a
+/// GitHub repository, with the setting on, while g1t runs its workflows
+/// (CI failover, a takeover or its hand-back, or CI kept warm). A mirror
+/// standing by quietly runs nothing, so it has nothing to report.
+pub fn reports_checks(provider: RemoteProvider, leads: bool, state: RemoteState, settings: &MirrorSettings) -> bool {
+    if provider != RemoteProvider::Github || !leads || !settings.report_checks {
+        return false;
+    }
+    match state {
+        RemoteState::Standby => settings.keep_ci_warm,
+        RemoteState::Ci | RemoteState::Takeover | RemoteState::HandingBack => true,
+        RemoteState::Following | RemoteState::Stuck => false,
+    }
+}
+
+/// Where a check reported to GitHub links: the status's own page on g1t,
+/// or the commit's when it has none.
+pub fn status_target(site: &str, repo: &str, sha: &str, target: Option<&str>) -> String {
+    let site = site.trim_end_matches('/');
+    match target.map(str::trim).filter(|url| !url.is_empty()) {
+        Some(url) if url.starts_with("https://") || url.starts_with("http://") => url.to_owned(),
+        Some(path) if path.starts_with('/') => format!("{site}{path}"),
+        _ => format!("{site}/{repo}/commit/{sha}"),
+    }
+}
+
+/// A status's description cut to what GitHub keeps.
+pub fn github_description(description: Option<&str>) -> Option<String> {
+    let text = description.map(str::trim).filter(|text| !text.is_empty())?;
+    if text.chars().count() <= GITHUB_DESCRIPTION_CHARS {
+        return Some(text.to_owned());
+    }
+    let cut: String = text.chars().take(GITHUB_DESCRIPTION_CHARS - 1).collect();
+    Some(format!("{}…", cut.trim_end()))
+}
+
+/// Whether `sha` is a whole commit id, as GitHub's statuses take it.
+pub fn whole_commit(sha: &str) -> bool {
+    sha.len() == 40 && sha.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+/// What one report to GitHub leaves on the link.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reported {
+    /// It went through: any recorded problem is over.
+    Clear,
+    /// Nothing to say: the commit is not on GitHub (made on g1t during a
+    /// takeover), the commit has all the statuses GitHub keeps, or GitHub
+    /// is busy or limiting. The next status tries again.
+    Keep,
+    /// A lasting problem, shown on the mirror's page until a report goes
+    /// through.
+    Problem(String),
+}
+
+/// Reads GitHub's answer to `POST /repos/{owner}/{repo}/statuses/{sha}`.
+/// `message` is GitHub's own words, `problem` them said for people.
+pub fn reported(status: u16, message: &str, problem: &str) -> Reported {
+    match status {
+        200..=299 => Reported::Clear,
+        403 if message.to_lowercase().contains("rate limit") => Reported::Keep,
+        403 => Reported::Problem(CHECKS_PERMISSION.to_owned()),
+        422 | 429 | 500..=599 => Reported::Keep,
+        _ => Reported::Problem(format!("g1t can't report checks to GitHub: {problem}")),
+    }
 }
 
 /// How a host's health moves with one more check. `now` in milliseconds.
@@ -294,6 +395,9 @@ pub(crate) struct RemoteRow {
     pub settings: String,
     pub synced_at: Option<String>,
     pub last_error: Option<String>,
+    /// Why the last check could not be reported to the remote.
+    #[serde(default)]
+    pub checks_error: Option<String>,
     pub created_at: String,
 }
 
@@ -356,6 +460,7 @@ impl RemoteRow {
             unreachable_since: health.and_then(|health| health.unreachable_since.clone()),
             synced_at: self.synced_at.clone(),
             last_error: self.last_error.clone(),
+            checks_problem: self.checks_error.clone(),
             settings: self.settings(),
             created_at: self.created_at.clone(),
         }
@@ -409,11 +514,14 @@ pub struct Mirrors {
     identity: Fetcher,
     events: Option<Fetcher>,
     github: GithubApp,
+    /// g1t's own address, which checks reported to a remote link to.
+    site_url: String,
 }
 
 impl Mirrors {
     pub fn new(env: &Env) -> Result<Self> {
         Ok(Mirrors {
+            site_url: env.var("SITE_URL").map(|value| value.to_string()).unwrap_or_else(|_| "https://g1t.sh".to_owned()),
             db: env.d1("DB")?,
             sealer: env.secret("INTEGRATIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
             repos: env.service("REPOS")?,
@@ -1216,6 +1324,7 @@ impl Mirrors {
             settings: "{}".to_owned(),
             synced_at: None,
             last_error: None,
+            checks_error: None,
             created_at: rfc3339(now),
         };
         if row.name.eq_ignore_ascii_case(&format!("g1t.sh/{}", row.repo)) {
@@ -1432,6 +1541,71 @@ impl Mirrors {
                 worker::console_log!("mirrors: {} not pushed to {}: {reason}", row.repo, row.name);
             }
         }
+        Ok(())
+    }
+
+    /// A status set on a commit (`status.created`): a workflow run, a
+    /// deploy. A mirror of a GitHub repository whose workflows g1t runs
+    /// reports it to the commit there, once, as `g1t / <context>`. What
+    /// GitHub refuses for good is kept on the link for its page; nothing is
+    /// sent again until the next status.
+    pub async fn on_status(&self, event: &g1t_contracts::events::Event) -> Result<()> {
+        let Some(repo_id) = event.repo_id.as_deref() else { return Ok(()) };
+        let Ok(status) = serde_json::from_value::<StatusEvent>(event.data.clone()) else { return Ok(()) };
+        let (Some(state), true) = (github_state(&status.state), whole_commit(&status.sha)) else { return Ok(()) };
+        let Some(row) = self.leader(repo_id).await? else { return Ok(()) };
+        if !reports_checks(row.provider(), row.leads(), row.state(), &row.settings()) {
+            return Ok(());
+        }
+        let Some(installation) = row.connection_id.as_deref().and_then(|id| id.parse::<u64>().ok()) else {
+            let problem = "g1t can't report checks to GitHub: this link has no GitHub installation.".to_owned();
+            return self.checks_noted(&row, Reported::Problem(problem)).await;
+        };
+        let token = match self.github.installation_token(installation).await? {
+            Ok(token) => token,
+            Err(reason) => {
+                return self.checks_noted(&row, Reported::Problem(format!("g1t can't report checks to GitHub: {reason}"))).await;
+            }
+        };
+        let mut body = serde_json::json!({
+            "state": state,
+            "context": github_context(&status.context),
+            "target_url": status_target(&self.site_url, &row.repo, &status.sha, status.target_url.as_deref()),
+        });
+        if let Some(description) = github_description(status.description.as_deref()) {
+            body["description"] = Value::String(description);
+        }
+        let path = format!("/repos/{}/statuses/{}", row.full_name(), status.sha);
+        let answer = match self.github.api(Method::Post, &path, &token, Some(body)).await {
+            Ok(answer) => answer,
+            Err(error) => {
+                worker::console_log!("mirrors: {} check not reported to {}: {error}", row.repo, row.name);
+                return Ok(());
+            }
+        };
+        let said = answer.json();
+        let verdict = reported(answer.status, said["message"].as_str().unwrap_or_default(), &answer.problem("GitHub"));
+        if verdict == Reported::Keep && !answer.ok() {
+            worker::console_log!("mirrors: {} check not reported to {}: {}", row.repo, row.name, answer.problem("GitHub"));
+        }
+        self.checks_noted(&row, verdict).await
+    }
+
+    /// Keeps what the last report to a remote left, writing only a change.
+    async fn checks_noted(&self, row: &RemoteRow, verdict: Reported) -> Result<()> {
+        let next = match verdict {
+            Reported::Keep => return Ok(()),
+            Reported::Clear => None,
+            Reported::Problem(problem) => Some(problem),
+        };
+        if next == row.checks_error {
+            return Ok(());
+        }
+        self.db
+            .prepare("UPDATE remotes SET checks_error = ?2 WHERE id = ?1")
+            .bind(&[row.id.as_str().into(), null_or(next.as_deref())])?
+            .run()
+            .await?;
         Ok(())
     }
 
@@ -1781,5 +1955,66 @@ mod tests {
         assert_eq!(pull_requests, ["refs/heads/docs"]);
         assert_eq!(moves[0].old.as_deref(), Some("old"), "an old hand-back branch is moved from where it is");
         assert_eq!(moves.len(), 2);
+    }
+
+    #[test]
+    fn checks_are_named_for_g1t_on_github() {
+        assert_eq!(github_context("CI / push"), "g1t / CI / push");
+        assert_eq!(github_context("g1t / deploy"), "g1t / deploy", "already g1t's");
+        assert_eq!(github_context(" Lint / pull_request "), "g1t / Lint / pull_request");
+        assert_eq!(github_context("g1t/deploy"), "g1t / g1t/deploy", "only the exact prefix counts");
+        for state in ["pending", "success", "failure", "error"] {
+            assert_eq!(github_state(state), Some(state));
+        }
+        assert_eq!(github_state("cancelled"), None);
+        assert_eq!(github_state(""), None);
+    }
+
+    #[test]
+    fn only_a_github_mirror_running_workflows_reports_checks() {
+        let on = MirrorSettings::default();
+        let warm = MirrorSettings { keep_ci_warm: true, ..MirrorSettings::default() };
+        let off = MirrorSettings { report_checks: false, keep_ci_warm: true, ..MirrorSettings::default() };
+        let github = RemoteProvider::Github;
+        assert!(!reports_checks(github, true, RemoteState::Standby, &on), "a quiet standby runs nothing");
+        assert!(reports_checks(github, true, RemoteState::Standby, &warm), "CI kept warm");
+        for state in [RemoteState::Ci, RemoteState::Takeover, RemoteState::HandingBack] {
+            assert!(reports_checks(github, true, state, &on), "{state:?}");
+            assert!(!reports_checks(github, true, state, &off), "{state:?} turned off");
+            assert!(!reports_checks(RemoteProvider::G1t, true, state, &on), "{state:?} on another g1t");
+            assert!(!reports_checks(RemoteProvider::Git, true, state, &on), "{state:?} on a git host");
+        }
+        assert!(!reports_checks(github, false, RemoteState::Following, &warm), "a follower is g1t's own");
+        assert!(!reports_checks(github, true, RemoteState::Stuck, &warm));
+    }
+
+    #[test]
+    fn a_reported_check_links_back_to_g1t() {
+        let sha = "a".repeat(40);
+        assert_eq!(
+            status_target("https://g1t.sh", "acme/web", &sha, Some("https://g1t.sh/acme/web/actions/runs/run_1")),
+            "https://g1t.sh/acme/web/actions/runs/run_1"
+        );
+        assert_eq!(status_target("https://g1t.sh/", "acme/web", &sha, Some("/acme/web/deployments")), "https://g1t.sh/acme/web/deployments");
+        assert_eq!(status_target("https://g1t.sh", "acme/web", &sha, None), format!("https://g1t.sh/acme/web/commit/{sha}"));
+        assert_eq!(status_target("https://g1t.sh", "acme/web", &sha, Some(" ")), format!("https://g1t.sh/acme/web/commit/{sha}"));
+        assert!(whole_commit(&sha) && !whole_commit("abc123") && !whole_commit(&"z".repeat(40)));
+        assert_eq!(github_description(Some("CI passed")).as_deref(), Some("CI passed"));
+        assert_eq!(github_description(Some("  ")), None);
+        let long = github_description(Some(&"word ".repeat(60))).unwrap();
+        assert!(long.chars().count() <= 140 && long.ends_with('…'));
+    }
+
+    #[test]
+    fn what_github_answers_is_kept_only_when_it_lasts() {
+        assert_eq!(reported(201, "", ""), Reported::Clear);
+        assert_eq!(reported(403, "Resource not accessible by integration", "x"), Reported::Problem(CHECKS_PERMISSION.to_owned()));
+        assert_eq!(reported(403, "API rate limit exceeded for installation", "x"), Reported::Keep);
+        assert_eq!(reported(422, "No commit found for SHA: abc", "x"), Reported::Keep, "a commit made on g1t");
+        assert_eq!(reported(502, "", "x"), Reported::Keep);
+        assert_eq!(
+            reported(404, "Not Found", "GitHub has nothing there (Not Found)."),
+            Reported::Problem("g1t can't report checks to GitHub: GitHub has nothing there (Not Found).".to_owned())
+        );
     }
 }

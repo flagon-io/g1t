@@ -42,6 +42,12 @@ places, unless the mirror's settings say otherwise. A push copied in from
 GitHub that changes workflows or local actions waits for approval before
 it can use the repository's secrets.
 
+Whenever g1t runs a mirror's workflows, their results show on the commit on
+GitHub too, as commit statuses named `g1t / <workflow> / <event>`, such as
+`g1t / CI / push`. This needs the Commit statuses permission on g1t's GitHub
+App; turn it off with **Report checks to GitHub** in the mirror's settings.
+See [Checks on GitHub](/guides/mirroring/#checks-on-github).
+
 Then add your [secrets and variables](#secrets-and-variables): GitHub never
 gives their values out, so they cannot be copied across.
 

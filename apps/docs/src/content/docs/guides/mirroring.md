@@ -89,6 +89,7 @@ You choose how much more happens, per link, in **Settings → Mirroring**:
 | Keep CI warm | Off | Run `.g1t/workflows` on each push copied in |
 | Run the remote's `.github` workflows | On | Off |
 | Hold workflows that deploy for approval | On | Off |
+| Report checks to GitHub | On | Off. Only for a mirror of a GitHub repository; see [Checks on GitHub](#checks-on-github). |
 
 **Hand back on its own** only applies to takeovers g1t started itself. A
 takeover a person started waits for a person to hand it back.
@@ -111,6 +112,43 @@ g1t for each push copied in:
 
 **End CI failover** when the remote runs its workflows again. Runs already
 started finish.
+
+## Checks on GitHub
+
+While g1t runs a GitHub mirror's workflows, in CI failover, during a
+takeover, or with **Keep CI warm**, it reports their results to the commit
+on GitHub. You can keep GitHub as the place you work and still see, on
+each commit and pull request there, what g1t ran.
+
+What g1t reports is each status it sets on a commit: a workflow run, and a
+deploy. Each becomes a commit status on GitHub:
+
+| On GitHub | What it is |
+| --- | --- |
+| Context | The status's name on g1t under `g1t / `: a workflow run's `CI / push` shows as `g1t / CI / push`. A name that already starts with `g1t / `, such as a deploy's `g1t / deploy`, stays as it is. |
+| State | `pending` while it runs, then `success`, `failure` or `error`, as on g1t. A cancelled run is `error`. |
+| Description | The status's description on g1t, cut to GitHub's 140 characters. |
+| Details | A link to the run, or the deploy, on g1t. |
+
+A status is sent once each time it changes. Only commits that came from
+GitHub are reported: a commit made on g1t during a takeover isn't on
+GitHub until it's handed back, so it is skipped. A mirror standing by
+without **Keep CI warm** runs nothing, so it reports nothing.
+
+g1t reports through its GitHub App, which needs the **Commit statuses**
+permission, read and write. When the app's installation doesn't have it,
+GitHub refuses, and the mirror's **Settings → Mirroring** page says
+**g1t can't report checks to GitHub: the GitHub App needs the Commit
+statuses permission**. g1t doesn't retry; it tries again with the next
+status, and the line goes once a status gets through. To grant it, an
+owner of the GitHub account or organization accepts the app's new
+permissions on GitHub, under **Settings → Applications → Installed GitHub
+Apps → g1t-sh**.
+
+To turn it off, clear **Report checks to GitHub** in the mirror's
+**Settings → Mirroring** and save. Through the API, send
+`report_checks: false` to
+`PATCH /repos/{owner}/{name}/mirror/remotes/{id}`.
 
 ## Take over
 
@@ -226,8 +264,9 @@ g1t to keep it.
 
 ## Not supported yet
 
-- Workflow results from CI failover stay on g1t; they are not reported
-  back to the remote as checks.
+- Checks go back to GitHub as commit statuses, one per workflow run; a
+  run's jobs aren't shown there as separate check runs. Remotes other than
+  GitHub aren't told about checks.
 - CI failover starts only when someone starts it.
 - A takeover runs under the repository's own [rules](/guides/rules/) on
   g1t, not the remote's branch protection.

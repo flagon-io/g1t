@@ -49,6 +49,8 @@ export type MirrorSettings = {
   keepCiWarm: boolean;
   githubWorkflows: boolean;
   holdDeploys: boolean;
+  /** A GitHub mirror: report g1t's statuses to the commit on GitHub while g1t runs its workflows. */
+  reportChecks: boolean;
   /** For followers: pushes made on the remote itself. */
   remotePushes: "adopt" | "overwrite";
 };
@@ -60,6 +62,7 @@ export const DEFAULT_MIRROR_SETTINGS: MirrorSettings = {
   keepCiWarm: false,
   githubWorkflows: true,
   holdDeploys: true,
+  reportChecks: true,
   remotePushes: "adopt",
 };
 
@@ -83,6 +86,8 @@ export type Remote = {
   unreachableSince: string | null;
   syncedAt: string | null;
   lastError: string | null;
+  /** Why g1t could not report checks to the remote, until it next can. */
+  checksProblem?: string | null;
   settings: MirrorSettings;
   createdAt: string;
 };

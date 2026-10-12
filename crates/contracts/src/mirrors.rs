@@ -252,6 +252,10 @@ pub struct MirrorSettings {
     pub github_workflows: bool,
     /// Hold deploy jobs for approval in CI failover and during a takeover.
     pub hold_deploys: bool,
+    /// Report the statuses g1t sets on a commit (workflow runs, deploys)
+    /// to the GitHub commit, while g1t runs workflows for the mirror: CI
+    /// failover, a takeover, or CI kept warm. GitHub links only.
+    pub report_checks: bool,
     /// For followers.
     pub remote_pushes: RemotePushes,
 }
@@ -265,6 +269,7 @@ impl Default for MirrorSettings {
             keep_ci_warm: false,
             github_workflows: true,
             hold_deploys: true,
+            report_checks: true,
             remote_pushes: RemotePushes::Adopt,
         }
     }
@@ -298,6 +303,10 @@ pub struct Remote {
     pub unreachable_since: Option<String>,
     pub synced_at: Option<String>,
     pub last_error: Option<String>,
+    /// Why g1t could not report checks to the remote, until it next can:
+    /// the GitHub App lacks the Commit statuses permission, say.
+    #[serde(default)]
+    pub checks_problem: Option<String>,
     pub settings: MirrorSettings,
     pub created_at: String,
 }
@@ -614,5 +623,6 @@ mod tests {
         assert_eq!(settings.notify, Notify::Banner);
         assert_eq!(settings.take_over_after, None);
         assert!(!settings.keep_ci_warm);
+        assert!(settings.report_checks, "checks are reported whenever g1t runs workflows, unless turned off");
     }
 }
