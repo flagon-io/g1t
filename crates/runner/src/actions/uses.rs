@@ -48,8 +48,7 @@ fn is_sha(text: &str) -> bool {
 fn native(name: &str, docker_hosted: bool) -> bool {
     matches!(
         name,
-        "actions/checkout"
-            | "actions/upload-artifact"
+        "actions/upload-artifact"
             | "actions/upload-artifact/merge"
             | "actions/download-artifact"
     ) || (docker_hosted && name == "docker/setup-buildx-action")
@@ -70,75 +69,6 @@ fn remote_action(uses: &str, docker_hosted: bool) -> Option<(String, String, Str
     let mut parts = name.splitn(3, '/');
     let (owner, repo) = (parts.next()?, parts.next()?);
     (!owner.is_empty() && !repo.is_empty()).then(|| (owner.to_owned(), repo.to_owned(), git_ref.to_owned()))
-}
-
-/// Every branch, as a checkout with all history fetches them.
-const HEADS_REFSPEC: &str = "+refs/heads/*:refs/remotes/origin/*";
-/// Every tag, likewise.
-const TAGS_REFSPEC: &str = "+refs/tags/*:refs/tags/*";
-
-/// What a checkout fetches and where it ends, as `actions/checkout`
-/// decides it (its `getRefSpec`, `getRefSpecForAllHistory` and
-/// `getCheckoutInfo`).
-#[derive(Debug, PartialEq, Eq)]
-struct CheckoutPlan {
-    refspecs: Vec<String>,
-    /// The commit to end on, when it is known before the fetch.
-    sha: Option<String>,
-    /// The branch made there (or at its remote-tracking branch).
-    branch: Option<String>,
-    /// Where to end with neither: a tag, or another ref.
-    start: Option<String>,
-    /// A name that may be a branch or a tag; the fetch tells which.
-    unqualified: Option<String>,
-    /// The step's `ref` output.
-    output_ref: String,
-}
-
-/// `wanted` is the step's `ref` (or another repository's default branch);
-/// without one, the run's own ref and commit for its own repository.
-fn checkout_plan(wanted: Option<&str>, same: bool, run_ref: &str, run_sha: &str) -> CheckoutPlan {
-    let (git_ref, commit) = match wanted {
-        Some(r) if is_sha(r) => (String::new(), r.to_owned()),
-        Some(r) => (r.to_owned(), String::new()),
-        // Some events name a branch without `refs/heads/`.
-        None if same && !run_sha.is_empty() && !run_ref.is_empty() && !run_ref.starts_with("refs/") => (format!("refs/heads/{run_ref}"), run_sha.to_owned()),
-        None if same => (run_ref.to_owned(), run_sha.to_owned()),
-        None => (String::new(), String::new()),
-    };
-    let upper = git_ref.to_ascii_uppercase();
-    let rest = |prefix: &str| git_ref[prefix.len()..].to_owned();
-    let mut plan = CheckoutPlan { refspecs: Vec::new(), sha: None, branch: None, start: None, unqualified: None, output_ref: git_ref.clone() };
-    if !commit.is_empty() {
-        plan.refspecs.push(if upper.starts_with("REFS/HEADS/") {
-            plan.branch = Some(rest("refs/heads/"));
-            format!("+{commit}:refs/remotes/origin/{}", rest("refs/heads/"))
-        } else if upper.starts_with("REFS/PULL/") {
-            format!("+{commit}:refs/remotes/pull/{}", rest("refs/pull/"))
-        } else if upper.starts_with("REFS/TAGS/") {
-            format!("+{commit}:{git_ref}")
-        } else {
-            commit.clone()
-        });
-        plan.sha = Some(commit);
-    } else if git_ref.is_empty() {
-        plan.refspecs.push("HEAD".into());
-    } else if !upper.starts_with("REFS/") {
-        plan.refspecs.push(format!("+refs/heads/{git_ref}*:refs/remotes/origin/{git_ref}*"));
-        plan.refspecs.push(format!("+refs/tags/{git_ref}*:refs/tags/{git_ref}*"));
-        plan.unqualified = Some(git_ref.clone());
-    } else if upper.starts_with("REFS/HEADS/") {
-        plan.branch = Some(rest("refs/heads/"));
-        plan.refspecs.push(format!("+{git_ref}:refs/remotes/origin/{}", rest("refs/heads/")));
-    } else if upper.starts_with("REFS/PULL/") {
-        let local = format!("refs/remotes/pull/{}", rest("refs/pull/"));
-        plan.refspecs.push(format!("+{git_ref}:{local}"));
-        plan.start = Some(local);
-    } else {
-        plan.refspecs.push(format!("+{git_ref}:{git_ref}"));
-        plan.start = Some(git_ref.clone());
-    }
-    plan
 }
 
 impl Job {
@@ -170,201 +100,6 @@ impl Job {
             }
         }
         false
-    }
-
-    /// A git command with `header` sent only to `server` (`http.<server>/.extraheader`),
-    /// so a submodule on another host never sees the job's token. Logged
-    /// without the header.
-    fn git_scoped(&mut self, dir: &Path, args: &[&str], server: &str, header: Option<&str>) -> bool {
-        self.log.line(&format!("[command]git {}", args.join(" ")));
-        let mut command = Command::new("git");
-        command.current_dir(dir);
-        if let Some(header) = header {
-            command.args(["-c", &format!("http.{server}/.extraheader={header}")]);
-        }
-        command.args(args).env("GIT_TERMINAL_PROMPT", "0");
-        let mut commands = Commands::default();
-        matches!(process::run(command, Duration::from_secs(600).min(self.remaining_time()), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
-    }
-
-    /// `actions/checkout`, against g1t: the inputs of its version 4 and 5
-    /// but `ssh-key`, `lfs` and `clean: false`, fetching what it fetches
-    /// and ending on the same branch or commit.
-    fn checkout(&mut self, with: &BTreeMap<String, String>) -> (bool, BTreeMap<String, String>) {
-        let checkout = self.spec["checkout"].clone();
-        let own = checkout["repository"].as_str().unwrap_or_default().to_owned();
-        let server = self.contexts["github"]["server_url"].as_str().unwrap_or("https://g1t.sh").trim_end_matches('/').to_owned();
-        let input = |name: &str| with.get(name).map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
-        let yes = |name: &str, default: bool| input(name).map_or(default, |v| v.eq_ignore_ascii_case("true"));
-        let repository = input("repository").unwrap_or(own.clone());
-        let same = repository.eq_ignore_ascii_case(&own);
-        let token = input("token").or_else(|| checkout["token"].as_str().map(str::to_owned)).unwrap_or_default();
-        let url = if same { checkout["url"].as_str().unwrap_or_default().to_owned() } else { format!("{server}/{repository}.git") };
-        let path = input("path").map_or(self.workspace.clone(), |p| self.workspace.join(p));
-        // As the action reads it: not a number, or below zero, is all history.
-        let depth: u32 = input("fetch-depth").map_or(1, |d| d.parse::<f64>().ok().filter(|d| *d >= 0.0).map_or(0, |d| d as u32));
-        let wanted_ref = input("ref");
-        let filter = input("filter");
-        let sparse: Vec<String> = with.get("sparse-checkout").map(|s| s.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect()).unwrap_or_default();
-        let auth = (!token.is_empty()).then(|| format!("AUTHORIZATION: basic {}", STANDARD.encode(format!("x-access-token:{token}"))));
-        let header = auth.as_deref();
-
-        self.log.line(&format!("Syncing repository: {repository}"));
-        if path.exists() {
-            let _ = std::fs::remove_dir_all(&path);
-        }
-        if let Err(error) = std::fs::create_dir_all(&path) {
-            self.log.line(&format!("##[error]Could not make {}: {error}", path.display()));
-            return (false, BTreeMap::new());
-        }
-        // So git works on it in a container run as another user.
-        if yes("set-safe-directory", true) {
-            let _ = Command::new("git").args(["config", "--global", "--add", "safe.directory", "*"]).status();
-        }
-        if !self.git(&path, &["init", "--quiet"], None) || !self.git(&path, &["remote", "add", "origin", &url], None) {
-            return (false, BTreeMap::new());
-        }
-        let _ = Command::new("git").current_dir(&path).args(["config", "--local", "gc.auto", "0"]).status();
-
-        // Another repository with no ref: its default branch, as the
-        // action asks the API for it.
-        let default_branch = match (&wanted_ref, same) {
-            (None, false) => self.default_branch(&path, &server, header),
-            _ => None,
-        };
-        let plan = checkout_plan(
-            wanted_ref.as_deref().or(default_branch.as_deref()),
-            same,
-            checkout["ref"].as_str().unwrap_or_default(),
-            checkout["sha"].as_str().unwrap_or_default(),
-        );
-        let depth_arg = format!("--depth={depth}");
-        let filter_arg = filter.clone().or_else(|| (!sparse.is_empty()).then(|| "blob:none".to_owned())).map(|f| format!("--filter={f}"));
-        let fetch_args = |refspecs: &[String], tags: bool| {
-            let mut args: Vec<String> = ["-c", "protocol.version=2", "fetch", "--prune", "--no-recurse-submodules", "--quiet"].map(String::from).into();
-            if !tags {
-                args.push("--no-tags".into());
-            }
-            args.extend(filter_arg.clone());
-            if depth > 0 {
-                args.push(depth_arg.clone());
-            }
-            args.push("origin".into());
-            args.extend(refspecs.iter().cloned());
-            args
-        };
-        // All history: every branch and tag, then what the run names, which
-        // may be a commit its branch has since moved on from.
-        let everything = fetch_args(&[HEADS_REFSPEC.into(), TAGS_REFSPEC.into()], true);
-        let everything: Vec<&str> = everything.iter().map(String::as_str).collect();
-        let named = fetch_args(&plan.refspecs, yes("fetch-tags", false));
-        let named: Vec<&str> = named.iter().map(String::as_str).collect();
-        let fetched = (depth > 0 || self.fetch_retrying(&path, &everything, header)) && self.fetch_retrying(&path, &named, header);
-        let has = |target: &str| Command::new("git").current_dir(&path).args(["cat-file", "-e", &format!("{target}^{{commit}}")]).status().is_ok_and(|s| s.success());
-        // The commit may be further back than a shallow fetch reaches (the
-        // branch moved on after the run began), or not one the server
-        // gives by itself: then the whole history.
-        if let Some(sha) = plan.sha.as_deref().filter(|sha| !has(sha)) {
-            let shallow = path.join(".git").join("shallow").exists();
-            let mut deepen = vec!["-c", "protocol.version=2", "fetch", "--no-tags", "--quiet"];
-            if shallow {
-                deepen.push("--unshallow");
-            }
-            deepen.extend(["origin", HEADS_REFSPEC]);
-            if !self.fetch_retrying(&path, &deepen, header) || !has(sha) {
-                self.log.line(&format!("##[error]Could not fetch {sha} from {repository}."));
-                return (false, BTreeMap::new());
-            }
-        } else if !fetched {
-            self.log.line(&format!("##[error]Could not fetch {} from {repository}.", plan.refspecs.join(" ")));
-            return (false, BTreeMap::new());
-        }
-
-        // Where to end up: a branch made at its start point, or detached.
-        let ref_exists = |name: &str| Command::new("git").current_dir(&path).args(["rev-parse", "--verify", "--quiet", name]).output().is_ok_and(|o| o.status.success());
-        let (branch, target) = match (&plan.sha, &plan.branch, &plan.unqualified) {
-            (Some(sha), branch, _) => (branch.clone(), sha.clone()),
-            (None, Some(branch), _) => (Some(branch.clone()), format!("refs/remotes/origin/{branch}")),
-            (None, None, Some(name)) if ref_exists(&format!("refs/remotes/origin/{name}")) => (Some(name.clone()), format!("refs/remotes/origin/{name}")),
-            (None, None, Some(name)) if ref_exists(&format!("refs/tags/{name}")) => (None, format!("refs/tags/{name}")),
-            (None, None, Some(name)) => {
-                self.log.line(&format!("##[error]A branch or tag with the name '{name}' could not be found"));
-                return (false, BTreeMap::new());
-            }
-            (None, None, None) => (None, plan.start.clone().unwrap_or_else(|| "FETCH_HEAD".into())),
-        };
-        if !sparse.is_empty() {
-            let mut args = vec!["sparse-checkout", "set"];
-            args.push(if yes("sparse-checkout-cone-mode", true) { "--cone" } else { "--no-cone" });
-            args.extend(sparse.iter().map(String::as_str));
-            if !self.git(&path, &args, None) {
-                return (false, BTreeMap::new());
-            }
-        }
-        let checked_out = match &branch {
-            Some(branch) => self.git(&path, &["checkout", "--quiet", "--force", "-B", branch, &target], None),
-            None => self.git(&path, &["checkout", "--quiet", "--force", "--detach", &target], None),
-        };
-        if !checked_out {
-            return (false, BTreeMap::new());
-        }
-        let persist = yes("persist-credentials", true);
-        let key = format!("http.{server}/.extraheader");
-        if persist && let Some(header) = header {
-            let _ = Command::new("git").current_dir(&path).args(["config", "--local", &key, header]).status();
-        }
-        if let Some(submodules) = input("submodules").map(|s| s.to_ascii_lowercase()).filter(|s| s == "true" || s == "recursive") {
-            let recursive = submodules == "recursive";
-            // A submodule on g1t named by its SSH address is fetched over
-            // HTTPS with the token, as the action does.
-            let host = server.split_once("://").map_or(server.as_str(), |(_, host)| host).to_owned();
-            let instead = format!("url.{server}/.insteadOf=git@{host}:");
-            let mut sync = vec!["submodule", "sync", "--quiet"];
-            let mut update = vec!["-c", &instead, "-c", "protocol.version=2", "submodule", "update", "--init", "--force", "--quiet"];
-            if depth > 0 {
-                update.push(&depth_arg);
-            }
-            if recursive {
-                sync.push("--recursive");
-                update.push("--recursive");
-            }
-            if !self.git(&path, &sync, None) || !self.git_scoped(&path, &update, &server, header) {
-                self.log.line("##[error]The submodules could not all be checked out.");
-                return (false, BTreeMap::new());
-            }
-            if persist && let Some(header) = header {
-                let mut foreach = vec!["submodule", "foreach", "--quiet"];
-                if recursive {
-                    foreach.push("--recursive");
-                }
-                foreach.push(r#"git config --local "$G1T_KEY" "$G1T_HEADER" && git config --local gc.auto 0"#);
-                let _ = Command::new("git").current_dir(&path).args(&foreach).env("G1T_KEY", &key).env("G1T_HEADER", header).status();
-            }
-        }
-        if yes("lfs", false) {
-            self.log.line("##[warning]Git LFS files are not fetched on g1t: g1t does not keep LFS objects yet.");
-        }
-        let commit = Command::new("git").current_dir(&path).args(["rev-parse", "HEAD"]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned()).unwrap_or_default();
-        self.log.line(&format!("Checked out {commit}"));
-        let mut outputs = BTreeMap::new();
-        outputs.insert("ref".into(), plan.output_ref);
-        outputs.insert("commit".into(), commit);
-        (true, outputs)
-    }
-
-    /// Another repository's default branch, from what its remote says
-    /// `HEAD` is. None when it says nothing: the fetch then takes `HEAD`.
-    fn default_branch(&mut self, dir: &Path, server: &str, header: Option<&str>) -> Option<String> {
-        let mut command = Command::new("git");
-        command.current_dir(dir);
-        if let Some(header) = header {
-            command.args(["-c", &format!("http.{server}/.extraheader={header}")]);
-        }
-        let output = command.args(["ls-remote", "--quiet", "--symref", "origin", "HEAD"]).env("GIT_TERMINAL_PROMPT", "0").output().ok()?;
-        let text = String::from_utf8_lossy(&output.stdout);
-        let branch = text.lines().find_map(|line| line.strip_prefix("ref: ")?.split_once('\t')?.0.strip_prefix("refs/heads/").map(str::to_owned))?;
-        self.log.line(&format!("Default branch '{branch}'"));
-        Some(format!("refs/heads/{branch}"))
     }
 
     /// Fetches another repository's action, once per job: from g1t when
@@ -649,7 +384,6 @@ impl Job {
             return self.setup_buildx(with);
         }
         match lower.as_str() {
-            "actions/checkout" => return self.checkout(with),
             "actions/upload-artifact" => return self.upload_artifact(with),
             "actions/upload-artifact/merge" => return self.merge_artifacts(with),
             "actions/download-artifact" => return self.download_artifact(with),
@@ -1051,138 +785,17 @@ mod tests {
         let found = |uses: &str| remote_action(uses, true);
         assert_eq!(found("actions/setup-node@v4"), Some(("actions".into(), "setup-node".into(), "v4".into())));
         assert_eq!(found(" github/codeql-action/init@v3 "), Some(("github".into(), "codeql-action".into(), "v3".into())));
-        // Done by the runner itself, local, an image, or no version.
-        assert_eq!(found("actions/checkout@v4"), None);
-        // actions/cache is the real action, fetched like any other.
+        // actions/checkout and actions/cache are the real actions, fetched
+        // like any other.
+        assert_eq!(found("actions/checkout@v4"), Some(("actions".into(), "checkout".into(), "v4".into())));
         assert_eq!(found("Actions/Cache/Restore@v4"), Some(("Actions".into(), "Cache".into(), "v4".into())));
+        // Done by the runner itself, local, an image, or no version.
         assert_eq!(found("docker/setup-buildx-action@v3"), None);
         assert!(remote_action("docker/setup-buildx-action@v3", false).is_some());
         assert_eq!(found("./.g1t/actions/setup"), None);
         assert_eq!(found("docker://alpine:3"), None);
         assert_eq!(found("actions/setup-node"), None);
         assert_eq!(found("setup-node@v4"), None);
-    }
-
-    #[test]
-    fn a_checkout_fetches_what_actions_checkout_fetches() {
-        let sha = "0123456789abcdef0123456789abcdef01234567";
-        let specs = |plan: &CheckoutPlan| plan.refspecs.clone();
-        // A push: the run's commit, as its branch.
-        let push = checkout_plan(None, true, "refs/heads/main", sha);
-        assert_eq!(specs(&push), [format!("+{sha}:refs/remotes/origin/main")]);
-        assert_eq!((push.sha.as_deref(), push.branch.as_deref(), push.output_ref.as_str()), (Some(sha), Some("main"), "refs/heads/main"));
-        // An unqualified branch from the event is qualified first.
-        assert_eq!(checkout_plan(None, true, "main", sha).output_ref, "refs/heads/main");
-        // A pull request: its commit under refs/remotes/pull, detached.
-        let pull = checkout_plan(None, true, "refs/pull/7/merge", sha);
-        assert_eq!(specs(&pull), [format!("+{sha}:refs/remotes/pull/7/merge")]);
-        assert_eq!(pull.branch, None);
-        // A tag push, and a deployment of a bare commit.
-        assert_eq!(specs(&checkout_plan(None, true, "refs/tags/v1", sha)), [format!("+{sha}:refs/tags/v1")]);
-        assert_eq!(specs(&checkout_plan(None, true, "", sha)), [sha]);
-        // `ref:` a commit, a branch, a tag or a name that may be either.
-        let by_sha = checkout_plan(Some(sha), true, "refs/heads/main", "ffff");
-        assert_eq!((specs(&by_sha), by_sha.sha.as_deref(), by_sha.output_ref.as_str()), (vec![sha.to_owned()], Some(sha), ""));
-        let branch = checkout_plan(Some("refs/heads/dev"), true, "refs/heads/main", sha);
-        assert_eq!((specs(&branch), branch.sha, branch.branch.as_deref()), (vec!["+refs/heads/dev:refs/remotes/origin/dev".to_owned()], None, Some("dev")));
-        let tag = checkout_plan(Some("refs/tags/v2"), true, "", "");
-        assert_eq!((specs(&tag), tag.start.as_deref()), (vec!["+refs/tags/v2:refs/tags/v2".to_owned()], Some("refs/tags/v2")));
-        let name = checkout_plan(Some("v2"), false, "", "");
-        assert_eq!(specs(&name), ["+refs/heads/v2*:refs/remotes/origin/v2*", "+refs/tags/v2*:refs/tags/v2*"]);
-        assert_eq!(name.unqualified.as_deref(), Some("v2"));
-        // Another repository whose default branch is not known: its HEAD.
-        assert_eq!(specs(&checkout_plan(None, false, "refs/heads/main", sha)), ["HEAD"]);
-    }
-
-    /// Checks out repositories of its own over `file://`, where git is
-    /// installed: the run's commit behind its branch's tip, all history,
-    /// a tag and a branch by name, a sparse checkout, and another
-    /// repository's default branch.
-    #[test]
-    fn a_checkout_ends_where_actions_checkout_ends() {
-        let git = |dir: &Path, args: &[&str]| {
-            let out = Command::new("git").current_dir(dir).args(args).output().expect("git");
-            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
-            String::from_utf8_lossy(&out.stdout).trim().to_owned()
-        };
-        if Command::new("git").arg("--version").output().is_err() {
-            return;
-        }
-        let root = std::env::temp_dir().join(format!("g1t-checkout-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        let make = |name: &str, branch: &str| {
-            let dir = root.join("src").join(name);
-            std::fs::create_dir_all(&dir).unwrap();
-            git(&dir, &["init", "--quiet", "-b", branch]);
-            for (key, value) in [("user.name", "t"), ("user.email", "t@example.com"), ("commit.gpgsign", "false"), ("tag.gpgsign", "false")] {
-                git(&dir, &["config", key, value]);
-            }
-            dir
-        };
-        let commit = |dir: &Path, file: &str, message: &str| {
-            std::fs::create_dir_all(dir.join(file).parent().unwrap()).unwrap();
-            std::fs::write(dir.join(file), message).unwrap();
-            git(dir, &["add", "."]);
-            git(dir, &["commit", "--quiet", "-m", message]);
-        };
-        let app = make("app", "main");
-        commit(&app, "docs/a.md", "one");
-        commit(&app, "src/main.rs", "two");
-        git(&app, &["tag", "v1"]);
-        git(&app, &["checkout", "--quiet", "-b", "feature"]);
-        commit(&app, "feature.txt", "feature");
-        git(&app, &["checkout", "--quiet", "main"]);
-        commit(&app, "README.md", "three");
-        let other = make("other", "trunk");
-        commit(&other, "o.txt", "o");
-        let served = root.join("srv").join("acme");
-        std::fs::create_dir_all(&served).unwrap();
-        for name in ["app", "other"] {
-            let src = root.join("src").join(name);
-            git(&served, &["clone", "--quiet", "--bare", &src.display().to_string(), &format!("{name}.git")]);
-            git(&served.join(format!("{name}.git")), &["config", "uploadpack.allowFilter", "true"]);
-        }
-        let server = format!("file://{}", root.join("srv").display());
-        let behind = git(&app, &["rev-parse", "main~1"]);
-        let spec = json!({
-            "checkout": { "repository": "acme/app", "url": format!("{server}/acme/app.git"), "ref": "refs/heads/main", "sha": behind, "token": "" },
-            "github": { "server_url": server },
-            "variables": {},
-            "contexts": {},
-        });
-        let workspace = root.join("work");
-        let mut job = super::super::setup_in(spec, super::super::report::Api::offline(), workspace.clone(), root.join("temp")).unwrap();
-        let mut run = |inputs: &[(&str, &str)]| {
-            let mut with: BTreeMap<String, String> = inputs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
-            with.insert("set-safe-directory".into(), "false".into());
-            job.checkout(&with)
-        };
-
-        // A push whose branch moved on: the run's commit, on its branch.
-        let (ok, outputs) = run(&[]);
-        assert!(ok);
-        assert_eq!((git(&workspace, &["rev-parse", "HEAD"]), git(&workspace, &["branch", "--show-current"])), (behind.clone(), "main".to_owned()));
-        assert_eq!((outputs["ref"].as_str(), outputs["commit"].as_str()), ("refs/heads/main", behind.as_str()));
-        // All history: every branch and tag.
-        assert!(run(&[("fetch-depth", "0")]).0);
-        assert!(!workspace.join(".git/shallow").exists());
-        assert_eq!(git(&workspace, &["branch", "-r"]).split_whitespace().collect::<Vec<_>>(), ["origin/feature", "origin/main"]);
-        assert_eq!(git(&workspace, &["tag"]), "v1");
-        // A tag by name, detached; a branch by name, as the branch.
-        assert!(run(&[("ref", "v1")]).0);
-        assert_eq!((git(&workspace, &["describe", "--tags"]), git(&workspace, &["branch", "--show-current"])), ("v1".to_owned(), String::new()));
-        assert!(run(&[("ref", "feature")]).0);
-        assert_eq!(git(&workspace, &["branch", "--show-current"]), "feature");
-        // Sparse: only the folders named, from a blobless fetch.
-        assert!(run(&[("sparse-checkout", "docs\n")]).0);
-        assert!(workspace.join("docs/a.md").exists() && !workspace.join("src").exists());
-        assert_eq!(git(&workspace, &["config", "remote.origin.partialclonefilter"]), "blob:none");
-        // Another repository without a ref: its default branch.
-        let (ok, outputs) = run(&[("repository", "acme/other"), ("path", "other")]);
-        assert!(ok);
-        assert_eq!(git(&workspace.join("other"), &["branch", "--show-current"]), "trunk");
-        assert_eq!(outputs["ref"], "refs/heads/trunk");
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
