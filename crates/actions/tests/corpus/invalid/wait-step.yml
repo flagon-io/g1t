@@ -1,0 +1,7 @@
+# error: `wait` is one of GitHub's background steps
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - wait: server

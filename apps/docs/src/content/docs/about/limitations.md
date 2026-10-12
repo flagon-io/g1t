@@ -229,6 +229,50 @@ machines.
   macOS and Windows, on x64 and arm64.
 - **Status.** Not scheduled.
 
+### No background steps
+
+GitHub's background steps (`background: true` on a step, and `wait`,
+`wait-all`, `cancel` and `parallel` steps) are refused: a workflow with one
+does not run on g1t. A schedule's `timezone`, `concurrency.queue`,
+`cancel-timeout-minutes` and `snapshot` are read but not applied: schedules
+run in UTC, a concurrency group keeps one run waiting, a cancelled job stops
+in its usual time, and no runner image is made from a job. The workflow's
+page says so.
+
+- **Why.** They are newer than g1t's runner, which runs a job's steps one
+  after another.
+- **Instead.** Start a long-running process with `&` in a `run:` step and
+  stop it in a later one; write a schedule's `cron` in UTC.
+- **Status.** Not scheduled.
+
+### Self-hosted Windows and macOS jobs run on the host
+
+On a self-hosted runner, a job native to Windows or macOS runs directly on
+the machine, unsandboxed, in host mode, which is deprecated. Only Linux
+jobs run in a sandbox of their own, a container inside the runner's own
+container under Sysbox.
+
+- **Why.** Sandboxes for them are not built yet: Windows containers with
+  Hyper-V isolation, and ephemeral macOS virtual machines (two per Mac at
+  most, by Apple's licence).
+- **Instead.** Run Linux jobs in
+  [the runner's container](/guides/self-hosted-runners/#run-it-as-a-container),
+  and keep Windows and macOS runners for repositories whose code you
+  trust. Host mode refuses public repositories' work.
+- **Status.** Planned. See
+  [Windows and macOS](/guides/self-hosted-runners/#windows-and-macos).
+
+### A self-hosted job's Docker can reach its runner's container
+
+On a runner in its container under Sysbox, a job that uses Docker gets an
+engine of its own that is privileged inside the runner's container. It
+cannot reach the machine, but it can reach the runner's container,
+including the runner's credential.
+
+- **Instead.** Use ephemeral runners for code you do not trust, or
+  register with `--no-job-docker`.
+- **Status.** Not scheduled.
+
 ### No `gh` command in jobs
 
 The runner does not include the `gh` command, and pointing it at g1t
@@ -279,8 +323,13 @@ The machine sizes are Cloudflare Containers' instance sizes. For more, use a
   entry under 128 MB in one request, and g1t takes at most 100 MB in one
   request, as for [pushes](#pushes-up-to-100-mb-each). The step warns and
   the job goes on; smaller and larger entries are saved.
-- `on: delete`: deleting a branch or tag starts no workflows. New branches
-  and tags start `create` and `push` workflows.
+- `on: label`: creating, editing or deleting a label starts no workflows.
+  Putting a label on an issue or a pull request starts `issues` and
+  `pull_request` workflows with the `labeled` type.
+- The `pull_request` activity types `unassigned`, `locked`, `unlocked`,
+  and `edited` for a new title or description, and the `issues` types
+  `unassigned`, `locked`, `unlocked`, `pinned` and `unpinned`: g1t starts
+  no workflows for them.
 
 See [Not yet](/guides/actions/#not-yet). **Status.** Planned.
 

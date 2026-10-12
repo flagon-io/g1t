@@ -568,10 +568,8 @@ impl Work {
                     .is_none_or(|revised| review.finished_at.as_str() >= revised)
             });
         let settings = self.settings_for(pull).await?;
-        let workflows = WorkflowFacts::of(
-            &self.statuses(&pull.repo_id, pull.head_commit.as_deref()).await?,
-            &settings.required_checks,
-        );
+        let statuses = self.statuses(&pull.repo_id, pull.head_commit.as_deref()).await?;
+        let workflows = self.workflow_facts(&pull.repo_id, pull.head_commit.as_deref(), &statuses, &settings.required_checks).await?;
         // Once the agent has finished the change: how sure g1t is of it, and
         // whether that holds it for a person.
         let (confidence, low_confidence) = if pull.status == PullStatus::Draft {

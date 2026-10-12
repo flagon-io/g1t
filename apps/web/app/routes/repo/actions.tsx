@@ -2,7 +2,7 @@ import { AlertTriangle, BadgeCheck, FileCode2, GitBranch, Play, PlayCircle } fro
 import { useEffect, useRef, useState } from "react";
 import { Form, Link, useSearchParams } from "react-router";
 
-import type { DispatchInput, Workflow, WorkflowRun } from "@g1t/contracts";
+import { type DispatchInput, type Workflow, type WorkflowRun, isManagedWorkflow } from "@g1t/contracts";
 
 import type { Route } from "./+types/actions";
 import { page } from "../../lib/meta";
@@ -303,10 +303,17 @@ function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-lg font-semibold tracking-tight">{workflow.name}</h3>
-          <Link to={`${base}/blob/HEAD/${workflow.path}`} className="inline-flex items-center gap-1 font-mono text-xs text-faint hover:text-fg">
-            <FileCode2 size={12} />
-            {workflow.path}
-          </Link>
+          {isManagedWorkflow(workflow.path) ? (
+            <span className="inline-flex items-center gap-1 text-xs text-faint">
+              <BadgeCheck size={12} />
+              Managed by g1t: it runs here without a file in the repository. A workflow named {workflow.name} in .g1t/workflows/ takes its place.
+            </span>
+          ) : (
+            <Link to={`${base}/blob/HEAD/${workflow.path}`} className="inline-flex items-center gap-1 font-mono text-xs text-faint hover:text-fg">
+              <FileCode2 size={12} />
+              {workflow.path}
+            </Link>
+          )}
           {workflow.events.length > 0 && (
             <p className="mt-1.5 text-xs text-muted">On {workflow.events.map((e) => EVENT_WORDS[e] ?? e).join(", ")}</p>
           )}

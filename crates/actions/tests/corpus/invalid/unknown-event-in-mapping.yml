@@ -1,0 +1,9 @@
+# error: GitHub has no `commit` event
+on:
+  commit:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

@@ -1,0 +1,9 @@
+# error: `concurrency` needs `group`
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    concurrency:
+      cancel-in-progress: true
+    steps:
+      - run: echo hi

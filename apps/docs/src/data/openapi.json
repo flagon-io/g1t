@@ -519,7 +519,8 @@
         "list_deployment_statuses",
         "create_deployment_status",
         "list_environments",
-        "get_environment"
+        "get_environment",
+        "start_deployment_build"
       ]
     },
     {
@@ -5377,7 +5378,7 @@
           "Mirroring"
         ],
         "summary": "Get a repository's mirroring",
-        "description": "A repository's links to other hosts. `remotes` lists each with its `role` (`leader`: the remote leads and this repository is its mirror; `follower`: g1t leads and the remote is kept in step), `provider` (`github`, `g1t` or `git`), `name` (`github.com/acme/web`), `state` (a mirror is `standby`, `ci`, `takeover` or `handing_back`; a follower is `following` or `stuck`), `reachable` and `unreachable_since`, `synced_at`, `last_error` and its `settings`. `can_manage` says whether you may change them. A mirror standing by is read-only on g1t and runs nothing. Needs read access.\n\nA repository that leads lists its followers instead, each `role: follower` with `state` `following` or `stuck`. A mirror standing by is read-only on g1t: pushes, merges, issues, pull requests and agents are refused, and nothing runs. `reachable` is false once the remote's host has failed three checks over two minutes; by default that is only shown, and nothing happens on its own.",
+        "description": "A repository's links to other hosts. `remotes` lists each with its `role` (`leader`: the remote leads and this repository is its mirror; `follower`: g1t leads and the remote is kept in step), `provider` (`github`, `g1t` or `git`), `name` (`github.com/acme/web`), `state` (a mirror is `standby`, `ci`, `takeover` or `handing_back`; a follower is `following` or `stuck`), `reachable` and `unreachable_since`, `synced_at`, `last_error`, `checks_problem` (why g1t could not report checks to the remote, such as the GitHub App lacking the Commit statuses permission; null once a report goes through) and its `settings`. `can_manage` says whether you may change them. A mirror standing by is read-only on g1t and runs nothing. Needs read access.\n\nA repository that leads lists its followers instead, each `role: follower` with `state` `following` or `stuck`. A mirror standing by is read-only on g1t: pushes, merges, issues, pull requests and agents are refused, and nothing runs. `reachable` is false once the remote's host has failed three checks over two minutes; by default that is only shown, and nothing happens on its own.",
         "x-operation": "get_mirror",
         "x-mcp-tool": "repository",
         "x-mcp-action": "mirror",
@@ -5432,6 +5433,7 @@
                       "unreachable_since": null,
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -5439,6 +5441,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -5559,6 +5562,7 @@
                       "unreachable_since": null,
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -5566,6 +5570,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -5713,6 +5718,7 @@
                       "unreachable_since": null,
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -5720,6 +5726,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -5883,6 +5890,7 @@
                       "unreachable_since": "2026-10-08T14:04:00.000Z",
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -5890,6 +5898,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -6020,6 +6029,7 @@
                       "unreachable_since": null,
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -6027,6 +6037,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -6308,6 +6319,7 @@
                       "unreachable_since": null,
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -6315,6 +6327,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -6443,6 +6456,7 @@
                   "unreachable_since": null,
                   "synced_at": "2026-10-08T13:57:42.000Z",
                   "last_error": null,
+                  "checks_problem": null,
                   "settings": {
                     "notify": "banner",
                     "take_over_after": null,
@@ -6450,6 +6464,7 @@
                     "keep_ci_warm": false,
                     "github_workflows": true,
                     "hold_deploys": true,
+                    "report_checks": true,
                     "remote_pushes": "adopt"
                   },
                   "created_at": "2026-10-05T10:00:00.000Z"
@@ -6574,7 +6589,7 @@
           "Mirroring"
         ],
         "summary": "Update a remote's settings",
-        "description": "Change a remote's `settings`, all optional: `notify` (`banner`, or `inbox` to also tell the workspace's owners), `take_over_after` (minutes, 5 to 1440, after which g1t takes over on its own while the remote does not answer; null for never), `hand_back` (`when_clean`: an automatic takeover goes back on its own once every ref goes back without a decision; `ask`), `keep_ci_warm` (run `.g1t/workflows` on pushes copied in while standing by), `github_workflows` (run `.github/workflows` in CI failover and takeovers), `hold_deploys`, and for a follower `remote_pushes` (`adopt` fast-forwards made there, or `overwrite` them). Needs the Admin role; agents' tokens are refused.",
+        "description": "Change a remote's `settings`, all optional: `notify` (`banner`, or `inbox` to also tell the workspace's owners), `take_over_after` (minutes, 5 to 1440, after which g1t takes over on its own while the remote does not answer; null for never), `hand_back` (`when_clean`: an automatic takeover goes back on its own once every ref goes back without a decision; `ask`), `keep_ci_warm` (run `.g1t/workflows` on pushes copied in while standing by), `github_workflows` (run `.github/workflows` in CI failover and takeovers), `hold_deploys`, `report_checks` (a GitHub mirror: report the statuses g1t sets on a commit, such as workflow runs and deploys, to the commit on GitHub as `g1t / <context>` while g1t runs its workflows; on by default), and for a follower `remote_pushes` (`adopt` fast-forwards made there, or `overwrite` them). Needs the Admin role; agents' tokens are refused.",
         "x-operation": "update_mirror_remote",
         "x-mcp-tool": "repository",
         "x-mcp-action": "mirror_update_remote",
@@ -6636,6 +6651,7 @@
                   "unreachable_since": null,
                   "synced_at": "2026-10-08T13:57:42.000Z",
                   "last_error": null,
+                  "checks_problem": null,
                   "settings": {
                     "notify": "inbox",
                     "take_over_after": 30,
@@ -6643,6 +6659,7 @@
                     "keep_ci_warm": false,
                     "github_workflows": true,
                     "hold_deploys": true,
+                    "report_checks": true,
                     "remote_pushes": "adopt"
                   },
                   "created_at": "2026-10-05T10:00:00.000Z"
@@ -6737,6 +6754,9 @@
                     "type": "boolean"
                   },
                   "hold_deploys": {
+                    "type": "boolean"
+                  },
+                  "report_checks": {
                     "type": "boolean"
                   },
                   "remote_pushes": {
@@ -33067,6 +33087,154 @@
         }
       }
     },
+    "/repos/{owner}/{name}/deployments/builds": {
+      "post": {
+        "operationId": "start_deployment_build",
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Start a g1t.page build from a workflow",
+        "description": "From a running g1t Actions job, open a g1t.page build of one of the repository's projects, which the job then builds in its own checkout with `g1t-runner deploy` (the g1t/deploy action does both). Only the job's own token (G1T_TOKEN) may call it, with `deployments: write` (or `pages: write`) in its `permissions:`. project is the project's slug; it may be left out when the repository has one project with Deployments on. The run decides what is built: a run on the project's production branch (a push, a dispatch or a schedule there) builds production, a pull request's run builds that pull request's preview, and a run on another branch builds that branch's preview; a tag's run is refused. sha is the commit built, the run's unless you say. A pull request from a fork or from someone without the Write role, and a run that had to be approved, get no build secrets. The workspace's plan must include Deployments and its spend limit must not be reached; the build's time is the job's Actions time and is not charged again. Returns deploy_id and token (DEPLOY_ID and DEPLOY_TOKEN for `g1t-runner deploy`, the token good for this build alone until it finishes), kind (production or preview), project, branch, number, commit, url (the app's address), trusted, the project's root_dir, build_command and output_dir, and build_env and build_secrets (the project's variables and secrets for builds of that kind). The commit's `g1t / deploy` check is pending until the build reports.\n\nCalled from a workflow step with the job's own token, `${{ github.token }}`, in a job with `permissions: deployments: write`; the [`g1t/deploy`](/guides/deployments/#deploying-from-a-workflow) action calls it, masks the token and the secrets, and runs `g1t-runner deploy` with them. Any other token is refused. This is a pull request's run, so it builds the pull request's preview; the same workflow on the production branch builds production. See [Deploying from a workflow](/guides/deployments/#deploying-from-a-workflow).",
+        "x-operation": "start_deployment_build",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "start_deployment_build",
+        "x-scope": "deployments:write",
+        "security": [
+          {
+            "token": [
+              "deployments:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "deploy_id": "dpl_01kq9c4e6g8j0m2p4r6t8v0x2z",
+                  "token": "…",
+                  "kind": "preview",
+                  "project": "hello",
+                  "branch": "new-header",
+                  "number": 42,
+                  "commit": "9f2c4e6a8b0d1f3e5a7c9b1d3f5e7a9c0b2d4f6e",
+                  "url": "https://hello-git-new-header-flagonio.g1t.page",
+                  "trusted": true,
+                  "root_dir": "",
+                  "build_command": null,
+                  "output_dir": null,
+                  "build_env": {
+                    "PUBLIC_API_URL": "https://api.example.com"
+                  },
+                  "build_secrets": {
+                    "SENTRY_AUTH_TOKEN": "…"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string",
+                    "description": "The project's slug; may be left out when the repository has one project with Deployments on."
+                  },
+                  "sha": {
+                    "type": "string",
+                    "description": "The commit built, in hex; the run's commit unless you say."
+                  }
+                }
+              },
+              "example": {
+                "project": "hello"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      }
+    },
     "/repos/{owner}/{name}/deployments/{id}": {
       "get": {
         "operationId": "get_deployment",
@@ -41479,6 +41647,7 @@
                       "type": "string",
                       "enum": [
                         "git.push",
+                        "git.deleted",
                         "branch.renamed",
                         "repo.created",
                         "repo.forked",
@@ -41760,6 +41929,7 @@
                       "type": "string",
                       "enum": [
                         "git.push",
+                        "git.deleted",
                         "branch.renamed",
                         "repo.created",
                         "repo.forked",
@@ -42687,6 +42857,7 @@
                       "type": "string",
                       "enum": [
                         "git.push",
+                        "git.deleted",
                         "branch.renamed",
                         "repo.created",
                         "repo.forked",
@@ -42954,6 +43125,7 @@
                       "type": "string",
                       "enum": [
                         "git.push",
+                        "git.deleted",
                         "branch.renamed",
                         "repo.created",
                         "repo.forked",
@@ -47712,7 +47884,7 @@
                   },
                   "inputs": {
                     "type": "object",
-                    "description": "The workflow_dispatch inputs, by name."
+                    "description": "The workflow_dispatch inputs, by name. Only inputs the workflow declares: any other is refused. A boolean is true or false, a number a number, a choice one of its options, and an environment one of the repository's."
                   }
                 }
               },

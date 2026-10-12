@@ -1,0 +1,16 @@
+name: Docs preview
+on:
+  pull_request_target:
+    types: [opened, synchronize, closed]
+    branches:
+      - main
+      - 'release/**'
+    paths:
+      - 'docs/**'
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - run: echo "PR ${{ github.event.number }}"

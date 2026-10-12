@@ -1,0 +1,7 @@
+# error: so it has no `steps`
+on: push
+jobs:
+  build:
+    uses: ./.github/workflows/foo.yml
+    steps:
+      - run: echo hi

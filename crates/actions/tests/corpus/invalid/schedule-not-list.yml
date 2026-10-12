@@ -1,0 +1,9 @@
+# error: `on.schedule` is a list of `cron:` entries
+on:
+  schedule:
+    cron: '0 0 * * *'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

@@ -1,0 +1,9 @@
+# error: Unexpected `wiki` in `permissions`
+on: push
+permissions:
+  wiki: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

@@ -32,6 +32,9 @@
 //! Given a command instead (`register`, `run`, `service`, `remove`,
 //! `update`, `version`), it is a self-hosted runner on someone's own
 //! machine, which runs work in these modes: see `selfhosted`.
+//!
+//! `deploy` and `detect` are for a workflow step: a g1t.page build of the
+//! job's own checkout, and what that build would find (see `deploy`).
 
 mod abuse;
 mod actions;
@@ -217,6 +220,13 @@ fn main() {
     // A self-hosted runner's commands; the modes below are what it, and
     // g1t's sandboxes, run work with.
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // From a workflow step: a g1t.page build of the job's own checkout,
+    // and what it would find (deploy.rs).
+    match args.first().map(String::as_str) {
+        Some("deploy") => std::process::exit(deploy::cli(&args[1..])),
+        Some("detect") => std::process::exit(deploy::detect_cli(&args[1..])),
+        _ => {}
+    }
     if selfhosted::is_command(&args) {
         std::process::exit(selfhosted::main(args));
     }

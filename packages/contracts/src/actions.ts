@@ -430,3 +430,12 @@ export type ArtifactList = { total_count: number; artifacts: Artifact[] };
 export type ArtifactBlob = { artifact: Artifact; object: string; blob: string };
 
 export type ArtifactRetention = { days: number; maximum_allowed_days: number };
+
+/**
+ * Whether a workflow's path is a managed workflow's: one g1t installed in
+ * the repository without committing it (crates/actions/src/managed.rs), so
+ * no file in the repository holds it.
+ */
+export function isManagedWorkflow(path: string): boolean {
+  return path.startsWith("managed/");
+}

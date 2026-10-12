@@ -224,6 +224,11 @@ export type EventPayloads = {
     commits?: number;
   };
   /**
+   * A branch or tag was deleted by a push. `before` is the commit it pointed
+   * to. `causedByJob` is set when a workflow job's token deleted it: the run's id.
+   */
+  "git.deleted": { repoId: string; ref: string; before: string; causedByJob?: string };
+  /**
    * `author` is who opened it: g1t, for one its agent filed while at work,
    * with `requestedBy` the person it was working for. Every issue and pull
    * request event carries both.

@@ -51,6 +51,32 @@ fn is_commit(name: &str) -> bool {
     name.len() == 40 && name.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// What a ref made or deleted is, as `create` and `delete` name it:
+/// `branch` or `tag`, and its short name. `None` for any other ref, and
+/// for the merge queue's own branches, which come and go with every
+/// queued change.
+fn branch_or_tag(git_ref: &str) -> Option<(&'static str, &str)> {
+    if git_ref.starts_with("refs/heads/g1t-queue/") {
+        return None;
+    }
+    match (git_ref.strip_prefix("refs/heads/"), git_ref.strip_prefix("refs/tags/")) {
+        (Some(branch), _) => Some(("branch", branch)),
+        (_, Some(tag)) => Some(("tag", tag)),
+        _ => None,
+    }
+}
+
+/// Events GitHub takes no `branches`, `tags` or `paths` filters on.
+fn unfiltered(event_name: &str) -> bool {
+    matches!(event_name, "create" | "delete")
+}
+
+/// Whether an `*.assigned` event added nobody: g1t says so for a change
+/// that only took people off.
+fn nobody_added(data: &Value) -> bool {
+    data["added"].as_array().is_some_and(Vec::is_empty)
+}
+
 /// Whether whoever a pull request is for is trusted without asking
 /// identity: g1t's agent in work nobody asked it for, or someone whose
 /// role here is known to allow pushing.
@@ -121,6 +147,17 @@ impl Actions {
         // GitHub lists them oldest first, with the head commit last.
         commits.reverse();
         Ok(commits)
+    }
+
+    /// The message of the commit `sha` in `path`, when it can be read.
+    async fn head_message(&self, path: &RepoPath, actor: &User, sha: &str) -> Result<Option<String>> {
+        let log: Outcome<Vec<Commit>> = g1t_kit::call(
+            &self.repos,
+            "log",
+            &LogArgs { path: path.clone(), viewer: Some(actor.clone()), git_ref: Some(sha.to_owned()), limit: 1 },
+        )
+        .await?;
+        Ok(log.into_result().ok().and_then(|commits| commits.into_iter().next()).map(|commit| commit.message))
     }
 
     async fn changed_paths(&self, repo: &Repo, actor: &User, base: Option<String>, head: String) -> Result<Vec<String>> {
@@ -239,11 +276,7 @@ impl Actions {
                 if git_ref.starts_with("refs/heads/g1t-queue/") || !data["before"].is_null() {
                     return Ok(None);
                 }
-                let (ref_type, name) = match (git_ref.strip_prefix("refs/heads/"), git_ref.strip_prefix("refs/tags/")) {
-                    (Some(branch), _) => ("branch", branch),
-                    (_, Some(tag)) => ("tag", tag),
-                    _ => return Ok(None),
-                };
+                let Some((ref_type, name)) = branch_or_tag(git_ref) else { return Ok(None) };
                 let payload = json!({
                     "ref": name,
                     "ref_type": ref_type,
@@ -270,8 +303,29 @@ impl Actions {
                     approval: None,
                 })
             }
+            // A branch or tag was deleted: on the default branch's latest
+            // commit, as on GitHub, since what was deleted has no commit to
+            // run on now.
+            "delete" => {
+                let Some(git_ref) = data["ref"].as_str() else { return Ok(None) };
+                let Some((ref_type, name)) = branch_or_tag(git_ref) else { return Ok(None) };
+                let Some(sha) = self.default_head(repo).await? else { return Ok(None) };
+                let payload = json!({
+                    "ref": name,
+                    "ref_type": ref_type,
+                    "pusher_type": "user",
+                    "repository": payload::repository(repo),
+                    "sender": payload::user(sender),
+                });
+                Some(on_default(sha, payload, format!("Deleted {ref_type} {name}"), None))
+            }
             "pull_request" | "pull_request_target" | "pull_request_review" => {
                 let Some(number) = data["number"].as_u64().map(|n| n as u32) else { return Ok(None) };
+                // Assignees changed but nobody was added: someone was only
+                // taken off, which is not `assigned`.
+                if action == Some("assigned") && nobody_added(data) {
+                    return Ok(None);
+                }
                 let detail: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view(number)).await?;
                 let Outcome::Ok(detail) = detail else { return Ok(None) };
                 let pull = &detail.pull;
@@ -287,7 +341,7 @@ impl Actions {
                 if event_name == "pull_request_review" {
                     let review = detail.comments.iter().rev().find(|c| c.verdict.is_some() && !c.advisory);
                     payload["review"] = json!({
-                        "state": review.and_then(|r| r.verdict).map(|v| format!("{v:?}").to_lowercase()),
+                        "state": review.and_then(|r| r.verdict).map(payload::review_state),
                         "body": review.map(|r| r.body.clone()),
                         "user": review.map(|r| payload::user(&r.author.username)),
                     });
@@ -382,6 +436,9 @@ impl Actions {
             }
             "issues" | "issue_comment" => {
                 let Some(number) = data["number"].as_u64().map(|n| n as u32) else { return Ok(None) };
+                if action == Some("assigned") && nobody_added(data) {
+                    return Ok(None);
+                }
                 let Some(sha) = self.default_head(repo).await? else { return Ok(None) };
                 let issue: Outcome<IssueDetail> = g1t_kit::call(&self.work, "get_issue", &view(number)).await?;
                 let (issue_json, comments, title, on_pull) = match issue {
@@ -562,7 +619,7 @@ impl Actions {
             // read from git. Agents make many of these events.
             // Deployments' statuses are as frequent (every g1t.page build
             // reports several), so they look there first too.
-            if matches!(event_name, "issues" | "issue_comment" | "deployment" | "deployment_status")
+            if matches!(event_name, "issues" | "issue_comment" | "deployment" | "deployment_status" | "delete")
                 && self.listens(repo_id, event_name).await? == Some(false)
             {
                 continue;
@@ -570,6 +627,17 @@ impl Actions {
             let Some(mut subject) = self.subject(event, event_name, action, &repo, &ws, &sender).await? else {
                 continue;
             };
+            // `[skip ci]` in the head commit's message, as on GitHub.
+            if matches!(event_name, "push" | "pull_request") {
+                let message = match subject.payload["head_commit"]["message"].as_str() {
+                    Some(message) => Some(message.to_owned()),
+                    None => self.head_message(&subject.source, &ws, &subject.sha).await?,
+                };
+                if message.as_deref().is_some_and(g1t_actions::events::skips_ci) {
+                    worker::console_log!("actions: {} {} at {} asks to skip its runs", event.kind, event.id, subject.sha);
+                    continue;
+                }
+            }
             // A change to workflows made on the remote, by someone g1t
             // knows nothing of, waits before it may use this repository's
             // secrets.
@@ -588,7 +656,12 @@ impl Actions {
             let read = if subject.source == Self::repo_path(&repo) {
                 self.read_for(&repo, &ws, subject.source_ref.as_deref(), policy.github).await?
             } else {
-                self.read_workflows(&subject.source, &ws, subject.source_ref.as_deref()).await?
+                // And this repository's managed workflows: they are its own,
+                // whatever the fork's files say (managed.rs).
+                let mut read = self.read_workflows(&subject.source, &ws, subject.source_ref.as_deref()).await?;
+                let managed = self.managed_beside(&repo.id, &read.files).await?;
+                read.files.extend(managed);
+                read
             };
             // A pull request's head runs each workflow once, however many
             // events say it is there (marked ready, and pushed).
@@ -681,6 +754,11 @@ impl Actions {
 
     /// Whether the branch, tag and path filters let the event through.
     async fn passes(&self, repo: &Repo, ws: &User, trigger: &Trigger, subject: &mut Subject, event_name: &str) -> Result<bool> {
+        // GitHub takes no filters on these: a workflow with `branches` on
+        // `create` or `delete` still runs for every branch and tag.
+        if unfiltered(event_name) {
+            return Ok(true);
+        }
         let git_ref = subject.filter_ref.as_str();
         if let Some(tag) = git_ref.strip_prefix("refs/tags/") {
             // A tag push runs a workflow that filters tags, or filters nothing.
@@ -898,9 +976,17 @@ impl Actions {
         let Some(trigger) = workflow.trigger("workflow_dispatch") else {
             return Ok(fail(FailureCode::Invalid, "That workflow cannot be run by hand: it has no `workflow_dispatch` trigger."));
         };
-        let inputs = check!(dispatch_inputs(trigger, &a.inputs));
+        // `type: environment` names one of the repository's environments.
+        let environments = if trigger.inputs.values().any(|spec| spec.get("type").and_then(Value::as_str) == Some("environment")) {
+            self.environment_list(&repo.id).await?.into_iter().map(|env| env.name).collect()
+        } else {
+            Vec::new()
+        };
+        let inputs = check!(dispatch_inputs(trigger, &a.inputs, &environments));
         let payload = json!({
-            "inputs": inputs,
+            // As GitHub gives them here: text, `true` and `false` included.
+            // The `inputs` context keeps booleans and numbers.
+            "inputs": event_inputs(&inputs),
             "ref": full_ref,
             "repository": payload::repository(&repo),
             "sender": payload::user(&a.actor.username),
@@ -1136,8 +1222,20 @@ impl Actions {
 }
 
 /// The inputs of a manual run: what was given, checked against the
-/// workflow's declared inputs, with their defaults filled in.
-fn dispatch_inputs(trigger: &Trigger, given: &Map<String, Value>) -> Outcome<Map<String, Value>> {
+/// workflow's declared inputs, with their defaults filled in. An input the
+/// workflow does not declare is refused, as GitHub refuses it.
+/// `environments` are the repository's, for `type: environment`.
+fn dispatch_inputs(trigger: &Trigger, given: &Map<String, Value>, environments: &[String]) -> Outcome<Map<String, Value>> {
+    let unexpected: Vec<&String> = given.keys().filter(|name| !trigger.inputs.contains_key(*name)).collect();
+    if !unexpected.is_empty() {
+        let names = serde_json::to_string(&unexpected).unwrap_or_default();
+        let declared = if trigger.inputs.is_empty() {
+            "The workflow declares no inputs.".to_owned()
+        } else {
+            format!("The workflow declares {}.", trigger.inputs.keys().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", "))
+        };
+        return fail(FailureCode::Invalid, format!("Unexpected inputs provided: {names}. {declared}"));
+    }
     let mut inputs = Map::new();
     for (name, spec) in &trigger.inputs {
         let kind = spec.get("type").and_then(Value::as_str).unwrap_or("string");
@@ -1152,12 +1250,13 @@ fn dispatch_inputs(trigger: &Trigger, given: &Map<String, Value>) -> Outcome<Map
             Some(value) => match kind {
                 "boolean" => Value::Bool(match &value {
                     Value::Bool(flag) => *flag,
-                    Value::String(text) => text == "true",
-                    _ => false,
+                    Value::String(text) if text.trim().eq_ignore_ascii_case("true") => true,
+                    Value::String(text) if text.trim().eq_ignore_ascii_case("false") || text.trim().is_empty() => false,
+                    _ => return fail(FailureCode::Invalid, format!("The input `{name}` is a boolean: true or false.")),
                 }),
                 "number" => match &value {
                     Value::Number(_) => value,
-                    Value::String(text) => match text.parse::<f64>().ok().and_then(serde_json::Number::from_f64) {
+                    Value::String(text) => match number(text) {
                         Some(number) => Value::Number(number),
                         None => return fail(FailureCode::Invalid, format!("The input `{name}` is a number.")),
                     },
@@ -1172,12 +1271,38 @@ fn dispatch_inputs(trigger: &Trigger, given: &Map<String, Value>) -> Outcome<Map
                     }
                     Value::String(text)
                 }
+                "environment" => {
+                    let text = g1t_actions::expr::to_text(&value);
+                    let wanted = text.trim().to_ascii_lowercase();
+                    if !wanted.is_empty() && !environments.iter().any(|env| env.eq_ignore_ascii_case(&wanted)) {
+                        return fail(
+                            FailureCode::Invalid,
+                            format!("The input `{name}` names an environment, and this repository has none called `{}`.", text.trim()),
+                        );
+                    }
+                    Value::String(text)
+                }
                 _ => Value::String(g1t_actions::expr::to_text(&value)),
             },
         };
         inputs.insert(name.clone(), value);
     }
     Outcome::Ok(inputs)
+}
+
+/// A number input given as text: a whole number stays one.
+fn number(text: &str) -> Option<serde_json::Number> {
+    let text = text.trim();
+    match text.parse::<i64>() {
+        Ok(whole) => Some(whole.into()),
+        Err(_) => text.parse::<f64>().ok().filter(|n| n.is_finite()).and_then(serde_json::Number::from_f64),
+    }
+}
+
+/// A manual run's inputs as `github.event.inputs` gives them: every one as
+/// text, as GitHub's `workflow_dispatch` payload has them.
+fn event_inputs(inputs: &Map<String, Value>) -> Map<String, Value> {
+    inputs.iter().map(|(name, value)| (name.clone(), Value::String(g1t_actions::expr::to_text(value)))).collect()
 }
 
 #[cfg(test)]
@@ -1290,5 +1415,92 @@ mod tests {
         let mut labeled = serde_json::json!({ "action": "labeled" });
         payload::changed(&mut labeled, &serde_json::json!({ "label": { "name": "bug", "color": "d73a4a" } }));
         assert_eq!(labeled["label"]["color"], "d73a4a");
+        let mut assigned = serde_json::json!({ "action": "assigned" });
+        payload::changed(&mut assigned, &serde_json::json!({ "assignees": ["ana", "bo"], "added": ["bo"] }));
+        assert_eq!(assigned["assignee"]["login"], "bo");
+        assert!(nobody_added(&serde_json::json!({ "assignees": ["ana"], "added": [] })));
+        assert!(!nobody_added(&serde_json::json!({ "assignees": ["ana"], "added": ["ana"] })));
+    }
+
+    fn dispatchable(yaml: &str) -> Trigger {
+        workflow::parse(yaml).unwrap().trigger("workflow_dispatch").unwrap().clone()
+    }
+
+    fn given(value: Value) -> Map<String, Value> {
+        value.as_object().unwrap().clone()
+    }
+
+    const DISPATCH: &str = "on:
+  workflow_dispatch:
+    inputs:
+      dry-run: { type: boolean, default: false }
+      count: { type: number, default: 2 }
+      target: { type: environment }
+      level: { type: choice, options: [low, high], default: low }
+      note: { required: false }
+jobs:
+  a:
+    runs-on: x
+    steps: [{ run: 'true' }]";
+
+    #[test]
+    fn an_input_the_workflow_does_not_declare_is_refused() {
+        let trigger = dispatchable(DISPATCH);
+        let Outcome::Fail(failure) = dispatch_inputs(&trigger, &given(json!({ "dry-run": true, "colour": "red" })), &[]) else {
+            panic!("an undeclared input was taken");
+        };
+        assert_eq!(failure.code, FailureCode::Invalid);
+        assert!(failure.message.starts_with(r#"Unexpected inputs provided: ["colour"]."#), "{}", failure.message);
+        assert!(failure.message.contains("`dry-run`"));
+        let bare = dispatchable("on: workflow_dispatch\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]");
+        let Outcome::Fail(failure) = dispatch_inputs(&bare, &given(json!({ "x": "1" })), &[]) else { panic!() };
+        assert!(failure.message.contains("declares no inputs"));
+        assert!(matches!(dispatch_inputs(&bare, &Map::new(), &[]), Outcome::Ok(inputs) if inputs.is_empty()));
+    }
+
+    #[test]
+    fn inputs_are_typed_and_the_event_has_them_as_text() {
+        let trigger = dispatchable(DISPATCH);
+        let environments = vec!["staging".to_owned(), "production".to_owned()];
+        let Outcome::Ok(inputs) = dispatch_inputs(&trigger, &given(json!({ "dry-run": "true", "count": "3", "target": "Staging" })), &environments)
+        else {
+            panic!("refused");
+        };
+        assert_eq!(inputs["dry-run"], json!(true));
+        assert_eq!(inputs["count"], json!(3));
+        assert_eq!(inputs["level"], json!("low"));
+        assert_eq!(inputs["note"], json!(""));
+        let event = event_inputs(&inputs);
+        assert_eq!(event["dry-run"], json!("true"));
+        assert_eq!(event["count"], json!("3"));
+        assert_eq!(event["target"], json!("Staging"));
+        let Outcome::Ok(defaults) = dispatch_inputs(&trigger, &Map::new(), &environments) else { panic!() };
+        assert_eq!(event_inputs(&defaults)["dry-run"], json!("false"));
+        assert_eq!(defaults["count"], json!(2));
+        let refused = |value: Value| match dispatch_inputs(&trigger, &given(value), &environments) {
+            Outcome::Fail(failure) => failure.message,
+            Outcome::Ok(_) => panic!("taken"),
+        };
+        assert!(refused(json!({ "target": "qa" })).contains("none called `qa`"));
+        assert!(refused(json!({ "dry-run": "yes" })).contains("true or false"));
+        assert!(refused(json!({ "count": "many" })).contains("is a number"));
+        assert!(refused(json!({ "level": "mid" })).contains("low, high"));
+    }
+
+    #[test]
+    fn create_and_delete_take_no_filters_and_name_their_ref() {
+        assert!(unfiltered("create") && unfiltered("delete"));
+        assert!(!unfiltered("push") && !unfiltered("pull_request"));
+        assert_eq!(branch_or_tag("refs/heads/feature/x"), Some(("branch", "feature/x")));
+        assert_eq!(branch_or_tag("refs/tags/v1.0"), Some(("tag", "v1.0")));
+        assert_eq!(branch_or_tag("refs/heads/g1t-queue/main/3"), None);
+        assert_eq!(branch_or_tag("refs/notes/commits"), None);
+        // A workflow can name `delete`. It takes no filters, as GitHub's
+        // schema says, so writing one is refused when the workflow is read.
+        assert!(workflow::parse("on:\n  delete:\n    branches: [release/*]\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").is_err());
+        let workflow = workflow::parse("on:\n  delete:\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
+        let trigger = workflow.trigger("delete").unwrap();
+        assert!(trigger.wants_type(None));
+        assert!(!workflow.notes.iter().any(|note| note.severity == workflow::Severity::Unsupported));
     }
 }

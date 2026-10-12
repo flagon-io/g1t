@@ -42,6 +42,12 @@ places, unless the mirror's settings say otherwise. A push copied in from
 GitHub that changes workflows or local actions waits for approval before
 it can use the repository's secrets.
 
+Whenever g1t runs a mirror's workflows, their results show on the commit on
+GitHub too, as commit statuses named `g1t / <workflow> / <event>`, such as
+`g1t / CI / push`. This needs the Commit statuses permission on g1t's GitHub
+App; turn it off with **Report checks to GitHub** in the mirror's settings.
+See [Checks on GitHub](/guides/mirroring/#checks-on-github).
+
 Then add your [secrets and variables](#secrets-and-variables): GitHub never
 gives their values out, so they cannot be copied across.
 
@@ -49,20 +55,21 @@ gives their values out, so they cannot be copied across.
 
 | On GitHub | On g1t |
 | --- | --- |
-| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `repository_dispatch`, `release`, `deployment`, `deployment_status` | The same, from g1t's own pushes, pull requests, issues, comments, [releases](#releases), [deployments](#deployments) and [merge queue](/guides/merge-queue/). `create` starts on each new branch or tag; `repository_dispatch` on [a dispatch event](#repository-dispatch). |
+| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `delete`, `repository_dispatch`, `release`, `deployment`, `deployment_status` | The same, from g1t's own pushes, pull requests, issues, comments, [releases](#releases), [deployments](#deployments) and [merge queue](/guides/merge-queue/). `create` starts on each new branch or tag, at its commit; `delete` on each branch or tag a push deletes, on the default branch's latest commit, with `github.event.ref` and `github.event.ref_type` naming what went. As on GitHub, neither takes `branches` or `tags` filters: a workflow on them runs for every branch and tag. `repository_dispatch` starts on [a dispatch event](#repository-dispatch). |
 | `jobs`, `needs`, `if`, `outputs`, `env`, `defaults`, `timeout-minutes`, `continue-on-error` | The same. |
 | `timeout-minutes` and `continue-on-error` on a step | The same, for `run:` and `uses:` steps alike. A `uses:` step's action is stopped at its limit, with every process it started; a step inside a composite action stops at its own limit or the `uses:` step's, whichever comes first. A step stopped this way fails, unless `continue-on-error` lets the job go on. |
 | `strategy.matrix` with `include` and `exclude`, `fail-fast`, `max-parallel`, a matrix from `fromJSON(needs.…)` | The same. |
 | `concurrency` with `cancel-in-progress`, for the workflow or for one job | The same: one run, or one job, of a group at a time. |
 | `permissions:` for the workflow or for one job, `read-all`, `write-all` | The same: they decide what [the job's token](#the-jobs-token) may do. |
 | `${{ }}` expressions: every operator, function and context | The same, including `hashFiles`, `success()`, `failure()`, `always()` and `cancelled()`. |
-| `run:` with `bash`, `sh`, `python` or a custom shell | The same. |
-| JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
+| `run:` with `bash`, `sh`, `python`, `pwsh` or a custom shell | The same, with GitHub's file for each: `.sh` for `bash` and `sh`, `.py` for `python`, `.ps1` for PowerShell (stopping at the first error, and exiting with the last program's code), `.cmd` for `cmd`, and no extension for another program. `python` runs `python`, or `python3` on a machine without it. |
+| JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. An action that declares `node20` runs on Node 20 where the machine has one. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories) and [an action's pre and post](#an-actions-pre-and-post). |
 | Composite actions | The same. |
-| Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository) | The same: `with:` inputs, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, and nesting up to four deep. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
+| Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository) | The same: `with:` inputs checked against their `type`, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, `strategy.matrix` on the calling job (one call for each combination), `concurrency` on the calling job, and up to ten levels of workflows with at most 50 different reusable workflows in a run. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
 | `actions/checkout` | Checks out from g1t, with `ref`, `fetch-depth`, `path`, `repository`, `token` and `submodules`. |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. Step summaries show on the run's page; see [job summaries](#job-summaries). |
-| `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run, and [masked](#masking-secrets) values stay hidden. |
+| `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::`, `::echo::on` | The same: errors and warnings become annotations on the run, with their `file`, `line`, `col`, `endLine` and `endColumn`, and [masked](#masking-secrets) values stay hidden. |
+| Problem matchers (`::add-matcher::`, `::remove-matcher::`) | The same, so `actions/setup-node`, `setup-go` and `setup-python` turn compiler and linter output into annotations. See [problem matchers](#problem-matchers). |
 | `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is [the job's own token](#the-jobs-token); `GITHUB_TOKEN` is its alias. |
 | `environment:` on a job | The job waits for the environment's [protection rules](#environments), then reads each key's row for that environment, as environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. The name may be an expression. |
 | `actions/upload-artifact`, `actions/download-artifact`, `actions/upload-artifact/merge` | The same inputs and outputs as version 4: `retention-days`, `overwrite`, `compression-level`, `include-hidden-files`, `!` exclusions, download by `pattern` with `merge-multiple`, and from another run with `run-id` and `github-token`. Up to 5 GiB each; see [artifacts](#artifacts). |
@@ -93,11 +100,85 @@ anything in it that runs differently.
   github.com. `actions/upload-artifact`, `actions/download-artifact` and
   `actions/upload-artifact/merge` work, because g1t runs them itself. See
   [actions built on the toolkit](#actions-built-on-the-toolkit).
-- **`on: delete`.** Deleting a branch or tag starts no workflows yet; the
-  workflow's page says so.
+- **`on: label`, and some activity types.** Creating, editing or deleting
+  a label starts no workflows yet, and the workflow's page says so. Nor do
+  the `pull_request` types `unassigned`, `locked` and `unlocked`, `edited`
+  for a new title or description, or the `issues` types `unassigned`,
+  `locked`, `unlocked`, `pinned` and `unpinned`.
+- **Background steps.** A step with `background: true`, or a `wait`,
+  `wait-all`, `cancel` or `parallel` step, is refused: g1t does not run
+  them yet.
+- **`timezone` on a schedule, `concurrency.queue`, `cancel-timeout-minutes`
+  and `snapshot`.** The workflow runs without them, and its page says so:
+  a schedule runs in UTC, a group keeps one run waiting, a cancelled job
+  stops in its usual time, and no runner image is made.
 
 Why each of these is missing, and what to use instead, is on
 [What g1t can't do yet](/about/limitations/#actions-and-runners).
+
+## Skipping a run
+
+A commit can ask not to start the `push` and `pull_request` workflows it
+would, as on GitHub: put `[skip ci]`, `[ci skip]`, `[no ci]`,
+`[skip actions]` or `[actions skip]` anywhere in its message, or end the
+message with a `skip-checks: true` trailer. For a push, the message read
+is the pushed head's; for a pull request, its head commit's. Other
+events, such as `pull_request_target`, `workflow_dispatch` and
+`schedule`, still start their workflows.
+
+```sh
+git commit -m "Fix a typo in the README [skip ci]"
+```
+
+A required check that a skipped workflow would have reported stays
+pending, so a pull request whose merge needs it waits for a push that
+runs it.
+
+## How g1t checks a workflow
+
+g1t reads a workflow as GitHub does, from GitHub's own schema for workflow
+files, so a workflow GitHub refuses is refused on g1t too, and one GitHub
+runs reads on g1t. When a workflow can't be read, its page says what is
+wrong, with the job and step, and no run starts from it.
+
+| You write | g1t says |
+| --- | --- |
+| A key GitHub doesn't have, at any level, such as `runs_on:` or `with:` on a `run:` step | It is unexpected, and lists the keys that place can have. |
+| A job without `runs-on` | The job has no `runs-on`. A job that calls a reusable workflow with `uses:` has no `runs-on` or `steps`. |
+| A job id that doesn't start with a letter or `_`, has characters other than letters, digits, `-` and `_`, or starts with `__` | It is not a job id GitHub accepts. Step ids follow the same rule. Two jobs, or two steps of a job, whose ids differ only in case are the same id. |
+| An event GitHub doesn't have, or a filter the event doesn't take, such as `types` on `push` | GitHub has no such event, or the event doesn't take that key. `branches` and `branches-ignore` (and `tags`, `paths`) can't both be on one event. |
+| A YAML merge key (`<<: *defaults`) | GitHub doesn't read merge keys. Anchors and aliases (`&steps` and `*steps`) work, as on GitHub, for a whole value. |
+| A `permissions` name GitHub's token doesn't have, such as `metadata` | It is unexpected. A name GitHub has that g1t has nothing behind yet reads, and grants nothing. |
+
+### g1t's own settings
+
+A `g1t:` mapping can go at the top of a workflow, on a job and on a step.
+GitHub refuses a workflow with `g1t:` in it, so use it only in
+`.g1t/workflows`. It follows two rules:
+
+- It only adds to a workflow. It never changes what a GitHub key means.
+- Each setting in it has a GitHub equivalent, written here, so that a
+  workflow can be moved back to GitHub without it.
+
+| Setting | Where | What it does | On GitHub |
+| --- | --- | --- | --- |
+| `deployment: false` | A job | The job reads its `environment:` values without the run recording a deployment. | `environment: { name: ..., deployment: false }` |
+
+g1t keeps any other key under `g1t:` as written, and does nothing with it
+yet.
+
+## Managed workflows
+
+Some workflows run in a repository without a file in it: g1t installs
+them for a feature you turn on, such as a project's
+[build with a workflow](/guides/deployments/#build-with-a-workflow). A
+managed workflow runs like any other: on the **Actions** page, with its
+runs, logs, re-runs and checks, on g1t's machines or your
+[self-hosted runners](/guides/self-hosted-runners/). Its page says it is
+managed by g1t.
+
+A workflow of the same `name:` in `.g1t/workflows/` runs in its place, so
+to change one, commit your own version of it.
 
 ## Schedules
 
@@ -174,6 +255,20 @@ Kept archives are g1t's and count toward no workspace's storage.
 
 Actions that a composite action uses are downloaded when it runs.
 
+### g1t's own actions
+
+The `g1t` workspace on g1t.sh holds g1t's own actions, public, with a
+`v1` tag that moves with each compatible release:
+
+| Action | What it does |
+| --- | --- |
+| [`g1t/deploy@v1`](https://g1t.sh/g1t/deploy) | Builds the checkout and puts it on [g1t.page](/guides/deployments/): production from the project's production branch, a preview from a pull request or another branch. The job needs `deployments: write`. See [deploying from a workflow](/guides/deployments/#deploying-from-a-workflow). |
+| [`g1t/detect@v1`](https://g1t.sh/g1t/detect) | Says what that build would find (`kind`, `install`, `build`, `output-dir`) without building anything. |
+
+Both are composite actions around `g1t-runner`, which g1t's machines
+have; on a [self-hosted runner](/guides/self-hosted-runners/) they use
+the one on `PATH` or download the newest release.
+
 ### Secrets for a called workflow
 
 A called workflow gets only the secrets its caller passes, plus
@@ -206,6 +301,56 @@ jobs:
 `vars` are the calling repository's, and a called workflow's jobs run
 with the calling run's `github` context: `actions/checkout` checks out the
 calling repository.
+
+A secret passed by name that the called workflow does not declare under
+`on.workflow_call.secrets` fails the calling job: `Invalid secret: … is
+not defined in …`.
+
+### Inputs for a called workflow
+
+The values under `with:` are checked against the `type` each input has
+under `on.workflow_call.inputs`, before anything runs:
+
+- A `boolean` input takes `true` or `false`, and a `number` input a
+  number. Text such as `'true'` or a job's output (outputs are always
+  text) fails the calling job: pass `${{ fromJSON(needs.build.outputs.count) }}`
+  to give its value.
+- A `string` input takes text; a number or a boolean becomes its text.
+- An input you leave out takes its `default`, else `false`, `0` or `''`
+  by its type. A `required: true` input you leave out fails the calling
+  job.
+- A name under `with:` that the called workflow does not declare fails the
+  calling job: `Invalid input: … is not defined in …`.
+
+### A matrix of calls
+
+A job that calls a reusable workflow may have a `strategy`. Each
+combination of its matrix calls the workflow once, with `matrix` read in
+`with:` and `secrets:`:
+
+```yaml
+jobs:
+  test:
+    strategy:
+      matrix:
+        node: [20, 22]
+      max-parallel: 1
+    uses: ./.g1t/workflows/test.yml
+    with:
+      node-version: ${{ matrix.node }}
+```
+
+The called workflow's jobs are named under the combination's call:
+`test (20) / unit`, `test (22) / unit`. `max-parallel` limits how many
+calls run at a time, and with `fail-fast` (the default) a call that fails
+cancels the calls still running or waiting. `concurrency` on the calling
+job holds its group while the called workflow runs, as a job's own does.
+
+A run connects at most ten levels of workflows: the workflow it started
+from and nine levels of reusable workflows below it. It calls at most 50
+different reusable workflows; a workflow called again, as by each
+combination of a matrix, counts once. A call past either limit fails the
+calling job and says why.
 
 ## Releases
 
@@ -262,8 +407,11 @@ its job's token, start no workflows, so a workflow cannot set itself off.
 Jobs run in a fresh sandbox each: Debian with Node 24, Python 3, Go, Rust,
 Java 21, .NET 8, Ruby 3.3, `build-essential`, `git`, `curl`, `jq`, Docker
 (with Buildx and Compose) and passwordless `sudo`, in GitHub's layout
-(`/home/runner/work`, `RUNNER_TEMP`, `RUNNER_TOOL_CACHE`).
-`runner.os` is `Linux`. `ubuntu-latest`, `ubuntu-24.04` and other Linux
+(`/home/runner/work`, `RUNNER_WORKSPACE`, `RUNNER_TEMP`, `RUNNER_TOOL_CACHE`).
+`runner.os` is `Linux`. Each step's `GITHUB_ACTION` is its `id`, or
+GitHub's name for it: `__run`, `__run_2` and on for `run:` steps,
+`__actions_checkout` for `uses: actions/checkout`. `ImageOS` and
+`ImageVersion` are set when the machine's image sets them. `ubuntu-latest`, `ubuntu-24.04` and other Linux
 labels all run here. A job whose `runs-on` names `self-hosted` waits for one
 of your [self-hosted runners](/guides/self-hosted-runners/) instead. Setup actions such as
 `actions/setup-node` and `actions/setup-python` install other versions as
@@ -349,8 +497,14 @@ Builds that compile, such as Rust or a large TypeScript project, finish
 several times faster on one.
 
 A job on g1t's machines runs for at most 60 minutes, whatever its
-`timeout-minutes`; one on a self-hosted runner can run for up to 24 hours.
-A job stopped at its time cap fails saying so.
+`timeout-minutes`, and the workflow's page warns about a job that asks
+for more. One on a self-hosted runner runs for 360 minutes when it names
+no `timeout-minutes`, as on GitHub, and can ask for up to 24 hours. A job
+stopped at its time cap fails saying so.
+
+g1t's machines are x64. A job whose `runs-on` names an Arm label, such
+as `ubuntu-24.04-arm`, runs on x64, and the workflow's page says so; a
+self-hosted Arm runner runs it on Arm.
 
 ### What a job can reach
 
@@ -651,6 +805,65 @@ repository's cache.
   with its own message. `actions/upload-artifact`,
   `actions/download-artifact` and `actions/upload-artifact/merge` work:
   g1t runs those itself.
+
+## An action's pre and post
+
+A JavaScript action's `pre` runs before the job's first step, as on
+GitHub: each one is a step of its own, *Pre* and the step's name, in the
+order of the steps, when its `pre-if` holds (`always()` when it has
+none). Its `post` runs after the last step, *Post* and the step's name,
+last first. What `pre` saves with `GITHUB_STATE` or `::save-state::`
+reaches the step's main as `STATE_<name>`, and what either saves reaches
+`post`.
+
+An action in your repository (`uses: ./…`) is not checked out when the
+job starts, so its `pre` is not run and the step warns, as on GitHub. An
+action inside a composite action runs its `pre` right before its main.
+
+A step that gives an input the action does not declare is warned of:
+*Unexpected input(s) 'foo', valid inputs are ['token', 'path']*. The
+step still runs.
+
+## Problem matchers
+
+`::add-matcher::path/to/matcher.json` adds the matchers in a file of
+GitHub's format, and they read every line of output from then on, for
+the rest of the job. A line one matches becomes an error, warning or
+notice annotation, with the file, line, column and message it found, in
+place of the line in the log.
+
+```json
+{
+  "problemMatcher": [
+    {
+      "owner": "my-linter",
+      "pattern": [
+        {
+          "regexp": "^(.+):(\\d+):(\\d+): (error|warning) (.*)$",
+          "file": 1, "line": 2, "column": 3, "severity": 4, "message": 5
+        }
+      ]
+    }
+  ]
+}
+```
+
+- A pattern of several lines matches them in order. The last one can
+  set `loop` to match each issue after a header line, as ESLint's
+  stylish output has.
+- `severity` is the matcher's own default, `error` when it gives none.
+  A severity other than `error`, `warning` or `notice` is no annotation.
+- A file is kept when it exists in a repository in the workspace, as a
+  path inside it; `fromPath` names the file a relative path is from.
+- A matcher added with an owner already there takes its place.
+  `::remove-matcher owner=my-linter::` removes it.
+- Patterns are regular expressions as Rust's `regex` reads them, which
+  has no lookaround or backreferences. A file whose patterns do not
+  read is refused, with an error in the log.
+
+`::echo::on` shows each workflow command in the log as it is read,
+until `::echo::off`; with [debug logging](#debug-logging) they are shown
+from the start.
 
 ## Caching Rust builds
 
@@ -958,7 +1171,7 @@ that as few connectors as possible cross.
 | A job | Its status, its name and how long it took. Click it to open its steps and logs. |
 | A job that deploys | Its environment's address (`environment.url`), as a link, under its name. |
 | A matrix | One node with how many jobs it made (`test · 6 jobs`) and how they stand together. Click it to list each combination; click one to open it. |
-| A reusable workflow | A box under the job that calls it, named with the called file, holding the called workflow's jobs laid out the same way. The jobs that need the calling job connect to the box. |
+| A reusable workflow | A box under the job that calls it, named with the called file, holding the called workflow's jobs laid out the same way; a matrix of calls shares one box, each call's jobs named with its combination. The jobs that need the calling job connect to the box. |
 
 Connectors run from a job to each job that needs it. They are red from a
 job that failed, and move while the job they lead to is running (they
@@ -1126,9 +1339,11 @@ default, as `opened` and `synchronize` are), `converted_to_draft`,
 `ready_for_review`, `labeled`, `unlabeled`, `milestoned`, `demilestoned`,
 `assigned`, `review_requested` and `closed`, and `edited` when the branch
 a pull request merges into changes; `issue_comment` workflows on
-`created`, `edited` (with `github.event.changes.body.from`) and `deleted`; `issues` workflows on `labeled`, `unlabeled`, `milestoned` and
+`created`, `edited` (with `github.event.changes.body.from`) and `deleted`; `issues` workflows on `assigned`, `labeled`, `unlabeled`, `milestoned` and
 `demilestoned` too. List them under `types:` to run on them. For
-`labeled` and `unlabeled`, `github.event.label` names the label. A pull
+`labeled` and `unlabeled`, `github.event.label` names the label; for
+`assigned`, `github.event.assignee` names who was assigned. Assigning
+several people at once starts one run, which names the first of them. A pull
 request's `branches` filter, `github.base_ref` and
 `pull_request.base.ref` are the branch it merges into, which is not
 always the default branch: see
@@ -1520,6 +1735,15 @@ curl -X POST https://api.g1t.sh/repos/acme/web/actions/workflows/ci.yml/dispatch
   -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
   -d '{"ref": "main", "inputs": {"environment": "staging"}}'
 ```
+
+Give only the inputs the workflow declares under
+`on.workflow_dispatch.inputs`: a run with any other input is refused, and
+the answer names the inputs it did not expect. A `boolean` input is `true`
+or `false`, a `number` a number, a `choice` one of its `options`, and an
+`environment` the name of one of the repository's
+[environments](#environments). In the run, the `inputs` context keeps
+booleans and numbers as they are, and `github.event.inputs` has every
+input as text, `"true"` and `"3"`, as on GitHub.
 
 To save an artifact from a script, follow the redirect:
 

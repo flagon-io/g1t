@@ -1,0 +1,11 @@
+# error: Job `MY-JOB` is already defined as `my-job`
+on: push
+jobs:
+  my-job:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+  MY-JOB:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

@@ -1618,8 +1618,14 @@ impl Work {
         )
         .await?;
         let code_owners = self.pull_code_owners(&pull, &comments, &settings).await?;
+        let required = if settings.required_checks.is_empty() {
+            Vec::new()
+        } else {
+            let checked = self.with_job_checks(&repo.id, pull.head_commit.as_deref(), statuses.clone()).await?;
+            required_checks(&settings.required_checks, &checked)
+        };
         Ok(Outcome::Ok(PullDetail {
-            required_checks: required_checks(&settings.required_checks, &statuses),
+            required_checks: required,
             rules: gate.map(|gate| rulesets::merge_rules(&gate.judged, &gate.requirements, pull.base_branch(&repo.default_branch) == repo.default_branch)),
             code_owners,
             comments,

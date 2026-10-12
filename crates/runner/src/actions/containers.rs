@@ -35,6 +35,8 @@ pub(crate) struct JobContainer {
     pub(crate) id: String,
     /// `bash`, or `sh` in an image without it.
     pub(crate) shell: &'static str,
+    /// `python`, or `python3` in an image without it, for `shell: python`.
+    pub(crate) python: &'static str,
     /// Whether the runner's Node runs in it.
     pub(crate) node: bool,
     /// The image's own `PATH`.
@@ -275,7 +277,7 @@ impl Job {
         if self.docker_output(&["version", "--format", "{{.Server.Version}}"]).is_some() {
             return true;
         }
-        self.log.line("##[error]This job needs Docker (`services`, `container` or a Docker action), and Docker does not answer here. On a self-hosted runner, run the runner directly on a machine with Docker (`--no-docker`).");
+        self.log.line("##[error]This job needs Docker (`services`, `container` or a Docker action), and Docker does not answer here. On a self-hosted runner, run the runner's image under Sysbox, which gives each job that uses Docker an engine of its own.");
         false
     }
 
@@ -353,7 +355,7 @@ impl Job {
         // A self-hosted machine without Docker runs the steps as before,
         // on the machine, without the containers.
         if !self.docker_hosted && self.docker_output(&["version", "--format", "{{.Server.Version}}"]).is_none() {
-            self.log.line("##[warning]Docker does not answer on this runner, so the job's `services` and `container` are not started and its steps run on the machine. Run the runner directly on a machine with Docker (`--no-docker`) to start them.");
+            self.log.line("##[warning]Docker does not answer on this runner, so the job's `services` and `container` are not started and its steps run on the machine. Run the runner's image under Sysbox to give each job Docker of its own.");
             return true;
         }
         self.log.line("##[group]Initialize containers");
@@ -419,7 +421,14 @@ impl Job {
                 self.log.line("##[warning]The runner's Node does not run in this image (it needs glibc and libstdc++), so JavaScript actions run beside the container, on g1t's image, with the same files.");
             }
             self.job_context.insert("container".into(), json!({ "id": id, "network": network }));
-            self.container = Some(JobContainer { id: name, shell: if has_bash { "bash" } else { "sh" }, node, path });
+            let has_python = self.docker_output(&["exec", &name, "sh", "-c", "command -v python"]).is_some_and(|out| !out.is_empty());
+            self.container = Some(JobContainer {
+                id: name,
+                shell: if has_bash { "bash" } else { "sh" },
+                python: if has_python { "python" } else { "python3" },
+                node,
+                path,
+            });
         }
 
         // Services with a health check are waited for.

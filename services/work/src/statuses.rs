@@ -10,6 +10,7 @@
 //! failing jobs printed; once it is out of revisions, only a required
 //! check holds the pull request for a person.
 
+use g1t_contracts::checks::StatusEvent;
 use g1t_contracts::events::ChecksEvent;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{
@@ -139,7 +140,38 @@ impl Work {
     pub(crate) async fn facts(&self, repo_id: &str, sha: Option<&str>) -> Result<WorkflowFacts> {
         let (statuses, settings) =
             futures_util::future::try_join(self.statuses(repo_id, sha), self.settings_by_id(repo_id)).await?;
-        Ok(WorkflowFacts::of(&statuses, &settings.required_checks))
+        self.workflow_facts(repo_id, sha, &statuses, &settings.required_checks).await
+    }
+
+    /// What `statuses`, a commit's, say, with each required check also met
+    /// by the g1t Actions jobs of its name ([`Work::with_job_checks`]). Jobs
+    /// count only toward required checks: whether workflows are running or
+    /// failed is their runs' statuses' to say.
+    pub(crate) async fn workflow_facts(
+        &self,
+        repo_id: &str,
+        sha: Option<&str>,
+        statuses: &[CommitStatus],
+        required: &[String],
+    ) -> Result<WorkflowFacts> {
+        let mut facts = WorkflowFacts::of(statuses, required);
+        if !required.is_empty() {
+            facts.required = required_checks(required, &self.with_job_checks(repo_id, sha, statuses.to_vec()).await?);
+        }
+        Ok(facts)
+    }
+
+    /// `statuses` and, for each g1t Actions job on `sha`, the status its
+    /// check run stands as (`g1t_contracts::checks::job_statuses`), so a
+    /// required check named for a job, as GitHub's are, is met by it.
+    pub(crate) async fn with_job_checks(&self, repo_id: &str, sha: Option<&str>, mut statuses: Vec<CommitStatus>) -> Result<Vec<CommitStatus>> {
+        let Some(sha) = sha else { return Ok(statuses) };
+        let details = self
+            .actions_runs(g1t_contracts::checks::ActionsChecksArgs { repo_id: repo_id.to_owned(), shas: vec![sha.to_owned()], ..Default::default() })
+            .await?;
+        let runs: Vec<_> = details.into_iter().map(|detail| (detail.run, detail.jobs)).collect();
+        statuses.extend(g1t_contracts::checks::job_statuses(&runs, sha));
+        Ok(statuses)
     }
 
     /// The check names reported on a repository's commits lately, for
@@ -184,8 +216,27 @@ impl Work {
             .collect())
     }
 
+    /// A status from another part of g1t: a workflow run, a deploy, a scan.
+    /// Published as `status.created`, as one set through the API is, so
+    /// webhooks hear it and a GitHub mirror's commit is told (integrations).
+    /// Publishing is best effort: the status is kept either way.
     pub(crate) async fn set_commit_status(&self, a: SetCommitStatusArgs) -> Result<Outcome<bool>> {
-        self.store_status(a, None).await
+        let event = StatusEvent {
+            repo_id: a.repo_id.clone(),
+            sha: a.sha.clone(),
+            context: a.context.clone(),
+            state: a.state.clone(),
+            description: a.description.clone(),
+            target_url: a.target_url.clone(),
+        };
+        let repo_id = a.repo_id.clone();
+        let stored = self.store_status(a, None).await?;
+        if matches!(stored, Outcome::Ok(_))
+            && let Err(error) = self.publish_as("status.created", &repo_id, None, event).await
+        {
+            worker::console_error!("status.created not published: {error}");
+        }
+        Ok(stored)
     }
 
     /// Sets a status, standing for check run `check_run_id` if it does,

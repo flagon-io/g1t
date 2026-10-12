@@ -50,6 +50,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     buildCommand: String(form.get("buildCommand") ?? ""),
     outputDir: String(form.get("outputDir") ?? ""),
     idleDays: Number(form.get("idleDays")),
+    viaWorkflow: on("viaWorkflow"),
   });
   return saved.ok ? { notice: "Saved." } : { error: saved.error.message };
 }
@@ -150,6 +151,9 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
                 A preview for every branch with an open pull request, linked on it.
               </Check>
             </div>
+            <Check name="viaWorkflow" on={settings.viaWorkflow ?? false} title="Build with a workflow">
+              Build through a workflow g1t manages for this project, listed under Actions with its runs and logs. It runs on g1t's machines like any workflow, and a workflow named g1t in .g1t/workflows takes its place.
+            </Check>
             <div className="grid gap-4 md:grid-cols-3">
               <Field label="Build command" hint="Instead of the project's own build script.">
                 <Input name="buildCommand" defaultValue={settings.buildCommand ?? ""} placeholder="npm run build" />

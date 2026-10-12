@@ -5,16 +5,20 @@ description: Run your workflow jobs, and if you choose your agents' work, on you
 
 A self-hosted runner is a machine of yours that runs your workflow jobs
 instead of g1t's sandboxes. It can be a server, a Mac in a cupboard, a
-Windows box with a GPU, or a pod in your cluster. You install `g1t-runner`
-on it, register it once, and it picks up jobs that ask for it with
-`runs-on: self-hosted`.
+Windows box with a GPU, or a pod in your cluster. On Linux you run
+`g1t-runner` as a container under [Sysbox](#run-it-as-a-container), so
+neither the runner nor its jobs can reach the machine; it registers once
+and picks up jobs that ask for it with `runs-on: self-hosted`.
 
 - **Time on your runners is $0**, on every plan, including the free one.
   It shows on [usage](/guides/usage-and-billing/) as self-hosted minutes.
 - **It only connects out.** The runner polls `api.g1t.sh` over HTTPS for
   work. Nothing needs to reach the machine: no open port, no tunnel.
-- **Any OS.** Linux, macOS and Windows, on x64 and arm64. Jobs run in a
-  Docker container by default, or directly on the machine.
+- **Each job in a fresh sandbox.** Every job gets a container of its own,
+  made for it and removed after it, inside the runner's own container.
+  See [isolation](#isolation).
+- **Any OS.** Linux, macOS and Windows, on x64 and arm64. On macOS and
+  Windows, sandboxed jobs are [not built yet](#windows-and-macos).
 
 | Where | Page | Who manages it |
 | --- | --- | --- |
@@ -23,6 +27,148 @@ on it, register it once, and it picks up jobs that ask for it with
 
 A workspace's runners serve the repositories their [group](#groups) allows.
 A project's own runners serve only that project.
+
+## Run it as a container
+
+On a Linux machine, run the runner's image with the Sysbox runtime. The
+runner starts a Docker Engine of its own inside its container and runs
+each job in a container on that engine, so jobs are containers inside the
+runner's container. Sysbox gives the runner's container a user namespace
+of its own, so its root is an unprivileged user on the machine, and lets
+it run Docker without `--privileged` and without the machine's Docker
+socket.
+
+1. Install [Sysbox](https://github.com/nestybox/sysbox) on the machine,
+   following its install guide. It needs Linux; Docker Desktop on macOS
+   and Windows cannot use it.
+2. Make a registration token: open **Runners** and click **New runner**.
+3. Run the runner:
+
+   ```sh
+   docker run -d --name g1t-runner --restart unless-stopped \
+     --runtime=sysbox-runc \
+     -v g1t-runner:/data \
+     -e G1T_RUNNER_URL=https://g1t.sh \
+     -e G1T_RUNNER_TOKEN=g1trt_… \
+     g1t.sh/flagon-io/g1t-runner
+   ```
+
+The image runs `register-and-run`, which registers once and then runs.
+Its configuration and credential are kept on the `g1t-runner` volume, so
+the container can be restarted and replaced without registering again.
+Every [register option](#register-options) can come from
+`G1T_RUNNER_<OPTION>` in the environment, such as `G1T_RUNNER_LABELS=gpu`
+or `G1T_RUNNER_MEMORY=8g`, so a secret can hold the token.
+
+Its log says which isolation it has:
+
+```text
+… Isolation: nested-container: each job runs in a fresh container on this runner's own Docker Engine, inside the runner's sandboxed container; neither reaches the machine.
+```
+
+Do not give the container the machine's Docker socket
+(`-v /var/run/docker.sock:/var/run/docker.sock`) or `--privileged`. The
+runner looks for both when it starts, and refuses to start if it finds
+them:
+
+| It finds | What it says |
+| --- | --- |
+| An engine's socket mounted in from the machine (`docker.sock`, `containerd.sock`, `podman.sock`, under any name) | *… is a container engine's socket mounted in from outside this container* |
+| An engine's socket it did not make, such as from a mounted `/var/run` | *… is a container engine's socket that this runner did not make* |
+| `DOCKER_HOST` set | *DOCKER_HOST is set …* |
+| Root in the container is root on the machine (no Sysbox, or `--privileged`) | *root in this container is root on the machine* |
+
+To start anyway, with jobs able to reach the machine, set
+`G1T_RUNNER_UNSAFE_ALLOW_HOST_ACCESS=1`. The runner then logs each
+problem with `UNSAFE:` in front, and registers as `container` rather than
+`nested-container`.
+
+The engine's images and build cache are kept in the container, so they
+last until the container is removed. Sysbox keeps them on the machine's
+disk for that container alone; to keep them when you replace the
+container, add `-v g1t-runner-docker:/var/lib/docker`, a volume for one
+runner container at a time.
+
+## Isolation
+
+How well a runner keeps work from its machine. A runner tells g1t its
+level when it registers.
+
+| Isolation | How you get it | What a job can reach |
+| --- | --- | --- |
+| `nested-container` | The runner's image under Sysbox, as above. | Its own container, and its own Docker Engine if it uses Docker. Not the machine, and not other jobs. |
+| `container` | `g1t-runner` installed on the machine with Docker, or the image given the machine's Docker socket with the override. | Its own container. The runner itself drives the machine's Docker, which can do anything on the machine, so a job that escapes its container, or anything that takes over the runner, controls the machine. |
+| `host` | `--no-docker`. Deprecated. | Everything the runner's user can: the machine, its files, and what earlier jobs left. |
+
+### What a job's container gets
+
+With `nested-container` and `container` isolation, each job runs in a
+container made for it and removed after it:
+
+| | |
+| --- | --- |
+| Image | The job's `container:`, else the runner's `--image`, else `node:24-bookworm`. |
+| Mounts | The harness (`g1t-runner`), read-only, and a volume of its own at `/home/runner`, removed after the job. Nothing else of the runner's or the machine's. |
+| Network | A Docker network of its own, removed after the job. Never the machine's network. |
+| Capabilities | Every one dropped but `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `SETUID`, `SETGID`, `KILL` and `NET_BIND_SERVICE`, which installing packages and running test servers need. Raw sockets (`ping`) are among those dropped. |
+| Privileges | `no-new-privileges`: a setuid program such as `sudo` gains nothing. Run steps as the image's root user rather than with `sudo`. Agent work keeps `sudo`, which its image uses once to put its guardrails out of the agent's reach. |
+| Limits | `--memory` (three quarters of the runner's memory unless you set it, with no swap beyond it), `--cpus` (every CPU unless you set it) and `--pids-limit` (4096 unless you set it). |
+| Credentials | Only the job's own short-lived token, passed by name. Never the runner's credential. |
+
+### Docker in jobs
+
+With `nested-container` isolation, a job that uses Docker (its
+`services:`, a Docker action, a `docker://` step, or `docker` in a step)
+gets a Docker Engine of its own. It starts the first time the job uses
+Docker, from `docker:28-dind`, beside the job's container and on the job's
+network, so a service's published ports are on the job's `localhost`. It
+is removed, with its images and containers, when the job ends. A job that
+does not use Docker never starts one.
+
+The job's engine is privileged inside the runner's container. Sysbox keeps
+it off the machine, but a job that uses Docker can reach the runner's own
+container, the runner's credential included. For code you do not trust,
+use [ephemeral runners](#autoscaling), so each job has a runner container
+of its own, or register with `--no-job-docker`, which gives jobs no Docker.
+
+With `container` isolation, jobs have no Docker of their own, since it
+would be the machine's: their `services:` are not started, and the log
+says so.
+
+### Host mode is deprecated
+
+`--no-docker` still works, and runs each job directly on the machine in a
+folder of its own. It will be removed. Until then:
+
+- The runner's log says so when it starts: *Deprecated: this runner runs
+  jobs directly on this machine (--no-docker), unsandboxed.*
+- Every job's log starts with a warning: *This job ran on the host,
+  unsandboxed …*
+- It refuses a public repository's work, which anyone can propose code
+  to: *acme/web is public, and this self-hosted runner runs jobs directly
+  on its machine (--no-docker), unsandboxed, so it does not take a public
+  repository's work.* The job fails with that message.
+
+Move a Linux runner to [the container](#run-it-as-a-container). A macOS
+or Windows runner stays in host mode until sandboxes for them are built.
+
+### Windows and macOS
+
+Sandboxed jobs on Windows and macOS are not built yet; jobs native to
+those systems run in host mode. What is planned:
+
+| | How each job will run |
+| --- | --- |
+| Windows | A Windows container with Hyper-V isolation: a small virtual machine with its own kernel, made from a signed image for the job and destroyed after it. |
+| macOS | An ephemeral macOS virtual machine, using Apple's Virtualization framework, cloned from a signed image for the job and deleted after it. Apple's licence allows two macOS virtual machines per Mac at once, so a Mac will run at most two jobs at a time. |
+
+On both, the only part on the machine itself will be a small launcher that
+makes and destroys those sandboxes from signed images; the runner and the
+job run inside them.
+
+On a Mac or Windows machine with Docker Desktop, a runner installed there
+without `--no-docker` already runs jobs in Linux containers, with
+`container` isolation.
 
 ## The Runners page
 
@@ -50,6 +196,9 @@ your own runners, a runner in the desktop app, and an official agent image
 are coming, and the page labels them so.
 
 ## Add a runner
+
+On Linux, [run it as a container](#run-it-as-a-container). To install
+`g1t-runner` on a machine instead, as on macOS and Windows:
 
 1. Open **Runners** (a project's: **Settings → Runners**) and click **New runner**. g1t makes a
    registration token and shows the commands for Linux, macOS, Windows and
@@ -90,6 +239,9 @@ are coming, and the page labels them so.
 
 The runner shows up in the list within a few seconds, with a green dot.
 
+Installed this way, it has `container` isolation with Docker, or `host`
+isolation with `--no-docker`. See [isolation](#isolation).
+
 ### Register options
 
 | Option | |
@@ -100,9 +252,14 @@ The runner shows up in the list within a few seconds, with a green dot.
 | `--labels` | Extra labels, comma-separated: `gpu,cuda-12`. See [labels](#labels). |
 | `--group` | A workspace runner's [group](#groups). The default group, or the one the token was made for, if left out. |
 | `--ephemeral` | Take one job, then remove itself. For [autoscaling](#autoscaling). |
-| `--no-docker` | Run jobs directly on the machine instead of in containers. |
+| `--no-docker` | Deprecated. Run jobs directly on the machine instead of in containers ([host mode](#host-mode-is-deprecated)). |
 | `--image` | The image workflow jobs run in when they name no `container:`. `node:24-bookworm` if left out. |
 | `--agent-image` | The image [agent work](#agents-on-your-runners) runs in. |
+| `--memory` | Each job container's memory, such as `8g`. Three quarters of the runner's memory if left out. |
+| `--cpus` | Each job container's CPUs, such as `4` or `1.5`. Every CPU if left out. |
+| `--pids-limit` | The most processes in a job container. 4096 if left out. |
+| `--no-job-docker` | Give jobs no [Docker of their own](#docker-in-jobs). |
+| `--job-docker-image` | The image a job's own Docker Engine runs. `docker:28-dind` if left out. |
 | `--work-dir` | Where jobs run with `--no-docker` keep their files. `~/.g1t-runner/work` if left out. |
 | `--dir` | Where the runner keeps its configuration and credential. `~/.g1t-runner`, or `G1T_RUNNER_DIR`, if left out. Every command takes it. |
 | `--replace` | Take the place of a runner with the same name. |
@@ -162,21 +319,22 @@ workflow commands, the same log and artifacts. `runner.name`, `runner.os`
 and `runner.arch` are the machine's, and `RUNNER_ENVIRONMENT` is
 `self-hosted`.
 
-- **In Docker** (the default), each job gets a fresh container from its
-  `container:` image or the runner's `--image`, removed when it ends. The
-  runner needs Docker, and its user needs to be allowed to use it. Its
-  `services:` are not started, since the job's container has no Docker of
-  its own; the log says so.
-- **With `--no-docker`**, each job gets a fresh folder under the work
-  folder, removed when it ends, and runs with whatever the machine has
-  installed. A step's default shell is `bash` on Linux and macOS and
-  PowerShell on Windows; `shell: pwsh`, `powershell`, `cmd`, `bash` and
-  `python` work where installed. On a machine with Docker, the job's
-  `services:`, `container:`, `docker://` steps and Docker actions use
-  the machine's Docker, as on GitHub's runners.
+- **In a container** (the default), each job gets a fresh container from
+  its `container:` image or the runner's `--image`, removed when it ends,
+  with the walls in [what a job's container gets](#what-a-jobs-container-gets).
+  In the runner's image under Sysbox, its `services:` and Docker actions
+  get [a Docker Engine of its own](#docker-in-jobs).
+- **With `--no-docker`** (deprecated), each job gets a fresh folder under
+  the work folder, removed when it ends, and runs with whatever the
+  machine has installed. A step's default shell is `bash` on Linux and
+  macOS and PowerShell on Windows; `shell: pwsh`, `powershell`, `cmd`,
+  `bash` and `python` work where installed. On a machine with Docker, the
+  job's `services:`, `container:`, `docker://` steps and Docker actions
+  use the machine's Docker, as on GitHub's runners.
 
-A self-hosted job stops at 60 minutes unless its `timeout-minutes` says
-more, up to 24 hours (1440). Jobs on g1t's own machines stop at 60 minutes.
+A self-hosted job stops at 360 minutes unless its `timeout-minutes` says
+otherwise, as on GitHub, and can ask for up to 24 hours (1440). Jobs on
+g1t's own machines stop at 60 minutes.
 
 ## Groups
 
@@ -205,8 +363,9 @@ a runner needs to take it (`self-hosted` is always one).
   run; otherwise the model is paid as usual and the machine is free.
 - Agent work needs an image with git, Node, `tar` and the agent's CLI:
   register the runner with `--agent-image` and an image of yours that has
-  them, or run it with `--no-docker` on a Linux machine set aside for it,
-  where `/work` can be written. g1t does not publish an agent image yet.
+  them. Host mode on a Linux machine set aside for it, where `/work` can be
+  written, also works, and is deprecated. g1t does not publish an agent
+  image yet.
 - [Guardrails](/guides/guardrails/) still apply to what the agent does, but
   their network list cannot be enforced on your machine. The run's session
   says so when it starts.
@@ -273,10 +432,12 @@ so you can see how much ran there.
   it. It is kept only as a hash on g1t's side, rotates every day, and stops
   working the moment the runner is removed. It is never given to a job:
   each job gets only its own short-lived token.
-- **Isolation**: a job in Docker gets a container of its own, removed after.
-  A job with `--no-docker` runs as the runner's user, in a folder of its
-  own; it can reach whatever that user can. Use a dedicated account, and
-  ephemeral runners for untrusted code.
+- **Isolation**: run the runner's image under Sysbox. Each job then gets
+  a container of its own inside the runner's container, removed after,
+  and neither reaches the machine. A job with `--no-docker` runs as the
+  runner's user and can reach whatever that user can; host mode is
+  deprecated and refuses public repositories' work. Use ephemeral runners
+  for code you do not trust. See [isolation](#isolation).
 - **Network**: g1t's network guardrails are not enforced on your machines.
   A job reaches whatever the machine can.
 - **Audit**: making a registration token, registering, removing, and every
@@ -289,26 +450,27 @@ so you can see how much ran there.
 
 ## Docker and Kubernetes
 
-The runner's image runs `register-and-run`, which registers once and then
-runs. Each option can also come from `G1T_RUNNER_<OPTION>` in the
-environment, such as `G1T_RUNNER_TOKEN` and `G1T_RUNNER_LABELS`, so a
-secret can hold the token:
+[Run it as a container](#run-it-as-a-container) covers Docker. The image's
+settings, besides the register options:
 
-```sh
-docker run -d --name g1t-runner --restart unless-stopped \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v g1t-runner:/data -e G1T_RUNNER_DIR=/data \
-  g1t.sh/flagon-io/g1t-runner register-and-run --url https://g1t.sh --token g1trt_…
-```
+| Variable | |
+| --- | --- |
+| `G1T_RUNNER_SANDBOX` | `nested` in the image: start a Docker Engine inside the container and run jobs on it. |
+| `G1T_RUNNER_DIR` | `/data` in the image: where the configuration and credential are kept. |
+| `G1T_RUNNER_UNSAFE_ALLOW_HOST_ACCESS` | `1` starts the runner even when it can reach the machine. See [above](#run-it-as-a-container). |
 
-With the host's Docker socket, each job runs in a sibling container.
+A runner that ran the image with the machine's Docker socket, as these
+docs said before, refuses to start with the new image. Remove the
+`-v /var/run/docker.sock:/var/run/docker.sock` and add
+`--runtime=sysbox-runc`; the `/data` volume keeps its registration.
 
 ### Autoscaling
 
-Ephemeral runners take one job and remove themselves, so each job starts on
-a clean machine. In Kubernetes, run them with `--no-docker` in pods that
-make their own registration token from an owner's personal
-[access token](/guides/authentication/#access-tokens) with only
+Ephemeral runners take one job and remove themselves, so each job starts in
+a fresh runner container. In Kubernetes with Sysbox installed on the
+nodes (its Kubernetes install adds the `sysbox-runc` runtime class), run
+them in pods that make their own registration token from an owner's
+personal [access token](/guides/authentication/#access-tokens) with only
 `runners:admin`, and let the Deployment replace each pod that finishes:
 
 ```yaml
@@ -320,8 +482,11 @@ spec:
   replicas: 3
   selector: { matchLabels: { app: g1t-runner } }
   template:
-    metadata: { labels: { app: g1t-runner } }
+    metadata:
+      labels: { app: g1t-runner }
+      annotations: { io.kubernetes.cri-o.userns-mode: "auto:size=65536" }
     spec:
+      runtimeClassName: sysbox-runc
       containers:
         - name: runner
           image: g1t.sh/flagon-io/g1t-runner
@@ -337,7 +502,6 @@ spec:
             - { name: G1T_RUNNER_URL, value: https://g1t.sh }
             - { name: G1T_RUNNER_LABELS, value: k8s }
             - { name: G1T_RUNNER_EPHEMERAL, value: "1" }
-            - { name: G1T_RUNNER_NO_DOCKER, value: "1" }
             - name: G1T_ADMIN_TOKEN
               valueFrom: { secretKeyRef: { name: g1t, key: runners-admin-token } }
 ```
@@ -384,6 +548,10 @@ The [Agent preset](/guides/authentication/#scopes) does not include
 | `register` says the token is not valid | It expired after an hour, or was mistyped. Make a new one. |
 | `register` says a runner with that name is registered | Choose another `--name`, or add `--replace`. |
 | `run` says *g1t no longer knows this runner* | It was removed, or its credential was. Register it again. |
-| *could not run docker* | Install Docker and start it, give the runner's user access to it, or register with `--no-docker`. |
-| Agent work fails at once | Give the runner `--agent-image`, or run it on Linux with `--no-docker`. |
+| *this runner is not sandboxed from its machine, so it will not take work* | The runner's container can reach the machine: it lists why. Remove the machine's Docker socket and `--privileged`, and run it with `--runtime=sysbox-runc`. See [run it as a container](#run-it-as-a-container). |
+| *the runner's own Docker Engine could not start* | The container is not running under Sysbox. Add `--runtime=sysbox-runc`, and check that Sysbox is installed (`docker info` lists `sysbox-runc` under runtimes). |
+| *… is public, and this self-hosted runner runs jobs directly on its machine* | A runner in host mode does not take public repositories' work. Run the runner's image under Sysbox. |
+| A step's `sudo` fails | Job containers have `no-new-privileges`. Steps run as the image's user, root in most CI images, so drop the `sudo`. |
+| *could not run docker* | Install Docker and start it, and give the runner's user access to it. |
+| Agent work fails at once | Give the runner `--agent-image`. |
 | The runner is offline in the list | It has not polled for 90 seconds. Check its log (`journalctl -u g1t-runner-<name>`, `~/.g1t-runner/runner.log`, or the terminal) and that the machine can reach `https://api.g1t.sh`. |

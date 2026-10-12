@@ -243,7 +243,7 @@ your own. Without one, neither button appears.
    | Setup URL | `PUBLIC_URL/integrations/github/setup` |
    | Redirect on update | On |
    | Webhook | On, with the URL `API_URL/hooks/github` and a secret you choose, once GitHub can reach your API. Otherwise off: mirrors then sync with **Sync now**. |
-   | Repository permissions | Contents: Read and write; Metadata: Read; Issues: Read |
+   | Repository permissions | Contents: Read and write; Metadata: Read; Issues: Read; Pull requests: Read and write; Commit statuses: Read and write |
    | Account permissions | Email addresses: Read |
 
 3. Create it, then on its page note the **App ID**, the **Client ID** and

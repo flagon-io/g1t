@@ -106,7 +106,16 @@ that has not reported yet. A check can be pinned to the integration that
 must report it, such as workflows or deployments.
 
 A required check is met by a status of that name on the pull request's head,
-whatever event reported it:
+whatever event reported it, or by a [g1t Actions](/guides/actions/) job
+of that name, as on GitHub. A job's check is named as GitHub names it:
+the job's `name:` (or its id), with a matrix combination's values after it
+in brackets, such as `test` or `build (ubuntu-latest, 22)`, and
+`<calling job> / <job>` for a job of a called workflow. A branch rule
+copied from GitHub that requires `test` is met by the `test` job, and one
+that requires the workflow's name, such as `CI`, is met by the whole run.
+Type a job's name to require it: the list offers the names of statuses.
+Each job's latest attempt counts. One that was skipped passes the check,
+and one that was cancelled fails it.
 
 | What reported it | What the merge does |
 | --- | --- |

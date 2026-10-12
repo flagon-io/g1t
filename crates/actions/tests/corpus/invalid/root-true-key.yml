@@ -1,0 +1,8 @@
+# error: Unexpected `true` in the workflow
+on: push
+true: 1
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

@@ -1,0 +1,7 @@
+# error: `on`: GitHub has no `pushh` event
+on: pushh
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

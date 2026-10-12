@@ -1,0 +1,13 @@
+# error: Unexpected `deprecationMessage` in input `app_name` of `on.workflow_call`
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        required: true
+        type: string
+        deprecationMessage: blah
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

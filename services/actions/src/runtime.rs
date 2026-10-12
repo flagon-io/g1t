@@ -308,7 +308,7 @@ impl Actions {
         let trusted = run.trusted != 0;
         match job.callee() {
             Some((called, spec, call)) => {
-                let parent = call["parent"].as_str().unwrap_or_default();
+                let parent = crate::plan::top_key(call["parent"].as_str().unwrap_or_default());
                 let caller_allows = caller.jobs.iter().find(|j| j.id == parent).is_none_or(|j| id_token_permitted(&caller.raw, &j.raw));
                 let path = call["path"].as_str().unwrap_or(&run.path).to_owned();
                 let environment = job.environment.clone().or_else(|| environment_name(&spec.raw));

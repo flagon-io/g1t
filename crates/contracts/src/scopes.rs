@@ -1174,6 +1174,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_environment", Scope::DeploymentsRead),
     ("create_deployment", Scope::DeploymentsWrite),
     ("create_deployment_status", Scope::DeploymentsWrite),
+    ("start_deployment_build", Scope::DeploymentsWrite),
     // What keeps runs safe: the runs environments hold and reviewing them,
     // approving a pull request's run, and a repository's own rules for
     // its environments and tokens, which are an admin's.

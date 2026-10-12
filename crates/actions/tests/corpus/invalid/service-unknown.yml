@@ -1,0 +1,11 @@
+# error: unexpected `healthcheck` in service `db`
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres
+        healthcheck: pg_isready
+    steps:
+      - run: echo hi

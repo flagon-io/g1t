@@ -1,0 +1,15 @@
+name: Not on release branches
+on:
+  push:
+    branches-ignore:
+      - 'release/**'
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  pull_request:
+    branches-ignore: [gh-pages]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo build

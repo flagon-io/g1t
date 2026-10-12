@@ -153,11 +153,16 @@ pub fn pull(repo: &Repo, pull: &Pull) -> Value {
     })
 }
 
-/// What a `labeled`, `unlabeled`, `milestoned`, `demilestoned` or base
-/// change was about, from the g1t event: `label`, `milestone`, and for a
-/// new base, `changes.base.ref.from` is not known, so only the new base is
-/// in `pull_request.base`.
+/// What a `labeled`, `unlabeled`, `milestoned`, `demilestoned`,
+/// `assigned` or base change was about, from the g1t event: `label`,
+/// `milestone`, `assignee` (the first of those newly assigned; g1t sends
+/// one event for them all, GitHub one each), and for a new base,
+/// `changes.base.ref.from` is not known, so only the new base is in
+/// `pull_request.base`.
 pub fn changed(payload: &mut Value, data: &Value) {
+    if let Some(first) = data["added"].as_array().and_then(|added| added.first()).and_then(Value::as_str) {
+        payload["assignee"] = user(first);
+    }
     if let Some(label) = data.get("label").filter(|label| label.is_object()) {
         payload["label"] = json!({ "name": label["name"], "color": label["color"] });
     }
@@ -300,3 +305,22 @@ pub fn deployment_status(repo: &Repo, status: &Value, deployment: &Value) -> Val
     })
 }
 
+
+/// A review's `state` as GitHub's `pull_request_review` event spells it.
+pub(crate) fn review_state(verdict: g1t_contracts::work::Verdict) -> &'static str {
+    match verdict {
+        g1t_contracts::work::Verdict::Approve => "approved",
+        g1t_contracts::work::Verdict::RequestChanges => "changes_requested",
+    }
+}
+
+#[cfg(test)]
+mod review_tests {
+    use super::*;
+
+    #[test]
+    fn review_states_are_spelled_as_githubs() {
+        assert_eq!(review_state(g1t_contracts::work::Verdict::Approve), "approved");
+        assert_eq!(review_state(g1t_contracts::work::Verdict::RequestChanges), "changes_requested");
+    }
+}

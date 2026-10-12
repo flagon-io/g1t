@@ -1,0 +1,17 @@
+name: Conditions
+on:
+  pull_request:
+    types: [labeled, unlabeled, opened, synchronize]
+jobs:
+  labeled:
+    if: contains(github.event.pull_request.labels.*.name, 'deploy')
+    runs-on: ubuntu-latest
+    steps:
+      - if: ${{ github.event.action == 'labeled' && github.event.label.name == 'deploy' }}
+        run: echo just labeled
+      - if: failure()
+        run: echo failed
+      - if: cancelled()
+        run: echo cancelled
+      - if: "!startsWith(github.head_ref, 'renovate/')"
+        run: echo not renovate

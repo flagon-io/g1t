@@ -1,0 +1,9 @@
+# error: Unexpected `types` in `on.push`
+on:
+  push:
+    types: [created]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

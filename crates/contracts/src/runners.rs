@@ -358,7 +358,17 @@ pub struct RegisterArgs {
     /// Replace a runner of the same name instead of refusing.
     #[serde(default)]
     pub replace: bool,
+    /// How the runner keeps work from its machine: `nested-container` (a
+    /// container per job, inside the runner's own sandboxed container),
+    /// `container` (a container per job, on a Docker Engine it shares with
+    /// its machine) or `host` (directly on the machine). Kept, and shown
+    /// nowhere yet; older runners leave it out.
+    #[serde(default)]
+    pub isolation: Option<String>,
 }
+
+/// The isolation levels a runner may say it has (`RegisterArgs::isolation`).
+pub const ISOLATIONS: &[&str] = &["nested-container", "container", "host"];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Registered {
@@ -406,6 +416,11 @@ pub struct Assignment {
     /// started with: `MODE`, the run's short-lived credentials, the model
     /// proxy's address.
     pub env: Option<Map<String, Value>>,
+    /// The repository's visibility, `public` or `private`, when g1t knows
+    /// it: a runner that runs work directly on its machine refuses a
+    /// public repository's. Older g1t leaves it out.
+    #[serde(default)]
+    pub visibility: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -686,8 +701,13 @@ mod tests {
             image: None,
             token: Some("t".into()),
             env: None,
+            visibility: Some("private".into()),
         })
         .unwrap();
         assert_eq!(assignment["timeout_minutes"], 60);
+        assert_eq!(assignment["visibility"], "private");
+        // An older runner's registration, without an isolation level.
+        let register: RegisterArgs = serde_json::from_value(serde_json::json!({ "token": "g1trt_x", "name": "a", "os": "linux", "arch": "x64" })).unwrap();
+        assert_eq!(register.isolation, None);
     }
 }

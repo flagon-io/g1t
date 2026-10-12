@@ -7,6 +7,7 @@ use serde_json::{Map, Value};
 
 use crate::filter::{Filter, Patterns};
 use crate::permissions::{self, Permissions};
+use crate::syntax;
 
 /// Where workflows live: GitHub's `.github/workflows`, under g1t's own
 /// folder, so moving a repository to g1t is renaming `.github` to `.g1t`.
@@ -30,6 +31,7 @@ pub const SUPPORTED_EVENTS: &[&str] = &[
     "workflow_run",
     "merge_group",
     "create",
+    "delete",
     "release",
     "deployment",
     "deployment_status",
@@ -38,8 +40,8 @@ pub const SUPPORTED_EVENTS: &[&str] = &[
 /// Events GitHub has that g1t knows of but never sends: a workflow on one
 /// of them is told so, rather than waiting for a run that never comes.
 pub const UNSENT_EVENTS: &[(&str, &str)] = &[(
-    "delete",
-    "g1t does not start runs when a branch or tag is deleted yet, so the `delete` trigger never starts it. New branches and tags start `create` and `push` workflows.",
+    "label",
+    "g1t does not start runs when a label is created, edited or deleted yet, so the `label` trigger never starts it. Putting a label on an issue or a pull request starts `issues` and `pull_request` workflows with the `labeled` type.",
 )];
 
 /// The `types` each event has when a workflow gives none, as on GitHub.
@@ -114,6 +116,8 @@ pub struct Step {
     pub condition: Option<String>,
     pub uses: Option<String>,
     pub run: Option<String>,
+    /// Its `g1t` settings, as written: g1t's own, beside GitHub's keys.
+    pub g1t: Option<Value>,
     /// The whole step as written, for the sandbox.
     pub raw: Value,
 }
@@ -151,6 +155,8 @@ pub struct Job {
     /// Its own `concurrency`: at most one job of its group runs at a time.
     pub concurrency: Option<Concurrency>,
     pub steps: Vec<Step>,
+    /// Its `g1t` settings, as written: g1t's own, beside GitHub's keys.
+    pub g1t: Option<Value>,
     /// The whole job as written, for the sandbox.
     pub raw: Value,
 }
@@ -177,6 +183,9 @@ pub struct Workflow {
     pub permissions: Option<Permissions>,
     pub jobs: Vec<Job>,
     pub notes: Vec<Note>,
+    /// Its top-level `g1t` settings, as written: g1t's own, beside
+    /// GitHub's keys.
+    pub g1t: Option<Value>,
     /// The whole workflow as written.
     pub raw: Value,
 }
@@ -302,29 +311,42 @@ fn trigger(event: &str, spec: &Value) -> Trigger {
 
 /// Reads a workflow. `Err` is what is wrong with the file, for the person
 /// who wrote it; what reads but runs differently is in `notes`.
+///
+/// It accepts what GitHub accepts and refuses what GitHub refuses: every
+/// mapping has only the keys GitHub's schema gives it ([`syntax`]), plus
+/// `g1t`, g1t's own settings, on the workflow, a job and a step.
 pub fn parse(source: &str) -> Result<Workflow, String> {
     let yaml: serde_yaml::Value = serde_yaml::from_str(source).map_err(|error| format!("It is not valid YAML: {error}"))?;
+    if has_merge_key(&yaml) {
+        return Err("It uses a YAML merge key (`<<`), which GitHub does not read, so g1t does not either. Write the keys out, or give a whole value an anchor (`&name`) and repeat it with `*name`.".to_owned());
+    }
     let raw = yaml_to_json(&yaml);
     let Value::Object(root) = &raw else {
         return Err("A workflow is a mapping with `on` and `jobs`.".to_owned());
     };
     let mut notes = Vec::new();
     let mut note = |severity, job: Option<&str>, message: String| notes.push(Note { severity, job: job.map(str::to_owned), message });
+    check_keys(root, syntax::WORKFLOW, true, "", "the workflow")?;
 
-    // `on`, in any of its three shapes. YAML 1.1 readers turn `on` into
-    // `true`; this reader keeps it, and accepts both.
-    let on = root.get("on").or_else(|| root.get("true")).ok_or("`on` is missing: say which events start the workflow.")?;
+    // `on`, in any of its three shapes.
+    let on = root.get("on").ok_or("`on` is missing: say which events start the workflow.")?;
+    let known = |event: &str| syntax::event(event).ok_or_else(|| format!("`on`: GitHub has no `{event}` event, so neither does g1t."));
     let mut triggers = Vec::new();
     match on {
-        Value::String(event) => triggers.push(trigger(event, &Value::Null)),
+        Value::String(event) => {
+            known(event)?;
+            triggers.push(trigger(event, &Value::Null));
+        }
         Value::Array(events) => {
             for event in events {
                 let Value::String(event) = event else { return Err("`on` lists event names.".to_owned()) };
+                known(event)?;
                 triggers.push(trigger(event, &Value::Null));
             }
         }
         Value::Object(events) => {
             for (event, spec) in events {
+                check_event(event, known(event)?, spec, &mut note)?;
                 triggers.push(trigger(event, spec));
             }
         }
@@ -337,7 +359,7 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             note(
                 Severity::Unsupported,
                 None,
-                format!("g1t has no `{}` event, so that trigger never starts it.", trigger.event),
+                format!("g1t does not send GitHub's `{}` event, so that trigger never starts it.", trigger.event),
             );
         }
         if trigger.event == "pull_request_target" {
@@ -356,10 +378,19 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
         Some(Value::Object(env)) => env.clone(),
         _ => Map::new(),
     };
+    if let Some(defaults) = root.get("defaults") {
+        check_defaults(defaults, "")?;
+    }
+    if let Some(concurrency) = root.get("concurrency") {
+        check_concurrency(concurrency, "", None, &mut note)?;
+    }
     let concurrency = concurrency_of(root.get("concurrency"));
     let permissions = match root.get("permissions") {
         None => None,
         Some(value) => {
+            if let Value::Object(map) = value {
+                check_keys(map, syntax::PERMISSIONS, false, "", "`permissions`")?;
+            }
             let (permissions, unknown) = permissions::parse(value)?;
             permission_notes(&unknown, None, &mut note);
             Some(permissions)
@@ -373,11 +404,44 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
         return Err("`jobs` is empty: a workflow needs at least one job.".to_owned());
     }
     let mut jobs = Vec::new();
+    let mut seen_ids: Vec<String> = Vec::new();
     for (id, spec) in job_specs {
+        if !syntax::valid_id(id) {
+            return Err(format!("`{id}` is not a job id GitHub accepts: {ID_RULE}"));
+        }
+        let lower = id.to_ascii_lowercase();
+        if let Some(index) = seen_ids.iter().position(|seen| *seen == lower) {
+            let other = job_specs.keys().nth(index).cloned().unwrap_or_default();
+            return Err(format!("Job `{id}` is already defined as `{other}`: GitHub compares job ids without case."));
+        }
+        seen_ids.push(lower);
         let Value::Object(spec) = spec else {
             return Err(format!("Job `{id}` is a mapping."));
         };
+        let place = format!("Job `{id}`");
         let uses = text(spec.get("uses"));
+        if spec.contains_key("uses") {
+            for key in ["runs-on", "steps"] {
+                if spec.contains_key(key) {
+                    return Err(format!("Job `{id}` calls a reusable workflow with `uses`, so it has no `{key}`: the called workflow's jobs say that."));
+                }
+            }
+            check_keys(spec, syntax::CALLER_JOB, true, &place, "a job that calls a reusable workflow")?;
+            if uses.as_deref().is_none_or(|uses| uses.trim().is_empty()) {
+                return Err(format!("Job `{id}`: `uses` names the reusable workflow it calls."));
+            }
+            match spec.get("secrets") {
+                None | Some(Value::Object(_)) => {}
+                Some(Value::String(inherit)) if inherit == "inherit" => {}
+                Some(_) => return Err(format!("Job `{id}`: `secrets` is a mapping of the secrets it passes, or `inherit`.")),
+            }
+        } else {
+            check_keys(spec, syntax::JOB, true, &place, "a job")?;
+            if !spec.contains_key("runs-on") {
+                return Err(format!("Job `{id}` has no `runs-on`: say which runner it runs on, such as `runs-on: ubuntu-latest`."));
+            }
+        }
+        check_job_parts(id, spec, &mut note)?;
         let steps_raw = match spec.get("steps") {
             Some(Value::Array(steps)) => steps.clone(),
             None if uses.is_some() => Vec::new(),
@@ -391,25 +455,44 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
         // own runners, which may be Linux, macOS or Windows.
         let self_hosted = runs_on.get("group").is_some() || labels.iter().any(|label| label.eq_ignore_ascii_case("self-hosted"));
         let mut steps = Vec::new();
+        let mut step_ids: Vec<String> = Vec::new();
         for (index, step) in steps_raw.iter().enumerate() {
+            let place = format!("Job `{id}`, step {}", index + 1);
             let Value::Object(fields) = step else {
-                return Err(format!("Job `{id}`, step {}: a step is a mapping.", index + 1));
+                return Err(format!("{place}: a step is a mapping."));
             };
+            if let Some(key) = syntax::BACKGROUND_STEPS.iter().find(|key| fields.contains_key(**key)) {
+                return Err(format!(
+                    "{place}: `{key}` is one of GitHub's background steps (`background`, `wait`, `wait-all`, `cancel`, `parallel`), which g1t does not run yet."
+                ));
+            }
             let step = Step {
                 id: text(fields.get("id")),
                 name: text(fields.get("name")),
                 condition: text(fields.get("if")),
                 uses: text(fields.get("uses")),
                 run: text(fields.get("run")),
+                g1t: fields.get(syntax::EXTENSION).cloned(),
                 raw: step.clone(),
             };
             match (&step.uses, &step.run) {
-                (Some(_), Some(_)) => return Err(format!("Job `{id}`, step {}: a step has `uses` or `run`, not both.", index + 1)),
-                (None, None) => return Err(format!("Job `{id}`, step {}: a step needs `uses` or `run`.", index + 1)),
-                _ => {}
+                (Some(_), Some(_)) => return Err(format!("{place}: a step has `uses` or `run`, not both.")),
+                (None, None) => return Err(format!("{place}: a step needs `uses` or `run`.")),
+                (Some(_), None) => check_keys(fields, syntax::ACTION_STEP, true, &place, "a step that uses an action")?,
+                (None, Some(_)) => check_keys(fields, syntax::RUN_STEP, true, &place, "a step that runs a command")?,
+            }
+            if let Some(step_id) = &step.id {
+                if !syntax::valid_id(step_id) {
+                    return Err(format!("{place}: `{step_id}` is not a step id GitHub accepts: {ID_RULE}"));
+                }
+                let lower = step_id.to_ascii_lowercase();
+                if step_ids.contains(&lower) {
+                    return Err(format!("{place}: another step of job `{id}` has the id `{step_id}` already (GitHub compares step ids without case)."));
+                }
+                step_ids.push(lower);
             }
             if let Some(uses) = &step.uses
-                && let Some((severity, message)) = action_note(uses, fields.get("with").and_then(|with| with.get("cache")).is_some())
+                && let Some((severity, message)) = action_note(uses)
             {
                 note(severity, Some(id), message);
             }
@@ -436,7 +519,22 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
                         Some(id),
                         format!("`runs-on: {label}`: g1t's own runners are Linux only, so this job fails. To run it on a Windows or macOS machine of your own, add a self-hosted runner and use `runs-on: [self-hosted, ...]`."),
                     );
+                } else if lower.contains("arm") {
+                    note(
+                        Severity::Warning,
+                        Some(id),
+                        format!("`runs-on: {label}`: g1t's own runners are x64, so this job runs on x64, not Arm. A self-hosted Arm runner runs it as asked: `runs-on: [self-hosted, ARM64]`."),
+                    );
                 }
+            }
+            if let Some(minutes) = spec.get("timeout-minutes").and_then(Value::as_f64)
+                && minutes > f64::from(HOSTED_MAX_TIMEOUT_MINUTES)
+            {
+                note(
+                    Severity::Warning,
+                    Some(id),
+                    format!("`timeout-minutes: {minutes}`: a job on g1t's own machines is stopped at {HOSTED_MAX_TIMEOUT_MINUTES} minutes. A self-hosted runner runs it for as long as it asks, up to 24 hours."),
+                );
             }
         }
         if spec.contains_key("services") {
@@ -459,6 +557,9 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
         let job_permissions = match spec.get("permissions") {
             None => None,
             Some(value) => {
+                if let Value::Object(map) = value {
+                    check_keys(map, syntax::PERMISSIONS, false, &place, "`permissions`")?;
+                }
                 let (permissions, unknown) = permissions::parse(value).map_err(|problem| format!("Job `{id}`: {problem}"))?;
                 permission_notes(&unknown, Some(id), &mut note);
                 Some(permissions)
@@ -494,6 +595,7 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             permissions: job_permissions,
             concurrency: concurrency_of(spec.get("concurrency")),
             steps,
+            g1t: spec.get(syntax::EXTENSION).cloned(),
             raw: Value::Object(spec.clone()),
         });
     }
@@ -513,12 +615,232 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
         permissions,
         jobs,
         notes,
+        g1t: root.get(syntax::EXTENSION).cloned(),
         raw,
     };
     if workflow.job_order().len() < workflow.jobs.len() {
         return Err("The jobs' `needs` go round in a circle.".to_owned());
     }
     Ok(workflow)
+}
+
+/// Whether a job (as written) records a deployment to its environment:
+/// unless it says `deployment: false`, in its `environment` as on GitHub,
+/// or in its `g1t` settings.
+pub fn records_deployment(job: &Value) -> bool {
+    let off = |value: Option<&Value>| match value {
+        Some(Value::Bool(flag)) => !flag,
+        Some(Value::String(text)) => text.trim() == "false",
+        _ => false,
+    };
+    !off(job.get("environment").and_then(|environment| environment.get("deployment")))
+        && !off(job.get(syntax::EXTENSION).and_then(|settings| settings.get("deployment")))
+}
+
+/// GitHub's rule for job and step ids, as said when one breaks it.
+const ID_RULE: &str = "it starts with a letter or `_`, has only letters, digits, `-` and `_`, is under 100 characters, and does not start with `__`.";
+
+/// Whether a YAML merge key (`<<`) is anywhere in it.
+fn has_merge_key(value: &serde_yaml::Value) -> bool {
+    match value {
+        serde_yaml::Value::Mapping(map) => map.iter().any(|(key, value)| key.as_str() == Some("<<") || has_merge_key(value)),
+        serde_yaml::Value::Sequence(items) => items.iter().any(has_merge_key),
+        serde_yaml::Value::Tagged(tagged) => has_merge_key(&tagged.value),
+        _ => false,
+    }
+}
+
+/// Keys as a sentence: `a`, `b` or `c`.
+fn listed(keys: &[&str]) -> String {
+    let quoted: Vec<String> = keys.iter().map(|key| format!("`{key}`")).collect();
+    match quoted.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+    }
+}
+
+/// `message`, said of `place` ("Job `build`, step 2"), or on its own for
+/// the workflow's top level.
+fn at(place: &str, message: &str) -> String {
+    if place.is_empty() {
+        let mut chars = message.chars();
+        chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
+    } else {
+        format!("{place}: {message}")
+    }
+}
+
+/// Refuses any key of `map` that is not `allowed`, as GitHub does
+/// ("Unexpected value"). With `extension`, `g1t` is allowed too, as a
+/// mapping of anything. `what` names the mapping in the message.
+fn check_keys(map: &Map<String, Value>, allowed: &[&str], extension: bool, place: &str, what: &str) -> Result<(), String> {
+    for (key, value) in map {
+        if extension && key == syntax::EXTENSION {
+            if !value.is_object() {
+                return Err(at(place, "`g1t` is a mapping of g1t's own settings."));
+            }
+            continue;
+        }
+        if !allowed.contains(&key.as_str()) {
+            return Err(at(place, &format!("unexpected `{key}` in {what}; it can have {}.", listed(allowed))));
+        }
+    }
+    Ok(())
+}
+
+/// Refuses a mapping without `key`.
+fn require(map: &Map<String, Value>, key: &str, place: &str, what: &str) -> Result<(), String> {
+    if map.contains_key(key) { Ok(()) } else { Err(at(place, &format!("{what} needs `{key}`."))) }
+}
+
+/// One event under `on` and what it is given.
+fn check_event(event: &str, kind: syntax::EventSpec, spec: &Value, note: &mut impl FnMut(Severity, Option<&str>, String)) -> Result<(), String> {
+    let what = format!("`on.{event}`");
+    match (kind, spec) {
+        (syntax::EventSpec::Schedule, Value::Array(entries)) => {
+            for entry in entries {
+                let Value::Object(entry) = entry else { return Err("`on.schedule` is a list of `cron:` entries.".to_owned()) };
+                check_keys(entry, syntax::CRON, false, "", "an entry of `on.schedule`")?;
+                require(entry, "cron", "", "Each entry of `on.schedule`")?;
+                if entry.contains_key("timezone") {
+                    note(
+                        Severity::Warning,
+                        None,
+                        "`on.schedule`: g1t reads every `cron` in UTC and does not read `timezone` yet, so the schedule runs at those times in UTC.".to_owned(),
+                    );
+                }
+            }
+            Ok(())
+        }
+        (syntax::EventSpec::Schedule, _) => Err("`on.schedule` is a list of `cron:` entries.".to_owned()),
+        (_, Value::Null) => Ok(()),
+        (syntax::EventSpec::Bare, _) => Err(format!("{what} takes no settings: write `{event}:` with nothing after it.")),
+        (syntax::EventSpec::Filters(keys), Value::Object(map)) => {
+            check_keys(map, keys, false, "", &what)?;
+            for only in ["branches", "tags", "paths"] {
+                let ignore = format!("{only}-ignore");
+                if map.contains_key(only) && map.contains_key(&ignore) {
+                    return Err(format!(
+                        "{what} has both `{only}` and `{ignore}`: GitHub takes one or the other for an event. To leave some out of `{only}`, start a pattern with `!`."
+                    ));
+                }
+            }
+            let definitions = |key: &str| -> Result<Vec<(&String, &Value)>, String> {
+                match map.get(key) {
+                    None | Some(Value::Null) => Ok(Vec::new()),
+                    Some(Value::Object(entries)) => Ok(entries.iter().collect()),
+                    Some(_) => Err(format!("`on.{event}.{key}` is a mapping of names to their definitions.")),
+                }
+            };
+            if event == "workflow_dispatch" {
+                for (name, input) in definitions("inputs")? {
+                    match input {
+                        Value::Null => {}
+                        Value::Object(input) => check_keys(input, syntax::DISPATCH_INPUT, false, "", &format!("input `{name}` of {what}"))?,
+                        _ => return Err(format!("Input `{name}` of {what} is a mapping.")),
+                    }
+                }
+            }
+            if event == "workflow_call" {
+                for (name, input) in definitions("inputs")? {
+                    let Value::Object(input) = input else { return Err(format!("Input `{name}` of {what} is a mapping with its `type`.")) };
+                    let place = format!("input `{name}` of {what}");
+                    check_keys(input, syntax::CALL_INPUT, false, "", &place)?;
+                    require(input, "type", "", &format!("Input `{name}` of {what}"))?;
+                }
+                for (name, output) in definitions("outputs")? {
+                    let Value::Object(output) = output else { return Err(format!("Output `{name}` of {what} is a mapping with its `value`.")) };
+                    check_keys(output, syntax::CALL_OUTPUT, false, "", &format!("output `{name}` of {what}"))?;
+                    require(output, "value", "", &format!("Output `{name}` of {what}"))?;
+                }
+                for (name, secret) in definitions("secrets")? {
+                    match secret {
+                        Value::Null => {}
+                        Value::Object(secret) => check_keys(secret, syntax::CALL_SECRET, false, "", &format!("secret `{name}` of {what}"))?,
+                        _ => return Err(format!("Secret `{name}` of {what} is a mapping, or nothing.")),
+                    }
+                }
+            }
+            Ok(())
+        }
+        (syntax::EventSpec::Filters(_), _) => Err(format!("{what} is a mapping of its filters, or nothing.")),
+    }
+}
+
+/// `defaults`, at the top level or on a job.
+fn check_defaults(value: &Value, place: &str) -> Result<(), String> {
+    let Value::Object(defaults) = value else { return Err(at(place, "`defaults` is a mapping with `run`.")) };
+    check_keys(defaults, syntax::DEFAULTS, false, place, "`defaults`")?;
+    match defaults.get("run") {
+        None | Some(Value::Null) => Ok(()),
+        Some(Value::Object(run)) => check_keys(run, syntax::DEFAULTS_RUN, false, place, "`defaults.run`"),
+        Some(_) => Err(at(place, "`defaults.run` is a mapping with `shell` or `working-directory`.")),
+    }
+}
+
+/// `concurrency`, at the top level or on a job (`job`).
+fn check_concurrency(value: &Value, place: &str, job: Option<&str>, note: &mut impl FnMut(Severity, Option<&str>, String)) -> Result<(), String> {
+    let Value::Object(concurrency) = value else { return Ok(()) };
+    check_keys(concurrency, syntax::CONCURRENCY, false, place, "`concurrency`")?;
+    require(concurrency, "group", place, "`concurrency`")?;
+    if let Some(queue) = concurrency.get("queue")
+        && text(Some(queue)).as_deref() != Some("single")
+    {
+        note(
+            Severity::Warning,
+            job,
+            "`concurrency.queue`: g1t keeps one run or job waiting in a group, as `queue: single` does, and does not read `queue` yet.".to_owned(),
+        );
+    }
+    Ok(())
+}
+
+/// A job's mappings other than its steps: each has only GitHub's keys.
+fn check_job_parts(id: &str, spec: &Map<String, Value>, note: &mut impl FnMut(Severity, Option<&str>, String)) -> Result<(), String> {
+    let place = format!("Job `{id}`");
+    let credentials = |container: &Map<String, Value>, what: &str| -> Result<(), String> {
+        match container.get("credentials") {
+            Some(Value::Object(credentials)) => check_keys(credentials, syntax::CREDENTIALS, false, &place, &format!("the `credentials` of {what}")),
+            _ => Ok(()),
+        }
+    };
+    if let Some(Value::Object(runs_on)) = spec.get("runs-on") {
+        check_keys(runs_on, syntax::RUNS_ON, false, &place, "`runs-on`")?;
+    }
+    if let Some(Value::Object(strategy)) = spec.get("strategy") {
+        check_keys(strategy, syntax::STRATEGY, false, &place, "`strategy`")?;
+    }
+    if let Some(Value::Object(container)) = spec.get("container") {
+        check_keys(container, syntax::CONTAINER, false, &place, "`container`")?;
+        credentials(container, "`container`")?;
+    }
+    if let Some(Value::Object(services)) = spec.get("services") {
+        for (name, service) in services {
+            if let Value::Object(service) = service {
+                let what = format!("service `{name}`");
+                check_keys(service, syntax::SERVICE, false, &place, &what)?;
+                credentials(service, &what)?;
+            }
+        }
+    }
+    if let Some(Value::Object(environment)) = spec.get("environment") {
+        check_keys(environment, syntax::ENVIRONMENT, false, &place, "`environment`")?;
+        require(environment, "name", &place, "`environment`")?;
+    }
+    if let Some(concurrency) = spec.get("concurrency") {
+        check_concurrency(concurrency, &place, Some(id), note)?;
+    }
+    if let Some(defaults) = spec.get("defaults") {
+        check_defaults(defaults, &place)?;
+    }
+    if spec.contains_key("snapshot") {
+        note(Severity::Unsupported, Some(id), "`snapshot`: g1t does not make custom runner images from a job yet, so the job runs and no image is made.".to_owned());
+    }
+    if spec.contains_key("cancel-timeout-minutes") {
+        note(Severity::Warning, Some(id), "`cancel-timeout-minutes`: g1t does not read it yet, so a cancelled job stops in its usual time.".to_owned());
+    }
+    Ok(())
 }
 
 /// `concurrency`, as a group's name or a mapping with `group` and
@@ -534,16 +856,22 @@ fn concurrency_of(value: Option<&Value>) -> Option<Concurrency> {
     }
 }
 
-/// What to say about `permissions` names the token does not have.
+/// The longest a job on g1t's own machines may run, whatever its
+/// `timeout-minutes`.
+pub const HOSTED_MAX_TIMEOUT_MINUTES: u32 = 60;
+/// How long a job may run when it names no `timeout-minutes`, as on GitHub.
+pub const DEFAULT_TIMEOUT_MINUTES: u32 = 360;
+
+/// What to say about `permissions` names GitHub has that g1t's token has
+/// nothing behind.
 fn permission_notes(unknown: &[String], job: Option<&str>, note: &mut impl FnMut(Severity, Option<&str>, String)) {
     for name in unknown {
-        note(Severity::Warning, job, format!("`permissions.{name}`: the token has no permission called that, so it grants nothing."));
+        note(Severity::Warning, job, format!("`permissions.{name}`: g1t's token has nothing behind that permission yet, so it grants nothing."));
     }
 }
 
 /// What to say about an action g1t runs differently, if anything.
-/// `caches`: the step sets a `cache` input.
-fn action_note(uses: &str, caches: bool) -> Option<(Severity, String)> {
+fn action_note(uses: &str) -> Option<(Severity, String)> {
     if uses.starts_with("docker://") {
         return Some((Severity::Info, format!("`{uses}` runs in Docker (on g1t's machines, the job's own Engine).")));
     }
@@ -556,11 +884,7 @@ fn action_note(uses: &str, caches: bool) -> Option<(Severity, String)> {
         )),
         "actions/upload-artifact" | "actions/download-artifact" => Some((
             Severity::Info,
-            format!("`{name}`: g1t keeps artifacts with the run for 14 days, up to 60 MB each."),
-        )),
-        _ if caches && name.starts_with("actions/setup-") => Some((
-            Severity::Warning,
-            format!("`{name}` with `cache:` runs without that cache on g1t. Add an `actions/cache` step for the same effect."),
+            format!("`{name}`: g1t keeps artifacts with the run for 14 days unless the repository says otherwise, up to 5 GiB each."),
         )),
         _ => None,
     }
@@ -670,8 +994,26 @@ jobs:
         assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.starts_with("`docker://alpine`")));
         assert!(unsupported.iter().any(|m| m.contains("pwsh")));
         assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.contains("actions/cache")));
-        assert!(workflow.notes.iter().any(|n| n.severity == Severity::Warning && n.message.contains("actions/setup-node")));
+        // Toolkit caches work on g1t, so `setup-node` with `cache:` says nothing.
+        assert!(!workflow.notes.iter().any(|n| n.message.contains("actions/setup-node")));
         assert!(workflow.notes.iter().any(|n| n.message.contains("2 GiB an entry")));
+    }
+
+    #[test]
+    fn notes_say_what_g1ts_machines_change_about_a_job() {
+        let workflow = parse(
+            "on: push\njobs:\n  arm:\n    runs-on: ubuntu-24.04-arm\n    timeout-minutes: 90\n    steps: [{ run: 'true' }]\n  call:\n    uses: ./.g1t/workflows/build.yml\n    strategy:\n      matrix: { os: [a, b] }\n  short:\n    runs-on: ubuntu-latest\n    timeout-minutes: 30\n    steps: [{ run: 'true' }]\n  mine:\n    runs-on: [self-hosted, arm64]\n    timeout-minutes: 300\n    steps: [{ run: 'true' }]",
+        )
+        .unwrap();
+        let warned = |job: &str, text: &str| {
+            workflow.notes.iter().any(|n| n.severity == Severity::Warning && n.job.as_deref() == Some(job) && n.message.contains(text))
+        };
+        assert!(warned("arm", "runs on x64"));
+        assert!(warned("arm", "stopped at 60 minutes"));
+        assert!(!workflow.notes.iter().any(|n| n.job.as_deref() == Some("call") && n.severity == Severity::Warning));
+        assert!(!workflow.notes.iter().any(|n| matches!(n.job.as_deref(), Some("short" | "mine")) && n.severity == Severity::Warning));
+        let artifacts = parse("on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{ uses: actions/upload-artifact@v4 }]").unwrap();
+        assert!(artifacts.notes.iter().any(|n| n.message.contains("5 GiB each")));
     }
 
     #[test]
@@ -732,9 +1074,15 @@ jobs:
         assert_eq!(bare.jobs[0].permissions(&bare, TokenDefault::Restricted).get("issues"), Access::None);
         assert_eq!(bare.jobs[0].permissions(&bare, TokenDefault::Permissive).get("issues"), Access::Write);
         // What reads but grants nothing is said.
-        let odd = parse("on: push\npermissions: { id-token: write, wiki: read }\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
+        let odd = parse("on: push\npermissions: { id-token: write, artifact-metadata: read }\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
         assert!(!odd.notes.iter().any(|n| n.message.contains("id-token")), "OIDC tokens are issued");
-        assert!(odd.notes.iter().any(|n| n.message.contains("`permissions.wiki`")));
+        assert!(odd.notes.iter().any(|n| n.severity == Severity::Warning && n.message.contains("`permissions.artifact-metadata`")));
+        // A name GitHub's token does not have is refused, as GitHub does;
+        // `metadata` is always `read` and cannot be written.
+        for name in ["wiki", "metadata"] {
+            let problem = parse(&format!("on: push\npermissions: {{ {name}: read }}\njobs:\n  a:\n    runs-on: x\n    steps: [{{ run: 'true' }}]")).unwrap_err();
+            assert!(problem.contains(&format!("Unexpected `{name}` in `permissions`")), "{problem}");
+        }
         assert!(parse("on: push\npermissions: read\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap_err().contains("read-all"));
         assert!(
             parse("on: push\njobs:\n  a:\n    runs-on: x\n    permissions: { contents: admin }\n    steps: [{ run: 'true' }]")
@@ -769,10 +1117,10 @@ jobs:
 
     #[test]
     fn events_g1t_never_sends_are_said_and_pull_request_target_is_the_base() {
-        let workflow = parse("on: [create, delete, repository_dispatch, pull_request_target]\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
+        let workflow = parse("on: [create, delete, label, repository_dispatch, pull_request_target]\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
         let unsupported: Vec<&str> = workflow.notes.iter().filter(|n| n.severity == Severity::Unsupported).map(|n| n.message.as_str()).collect();
         assert_eq!(unsupported.len(), 1, "{unsupported:?}");
-        assert!(unsupported[0].contains("`delete`"));
+        assert!(unsupported[0].contains("`label`"));
         let target = workflow.notes.iter().find(|n| n.message.starts_with("`pull_request_target`")).unwrap();
         assert!(target.message.contains("default branch"));
         assert!(!target.message.contains("on the pull request's head"));
@@ -792,5 +1140,50 @@ jobs:
         );
         assert!(problem("on: push\njobs: [1]").contains("`jobs`"));
         assert!(problem(": : :").contains("not valid YAML"));
+    }
+
+    #[test]
+    fn only_githubs_keys_and_g1ts_own() {
+        let problem = |yaml: &str| parse(yaml).unwrap_err();
+        let job = "\njobs:\n  build:\n    runs-on: x\n    steps: [{ run: 'true' }]";
+        assert!(problem(&format!("on: push\nrun_name: x{job}")).starts_with("Unexpected `run_name` in the workflow; it can have `on`, "));
+        assert!(problem("on: push\njobs:\n  build:\n    runs-on: x\n    step: []").starts_with("Job `build`: unexpected `step` in a job;"));
+        let step = problem("on: push\njobs:\n  build:\n    runs-on: x\n    steps:\n      - run: 'true'\n      - uses: actions/checkout@v5\n        shell: bash");
+        assert!(step.starts_with("Job `build`, step 2: unexpected `shell` in a step that uses an action;"), "{step}");
+        assert!(problem("on: push\njobs:\n  build:\n    steps: [{ run: 'true' }]").contains("no `runs-on`"));
+        assert!(problem("on: push\njobs:\n  build:\n    uses: ./.g1t/workflows/b.yml\n    runs-on: x").contains("no `runs-on`"));
+        assert!(problem("on: push\njobs:\n  my.job:\n    runs-on: x\n    steps: [{ run: 'true' }]").contains("`my.job` is not a job id"));
+        assert!(problem("on: pushh\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").contains("no `pushh` event"));
+
+        // `g1t` is g1t's own, at each level, and kept as written.
+        let workflow = parse(
+            "on: push
+g1t: { note: top }
+jobs:
+  deploy:
+    runs-on: x
+    environment: production
+    g1t: { deployment: false }
+    steps:
+      - run: 'true'
+        g1t: { anything: [1, 2] }",
+        )
+        .unwrap();
+        assert_eq!(workflow.g1t, Some(serde_json::json!({ "note": "top" })));
+        assert_eq!(workflow.jobs[0].g1t, Some(serde_json::json!({ "deployment": false })));
+        assert_eq!(workflow.jobs[0].steps[0].g1t, Some(serde_json::json!({ "anything": [1, 2] })));
+        assert!(problem(&format!("on: push\ng1t: yes{job}")).contains("`g1t` is a mapping"));
+        assert!(!records_deployment(&workflow.jobs[0].raw));
+        assert!(!records_deployment(&serde_json::json!({ "environment": { "name": "p", "deployment": false } })));
+        assert!(records_deployment(&serde_json::json!({ "environment": { "name": "p", "deployment": true } })));
+        assert!(records_deployment(&serde_json::json!({ "environment": "p" })));
+    }
+
+    #[test]
+    fn aliases_read_and_merge_keys_do_not() {
+        let aliased = parse("on: push\njobs:\n  a:\n    runs-on: x\n    steps: &steps\n      - run: 'true'\n  b:\n    runs-on: x\n    steps: *steps").unwrap();
+        assert_eq!(aliased.jobs[1].steps.len(), 1);
+        let merged = parse("on: push\njobs:\n  a: &job\n    runs-on: x\n    steps: [{ run: 'true' }]\n  b:\n    <<: *job\n    name: B").unwrap_err();
+        assert!(merged.contains("merge key"), "{merged}");
     }
 }

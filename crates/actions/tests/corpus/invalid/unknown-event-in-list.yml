@@ -1,0 +1,7 @@
+# error: GitHub has no `pull-request` event
+on: [push, pull-request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

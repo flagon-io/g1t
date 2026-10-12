@@ -161,6 +161,7 @@ transferring a repository on GitHub keeps the mirror working.
 | Metadata | Read | Required by GitHub for every app: names, visibility, and whether a branch is protected. |
 | Issues | Read | Copy issues when you ask. |
 | Pull requests | Read and write | When a takeover is handed back, open a pull request for a branch GitHub protects. Without it, g1t pushes the commits to `g1t/handback/<branch>` and tells you to open the pull request yourself. |
+| Commit statuses | Read and write | While g1t runs a mirror's workflows, report each run and deploy on the commit on GitHub. Without it, the mirror's settings say so and nothing is reported. See [Checks on GitHub](/guides/mirroring/#checks-on-github). |
 | Email addresses (account) | Read | Find your verified email when you sign in. |
 
 The app only ever sees the repositories you or your organization's owners

@@ -30,7 +30,7 @@ import {
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Form, Link, useLoaderData, useSearchParams } from "react-router";
 
-import type { Annotation, EnvironmentReviewer, Job, JobSummary, PendingDeployment, RunApproval, RunAttempt, StepState } from "@g1t/contracts";
+import { type Annotation, type EnvironmentReviewer, type Job, type JobSummary, type PendingDeployment, type RunApproval, type RunAttempt, type StepState, isManagedWorkflow } from "@g1t/contracts";
 
 import type { Route } from "./+types/actions-run";
 import { page } from "../../lib/meta";
@@ -1013,10 +1013,12 @@ function RunNav({
         <NavUnit key={unit.key} unit={unit} selected={selected} jobHref={jobHref} />
       ))}
       <p className={heading}>Run details</p>
-      <Link to={`${base}/blob/${run.sha}/${run.path}`} className={navRow(false)}>
-        <FileCode size={14} className="shrink-0" />
-        Workflow file
-      </Link>
+      {!isManagedWorkflow(run.path) && (
+        <Link to={`${base}/blob/${run.sha}/${run.path}`} className={navRow(false)}>
+          <FileCode size={14} className="shrink-0" />
+          Workflow file
+        </Link>
+      )}
     </nav>
   );
 }

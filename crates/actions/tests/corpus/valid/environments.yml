@@ -1,0 +1,28 @@
+name: Environments
+on:
+  push:
+    branches: [main]
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.example.com
+    steps:
+      - run: ./deploy.sh staging
+  plan:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      deployment: false
+    steps:
+      - run: ./plan.sh
+  production:
+    needs: [staging, plan]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - id: deploy
+        run: echo "url=https://example.com" >> "$GITHUB_OUTPUT"

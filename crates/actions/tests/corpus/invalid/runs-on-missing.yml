@@ -1,0 +1,6 @@
+# error: Job `build` has no `runs-on`
+on: push
+jobs:
+  build:
+    steps:
+      - run: echo hi

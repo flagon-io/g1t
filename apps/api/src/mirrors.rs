@@ -83,7 +83,7 @@ impl MirrorsOp {
 
     pub fn description(self) -> &'static str {
         match self {
-            MirrorsOp::GetMirror => "A repository's links to other hosts. `remotes` lists each with its `role` (`leader`: the remote leads and this repository is its mirror; `follower`: g1t leads and the remote is kept in step), `provider` (`github`, `g1t` or `git`), `name` (`github.com/acme/web`), `state` (a mirror is `standby`, `ci`, `takeover` or `handing_back`; a follower is `following` or `stuck`), `reachable` and `unreachable_since`, `synced_at`, `last_error` and its `settings`. `can_manage` says whether you may change them. A mirror standing by is read-only on g1t and runs nothing. Needs read access.",
+            MirrorsOp::GetMirror => "A repository's links to other hosts. `remotes` lists each with its `role` (`leader`: the remote leads and this repository is its mirror; `follower`: g1t leads and the remote is kept in step), `provider` (`github`, `g1t` or `git`), `name` (`github.com/acme/web`), `state` (a mirror is `standby`, `ci`, `takeover` or `handing_back`; a follower is `following` or `stuck`), `reachable` and `unreachable_since`, `synced_at`, `last_error`, `checks_problem` (why g1t could not report checks to the remote, such as the GitHub App lacking the Commit statuses permission; null once a report goes through) and its `settings`. `can_manage` says whether you may change them. A mirror standing by is read-only on g1t and runs nothing. Needs read access.",
             MirrorsOp::GetHandBackPlan => "What handing a takeover back would do, ref by ref, in `plan.refs`: each with `base` (where it was when the takeover began), `ours`, `theirs` and `action`: `push` (only g1t moved), `fetch` (only the remote moved), `pull_request` (the remote protects the branch: g1t's commits go to `g1t/handback/<branch>` there as a pull request, and g1t follows the remote's branch) or `diverged` (both moved: it needs a decision). `plan.reachable` is false while the remote does not answer; `plan.ready` once it answers and every diverged ref has a decision. Asks the remote, so it takes a moment. Needs the Admin role.",
             MirrorsOp::TakeOver => "Take over a mirror: g1t leads it for now, so pushes, pull requests, issues, agents and workflows work on g1t, whether or not the remote is answering. Each ref's commit is recorded as where the takeover began. Workflows that deploy wait for approval, unless the link's settings say otherwise. End it with hand_back_mirror, or keep it with move_mirror_to_g1t. Needs the Admin role.",
             MirrorsOp::SetCiFailover => "Start (`on: true`) or end (`on: false`) CI failover on a mirror standing by: the remote keeps the code, and g1t runs its workflows, `.github/workflows` as well as `.g1t/workflows`, on each push copied in. Workflows that deploy wait for approval unless the link's settings say otherwise. Needs the Admin role.",
@@ -91,7 +91,7 @@ impl MirrorsOp {
             MirrorsOp::MoveToG1t => "Move a mirror to g1t for good: it stops being a mirror and g1t no longer tracks the remote, so pushes made there no longer come here. Allowed while it stands by, in CI failover, or during a takeover, whose work stays as it is. With `keep_remote_updated: true` the remote becomes a follower instead of being unlinked, and g1t pushes to it from then on. Needs the Admin role; agents' tokens are refused.",
             MirrorsOp::SyncMirror => "Bring a repository's remotes in step now: a mirror standing by or in CI failover copies the remote's branches and tags in; each follower is pushed g1t's (which also clears a follower that was stuck by pushing over what changed there). Needs push access.",
             MirrorsOp::AddRemote => "Link a repository to a remote on another g1t or any git host over HTTPS (GitHub repositories are linked by importing them through g1t's GitHub App). `role` `follower`: g1t leads and pushes to it. `role` `leader`: this repository becomes its mirror; only an empty repository can, and it is filled from the remote. `url` is its https clone address, `token` a token that can read and push (kept sealed, never returned), `username` the user it is sent as. Needs the Admin role; agents' tokens are refused.",
-            MirrorsOp::UpdateRemote => "Change a remote's `settings`, all optional: `notify` (`banner`, or `inbox` to also tell the workspace's owners), `take_over_after` (minutes, 5 to 1440, after which g1t takes over on its own while the remote does not answer; null for never), `hand_back` (`when_clean`: an automatic takeover goes back on its own once every ref goes back without a decision; `ask`), `keep_ci_warm` (run `.g1t/workflows` on pushes copied in while standing by), `github_workflows` (run `.github/workflows` in CI failover and takeovers), `hold_deploys`, and for a follower `remote_pushes` (`adopt` fast-forwards made there, or `overwrite` them). Needs the Admin role; agents' tokens are refused.",
+            MirrorsOp::UpdateRemote => "Change a remote's `settings`, all optional: `notify` (`banner`, or `inbox` to also tell the workspace's owners), `take_over_after` (minutes, 5 to 1440, after which g1t takes over on its own while the remote does not answer; null for never), `hand_back` (`when_clean`: an automatic takeover goes back on its own once every ref goes back without a decision; `ask`), `keep_ci_warm` (run `.g1t/workflows` on pushes copied in while standing by), `github_workflows` (run `.github/workflows` in CI failover and takeovers), `hold_deploys`, `report_checks` (a GitHub mirror: report the statuses g1t sets on a commit, such as workflow runs and deploys, to the commit on GitHub as `g1t / <context>` while g1t runs its workflows; on by default), and for a follower `remote_pushes` (`adopt` fast-forwards made there, or `overwrite` them). Needs the Admin role; agents' tokens are refused.",
             MirrorsOp::RemoveRemote => "Unlink a remote. A mirror becomes an ordinary repository with what it has; a follower is no longer pushed to. Refused during a takeover: hand it back or move it to g1t first. Needs the Admin role; agents' tokens are refused.",
         }
     }
@@ -146,6 +146,7 @@ impl MirrorsOp {
                     "keep_ci_warm": { "type": "boolean" },
                     "github_workflows": { "type": "boolean" },
                     "hold_deploys": { "type": "boolean" },
+                    "report_checks": { "type": "boolean" },
                     "remote_pushes": { "type": "string", "enum": ["adopt", "overwrite"] },
                 }),
                 &["repo", "id"],
@@ -195,6 +196,7 @@ pub fn settings_from(mut settings: MirrorSettings, input: &Value) -> std::result
         ("keep_ci_warm", &mut settings.keep_ci_warm),
         ("github_workflows", &mut settings.github_workflows),
         ("hold_deploys", &mut settings.hold_deploys),
+        ("report_checks", &mut settings.report_checks),
     ] {
         if let Some(value) = input.get(key).filter(|value| !value.is_null()) {
             *field = flag(value).ok_or_else(|| format!("{key} is true or false."))?;
@@ -355,6 +357,8 @@ mod tests {
         assert!(changed.keep_ci_warm);
         assert_eq!(changed.hand_back, HandBack::WhenClean);
         assert_eq!(changed.remote_pushes, RemotePushes::Adopt);
+        assert!(changed.report_checks, "checks go to GitHub unless turned off");
+        assert!(!settings_from(base.clone(), &json!({ "report_checks": false })).unwrap().report_checks);
         let cleared = settings_from(changed, &json!({ "take_over_after": null })).unwrap();
         assert_eq!(cleared.take_over_after, None);
         assert!(settings_from(base.clone(), &json!({ "notify": "pager" })).is_err());

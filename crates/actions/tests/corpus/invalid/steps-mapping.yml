@@ -1,0 +1,7 @@
+# error: `steps` is a list
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      not: a-sequence

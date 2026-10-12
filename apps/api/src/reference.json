@@ -11845,6 +11845,36 @@
     },
     "notes": "Production comes first, then the most recently deployed. `latest` is the newest deployment whatever its state; `current` is the newest that succeeded and is still active, and `url` is where it is served."
   },
+  "start_deployment_build": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello"
+    },
+    "request": {
+      "project": "hello"
+    },
+    "response": {
+      "deploy_id": "dpl_01kq9c4e6g8j0m2p4r6t8v0x2z",
+      "token": "…",
+      "kind": "preview",
+      "project": "hello",
+      "branch": "new-header",
+      "number": 42,
+      "commit": "9f2c4e6a8b0d1f3e5a7c9b1d3f5e7a9c0b2d4f6e",
+      "url": "https://hello-git-new-header-flagonio.g1t.page",
+      "trusted": true,
+      "root_dir": "",
+      "build_command": null,
+      "output_dir": null,
+      "build_env": {
+        "PUBLIC_API_URL": "https://api.example.com"
+      },
+      "build_secrets": {
+        "SENTRY_AUTH_TOKEN": "…"
+      }
+    },
+    "notes": "Called from a workflow step with the job's own token, `${{ github.token }}`, in a job with `permissions: deployments: write`; the [`g1t/deploy`](/guides/deployments/#deploying-from-a-workflow) action calls it, masks the token and the secrets, and runs `g1t-runner deploy` with them. Any other token is refused. This is a pull request's run, so it builds the pull request's preview; the same workflow on the production branch builds production. See [Deploying from a workflow](/guides/deployments/#deploying-from-a-workflow)."
+  },
   "get_environment": {
     "params": {
       "owner": "flagon-io",
@@ -13700,6 +13730,7 @@
           "unreachable_since": null,
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -13707,6 +13738,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -13739,6 +13771,7 @@
           "unreachable_since": null,
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -13746,6 +13779,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -13807,6 +13841,7 @@
           "unreachable_since": "2026-10-08T14:04:00.000Z",
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -13814,6 +13849,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -13848,6 +13884,7 @@
           "unreachable_since": null,
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -13855,6 +13892,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -13891,6 +13929,7 @@
           "unreachable_since": null,
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -13898,6 +13937,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -13949,6 +13989,7 @@
           "unreachable_since": null,
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -13956,6 +13997,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -13992,6 +14034,7 @@
       "unreachable_since": null,
       "synced_at": "2026-10-08T13:57:42.000Z",
       "last_error": null,
+      "checks_problem": null,
       "settings": {
         "notify": "banner",
         "take_over_after": null,
@@ -13999,6 +14042,7 @@
         "keep_ci_warm": false,
         "github_workflows": true,
         "hold_deploys": true,
+        "report_checks": true,
         "remote_pushes": "adopt"
       },
       "created_at": "2026-10-05T10:00:00.000Z"
@@ -14030,6 +14074,7 @@
       "unreachable_since": null,
       "synced_at": "2026-10-08T13:57:42.000Z",
       "last_error": null,
+      "checks_problem": null,
       "settings": {
         "notify": "inbox",
         "take_over_after": 30,
@@ -14037,6 +14082,7 @@
         "keep_ci_warm": false,
         "github_workflows": true,
         "hold_deploys": true,
+        "report_checks": true,
         "remote_pushes": "adopt"
       },
       "created_at": "2026-10-05T10:00:00.000Z"

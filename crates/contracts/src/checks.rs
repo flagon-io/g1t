@@ -483,6 +483,37 @@ pub fn latest_runs<T>(runs: &[(WorkflowRun, T)]) -> Vec<&(WorkflowRun, T)> {
     out
 }
 
+/// The latest run of each workflow on `sha` (`runs` newest first, as the
+/// actions service lists them), each of its jobs as the status its check
+/// run stands as: named as the check run is (the job's name, such as
+/// `test` or `build (ubuntu-latest)`), so a required check named for a job
+/// is met by it, as on GitHub. A job still waiting or going is pending; one
+/// that passed, was skipped or was neutral passed; any other ending failed.
+pub fn job_statuses(runs: &[(WorkflowRun, Vec<Job>)], sha: &str) -> Vec<CommitStatus> {
+    latest_runs(runs)
+        .into_iter()
+        .filter(|(run, _)| run.sha == sha)
+        .flat_map(|(run, jobs)| {
+            jobs.iter().map(move |job| {
+                let state = match (job.status.as_str(), job.conclusion.as_deref()) {
+                    ("completed", Some("success" | "skipped" | "neutral")) => "success",
+                    ("completed", _) => "failure",
+                    _ => "pending",
+                };
+                CommitStatus {
+                    context: job.name.clone(),
+                    state: state.to_owned(),
+                    description: job.reason.clone(),
+                    target_url: None,
+                    updated_at: job.finished_at.clone().or_else(|| job.started_at.clone()).unwrap_or_else(|| run.created_at.clone()),
+                    source: Some("actions".to_owned()),
+                    check_run_id: Some(job.id.clone()),
+                }
+            })
+        })
+        .collect()
+}
+
 // --- A commit's checks, added up -----------------------------------------
 
 /// Every check on one commit, as its list shows them: each check run, and
@@ -1025,9 +1056,29 @@ mod tests {
         assert_eq!(check.output.annotations_count, 1);
         assert_eq!(job_annotations(&job)[0].annotation_level, "failure");
         let waiting = Job { status: "waiting".into(), conclusion: None, ..job.clone() };
-        let suite = run_check_suite(&workflow_run, &[job, waiting]);
+        let suite = run_check_suite(&workflow_run, &[job.clone(), waiting.clone()]);
         assert_eq!((suite.status.as_str(), suite.head_branch.as_deref()), ("in_progress", Some("main")));
         assert_eq!(suite.name.as_deref(), Some("CI"));
+
+        // Each job stands as a status named as GitHub names its check run,
+        // from the latest attempt of each workflow only.
+        let sha = "b".repeat(40);
+        let skipped = Job { id: "job_3".into(), name: "Lint".into(), conclusion: Some("skipped".into()), ..job.clone() };
+        let cancelled = Job { id: "job_4".into(), name: "Build (ubuntu-latest)".into(), conclusion: Some("cancelled".into()), ..job.clone() };
+        let older = WorkflowRun { id: "run_0".into(), attempt: 0, ..workflow_run.clone() };
+        let other = WorkflowRun { sha: "c".repeat(40), ..workflow_run.clone() };
+        let statuses = job_statuses(
+            &[
+                (workflow_run.clone(), vec![job.clone(), waiting, skipped, cancelled]),
+                (older, vec![Job { conclusion: Some("failure".into()), ..job.clone() }]),
+                (other, vec![job.clone()]),
+            ],
+            &sha,
+        );
+        let states: Vec<(&str, &str)> = statuses.iter().map(|s| (s.context.as_str(), s.state.as_str())).collect();
+        assert_eq!(states, [("Test", "success"), ("Test", "pending"), ("Lint", "success"), ("Build (ubuntu-latest)", "failure")]);
+        assert_eq!(statuses[0].check_run_id.as_deref(), Some("job_1"));
+        assert_eq!(statuses[0].source.as_deref(), Some("actions"));
     }
 
     #[test]

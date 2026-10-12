@@ -73,6 +73,7 @@ With these headers:
 | `repo.renamed` | It was given a new name. Its old address redirects. |
 | `repo.transferred` | It moved to another workspace. |
 | `repo.default_branch_changed` | Its default branch changed, or the default branch was renamed. |
+| `git.deleted` | A push deleted a branch or tag. `data.ref` is the full ref, and `data.before` the commit it pointed to. A push that deletes more than 3 tags sends none for them. |
 | `branch.renamed` | A branch was renamed. |
 | `repo.collaborator_added`, `repo.collaborator_role_changed`, `repo.collaborator_removed` | Someone was given a role on it, had their role changed, or lost it. `data.username`, `data.role`, `data.previous_role`. See [access and roles](/guides/access-and-roles/). |
 | `team.created`, `team.edited`, `team.deleted` | A [team](/guides/teams/) was created, changed or deleted. Sent to the workspace's webhooks. `data.workspace`, `data.team` (its slug), `data.team_id`, `data.name`, `data.visibility`, `data.parent`; on `team.edited`, `data.changes`. |
@@ -101,7 +102,7 @@ With these headers:
 | `security_advisory.published`, `security_advisory.withdrawn` | The repository [published or withdrew a security advisory](/guides/security/advisories/). `data.id`, `data.g1tsa_id`, `data.title`, `data.severity`, `data.state`, `data.link`. |
 | `security_advisory.reported` | Someone [reported a vulnerability privately](/guides/security/advisories/#private-vulnerability-reporting) to the repository's maintainers. `data.id`, `data.title`, `data.severity`, `data.link`. Never the reporter or the description: it says to look. |
 | `checks.completed` | A pull request's checks finished: every status on its head has reported and none is still pending, or the merge queue took it out. `data.number`, `data.commit`, and `data.status`, `passed` or `failed`. |
-| `status.created` | A status was set on a commit through the API. `data.sha`, `data.context`, `data.state`, `data.description`, `data.target_url`. See [Checks](/guides/checks/). |
+| `status.created` | A status was set on a commit: through the API, by a workflow run, by a deploy, or by another part of g1t. `data.sha`, `data.context`, `data.state`, `data.description`, `data.target_url`. See [Checks](/guides/checks/). |
 | `check_run.created`, `check_run.completed` | A check run was reported on a commit, or completed. `data.check_run`: `id`, `name`, `head_sha`, `status`, `conclusion`, `details_url`, `external_id`, `html_url`, `output`, `actions`, `check_suite` and `app`. |
 | `check_run.rerequested`, `check_run.requested_action` | Someone asked for a check run to run again, or pressed one of its buttons: `data.requested_action` is the button's `identifier`. Report a new run, or do what the button says. |
 | `check_suite.completed`, `check_suite.rerequested` | Every latest check run of a reporter's suite on a commit completed, or someone asked for it to run again. `data.check_suite`: `id`, `head_sha`, `status`, `conclusion`, `app`. |

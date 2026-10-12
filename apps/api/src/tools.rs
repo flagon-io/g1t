@@ -264,6 +264,7 @@ pub const TOOLS: &[Tool] = &[
             a("create_deployment_status", Op::Deployments(DeploymentsOp::CreateDeploymentStatus), "Report where a deployment is: in_progress, success, failure"),
             a("list_environments", Op::Deployments(DeploymentsOp::ListEnvironments), "Environments with their current and latest deployments"),
             a("get_environment", Op::Deployments(DeploymentsOp::GetEnvironment), "One environment by name, with its protection rules"),
+            a("start_deployment_build", Op::Deployments(DeploymentsOp::StartDeploymentBuild), "From a workflow job: open a g1t.page build it runs itself"),
             a("update_environment", Op::Protection(ProtectionOp::UpdateEnvironment), "Set an environment's reviewers, wait timer and branches"),
             a("delete_environment", Op::Protection(ProtectionOp::DeleteEnvironment), "Remove an environment's protection rules"),
             a("pending_deployments", Op::Protection(ProtectionOp::GetPendingDeployments), "The environments holding a run's jobs"),

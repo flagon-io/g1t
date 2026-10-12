@@ -4,6 +4,7 @@
 //! g1t-runner register --url https://g1t.sh --token g1trt_… [--name build-01]
 //!     [--labels gpu,cuda] [--group Default] [--ephemeral] [--work-dir DIR]
 //!     [--no-docker] [--image IMAGE] [--agent-image IMAGE] [--replace]
+//!     [--memory 8g] [--cpus 4] [--pids-limit 4096] [--no-job-docker]
 //! g1t-runner run [--once]
 //! g1t-runner service install|start|stop|status|uninstall
 //! g1t-runner remove
@@ -17,10 +18,17 @@
 //! program in another mode, see `exec`), and says how it ended. Nothing
 //! listens on the machine. Every command takes `--dir` (default
 //! `~/.g1t-runner`, or `G1T_RUNNER_DIR`), where its configuration is kept.
+//!
+//! How it keeps jobs from the machine is `sandbox`: in its image under
+//! Sysbox (`G1T_RUNNER_SANDBOX=nested`) it runs its own Docker Engine
+//! (`engine`) and refuses to start if it can reach the machine's.
 
 mod api;
 mod config;
+#[cfg(unix)]
+mod engine;
 mod exec;
+mod sandbox;
 mod service;
 mod update;
 
@@ -119,7 +127,7 @@ impl Options {
     /// `G1T_RUNNER_EPHEMERAL=1`), so a Kubernetes secret can hold the token.
     fn with_environment(mut self) -> Options {
         let env_name = |name: &str| format!("G1T_RUNNER_{}", name.to_ascii_uppercase().replace('-', "_"));
-        for name in ["url", "api", "token", "name", "labels", "group", "work-dir", "image", "agent-image", "harness"] {
+        for name in VALUE_OPTIONS {
             if self.value(name).is_none()
                 && let Ok(value) = std::env::var(env_name(name))
                 && !value.is_empty()
@@ -127,7 +135,7 @@ impl Options {
                 self.values.push((name.to_owned(), value));
             }
         }
-        for name in ["ephemeral", "no-docker", "replace", "no-auto-update"] {
+        for name in ["ephemeral", "no-docker", "replace", "no-auto-update", "no-job-docker"] {
             if !self.flag(name) && std::env::var(env_name(name)).is_ok_and(|v| matches!(v.as_str(), "1" | "true" | "yes")) {
                 self.flags.push(name.to_owned());
             }
@@ -136,12 +144,18 @@ impl Options {
     }
 }
 
+/// The options that take a value.
+const VALUE_OPTIONS: [&str; 14] =
+    ["url", "api", "token", "name", "labels", "group", "work-dir", "image", "agent-image", "harness", "memory", "cpus", "pids-limit", "job-docker-image"];
+
 const HELP: &str = "g1t-runner: a self-hosted runner for g1t.
 
   g1t-runner register --url https://g1t.sh --token <registration token>
       [--name NAME] [--labels a,b] [--group GROUP] [--ephemeral]
       [--work-dir DIR] [--no-docker] [--image IMAGE] [--agent-image IMAGE]
       [--api URL] [--harness PATH] [--replace] [--no-auto-update]
+      [--memory 8g] [--cpus 4] [--pids-limit 4096] [--no-job-docker]
+      [--job-docker-image IMAGE]
   g1t-runner run [--once]          poll for work and run it
   g1t-runner register-and-run ...  both, for containers; options may be
                                    G1T_RUNNER_URL, _TOKEN, _LABELS, _EPHEMERAL…
@@ -150,13 +164,21 @@ const HELP: &str = "g1t-runner: a self-hosted runner for g1t.
   g1t-runner update                update to the newest release
   g1t-runner version
 
+In a workflow step (the g1t/deploy and g1t/detect actions use these):
+  g1t-runner deploy                build this checkout and put it on g1t.page
+  g1t-runner detect [--root-dir DIR]  what that build would find
+
 Every command takes --dir DIR (default ~/.g1t-runner, or G1T_RUNNER_DIR).
+Run it as a container under Sysbox so neither it nor its jobs reach the
+machine: docker run --runtime=sysbox-runc … g1t.sh/flagon-io/g1t-runner.
+--no-docker (host mode) is deprecated.
 Make a registration token under Settings, Runners on g1t.sh.
 Docs: https://docs.g1t.sh/guides/self-hosted-runners/";
 
 /// Runs a command. Returns the process's exit code.
 pub fn main(args: Vec<String>) -> i32 {
-    let takes = ["url", "api", "token", "name", "labels", "group", "work-dir", "image", "agent-image", "harness", "dir"];
+    let mut takes = VALUE_OPTIONS.to_vec();
+    takes.push("dir");
     let options = match Options::parse(&args[1..], &takes) {
         Ok(options) => options,
         Err(error) => {
@@ -247,9 +269,16 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         .filter(|l| !l.is_empty())
         .collect();
     let docker = !options.flag("no-docker");
-    if docker && !exec::docker_ready() {
-        log("Docker does not answer here. Jobs will fail until it does; register with --no-docker to run them on this machine instead.");
+    let isolation = isolation(docker)?;
+    if isolation == sandbox::Isolation::Host {
+        log(sandbox::HOST_MODE_AT_START);
+    } else if !sandbox::nested_requested() && !exec::docker_ready() {
+        log("Docker does not answer here. Jobs will fail until it does.");
     }
+    let pids_limit = match options.value("pids-limit") {
+        Some(text) => Some(text.parse::<u32>().ok().filter(|n| *n > 0).with_context(|| format!("--pids-limit takes a number of processes, not {text}"))?),
+        None => None,
+    };
     let existing = config::load(folder).ok();
     if existing.is_some() && !options.flag("replace") {
         bail!("{} already holds a registered runner: run `g1t-runner remove` first, or register with --replace or another --dir", folder.display());
@@ -275,6 +304,7 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
             "ephemeral": options.flag("ephemeral"),
             "group": options.value("group"),
             "replace": options.flag("replace"),
+            "isolation": isolation.as_str(),
         }),
     )?;
     let work_dir = options.value("work-dir").map(PathBuf::from).unwrap_or_else(|| folder.join("work"));
@@ -295,6 +325,11 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         agent_image: options.value("agent-image").map(str::to_owned),
         harness: options.value("harness").map(PathBuf::from),
         auto_update: !options.flag("no-auto-update"),
+        memory: options.value("memory").map(str::to_owned),
+        cpus: options.value("cpus").map(str::to_owned),
+        pids_limit,
+        job_docker: !options.flag("no-job-docker"),
+        job_docker_image: options.value("job-docker-image").map(str::to_owned),
     };
     config::save(folder, &config)?;
     let place = match &config.repo {
@@ -303,6 +338,49 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
     };
     log(&format!("Registered {} {place}, with labels {}.", config.name, config.labels.join(", ")));
     log("Start it with `g1t-runner run`, or `g1t-runner service install` to keep it running.");
+    Ok(())
+}
+
+/// How this runner keeps work from its machine; refuses a nested runner
+/// that can reach the machine (sandbox.rs).
+fn isolation(docker: bool) -> Result<sandbox::Isolation> {
+    use sandbox::{Isolation, SandboxDriver};
+    if !docker {
+        // What is coming for jobs native to this OS.
+        if let Some(driver) = sandbox::native_driver()
+            && let Err(why) = driver.preflight()
+        {
+            log(&format!("Sandboxed {} jobs, in {}: {why}.", std::env::consts::OS, driver.name()));
+        }
+        return Ok(Isolation::Host);
+    }
+    if !sandbox::nested_requested() {
+        return sandbox::SharedDocker.preflight();
+    }
+    if !cfg!(target_os = "linux") {
+        bail!("{}=nested is for the runner's Linux image", sandbox::SANDBOX_ENV);
+    }
+    let isolation = sandbox::NestedDocker { allow_unsafe: sandbox::unsafe_allowed() }.preflight()?;
+    if isolation != Isolation::NestedContainer {
+        for problem in sandbox::Findings::read().problems() {
+            log(&format!("UNSAFE: {problem}"));
+        }
+        log(&format!("UNSAFE: {}=1 is set, so the runner starts anyway, and its jobs can reach this machine.", sandbox::UNSAFE_ENV));
+    }
+    Ok(isolation)
+}
+
+/// A nested runner's own Docker Engine, which it uses whatever else it
+/// can see (with the override, it starts despite that).
+fn prepare(docker: bool) -> Result<()> {
+    if !docker || !sandbox::nested_requested() {
+        return Ok(());
+    }
+    #[cfg(unix)]
+    {
+        let version = engine::start()?;
+        log(&format!("Started this runner's own Docker Engine {version}, inside its container."));
+    }
     Ok(())
 }
 
@@ -352,13 +430,21 @@ fn run(folder: &Path, once: bool) -> Result<()> {
     let mut config = config::load(folder)?;
     let mut api = Api { base: config.api.clone(), runner: config.runner.clone(), credential: config.credential.clone() };
     std::fs::create_dir_all(&config.work_dir).with_context(|| format!("could not make {}", config.work_dir.display()))?;
+    let isolation = isolation(config.docker)?;
+    prepare(config.docker)?;
+    if isolation != sandbox::Isolation::Host {
+        exec::sweep(&config);
+    }
     log(&format!(
-        "g1t-runner {VERSION}: {} ({}) is listening for work from {}, {}.",
+        "g1t-runner {VERSION}: {} ({}) is listening for work from {}. Isolation: {}.",
         config.name,
         config.labels.join(", "),
         config.url,
-        if config.docker { "in Docker" } else { "on this machine" }
+        isolation.describe()
     ));
+    if isolation == sandbox::Isolation::Host {
+        log(sandbox::HOST_MODE_AT_START);
+    }
     let mut current: Option<exec::Running> = None;
     let mut ran_one = false;
     let mut backoff = Duration::from_secs(2);
@@ -456,7 +542,7 @@ fn run(folder: &Path, once: bool) -> Result<()> {
         }
         if let Some(work) = poll.assignment {
             log(&format!("Took {} {} ({}).", work.kind, work.name, work.repo));
-            match exec::start(&config, folder, &work) {
+            match exec::start(&config, isolation, folder, &work) {
                 Ok(running) => current = Some(running),
                 Err(error) => {
                     log(&format!("Could not start it: {error:#}"));

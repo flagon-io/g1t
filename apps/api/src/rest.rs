@@ -369,6 +369,8 @@ pub const ROUTES: &[Route] = &[
         &[("environment", "environment"), ("ref", "ref"), ("sha", "sha"), ("task", "task"), ("state", "state"), ("source", "source"), ("creator", "creator"), ("page", "page"), ("per_page", "per_page")],
     ),
     route("POST", "/repos/:owner/:name/deployments", Op::Deployments(DeploymentsOp::CreateDeployment), &[]),
+    // A g1t Actions job opening a g1t.page build it runs itself.
+    route("POST", "/repos/:owner/:name/deployments/builds", Op::Deployments(DeploymentsOp::StartDeploymentBuild), &[]),
     route("GET", "/repos/:owner/:name/deployments/:id", Op::Deployments(DeploymentsOp::GetDeployment), &[]),
     route("GET", "/repos/:owner/:name/deployments/:id/statuses", Op::Deployments(DeploymentsOp::ListDeploymentStatuses), &[]),
     route("POST", "/repos/:owner/:name/deployments/:id/statuses", Op::Deployments(DeploymentsOp::CreateDeploymentStatus), &[]),

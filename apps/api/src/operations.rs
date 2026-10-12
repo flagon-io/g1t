@@ -711,7 +711,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 379] = [
+    pub const ALL: [Op; 380] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -995,6 +995,7 @@ impl Op {
         Op::Deployments(DeploymentsOp::CreateDeploymentStatus),
         Op::Deployments(DeploymentsOp::ListEnvironments),
         Op::Deployments(DeploymentsOp::GetEnvironment),
+        Op::Deployments(DeploymentsOp::StartDeploymentBuild),
         Op::Artifacts(ArtifactsOp::ListArtifacts),
         Op::Artifacts(ArtifactsOp::ListRunArtifacts),
         Op::Artifacts(ArtifactsOp::GetArtifact),
@@ -2764,7 +2765,7 @@ impl Op {
                     "repo": repo_schema(),
                     "workflow": { "type": "string", "description": "The workflow's id or file name." },
                     "ref": { "type": "string", "description": "A branch or tag. The default branch if not given." },
-                    "inputs": { "type": "object", "description": "The workflow_dispatch inputs, by name." },
+                    "inputs": { "type": "object", "description": "The workflow_dispatch inputs, by name. Only inputs the workflow declares: any other is refused. A boolean is true or false, a number a number, a choice one of its options, and an environment one of the repository's." },
                 }),
                 &["repo", "workflow"],
             ),

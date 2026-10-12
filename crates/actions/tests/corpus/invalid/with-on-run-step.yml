@@ -1,0 +1,9 @@
+# error: unexpected `with` in a step that runs a command
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+        with:
+          a: b

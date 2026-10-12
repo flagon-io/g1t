@@ -6,11 +6,14 @@ use serde_json::{Map, Value, json};
 
 /// The GitHub event and activity type for a g1t event, if it has one.
 /// A g1t event can be more than one GitHub event: a pull request opening
-/// is `pull_request` and `pull_request_target`.
+/// is `pull_request` and `pull_request_target`. A new branch or tag is
+/// `push` and `create`; services/actions adds `create` for a `git.push`
+/// with no `before`.
 pub fn github_events(kind: &str) -> Vec<(&'static str, Option<&'static str>)> {
     let pull = |action| vec![("pull_request", Some(action)), ("pull_request_target", Some(action))];
     match kind {
         "git.push" => vec![("push", None)],
+        "git.deleted" => vec![("delete", None)],
         "pull.opened" => pull("opened"),
         "pull.updated" => pull("synchronize"),
         "pull.ready" => pull("ready_for_review"),
@@ -101,6 +104,11 @@ impl RunInfo {
         self.repository.split('/').next().unwrap_or_default()
     }
 
+    /// The owner's id, as the event's `repository.owner.id` gives it.
+    fn owner_id(&self) -> String {
+        owner_id(&self.event).unwrap_or_default()
+    }
+
     /// The `github` context for a job. `token` is `github.token` (and
     /// `secrets.GITHUB_TOKEN`); `job` is the job's id.
     pub fn context(&self, job: &str, token: &str, action: Option<&str>) -> Value {
@@ -128,7 +136,7 @@ impl RunInfo {
             "repository": self.repository,
             "repository_id": self.repository_id,
             "repository_owner": self.owner(),
-            "repository_owner_id": "",
+            "repository_owner_id": self.owner_id(),
             "repositoryUrl": format!("{}/{}.git", self.server_url, self.repository),
             "retention_days": 14,
             "run_attempt": self.run_attempt.to_string(),
@@ -171,6 +179,7 @@ impl RunInfo {
         set("GITHUB_REPOSITORY", self.repository.clone());
         set("GITHUB_REPOSITORY_ID", self.repository_id.clone());
         set("GITHUB_REPOSITORY_OWNER", self.owner().to_owned());
+        set("GITHUB_REPOSITORY_OWNER_ID", self.owner_id());
         set("GITHUB_RETENTION_DAYS", "14".into());
         set("GITHUB_RUN_ATTEMPT", self.run_attempt.to_string());
         set("GITHUB_RUN_ID", self.run_id.clone());
@@ -188,14 +197,43 @@ impl RunInfo {
         set("RUNNER_TEMP", "/home/runner/_temp".into());
         set("RUNNER_TOOL_CACHE", "/home/runner/_tool".into());
         set("RUNNER_ENVIRONMENT", "github-hosted".into());
+        set("RUNNER_WORKSPACE", RUNNER_WORKSPACE.into());
         vars
+    }
+}
+
+/// The owner's id in a webhook-shaped payload, `repository.owner.id`, a
+/// number or a string.
+pub fn owner_id(event: &Value) -> Option<String> {
+    match &event["repository"]["owner"]["id"] {
+        Value::String(id) => Some(id.clone()),
+        Value::Number(id) => Some(id.to_string()),
+        _ => None,
     }
 }
 
 /// Where a job's repository is checked out, as on GitHub's runners.
 pub const WORKSPACE: &str = "/home/runner/work/repo";
 
+/// The folder the workspace is in, as GitHub's `RUNNER_WORKSPACE` is.
+pub const RUNNER_WORKSPACE: &str = "/home/runner/work";
+
 /// The `runner` context.
+/// Whether a head commit's `message` asks, as GitHub lets it, that the
+/// `push` and `pull_request` workflows it would start don't run: `[skip ci]`,
+/// `[ci skip]`, `[no ci]`, `[skip actions]` or `[actions skip]` anywhere in
+/// it, or a `skip-checks: true` trailer.
+pub fn skips_ci(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    if ["[skip ci]", "[ci skip]", "[no ci]", "[skip actions]", "[actions skip]"].iter().any(|marker| lower.contains(marker)) {
+        return true;
+    }
+    // Trailers are the last paragraph, after a blank line.
+    let trimmed = lower.trim_end();
+    let Some((_, trailers)) = trimmed.rsplit_once("\n\n") else { return false };
+    trailers.lines().any(|line| line.split_once(':').is_some_and(|(key, value)| key.trim() == "skip-checks" && value.trim() == "true"))
+}
+
 pub fn runner_context() -> Value {
     json!({
         "name": "g1t",
@@ -215,6 +253,11 @@ mod tests {
     #[test]
     fn g1t_events_are_github_events() {
         assert_eq!(github_events("git.push"), [("push", None)]);
+        assert_eq!(github_events("git.deleted"), [("delete", None)]);
+        assert_eq!(github_events("pull.labeled")[1], ("pull_request_target", Some("labeled")));
+        assert_eq!(github_events("pull.assigned")[0], ("pull_request", Some("assigned")));
+        assert_eq!(github_events("issue.unlabeled"), [("issues", Some("unlabeled"))]);
+        assert_eq!(github_events("issue.assigned"), [("issues", Some("assigned"))]);
         assert_eq!(github_events("pull.updated")[0], ("pull_request", Some("synchronize")));
         assert_eq!(github_events("pull.merged")[1], ("pull_request_target", Some("closed")));
         assert_eq!(github_events("comment.created"), [("issue_comment", Some("created"))]);
@@ -257,5 +300,35 @@ mod tests {
         assert_eq!(vars["GITHUB_REF_NAME"], "v1.2.0");
         assert_eq!(vars["GITHUB_JOB"], "build");
         assert_eq!(vars["RUNNER_OS"], "Linux");
+        assert_eq!(vars["RUNNER_WORKSPACE"], "/home/runner/work");
+        assert_eq!(vars["GITHUB_REPOSITORY_OWNER_ID"], "");
+    }
+
+    #[test]
+    fn the_owners_id_comes_from_the_event() {
+        let info = RunInfo {
+            repository: "acme/web".into(),
+            event: json!({ "repository": { "owner": { "id": 42 } } }),
+            ..RunInfo::default()
+        };
+        assert_eq!(info.variables("build")["GITHUB_REPOSITORY_OWNER_ID"], "42");
+        assert_eq!(info.context("build", "", None)["repository_owner_id"], "42");
+        assert_eq!(owner_id(&json!({ "repository": { "owner": { "id": "ws_1" } } })).as_deref(), Some("ws_1"));
+        assert_eq!(owner_id(&json!({})), None);
+    }
+}
+
+#[cfg(test)]
+mod skip_tests {
+    use super::skips_ci;
+
+    #[test]
+    fn a_commit_can_skip_its_runs_as_on_github() {
+        for message in ["Fix typo [skip ci]", "[ci skip] docs", "Notes [no ci]", "x [skip actions]", "[Actions Skip]", "Tidy\n\nskip-checks: true", "Tidy\n\nSigned-off-by: A <a@b>\nskip-checks:true\n"] {
+            assert!(skips_ci(message), "{message:?}");
+        }
+        for message in ["Fix the skip ci flag", "skip-checks: true", "Tidy\n\nskip-checks: false", "[skip-ci]", "Tidy\n\nskip-checks: true\n\nMore"] {
+            assert!(!skips_ci(message), "{message:?}");
+        }
     }
 }

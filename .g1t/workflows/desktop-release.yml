@@ -68,7 +68,7 @@ jobs:
     # The larger machine: linking Tauri on the small one dies with a bus error.
     runs-on: g1t-4core
     environment: production
-    timeout-minutes: 90
+    timeout-minutes: 60  # the most g1t's own machines run a job
     steps:
       - uses: actions/checkout@v5
       - name: What Tauri needs on Linux
@@ -139,7 +139,7 @@ jobs:
     if: vars.DESKTOP_WINDOWS_FROM_LINUX == 'true' && vars.DESKTOP_WINDOWS_RUNNER != 'true'
     runs-on: g1t-4core
     environment: production
-    timeout-minutes: 90
+    timeout-minutes: 60  # the most g1t's own machines run a job
     steps:
       - uses: actions/checkout@v5
       - name: What the cross build needs

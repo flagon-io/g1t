@@ -103,6 +103,35 @@ test("an expanded matrix is taller, and its connectors still meet its first line
   assert.equal(open.edges[0]!.path, closed.edges[0]!.path);
 });
 
+test("a matrix's calls share the caller's box, each call's jobs named by its combination", () => {
+  const uses = "./.g1t/workflows/build.yml";
+  const jobs = [
+    job("build", [], { name: "Build (linux)", uses }),
+    job("build", [], { name: "Build (mac)", uses }),
+    job("build[0]/test", [], { name: "Build (linux) / test" }),
+    job("build[1]/test", [], { name: "Build (mac) / test" }),
+    job("deploy", ["build"]),
+  ];
+  const units = groupJobs(jobs);
+  assert.deepEqual(
+    units.map((unit) => [unit.kind, unit.key]),
+    [
+      ["call", "build"],
+      ["job", "deploy"],
+    ],
+  );
+  const call = units[0]!;
+  assert.ok(call.kind === "call");
+  assert.equal(call.callers.length, 2);
+  assert.deepEqual(
+    call.units.map((unit) => [unit.key, unit.label]),
+    [
+      ["build[0]/test", "Build (linux) / test"],
+      ["build[1]/test", "Build (mac) / test"],
+    ],
+  );
+});
+
 test("a called workflow's jobs sit in a box under the job calling it", () => {
   const jobs = [
     job("build", [], { name: "Build", uses: "./.g1t/workflows/build.yml" }),

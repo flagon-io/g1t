@@ -1,0 +1,10 @@
+# error: unexpected `env` in `defaults.run`
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        env: {}
+    steps:
+      - run: echo hi

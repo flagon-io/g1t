@@ -766,6 +766,52 @@ pub struct SetSettingArgs {
     pub note: Option<String>,
 }
 
+/// `set_managed_workflow`: installs, or replaces, a managed workflow in a
+/// repository (`g1t_actions::managed`): one that runs as if it were in
+/// `.g1t/workflows/` without being committed there, under the path
+/// `managed/<name>.yml`. For g1t's own services; never reached from the API.
+/// Refused when `source` is not a workflow g1t can read. Returns `bool`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetManagedWorkflowArgs {
+    pub repo_id: String,
+    /// Letters, digits and hyphens: the file name its path ends with.
+    pub name: String,
+    pub source: String,
+    /// What keeps it: `deployments`, or a workspace's id.
+    pub origin: String,
+}
+
+/// `set_managed_deploy`: installs, replaces or removes the deploy workflow
+/// a project's deployments run through (`g1t_actions::managed`), named
+/// `deploy-<project>`, from the project's settings. Nothing deploys (both
+/// `previews` and `production` off) removes it. For the deployments
+/// service only. Returns `bool`, whether one is installed now.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetManagedDeployArgs {
+    pub repo_id: String,
+    pub project: String,
+    pub production_branch: String,
+    #[serde(default)]
+    pub root_dir: String,
+    #[serde(default)]
+    pub build_command: String,
+    #[serde(default)]
+    pub output_dir: String,
+    pub previews: bool,
+    pub production: bool,
+}
+
+/// `remove_managed_workflow`: takes a managed workflow out of a repository.
+/// Its runs stay. Returns `bool`, whether there was one.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveManagedWorkflowArgs {
+    pub repo_id: String,
+    pub name: String,
+}
+
 /// `resolve_settings`: the secrets and variables one reader gets, for the
 /// services that hand them out (the deployments service). Returns
 /// `ResolvedSettings`.

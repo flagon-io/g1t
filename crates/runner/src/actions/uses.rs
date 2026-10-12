@@ -385,8 +385,9 @@ impl Job {
         ready
     }
 
-    /// Runs a JavaScript file of an action with Node.
-    pub(crate) fn run_node(&mut self, action_dir: &Path, script: &str, env: &BTreeMap<String, String>) -> bool {
+    /// Runs a JavaScript file of an action with Node: the one its
+    /// `runs.using` names where the machine has it (`node_program`).
+    pub(crate) fn run_node(&mut self, action_dir: &Path, script: &str, env: &BTreeMap<String, String>, using: &str) -> bool {
         let id = format!("node{}", super::rand_id());
         let Ok(files) = StepFiles::new(&self.temp, &id) else { return false };
         let full = self.process_env(env, &files);
@@ -400,13 +401,14 @@ impl Job {
         let command = match in_container {
             Some(command) => command,
             None => {
-                let mut command = Command::new("node");
+                let node = node_program(using, |name| std::env::var(name).ok(), |path| path.is_file());
+                let mut command = Command::new(node);
                 command.arg(&script_path).current_dir(&self.workspace).env_clear().envs(full);
                 command
             }
         };
         let mut commands = Commands {
-            debug: false,
+            debug: self.debug,
             ..Commands::default()
         };
         let ended = process::run(command, Duration::from_secs(6 * 3600).min(self.deadline_left()), &mut self.log, &mut commands);
@@ -435,7 +437,7 @@ impl Job {
         env: &BTreeMap<String, String>,
         frame: &Frame,
         title: &str,
-        id: Option<&str>,
+        action_name: &str,
         _timeout: Duration,
     ) -> (bool, BTreeMap<String, String>) {
         let uses = uses.trim();
@@ -443,6 +445,7 @@ impl Job {
             // `with.args` and `with.entrypoint` are the container's; every
             // input is also an `INPUT_` variable, as on GitHub.
             let mut step_env = env.clone();
+            step_env.insert("GITHUB_ACTION".into(), action_name.to_owned());
             for (input, value) in with {
                 step_env.insert(format!("INPUT_{}", input.replace(' ', "_").to_ascii_uppercase()), value.clone());
             }
@@ -470,105 +473,56 @@ impl Job {
             "actions/cache/save" => return self.cache_save_now(with),
             _ => {}
         }
-        let source = if let Some(local) = name.strip_prefix("./") {
-            // A repository moved from GitHub renamed `.github` to `.g1t`, but
-            // its workflows still say `./.github/actions/…`.
-            let mut dir = self.workspace.join(local);
-            if let Some(rest) = local.strip_prefix(".github/")
-                && !dir.exists()
-            {
-                dir = self.workspace.join(".g1t").join(rest);
-            }
-            Source::Local(dir)
-        } else {
-            let mut parts = name.splitn(3, '/');
-            let (Some(owner), Some(repo)) = (parts.next(), parts.next()) else {
-                self.log.line(&format!("##[error]`{uses}` is not an action: use owner/repo@ref, owner/repo/path@ref, or ./path."));
-                return (false, BTreeMap::new());
-            };
-            if git_ref.is_empty() {
-                self.log.line(&format!("##[error]`{uses}` needs a version, such as @v4."));
-                return (false, BTreeMap::new());
-            }
-            Source::GitHub {
-                owner: owner.to_owned(),
-                repo: repo.to_owned(),
-                path: parts.next().unwrap_or_default().to_owned(),
-                git_ref: git_ref.to_owned(),
-            }
-        };
-        let (dir, repository) = match &source {
-            Source::Local(dir) => (dir.clone(), String::new()),
-            Source::GitHub { owner, repo, path, git_ref } => match self.fetch_remote_action(owner, repo, git_ref) {
-                Some(root) => (if path.is_empty() { root } else { root.join(path) }, format!("{owner}/{repo}")),
-                None => return (false, BTreeMap::new()),
-            },
-        };
-        let manifest = ["action.yml", "action.yaml"].iter().map(|f| dir.join(f)).find(|p| p.exists());
-        let Some(manifest) = manifest else {
-            self.log.line(&format!("##[error]`{uses}` has no action.yml."));
+        let Some(found) = self.resolve_action(uses) else {
             return (false, BTreeMap::new());
         };
-        let action = match std::fs::read_to_string(&manifest).ok().and_then(|text| serde_yaml::from_str::<serde_yaml::Value>(&text).ok()) {
-            Some(yaml) => yaml_to_json(&yaml),
-            None => {
-                self.log.line(&format!("##[error]`{uses}`: its action.yml does not read."));
-                return (false, BTreeMap::new());
-            }
-        };
+        let Action { dir, local, manifest: action, .. } = &found;
 
         // Inputs: what the step gives, else the action's defaults.
         let env_context = env.clone();
         let contexts = self.contexts_for(frame, &env_context);
-        let mut inputs: BTreeMap<String, String> = BTreeMap::new();
-        if let Some(Value::Object(declared)) = action.get("inputs") {
-            for (input, spec) in declared {
-                let given = with.iter().find(|(k, _)| k.eq_ignore_ascii_case(input)).map(|(_, v)| v.clone());
-                let value = match given {
-                    Some(value) => value,
-                    None => match spec.get("default") {
-                        Some(default) => {
-                            let default = self.with_scope(&contexts, |scope| expr::interpolate_value(default, scope)).unwrap_or(Value::Null);
-                            expr::to_text(&default)
-                        }
-                        None => String::new(),
-                    },
-                };
-                inputs.insert(input.clone(), value);
-            }
-        }
-        for (key, value) in with {
-            if !inputs.keys().any(|k| k.eq_ignore_ascii_case(key)) {
-                inputs.insert(key.clone(), value.clone());
-            }
-        }
+        let inputs = self.action_inputs(action, with, &contexts, true);
 
         let runs = action.get("runs").cloned().unwrap_or(Value::Null);
         let using = runs.get("using").map(expr::to_text).unwrap_or_default().to_ascii_lowercase();
-        let mut step_env = env.clone();
-        step_env.insert("GITHUB_ACTION".into(), id.map_or_else(|| format!("__{}", repository.replace('/', "_")), str::to_owned));
-        step_env.insert("GITHUB_ACTION_REPOSITORY".into(), repository.clone());
-        step_env.insert("GITHUB_ACTION_REF".into(), git_ref.to_owned());
-        step_env.insert("GITHUB_ACTION_PATH".into(), dir.display().to_string());
+        let mut step_env = action_env(env, action_name, &found, git_ref);
 
         if using.starts_with("node") {
             for (input, value) in &inputs {
                 step_env.insert(format!("INPUT_{}", input.replace(' ', "_").to_ascii_uppercase()), value.clone());
             }
             let condition_of = |key: &str| runs.get(key).map(expr::to_text).unwrap_or_else(|| "always()".into());
+            // State an action saves, `STATE_<name>` for its later stages.
+            let mut state = BTreeMap::new();
             if let Some(pre) = runs.get("pre").map(expr::to_text) {
-                let run_pre = self.with_scope(&contexts, |scope| expr::condition(&condition_of("pre-if"), scope)).unwrap_or(true);
-                if run_pre && !self.run_node(&dir, &pre, &step_env) {
-                    return (false, BTreeMap::new());
+                if frame.action_path.is_some() {
+                    // An action inside a composite action: its `pre` right
+                    // before its `main`.
+                    let run_pre = self.with_scope(&contexts, |scope| expr::condition(&condition_of("pre-if"), scope)).unwrap_or(true);
+                    if run_pre {
+                        if !self.run_node(dir, &pre, &step_env, &using) {
+                            return (false, BTreeMap::new());
+                        }
+                        state = std::mem::take(&mut self.last_node_state);
+                    }
+                } else if *local {
+                    self.log.line(&format!("##[warning]`pre` execution is not supported for local action from '{uses}'"));
+                } else {
+                    // Run before the job's first step (`pre_steps`).
+                    state = self.pre_state.remove(action_name).unwrap_or_default();
                 }
             }
             let Some(main) = runs.get("main").map(expr::to_text) else {
                 self.log.line(&format!("##[error]`{uses}` has no `runs.main`."));
                 return (false, BTreeMap::new());
             };
-            let ok = self.run_node(&dir, &main, &step_env);
+            let mut main_env = step_env.clone();
+            for (name, value) in &state {
+                main_env.insert(format!("STATE_{name}"), value.clone());
+            }
+            let ok = self.run_node(dir, &main, &main_env, &using);
             let outputs = std::mem::take(&mut self.last_node_outputs);
-            let state = std::mem::take(&mut self.last_node_state);
+            state.extend(std::mem::take(&mut self.last_node_state));
             if let Some(post) = runs.get("post").map(expr::to_text) {
                 let mut post_env = step_env.clone();
                 for (name, value) in state {
@@ -578,7 +532,7 @@ impl Job {
                     name: format!("Post {title}"),
                     condition: condition_of("post-if"),
                     env: post_env,
-                    run: PostRun::Node { action_dir: dir.clone(), script: post },
+                    run: PostRun::Node { action_dir: dir.clone(), script: post, using: using.clone() },
                 });
             }
             return (ok, outputs);
@@ -590,7 +544,8 @@ impl Job {
                 action_path: Some(dir.display().to_string()),
                 env: env.clone(),
             };
-            let steps: Vec<Map<String, Value>> = runs.get("steps").and_then(Value::as_array).map(|s| s.iter().filter_map(|s| s.as_object().cloned()).collect()).unwrap_or_default();
+            let mut steps: Vec<Map<String, Value>> = runs.get("steps").and_then(Value::as_array).map(|s| s.iter().filter_map(|s| s.as_object().cloned()).collect()).unwrap_or_default();
+            super::name_steps(&mut steps);
             let was_failed = self.failed;
             // A composite's steps see their own success, not the job's.
             self.failed = false;
@@ -614,7 +569,7 @@ impl Job {
             return (ok, outputs);
         }
         if using == "docker" {
-            return self.docker_action(uses, &dir, &runs, &inputs, &step_env, frame, title);
+            return self.docker_action(uses, dir, &runs, &inputs, &step_env, frame, title);
         }
         self.log.line(&format!("##[error]`{uses}` runs with `{using}`, which g1t does not know."));
         (false, BTreeMap::new())
@@ -696,6 +651,213 @@ impl Job {
     }
 }
 
+/// An action, read from its action.yml.
+pub(crate) struct Action {
+    pub(crate) dir: PathBuf,
+    /// `owner/repo`, or empty for one in the repository.
+    pub(crate) repository: String,
+    pub(crate) local: bool,
+    pub(crate) manifest: Value,
+}
+
+/// An action's `pre`, run before the job's first step.
+pub(crate) struct PreStep {
+    /// Its step's `GITHUB_ACTION`, by which the step finds the state it saved.
+    pub(crate) key: String,
+    /// `pre-if`, `always()` when it has none.
+    pub(crate) condition: String,
+    pub(crate) action_dir: PathBuf,
+    pub(crate) script: String,
+    pub(crate) using: String,
+    /// The `env` context its condition reads.
+    pub(crate) context_env: BTreeMap<String, String>,
+    /// What its process is given: the step's variables and inputs.
+    pub(crate) env: BTreeMap<String, String>,
+}
+
+impl Job {
+    /// Finds `uses` (fetching it when it is another repository's) and reads
+    /// its action.yml. A problem is told in the log.
+    fn resolve_action(&mut self, uses: &str) -> Option<Action> {
+        let (name, git_ref) = uses.split_once('@').unwrap_or((uses, ""));
+        let source = if let Some(local) = name.strip_prefix("./") {
+            // A repository moved from GitHub renamed `.github` to `.g1t`, but
+            // its workflows still say `./.github/actions/…`.
+            let mut dir = self.workspace.join(local);
+            if let Some(rest) = local.strip_prefix(".github/")
+                && !dir.exists()
+            {
+                dir = self.workspace.join(".g1t").join(rest);
+            }
+            Source::Local(dir)
+        } else {
+            let mut parts = name.splitn(3, '/');
+            let (Some(owner), Some(repo)) = (parts.next(), parts.next()) else {
+                self.log.line(&format!("##[error]`{uses}` is not an action: use owner/repo@ref, owner/repo/path@ref, or ./path."));
+                return None;
+            };
+            if git_ref.is_empty() {
+                self.log.line(&format!("##[error]`{uses}` needs a version, such as @v4."));
+                return None;
+            }
+            Source::GitHub {
+                owner: owner.to_owned(),
+                repo: repo.to_owned(),
+                path: parts.next().unwrap_or_default().to_owned(),
+                git_ref: git_ref.to_owned(),
+            }
+        };
+        let (dir, repository) = match &source {
+            Source::Local(dir) => (dir.clone(), String::new()),
+            Source::GitHub { owner, repo, path, git_ref } => {
+                let root = self.fetch_remote_action(owner, repo, git_ref)?;
+                (if path.is_empty() { root } else { root.join(path) }, format!("{owner}/{repo}"))
+            }
+        };
+        let Some(manifest) = ["action.yml", "action.yaml"].iter().map(|f| dir.join(f)).find(|p| p.exists()) else {
+            self.log.line(&format!("##[error]`{uses}` has no action.yml."));
+            return None;
+        };
+        let Some(yaml) = std::fs::read_to_string(&manifest).ok().and_then(|text| serde_yaml::from_str::<serde_yaml::Value>(&text).ok()) else {
+            self.log.line(&format!("##[error]`{uses}`: its action.yml does not read."));
+            return None;
+        };
+        Some(Action { dir, repository, local: matches!(source, Source::Local(_)), manifest: yaml_to_json(&yaml) })
+    }
+
+    /// An action's inputs: what the step gives, else the action's defaults,
+    /// read with `contexts`. With `warn`, inputs the action does not declare
+    /// are warned of, as GitHub's runner does.
+    fn action_inputs(&mut self, action: &Value, with: &BTreeMap<String, String>, contexts: &Map<String, Value>, warn: bool) -> BTreeMap<String, String> {
+        let mut inputs: BTreeMap<String, String> = BTreeMap::new();
+        let mut declared_names = Vec::new();
+        if let Some(Value::Object(declared)) = action.get("inputs") {
+            for (input, spec) in declared {
+                declared_names.push(input.clone());
+                let given = with.iter().find(|(k, _)| k.eq_ignore_ascii_case(input)).map(|(_, v)| v.clone());
+                let value = match given {
+                    Some(value) => value,
+                    None => match spec.get("default") {
+                        Some(default) => {
+                            let default = self.with_scope(contexts, |scope| expr::interpolate_value(default, scope)).unwrap_or(Value::Null);
+                            expr::to_text(&default)
+                        }
+                        None => String::new(),
+                    },
+                };
+                inputs.insert(input.clone(), value);
+            }
+        }
+        for (key, value) in with {
+            if !inputs.keys().any(|k| k.eq_ignore_ascii_case(key)) {
+                inputs.insert(key.clone(), value.clone());
+            }
+        }
+        let docker = action["runs"]["using"].as_str().is_some_and(|u| u.eq_ignore_ascii_case("docker"));
+        if warn && let Some(warning) = unexpected_inputs(&declared_names, &with.keys().cloned().collect::<Vec<_>>(), docker) {
+            self.log.line(&format!("##[warning]{warning}"));
+        }
+        inputs
+    }
+
+    /// The `pre`s of the job's steps, in step order, each with its step's
+    /// index: those of JavaScript actions from other repositories, fetched
+    /// now, as GitHub's runner fetches every action while it sets up the
+    /// job. An action in the repository is not there yet, so its `pre` is
+    /// not run, as on GitHub.
+    pub(crate) fn pre_steps(&mut self, steps: &[Map<String, Value>]) -> Vec<(usize, PreStep)> {
+        let frame = Frame::default();
+        let mut pres = Vec::new();
+        for (index, step) in steps.iter().enumerate() {
+            let Some(uses) = step.get("uses").map(|u| expr::to_text(u).trim().to_owned()) else { continue };
+            // Only another repository's action, which `prepare_actions` has
+            // already downloaded.
+            if remote_action(&uses, self.docker_hosted).is_none() {
+                continue;
+            }
+            let Some(found) = self.resolve_action(&uses) else { continue };
+            let runs = found.manifest.get("runs").cloned().unwrap_or(Value::Null);
+            let using = runs.get("using").map(expr::to_text).unwrap_or_default().to_ascii_lowercase();
+            let Some(script) = runs.get("pre").map(expr::to_text).filter(|_| using.starts_with("node")) else { continue };
+            let env_before = self.env_context(&frame);
+            let contexts = self.contexts_for(&frame, &env_before);
+            let with = self.step_with(step, &contexts);
+            let context_env = self.step_env(step, &contexts, env_before);
+            let contexts = self.contexts_for(&frame, &context_env);
+            let inputs = self.action_inputs(&found.manifest, &with, &contexts, false);
+            let key = step.get(super::ACTION_NAME).map(expr::to_text).unwrap_or_default();
+            let git_ref = uses.split_once('@').map_or("", |(_, r)| r);
+            let mut env = action_env(&context_env, &key, &found, git_ref);
+            for (input, value) in &inputs {
+                env.insert(format!("INPUT_{}", input.replace(' ', "_").to_ascii_uppercase()), value.clone());
+            }
+            let condition = runs.get("pre-if").map(expr::to_text).unwrap_or_else(|| "always()".into());
+            pres.push((index, PreStep { key, condition, action_dir: found.dir, script, using, context_env, env }));
+        }
+        pres
+    }
+
+    /// Whether a `pre`'s `pre-if` holds, read against the job's status.
+    pub(crate) fn pre_runs(&self, pre: &PreStep) -> bool {
+        let contexts = self.contexts_for(&Frame::default(), &pre.context_env);
+        self.with_scope(&contexts, |scope| expr::condition(&pre.condition, scope)).unwrap_or(true)
+    }
+
+    /// Runs a `pre`, keeping the state it saves for its step's main and post.
+    pub(crate) fn run_pre(&mut self, pre: &PreStep) -> bool {
+        let ok = self.run_node(&pre.action_dir, &pre.script, &pre.env, &pre.using);
+        let state = std::mem::take(&mut self.last_node_state);
+        self.last_node_outputs.clear();
+        self.pre_state.insert(pre.key.clone(), state);
+        ok
+    }
+}
+
+/// The variables a step running an action gets over its own: which
+/// action it is and where.
+fn action_env(env: &BTreeMap<String, String>, action_name: &str, action: &Action, git_ref: &str) -> BTreeMap<String, String> {
+    let mut step_env = env.clone();
+    step_env.insert("GITHUB_ACTION".into(), action_name.to_owned());
+    step_env.insert("GITHUB_ACTION_REPOSITORY".into(), action.repository.clone());
+    step_env.insert("GITHUB_ACTION_REF".into(), git_ref.to_owned());
+    step_env.insert("GITHUB_ACTION_PATH".into(), action.dir.display().to_string());
+    step_env
+}
+
+/// GitHub's warning for inputs a step gives that its action does not
+/// declare (a Docker action also takes `entryPoint` and `args`), if any.
+fn unexpected_inputs(declared: &[String], given: &[String], docker: bool) -> Option<String> {
+    let mut valid: Vec<String> = declared.to_vec();
+    if docker {
+        valid.extend(["entryPoint".to_owned(), "args".to_owned()]);
+    }
+    let unexpected: Vec<&str> = given.iter().filter(|g| !valid.iter().any(|v| v.eq_ignore_ascii_case(g))).map(String::as_str).collect();
+    if unexpected.is_empty() {
+        return None;
+    }
+    Some(format!("Unexpected input(s) '{}', valid inputs are ['{}']", unexpected.join("', '"), valid.join("', '")))
+}
+
+/// The Node an action's `runs.using` asks for: for `node20` (or any
+/// `nodeNN`), the binary `G1T_NODE20` names or `/opt/node20/bin/node`,
+/// when there is one; otherwise, and for anything else, the `node` on
+/// `PATH`, the runner's own (Node 24). Nothing is logged either way.
+pub(crate) fn node_program(using: &str, var: impl Fn(&str) -> Option<String>, exists: impl Fn(&Path) -> bool) -> String {
+    let using = using.trim().to_ascii_lowercase();
+    let versioned = using.strip_prefix("node").is_some_and(|v| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit()));
+    if versioned {
+        let named = var(&format!("G1T_{}", using.to_ascii_uppercase())).filter(|p| !p.is_empty() && exists(Path::new(p)));
+        if let Some(path) = named {
+            return path;
+        }
+        let standard = format!("/opt/{using}/bin/node");
+        if exists(Path::new(&standard)) {
+            return standard;
+        }
+    }
+    "node".into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -714,5 +876,33 @@ mod tests {
         assert_eq!(found("docker://alpine:3"), None);
         assert_eq!(found("actions/setup-node"), None);
         assert_eq!(found("setup-node@v4"), None);
+    }
+
+    #[test]
+    fn unexpected_inputs_are_named_with_the_valid_ones() {
+        let declared = vec!["token".to_owned(), "path".to_owned()];
+        assert_eq!(unexpected_inputs(&declared, &["Token".into()], false), None);
+        assert_eq!(
+            unexpected_inputs(&declared, &["token".into(), "foo".into(), "bar".into()], false).as_deref(),
+            Some("Unexpected input(s) 'foo', 'bar', valid inputs are ['token', 'path']")
+        );
+        assert_eq!(unexpected_inputs(&[], &["x".into()], false).as_deref(), Some("Unexpected input(s) 'x', valid inputs are ['']"));
+        // A Docker action takes `entrypoint` and `args` too.
+        assert_eq!(unexpected_inputs(&declared, &["entrypoint".into(), "args".into()], true), None);
+        assert!(unexpected_inputs(&declared, &["args".into()], false).is_some());
+    }
+
+    #[test]
+    fn node20_runs_with_a_node20_where_there_is_one() {
+        let none = |_: &str| None;
+        assert_eq!(node_program("node20", none, |_| false), "node");
+        assert_eq!(node_program("node20", none, |p| p == Path::new("/opt/node20/bin/node")), "/opt/node20/bin/node");
+        let named = |name: &str| (name == "G1T_NODE20").then(|| "/usr/local/n20/bin/node".to_owned());
+        assert_eq!(node_program("Node20", named, |_| true), "/usr/local/n20/bin/node");
+        // A named Node that is not there is passed over.
+        assert_eq!(node_program("node20", named, |p| p == Path::new("/opt/node20/bin/node")), "/opt/node20/bin/node");
+        assert_eq!(node_program("node24", none, |_| false), "node");
+        assert_eq!(node_program("composite", none, |_| true), "node");
+        assert_eq!(node_program("node", none, |_| true), "node");
     }
 }
