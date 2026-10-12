@@ -1414,6 +1414,51 @@ request's `branches` filter, `github.base_ref` and
 always the default branch: see
 [pull requests into other branches](/guides/base-branches/).
 
+### What a pull request's run builds
+
+As on GitHub, a `pull_request` run builds the pull request merged into
+its base branch, not its head alone:
+
+| | Is |
+| --- | --- |
+| `github.ref`, `GITHUB_REF` | `refs/pull/<number>/merge` |
+| `github.sha`, `GITHUB_SHA` | The test merge commit at `refs/pull/<number>/merge`: the head merged into the base branch's latest commit, its parents the base's commit and then the head, with the message `Merge <head> into <base>` |
+| `github.event.pull_request.head.sha` | The head commit |
+| `github.event.pull_request.merge_commit_sha` | The test merge commit |
+| `actions/checkout` with no `ref` | The test merge commit, fetched from the repository itself as `+<sha>:refs/remotes/pull/<number>/merge` |
+
+The workflow files the run uses are read from the test merge commit too.
+Its status, its check runs and the run itself stay on the pull request's
+head, so required checks hold the merge as before. `pull_request_review`
+runs build the same commit. `pull_request_target` runs are unchanged: they
+build the base branch, never the pull request's code.
+
+g1t keeps two refs in the repository for every open pull request, from a
+branch, a fork or a pull request g1t made: `refs/pull/<number>/head` at
+its head (a fork's head commit is copied into the repository), and
+`refs/pull/<number>/merge` at its test merge commit. Both move each time
+the head is pushed to, the pull request is opened or reopened, or its
+base branch changes, and both can be fetched like any branch:
+
+```sh
+git fetch origin refs/pull/12/head refs/pull/12/merge
+```
+
+The merge commit moves when the head does. When only the base branch
+moves, it moves at the pull request's next event, as on GitHub, where
+workflows do not run again because the base branch moved.
+
+**A pull request with conflicts runs no `pull_request` workflows**, as on
+GitHub: it has no merge commit to build. Its checks box says so, and the
+runs start once the conflicts are resolved and the head is pushed again.
+g1t merges the two the way git does: a file only one side changed is
+taken from it, and changes both made to the same file merge unless they
+change the same or neighbouring lines differently, or the file is binary.
+When g1t cannot make the merge itself (a file one side renamed or deleted
+while the other changed it, a file where the other side has a directory,
+more than 300 changed files, or a file over 1 MB that both changed), the
+run builds the head commit instead, as it did before.
+
 A pull request from outside the workspace may wait for approval before
 its workflows run: see [pull requests from outside](#pull-requests-from-outside).
 
@@ -1466,7 +1511,7 @@ Labels on `issue` and `pull_request` have their `id` and `name` but no
 ## Checks
 
 A pull request's checks are its workflows. Each workflow that runs on
-`pull_request` runs on every pull request's head, whoever opened it, a
+`pull_request` runs for every pull request, whoever opened it, a
 person or an agent, and its runs report a check named after the workflow:
 a workflow with `name: CI` reports `CI`, with the status context
 `CI / pull_request` (the workflow's name and the event). Each of its jobs

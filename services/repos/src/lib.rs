@@ -47,6 +47,7 @@ mod shared;
 mod signatures;
 mod stats;
 mod store;
+mod test_merge;
 mod transfer;
 mod workflow_gate;
 
@@ -2666,6 +2667,8 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "divergence" => reply(&repos.divergence(args(body)?).await?),
         "land" => reply(&repos.land(args(body)?).await?),
         "update_pull_branch" => reply(&repos.update_pull_branch(args(body)?).await?),
+        // Services only: a pull request's test merge commit (test_merge.rs).
+        "pull_merge_ref" => reply(&repos.pull_merge_ref(args(body)?).await?),
         "delete_branch" => reply(&repos.delete_branch(args(body)?).await?),
         "commit_file" => reply(&repos.commit_file(args(body)?).await?),
         "compare" => reply(&repos.compare(args(body)?).await?),

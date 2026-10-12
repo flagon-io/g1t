@@ -86,6 +86,10 @@ pub struct NewRun {
     /// Why the run waits for someone with the Write role to approve it
     /// before anything starts: a pull request from outside (protection.rs).
     pub approval: Option<String>,
+    /// The commit the run is listed, and its statuses and checks reported,
+    /// on when it is not the one it builds (`info.sha`): a pull request's
+    /// head, when the run builds its test merge commit, as on GitHub.
+    pub head_sha: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -679,7 +683,7 @@ impl Actions {
                 info.event_name.as_str().into(),
                 optional(new.action.as_deref()),
                 info.git_ref.as_str().into(),
-                info.sha.as_str().into(),
+                new.head_sha.as_deref().unwrap_or(&info.sha).into(),
                 new.pull.map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
                 if approval.is_some() { "action_required" } else { "queued" }.into(),
                 optional(new.actor.as_deref()),
@@ -2359,9 +2363,11 @@ impl Actions {
             debug_logging(&mut variables, &mut runner);
         }
 
-        // Where to check out: a pull request's fork, or the repository.
+        // Where to check out: the repository, which holds a pull request's
+        // test merge commit; a pull request's fork when the run builds its
+        // head instead (`run.sha` is the head, `info.sha` what is built).
         let clone_url = match run.pull {
-            Some(number) if run.event.starts_with("pull_request") && run.event != "pull_request_target" => {
+            Some(number) if run.event.starts_with("pull_request") && run.event != "pull_request_target" && info.sha == run.sha => {
                 let located: Outcome<g1t_contracts::work::PullDetail> = g1t_kit::call(
                     &self.work,
                     "get_pull",
@@ -2414,7 +2420,7 @@ impl Actions {
             "checkout": {
                 "repository": run.repo,
                 "url": clone_url,
-                "sha": run.sha,
+                "sha": info.sha,
                 "ref": run.git_ref,
                 "token": token,
             },

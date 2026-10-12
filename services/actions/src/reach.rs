@@ -392,7 +392,7 @@ impl Actions {
                     .filter(|call| call["role"] == "callee")
                     .and_then(|call| call.get("origin").cloned())
                     .filter(Value::is_object)
-                    .unwrap_or_else(|| json!({ "source": "g1t", "repo": run.repo, "ref": run.sha }));
+                    .unwrap_or_else(|| json!({ "source": "g1t", "repo": run.repo, "ref": run.info().sha }));
                 (origin, local.split('@').next().unwrap_or(local).to_owned())
             }
             Some(used) => {

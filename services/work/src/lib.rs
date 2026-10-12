@@ -1383,6 +1383,8 @@ impl Work {
             self.note(&repo.id, issue, (&a.actor.id, &a.actor.username), &text)
                 .await?;
         }
+        // Its head and merge refs in the repository, before its events go out.
+        self.keep_pull_refs(&pull).await;
         self.publish(
             "pull.opened",
             &repo.id,
@@ -1908,11 +1910,12 @@ impl Work {
             )
             .await?;
         }
-        // Whether it merges cleanly into the new base.
-        if let Some(moved) = self.pull_by_id(&pull.id).await?
-            && let Err(error) = self.assess_mergeability(&moved).await
-        {
-            worker::console_warn!("mergeability of {}: {error}", pull.id);
+        // Its merge ref, and whether it merges cleanly, against the new base.
+        if let Some(moved) = self.pull_by_id(&pull.id).await? {
+            self.keep_pull_refs(&moved).await;
+            if let Err(error) = self.assess_mergeability(&moved).await {
+                worker::console_warn!("mergeability of {}: {error}", pull.id);
+            }
         }
         Ok(Outcome::Ok(()))
     }
@@ -2067,7 +2070,9 @@ impl Work {
         pull.status = status;
         pull.superseded_by = None;
         pull.updated_at = now;
-        // Whether it still merges cleanly, now that it is open again.
+        // Its refs in the repository, and whether it still merges cleanly,
+        // now that it is open again.
+        self.keep_pull_refs(&pull).await;
         if let Err(error) = self.assess_mergeability(&pull).await {
             worker::console_warn!("mergeability of {}: {error}", pull.id);
         }

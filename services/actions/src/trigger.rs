@@ -8,7 +8,7 @@ use g1t_contracts::access::{self, Capability};
 use g1t_contracts::actions::{DispatchArgs, RepositoryDispatchArgs, WorkflowRun};
 use g1t_contracts::events::{Event, caused_by_job};
 use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
-use g1t_contracts::repos::{Commit, CompareArgs, Comparison, LogArgs, Repo, RepoPath};
+use g1t_contracts::repos::{Commit, CompareArgs, Comparison, LogArgs, PullMergeRef, PullMergeRefArgs, Repo, RepoPath};
 use g1t_contracts::work::{IssueDetail, PullDetail, ViewArgs};
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
 use g1t_contracts::time::rfc3339;
@@ -47,6 +47,10 @@ struct Subject {
     /// Why its runs wait for approval first: a pull request from outside,
     /// by the repository's approval policy (protection.rs).
     approval: Option<String>,
+    /// What the run builds when it is not `sha`: a pull request's test
+    /// merge commit (`refs/pull/<n>/merge`), as on GitHub, which becomes
+    /// `github.sha` while statuses and checks stay on `sha`, its head.
+    merge: Option<String>,
 }
 
 /// Whether a deployment's `ref` is a commit's full hash rather than a
@@ -73,6 +77,28 @@ fn branch_or_tag(git_ref: &str) -> Option<(&'static str, &str)> {
 /// Events GitHub takes no `branches`, `tags` or `paths` filters on.
 fn unfiltered(event_name: &str) -> bool {
     matches!(event_name, "create" | "delete")
+}
+
+/// What a pull request's run builds, given its test merge commit.
+#[derive(Debug, PartialEq, Eq)]
+enum PullBuild {
+    /// The merge commit, as on GitHub.
+    Merge(String),
+    /// The head: g1t could not make the merge commit itself, or a
+    /// conflicting pull request's event that still runs without one.
+    Head,
+    /// No run: GitHub starts no `pull_request` workflow while the pull
+    /// request has conflicts, since there is no merge commit to build. The
+    /// pull request's checks say so (apps/web `pull.tsx`).
+    Nothing,
+}
+
+fn pull_build(event_name: &str, action: Option<&str>, made: &PullMergeRef) -> PullBuild {
+    match made {
+        PullMergeRef::Merged { merge, .. } => PullBuild::Merge(merge.clone()),
+        PullMergeRef::Conflict { .. } if event_name == "pull_request" && action != Some("closed") => PullBuild::Nothing,
+        PullMergeRef::Conflict { .. } | PullMergeRef::Unavailable { .. } => PullBuild::Head,
+    }
 }
 
 /// Whether an `*.assigned` event added nobody: g1t says so for a change
@@ -213,6 +239,25 @@ impl Actions {
         .await
     }
 
+    /// The pull request's test merge commit for `head` (repos
+    /// `pull_merge_ref`), made or moved now. A failure to ask is
+    /// unavailable, so that its runs still start, on the head.
+    async fn test_merge(&self, repo: &Repo, pull: &g1t_contracts::work::Pull, head: &str, base_ref: &str) -> PullMergeRef {
+        let asked: Result<PullMergeRef> = g1t_kit::call(
+            &self.repos,
+            "pull_merge_ref",
+            &PullMergeRefArgs {
+                repo_id: repo.id.clone(),
+                source_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
+                head: head.to_owned(),
+                number: pull.number,
+                target_branch: Some(base_ref.to_owned()),
+            },
+        )
+        .await;
+        asked.unwrap_or_else(|error| PullMergeRef::Unavailable { reason: error.to_string() })
+    }
+
     /// Whether `name` is one of the repository's branches.
     async fn is_branch(&self, repo: &Repo, ws: &User, name: &str) -> Result<bool> {
         let branches: Outcome<Vec<g1t_contracts::repos::Branch>> = g1t_kit::call(
@@ -253,6 +298,7 @@ impl Actions {
             title,
             trusted: true,
             approval: None,
+            merge: None,
         };
         let view = |number: u32| ViewArgs {
             repo: path.clone(),
@@ -288,6 +334,7 @@ impl Actions {
                     title,
                     trusted: true,
                     approval: None,
+                    merge: None,
                 })
             }
             // A branch or tag was made: its own commit, as on GitHub.
@@ -323,6 +370,7 @@ impl Actions {
                     title: format!("Created {ref_type} {name}"),
                     trusted: true,
                     approval: None,
+                    merge: None,
                 })
             }
             // A branch or tag was deleted: on the default branch's latest
@@ -408,13 +456,38 @@ impl Actions {
                     (None, None, Some(head)) => head.clone(),
                     (None, None, None) => return Ok(None),
                 };
-                let source = match landed {
-                    Some(_) => path.clone(),
-                    None => pull.fork.clone().unwrap_or_else(|| path.clone()),
+                // Otherwise it builds the head merged into the base's tip,
+                // as on GitHub: the test merge commit at refs/pull/<n>/merge,
+                // in the repository, whose workflows it reads.
+                let merge = match landed {
+                    Some(_) => None,
+                    None => {
+                        let made = self.test_merge(repo, pull, &sha, &base_ref).await;
+                        match pull_build(event_name, action, &made) {
+                            PullBuild::Merge(merge) => Some(merge),
+                            PullBuild::Nothing => {
+                                worker::console_log!("actions: pull request #{} conflicts with {base_ref}: {made:?}; no pull_request workflows run", pull.number);
+                                return Ok(None);
+                            }
+                            PullBuild::Head => {
+                                worker::console_log!("actions: no merge commit for pull request #{}: {made:?}; its head is built", pull.number);
+                                None
+                            }
+                        }
+                    }
+                };
+                if let Some(merge) = &merge {
+                    payload["pull_request"]["merge_commit_sha"] = json!(merge);
+                }
+                let (source, source_ref) = match (&landed, &merge) {
+                    (Some(_), _) => (path.clone(), sha.clone()),
+                    (None, Some(merge)) => (path.clone(), merge.clone()),
+                    (None, None) => (pull.fork.clone().unwrap_or_else(|| path.clone()), sha.clone()),
                 };
                 Some(Subject {
                     source,
-                    source_ref: Some(sha.clone()),
+                    source_ref: Some(source_ref),
+                    merge,
                     git_ref: format!("refs/pull/{}/merge", pull.number),
                     sha,
                     head_ref: Some(head_ref),
@@ -562,6 +635,7 @@ impl Actions {
                     title: format!("Release {name} {}", action.unwrap_or("changed")),
                     trusted: true,
                     approval: None,
+                    merge: None,
                 })
             }
             // A deployment, or a new status of one: at the commit deployed,
@@ -608,6 +682,7 @@ impl Actions {
                     title,
                     trusted: true,
                     approval: None,
+                    merge: None,
                 })
             }
             _ => None,
@@ -791,6 +866,7 @@ impl Actions {
                 actor: Some(sender.to_owned()),
                 trusted: subject.trusted,
                 approval: subject.approval.clone().or(held),
+                head_sha: subject.merge.as_ref().map(|_| subject.sha.clone()),
             })
             .await?;
         }
@@ -855,7 +931,7 @@ impl Actions {
             event_name: event_name.to_owned(),
             event: subject.payload.clone(),
             git_ref: subject.git_ref.clone(),
-            sha: subject.sha.clone(),
+            sha: subject.merge.clone().unwrap_or_else(|| subject.sha.clone()),
             head_ref: subject.head_ref.clone(),
             base_ref: subject.base_ref.clone(),
             actor: sender.to_owned(),
@@ -935,6 +1011,7 @@ impl Actions {
                 title: format!("Scheduled: {cron}"),
                 trusted: true,
                 approval: None,
+                merge: None,
             };
             subject.filter_ref = subject.git_ref.clone();
             let info = self.run_info(&repo, &workflow, "schedule", &subject, &repo.namespace, None);
@@ -953,6 +1030,7 @@ impl Actions {
                 actor: None,
                 trusted: true,
                 approval: None,
+                head_sha: None,
             })
             .await?;
         }
@@ -1052,6 +1130,7 @@ impl Actions {
             title: format!("{} run by {}", workflow.display_name(&file.path), a.actor.username),
             trusted: true,
             approval: None,
+            merge: None,
         };
         let info = self.run_info(&repo, &workflow, "workflow_dispatch", &subject, &a.actor.username, Some(&a.actor.id));
         let created = self
@@ -1070,6 +1149,7 @@ impl Actions {
                 actor: Some(a.actor.username.clone()),
                 trusted: true,
                 approval: None,
+                head_sha: None,
             })
             .await?;
         match created {
@@ -1142,6 +1222,7 @@ impl Actions {
                 title: event_type.clone(),
                 trusted: true,
                 approval: None,
+                merge: None,
             };
             let info = self.run_info(&repo, &workflow, "repository_dispatch", &subject, &a.actor.username, Some(&a.actor.id));
             let created = self
@@ -1160,6 +1241,7 @@ impl Actions {
                     actor: Some(a.actor.username.clone()),
                     trusted: true,
                     approval: None,
+                    head_sha: None,
                 })
                 .await?;
             if created.is_some() {
@@ -1238,6 +1320,7 @@ impl Actions {
                 title: format!("Merge queue: #{}{ahead}", a.number),
                 trusted: true,
                 approval: None,
+                merge: None,
             };
             let info = self.run_info(&repo, &workflow, "merge_group", &subject, &repo.namespace, None);
             let created = self
@@ -1256,6 +1339,7 @@ impl Actions {
                     actor: None,
                     trusted: true,
                     approval: None,
+                    head_sha: None,
                 })
                 .await?;
             if created.is_some() {
@@ -1367,6 +1451,24 @@ mod tests {
         }
     }
     use g1t_contracts::{Membership, PrincipalKind};
+
+    #[test]
+    fn a_pull_request_builds_its_merge_commit_and_nothing_while_it_conflicts() {
+        let merged = PullMergeRef::Merged { head: "h".into(), base: "b".into(), merge: "m".into() };
+        let conflict = PullMergeRef::Conflict { head: "h".into(), base: "b".into(), paths: vec!["a".into()] };
+        let unavailable = PullMergeRef::Unavailable { reason: "too large".into() };
+        assert_eq!(pull_build("pull_request", Some("synchronize"), &merged), PullBuild::Merge("m".into()));
+        assert_eq!(pull_build("pull_request_review", Some("submitted"), &merged), PullBuild::Merge("m".into()));
+        // GitHub runs no pull_request workflow while it conflicts.
+        for action in ["opened", "synchronize", "reopened", "edited"] {
+            assert_eq!(pull_build("pull_request", Some(action), &conflict), PullBuild::Nothing);
+        }
+        // Closing it, or reviewing it, still runs, on the head.
+        assert_eq!(pull_build("pull_request", Some("closed"), &conflict), PullBuild::Head);
+        assert_eq!(pull_build("pull_request_review", Some("submitted"), &conflict), PullBuild::Head);
+        // What g1t could not merge itself runs on the head.
+        assert_eq!(pull_build("pull_request", Some("opened"), &unavailable), PullBuild::Head);
+    }
 
     fn repo() -> Repo {
         serde_json::from_value(json!({

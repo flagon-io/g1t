@@ -24,6 +24,8 @@ struct Change {
     path: String,
     old: Option<String>,
     new: Option<String>,
+    old_kind: Option<EntryKind>,
+    new_kind: Option<EntryKind>,
 }
 
 async fn entries<R: GitRepo>(repo: &R, tree: Option<&str>) -> Result<BTreeMap<String, TreeEntry>> {
@@ -86,6 +88,7 @@ async fn changed_files<R: GitRepo>(
                         .filter(|entry| entry.kind != EntryKind::Tree)
                         .map(|entry| entry.hash.clone())
                 };
+                let file_kind = |entry: Option<&TreeEntry>| entry.map(|entry| entry.kind).filter(|kind| *kind != EntryKind::Tree);
                 let (old_dir, new_dir) = (subtree(before), subtree(after));
                 if old_dir.is_some() || new_dir.is_some() {
                     next.push((format!("{path}/"), old_dir, new_dir));
@@ -100,6 +103,8 @@ async fn changed_files<R: GitRepo>(
                         path,
                         old: old_file,
                         new: new_file,
+                        old_kind: file_kind(before),
+                        new_kind: file_kind(after),
                     });
                 }
             }
@@ -120,6 +125,29 @@ pub async fn changed_paths<R: GitRepo>(
 ) -> Result<(Vec<String>, bool)> {
     let (changes, truncated) = changed_files(repo, old_tree, new_tree).await?;
     Ok((changes.into_iter().map(|change| change.path).collect(), truncated))
+}
+
+/// A file as one tree has it: its kind and blob.
+pub type FileEntry = (EntryKind, String);
+
+/// The files that differ between two trees, each as it was and as it is
+/// (`None` where it is not there), without reading any file. Returns them
+/// by path and whether the list was cut short.
+pub async fn changed_entries<R: GitRepo>(
+    repo: &R,
+    old_tree: Option<&str>,
+    new_tree: &str,
+) -> Result<(Vec<(String, Option<FileEntry>, Option<FileEntry>)>, bool)> {
+    let (changes, truncated) = changed_files(repo, old_tree, new_tree).await?;
+    let entries = changes
+        .into_iter()
+        .map(|change| {
+            let old = change.old_kind.zip(change.old);
+            let new = change.new_kind.zip(change.new);
+            (change.path, old, new)
+        })
+        .collect();
+    Ok((entries, truncated))
 }
 
 /// The text of a blob, or `None` if it is binary, too large or missing.
