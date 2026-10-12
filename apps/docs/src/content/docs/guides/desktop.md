@@ -117,7 +117,6 @@ either way.
 | **Window** | Minimize and maximize |
 | **Help** | **Desktop app guide** and **g1t.sh status**, in your browser; **Check for updates…**; **Restart to update**, once one is downloaded; **About g1t** |
 
-
 ## Settings
 
 The app's own settings are in a window of their own: the **Settings**
