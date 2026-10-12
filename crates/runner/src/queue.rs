@@ -4,10 +4,9 @@
 //! from which g1t lands it if it passed and everything ahead of it has
 //! landed.
 //!
-//! No agent runs here. A merge that does not apply cleanly is reported as a
-//! conflict, naming the pull request ahead whose change it collided with;
-//! resolving it is the job of the pull request's own agent once that one
-//! has landed.
+//! A merge that does not apply cleanly is reported as a conflict, naming
+//! the pull request ahead whose change it collided with; resolving it is
+//! for the pull request's author once that one has landed.
 //!
 //! Configuration comes from the environment:
 //!

@@ -26,9 +26,9 @@ test("the manifest names each binary that was built, with its SHA-256", () => {
   try {
     writeFileSync(join(dir, TARGETS["linux-x64"].file), "linux");
     writeFileSync(join(dir, TARGETS["windows-x64"].file), "windows");
-    const m = manifest(dir, "0.2.0", "example/agent:0.2.0");
+    const m = manifest(dir, "0.2.0");
     assert.equal(m.version, "0.2.0");
-    assert.equal(m.agent_image, "example/agent:0.2.0");
+    assert.equal("agent_image" in m, false);
     assert.deepEqual(Object.keys(m.files).sort(), ["linux-x64", "windows-x64"]);
     assert.equal(m.files["linux-x64"].sha256, sha256(Buffer.from("linux")));
     assert.equal(m.files["windows-x64"].name, "g1t-runner-windows-x64.exe");

@@ -98,7 +98,6 @@ jobs:
         # keeps the version it has, since the manifest names no file for it.
         env:
           G1T_RUNNER_RELEASE_KEY: ${{ vars.RUNNER_RELEASE_PUBLIC_KEY }}
-          RUNNER_AGENT_IMAGE: ${{ vars.RUNNER_AGENT_IMAGE }}
         run: node scripts/runner-release.mjs build --targets ${{ matrix.target }}
       - name: sccache's hits
         if: always()
@@ -238,7 +237,6 @@ jobs:
         env:
           RUNNER_RELEASE_KEY: ${{ secrets.RUNNER_RELEASE_KEY }}
           G1T_RUNNER_RELEASE_KEY: ${{ vars.RUNNER_RELEASE_PUBLIC_KEY }}
-          RUNNER_AGENT_IMAGE: ${{ vars.RUNNER_AGENT_IMAGE }}
         run: |
           node scripts/runner-release.mjs manifest
           node scripts/runner-release.mjs sign

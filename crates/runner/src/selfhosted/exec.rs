@@ -1,5 +1,6 @@
-//! Running what g1t hands the runner: a workflow job or agent work, with
-//! the same harness g1t's sandboxes run (this program, in another mode).
+//! Running what g1t hands the runner: a workflow job, or g1t's own work (a
+//! merge check or a state of the merge queue), with the same harness g1t's
+//! sandboxes run (this program, in another mode).
 //!
 //! - **In Docker** (the default): one container per job, removed when it
 //!   ends, from the job's `container:` image or the runner's `--image`. A
@@ -54,12 +55,13 @@ pub const DEFAULT_PIDS_LIMIT: u32 = 4096;
 /// `SYS_CHROOT`, `SETFCAP`, `AUDIT_WRITE`, and every `SYS_*` and `NET_ADMIN`.
 pub const JOB_CAPS: &[&str] = &["CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "SETUID", "SETGID", "KILL", "NET_BIND_SERVICE"];
 
-/// Agent work's image runs as `node` and uses `sudo` once, to put its
-/// guardrails' policy where the agent cannot change it, and then removes
-/// its own sudo (guard.rs). sudo needs a setuid program to work and
-/// `AUDIT_WRITE` to log, so agent work keeps those and has no
-/// `no-new-privileges`; it still has every other limit.
-pub const AGENT_EXTRA_CAPS: &[&str] = &["AUDIT_WRITE"];
+/// The work kind g1t's own tasks come as: a merge check or a state of the
+/// merge queue, with the environment g1t's sandbox would have had. Older
+/// g1t sent agents' runs as this kind too; those are refused.
+pub const TASK_KIND: &str = "agent";
+
+/// The modes of g1t's own tasks this runner runs (main.rs).
+pub const TASK_MODES: &[&str] = &["queue", "mergecheck", "checks"];
 
 /// Work in progress.
 pub struct Running {
@@ -204,7 +206,7 @@ fn harness_env(config: &Config, work: &Assignment) -> Result<BTreeMap<String, St
             env.insert("ACTIONS_JOB".into(), work.id.clone());
             env.insert("ACTIONS_TOKEN".into(), token.clone());
         }
-        "agent" => {
+        TASK_KIND => {
             for (name, value) in work.env.clone().unwrap_or_default() {
                 let value = match value {
                     serde_json::Value::String(text) => text,
@@ -212,8 +214,10 @@ fn harness_env(config: &Config, work: &Assignment) -> Result<BTreeMap<String, St
                 };
                 env.insert(name, value);
             }
-            if !env.contains_key("MODE") && !env.contains_key("PROMPT") {
-                bail!("the agent work came without its environment");
+            match env.get("MODE").map(String::as_str) {
+                Some(mode) if TASK_MODES.contains(&mode) => {}
+                Some(mode) => bail!("this runner does not run g1t work of mode {mode}"),
+                None => bail!("this runner does not run agents' work"),
             }
             // Where its API calls go: this installation's.
             env.insert("G1T_API".into(), config.api.clone());
@@ -253,11 +257,11 @@ pub fn mib(text: &str) -> Option<u64> {
 }
 
 /// A job native to this OS, in a throwaway VM of its own (native.rs):
-/// Windows Sandbox on Windows. Agent work needs g1t's Linux sandbox
+/// Windows Sandbox on Windows. g1t's own work needs its Linux sandbox
 /// layout and runs on a Linux runner.
 fn in_native_vm(config: &Config, folder: &Path, work: &Assignment, env: BTreeMap<String, String>) -> Result<Running> {
     if work.kind != "workflow" {
-        bail!("agent work runs on Linux runners: this one runs jobs native to {}", std::env::consts::OS);
+        bail!("g1t's own work runs on Linux runners: this one runs jobs native to {}", std::env::consts::OS);
     }
     if !cfg!(windows) {
         bail!("this runner has no sandbox for jobs native to {}", std::env::consts::OS);
@@ -334,7 +338,6 @@ pub fn limits(config: &Config) -> Limits {
 
 /// Everything a job's `docker run` is made from.
 pub struct Plan<'a> {
-    pub kind: &'a str,
     pub name: &'a str,
     pub runner: &'a str,
     pub image: &'a str,
@@ -360,13 +363,8 @@ pub fn run_args(plan: &Plan) -> Vec<String> {
     add(&mut args, &["--pull", "missing", "--init"]);
     // The walls.
     add(&mut args, &["--cap-drop", "ALL"]);
-    let mut caps: Vec<&str> = JOB_CAPS.to_vec();
-    if plan.kind == "agent" {
-        caps.extend(AGENT_EXTRA_CAPS);
-    } else {
-        add(&mut args, &["--security-opt", "no-new-privileges"]);
-    }
-    for cap in caps {
+    add(&mut args, &["--security-opt", "no-new-privileges"]);
+    for cap in JOB_CAPS {
         add(&mut args, &["--cap-add", cap]);
     }
     let pids = plan.limits.pids.to_string();
@@ -389,15 +387,8 @@ pub fn run_args(plan: &Plan) -> Vec<String> {
 }
 
 fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assignment, env: BTreeMap<String, String>) -> Result<Running> {
-    let image = match work.kind.as_str() {
-        "agent" => match config.agent_image.clone().or_else(|| update::agent_image(config)) {
-            Some(image) => image,
-            None => bail!(
-                "agent work needs an image with git, Node and the agent's CLI: register this runner with --agent-image IMAGE"
-            ),
-        },
-        _ => work.image.clone().or_else(|| config.image.clone()).unwrap_or_else(|| DEFAULT_IMAGE.to_owned()),
-    };
+    // g1t's own work needs only git, which the default image has.
+    let image = work.image.clone().or_else(|| config.image.clone()).unwrap_or_else(|| DEFAULT_IMAGE.to_owned());
     #[cfg(unix)]
     if super::engine::in_use() {
         super::engine::ensure_running()?;
@@ -424,7 +415,6 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
     let engine: Option<JobEngine> = job_engine(config, isolation, &name);
     let limits = limits(config);
     let plan = Plan {
-        kind: &work.kind,
         name: &name,
         runner: &config.runner,
         image: &image,
@@ -506,9 +496,9 @@ fn directly(config: &Config, work: &Assignment, env: BTreeMap<String, String>) -
         command.env("G1T_RUNNER_ROOT", &root);
         folder = Some(root);
     } else if !cfg!(target_os = "linux") || std::fs::create_dir_all("/work").is_err() {
-        // Agent work expects g1t's sandbox layout (/work), which only a
+        // g1t's own work expects its sandbox layout (/work), which only a
         // Linux machine (or a container) set aside for it has.
-        bail!("agent work runs in Docker, or directly on Linux where /work can be written; this runner can do neither");
+        bail!("g1t's own work runs in Docker, or directly on Linux where /work can be written; this runner can do neither");
     }
     // Its own variables, less anything of the runner's.
     for (name, _) in std::env::vars_os() {
@@ -594,7 +584,6 @@ mod tests {
             work_dir: PathBuf::from("/tmp/w"),
             docker: true,
             image: None,
-            agent_image: None,
             harness: None,
             auto_update: false,
             memory: None,
@@ -609,7 +598,7 @@ mod tests {
     fn assignment(kind: &str) -> Assignment {
         serde_json::from_value(json!({
             "kind": kind, "id": "job_1", "name": "build", "repo": "acme/web", "timeout_minutes": 60,
-            "token": "jobtoken", "env": { "MODE": "checks", "G1T_TOKEN": "g1t_run", "G1T_API": "https://elsewhere" }
+            "token": "jobtoken", "env": { "MODE": "queue", "G1T_TOKEN": "g1t_run", "G1T_API": "https://elsewhere" }
         }))
         .unwrap()
     }
@@ -625,9 +614,9 @@ mod tests {
     }
 
     #[test]
-    fn agent_work_gets_the_sandboxs_environment_and_this_api() {
-        let env = harness_env(&config(), &assignment("agent")).unwrap();
-        assert_eq!(env["MODE"], "checks");
+    fn g1ts_own_work_gets_the_sandboxs_environment_and_this_api() {
+        let env = harness_env(&config(), &assignment(TASK_KIND)).unwrap();
+        assert_eq!(env["MODE"], "queue");
         assert_eq!(env["G1T_TOKEN"], "g1t_run");
         assert_eq!(env["G1T_API"], "https://api.g1t.sh");
         assert_eq!(env["G1T_ABUSE"], "off");
@@ -636,6 +625,16 @@ mod tests {
     #[test]
     fn unknown_work_is_refused() {
         assert!(harness_env(&config(), &assignment("deploy")).is_err());
+    }
+
+    #[test]
+    fn an_agents_run_from_an_older_g1t_is_refused_before_it_starts() {
+        for env in [json!({ "MODE": "revise", "G1T_TOKEN": "g1t_run" }), json!({ "PROMPT": "Fix it", "G1T_TOKEN": "g1t_run" })] {
+            let mut work = assignment(TASK_KIND);
+            work.env = serde_json::from_value(env).unwrap();
+            assert!(harness_env(&config(), &work).is_err());
+            assert!(start(&config(), Isolation::Host, Path::new("/tmp"), &work).is_err());
+        }
     }
 
     #[test]
@@ -650,7 +649,6 @@ mod tests {
         let limits = Limits { memory: "6144m".into(), cpus: "4".into(), pids: 4096 };
         let harness = PathBuf::from("/usr/local/bin/g1t-runner");
         let plan = Plan {
-            kind,
             name: "g1t-job_1",
             runner: "rnr_1",
             image: DEFAULT_IMAGE,
@@ -709,10 +707,10 @@ mod tests {
     }
 
     #[test]
-    fn agent_work_keeps_sudo_for_its_guardrails_and_every_other_wall() {
-        let (args, _) = args_for("agent", Vec::new());
-        assert!(value_of(&args, "--security-opt").is_empty());
-        assert!(value_of(&args, "--cap-add").contains(&"AUDIT_WRITE"));
+    fn g1ts_own_work_has_every_wall_a_job_has() {
+        let (args, _) = args_for(TASK_KIND, Vec::new());
+        assert_eq!(value_of(&args, "--security-opt"), vec!["no-new-privileges"]);
+        assert_eq!(value_of(&args, "--cap-add"), JOB_CAPS.to_vec());
         assert_eq!(value_of(&args, "--cap-drop"), vec!["ALL"]);
         assert_eq!(value_of(&args, "-v"), vec!["/usr/local/bin/g1t-runner:/opt/g1t/g1t-runner:ro"]);
     }

@@ -18,7 +18,7 @@
 			"max_instances": 20,
 			// A deploy replaces sandboxes. Ones that are busy are given this
 			// long, in seconds, to finish first, so shipping g1t does not
-			// kill agents in the middle of their work.
+			// kill work in the middle.
 			"rollout_active_grace_period": 7200
 		},
 		{
@@ -36,92 +36,41 @@
 			"instance_type": "standard-4",
 			"max_instances": 10,
 			"rollout_active_grace_period": 7200
-		},
-		{
-			// Workspace agents' own computers (src/computer.ts): the same image
-			// in MODE=computer, one per agent, awake only while a session uses
-			// it. Modest to start; raise it as agents get computers.
-			"class_name": "AgentComputer",
-			"image": "./Dockerfile",
-			"instance_type": "standard-1",
-			"max_instances": 20,
-			"rollout_active_grace_period": 7200
 		}
 	],
 	"durable_objects": {
 		"bindings": [
 			{ "name": "SANDBOX", "class_name": "AttemptSandbox" },
 			{ "name": "SANDBOX_2CORE", "class_name": "Sandbox2Core" },
-			{ "name": "SANDBOX_4CORE", "class_name": "Sandbox4Core" },
-			{ "name": "COMPUTER", "class_name": "AgentComputer" }
+			{ "name": "SANDBOX_4CORE", "class_name": "Sandbox4Core" }
 		]
 	},
 	"migrations": [
 		{ "tag": "v1", "new_sqlite_classes": ["AttemptSandbox"] },
 		{ "tag": "v2", "new_sqlite_classes": ["Sandbox2Core", "Sandbox4Core"] },
-		{ "tag": "v3", "new_sqlite_classes": ["AgentComputer"] }
+		{ "tag": "v3", "new_sqlite_classes": ["AgentComputer"] },
+		// Workspace agents' computers are gone, and with them their objects.
+		{ "tag": "v4", "deleted_classes": ["AgentComputer"] }
 	],
-	// Where agents' computers keep their homes between wakes (src/computer.ts).
-	// The operator makes the bucket before the first deploy with this binding
-	// ("Agents' computers" in docs.g1t.sh/guides/deploy-to-cloudflare/):
-	//
-	//   npx wrangler r2 bucket create g1t-agent-homes
-	//   npx wrangler r2 bucket lifecycle add g1t-agent-homes abort-uploads homes/ --abort-multipart-days 1
-	//
-	// Without it computers work but forget their home when they sleep, and
-	// the Computer tab says the disk isn't attached yet.
-	"r2_buckets": [{ "binding": "HOMES", "bucket_name": "g1t-agent-homes" }],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "BILLING", "service": "g1t-billing" },
-		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
 		{ "binding": "ACTIONS", "service": "g1t-actions" },
 		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
-		{ "binding": "PROJECTS", "service": "g1t-projects" },
-		// The context hub: the Context section every agent run starts with.
-		{ "binding": "CONTEXT", "service": "g1t-context" },
 		// The event bus: abuse.flagged, when a sandbox looks like it is mining.
 		{ "binding": "EVENTS", "service": "g1t-events" }
 	],
 	// A sweep for lifecycle steps whose trigger was missed or whose sandbox
 	// died before reporting, which also starts queued nightly backups.
 	"triggers": { "crons": ["*/5 * * * *"] },
-	// Events it reacts to: a pull request ready for review, or its head moving.
+	// Events it reacts to: a pull request that may now merge by its
+	// repository's settings, a merge check or the merge queue to start.
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-runner", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	"vars": {
-		// Each workspace chooses where its agents' model spend goes: its own
-		// provider (under Integrations) or g1t's hosted models, paid from its
-		// credit. While billing takes no real money, hosted models are open
-		// only to these workspaces; once it does, to every workspace.
-		"HOSTED_AGENT_WORKSPACES": "flagon-io",
-		// How g1t routes agent work: "Auto" (AgentRouting and route in
-		// src/model-env.ts). Nobody assigning an agent has to choose; a workspace
-		// can still choose a tier per kind of work under Integrations. Staff
-		// choose each tier's model, the background model and each job's tier and
-		// effort in sudo (Agents & models; billing's model_defaults), which the
-		// runner reads once a minute and puts on top of this. So "tiers", "tasks"
-		// and "effort" here apply only while billing cannot be read; the labels,
-		// change sizes, "frontierAfter" and "learning" always do. "tiers": the
-		// catalogue, the model behind small (fast), large (standard) and frontier
-		// (most capable); "modelName" is shown to people, "model" is sent to the
-		// provider, "price" (dollars per million tokens) is for estimates only.
-		// "tasks": the tier each kind of job starts on, or "change" to size the
-		// change a review reads ("smallChange" or less and nothing sensitive: small;
-		// more than "largeChange": frontier). "frontierLabels", "largeLabels" and
-		// "smallLabels" move work by its issue's labels. A failed attempt goes one
-		// tier up and "frontierAfter" failures in a row to frontier; "learning"
-		// steps work down or up by the repository's own recent runs of the kind.
-		"AGENT_ROUTING": "{\"tiers\":{\"small\":{\"modelName\":\"Claude Haiku 5.5\",\"model\":\"claude-haiku-5-5\",\"price\":{\"input\":0.1,\"output\":0.5,\"cacheRead\":0.01,\"cacheWrite\":0.125}},\"large\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\",\"price\":{\"input\":2,\"output\":10,\"cacheRead\":0.1,\"cacheWrite\":2.5}},\"frontier\":{\"modelName\":\"Claude Opus 5.5\",\"model\":\"claude-opus-5-5\",\"price\":{\"input\":4,\"output\":20,\"cacheRead\":0.2,\"cacheWrite\":5}}},\"tasks\":{\"implement\":\"large\",\"revise\":\"large\",\"answer\":\"small\",\"review\":\"change\",\"update\":\"small\",\"plan\":\"small\"},\"effort\":{\"plan\":\"high\",\"answer\":\"medium\",\"update\":\"low\"},\"smallChange\":{\"files\":10,\"lines\":200},\"largeChange\":{\"files\":60,\"lines\":3000},\"largeLabels\":[\"security\"],\"frontierLabels\":[\"architecture\"],\"smallLabels\":[\"documentation\",\"docs\",\"typo\"],\"frontierAfter\":2,\"learning\":{\"window\":20,\"minRuns\":5,\"stepDownAt\":0.9,\"stepUpAt\":0.5}}",
-		// Where sandboxes send model requests, with a token for their run.
-		// The proxy holds the keys: g1t's gateway's, or the workspace's own.
-		"MODELS_URL": "https://models.g1t.sh",
-		// Set to a Cloudflare AI Gateway id to route model traffic through it.
-		// Used only when MODELS_URL is unset.
-		"AI_GATEWAY_ID": "g1t",
 		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
 		// Guardrails' network list is enforced by starting sandboxes without
 		// internet and passing their HTTP(S) through this Worker. "off" opens

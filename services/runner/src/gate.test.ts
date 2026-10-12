@@ -7,7 +7,6 @@ import {
   type PlanMemory,
   ComputeGate,
   MODEL_ESTIMATE_MICROS,
-  WAITING_PREFIX,
   actualMicros,
   agentEstimateMicros,
   alwaysPasses,
@@ -28,7 +27,6 @@ import {
   waitingMessage,
 } from "../../../packages/contracts/src/compute.ts";
 import { BUILD_HOSTS, buildHosts, dockerFor, withPlanLimits } from "./egress.ts";
-import { WAITING, handleMention } from "./mentions.ts";
 
 const repo = { namespace: "acme", name: "web" };
 
@@ -287,8 +285,6 @@ test("agents at once: a run waits for a free slot past the plan's cap", () => {
   assert.equal(isWaiting(said), true);
   assert.match(said, /runs 2 agents at a time/);
   assert.equal(isWaiting("Agents need a paid workspace."), false);
-  // mentions.ts keeps its own copy, to have no runtime imports.
-  assert.equal(WAITING, WAITING_PREFIX);
 });
 
 test("an issue's agents stop at its cap, with a way to raise it", () => {
@@ -324,37 +320,4 @@ test("workflow jobs get Docker unless the operator turns it off", () => {
   assert.equal(dockerFor(undefined), "on");
   assert.equal(dockerFor("on"), "on");
   assert.equal(dockerFor(" OFF "), "off");
-});
-
-// ---- Mentions --------------------------------------------------------------------------------
-
-test("a mention whose run waits for a slot says so, and is not a failure", async () => {
-  const replies: string[] = [];
-  const recorded: string[] = [];
-  const job = {
-    commentId: "cmt_1",
-    actor: { id: "u1", username: "ana" },
-    repo,
-    number: 3,
-    member: true,
-    pull: null,
-    intent: "work",
-    issueOpen: true,
-    workingPull: null,
-    body: "@g1t take this",
-    defaultBranch: "main",
-  } as never;
-  await handleMention(job, {
-    mentions: { replyMention: async (_id: string, text: string) => (replies.push(text), true) } as never,
-    refusal: async () => null,
-    assign: async () => ({ ok: false, error: { code: "conflict", message: waitingMessage(2) } }),
-    revise: async () => null,
-    review: async () => ({ ok: true, value: true }),
-    answer: async () => ({ ok: true, value: true }),
-    message: async () => ({ ok: true, value: true }),
-    record: async (_job, why) => void recorded.push(why),
-  });
-  assert.equal(recorded.length, 0);
-  assert.equal(replies.length, 1);
-  assert.match(replies[0], /^@ana, Waiting for a free slot/);
 });

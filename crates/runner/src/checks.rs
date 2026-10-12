@@ -3,9 +3,8 @@
 //! on issues before a pull request's checks were its workflows. g1t no
 //! longer starts that mode; it stays for a sandbox already under way.
 //!
-//! The sandbox holds nothing but that commit: no agent has run here, so a
-//! passing result says something about the code and not about what an
-//! agent left lying around.
+//! The sandbox holds nothing but that commit, so a passing result says
+//! something about the code and not about what was left lying around.
 //!
 //! Configuration comes from the environment:
 //!

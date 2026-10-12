@@ -35,9 +35,6 @@ pub struct Config {
     /// The image workflow jobs run in when they name no `container:`.
     #[serde(default)]
     pub image: Option<String>,
-    /// The image agent work runs in: git, Node and the agent's CLI.
-    #[serde(default)]
-    pub agent_image: Option<String>,
     /// A Linux build of `g1t-runner` to run inside containers, instead of
     /// this binary (on Linux) or the release's (elsewhere).
     #[serde(default)]
@@ -169,7 +166,6 @@ mod tests {
             work_dir: dir.join("work"),
             docker: true,
             image: None,
-            agent_image: None,
             harness: None,
             auto_update: true,
             memory: Some("4g".into()),

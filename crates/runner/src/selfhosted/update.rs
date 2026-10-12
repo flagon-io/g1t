@@ -37,9 +37,6 @@ pub struct File {
 #[derive(Clone, Debug, Deserialize)]
 pub struct Manifest {
     pub version: String,
-    /// The image agent work runs in.
-    #[serde(default)]
-    pub agent_image: Option<String>,
     /// By platform: `linux-x64`, `macos-arm64`, `windows-x64`…
     pub files: std::collections::BTreeMap<String, File>,
     /// The sandbox's images (`g1t-runner sandbox`, launcher/), signed with
@@ -141,11 +138,6 @@ fn manifest_of(config: &Config, version: &str) -> Result<Manifest> {
     }
     let bytes = download(&format!("{}/{version}/manifest.json", downloads(config)))?;
     Ok(serde_json::from_slice(&bytes)?)
-}
-
-/// The image agent work runs in, from the release.
-pub fn agent_image(config: &Config) -> Option<String> {
-    manifest_of(config, VERSION).ok().and_then(|m| m.agent_image)
 }
 
 /// A Linux build of the harness to mount into containers: `--harness`;

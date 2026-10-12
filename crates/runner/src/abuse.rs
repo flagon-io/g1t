@@ -6,16 +6,15 @@
 //!
 //! 1. **Known miners, by name.** `miner_in` matches miner programs (xmrig,
 //!    cpuminer, ...), pool URLs (`stratum+tcp://`), their flags
-//!    (`--donate-level`) and well-known pools. The agent harness's command
-//!    hook refuses a matching shell command (guard.rs), checks, deploy
-//!    builds and workflow steps refuse to run one, and the sampler below
+//!    (`--donate-level`) and well-known pools. Checks, deploy builds and
+//!    workflow steps refuse to run one, and the sampler below
 //!    stops the sandbox if a running process's command line matches.
 //! 2. **The CPU signature.** A background thread samples the sandbox every
 //!    `SAMPLE_SECONDS`: CPU use (from `/proc/stat`), file and disk I/O
 //!    (`/proc/diskstats` and every process's `/proc/<pid>/io`), network
 //!    bytes (`/proc/net/dev`), how many new processes started, and whether
-//!    the run did anything a person would call progress (a tool call, an
-//!    agent step, a new check command or workflow step). `Detector` flags a
+//!    the run did anything a person would call progress (a new check
+//!    command or workflow step). `Detector` flags a
 //!    sandbox only when, for a whole `WINDOW_SECONDS` (10 minutes):
 //!    - CPU stayed at or above `MIN_CPU` (90%) in every sample but one;
 //!    - file and disk I/O averaged under `MAX_IO_PER_SECOND` (64 KB/s);
@@ -511,7 +510,7 @@ mod tests {
     }
 
     #[test]
-    fn an_agent_that_keeps_working_is_not_flagged() {
+    fn work_that_keeps_making_progress_is_not_flagged() {
         assert!(run(30, 1.0, 0, 0, 0, "unknown", true).is_none());
     }
 

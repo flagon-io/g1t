@@ -3,7 +3,7 @@
 //! ```text
 //! g1t-runner register --url https://g1t.sh --token g1trt_… [--name build-01]
 //!     [--labels gpu,cuda] [--group Default] [--ephemeral] [--work-dir DIR]
-//!     [--no-docker] [--image IMAGE] [--agent-image IMAGE] [--replace]
+//!     [--no-docker] [--image IMAGE] [--replace]
 //!     [--memory 8g] [--cpus 4] [--pids-limit 4096] [--no-job-docker]
 //! g1t-runner run [--once]
 //! g1t-runner service install|start|stop|status|uninstall
@@ -147,14 +147,14 @@ impl Options {
 }
 
 /// The options that take a value.
-const VALUE_OPTIONS: [&str; 14] =
-    ["url", "api", "token", "name", "labels", "group", "work-dir", "image", "agent-image", "harness", "memory", "cpus", "pids-limit", "job-docker-image"];
+const VALUE_OPTIONS: [&str; 13] =
+    ["url", "api", "token", "name", "labels", "group", "work-dir", "image", "harness", "memory", "cpus", "pids-limit", "job-docker-image"];
 
 const HELP: &str = "g1t-runner: a self-hosted runner for g1t.
 
   g1t-runner register --url https://g1t.sh --token <registration token>
       [--name NAME] [--labels a,b] [--group GROUP] [--ephemeral]
-      [--work-dir DIR] [--no-docker] [--image IMAGE] [--agent-image IMAGE]
+      [--work-dir DIR] [--no-docker] [--image IMAGE]
       [--api URL] [--harness PATH] [--replace] [--no-auto-update]
       [--memory 8g] [--cpus 4] [--pids-limit 4096] [--no-job-docker]
       [--job-docker-image IMAGE] [--native]
@@ -341,7 +341,6 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         work_dir,
         docker,
         image: options.value("image").map(str::to_owned),
-        agent_image: options.value("agent-image").map(str::to_owned),
         harness: options.value("harness").map(PathBuf::from),
         auto_update: !options.flag("no-auto-update"),
         memory: options.value("memory").map(str::to_owned),
@@ -642,7 +641,8 @@ pub struct RunnerStatus {
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct JobStatus {
-    /// `workflow` or `agent`.
+    /// `workflow`, or `agent` for g1t's own work (a merge check or a
+    /// state of the merge queue).
     pub kind: String,
     pub id: String,
     pub name: String,

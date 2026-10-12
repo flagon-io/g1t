@@ -16,7 +16,7 @@
 //   g1t-runner-linux-x64, -linux-arm64, -macos-x64, -macos-arm64,
 //   -windows-x64.exe    the binaries
 //   SHA256SUMS          `sha256  name`, one line each
-//   manifest.json       { version, published_at, agent_image, files: { platform: { name, sha256 } },
+//   manifest.json       { version, published_at, files: { platform: { name, sha256 } },
 //                         sandbox: { runner_image, files: { "wsl-x64": { name, sha256, size }, … } } }
 //   g1t-sandbox-*       the sandbox's images (scripts/sandbox-image.mjs), when built
 //
@@ -29,7 +29,6 @@
 // Environment:
 //   RUNNER_RELEASE_KEY      the private key (keygen prints it): a g1t Actions secret
 //   G1T_RUNNER_RELEASE_KEY  the public key, built into the binaries
-//   RUNNER_AGENT_IMAGE      the image agent work runs in, named in the manifest
 //
 // Every target is cross-compiled with cargo-zigbuild (`cargo install
 // cargo-zigbuild`, and zig on PATH), so one Linux machine builds them all.
@@ -98,13 +97,13 @@ export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex"
  * sandbox.json there when scripts/sandbox-image.mjs made one, and is signed
  * with the rest.
  */
-export function manifest(dir, v, agentImage = process.env.RUNNER_AGENT_IMAGE || null) {
+export function manifest(dir, v) {
   const files = {};
   for (const [platform, target] of Object.entries(TARGETS)) {
     const path = join(dir, target.file);
     if (existsSync(path)) files[platform] = { name: target.file, sha256: sha256(readFileSync(path)) };
   }
-  const m = { version: v, published_at: new Date().toISOString(), agent_image: agentImage, files };
+  const m = { version: v, published_at: new Date().toISOString(), files };
   const sandboxPath = join(dir, "sandbox.json");
   if (existsSync(sandboxPath)) {
     const sandbox = JSON.parse(readFileSync(sandboxPath, "utf8"));

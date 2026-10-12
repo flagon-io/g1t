@@ -1,15 +1,13 @@
 /**
  * g1t's own work on a workspace's self-hosted runners. When a workspace (or
- * one of its repositories) says so under Settings, Runners, an agent's run,
- * checks, a review, a merge check or the merge queue is not started in a
- * sandbox here: the sandbox's Durable Object hands the same environment to
- * the actions service as a task, a runner of the workspace's with the
- * right labels takes it on its next poll, and the actions service tells
- * the Durable Object how it ended (`task_ended`), which then does exactly
- * what it does when a container stops. The model calls still go through
- * g1t's model proxy with the run's own credential, so spend, budgets and
- * the audit log work as they do in a sandbox. Network guardrails cannot be
- * enforced on someone else's machine, and the run says so.
+ * one of its repositories) says so under Settings, Runners, a merge check or
+ * a state of the merge queue is not started in a sandbox here: the
+ * sandbox's Durable Object hands the same environment to the actions
+ * service as a task, a runner of the workspace's with the right labels
+ * takes it on its next poll, and the actions service tells the Durable
+ * Object how it ended (`task_ended`), which then does exactly what it does
+ * when a container stops. Network guardrails cannot be enforced on someone
+ * else's machine, and the run says so.
  */
 
 import type { RepoPath, ServiceBinding } from "@g1t/contracts";
@@ -53,7 +51,7 @@ export async function enqueueTask(
     labels: string[];
     env: Record<string, string>;
     timeoutMinutes: number;
-    /** The agent run the work is, when the sandbox opened one: the Runners page links to it. */
+    /** The run the work is, when the sandbox opened one: the Runners page links to it. */
     runId?: string | null;
   },
 ): Promise<string> {

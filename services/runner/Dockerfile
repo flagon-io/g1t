@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1.7
 #
-# The sandbox a g1t agent works in, and where workflow jobs and g1t.page
-# builds run: the base image (services/runner/base/Dockerfile, everything
-# but the runner) and the g1t runner, a static Linux binary built outside
-# Docker by scripts/build-runner.mjs.
+# The sandbox workflow jobs, g1t.page builds and g1t's own work (the merge
+# queue, merge checks, dependency updates, backups) run in: the base image
+# (services/runner/base/Dockerfile, everything but the runner) and the g1t
+# runner, a static Linux binary built outside Docker by
+# scripts/build-runner.mjs.
 #
 # Built by scripts/deploy.mjs, which passes BASE (the image recorded in
 # services/runner/base.json) and uses a build context holding only the
