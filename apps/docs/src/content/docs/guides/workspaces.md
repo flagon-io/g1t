@@ -486,6 +486,19 @@ and [`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace
 sets any of them (`workspace` `update` over MCP). Each change is in the
 [audit log](/guides/audit-log/) as `workspace.member_privileges_changed`.
 
+## Workflows the workspace manages
+
+An owner can run a workflow in every repository of the workspace, or in
+those whose names match, without committing it to each: a security scan, a
+licence check, a release policy. Add it under **Workspace → Code →
+Actions**, `g1t.sh/<workspace>/-/actions`, from a workflow file in one of
+the workspace's repositories, as **Required** (repositories cannot take its
+place or turn it off, so a ruleset can require its check) or **Default**
+(a repository's own workflow of the same name runs instead, and its admins
+can turn it off). Each repository's Actions page lists it as managed by the
+workspace. [Workflows a workspace manages](/guides/actions/#workflows-a-workspace-manages)
+has the details, and the API.
+
 ## Require two-factor authentication
 
 An owner can require everyone with access to the workspace, its members
@@ -718,7 +731,7 @@ row, with a hint saying what it will hold.
 | | **Billing and plans** | Members | The plan, the spend limit, prepaying and every charge. `-/billing` |
 | **Compute** | [**Runners**](/guides/self-hosted-runners/) | Owners | The workspace's self-hosted machines, their groups and registration tokens. `-/runners` |
 | **Code** | **Repositories** | Members | Every repository, and for owners **Recently deleted**, where a [deleted repository](/guides/managing-repositories/#restore-a-repository) can be restored, or purged, for 30 days. `-/repositories` |
-| | **Actions** | Members | How workflows run in the workspace. `-/actions` |
+| | **Actions** | Members | How workflows run in the workspace: what jobs' tokens may do, and for owners the [workflows the workspace manages](#workflows-the-workspace-manages) in its repositories. `-/actions` |
 | | [**Secrets and variables**](/guides/secrets-and-variables/) | Members | What runs and deployments are given. Owners change them. `-/secrets` |
 | | [**Webhooks**](/guides/webhooks/) | Members | Where the workspace's events are sent. Owners add and change them. `-/webhooks` |
 | | **Deployments**, **Project defaults** | | Soon: defaults for every project's deployments, and what a new project starts with. |

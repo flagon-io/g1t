@@ -183,6 +183,74 @@ managed by g1t.
 A workflow of the same `name:` in `.g1t/workflows/` runs in its place, so
 to change one, commit your own version of it.
 
+## Workflows a workspace manages
+
+A workspace's owners can run a workflow in the workspace's repositories
+without committing it to each one, as GitHub's required workflows do. It
+runs in each repository it targets as that repository's own workflow: on
+the repository's events, with the repository's job token, secrets and
+variables, and reporting the repository's checks. Its path is
+`managed/<name>.yml`, and the repository's **Actions** page lists it as
+managed by the workspace, with the file it came from.
+
+To add one:
+
+1. Commit the workflow to one of the workspace's repositories, such as
+   `acme/policies/.g1t/workflows/scan.yml`.
+2. Open **Workspace → Code → Actions**, `g1t.sh/<workspace>/-/actions`, and
+   under **Workflows this workspace manages** choose **Add workflow**.
+3. Give it a name, its source as `owner/repo/path@ref` (for example
+   `acme/policies/.g1t/workflows/scan.yml@main`), a mode, and the
+   repositories it runs in, then choose **Add workflow**.
+
+| Setting | Options |
+| --- | --- |
+| Mode | **Required**: it runs in every repository it targets. A workflow of the same `name:` in the repository does not run while it is required, and nobody in the repository can turn it off. **Default**: it runs where the repository has no workflow of the same `name:`, which runs in its place, and the repository's admins can turn it off on its Actions page. |
+| Repositories | **All repositories**, or names and patterns, one per line: `*` matches any characters, and `!name` leaves out what an earlier line took in. The last line that matches decides, without regard to case; only `!` lines means every repository but those. |
+| Visibility | Public and private repositories, public only, or private only. |
+
+g1t copies the source file when you save, at the commit its ref names
+then, and that copy runs until you copy it again with **Copy again** (or
+save it with another source). So someone who can push to the source
+repository cannot change what runs with every repository's secrets: only
+an owner can, by copying it. The workflows list shows the commit each was
+copied at.
+
+- The source must be a workflow file in one of the workspace's own
+  repositories.
+- A source in a private repository runs in private repositories only, as a
+  public repository's workflows cannot use a private repository's: choose
+  **Private repositories only**, or g1t refuses it. A repository made
+  public later stops running it.
+- `uses: ./…` in the copy names the repository it runs in, as it would in a
+  file committed there. To call a reusable workflow of the source
+  repository, name it in full:
+  `uses: acme/policies/.g1t/workflows/build.yml@main`, which follows the
+  [rules for other repositories](#actions-and-workflows-from-other-repositories).
+- A required workflow runs for pull requests from forks and in the
+  [merge queue](/guides/merge-queue/) too, whatever the fork's files say.
+- When it changes, up to 20 repositories' workflow lists are brought up to
+  date at once. In a larger workspace the rest follow within minutes, or
+  as soon as someone opens their Actions page; their runs read the
+  workflows as they are meanwhile.
+
+To make a pull request wait for a required workflow, require its check in
+a [ruleset](/guides/rules/): its `name:` as the context, with
+`integration: actions`. A failure of the workflow fails the check whatever
+else reports a check of that name.
+
+Through the API and MCP:
+
+| Route | MCP | |
+| --- | --- | --- |
+| [`GET /workspaces/{workspace}/actions/managed-workflows`](/reference/api/run-protection/list-workspace-managed-workflows/) | `workflow` `list_managed_workflows` | Each with its source, the commit it was copied at, its mode, repositories, visibility and the copy that runs. |
+| [`POST /workspaces/{workspace}/actions/managed-workflows`](/reference/api/run-protection/create-workspace-managed-workflow/) | `workflow` `add_managed_workflow` | `name`, `source`, `mode` (`required` or `default`), `repositories`, `visibility` (`all`, `public` or `private`). |
+| [`PATCH /workspaces/{workspace}/actions/managed-workflows/{workflow}`](/reference/api/run-protection/update-workspace-managed-workflow/) | `workflow` `update_managed_workflow` | Any of those; `refresh: true` copies the source again. |
+| [`DELETE /workspaces/{workspace}/actions/managed-workflows/{workflow}`](/reference/api/run-protection/delete-workspace-managed-workflow/) | `workflow` `remove_managed_workflow` | Its runs stay. |
+
+Only owners can see and change them; a token needs `workspace:read` to
+list them and `workspace:admin` to change them.
+
 ## Schedules
 
 A workflow with `on: schedule` runs on the default branch's latest commit,
