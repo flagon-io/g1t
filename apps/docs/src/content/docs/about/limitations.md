@@ -273,6 +273,29 @@ including the runner's credential.
   register with `--no-job-docker`.
 - **Status.** Not scheduled.
 
+### `actions/checkout` is g1t's own
+
+A step with `uses: actions/checkout` runs g1t's checkout, not the action
+from GitHub, whatever version it names. It reads the action's inputs and
+sets its outputs (see [what runs](/guides/actions/#what-runs)), but not
+`lfs`, `ssh-key` or `clean: false`, and it has no post step: the
+credential `persist-credentials` leaves stays in `.git/config` until the
+job ends.
+
+- **Why.** The action fetches the run's commit from the repository the
+  workflow is in. A pull request's commits from a fork, or from the copy
+  g1t makes for a pull request opened from an issue, are not in that
+  repository while the pull request is open: g1t keeps no
+  `refs/pull/<number>/head` there yet. g1t's checkout fetches them from
+  where they are. Without git in a job's container, the action downloads
+  a tarball from `GET /repos/{owner}/{repo}/tarball/{ref}`, which g1t does
+  not have, and g1t keeps no Git LFS files.
+- **Instead.** Use a `run:` step with `git` for anything else, with the
+  job's token as `AUTHORIZATION: basic` of `x-access-token:<token>`, as
+  the checkout leaves it in `http.https://g1t.sh/.extraheader`.
+- **Status.** Planned: the real action, once a pull request's commits
+  are kept in its repository.
+
 ### No `gh` command in jobs
 
 The runner does not include the `gh` command, and pointing it at g1t

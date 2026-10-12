@@ -55,10 +55,15 @@ fn token_hash(token: &str) -> String {
     Sha256::digest(token.as_bytes())[..8].iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// The bearer token of an `Authorization` header, if it has one.
+/// The access token of an `Authorization` header, if it has one: `Bearer
+/// <token>`, or `token <token>`, the form GitHub also takes and Octokit
+/// (`@actions/github`, so `actions/checkout` and `actions/github-script`)
+/// sends.
 pub fn bearer(header: &str) -> Option<&str> {
     match header.split_once(' ') {
-        Some((scheme, token)) if scheme.eq_ignore_ascii_case("bearer") => Some(token.trim()).filter(|t| !t.is_empty()),
+        Some((scheme, token)) if scheme.eq_ignore_ascii_case("bearer") || scheme.eq_ignore_ascii_case("token") => {
+            Some(token.trim()).filter(|t| !t.is_empty())
+        }
         _ => None,
     }
 }
@@ -133,9 +138,13 @@ mod tests {
     }
 
     #[test]
-    fn only_bearer_tokens_are_read() {
+    fn bearer_and_token_schemes_are_read() {
         assert_eq!(bearer("Bearer g1t_abc "), Some("g1t_abc"));
         assert_eq!(bearer("bearer g1t_abc"), Some("g1t_abc"));
+        // Octokit's form, as `actions/checkout` sends it for a default branch.
+        assert_eq!(bearer("token g1t_abc"), Some("g1t_abc"));
+        assert_eq!(bearer("Token g1t_abc"), Some("g1t_abc"));
+        assert_eq!(bearer("token "), None);
         assert_eq!(bearer("Basic dXNlcjpwYXNz"), None);
         assert_eq!(bearer("Bearer "), None);
         assert_eq!(bearer(""), None);

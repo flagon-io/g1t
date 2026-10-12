@@ -127,19 +127,16 @@ async fn json_body(request: &mut Request) -> Value {
     request.json().await.unwrap_or(Value::Null)
 }
 
-/// Who a request's `Authorization: Bearer g1t_…` names. A missing token is
-/// an anonymous viewer; a wrong one is refused, so that a typo does not
-/// silently look signed out.
+/// Who a request's `Authorization: Bearer g1t_…` (or `token g1t_…`, as
+/// Octokit sends it) names. A missing token is an anonymous viewer; a
+/// wrong one is refused, so that a typo does not silently look signed out.
 async fn authenticate(
     request: &Request,
     services: &Services,
 ) -> Result<std::result::Result<Viewer, Response>> {
     let header = request.headers().get("authorization")?.unwrap_or_default();
-    let token = match header.split_once(' ') {
-        Some((scheme, token)) if scheme.eq_ignore_ascii_case("bearer") && !token.is_empty() => {
-            token.trim()
-        }
-        _ => return Ok(Ok(None)),
+    let Some(token) = limits::bearer(&header) else {
+        return Ok(Ok(None));
     };
     let viewer: Viewer = g1t_kit::call(
         &services.identity,

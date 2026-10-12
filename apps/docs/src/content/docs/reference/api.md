@@ -47,6 +47,10 @@ curl https://api.g1t.sh/user \
   -H "Authorization: Bearer $G1T_TOKEN"
 ```
 
+`Authorization: token $G1T_TOKEN`, the other form GitHub takes, works the
+same, so Octokit and the actions built on it, such as `actions/checkout`
+and `actions/github-script`, are signed in with the token they are given.
+
 Public data can be read without a token. A token that is not valid is
 rejected with `401` rather than treated as anonymous. Each endpoint's page
 says whether it needs a token.
