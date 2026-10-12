@@ -280,11 +280,17 @@ whenever GitHub has it:
 
 | The repository | What happens |
 | --- | --- |
-| On g1t and public: in your workspace, under `g1t/`, or with a name GitHub has no public repository of | Your workflows use it, from any workspace. |
+| On g1t and public: in your workspace, under `g1t/` (g1t's own), or with a name GitHub has no public repository of | Your workflows use it, from any workspace. |
 | On g1t, private, in your workspace, with **Access** set to *Accessible from repositories in* the workspace | Your private repositories' workflows use it. A job reads it with a read-only token for that repository alone, which ends with the job. |
 | On g1t, private, and not shared that way | The step or job fails, and says why. A private repository's actions are never used by a public repository's workflows, whose logs anyone can read, nor from another workspace. |
+| Under `g1t/`, and not one of g1t's own public repositories | The step or job fails, and says so. A `g1t/` name is never looked for on GitHub. |
 | Not on g1t, or private in a workspace you cannot see | An action comes from GitHub, at the commit its ref names there (see [actions from GitHub](#actions-from-github)); a reusable workflow is read from a public repository on GitHub. |
 | On g1t, public, in another workspace, with a name GitHub has a public repository of | GitHub's is used, as on GitHub: anyone can make a workspace, so a workspace called `actions` never answers for `actions/setup-node`. When g1t can't reach GitHub to tell, GitHub's is used too. |
+
+An owner that is a [workspace alias](/guides/workspaces/#workspace-aliases)
+is looked for under its workspace's slug, by the same rules, as if you had
+written that slug: the alias decides where g1t looks, never who may use
+what it finds.
 
 `ref` is a branch, a tag or a commit. A reusable workflow may be under
 `.g1t/workflows/` or `.github/workflows/`; a `.github/workflows/` path
@@ -327,15 +333,28 @@ Actions that a composite action uses are downloaded when it runs.
 
 ### g1t's own actions
 
-The `g1t` workspace on g1t.sh holds g1t's own actions, public, with a
-`v1` tag that moves with each compatible release:
+g1t's own actions live under `g1t/` on g1t.sh, public, with a `v1` tag
+that moves with each compatible release. `g1t` is a
+[workspace alias](/guides/workspaces/#workspace-aliases) of `flagon-io`,
+the workspace of Flagon, Inc., which builds g1t: `g1t/deploy@v1` is the
+repository `flagon-io/deploy`, and its page and the job's log name it
+that way. Write `g1t/`; it keeps working wherever g1t's actions are kept.
 
 | Action | What it does |
 | --- | --- |
 | [`g1t/deploy@v1`](https://g1t.sh/g1t/deploy) | Builds the checkout and puts it on [g1t.page](/guides/deployments/): production from the project's production branch, a preview from a pull request or another branch. The job needs `deployments: write`. See [deploying from a workflow](/guides/deployments/#deploying-from-a-workflow). |
 | [`g1t/detect@v1`](https://g1t.sh/g1t/detect) | Says what that build would find (`kind`, `install`, `build`, `output-dir`, `framework`) without building anything. |
 
-Both are composite actions around `g1t-runner`, which g1t's machines
+g1t's reusable workflows are in `g1t/workflows` the same way, such as
+`g1t/workflows/.g1t/workflows/deploy.yml@v1`, which a
+[project's](/guides/projects/) deployments run.
+
+A `g1t/` name always means g1t's own: it answers even where GitHub has a
+repository of the same name, only its public repositories answer for it,
+and a `g1t/` name that is not one of them fails rather than being looked
+for on GitHub.
+
+Both actions are composite actions around `g1t-runner`, which g1t's machines
 have; on a [self-hosted runner](/guides/self-hosted-runners/) they use
 the one on `PATH` or download the newest release.
 

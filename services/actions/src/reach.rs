@@ -10,6 +10,20 @@
 //! private one's code). When g1t does not have it (or the workspace cannot
 //! see it), the action comes from GitHub, as before, and the reusable
 //! workflow from a public repository there.
+//!
+//! An owner that is a workspace alias g1t's staff set (identity's
+//! aliases.rs) is looked for under the workspace's own slug when nothing
+//! has the name as written: `g1t/deploy@v1` is `flagon-io/deploy`, as
+//! `g1t` is `flagon-io`'s alias. The repository found is named by its own
+//! path from then on (the job's download, the called workflow's origin),
+//! and is checked exactly as if it had been named that way: the alias
+//! changes where g1t looks, never who may see or use what it finds.
+//!
+//! `g1t/` names g1t's own actions. Nobody can register `g1t`, so such a
+//! repository answers for its name even where GitHub has one of the same
+//! name, but only when it is public; and a `g1t/` name g1t does not have
+//! (or that the workspace cannot see) is never taken from GitHub, where
+//! anyone might own `g1t`.
 
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::{FailureCode, Outcome, User};
@@ -75,13 +89,33 @@ pub(crate) fn may_use(caller: &Repo, target: &Repo, access_level: &str) -> std::
     Ok(())
 }
 
+/// The owner that names g1t's own actions and workflows (`g1t/deploy`):
+/// a name nobody can register, an alias of the workspace that holds them
+/// (`flagon-io` on g1t.sh).
+pub(crate) const G1T_OWNER: &str = "g1t";
+
+/// Whether `uses:` names one of g1t's own actions or workflows, by the
+/// owner as written.
+pub(crate) fn names_g1ts_own(owner: &str) -> bool {
+    owner.eq_ignore_ascii_case(G1T_OWNER)
+}
+
 /// Whether `target` on g1t answers for its `owner/repo` name even when
 /// GitHub has a repository of the same name: when it is in the caller's own
-/// workspace, or is one of g1t's own (`g1t` is a name nobody can register).
-/// Any other workspace's repository answers only for names GitHub doesn't
-/// publish.
-pub(crate) fn answers_for_its_name(caller: &Repo, target: &Repo) -> bool {
-    caller.namespace.eq_ignore_ascii_case(&target.namespace) || target.namespace.eq_ignore_ascii_case("g1t")
+/// workspace, or is one of g1t's own (named under `g1t/`, as written in
+/// `owner`, which reaches the workspace `g1t` is an alias of) and public.
+/// A private one of g1t's own is for its own workspace, as any private
+/// repository is. Any other workspace's repository answers only for names
+/// GitHub doesn't publish.
+pub(crate) fn answers_for_its_name(caller: &Repo, owner: &str, target: &Repo) -> bool {
+    caller.namespace.eq_ignore_ascii_case(&target.namespace) || (names_g1ts_own(owner) && !target.is_private)
+}
+
+/// Whether an owner as written may be a workspace alias, and so is worth
+/// asking identity about: a namespace's shape in any case, as aliases have
+/// (identity reads it lowercased).
+pub(crate) fn may_be_alias(owner: &str) -> bool {
+    g1t_contracts::aliasable_name(owner).is_some()
 }
 
 /// Where another repository's action or workflow comes from.
@@ -96,15 +130,34 @@ impl Actions {
     /// Looks for `owner/repo` on g1t, as `caller`'s workspace (`ws`) sees
     /// it, and checks the caller may use it.
     pub(crate) async fn find_used(&self, caller: &Repo, ws: &User, used: &UsesRef) -> Result<Outcome<Found>> {
+        let viewer = Some(ws.clone());
         let path = RepoPath { namespace: used.owner.clone(), name: used.repo.clone() };
-        let Some(target) = self.visible_repo(&path, &Some(ws.clone())).await? else {
+        let mut found = self.visible_repo(&path, &viewer).await?;
+        // Nothing has the name as written: an alias (`g1t` for `flagon-io`)
+        // is looked for under its workspace's slug, as the same workspace
+        // sees it, so a private repository there stays out of sight.
+        if found.is_none()
+            && let Some(slug) = self.alias_of(&used.owner).await?
+        {
+            found = self.visible_repo(&RepoPath { namespace: slug, name: used.repo.clone() }, &viewer).await?;
+        }
+        let Some(target) = found else {
+            if names_g1ts_own(&used.owner) {
+                return Ok(fail(
+                    FailureCode::NotFound,
+                    format!("{} is not one of g1t's actions or workflows: g1t's own are public repositories under g1t/.", used.full_name()),
+                ));
+            }
             return Ok(Outcome::Ok(Found::GitHub));
         };
         // A name GitHub publishes means GitHub's repository, unless the
         // repository on g1t is the caller's own workspace's or g1t's: anyone
         // can make a workspace called `actions`, and must not get to answer
-        // for `actions/setup-node`.
-        if !answers_for_its_name(caller, &target) && self.github_publishes(&used.full_name()).await? != Some(false) {
+        // for `actions/setup-node`. A `g1t/` name is never GitHub's.
+        if !answers_for_its_name(caller, &used.owner, &target)
+            && !names_g1ts_own(&used.owner)
+            && self.github_publishes(&used.full_name()).await? != Some(false)
+        {
             return Ok(Outcome::Ok(Found::GitHub));
         }
         let level = if target.is_private && target.id != caller.id { self.access_level_of(&target.id).await? } else { "none" };
@@ -112,6 +165,16 @@ impl Actions {
             Ok(()) => Outcome::Ok(Found::G1t(target)),
             Err(why) => fail(FailureCode::Forbidden, why),
         })
+    }
+
+    /// The slug of the workspace `owner` is an alias of, if it is one.
+    async fn alias_of(&self, owner: &str) -> Result<Option<String>> {
+        if !may_be_alias(owner) {
+            return Ok(None);
+        }
+        let slug: Option<String> =
+            g1t_kit::call(&self.identity, "resolve_alias", &g1t_contracts::identity::SlugArgs { slug: owner.to_owned() }).await?;
+        Ok(slug.filter(|slug| !slug.eq_ignore_ascii_case(owner)))
     }
 
     /// `job_action`: a running job asks where to fetch an action from, by
@@ -585,11 +648,46 @@ mod tests {
     fn only_its_own_workspace_or_g1t_answers_for_a_name_github_has() {
         let web = repo("web", "acme", true);
         // The caller's own workspace, and g1t's own actions, whatever GitHub has.
-        assert!(answers_for_its_name(&web, &repo("setup", "acme", true)));
-        assert!(answers_for_its_name(&web, &repo("setup", "ACME", false)));
-        assert!(answers_for_its_name(&web, &repo("deploy", "g1t", false)));
+        assert!(answers_for_its_name(&web, "acme", &repo("setup", "acme", true)));
+        assert!(answers_for_its_name(&web, "acme", &repo("setup", "ACME", false)));
+        assert!(answers_for_its_name(&web, "g1t", &repo("deploy", "g1t", false)));
         // Anyone else's public repository named like GitHub's `actions/setup-node`
         // does not: GitHub's is used when GitHub has one.
-        assert!(!answers_for_its_name(&web, &repo("setup-node", "actions", false)));
+        assert!(!answers_for_its_name(&web, "actions", &repo("setup-node", "actions", false)));
+    }
+
+    /// `g1t/deploy` is found as `flagon-io/deploy`, `g1t` being its alias.
+    #[test]
+    fn g1t_answers_through_its_alias_for_public_repositories_only() {
+        let web = repo("web", "acme", true);
+        let deploy = repo("deploy", "flagon-io", false);
+        let internal = repo("internal", "flagon-io", true);
+        // Written as g1t/deploy: g1t's own, public, answers for its name.
+        assert!(answers_for_its_name(&web, "g1t", &deploy));
+        assert!(answers_for_its_name(&web, "G1T", &deploy));
+        // A private repository of the same workspace never does for another
+        // workspace, and no other workspace may use it either way.
+        assert!(!answers_for_its_name(&web, "g1t", &internal));
+        assert!(may_use(&web, &internal, "organization").unwrap_err().contains("only repositories in flagon-io"));
+        assert!(may_use(&repo("site", "acme", false), &internal, "none").is_err());
+        // Named under flagon-io as written, it is only another workspace's.
+        assert!(!answers_for_its_name(&web, "flagon-io", &deploy));
+        // flagon-io's own repositories use theirs as their own.
+        let own = repo("g1t", "flagon-io", true);
+        assert!(answers_for_its_name(&own, "g1t", &internal));
+        assert!(may_use(&own, &internal, "organization").is_ok());
+        // A public one of g1t's own is used from anywhere, public or private.
+        assert!(may_use(&web, &deploy, "none").is_ok());
+        assert!(may_use(&repo("site", "acme", false), &deploy, "none").is_ok());
+    }
+
+    #[test]
+    fn only_namespace_shaped_owners_are_asked_about_as_aliases() {
+        assert!(names_g1ts_own("g1t") && names_g1ts_own("G1t") && !names_g1ts_own("flagon-io"));
+        assert!(may_be_alias("g1t"));
+        assert!(may_be_alias("flagon") && may_be_alias("G1T"));
+        for owner in ["some_org", "a.b", "-x", "x--y", "settings"] {
+            assert!(!may_be_alias(owner), "{owner}");
+        }
     }
 }

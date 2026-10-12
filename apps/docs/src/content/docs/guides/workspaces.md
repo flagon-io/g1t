@@ -158,6 +158,36 @@ READMEs and docs, CI configuration, API clients and MCP clients.
   well-known GitHub action owner's name (such as `actions` or `docker`), and
   not another workspace's slug or someone else's username.
 
+## Workspace aliases
+
+An alias is a second name for a workspace that leads to it for good,
+wherever a workspace's name goes. On g1t.sh, `g1t` is an alias of
+`flagon-io`, the workspace of Flagon, Inc., which builds g1t and holds its
+repositories: `g1t.sh/g1t/deploy` is the repository `flagon-io/deploy`.
+
+| | Behaviour |
+| --- | --- |
+| Web pages | Answer with a permanent redirect (301) to the same page under the workspace's slug, query string included. |
+| `git clone`, `fetch`, `pull` and `push` | Answered in place, as the repository under the workspace's slug, with the same permissions, and no redirect for git to warn about. |
+| API and MCP | A call that names the alias runs under the workspace's slug, and the answer names the workspace by its slug. A token that reaches one repository reaches it under the alias too, and nothing else. |
+| Packages | Registry addresses under the alias redirect to the workspace's. |
+| Actions | `uses: g1t/deploy@v1` and `g1t/workflows/.g1t/workflows/deploy.yml@v1` are found as `flagon-io/deploy` and `flagon-io/workflows`. See [g1t's own actions](/guides/actions/#g1ts-own-actions). |
+
+An alias resolves whatever its case (`G1T` is `g1t`), and follows the
+workspace through renames: it points at the workspace, not at its slug.
+Pages, API answers and links always show the workspace's own slug.
+
+An alias never changes who can see what. A private repository is found
+under the alias only by someone who could see it under the workspace's
+slug, and the alias gives nobody access they did not have.
+
+Aliases are set and removed by g1t's staff; there is no setting for them.
+While an alias exists, nobody can register it as a username, create a
+workspace with it, or rename a workspace to it. An alias is never a
+person's or a workspace's name, and never one of the site's own routes.
+[Contact us](https://g1t.sh/support) if your workspace needs one, such as
+for a name it used to trade under.
+
 ## Data residency
 
 Data residency says where the git data of the workspace's new repositories

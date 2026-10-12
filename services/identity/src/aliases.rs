@@ -10,9 +10,11 @@
 //! rename a workspace to it.
 //!
 //! An alias is resolved wherever an old slug is (`resolve_slug`): the site
-//! and the API redirect or run again under the workspace's slug. Git over
-//! HTTPS resolves it in place (`resolve_alias`), as pushes do not follow
-//! redirects.
+//! and the API redirect or run again under the workspace's slug (the API
+//! also decides a token's reach again under it). Git over HTTPS resolves
+//! it in place (`resolve_alias`), as pushes do not follow redirects, and
+//! so does Actions for `uses:` (its reach.rs: `g1t/deploy@v1` is
+//! `flagon-io/deploy`).
 
 use g1t_contracts::identity::*;
 use g1t_contracts::time::rfc3339;
