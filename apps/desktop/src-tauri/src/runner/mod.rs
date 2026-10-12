@@ -11,29 +11,35 @@
 //! - **How.** The backend settings choose (backend.rs): Sandboxed, the
 //!   default, where nothing a job does reaches this computer; Docker; or
 //!   directly on this computer. The two that are not sandboxes are only
-//!   ever chosen by the person, and nothing falls back to them.
+//!   ever chosen by the person, and nothing falls back to them. Sandboxed
+//!   is `g1t-runner sandbox` (launcher.rs) on every OS: `up` a few seconds
+//!   after the window, `status` every few seconds while it runs, `down`
+//!   as g1t quits, and `down --drain` when another backend is chosen.
 //! - **Registering.** The first time, and when the workspace or backend
 //!   changes, the app needs a registration token for the workspace. Only
 //!   the site can make one, for an owner who is signed in: the app asks
 //!   the site's page (`g1t-runner-wanted`), the page asks the server
 //!   (`POST /-/desktop/runner-token`) and hands the token to the app
-//!   (`runner_register` in bridge.rs), which gives it to `g1t-runner` in
-//!   its environment, once. It is never shown or written to the log. The
-//!   registration is kept (registration.json, and the runner's own folder
-//!   or volume) and used on every later start.
+//!   (`runner_register` in bridge.rs), which gives it to `g1t-runner`
+//!   once: in its environment, or to the sandbox's first `up`. It is never
+//!   shown or written to the log. The registration is kept
+//!   (registration.json and the runner's own folder; the sandbox keeps its
+//!   own, and sandbox-registration.json says whose it is) and used on
+//!   every later start.
 //! - **Up to date.** Soon after it starts and every six hours, while the
-//!   runner is idle, the app looks for a newer release, or a newer image,
-//!   and puts it in place: never in the middle of a job.
+//!   runner is idle, the app looks for a newer release and puts it in
+//!   place, and has the sandbox take the newest image (`sandbox update`):
+//!   never in the middle of a job.
 //! - **Seen.** What it is doing, and when it is not running why and how to
 //!   fix it (diagnosis.rs), is in the tray, in settings, and on the site's
 //!   Runners page (`g1t-runner-status`), read from what its log says
-//!   (log.rs). The whole log is kept in `runner/runner.log`.
+//!   (log.rs), or for the sandbox from its status. The whole log is kept
+//!   in `runner/runner.log`.
 //!
 //! All of it runs on a thread of its own, which owns the runner's process
 //! and is told what happened through one channel.
 
 mod backend;
-mod container;
 pub mod diagnosis;
 mod launcher;
 mod log;
@@ -43,7 +49,7 @@ use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
-use std::process::Child;
+use std::process::{Child, Stdio};
 use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
@@ -55,6 +61,7 @@ use url::Url;
 pub use backend::Backend;
 use backend::{Engine, Missing};
 use diagnosis::{Code, Diagnosis, Facts};
+use launcher::{Down, State, Status};
 
 use crate::{config, frame, settings, tray};
 
@@ -101,6 +108,10 @@ struct Now {
     wait_seconds: Option<u64>,
     job: Option<String>,
     version: Option<String>,
+    /// What the sandbox says to do, for a cause in its own words.
+    fix: Option<String>,
+    /// How the sandbox is, while jobs run sandboxed.
+    sandbox: Option<Status>,
 }
 
 /// What the site last said about the person.
@@ -157,8 +168,11 @@ enum Ask {
     Retry,
     Token { workspace: String, token: String },
     Refused { workspace: String, allowed: bool, why: String },
-    Line(u64, String),
+    /// A line of the runner's output, or the launcher's; true from its standard output.
+    Line(u64, String, bool),
     Exited(u64),
+    /// What `sandbox status` said.
+    Sandbox(u64, Result<Box<Status>, String>),
     Quit(Sender<()>),
 }
 
@@ -168,6 +182,33 @@ struct Registration {
     server: String,
     workspace: String,
     backend: Backend,
+}
+
+/// Whose the sandbox's registration is. The sandbox keeps its own, and
+/// keeps it while another backend runs, so choosing Sandboxed again needs
+/// no new one; this says which workspace it is for.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct SandboxRegistration {
+    server: String,
+    workspace: String,
+    /// False from the `up` that was given a token until it registered.
+    registered: bool,
+}
+
+impl SandboxRegistration {
+    fn path(app: &AppHandle) -> PathBuf {
+        folder(app).join("sandbox-registration.json")
+    }
+    fn load(app: &AppHandle) -> Option<SandboxRegistration> {
+        std::fs::read(Self::path(app)).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok())
+    }
+    fn save(&self, app: &AppHandle) {
+        let _ = std::fs::create_dir_all(folder(app));
+        let _ = std::fs::write(Self::path(app), serde_json::to_vec_pretty(self).unwrap_or_default());
+    }
+    fn clear(app: &AppHandle) {
+        let _ = std::fs::remove_file(Self::path(app));
+    }
 }
 
 fn folder(app: &AppHandle) -> PathBuf {
@@ -217,9 +258,10 @@ fn workspace(app: &AppHandle) -> Option<String> {
 
 fn facts(app: &AppHandle, now: &Now) -> Facts {
     let server = config::server(app);
+    let backend = config::settings(app).runner_backend;
     Facts {
         workspace: workspace(app),
-        backend: config::settings(app).runner_backend.label(),
+        backend: backend.label(),
         machine: backend::machine_name(),
         job: now.job.clone(),
         detail: now.detail.clone(),
@@ -227,6 +269,8 @@ fn facts(app: &AppHandle, now: &Now) -> Facts {
         wait_seconds: now.wait_seconds,
         server: server.host_str().unwrap_or("g1t").to_owned(),
         platform: std::env::consts::OS.into(),
+        fix: now.fix.clone(),
+        sandbox: now.sandbox.clone().filter(|_| backend == Backend::Sandboxed),
     }
 }
 
@@ -239,7 +283,7 @@ pub fn view(app: &AppHandle) -> View {
     View {
         diagnosis: diagnosis::diagnose(now.code, &facts),
         closed: diagnosis::closed(&facts),
-        running: matches!(now.code, Code::Idle | Code::Busy | Code::Offline),
+        running: matches!(now.code, Code::Idle | Code::Busy | Code::Offline) || facts.sandbox.as_ref().is_some_and(Status::running),
         version: now.version,
         backend: settings.runner_backend,
         link: facts.workspace.as_ref().and_then(|w| server.join(&format!("{w}/-/runners")).ok()).map(|u| u.to_string()),
@@ -366,9 +410,12 @@ pub fn act(app: &AppHandle, action: &str) -> Result<(), String> {
             app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())?;
         }
         "open_docker" => open_docker(app)?,
+        "copy_wsl_install" => copy(launcher::WSL_INSTALL)?,
+        "copy_vfkit_install" => copy(launcher::VFKIT_INSTALL)?,
+        "windows_features" => windows_features()?,
         "get_docker" => browse("https://docs.docker.com/get-started/get-docker/")?,
         "install_sysbox" => browse("https://github.com/nestybox/sysbox#installation")?,
-        "learn_more" => browse("https://docs.g1t.sh/guides/desktop/#the-runner")?,
+        "learn_more" => browse("https://docs.g1t.sh/guides/desktop/#how-jobs-run")?,
         "report" => browse(config::server(app).join("support").map_err(|e| e.to_string())?.as_str())?,
         other => return Err(format!("the runner has no action called {other}")),
     }
@@ -390,6 +437,36 @@ fn open_docker(app: &AppHandle) -> Result<(), String> {
         return Err("Docker Desktop isn't installed in its usual place. Get Docker to install it.".into());
     }
     Err("Start Docker with your system's service manager, such as `sudo systemctl start docker`.".into())
+}
+
+/// Puts a command on the clipboard, for the person to paste where it runs.
+fn copy(text: &str) -> Result<(), String> {
+    let tools: &[(&str, &[&str])] = if cfg!(windows) {
+        &[("clip", &[])]
+    } else if cfg!(target_os = "macos") {
+        &[("pbcopy", &[])]
+    } else {
+        &[("wl-copy", &[]), ("xclip", &["-selection", "clipboard"]), ("xsel", &["--clipboard", "--input"])]
+    };
+    for (program, args) in tools {
+        let Ok(mut child) = backend::quiet(program).args(*args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() else { continue };
+        if let Some(mut input) = child.stdin.take() {
+            let _ = input.write_all(text.as_bytes());
+        }
+        if child.wait().is_ok_and(|status| status.success()) {
+            return Ok(());
+        }
+    }
+    Err(format!("It couldn't be copied. The command is: {text}"))
+}
+
+/// Windows' "Turn Windows features on or off", where Windows Sandbox and
+/// Virtual Machine Platform are.
+fn windows_features() -> Result<(), String> {
+    if !cfg!(windows) {
+        return Err("Windows features are only on Windows.".into());
+    }
+    backend::quiet("optionalfeatures.exe").spawn().map(|_| ()).map_err(|e| format!("Windows features couldn't be opened: {e}"))
 }
 
 /// The workspace a token is wanted for now, if one is: the site asks as it loads.
@@ -415,10 +492,27 @@ pub fn shutdown(app: &AppHandle) {
 
 /// How the runner is started this time.
 enum Process {
-    /// `g1t-runner` or its sandbox launcher, a child of the app.
+    /// `g1t-runner`, a child of the app, whose output is the runner's log.
     Child(Child),
-    /// The runner's container, and `docker logs --follow` on it.
-    Container(Child),
+    /// The sandbox, which runs on its own once `up` is done; the launcher
+    /// command the app is waiting for, while there is one.
+    Sandbox(Option<(Step, Child)>),
+}
+
+/// A launcher command that takes a while.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Step {
+    Up,
+    Update,
+}
+
+impl Step {
+    fn name(self) -> &'static str {
+        match self {
+            Step::Up => "up",
+            Step::Update => "update",
+        }
+    }
 }
 
 struct Run {
@@ -437,6 +531,43 @@ struct Run {
     forgotten: bool,
     token_refused: bool,
     error: Option<String>,
+    /// The status a launcher command is printing, line by line.
+    json: Option<Vec<String>>,
+    /// Asking the sandbox how it is, and when it was last asked.
+    polling: bool,
+    polled_at: Option<Instant>,
+    /// A poll asked before a launcher command ended, whose answer is old.
+    stale: bool,
+}
+
+impl Run {
+    fn new(generation: u64, engine: Engine, backend: Backend, workspace: String, process: Process, with_token: bool) -> Run {
+        Run {
+            generation,
+            engine,
+            backend,
+            workspace,
+            process,
+            listening: false,
+            busy: false,
+            offline_at: None,
+            with_token,
+            forgotten: false,
+            token_refused: false,
+            error: None,
+            json: None,
+            polling: false,
+            polled_at: None,
+            stale: false,
+        }
+    }
+
+    fn step(&self) -> Option<Step> {
+        match &self.process {
+            Process::Sandbox(Some((step, _))) => Some(*step),
+            _ => None,
+        }
+    }
 }
 
 struct Keeper {
@@ -449,6 +580,10 @@ struct Keeper {
     failures: u32,
     next_update: Instant,
     log: Option<File>,
+    /// The runner was updated: the sandbox takes its image before it starts again.
+    image_pending: bool,
+    /// Why the last update failed, said until the next one works.
+    update_failed: Option<String>,
 }
 
 /// What a set of the state carries besides its code.
@@ -457,6 +592,7 @@ struct Extra {
     detail: Option<String>,
     exit_code: Option<i32>,
     wait_seconds: Option<u64>,
+    fix: Option<String>,
 }
 
 fn detail(text: impl Into<String>) -> Extra {
@@ -466,7 +602,7 @@ fn detail(text: impl Into<String>) -> Extra {
 impl Keeper {
     fn new(app: AppHandle, tx: Sender<Ask>) -> Keeper {
         let now = Instant::now();
-        Keeper { app, tx, run: None, generation: 0, token: None, not_before: now + AFTER_START, failures: 0, next_update: now + FIRST_UPDATE, log: None }
+        Keeper { app, tx, run: None, generation: 0, token: None, not_before: now + AFTER_START, failures: 0, next_update: now + FIRST_UPDATE, log: None, image_pending: false, update_failed: None }
     }
 
     fn keep(mut self, rx: Receiver<Ask>) {
@@ -495,7 +631,16 @@ impl Keeper {
             let shared = self.app.state::<Shared>();
             let mut now = shared.now.lock().unwrap();
             let job = if code == Code::Busy { now.job.clone() } else { None };
-            let next = Now { code, detail: extra.detail, exit_code: extra.exit_code, wait_seconds: extra.wait_seconds, job, version: now.version.clone() };
+            let next = Now {
+                code,
+                detail: extra.detail,
+                exit_code: extra.exit_code,
+                wait_seconds: extra.wait_seconds,
+                job,
+                version: now.version.clone(),
+                fix: extra.fix,
+                sandbox: now.sandbox.clone(),
+            };
             let changed = *now != next;
             *now = next;
             changed
@@ -551,7 +696,10 @@ impl Keeper {
                 self.failures = 0;
                 match self.code() {
                     // The runner is fine: only the update is tried again.
-                    Code::UpdateFailed => self.next_update = Instant::now(),
+                    Code::UpdateFailed => {
+                        self.next_update = Instant::now();
+                        self.update_failed = None;
+                    }
                     Code::Offline => self.halt(),
                     _ if self.run.as_ref().is_some_and(|run| !run.listening) => self.halt(),
                     _ => {}
@@ -581,13 +729,23 @@ impl Keeper {
                     self.set(if allowed { Code::RegisterFailed } else { Code::NotAllowed }, detail(why));
                 }
             }
-            Ask::Line(generation, line) => self.line(generation, &line),
+            Ask::Line(generation, line, out) => self.line(generation, &line, out),
             Ask::Exited(generation) => self.exited(generation),
+            Ask::Sandbox(generation, status) => self.polled(generation, status),
         }
     }
 
-    fn line(&mut self, generation: u64, line: &str) {
+    fn line(&mut self, generation: u64, line: &str, out: bool) {
         let Some(run) = self.run.as_mut().filter(|run| run.generation == generation) else { return };
+        if run.engine == Engine::Launcher {
+            // The launcher's log, then its status, which is read when it ends.
+            if out && (run.json.is_some() || launcher::starts_status(line)) {
+                run.json.get_or_insert_with(Vec::new).push(line.to_owned());
+            } else {
+                self.write_log(line);
+            }
+            return;
+        }
         let mut became = None;
         let mut job = None;
         let mut version = None;
@@ -623,9 +781,6 @@ impl Keeper {
             workspace: run.workspace.clone(),
             backend: run.backend,
         });
-        // A container started with a token keeps it in its configuration:
-        // it is replaced at once by one without, which needs no token.
-        let replace = registered.is_some() && run.with_token && matches!(run.process, Process::Container(_));
         self.write_log(line);
         if let Some(registration) = registered {
             registration.save(&self.app);
@@ -635,22 +790,21 @@ impl Keeper {
         if let Some(code) = became {
             self.set(code, Extra::default());
         }
-        if replace {
-            self.halt();
-            self.not_before = Instant::now();
-        }
     }
 
     fn exited(&mut self, generation: u64) {
         if self.run.as_ref().is_none_or(|run| run.generation != generation) {
             return;
         }
+        if self.run.as_ref().is_some_and(|run| run.engine == Engine::Launcher) {
+            return self.launched(generation);
+        }
         let mut run = self.run.take().expect("checked above");
         let exit_code = match &mut run.process {
             Process::Child(child) => child.wait().ok().and_then(|status| status.code()),
-            Process::Container(_) => container::exit_code(),
+            Process::Sandbox(_) => None,
         };
-        self.stop(&mut run);
+        self.stop(&mut run, Down::Now);
         if run.forgotten || run.token_refused {
             // The registration is no more, or was never made: the next start asks for a token.
             self.forget();
@@ -666,20 +820,25 @@ impl Keeper {
         } else if !run.listening && Registration::load(&self.app).is_none() {
             self.set(Code::RegisterFailed, Extra { detail: run.error, ..Extra::default() });
         } else {
-            self.set(Code::Crashed, Extra { detail: run.error, exit_code, wait_seconds: Some(wait.as_secs()) });
+            self.set(Code::Crashed, Extra { detail: run.error, exit_code, wait_seconds: Some(wait.as_secs()), ..Extra::default() });
         }
     }
 
-    /// Stops a run's process, the way it was started.
-    fn stop(&self, run: &mut Run) {
+    /// Stops a run's process, the way it was started: the sandbox `how` says.
+    fn stop(&mut self, run: &mut Run, how: Down) {
         match (&mut run.process, run.engine) {
-            (Process::Container(logs), _) => container::stop(Some(logs)),
-            (Process::Child(child), Engine::Launcher) => {
-                launcher::down(&native::binary(&folder(&self.app)), &native_dir(&self.app, run.backend));
-                native::stop(child);
+            (Process::Sandbox(step), _) => {
+                // A launcher command still going is ended first, then the sandbox stopped.
+                if let Some((_, child)) = step.as_mut() {
+                    native::stop(child);
+                }
+                let binary = native::binary(&folder(&self.app));
+                if let Err(why) = launcher::down(&binary, &native_dir(&self.app, Backend::Sandboxed), how) {
+                    self.write_log(&format!("g1t: the sandbox didn't stop cleanly: {why}"));
+                }
+                self.app.state::<Shared>().now.lock().unwrap().sandbox = None;
             }
-            // The image's runner is always a container; a child here is only ever g1t-runner's.
-            (Process::Child(child), Engine::Sysbox) => native::stop(child),
+            (Process::Child(child), Engine::Launcher) => native::stop(child),
             (Process::Child(child), Engine::Native { docker }) => {
                 native::stop(child);
                 // A job's container outlives the runner killed under it: removed now, not at its next start.
@@ -693,9 +852,14 @@ impl Keeper {
 
     /// Stops whatever runs now.
     fn halt(&mut self) {
+        self.halt_as(Down::Now);
+    }
+
+    /// Stops whatever runs: the sandbox now, after its job, or for good.
+    fn halt_as(&mut self, how: Down) {
         self.generation += 1;
         if let Some(mut run) = self.run.take() {
-            self.stop(&mut run);
+            self.stop(&mut run, how);
         }
     }
 
@@ -713,27 +877,33 @@ impl Keeper {
         let Some(registration) = Registration::load(&app) else { return };
         let binary = native::binary(&folder(&app));
         match registration.backend {
-            Backend::Sandboxed if launcher::READY => {
-                launcher::down(&binary, &native_dir(&app, Backend::Sandboxed));
-                let _ = std::fs::remove_dir_all(native_dir(&app, Backend::Sandboxed));
-            }
+            // The sandbox keeps its registration for when it is chosen
+            // again (sandbox-registration.json says whose): it only stops,
+            // after its job.
             Backend::Sandboxed => {
-                if backend::docker_ready() {
-                    container::forget();
-                }
+                let _ = launcher::down(&binary, &native_dir(&app, Backend::Sandboxed), Down::Drain);
             }
             backend => native::forget(&binary, &native_dir(&app, backend)),
         }
         Registration::clear(&app);
     }
 
-    /// Whether what the runner keeps of a registration is still here.
-    fn kept(&self, engine: Engine, backend: Backend) -> bool {
-        match engine {
-            Engine::Sysbox => container::registered(),
-            Engine::Launcher => native_dir(&self.app, backend).exists(),
-            Engine::Native { .. } => native_dir(&self.app, backend).join("config.json").exists(),
+    /// Removes the sandbox and its registration: it was for another
+    /// workspace, or g1t no longer knows its runners.
+    fn forget_sandbox(&mut self) {
+        let binary = native::binary(&folder(&self.app));
+        if let Err(why) = launcher::down(&binary, &native_dir(&self.app, Backend::Sandboxed), Down::Delete) {
+            self.write_log(&format!("g1t: the sandbox couldn't be removed: {why}"));
         }
+        SandboxRegistration::clear(&self.app);
+        if Registration::load(&self.app).is_some_and(|r| r.backend == Backend::Sandboxed) {
+            Registration::clear(&self.app);
+        }
+    }
+
+    /// Whether what a native runner keeps of a registration is still here.
+    fn kept(&self, backend: Backend) -> bool {
+        native_dir(&self.app, backend).join("config.json").exists()
     }
 
     /// Asks the site for a registration token for `workspace`.
@@ -761,7 +931,7 @@ impl Keeper {
         if let Some(run) = &self.run {
             let moved = run.backend != settings.runner_backend || Some(&run.workspace) != workspace.as_ref();
             let back = run.offline_at.is_some_and(|at| at.elapsed() >= BACK_ONLINE);
-            let (busy, listening) = (run.busy, run.listening);
+            let (busy, listening, stepping) = (run.busy, run.listening, run.step().is_some());
             if back {
                 if let Some(run) = self.run.as_mut() {
                     run.offline_at = None;
@@ -769,12 +939,13 @@ impl Keeper {
                 self.set(Code::Idle, Extra::default());
             }
             // A change of backend or workspace waits for the job to end, as an update does.
-            if moved && !busy {
-                self.halt();
+            if moved && !busy && !stepping {
+                self.halt_as(Down::Drain);
                 self.not_before = Instant::now();
-            } else if !busy && listening && Instant::now() >= self.next_update {
+            } else if !busy && listening && !stepping && Instant::now() >= self.next_update {
                 self.update();
             }
+            self.poll();
             return;
         }
         if Instant::now() < self.not_before {
@@ -791,8 +962,6 @@ impl Keeper {
                 self.not_before = Instant::now() + LOOK_AGAIN;
                 let code = match missing {
                     Missing::Docker => Code::NoDocker,
-                    Missing::Sandbox => Code::NoSandbox,
-                    Missing::Sysbox => Code::NoSysbox,
                 };
                 self.set(code, Extra::default());
                 return;
@@ -808,9 +977,12 @@ impl Keeper {
             self.set(code, detail("Waiting for g1t to open."));
             return;
         };
+        if engine == Engine::Launcher {
+            return self.start_sandbox(workspace);
+        }
         let server = config::server(&app);
         let registration = Registration::load(&app);
-        let ours = registration.as_ref().is_some_and(|r| r.server == server.as_str() && r.workspace == workspace && r.backend == backend) && self.kept(engine, backend);
+        let ours = registration.as_ref().is_some_and(|r| r.server == server.as_str() && r.workspace == workspace && r.backend == backend) && self.kept(backend);
         let mut token = None;
         if !ours {
             if registration.is_some() {
@@ -822,75 +994,49 @@ impl Keeper {
                 _ => return self.want(&workspace),
             }
         }
-        // The setting names the workspace from now on, so browsing another one never moves the runner.
-        if config::settings(&app).runner_workspace.as_deref() != Some(workspace.as_str()) {
-            let mut settings = config::settings(&app);
-            settings.runner_workspace = Some(workspace.clone());
-            let _ = config::set_settings(&app, settings);
-        }
+        self.hold_workspace(&workspace);
         self.set(Code::Starting, Extra::default());
         let envs = environment(&server, backend, token.as_deref());
         let generation = self.generation + 1;
         self.generation = generation;
-        let started = match engine {
-            Engine::Sysbox => {
-                if !container::have_image() {
-                    self.set(Code::Updating, detail("Downloading the runner's image."));
-                    container::pull();
-                }
-                container::start(&envs).map(Process::Container)
-            }
-            Engine::Launcher | Engine::Native { .. } => self.ensure_binary(&server).and_then(|binary| {
-                let dir = native_dir(&app, backend);
-                let child = if engine == Engine::Launcher {
-                    let mut command = launcher::up(&binary, &dir);
-                    command.envs(envs.iter().map(|(name, value)| (*name, value.as_str())));
-                    command.spawn()
-                } else {
-                    native::spawn(&binary, &dir, &envs)
-                };
-                let child = child.map_err(|e| format!("g1t-runner could not start: {e}"))?;
-                let _ = std::fs::write(folder(&app).join("pid"), child.id().to_string());
-                Ok(Process::Child(child))
-            }),
-        };
+        let started = self.ensure_binary(&server).and_then(|binary| {
+            let child = native::spawn(&binary, &native_dir(&app, backend), &envs).map_err(|e| format!("g1t-runner could not start: {e}"))?;
+            let _ = std::fs::write(folder(&app).join("pid"), child.id().to_string());
+            Ok(child)
+        });
         match started {
-            Ok(mut process) => {
-                let child = match &mut process {
-                    Process::Child(child) | Process::Container(child) => child,
-                };
-                self.follow(generation, child);
-                self.run = Some(Run {
-                    generation,
-                    engine,
-                    backend,
-                    workspace,
-                    process,
-                    listening: false,
-                    busy: false,
-                    offline_at: None,
-                    with_token: token.is_some(),
-                    forgotten: false,
-                    token_refused: false,
-                    error: None,
-                });
+            Ok(mut child) => {
+                self.follow(generation, &mut child);
+                self.run = Some(Run::new(generation, engine, backend, workspace, Process::Child(child), token.is_some()));
                 self.set(Code::Starting, Extra::default());
             }
-            Err(why) => {
-                // The token is kept for the next try, while it lasts.
-                if let Some(given) = token {
-                    self.token = Some((workspace, given));
-                }
-                self.failures += 1;
-                self.not_before = Instant::now() + LOOK_AGAIN;
-                let offline = why.contains("error sending request") || why.contains("dns") || why.contains("connect");
-                self.write_log(&format!("g1t: the runner could not start: {why}"));
-                if offline {
-                    self.set(Code::Offline, Extra::default());
-                } else {
-                    self.set(Code::Crashed, Extra { detail: Some(why), wait_seconds: Some(LOOK_AGAIN.as_secs()), ..Extra::default() });
-                }
-            }
+            Err(why) => self.not_started(workspace, token, why),
+        }
+    }
+
+    /// The runner couldn't be started: the token is kept for the next try,
+    /// while it lasts, and it is tried again in a while.
+    fn not_started(&mut self, workspace: String, token: Option<String>, why: String) {
+        if let Some(given) = token {
+            self.token = Some((workspace, given));
+        }
+        self.failures += 1;
+        self.not_before = Instant::now() + LOOK_AGAIN;
+        let offline = why.contains("error sending request") || why.contains("dns") || why.contains("connect");
+        self.write_log(&format!("g1t: the runner could not start: {why}"));
+        if offline {
+            self.set(Code::Offline, Extra::default());
+        } else {
+            self.set(Code::Crashed, Extra { detail: Some(why), wait_seconds: Some(LOOK_AGAIN.as_secs()), ..Extra::default() });
+        }
+    }
+
+    /// The setting names the workspace from now on, so browsing another one never moves the runner.
+    fn hold_workspace(&self, workspace: &str) {
+        if config::settings(&self.app).runner_workspace.as_deref() != Some(workspace) {
+            let mut settings = config::settings(&self.app);
+            settings.runner_workspace = Some(workspace.to_owned());
+            let _ = config::set_settings(&self.app, settings);
         }
     }
 
@@ -899,7 +1045,7 @@ impl Keeper {
         fn pipe(tx: Sender<Ask>, generation: u64, from: impl Read + Send + 'static, last: bool) {
             std::thread::spawn(move || {
                 for line in BufReader::new(from).lines().map_while(Result::ok) {
-                    if tx.send(Ask::Line(generation, line)).is_err() {
+                    if tx.send(Ask::Line(generation, line, last)).is_err() {
                         return;
                     }
                 }
@@ -940,42 +1086,384 @@ impl Keeper {
             return;
         }
         let Some(engine) = self.run.as_ref().map(|run| run.engine) else { return };
-        match engine {
-            Engine::Sysbox => {
-                if container::pull() || container::outdated() {
-                    self.set(Code::Updating, detail("Starting the newest runner image."));
-                    self.halt();
-                    self.not_before = Instant::now();
-                }
+        let server = config::server(&self.app);
+        let folder = folder(&self.app);
+        let release = match self.newer_release(&server) {
+            Ok(release) => release,
+            Err(why) => {
+                let why = format!("g1t-runner couldn't be updated: {why}");
+                self.write_log(&format!("g1t: {why}"));
+                self.update_failed = Some(why.clone());
+                return self.set(Code::UpdateFailed, detail(why));
             }
-            Engine::Launcher | Engine::Native { .. } => {
-                let server = config::server(&self.app);
-                let folder = folder(&self.app);
-                let Ok(manifest) = native::latest(&server) else { return };
-                if !native::installed(&folder).is_none_or(|have| native::newer(&manifest.version, &have)) {
-                    return;
-                }
-                let bytes = match native::download(&server, &manifest) {
-                    Ok(bytes) => bytes,
-                    Err(why) => {
-                        let why = format!("g1t-runner {} couldn't be installed: {why}", manifest.version);
-                        self.write_log(&format!("g1t: {why}"));
-                        return self.set(Code::UpdateFailed, detail(why));
-                    }
-                };
-                self.set(Code::Updating, detail(format!("Updating g1t-runner to {}.", manifest.version)));
-                self.halt();
-                match native::put(&folder, &bytes, &manifest.version) {
-                    Ok(()) if engine == Engine::Launcher => {
-                        let backend = config::settings(&self.app).runner_backend;
-                        launcher::update(&native::binary(&folder), &native_dir(&self.app, backend));
-                    }
-                    Ok(()) => {}
-                    Err(why) => self.write_log(&format!("g1t: g1t-runner {} couldn't be put in place: {why}", manifest.version)),
-                }
+        };
+        let Some((version, bytes)) = release else {
+            // The program is the newest; the sandbox's image may not be
+            // (`update` does nothing when it is).
+            if engine == Engine::Launcher {
+                self.sandbox_step(Step::Update);
+            }
+            return;
+        };
+        self.set(Code::Updating, detail(format!("Updating g1t-runner to {version}.")));
+        // The sandbox's runner for Windows jobs is this program too: it
+        // stops, after its job, before the program is replaced.
+        self.halt_as(Down::Drain);
+        match native::put(&folder, &bytes, &version) {
+            Ok(()) => {
+                self.note(None, Some(version));
+                self.update_failed = None;
+                // The sandbox's image comes with each release.
+                self.image_pending = engine == Engine::Launcher;
+            }
+            Err(why) => self.write_log(&format!("g1t: g1t-runner {version} couldn't be put in place: {why}")),
+        }
+        self.not_before = Instant::now();
+    }
+
+    /// A release newer than the `g1t-runner` here, downloaded and checked
+    /// against its SHA-256: its version and program. None when this one is
+    /// the newest, or the releases can't be asked now.
+    fn newer_release(&self, server: &Url) -> Result<Option<(String, Vec<u8>)>, String> {
+        let Ok(manifest) = native::latest(server) else { return Ok(None) };
+        if !native::installed(&folder(&self.app)).is_none_or(|have| native::newer(&manifest.version, &have)) {
+            return Ok(None);
+        }
+        let bytes = native::download(server, &manifest).map_err(|why| format!("{} didn't download: {why}", manifest.version))?;
+        Ok(Some((manifest.version, bytes)))
+    }
+
+    // --- The sandbox (launcher.rs) ------------------------------------------------
+
+    /// Starts the sandbox for `workspace`: registered with it the first
+    /// time, with a token from the site; from its own registration after.
+    fn start_sandbox(&mut self, workspace: String) {
+        let app = self.app.clone();
+        let server = config::server(&app);
+        let binary = match self.ensure_binary(&server) {
+            Ok(binary) => binary,
+            Err(why) => return self.not_started(workspace, None, why),
+        };
+        let dir = native_dir(&app, Backend::Sandboxed);
+        let mut status = match launcher::status(&binary, &dir) {
+            Ok(status) => status,
+            Err(why) => return self.no_status(why),
+        };
+        self.seen(&status);
+        // Nothing here can be sandboxed: why, and how to fix it; looked at again in a while.
+        if !status.anything_available() {
+            self.not_before = Instant::now() + LOOK_AGAIN;
+            let (code, extra) = shown(&status);
+            return self.set(code, extra);
+        }
+        // Another backend's registration goes; the sandbox's own is kept for its workspace.
+        if Registration::load(&app).is_some_and(|r| r.backend != Backend::Sandboxed) {
+            self.set(Code::Starting, detail("Removing this computer's earlier registration."));
+            self.forget();
+        }
+        let kept = SandboxRegistration::load(&app);
+        let ours = kept.as_ref().is_some_and(|k| k.server == server.as_str() && k.workspace == workspace);
+        let made = status.capabilities.iter().any(|c| c.state != State::Absent) || status.state != State::Absent;
+        if !ours && made && kept.is_none() {
+            // Made by hand (`g1t-runner sandbox up`), and there is one per computer: it is the person's to remove.
+            self.not_before = Instant::now() + LOOK_AGAIN;
+            return self.set(Code::SandboxTaken, Extra::default());
+        }
+        if !ours && made {
+            // The app's sandbox, registered with another workspace or server.
+            self.set(Code::Starting, detail("Removing this computer's sandbox for another workspace."));
+            self.forget_sandbox();
+            status = match launcher::status(&binary, &dir) {
+                Ok(status) => status,
+                Err(why) => return self.no_status(why),
+            };
+        }
+        let mut token = None;
+        if !ours || !kept.as_ref().is_some_and(|k| k.registered) || status.unregistered() {
+            match self.token.take() {
+                Some((for_workspace, given)) if for_workspace == workspace => token = Some(given),
+                _ => return self.want(&workspace),
+            }
+            SandboxRegistration { server: server.to_string(), workspace: workspace.clone(), registered: false }.save(&app);
+        }
+        self.hold_workspace(&workspace);
+        let generation = self.generation + 1;
+        self.generation = generation;
+        self.run = Some(Run::new(generation, Engine::Launcher, Backend::Sandboxed, workspace.clone(), Process::Sandbox(None), token.is_some()));
+        // A new release's image first, then the sandbox starts again.
+        let step = if self.image_pending && status.linux().state != State::Absent { Step::Update } else { Step::Up };
+        self.image_pending = false;
+        let name = backend::machine_name();
+        let url = server.as_str().trim_end_matches('/').to_owned();
+        let up = launcher::Up { url: &url, name: &name, labels: "desktop", token: token.as_deref() };
+        let args = match step {
+            Step::Up => launcher::up_args(&dir, &up),
+            Step::Update => launcher::update_args(&dir),
+        };
+        if let Err(why) = self.spawn_step(step, args) {
+            self.run = None;
+            return self.not_started(workspace, token, why);
+        }
+        self.set(Code::Starting, detail(STARTING_SANDBOX));
+    }
+
+    /// `sandbox status` didn't answer: a `g1t-runner` from before its
+    /// launcher, which a newer release replaces, or one that failed.
+    fn no_status(&mut self, why: String) {
+        self.write_log(&format!("g1t: the sandbox's status: {why}"));
+        self.failures += 1;
+        if why.contains("older than its sandbox launcher") {
+            let server = config::server(&self.app);
+            if let Ok(Some((version, bytes))) = self.newer_release(&server)
+                && native::put(&folder(&self.app), &bytes, &version).is_ok()
+            {
+                self.note(None, Some(version));
                 self.not_before = Instant::now();
+                return;
+            }
+            self.not_before = Instant::now() + MOST_BACKOFF;
+            return self.set(Code::NoLauncher, detail(why));
+        }
+        self.not_before = Instant::now() + LOOK_AGAIN;
+        self.set(Code::SandboxFailed, Extra { detail: Some(why), wait_seconds: Some(LOOK_AGAIN.as_secs()), ..Extra::default() });
+    }
+
+    /// Runs a launcher command for the sandbox's run, reading its output.
+    fn spawn_step(&mut self, step: Step, args: Vec<std::ffi::OsString>) -> Result<(), String> {
+        let binary = native::binary(&folder(&self.app));
+        let mut child = launcher::command(&binary, args).spawn().map_err(|e| format!("g1t-runner sandbox {} could not start: {e}", step.name()))?;
+        let _ = std::fs::write(folder(&self.app).join("pid"), child.id().to_string());
+        let Some(generation) = self.run.as_ref().map(|run| run.generation) else {
+            native::stop(&mut child);
+            return Ok(());
+        };
+        self.follow(generation, &mut child);
+        let run = self.run.as_mut().expect("checked above");
+        run.json = None;
+        run.process = Process::Sandbox(Some((step, child)));
+        Ok(())
+    }
+
+    /// `update` on the running sandbox, while it has no job.
+    fn sandbox_step(&mut self, step: Step) {
+        if self.run.as_ref().is_none_or(|run| run.step().is_some()) {
+            return;
+        }
+        let dir = native_dir(&self.app, Backend::Sandboxed);
+        if let Err(why) = self.spawn_step(step, launcher::update_args(&dir)) {
+            self.write_log(&format!("g1t: {why}"));
+        }
+    }
+
+    /// Asks the sandbox how it is, every few seconds, on a thread of its own.
+    fn poll(&mut self) {
+        let Some(run) = self.run.as_mut().filter(|run| run.engine == Engine::Launcher) else { return };
+        if run.polling || run.polled_at.is_some_and(|at| at.elapsed() < launcher::STATUS_EVERY) {
+            return;
+        }
+        run.polling = true;
+        run.polled_at = Some(Instant::now());
+        let (tx, generation) = (self.tx.clone(), run.generation);
+        let binary = native::binary(&folder(&self.app));
+        let dir = native_dir(&self.app, Backend::Sandboxed);
+        let spawned = std::thread::Builder::new().name("g1t-sandbox-status".into()).spawn(move || {
+            let _ = tx.send(Ask::Sandbox(generation, launcher::status(&binary, &dir).map(Box::new)));
+        });
+        if spawned.is_err() {
+            run.polling = false;
+        }
+    }
+
+    /// What a poll said.
+    fn polled(&mut self, generation: u64, status: Result<Box<Status>, String>) {
+        let Some(run) = self.run.as_mut().filter(|run| run.generation == generation) else { return };
+        run.polling = false;
+        if std::mem::take(&mut run.stale) {
+            return;
+        }
+        match status {
+            Ok(status) => self.sandbox_now(*status),
+            // Once is nothing: the next poll asks again.
+            Err(why) => self.write_log(&format!("g1t: the sandbox's status: {why}")),
+        }
+    }
+
+    /// Keeps what a status says for the tray, settings and the site.
+    fn seen(&mut self, status: &Status) {
+        let shared = self.app.state::<Shared>();
+        let mut now = shared.now.lock().unwrap();
+        now.sandbox = Some(status.clone());
+        if let Some(version) = status.version() {
+            now.version = Some(version);
+        }
+        now.job = status.job().map(launcher::Job::said);
+    }
+
+    /// The sandbox as it is now, while it is the run.
+    fn sandbox_now(&mut self, status: Status) {
+        let had = self.app.state::<Shared>().now.lock().unwrap().job.clone();
+        let Some(run) = self.run.as_mut() else { return };
+        let step = run.step();
+        let job = status.job().map(launcher::Job::said);
+        let was = had.filter(|_| run.busy);
+        run.busy = job.is_some();
+        run.listening = status.running();
+        let update_failed = self.update_failed.clone();
+        if was != job {
+            if let Some(ended) = &was {
+                self.write_log(&format!("g1t: {ended} ended."));
+            }
+            if let Some(took) = &job {
+                self.write_log(&format!("g1t: Took {took}."));
             }
         }
+        self.seen(&status);
+        match step {
+            Some(Step::Up) => return self.set(Code::Starting, detail(STARTING_SANDBOX)),
+            Some(Step::Update) if status.state == State::Updating => return self.set(Code::Updating, detail("Updating the sandbox to the newest image.")),
+            _ => {}
+        }
+        let (code, extra) = shown(&status);
+        if step.is_none() && !status.running() && !matches!(status.state, State::Starting | State::Updating) {
+            return self.sandbox_stopped(&status, code, extra);
+        }
+        match (code, update_failed) {
+            (Code::Idle, Some(why)) => self.set(Code::UpdateFailed, detail(why)),
+            (code, _) => self.set(code, extra),
+        }
+    }
+
+    /// The sandbox stopped by itself, or never got going: started again,
+    /// waiting longer each time, or registered again when that is why.
+    fn sandbox_stopped(&mut self, status: &Status, code: Code, extra: Extra) {
+        let error = status.error.clone().or_else(|| extra.detail.clone()).unwrap_or_default();
+        if self.registration_trouble(&error) {
+            return;
+        }
+        self.run = None;
+        self.generation += 1;
+        self.failures += 1;
+        let wait = Duration::from_secs(15 * 2u64.pow(self.failures.min(6))).min(MOST_BACKOFF);
+        self.not_before = Instant::now() + wait;
+        let (code, extra) = match code {
+            Code::Idle | Code::Busy | Code::Starting | Code::Updating => (Code::SandboxFailed, Extra { detail: status.error.clone().or_else(|| some_text("The sandbox stopped by itself.")), ..Extra::default() }),
+            code => (code, extra),
+        };
+        self.set(code, Extra { wait_seconds: Some(wait.as_secs()), ..extra });
+    }
+
+    /// When the sandbox's trouble is its registration: true when the app
+    /// has seen to it, and the next start registers again.
+    fn registration_trouble(&mut self, error: &str) -> bool {
+        match launcher::why(error) {
+            launcher::Why::TokenRefused | launcher::Why::Unregistered => {
+                if let Some(mut kept) = SandboxRegistration::load(&self.app) {
+                    kept.registered = false;
+                    kept.save(&self.app);
+                }
+                self.halt();
+                self.not_before = Instant::now();
+                true
+            }
+            launcher::Why::Forgotten => {
+                self.halt();
+                self.forget_sandbox();
+                self.not_before = Instant::now();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// A launcher command ended: what it printed last is the sandbox's status.
+    fn launched(&mut self, generation: u64) {
+        let Some(run) = self.run.as_mut().filter(|run| run.generation == generation) else { return };
+        let Process::Sandbox(slot) = &mut run.process else { return };
+        let Some((step, mut child)) = slot.take() else { return };
+        let worked = child.wait().is_ok_and(|status| status.success());
+        let _ = std::fs::remove_file(folder(&self.app).join("pid"));
+        let printed = run.json.take().unwrap_or_default().join("\n");
+        run.stale = run.polling;
+        let with_token = run.with_token;
+        let status = launcher::parse(&printed);
+        let error = match (&status, worked) {
+            (Ok(status), true) => status.error.clone().filter(|_| !status.running()),
+            (Ok(status), false) => Some(status.error.clone().unwrap_or_else(|| format!("g1t-runner sandbox {} failed.", step.name()))),
+            (Err(why), _) => Some(why.clone()),
+        };
+        let status = status.ok();
+        let running = status.as_ref().is_some_and(Status::running);
+        if let Some(error) = &error {
+            self.write_log(&format!("g1t: sandbox {}: {error}", step.name()));
+        }
+        // Registered: from now on it starts with no token.
+        if step == Step::Up && with_token && (error.is_none() || running) {
+            let app = self.app.clone();
+            if let Some(run) = self.run.as_mut() {
+                run.with_token = false;
+                let registration = Registration { server: config::server(&app).to_string(), workspace: run.workspace.clone(), backend: Backend::Sandboxed };
+                SandboxRegistration { server: registration.server.clone(), workspace: registration.workspace.clone(), registered: true }.save(&app);
+                registration.save(&app);
+            }
+        }
+        if let Some(error) = error.clone() {
+            if self.registration_trouble(&error) {
+                return;
+            }
+            if step == Step::Update {
+                self.update_failed = Some(format!("The sandbox's image couldn't be updated: {error}"));
+            } else if !running {
+                // Nothing runs: tidied away, and tried again in a while.
+                self.halt();
+                self.failures += 1;
+                let wait = Duration::from_secs(15 * 2u64.pow(self.failures.min(6))).min(MOST_BACKOFF);
+                self.not_before = Instant::now() + wait;
+                let (code, cause, fix) = status
+                    .as_ref()
+                    .and_then(diagnosis::sandbox_trouble)
+                    .unwrap_or_else(|| (diagnosis::sandbox_code(launcher::why(&error)), error.clone(), None));
+                return self.set(code, Extra { detail: Some(cause), fix, wait_seconds: Some(wait.as_secs()), ..Extra::default() });
+            }
+        } else if step == Step::Up {
+            self.failures = 0;
+        } else {
+            self.update_failed = None;
+        }
+        if step == Step::Update && !running {
+            // Updated while stopped: it starts again with the new image.
+            self.run = None;
+            self.generation += 1;
+            self.not_before = Instant::now();
+            return;
+        }
+        if let Some(status) = status {
+            self.sandbox_now(status);
+        }
+    }
+}
+
+/// What the tray says while the sandbox starts.
+const STARTING_SANDBOX: &str = "Starting the sandbox. The first time, it downloads and checks the sandbox's image, which takes a few minutes.";
+
+fn some_text(text: &str) -> Option<String> {
+    Some(text.to_owned())
+}
+
+/// What the app shows for how the sandbox is, with no launcher command
+/// running: what is wrong with Linux jobs first, else what its runners do.
+fn shown(status: &Status) -> (Code, Extra) {
+    if let Some((code, cause, fix)) = diagnosis::sandbox_trouble(status) {
+        return (code, Extra { detail: Some(cause), fix, ..Extra::default() });
+    }
+    let linux = status.linux();
+    match (linux.state, status.job()) {
+        (_, Some(_)) => (Code::Busy, Extra::default()),
+        (State::Running, None) => (Code::Idle, Extra::default()),
+        (State::Starting, None) => (Code::Starting, detail(STARTING_SANDBOX)),
+        (State::Updating, None) => (Code::Updating, detail("Updating the sandbox to the newest image.")),
+        // Linux jobs aren't running, but Windows jobs are.
+        _ if status.running() => (Code::Idle, Extra::default()),
+        _ => (Code::SandboxFailed, detail("The sandbox isn't running.")),
     }
 }
 
@@ -1043,6 +1531,34 @@ mod tests {
         assert_eq!(get("G1T_RUNNER_TOKEN"), Some("g1trt_abc"));
         let again = environment(&server, Backend::Docker, None);
         assert!(!again.iter().any(|(name, _)| *name == "G1T_RUNNER_TOKEN" || *name == "G1T_RUNNER_NO_DOCKER"));
+    }
+
+    fn status(json: &str) -> Status {
+        launcher::parse(json).unwrap()
+    }
+
+    #[test]
+    fn the_sandbox_shows_what_its_runners_do_and_linux_trouble_first() {
+        let running = status(r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running"},{"id":"windows","available":false,"state":"absent","cause":"Windows Sandbox is not turned on, or this edition of Windows has none (Home does not)."}]}"#);
+        assert_eq!(shown(&running).0, Code::Idle);
+        let busy = status(r#"{"schema":1,"state":"running","job":{"kind":"workflow","id":"j","name":"build","repo":"acme/web"}}"#);
+        assert_eq!(shown(&busy).0, Code::Busy);
+        let starting = status(r#"{"schema":1,"state":"starting","capabilities":[{"id":"linux","available":true,"state":"starting"}]}"#);
+        assert_eq!(shown(&starting).0, Code::Starting);
+        let updating = status(r#"{"schema":1,"state":"updating","capabilities":[{"id":"linux","available":true,"state":"updating"}]}"#);
+        assert_eq!(shown(&updating).0, Code::Updating);
+        // Windows jobs run while WSL is missing: what is wrong with Linux jobs is what it says.
+        let no_wsl = status(r#"{"schema":1,"state":"error","error":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own.","capabilities":[
+            {"id":"linux","available":false,"state":"error","cause":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own.","fix":"Open a terminal as administrator and run `wsl --install --no-distribution`."},
+            {"id":"windows","available":true,"state":"running"}]}"#);
+        let (code, extra) = shown(&no_wsl);
+        assert_eq!(code, Code::NoWsl);
+        assert!(extra.detail.unwrap().starts_with("WSL is not installed"));
+        let failed = status(r#"{"schema":1,"state":"error","error":"the sandbox did not start within 180 seconds","capabilities":[{"id":"linux","available":true,"state":"error"}]}"#);
+        let (code, extra) = shown(&failed);
+        assert_eq!((code, extra.detail.as_deref()), (Code::SandboxFailed, Some("the sandbox did not start within 180 seconds")));
+        let stopped = status(r#"{"schema":1,"state":"stopped","capabilities":[{"id":"linux","available":true,"state":"stopped"},{"id":"windows","available":true,"state":"stopped"}]}"#);
+        assert_eq!(shown(&stopped).0, Code::SandboxFailed);
     }
 
     #[test]

@@ -391,7 +391,11 @@ computer with the workspace you choose, as you, through the site, and
 keeps the runner up to date. It runs jobs sandboxed by default
 (`nested-container`); running them in Docker (`container`) or directly
 on the computer (`host`) are settings you choose, and the app never falls
-back to them. Its runner has the label `desktop` besides the usual ones.
+back to them. Sandboxed, it is [the sandbox](#sandbox-on-your-computer),
+which the app sets up with `g1t-runner sandbox up` and shows with
+`sandbox status --json`: Linux jobs and, on Windows 11 Pro and up,
+Windows jobs, each a runner of its own. Its runners have the label
+`desktop` besides the usual ones.
 
 ## Add a runner
 

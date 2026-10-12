@@ -152,6 +152,20 @@ export type DesktopDiagnosis = {
   title: string;
   cause: string | null;
   fix: string | null;
+  /** A sandboxed desktop's kinds of job, each with how it is: Linux jobs can run while Windows jobs cannot. */
+  capabilities?: DesktopCapability[];
+};
+
+/** One kind of job a sandboxed desktop runs (`linux`, `windows`, `macos`), as its app says it. */
+export type DesktopCapability = {
+  id: string;
+  /** `Linux jobs`. */
+  label: string;
+  tone: DesktopDiagnosis["tone"];
+  /** `Waiting for jobs`, `Not available`. */
+  title: string;
+  cause: string | null;
+  fix: string | null;
 };
 
 /** How a desktop runs jobs. */

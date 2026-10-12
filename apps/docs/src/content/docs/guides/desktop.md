@@ -163,7 +163,10 @@ A job still runs only on a runner with every label it names. The app's
 runner has `self-hosted`, its OS and architecture (`linux` for a runner
 whose jobs run in containers, whatever the computer is), and `desktop`.
 It is named after your computer, and a new registration from the same
-computer takes the place of the old one.
+computer takes the place of the old one. Sandboxed, the computer has a
+runner for each kind of job it can run, named after it with `-linux` or
+`-windows`: `build-box-linux` has `linux`, and `build-box-windows` has
+`windows`, on a Windows computer with Windows Sandbox.
 
 ### How jobs run
 
@@ -173,26 +176,43 @@ start, it says why and runs nothing.
 
 | Choice | How | [Isolation](/guides/self-hosted-runners/#isolation) | What a job can reach |
 | --- | --- | --- | --- |
-| **Sandboxed** (the default) | The runner in a sandbox of its own, and each job in a container inside that. On Linux, the runner's image under [Sysbox](https://github.com/nestybox/sysbox), through your Docker, without its socket. On Windows and macOS, a small virtual machine the app makes, once that is released; until then it says *a sandbox isn't available on this computer yet*. | `nested-container` | Its own container. Not your computer. |
+| **Sandboxed** (the default) | [The sandbox](/guides/self-hosted-runners/#sandbox-on-your-computer), which the app sets up and starts itself. Linux jobs run in a small Linux VM of the runner's own, each in a container inside it: a WSL 2 distribution on Windows, a VM under Apple's Virtualization framework on macOS, and on Linux the runner's image under [Sysbox](https://github.com/nestybox/sysbox), or a VM under QEMU with KVM. On Windows 11 Pro, Enterprise and Education, Windows jobs run too, each in a Windows Sandbox of its own. | `nested-container`; `vm` for Windows jobs | Its own container, or its own Windows Sandbox. Not your computer. |
 | **In Docker** | `g1t-runner` on your computer, driving your Docker. Each job is a container of its own. | `container` | Its own container; but the runner controls your Docker, which can reach your files (Docker Desktop shares your home folder with its VM), so this is not a sandbox. |
 | **Directly on this computer** | `g1t-runner` on your computer, each job a process in a folder of its own. For jobs that need the system itself, such as building a Windows installer. | `host` | Everything your account can: your files, your keys, what an earlier job left. Not a sandbox. Never given a public repository's work. |
 
-On Linux, the sandboxed runner is this container, which the app starts,
-replaces and stops itself:
+What the sandbox needs on each computer:
 
-```sh
-docker run -d --name g1t-desktop-runner --runtime=sysbox-runc \
-  -v g1t-desktop-runner:/data \
-  -e G1T_RUNNER_URL -e G1T_RUNNER_NAME -e G1T_RUNNER_LABELS=desktop … \
-  g1t.sh/flagon-io/g1t-runner:latest register-and-run
-```
+| Computer | Linux jobs | Windows jobs |
+| --- | --- | --- |
+| Windows 11, any edition | WSL, installed once: `wsl --install --no-distribution` in an admin terminal, then a restart. The app's **Copy command** button copies it. | Windows Sandbox, on Pro, Enterprise and Education, version 24H2 or later, turned on in Windows features. Home has none, and Linux jobs still run. |
+| macOS 13 or later | [vfkit](https://github.com/crc-org/vfkit): `brew install vfkit` | Not released yet |
+| Linux | Sysbox 0.7 or later in Docker, or QEMU with KVM | None: Linux jobs are native |
 
-Its registration is kept on the `g1t-desktop-runner` volume. For the
-other two choices the app keeps `g1t-runner` in its data folder
+The sandbox also needs virtualization turned on in your computer's
+firmware (Intel VT-x or AMD-V), which most computers have on.
+
+For the sandbox, the app runs the same commands you would, with its own
+copy of `g1t-runner` and its state in the app's data folder
 (`%APPDATA%\sh.g1t.desktop\runner` on Windows,
 `~/Library/Application Support/sh.g1t.desktop/runner` on macOS,
-`~/.local/share/sh.g1t.desktop/runner` on Linux), with each choice's
-registration beside it.
+`~/.local/share/sh.g1t.desktop/runner` on Linux):
+
+| When | The app runs |
+| --- | --- |
+| A few seconds after g1t opens | `g1t-runner sandbox up --json --state-dir <data folder>/sandbox --url <server> --name <computer> --labels desktop`, with `--token` the first time only. The first `up` downloads and checks the sandbox's image and makes the VM, which takes a few minutes. |
+| Every few seconds while it runs | `g1t-runner sandbox status --json`, for the tray, the settings and the Runners page. |
+| When g1t quits, or you press **Stop** | `g1t-runner sandbox down`: a job that is running is cut short. |
+| When you choose another way of running jobs | `g1t-runner sandbox down --drain`, once the job that is running ends. The sandbox keeps its registration, so choosing Sandboxed again needs no new one. |
+| With a new release, while it has no job | `g1t-runner sandbox update`: the newest signed image, the same registration. |
+
+The other two choices run `g1t-runner` from the same data folder, with
+each one's registration beside it.
+
+On Windows the sandbox is the WSL distribution `g1t-sandbox`, of which a
+computer has one. If you made one yourself with `g1t-runner sandbox up`,
+the app leaves it alone and says *this computer has another sandbox*:
+remove it with `g1t-runner sandbox down --delete` for the app to make its
+own, or keep it and turn the app's runner off.
 
 ### Registering
 
@@ -207,25 +227,28 @@ from its registration, signed in or not.
 The workspace is the one you were in when it first registered; choose
 another under **Workspace** in the settings. Changing it, or how jobs
 run, waits for a job that is running to end, then removes the old
-registration and makes a new one.
+registration and makes a new one. The sandbox is registered with one
+workspace, so moving it to another removes it and makes it again, image
+and all; its old runners stay listed on g1t, offline, until you remove
+them there.
 
 ### Keeping it up to date
 
 The app keeps the runner up to date: soon after it starts and every six
 hours, while the runner has no job, it looks for a newer `g1t-runner` in
-`g1t.sh/downloads/runner/latest.json` (or a newer image, for the
-sandbox), downloads it, checks it against the release's SHA-256, and puts
-it in place. A job is never cut short for an update, and one that fails
-leaves the runner as it was. Turning off **Download updates by
-themselves** turns these off too.
+`g1t.sh/downloads/runner/latest.json`, downloads it, checks it against
+the release's SHA-256, and puts it in place; the sandbox then takes the
+release's image, whose signature and SHA-256 it checks itself. A job is
+never cut short for an update, and one that fails leaves the runner as it
+was. Turning off **Download updates by themselves** turns these off too.
 
 ### Seeing it
 
 | Where | What it shows |
 | --- | --- |
 | The tray | A row with what the runner is doing, *Runner: Waiting for jobs*, which opens the settings; **Stop running jobs** or **Start running jobs** under it. The icon's hover text says it too. |
-| The settings window | What it is doing; when it isn't running, why and how to fix it, with the fix's buttons; how jobs run; the workspace; your computer's name and the runner's version; **View on g1t**; and the runner's recent log, with **Open the whole log**. |
-| The workspace's [Runners page](/guides/self-hosted-runners/#the-runners-page) | **Desktops**: every computer with the app in the workspace, with what each is doing, or why it isn't running and the fix, in the same words. Inside the app, this computer comes first, live, with its buttons. A computer whose g1t is closed says *g1t is closed on* its name. |
+| The settings window | What it is doing; when it isn't running, why and how to fix it, with the fix's buttons; sandboxed, a line for each kind of job, *Linux jobs: Waiting for jobs*, *Windows jobs: Not available* and why; how jobs run; the workspace; your computer's name and the runner's version; **View on g1t**; and the runner's recent log, with **Open the whole log**. |
+| The workspace's [Runners page](/guides/self-hosted-runners/#the-runners-page) | **Desktops**: every computer with the app in the workspace, with what each is doing, or why it isn't running and the fix, in the same words, and each kind of job a sandboxed one runs. Inside the app, this computer comes first, live, with its buttons. A computer whose g1t is closed says *g1t is closed on* its name. |
 
 ### When it isn't running
 
@@ -243,9 +266,18 @@ the settings and the Runners page.
 | *Not running: no workspace to run jobs for* | You don't own a workspace, and only owners add runners. | Ask an owner, or **Create a workspace**. |
 | *Couldn't register with* a workspace: *only its owners can* | You aren't an owner of it. | Ask an owner to make you one, or **Choose workspace**. |
 | *Couldn't register with* a workspace, with g1t's reason | g1t refused the registration, such as for too many tokens in an hour. | **Retry**; it also tries again by itself. |
-| *Not running: Docker isn't running* | Running jobs in Docker, or the sandbox on Linux, needs Docker, and it isn't running or isn't installed. | **Open Docker** (Docker Desktop), or **Get Docker**. It starts by itself once Docker answers. |
-| *Not running: a sandbox isn't available on this computer yet* | The sandbox for Windows and macOS isn't released. | Wait for it, or **Choose how jobs run**: in Docker or directly on this computer, neither of which is a sandbox. |
-| *Not running: Sysbox isn't installed* | The sandbox on Linux needs Sysbox in your Docker. | **Install Sysbox**. |
+| *Not running: Docker isn't running* | Running jobs in Docker needs Docker, and it isn't running or isn't installed. | **Open Docker** (Docker Desktop), or **Get Docker**. It starts by itself once Docker answers. |
+| *Not running: WSL isn't installed* | Windows: Linux jobs run in a WSL distribution of the runner's own. | Run `wsl --install --no-distribution` in an admin terminal (**Copy command**), then restart Windows. Every edition of Windows 11 has it, Home included. |
+| *Not running: WSL uses mirrored networking* | `networkingMode=mirrored` in `%USERPROFILE%\.wslconfig` lets Linux reach your computer's own `localhost`. | Remove it, run `wsl --shutdown`, then **Retry**. |
+| *Not running: virtualization is off* | The sandbox is a small VM, and virtualization is off in your computer's firmware, or Virtual Machine Platform is off in Windows features. | Turn them on (**Open Windows features** on Windows), then restart. |
+| *Not running: vfkit isn't installed* | macOS: the sandbox's VM runs under vfkit. | Run `brew install vfkit` (**Copy command**). It starts by itself once vfkit is there. |
+| *Not running: no Sysbox or KVM* | Linux: the sandbox needs Sysbox in Docker, or QEMU with KVM. | **Install Sysbox**, or turn on virtualization and install QEMU. |
+| *Not running: the sandbox's image didn't download* | The image couldn't be fetched, or its signature or SHA-256 wasn't the release's, with the reason. | It tries again by itself; check the connection, or **Report** it. |
+| *Not running: the sandbox can't run here* | Something else the sandbox needs, in its own words. | What it says. |
+| *Not running: the sandbox failed* | The sandbox stopped, or didn't start, with its reason. | It starts again by itself, waiting longer each time. **Retry**, or **View log**. |
+| *Not running: this computer has another sandbox* | A sandbox you made with `g1t-runner sandbox up`; a computer has one. | Remove it with `g1t-runner sandbox down --delete`, then **Retry**; or keep it, and turn the app's runner off. |
+| *Not running: this g1t-runner has no sandbox* | The app's `g1t-runner` is from before the sandbox. | It downloads a newer one by itself; **Retry** looks now. |
+| *Windows jobs: Not available* | Windows Sandbox is off, this Windows is Home, or it is older than 24H2. Linux jobs still run. | On Pro, Enterprise or Education, turn on Windows Sandbox (**Open Windows features**) and restart, or update Windows. |
 | *Offline:* the server *unreachable* | Your computer can't reach g1t. | Check the connection; it carries on by itself. **Retry** tries now. |
 | *Update failed* | A new version couldn't be downloaded, or its SHA-256 wasn't the release's. | It keeps running the version it has. **Retry**, or **Report** it. |
 | *Runner stopped (exit code* N*)* | The runner ended by itself, with the reason from its log. | It starts again by itself, waiting longer each time. **Restart** now, or **View log**. |
@@ -307,14 +339,11 @@ talk to the app, whichever it is, and updates still come from g1t.sh.
 
 ## What's not there yet
 
-- **The sandbox, from the app, on Windows and macOS.** The sandbox itself
-  is built: `g1t-runner sandbox up` makes a computer a self-hosted runner
-  that nothing a job runs can get out of, with Linux jobs in a Linux VM of
-  the runner's own and, on Windows 11 Pro and up, Windows jobs each in a
-  Windows Sandbox ([the sandbox](/guides/self-hosted-runners/#sandbox-on-your-computer)).
-  The app does not start it for you yet, so until it does, its runner on
-  Windows and macOS runs jobs only if you choose Docker or this computer
-  itself; see [how jobs run](#how-jobs-run).
+- **Windows jobs on a Mac.** Sandboxed macOS jobs are designed, not
+  released, so a Mac's sandbox runs Linux jobs only.
+- **Choosing the sandbox's share of the computer.** It takes half the
+  CPUs (at most 8) and a quarter of the memory (2 to 8 GB); the app has no
+  setting for it yet.
 - **Agents on your desktop.** The runner takes workflow jobs, and agent
   work only if the workspace [sends it to its runners](/guides/self-hosted-runners/#agents-on-your-runners).
 - **Opening the conversation from a notification.** Clicking one brings
