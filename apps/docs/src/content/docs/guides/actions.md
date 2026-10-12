@@ -243,8 +243,10 @@ them from g1t rather than from GitHub:
    GitHub, a tag before a branch of the same name, and looks again at
    most every 5 minutes, so a tag that moves is followed within minutes.
 3. The first job to use an action at a commit has g1t fetch that commit's
-   archive from GitHub and keep it. Every later job, in any workspace,
-   downloads the same bytes from g1t.
+   archive from GitHub and keep it, which can take up to two minutes.
+   While it waits, **Set up job** says so every 5 seconds
+   (`Waiting for g1t to fetch 'actions/setup-node@v4' (10s)`). Every
+   later job, in any workspace, downloads the same bytes from g1t.
 
 While GitHub doesn't answer, a ref reads as the commit it last named, and
 the job says so in a warning; an action g1t keeps still downloads. An
