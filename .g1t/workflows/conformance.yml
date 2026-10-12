@@ -105,7 +105,6 @@ jobs:
           CHECK_EQUALITY: ${{ 1 == '1' }} ${{ 'A' == 'a' }} ${{ null == '' }}
           CHECK_FALSY_OR: ${{ '' || 'fallback' }}
           CHECK_HASH_FILES: ${{ hashFiles('conformance/report.mjs') }}
-          CHECK_SUCCESS: ${{ success() }}
           CHECK_MATRIX: ${{ matrix.n }}
           CHECK_JOB_TOTAL: ${{ strategy.job-total }}
           CHECK_EVENT_NAME: ${{ github.event_name }}

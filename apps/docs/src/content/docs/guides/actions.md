@@ -61,7 +61,7 @@ gives their values out, so they cannot be copied across.
 | `strategy.matrix` with `include` and `exclude`, `fail-fast`, `max-parallel`, a matrix from `fromJSON(needs.…)` | The same. |
 | `concurrency` with `cancel-in-progress`, for the workflow or for one job | The same: one run, or one job, of a group at a time. |
 | `permissions:` for the workflow or for one job, `read-all`, `write-all` | The same: they decide what [the job's token](#the-jobs-token) may do. |
-| `${{ }}` expressions: every operator, function and context | The same, including `hashFiles`, `success()`, `failure()`, `always()` and `cancelled()`. |
+| `${{ }}` expressions: every operator, function and context | The same, including `hashFiles`, and `success()`, `failure()`, `always()` and `cancelled()` in `if:` (anywhere else they are an error, as on GitHub). |
 | `run:` with `bash`, `sh`, `python`, `pwsh` or a custom shell | The same, with GitHub's file for each: `.sh` for `bash` and `sh`, `.py` for `python`, `.ps1` for PowerShell (stopping at the first error, and exiting with the last program's code), `.cmd` for `cmd`, and no extension for another program. `python` runs `python`, or `python3` on a machine without it. |
 | JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. An action that declares `node20` runs on Node 20 where the machine has one. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories) and [an action's pre and post](#an-actions-pre-and-post). |
 | Composite actions | The same. |

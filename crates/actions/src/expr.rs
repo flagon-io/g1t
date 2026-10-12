@@ -73,8 +73,9 @@ const NAMED_VALUES: &[&str] = &[
 ];
 
 /// Evaluates one expression (the text between `${{` and `}}`, or a bare `if:`).
+/// The status functions exist only in `if:`; anywhere else they are unrecognized, as on GitHub.
 pub fn evaluate(expression: &str, scope: &Scope) -> Result<Value, String> {
-    let ast = parse(expression, scope.contexts)?;
+    let ast = parse(expression, scope.contexts, false)?;
     Ok(eval(&ast, scope)?.into_value())
 }
 
@@ -87,7 +88,7 @@ pub fn condition(text: &str, scope: &Scope) -> Result<bool, String> {
         // Text around or between expressions makes the whole thing a string,
         // as on GitHub: it is true whenever it interpolates to anything.
         None if has_expression(trimmed) => {
-            let text = interpolate(trimmed, scope)?;
+            let text = interpolate_in(trimmed, scope, true)?;
             return Ok(success && !text.is_empty());
         }
         None => trimmed,
@@ -95,7 +96,7 @@ pub fn condition(text: &str, scope: &Scope) -> Result<bool, String> {
     if source.trim().is_empty() {
         return Ok(success);
     }
-    let ast = parse(source, scope.contexts)?;
+    let ast = parse(source, scope.contexts, true)?;
     if uses_status(&ast) {
         Ok(eval(&ast, scope)?.truthy())
     } else {
@@ -105,6 +106,11 @@ pub fn condition(text: &str, scope: &Scope) -> Result<bool, String> {
 
 /// Replaces each `${{ expr }}` in text with the value converted to a string. Text without `${{` is returned unchanged.
 pub fn interpolate(text: &str, scope: &Scope) -> Result<String, String> {
+    interpolate_in(text, scope, false)
+}
+
+/// `interpolate`, with the status functions allowed when `status` (inside an `if:`).
+fn interpolate_in(text: &str, scope: &Scope, status: bool) -> Result<String, String> {
     if !has_expression(text) {
         return Ok(text.to_string());
     }
@@ -119,7 +125,8 @@ pub fn interpolate(text: &str, scope: &Scope) -> Result<String, String> {
                 "The expression is not closed. An unescaped ${{{{ sequence was found, but the closing }}}} sequence was not found: {text}"
             )
         })?;
-        let value = evaluate(&text[body..close], scope)?;
+        let ast = parse(&text[body..close], scope.contexts, status)?;
+        let value = eval(&ast, scope)?.into_value();
         out.push_str(&to_text(&value));
         from = close + 2;
     }
@@ -525,7 +532,8 @@ enum Expr {
     Call(Func, Vec<Expr>),
 }
 
-fn parse(src: &str, contexts: &Map<String, Value>) -> Result<Expr, String> {
+/// `status`: whether success(), failure(), cancelled() and always() may be called.
+fn parse(src: &str, contexts: &Map<String, Value>, status: bool) -> Result<Expr, String> {
     let toks = lex(src)?;
     if toks.is_empty() {
         return Err(format!("An expression was expected: '{src}'"));
@@ -535,6 +543,7 @@ fn parse(src: &str, contexts: &Map<String, Value>) -> Result<Expr, String> {
         i: 0,
         src,
         contexts,
+        status,
     };
     let expr = parser.or()?;
     if parser.i < parser.toks.len() {
@@ -548,6 +557,7 @@ struct Parser<'s> {
     i: usize,
     src: &'s str,
     contexts: &'s Map<String, Value>,
+    status: bool,
 }
 
 impl Parser<'_> {
@@ -711,6 +721,7 @@ impl Parser<'_> {
         let Some(&(canonical, func, min, max)) = FUNCTIONS
             .iter()
             .find(|(n, ..)| n.eq_ignore_ascii_case(name))
+            .filter(|(_, func, ..)| self.status || !is_status(*func))
         else {
             return Err(located(
                 &format!("Unrecognized function: '{name}'"),
@@ -749,6 +760,13 @@ impl Parser<'_> {
     }
 }
 
+fn is_status(func: Func) -> bool {
+    matches!(
+        func,
+        Func::Success | Func::Failure | Func::Cancelled | Func::Always
+    )
+}
+
 /// Whether the expression calls success(), failure(), cancelled() or always().
 fn uses_status(expr: &Expr) -> bool {
     match expr {
@@ -757,12 +775,7 @@ fn uses_status(expr: &Expr) -> bool {
         Expr::Index(a, b) | Expr::Compare(_, a, b) | Expr::And(a, b) | Expr::Or(a, b) => {
             uses_status(a) || uses_status(b)
         }
-        Expr::Call(func, args) => {
-            matches!(
-                func,
-                Func::Success | Func::Failure | Func::Cancelled | Func::Always
-            ) || args.iter().any(uses_status)
-        }
+        Expr::Call(func, args) => is_status(*func) || args.iter().any(uses_status),
     }
 }
 
@@ -1520,7 +1533,29 @@ mod tests {
     fn function_errors() {
         assert!(err("nope(1)").starts_with("Unrecognized function: 'nope'"));
         assert!(err("contains('a')").starts_with("Too few parameters supplied: 'contains'"));
-        assert!(err("success(1)").starts_with("Too many parameters supplied: 'success'"));
+        assert!(cond(Status::Success, "success()"));
+        let extra = with(Status::Success, |s| condition("success(1)", s)).unwrap_err();
+        assert!(extra.starts_with("Too many parameters supplied: 'success'"));
+        assert!(err("toJSON()").starts_with("Too few parameters supplied: 'toJSON'"));
+    }
+
+    #[test]
+    fn status_functions_only_in_conditions() {
+        // GitHub: "Unrecognized function: 'success'" in env, with, run and the rest.
+        for f in [
+            "success()",
+            "failure()",
+            "cancelled()",
+            "always()",
+            "!SUCCESS()",
+        ] {
+            assert!(err(f).contains("Unrecognized function:"), "{f}");
+        }
+        let interpolated = with(Status::Success, |s| interpolate("x ${{ always() }}", s));
+        assert!(interpolated
+            .unwrap_err()
+            .starts_with("Unrecognized function: 'always'"));
+        assert!(cond(Status::Success, "${{ success() }} and text"));
         assert!(err("toJSON()").starts_with("Too few parameters supplied: 'toJSON'"));
     }
 
