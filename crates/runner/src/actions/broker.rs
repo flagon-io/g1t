@@ -1026,7 +1026,10 @@ mod tests {
         let answer = read_all(&mut tls);
         assert!(answer.starts_with("HTTP/1.1 201 Created\r\n"), "{answer}");
         assert!(answer.contains("x-from: upstream\r\n") && answer.contains("transfer-encoding: chunked"), "{answer}");
-        assert!(answer.contains("got hello"), "{answer}");
+        // The body may come in more than one chunk, so it is read as chunks.
+        let mut chunks = BufReader::new(answer.as_bytes());
+        let head = read_head(&mut chunks).unwrap().unwrap();
+        assert_eq!(read_body(&mut chunks, &head).unwrap(), b"got hello", "{answer}");
 
         let (headers, body) = heard.recv().unwrap();
         assert_eq!(body, b"hello");
