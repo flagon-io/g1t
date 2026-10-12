@@ -369,7 +369,7 @@ impl Scope {
     pub fn describe(self) -> &'static str {
         match self {
             Scope::RepoRead => "See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search",
-            Scope::RepoWrite => "Create repositories, rename branches, change how pull requests merge and publish releases",
+            Scope::RepoWrite => "Create repositories, create, rename and delete branches, change how pull requests merge and publish releases",
             Scope::RepoAdmin => "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts",
             Scope::CodeRead => "Clone and fetch private repositories with git",
             Scope::CodeWrite => "Push commits with git",
@@ -1040,6 +1040,8 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("update_repo_ruleset", Scope::RepoAdmin),
     ("delete_repo_ruleset", Scope::RepoAdmin),
     ("rename_branch", Scope::RepoWrite),
+    ("create_branch", Scope::RepoWrite),
+    ("delete_branch", Scope::RepoWrite),
     ("rename_repo", Scope::RepoAdmin),
     ("transfer_repo", Scope::RepoAdmin),
     ("archive_repo", Scope::RepoAdmin),

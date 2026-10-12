@@ -348,6 +348,7 @@ pub const NEVER: &[&str] = &[
     "unarchive_repo",
     "set_repo_visibility",
     "rename_branch",
+    "delete_branch",
     "update_repo_settings",
     "merge_pull_request",
     "assign_issue",

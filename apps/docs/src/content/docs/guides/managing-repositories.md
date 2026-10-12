@@ -78,8 +78,12 @@ The newest 3,000 commits are counted.
 ### Activity
 
 **Insights → Activity** lists, newest first, who pushed to which branch,
-created a branch or tag, merged a pull request, renamed a branch or changed
-the default branch, person or agent.
+created a branch or tag, deleted a branch (with the commit it pointed to),
+merged a pull request, renamed a branch or changed the default branch,
+person or agent. A branch's **Activity**, from its **⋯** menu on the
+[Branches page](/guides/git/#the-branches-page), keeps only what happened to
+that branch (`?branch=<name>`); each page of the repository's activity is
+read and filtered, so **Older** may be needed to reach earlier changes.
 
 ### Stars
 
@@ -111,6 +115,7 @@ Owners of its workspace have Admin on it.
 | Description, website, topics | Maintain |
 | How long artifacts are kept | Maintain |
 | Default branch | Admin |
+| Create, delete or restore a branch | Write; the default branch is never deleted. See [branches](/guides/git/#the-branches-page) |
 | Rename a branch | Write; Admin for the default branch |
 | Rename the repository | Admin |
 | Make it public or private | Admin, and the [member privileges](/guides/workspaces/#member-privileges) to allow it, or an owner |
@@ -189,6 +194,9 @@ same call changes other fields, they are changed first.
 2. Under **Branches → Rename a branch**, pick the **Branch** and type its
    **New name**.
 3. Choose **Rename branch**.
+
+Or, on the repository's [Branches page](/guides/git/#the-branches-page),
+open the branch's **⋯** menu and choose **Rename branch**.
 
 Renaming the default branch needs Admin. It stays the default under its
 new name. When a branch is renamed:
@@ -491,6 +499,7 @@ in the [audit log](/guides/audit-log/):
 | Rename | `repo.renamed` |
 | Default branch | `repo.default_branch_changed` |
 | Branch rename | `branch.renamed` |
+| Branch made or deleted | `git.push`, `git.deleted`; in the audit log, `branch.created`, `branch.deleted` |
 | Archive, unarchive | `repo.archived`, `repo.unarchived` |
 | Transfer | `repo.transferred` |
 | Delete, restore, purge | `repo.deleted`, `repo.restored`, `repo.purged` |

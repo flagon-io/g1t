@@ -132,71 +132,77 @@ export function ElsewhereHead({
   deployment,
   commit,
   checks,
+  shot,
 }: Head & {
   deployment?: ExternalDeployment | null;
   commit: { hash: string; authoredAt: string } | null;
   /** The commit's checks, as a badge; left out until there is one to show. */
   checks?: ReactNode;
+  /** Production's picture, beside the rest, as an app on g1t has (components/production-shot.tsx). */
+  shot?: ReactNode;
 }) {
   const url = deployment?.url ?? project.productionUrl;
   return (
-    <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
-      <div className="min-w-0">
-        <HeadLabel icon={<Rocket />}>Production</HeadLabel>
-        {url ? (
-          <>
-            <BigLink url={url} />
-            <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-              {deployment ? (
-                <>
-                  <StatusDot status={deploymentStatus(deployment.state)} />
-                  <span className="inline-flex items-center gap-1 font-mono">
-                    <GitCommitHorizontal size={13} className="text-faint" />
-                    {deployment.sha.slice(0, 7)}
-                  </span>
-                  <span>
-                    deployed <TimeAgo at={deployment.created_at} />
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span>Deployed by its own pipeline</span>
-                  {commit && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="text-faint">·</span>
-                      <Link to={`${base}/commit/${commit.hash}`} className="inline-flex items-center gap-1 font-mono hover:text-fg">
-                        <GitCommitHorizontal size={13} className="text-faint" />
-                        {commit.hash.slice(0, 7)}
-                      </Link>
-                      {checks}
-                      <TimeAgo at={commit.authoredAt} />
+    <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:p-6">
+      {shot}
+      <div className="flex min-w-0 grow flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <HeadLabel icon={<Rocket />}>Production</HeadLabel>
+          {url ? (
+            <>
+              <BigLink url={url} />
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                {deployment ? (
+                  <>
+                    <StatusDot status={deploymentStatus(deployment.state)} />
+                    <span className="inline-flex items-center gap-1 font-mono">
+                      <GitCommitHorizontal size={13} className="text-faint" />
+                      {deployment.sha.slice(0, 7)}
                     </span>
-                  )}
-                </>
-              )}
-            </p>
-          </>
-        ) : canChange ? (
-          <>
-            <p className="mt-2 text-lg font-medium">Where is production?</p>
-            <p className="mt-1 max-w-lg text-sm text-muted">
-              {project.name} is deployed by its own pipeline. Give production's address, and this card links to it.
-            </p>
-            <AddressForm field="productionUrl" placeholder="https://example.com" label="Production's address" extra={{ intent: "kind", choice: "elsewhere" }} />
-          </>
-        ) : (
-          <p className="mt-2 text-sm text-muted">Deployed by its own pipeline.</p>
-        )}
-        <DeployQuietly base={base} canDeploy={canDeploy} what="it" />
-      </div>
-      {url && (
-        <div className="flex shrink-0 items-center gap-2">
-          <ButtonLink to={url} variant="accent" reloadDocument target="_blank" rel="noopener noreferrer">
-            Visit
-            <ArrowUpRight size={14} />
-          </ButtonLink>
+                    <span>
+                      deployed <TimeAgo at={deployment.created_at} />
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span>Deployed by its own pipeline</span>
+                    {commit && (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="text-faint">·</span>
+                        <Link to={`${base}/commit/${commit.hash}`} className="inline-flex items-center gap-1 font-mono hover:text-fg">
+                          <GitCommitHorizontal size={13} className="text-faint" />
+                          {commit.hash.slice(0, 7)}
+                        </Link>
+                        {checks}
+                        <TimeAgo at={commit.authoredAt} />
+                      </span>
+                    )}
+                  </>
+                )}
+              </p>
+            </>
+          ) : canChange ? (
+            <>
+              <p className="mt-2 text-lg font-medium">Where is production?</p>
+              <p className="mt-1 max-w-lg text-sm text-muted">
+                {project.name} is deployed by its own pipeline. Give production's address, and this card links to it.
+              </p>
+              <AddressForm field="productionUrl" placeholder="https://example.com" label="Production's address" extra={{ intent: "kind", choice: "elsewhere" }} />
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-muted">Deployed by its own pipeline.</p>
+          )}
+          <DeployQuietly base={base} canDeploy={canDeploy} what="it" />
         </div>
-      )}
+        {url && (
+          <div className="flex shrink-0 items-center gap-2">
+            <ButtonLink to={url} variant="accent" reloadDocument target="_blank" rel="noopener noreferrer">
+              Visit
+              <ArrowUpRight size={14} />
+            </ButtonLink>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

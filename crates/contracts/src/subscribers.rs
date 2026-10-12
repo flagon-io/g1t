@@ -107,7 +107,8 @@ pub const ROUTES: &[(&str, &[&str])] = &[
         ],
     ),
     // Projects follow their repositories, and wake on activity
-    // (projects/src/index.ts, activity.ts).
+    // (projects/src/index.ts, activity.ts). A production deployment
+    // reported from elsewhere asks for its screenshot.
     (
         "SUBSCRIBER_PROJECTS",
         &[
@@ -124,6 +125,7 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "comment.created",
             "deployment.succeeded",
             "deployment.failed",
+            "deployment_status.created",
             "package.published",
             "package.deleted",
             "package.version_deleted",
@@ -330,6 +332,8 @@ mod tests {
         assert!(routed("SUBSCRIBER_AGENTS", "workspace.member_joined"));
         assert!(!routed("SUBSCRIBER_AGENTS", "comment.created"));
         assert!(!routed("SUBSCRIBER_AGENTS", "workspace.updated"));
+        assert!(routed("SUBSCRIBER_PROJECTS", "deployment_status.created"));
+        assert!(!routed("SUBSCRIBER_PROJECTS", "deployment.created"));
         // Every subscriber follows what moves or removes a repository.
         for (binding, _) in ROUTES {
             for kind in LIFECYCLE {

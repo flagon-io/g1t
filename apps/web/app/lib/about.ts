@@ -58,13 +58,14 @@ export function alignWeeks(all: WeekCommits[], own: WeekCommits[]): number[] {
 /** An Activity line: what happened, and the branch, tag or pull request it was to. */
 export type ActivityLine =
   | { kind: "push"; branch: string; commit: string; before: string | null; created: boolean; defaultBranch: boolean }
+  | { kind: "deleted"; branch: string; commit: string }
   | { kind: "tag"; tag: string; commit: string }
   | { kind: "merge"; number: number; commit: string }
   | { kind: "renamed"; from: string; to: string }
   | { kind: "default"; from: string; to: string };
 
 /** The events the Activity page lists. */
-export const ACTIVITY_TYPES = ["git.push", "pull.merged", "branch.renamed", "repo.default_branch_changed"] as const;
+export const ACTIVITY_TYPES = ["git.push", "git.deleted", "pull.merged", "branch.renamed", "repo.default_branch_changed"] as const;
 
 /** One event as an Activity line, or null for one it does not list. */
 export function activityLine(event: G1tEvent): ActivityLine | null {
@@ -82,6 +83,13 @@ export function activityLine(event: G1tEvent): ActivityLine | null {
         defaultBranch: data.defaultBranch,
       };
     }
+    case "git.deleted": {
+      // A deleted tag is not listed; a deleted branch is, with the commit
+      // it pointed to, which restores it.
+      const data = event.data as { ref: string; before: string };
+      if (!data.ref.startsWith("refs/heads/")) return null;
+      return { kind: "deleted", branch: data.ref.slice("refs/heads/".length), commit: data.before };
+    }
     case "pull.merged": {
       const data = event.data as { number: number; commit: string };
       return { kind: "merge", number: data.number, commit: data.commit };
@@ -97,5 +105,25 @@ export function activityLine(event: G1tEvent): ActivityLine | null {
     }
     default:
       return null;
+  }
+}
+
+/**
+ * Whether an Activity line is about `branch`: pushed to, made, deleted or
+ * renamed, or made or replaced as the default. Merges land on the default
+ * branch (`defaultBranch`).
+ */
+export function aboutBranch(line: ActivityLine, branch: string, defaultBranch: string): boolean {
+  switch (line.kind) {
+    case "push":
+    case "deleted":
+      return line.branch === branch;
+    case "tag":
+      return false;
+    case "merge":
+      return branch === defaultBranch;
+    case "renamed":
+    case "default":
+      return line.from === branch || line.to === branch;
   }
 }

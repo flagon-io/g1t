@@ -200,6 +200,8 @@ test("repository files on the usercontent origin count per address; avatars do n
   assert.equal(await usercontentLimited(env, request(raw), raw), null);
   assert.equal((await usercontentLimited(env, request(raw), raw))?.status, 429);
   assert.equal(await usercontentLimited(env, request("/avatars/" + "a".repeat(64)), "/avatars/" + "a".repeat(64)), null);
+  const image = "/production-images/" + "b".repeat(64);
+  assert.equal(await usercontentLimited(env, request(image), image), null);
   assert.deepEqual(env.WEB_ANONYMOUS_LIMIT.keys, ["ip:203.0.113.9", "ip:203.0.113.9"]);
 });
 

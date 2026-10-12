@@ -771,6 +771,29 @@
     },
     "notes": "The repository after the rename; renaming the default branch changes `default_branch`. Send a branch name with slashes URL-encoded, as one path segment. Refused with `404` when there is no such branch, `409` when a branch named `new_name` exists, `422` when `new_name` is not a valid branch name, and `403` without the Write role, or without the Admin role for the default branch. See [Rename a branch](/guides/managing-repositories/#rename-a-branch)."
   },
+  "create_branch": {
+    "request": {
+      "name": "feature/login",
+      "from": "main"
+    },
+    "response": {
+      "name": "feature/login",
+      "hash": "9f2c4e1b7a3d5c6e8f0a1b2c3d4e5f6a7b8c9d0e"
+    },
+    "notes": "The new branch and the commit it points to. `from` is a branch, a tag or a commit, the default branch when left out; to restore a deleted branch, send the `hash` that deleting it answered with. Refused with `404` when `from` names nothing, `409` when the name is taken or is a folder of another branch's name (or holds one), `422` when it is not a valid branch name, and `403` without the Write role or when the repository's rules refuse it. See [Branches](/guides/git/#branches)."
+  },
+  "delete_branch": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "branch": "feature/login"
+    },
+    "response": {
+      "name": "feature/login",
+      "hash": "9f2c4e1b7a3d5c6e8f0a1b2c3d4e5f6a7b8c9d0e"
+    },
+    "notes": "The branch as it was. Its commits stay in the repository: `POST /repos/{owner}/{name}/branches` with this `hash` as `from` restores it. Add `?head=<sha>` to leave it alone (`409`) if it has moved from the commit you saw. Refused with `403` for the default branch, without the Write role, or when the repository's rules refuse it, and `404` when there is no such branch. Send a branch name with slashes URL-encoded, as one path segment. See [Branches](/guides/git/#branches)."
+  },
   "set_repo_visibility": {
     "request": {
       "private": true,

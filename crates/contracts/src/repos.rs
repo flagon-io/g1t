@@ -1506,6 +1506,42 @@ pub struct RenameBranchArgs {
     pub surface: Option<crate::audit::Surface>,
 }
 
+/// `create_branch`: makes a branch named `name` at `from`: another
+/// branch, a tag or a commit (the default branch's head when empty). The
+/// actor needs to be able to push, and the rules for creating the branch
+/// hold. Restoring a deleted branch is making it again at the commit
+/// `remove_branch` answered with. Publishes `git.push`. Returns
+/// `Outcome<Branch>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateBranchArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    pub name: String,
+    #[serde(default)]
+    pub from: String,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `remove_branch`: deletes a branch for someone who can push, never the
+/// default branch; the rules for deleting it hold. `head`, when given, is
+/// the commit it must still point to: a branch that moved since is left
+/// alone. Publishes `git.deleted`. Returns `Outcome<Branch>`: the branch
+/// as it was, so it can be made again at the same commit with
+/// `create_branch`. (`delete_branch` is the services' own, with no actor.)
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveBranchArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    pub branch: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head: Option<String>,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
 /// `resolve_branch`: what a branch renamed away from `branch` is called
 /// now, for web addresses that name the old one; null when `branch` was
 /// never renamed or exists again. Returns `Option<String>`.

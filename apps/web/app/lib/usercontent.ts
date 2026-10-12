@@ -7,6 +7,7 @@
  *   <usercontent>/<owner>/<repo>/raw/<ref>/<path>   a file at a branch, tag or commit
  *   <usercontent>/avatars/<sha256>                   an uploaded avatar
  *   <usercontent>/emoji/<sha256>                     a workspace's custom emoji
+ *   <usercontent>/production-images/<sha256>         a project's uploaded production image
  *
  * A public repository's files are there for anyone. A private one's carry
  * `?token=`, a signature the site makes for someone who can read the

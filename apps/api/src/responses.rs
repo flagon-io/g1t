@@ -161,6 +161,7 @@ fn sample(op: Op, example: &Value) -> Value {
         | Op::UnarchiveRepo
         | Op::SetRepoVisibility
         | Op::RestoreRepo => through::<repos::Repo>(op, sent),
+        Op::CreateBranch | Op::DeleteBranch => through::<repos::Branch>(op, sent),
         Op::DeleteRepo => through::<repos::DeletedRepo>(op, sent),
         Op::ListDeletedRepos => through::<Vec<repos::DeletedRepo>>(op, sent),
         Op::GetRepoSettings | Op::UpdateRepoSettings => through::<work::RepoSettings>(op, sent),

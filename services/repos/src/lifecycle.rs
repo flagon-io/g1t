@@ -28,8 +28,9 @@ use g1t_contracts::events::{
 };
 use g1t_contracts::identity::TransferRepoScopesArgs;
 use g1t_contracts::repos::{
-    ArchiveArgs, DeleteArgs, DeletedArgs, DeletedRepo, DeletedRepoArgs, PurgeDueArgs,
-    RESTORE_DAYS, RenameArgs, RenameBranchArgs, Repo, RepoPath, RepoStatus, ResolveBranchArgs,
+    ArchiveArgs, Branch, CreateBranchArgs, DeleteArgs, DeletedArgs, DeletedRepo, DeletedRepoArgs,
+    PurgeDueArgs, RESTORE_DAYS, RemoveBranchArgs, RenameArgs, RenameBranchArgs, Repo, RepoPath,
+    RepoStatus, ResolveBranchArgs,
     SetDefaultBranchArgs, SetVisibilityArgs, StatusByIdArgs, archived_message,
     is_valid_branch_name,
 };
@@ -333,6 +334,61 @@ pub fn branch_rename(from: &str, to: &str, branches: &[String]) -> std::result::
         return Err((FailureCode::Conflict, format!("There is already a branch named {to}.")));
     }
     Ok(to)
+}
+
+/// Whether a branch named `name` can be made in a repository whose
+/// branches are `branches`: a valid name, free, and neither inside nor
+/// holding another branch's name as a folder (git keeps `feature` and
+/// `feature/login` apart only as a file and a directory, which cannot
+/// both be). `name` is tidied of surrounding space.
+pub fn branch_creation(name: &str, branches: &[Branch]) -> std::result::Result<String, Refusal> {
+    let name = name.trim().to_owned();
+    if !is_valid_branch_name(&name) {
+        return Err((
+            FailureCode::Invalid,
+            format!("{name:?} cannot be a branch name. Use letters, digits, '/', '-', '_' and '.', and no spaces."),
+        ));
+    }
+    if branches.iter().any(|branch| branch.name == name) {
+        return Err((FailureCode::Conflict, format!("There is already a branch named {name}.")));
+    }
+    if let Some(clash) = branches.iter().find(|branch| {
+        name.starts_with(&format!("{}/", branch.name)) || branch.name.starts_with(&format!("{name}/"))
+    }) {
+        return Err((
+            FailureCode::Conflict,
+            format!("{name} cannot sit beside {}: one name would be a folder of the other.", clash.name),
+        ));
+    }
+    Ok(name)
+}
+
+/// The commit `branch` points to, when it may be deleted from a repository
+/// whose default branch is `default_branch` and whose branches are
+/// `branches`: never the default, and, when the caller says which commit
+/// it saw (`head`), only while it still points there.
+pub fn branch_removal(
+    branch: &str,
+    default_branch: &str,
+    head: Option<&str>,
+    branches: &[Branch],
+) -> std::result::Result<String, Refusal> {
+    if branch == default_branch {
+        return Err((
+            FailureCode::Forbidden,
+            format!("{branch} is the default branch, which is never deleted. Make another branch the default first."),
+        ));
+    }
+    let Some(found) = branches.iter().find(|found| found.name == branch) else {
+        return Err((FailureCode::NotFound, format!("There is no branch named {branch}.")));
+    };
+    if head.is_some_and(|head| !head.is_empty() && head != found.hash) {
+        return Err((
+            FailureCode::Conflict,
+            format!("{branch} has new commits since you looked, so it was left alone. Reload to see them."),
+        ));
+    }
+    Ok(found.hash.clone())
 }
 
 /// The row of a deleted repository.
@@ -1496,6 +1552,104 @@ impl<S: GitStore> Repos<S> {
         Ok(Outcome::Ok(changed))
     }
 
+    /// `create_branch`: see `g1t_contracts::repos::CreateBranchArgs`.
+    pub(crate) async fn create_branch(&self, a: CreateBranchArgs) -> Result<Outcome<Branch>> {
+        let repo = match self.writable_by(&a.actor, &a.path, Capability::Push).await? {
+            Ok(repo) => repo,
+            Err(refusal) => return Ok(fail(refusal)),
+        };
+        let git = self.store.open(&store_key(&repo)).await?;
+        let branches = git.branches().await?;
+        let name = match branch_creation(&a.name, &branches) {
+            Ok(name) => name,
+            Err(refusal) => return Ok(fail(refusal)),
+        };
+        let from = a.from.trim();
+        let from = if from.is_empty() { repo.default_branch.as_str() } else { from };
+        // A branch by its name, else whatever git makes of it: a tag or a commit.
+        let head = match branches.iter().find(|branch| branch.name == from) {
+            Some(branch) => Some(branch.hash.clone()),
+            None => git.log(from, 1).await?.into_iter().next().map(|commit| commit.hash),
+        };
+        let Some(head) = head else {
+            return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no branch, tag or commit {from}.")));
+        };
+        let made = vec![g1t_rules::push::RefChange {
+            git_ref: format!("refs/heads/{name}"),
+            old: None,
+            new: Some(head.clone()),
+            complete: true,
+            ..Default::default()
+        }];
+        if let crate::rules::Ruled::Refused { message, .. } =
+            self.check_changes(&repo, &a.actor, g1t_contracts::rules::Action::CreateRef, made).await?
+        {
+            return Ok(Outcome::fail(FailureCode::Forbidden, message));
+        }
+        let access = git.access(Scope::Write).await?;
+        let pushed = land::push_pack(&access, &name, None, &head, EMPTY_PACK.to_vec()).await?;
+        self.refs_moved(&repo.id).await;
+        if let Err(reason) = pushed {
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{name} could not be made: {reason}")));
+        }
+        self.publish_push(&repo, &format!("refs/heads/{name}"), None, &head, Some(&a.actor), Some(0)).await?;
+        self.record(vec![entry(
+            AuditActor::of(&a.actor),
+            "branch.created",
+            a.surface,
+            &path_of(&repo),
+            "member",
+            format!("Branch {name} created at {}", &head[..head.len().min(7)]),
+        )])
+        .await;
+        Ok(Outcome::Ok(Branch { name, hash: head }))
+    }
+
+    /// `remove_branch`: see `g1t_contracts::repos::RemoveBranchArgs`.
+    pub(crate) async fn remove_branch(&self, a: RemoveBranchArgs) -> Result<Outcome<Branch>> {
+        let repo = match self.writable_by(&a.actor, &a.path, Capability::Push).await? {
+            Ok(repo) => repo,
+            Err(refusal) => return Ok(fail(refusal)),
+        };
+        let branch = a.branch.trim().to_owned();
+        let git = self.store.open(&store_key(&repo)).await?;
+        let branches = git.branches().await?;
+        let head = match branch_removal(&branch, &repo.default_branch, a.head.as_deref(), &branches) {
+            Ok(head) => head,
+            Err(refusal) => return Ok(fail(refusal)),
+        };
+        let removed = vec![g1t_rules::push::RefChange {
+            git_ref: format!("refs/heads/{branch}"),
+            old: Some(head.clone()),
+            new: None,
+            complete: true,
+            ..Default::default()
+        }];
+        if let crate::rules::Ruled::Refused { message, .. } =
+            self.check_changes(&repo, &a.actor, g1t_contracts::rules::Action::DeleteRef, removed).await?
+        {
+            return Ok(Outcome::fail(FailureCode::Forbidden, message));
+        }
+        let access = git.access(Scope::Write).await?;
+        let deleted = land::delete_ref(&access, &branch, &head).await?;
+        self.refs_moved(&repo.id).await;
+        if let Err(reason) = deleted {
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{branch} could not be deleted: {reason}")));
+        }
+        let git_ref = format!("refs/heads/{branch}");
+        self.publish_deleted(&repo, &[(git_ref, head.clone())], Some(&a.actor.id), None).await?;
+        self.record(vec![entry(
+            AuditActor::of(&a.actor),
+            "branch.deleted",
+            a.surface,
+            &path_of(&repo),
+            "member",
+            format!("Branch {branch} deleted at {}", &head[..head.len().min(7)]),
+        )])
+        .await;
+        Ok(Outcome::Ok(Branch { name: branch, hash: head }))
+    }
+
     /// Pull requests' working copies name their branch after the default
     /// branch of the repository they came from. When it changes, the
     /// newest of them get a branch of the new name at the same commit (and,
@@ -1791,6 +1945,36 @@ mod tests {
         assert_eq!(branch_rename("main", "main", &branches).unwrap_err().0, FailureCode::Invalid);
         assert_eq!(branch_rename("main", "a b", &branches).unwrap_err().0, FailureCode::Invalid);
         assert_eq!(branch_rename("main", "g1t-queue", &branches).unwrap_err().0, FailureCode::Invalid);
+    }
+
+    fn branch(name: &str, hash: &str) -> Branch {
+        Branch { name: name.to_owned(), hash: hash.to_owned() }
+    }
+
+    #[test]
+    fn a_branch_is_made_with_a_free_valid_name_that_is_no_other_branch_folder() {
+        let branches = vec![branch("main", "aaa"), branch("feature", "bbb"), branch("fix/login", "ccc")];
+        assert_eq!(branch_creation(" docs/intro ", &branches).unwrap(), "docs/intro");
+        assert_eq!(branch_creation("main", &branches).unwrap_err().0, FailureCode::Conflict);
+        // `feature` is a branch, so it cannot also be a folder of one.
+        assert_eq!(branch_creation("feature/new", &branches).unwrap_err().0, FailureCode::Conflict);
+        // `fix` holds `fix/login`, so it cannot be a branch itself.
+        assert_eq!(branch_creation("fix", &branches).unwrap_err().0, FailureCode::Conflict);
+        assert!(branch_creation("fixes", &branches).is_ok());
+        assert_eq!(branch_creation("a b", &branches).unwrap_err().0, FailureCode::Invalid);
+        assert_eq!(branch_creation("g1t-queue/1", &branches).unwrap_err().0, FailureCode::Invalid);
+        assert_eq!(branch_creation("", &branches).unwrap_err().0, FailureCode::Invalid);
+    }
+
+    #[test]
+    fn a_branch_is_deleted_only_when_it_is_not_the_default_and_has_not_moved() {
+        let branches = vec![branch("main", "aaa"), branch("feature", "bbb")];
+        assert_eq!(branch_removal("feature", "main", None, &branches).unwrap(), "bbb");
+        assert_eq!(branch_removal("feature", "main", Some("bbb"), &branches).unwrap(), "bbb");
+        assert_eq!(branch_removal("feature", "main", Some(""), &branches).unwrap(), "bbb");
+        assert_eq!(branch_removal("feature", "main", Some("ccc"), &branches).unwrap_err().0, FailureCode::Conflict);
+        assert_eq!(branch_removal("main", "main", None, &branches).unwrap_err().0, FailureCode::Forbidden);
+        assert_eq!(branch_removal("gone", "main", None, &branches).unwrap_err().0, FailureCode::NotFound);
     }
 
     #[test]

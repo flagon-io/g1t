@@ -211,6 +211,19 @@ export interface ReposApi {
    * old one redirect. Members; only owners rename the default branch.
    */
   renameBranch(actor: User, path: RepoPath, from: string, to: string): Promise<Result<Repo>>;
+  /**
+   * Makes a branch named `name` at `from`: a branch, a tag or a commit (the
+   * default branch when empty). Needs push; the rules for creating it hold.
+   * Restoring a deleted branch is making it again at the commit
+   * `removeBranch` answered with.
+   */
+  createBranch(actor: User, path: RepoPath, name: string, from?: string): Promise<Result<Branch>>;
+  /**
+   * Deletes a branch, never the default. Needs push; the rules for deleting
+   * it hold. Given `head`, a branch that has moved from it is left alone.
+   * Answers with the branch as it was, to restore it with `createBranch`.
+   */
+  removeBranch(actor: User, path: RepoPath, branch: string, head?: string): Promise<Result<Branch>>;
   /** What a branch renamed away from `branch` is called now, or null. */
   resolveBranch(repoId: string, branch: string): Promise<string | null>;
   /** Whether a repository is archived or deleted; an unknown id answers as deleted. */

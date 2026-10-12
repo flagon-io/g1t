@@ -21,11 +21,15 @@
 	// Screenshots of each project's production, one per deploy, taken by
 	// Browser Rendering and kept in R2. Reached only through the
 	// `Screenshots` entrypoint: deployments asks for one when production
-	// goes live, and the site reads it for a project's overview.
+	// goes live, projects when a production deployed elsewhere gets an
+	// address or reports a deploy, and the site reads it for a project's
+	// overview.
 	"browser": { "binding": "BROWSER" },
 	// Made by `npx wrangler r2 bucket create g1t-screenshots`.
 	"r2_buckets": [{ "binding": "SCREENSHOTS", "bucket_name": "g1t-screenshots" }],
-	// Once a day, screenshots older than 30 days are deleted (src/capture.ts).
+	// Once a day, screenshots older than 30 days are deleted, and each
+	// production deployed elsewhere whose screenshot is a day old is taken
+	// again (src/capture.ts).
 	"triggers": { "crons": ["37 5 * * *"] },
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
