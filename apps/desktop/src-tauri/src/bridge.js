@@ -160,6 +160,14 @@
         report();
       },
     }),
+    // The web inspector for this page, while Developer tools is on in the
+    // app's settings (src/devtools.rs); rejects with where to turn it on
+    // while it is off.
+    devtools: Object.freeze({
+      open: function () {
+        return invoke("open_devtools");
+      },
+    }),
     // The title bar's search, in its middle: the site hands it a label
     // ("Search Flagon") and what opens its search. Returns what takes it away.
     setSearch: function (label, open) {
@@ -270,6 +278,19 @@
     }
     return typeof open === "function" ? open.call(window, href, target, features) : null;
   };
+
+  // F12 opens the web inspector, or closes it, while Developer tools is on;
+  // the View menu's row has Ctrl+Shift+I (⌥⌘I on macOS). With it off, or
+  // on a page that isn't the site's, the app says no and the key is the
+  // page's as ever.
+  document.addEventListener(
+    "keydown",
+    function (event) {
+      if (event.key !== "F12" || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      invoke("open_devtools", { toggle: true }).catch(function () {});
+    },
+    true,
+  );
 
   // ── The title bar ─────────────────────────────────────────────────────
   // What the bar above the page shows of it: the title, the search the

@@ -17,8 +17,11 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # `unstable`: a window holding more than one web view, so the title bar
-# and the site sit one above the other (src/frame.rs).
-tauri = { version = "2", features = ["tray-icon", "image-png", "unstable"] }
+# and the site sit one above the other (src/frame.rs). `devtools`: the web
+# inspector in release builds too, which the Developer tools setting turns
+# on (src/devtools.rs). On macOS it reaches it through WebKit's private
+# API, which the Mac App Store refuses; g1t ships from g1t.sh, not there.
+tauri = { version = "2", features = ["tray-icon", "image-png", "unstable", "devtools"] }
 # Updates: a signed manifest at g1t.sh/downloads/desktop/latest.json.
 tauri-plugin-updater = "2"
 # Native notifications, from the site's live feed.
@@ -50,6 +53,11 @@ base64 = "0.22"
 # same GTK that Tauri brings.
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
+
+# Turning WebView2's own inspector on and off while g1t runs
+# (src/devtools.rs); the same WebView2 bindings that Tauri brings.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
 
 [profile.release]
 strip = "debuginfo"

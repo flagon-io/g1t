@@ -8,7 +8,7 @@
 (function () {
   var SWITCHES = ["startHidden", "closeToTray", "notifications", "flash", "badge", "systemTitleBar", "autoUpdate"];
   // The settings the app keeps (src/settings.rs Settings); a save sends them all.
-  var KEPT = SWITCHES.concat(["zoom", "runner", "runnerBackend", "runnerWorkspace", "runnerCapabilities"]);
+  var KEPT = SWITCHES.concat(["zoom", "developerTools", "runner", "runnerBackend", "runnerWorkspace", "runnerCapabilities"]);
   var current = null;
 
   function byId(id) {

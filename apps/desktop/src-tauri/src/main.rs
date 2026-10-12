@@ -16,6 +16,7 @@
 mod badge;
 mod bridge;
 mod config;
+mod devtools;
 mod frame;
 mod links;
 mod menu;
@@ -88,6 +89,7 @@ fn main() {
             bridge::runner_register,
             bridge::runner_control,
             bridge::site_ready,
+            bridge::open_devtools,
         ])
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .setup(|app| {
@@ -101,6 +103,8 @@ fn main() {
             // The site's web view: the launcher first, which goes on to the server.
             let site = WebviewBuilder::new(frame::SITE, WebviewUrl::App("index.html".into()))
                 .initialization_script(bridge::script(custom))
+                // The web inspector, as the Developer tools setting has it now (devtools.rs).
+                .devtools(devtools::started(&handle))
                 .on_navigation({
                     let handle = handle.clone();
                     move |url| navigation::allowed(&handle, url)

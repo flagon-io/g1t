@@ -48,6 +48,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("zoom-out", "Zoom out", Some("CmdOrCtrl+-"))?,
             &separator()?,
             &PredefinedMenuItem::fullscreen(app, None)?,
+            &separator()?,
+            &crate::devtools::item(app)?,
         ],
     )?;
     let go = Submenu::with_items(
@@ -156,6 +158,10 @@ pub fn handle(app: &AppHandle, id: &str) {
         "zoom-in" => settings::zoom(app, 1),
         "zoom-out" => settings::zoom(app, -1),
         "zoom-reset" => settings::zoom(app, 0),
+        // Off with the setting, as the row is.
+        "devtools" => {
+            let _ = crate::devtools::toggle(app);
+        }
         "back" => eval(app, "history.back()"),
         "forward" => eval(app, "history.forward()"),
         "home" => links::go(app, "/"),
