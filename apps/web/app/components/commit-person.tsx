@@ -1,15 +1,19 @@
 import { User } from "lucide-react";
 import { Link } from "react-router";
 
+import { codingAgentById } from "@g1t/contracts/coding-agents";
+
 import { type CommitPerson, type ShownCommit, profileHref, shownName } from "../lib/commit-people";
 import { cn } from "../lib/cn";
 
+import { AgentBadge, AgentCard, AgentMark, AuthorCard } from "./coding-agent";
 import { UserCard } from "./user-card";
 import { Avatar } from "./ui/avatar";
 
 /**
  * A person on a commit, as an avatar: theirs and their card when the
- * commit is matched to an account (or is g1t's), else a plain one.
+ * commit is matched to an account (or is g1t's); a coding agent's mark
+ * and card; else a silhouette with a card that says they're not on g1t.
  */
 export function CommitAvatar({ person, size = 20 }: { person: CommitPerson; size?: number }) {
   if (person.kind === "user" || person.kind === "g1t") {
@@ -28,8 +32,17 @@ export function CommitAvatar({ person, size = 20 }: { person: CommitPerson; size
       </UserCard>
     );
   }
-  // Nobody on g1t, or a deleted account: a plain silhouette, no card.
-  return (
+  const agent = person.kind === "agent" ? codingAgentById(person.agent) : null;
+  if (agent) {
+    return (
+      <AgentCard agentId={agent.id}>
+        <span className="relative z-10 inline-flex shrink-0 rounded-full">
+          <AgentMark agent={agent} size={size} />
+        </span>
+      </AgentCard>
+    );
+  }
+  const silhouette = (
     <span
       aria-hidden="true"
       className="inline-flex shrink-0 items-center justify-center rounded-full bg-line text-faint"
@@ -37,6 +50,14 @@ export function CommitAvatar({ person, size = 20 }: { person: CommitPerson; size
     >
       <User size={Math.round(size * 0.62)} strokeWidth={2.25} />
     </span>
+  );
+  // A deleted account: a plain silhouette, no card.
+  if (person.kind === "ghost") return silhouette;
+  // Nobody on g1t: the silhouette, with a card that says so.
+  return (
+    <AuthorCard name={person.name}>
+      <span className="relative z-10 inline-flex shrink-0 rounded-full">{silhouette}</span>
+    </AuthorCard>
   );
 }
 
@@ -78,8 +99,28 @@ export function CommitName({ person, className }: { person: CommitPerson; classN
       </UserCard>
     );
   }
+  const agent = person.kind === "agent" ? codingAgentById(person.agent) : null;
+  if (agent) {
+    return (
+      <AgentCard agentId={agent.id}>
+        <span tabIndex={0} className="relative z-10 inline-flex items-baseline gap-1 rounded outline-none focus-visible:ring-2 focus-visible:ring-accent">
+          <span className={className}>{agent.name}</span>
+          <AgentBadge agent={agent} />
+        </span>
+      </AgentCard>
+    );
+  }
   const href = profileHref(person);
-  if (!href) return <span className={className}>{shownName(person)}</span>;
+  if (!href) {
+    if (person.kind === "ghost") return <span className={className}>{shownName(person)}</span>;
+    return (
+      <AuthorCard name={person.name}>
+        <span tabIndex={0} className={cn("relative z-10 rounded outline-none focus-visible:ring-2 focus-visible:ring-accent", className)}>
+          {shownName(person)}
+        </span>
+      </AuthorCard>
+    );
+  }
   return (
     <UserCard username={person.username}>
       <Link to={href} className={cn("relative z-10 hover:underline", className)}>

@@ -108,3 +108,21 @@ test("contributors and commits show one person the same way", () => {
   assert.equal(contributorPerson({ ...base, kind: "user", username: "ghost" }).kind, "ghost");
   assert.deepEqual(contributorPerson({ ...base, kind: "author", name: "Sam" }), { kind: "author", name: "Sam", username: null, avatar: null });
 });
+
+test("a coding agent is shown as itself by the address on its commit, never by its name", () => {
+  const claude = personFor("Claude", "noreply@anthropic.com", {});
+  assert.deepEqual(claude, { kind: "agent", name: "Claude", username: null, avatar: null, agent: "claude" });
+  assert.equal(shownName(claude), "Claude");
+  assert.equal(profileHref(claude), null);
+  const bot = personFor("dependabot[bot]", "49699333+dependabot[bot]@users.noreply.github.com", {});
+  assert.equal(bot.kind, "agent");
+  assert.equal(shownName(bot), "Dependabot", "its own name, not the login on the commit");
+  assert.equal(personFor("Claude", "claude@example.com", {}).kind, "author", "a person called Claude stays a person");
+  const commit = showCommit(
+    { hash: "a".repeat(40), message: "Fix it\n\nCo-Authored-By: Claude <noreply@anthropic.com>", author: { name: "Ada", email: "ada@example.com" } } as never,
+    {},
+  );
+  assert.equal(commit.coAuthors[0]?.kind, "agent");
+  assert.deepEqual(contributorPerson({ kind: "agent", name: "Claude", agent: "claude" }), { kind: "agent", name: "Claude", username: null, avatar: null, agent: "claude" });
+  assert.equal(contributorPerson({ kind: "agent", name: "Robo", agent: "unknown-agent" }).kind, "author", "an id this site doesn't know is an author");
+});

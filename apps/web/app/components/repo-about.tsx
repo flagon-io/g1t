@@ -35,7 +35,6 @@ import { Topics } from "./topics";
 import { TimeAgo } from "./ui";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
-import { Hint } from "./ui/hint";
 import { SkeletonLine } from "./ui/skeleton";
 
 /** How many contributors' avatars the About shows. */
@@ -246,12 +245,10 @@ function Contributors({ base, about }: { base: string; about: RepoAbout }) {
                       )}
                     </UserCard>
                   ) : (
-                    // Nobody on g1t: no card, only the name on their commits.
-                    <Hint label={label}>
-                      <span tabIndex={0} aria-label={label} className="block rounded-full">
-                        <CommitAvatar person={person} size={30} />
-                      </span>
-                    </Hint>
+                    // A coding agent, or someone not on g1t: its own card, opened from the avatar.
+                    <span tabIndex={0} aria-label={label} className="block rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                      <CommitAvatar person={person} size={30} />
+                    </span>
                   )}
                 </li>
               );

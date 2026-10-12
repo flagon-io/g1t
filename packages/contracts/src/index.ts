@@ -16,6 +16,7 @@ export * from "./compute";
 export * from "./connectors";
 export * from "./context";
 export * from "./claude-plugin";
+export * from "./coding-agents";
 export * from "./customize";
 export * from "./d1";
 export * from "./datasets";

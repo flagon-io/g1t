@@ -17,6 +17,7 @@ pub mod billing;
 pub mod capture;
 pub mod checks;
 pub mod codeowners;
+pub mod coding_agents;
 pub mod credentials;
 pub mod datasets;
 pub mod deploy_keys;

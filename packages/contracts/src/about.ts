@@ -28,8 +28,8 @@ export type License = {
   path: string;
 };
 
-/** `user`: matched to an account. `g1t`: g1t itself. `author`: the name on the commits. */
-export type ContributorKind = "user" | "g1t" | "author";
+/** `user`: matched to an account. `g1t`: g1t itself. `agent`: a known coding agent or bot (./coding-agents.ts). `author`: the name on the commits. */
+export type ContributorKind = "user" | "g1t" | "agent" | "author";
 
 /** Commits in the week starting on Monday `week` (`YYYY-MM-DD`, UTC). */
 export type WeekCommits = { week: string; commits: number };
@@ -39,6 +39,8 @@ export type Contributor = {
   name: string;
   username?: string | null;
   avatar?: string | null;
+  /** The coding agent's id, for an `agent`. */
+  agent?: string | null;
   commits: number;
   firstAt: string;
   lastAt: string;
