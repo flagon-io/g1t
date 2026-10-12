@@ -725,6 +725,12 @@ starlight-tabs [role='tab'][aria-selected='true'] {
 	padding: 0;
 	color: var(--g1t-fg);
 	box-shadow: var(--g1t-docs-menu-shadow);
+	/* Scrolling past either end of the diagram stops here. */
+	overscroll-behavior: contain;
+}
+/* The page behind an open diagram stays where it is. */
+html:has(.g1t-diagram__dialog[open]) {
+	overflow: hidden;
 }
 .g1t-diagram__dialog::backdrop {
 	background: rgb(0 0 0 / 0.6);
