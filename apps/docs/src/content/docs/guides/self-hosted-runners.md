@@ -17,8 +17,10 @@ and picks up jobs that ask for it with `runs-on: self-hosted`.
 - **Each job in a fresh sandbox.** Every job gets a container of its own,
   made for it and removed after it, inside the runner's own container.
   See [isolation](#isolation).
-- **Any OS.** Linux, macOS and Windows, on x64 and arm64. On macOS and
-  Windows, sandboxed jobs are [not built yet](#windows-and-macos).
+- **Any OS.** Linux, macOS and Windows, on x64 and arm64. On your own
+  computer, `g1t-runner sandbox up` runs Linux jobs in a Linux VM of the
+  runner's own and Windows jobs each in a Windows Sandbox: see
+  [sandbox on your computer](#sandbox-on-your-computer).
 
 | Where | Page | Who manages it |
 | --- | --- | --- |
@@ -38,9 +40,11 @@ of its own, so its root is an unprivileged user on the machine, and lets
 it run Docker without `--privileged` and without the machine's Docker
 socket.
 
-1. Install [Sysbox](https://github.com/nestybox/sysbox) on the machine,
-   following its install guide. It needs Linux; Docker Desktop on macOS
-   and Windows cannot use it.
+1. Install [Sysbox](https://github.com/nestybox/sysbox) 0.7 or later on
+   the machine, following its install guide. Earlier versions cannot run
+   the runner's own Docker Engine, whose `runc` checks `/proc` in a way
+   they do not allow. Sysbox needs Linux; on a Mac or Windows computer,
+   use [the sandbox](#sandbox-on-your-computer) instead.
 2. Make a registration token: open **Runners** and click **New runner**.
 3. Run the runner:
 
@@ -92,11 +96,14 @@ runner container at a time.
 ## Isolation
 
 How well a runner keeps work from its machine. A runner tells g1t its
-level when it registers.
+level when it registers and on every poll, and the **Runners** page shows
+it on each runner: *Sandboxed*, *VM per job*, *Shared Docker* or
+*Unsandboxed*.
 
 | Isolation | How you get it | What a job can reach |
 | --- | --- | --- |
-| `nested-container` | The runner's image under Sysbox, as above, or [the desktop app](/guides/desktop/#how-jobs-run)'s Sandboxed choice. | Its own container, and its own Docker Engine if it uses Docker. Not the machine, and not other jobs. |
+| `nested-container` | The runner's image under Sysbox, as above; on your own computer, `g1t-runner sandbox up`, which runs the same inside a Linux VM of the runner's own; or [the desktop app](/guides/desktop/#how-jobs-run)'s Sandboxed choice. | Its own container, and its own Docker Engine if it uses Docker. Not the machine, and not other jobs. |
+| `vm` | `g1t-runner sandbox up` on Windows 11 Pro, Enterprise or Education, or `register --native` there: jobs native to Windows, each in a [Windows Sandbox](#windows-jobs-in-windows-sandbox). | Its own virtual machine, made for the job and discarded after, with a read-only copy of the harness and no other folder of the machine's. |
 | `container` | `g1t-runner` installed on the machine with Docker, the desktop app's In Docker choice, or the image given the machine's Docker socket with the override. | Its own container. The runner itself drives the machine's Docker, which can do anything on the machine, so a job that escapes its container, or anything that takes over the runner, controls the machine. |
 | `host` | `--no-docker`, or the desktop app's Directly on this computer choice. Deprecated. | Everything the runner's user can: the machine, its files, and what earlier jobs left. |
 
@@ -158,26 +165,191 @@ folder of its own. It will be removed. Until then:
   (--no-docker), unsandboxed, so it does not take a public repository's
   work.* The job fails with that message. Update the runner.
 
-Move a Linux runner to [the container](#run-it-as-a-container). A macOS
-or Windows runner stays in host mode until sandboxes for them are built.
+Move a Linux runner to [the container](#run-it-as-a-container), and a
+Windows or Mac computer to [the sandbox](#sandbox-on-your-computer). A
+runner registers as running jobs native to Windows or macOS (the
+`windows` or `macos` label) only when it sandboxes them (`--native`), or
+when you chose host mode with `--no-docker`.
 
-### Windows and macOS
+## Sandbox on your computer
 
-Sandboxed jobs on Windows and macOS are not built yet; jobs native to
-those systems run in host mode. What is planned:
+`g1t-runner sandbox` sets up self-hosted runners on your own desktop or
+laptop that nothing a job runs can get out of: not to your files, your
+other programs, your processes or your Docker. It gives the computer up
+to two capabilities, each a runner of its own on the **Runners** page:
 
-| | How each job will run |
+| Capability | Runner | Labels | Isolation |
+| --- | --- | --- | --- |
+| Linux jobs | `<name>-linux`, inside a Linux VM of the runner's own | `self-hosted`, `linux`, and the architecture | `nested-container` |
+| Jobs native to the computer's OS | `<name>-windows`, on the computer, starting a Windows Sandbox per job | `self-hosted`, `windows`, and the architecture | `vm` |
+
+1. Make a registration token: open **Runners** and click **New runner**.
+2. Download `g1t-runner` for your computer, as in [add a runner](#add-a-runner),
+   then run:
+
+   ```sh
+   g1t-runner sandbox up --url https://g1t.sh --token g1trt_…
+   ```
+
+The first `up` fetches the sandbox's image for this release, checks its
+signature and SHA-256, makes the VM, and registers both runners with the
+token; it takes a few minutes. After that, `up` starts what is stopped
+and needs no token.
+
+| Command | What it does |
 | --- | --- |
-| Windows | A Windows container with Hyper-V isolation: a small virtual machine with its own kernel, made from a signed image for the job and destroyed after it. |
-| macOS | An ephemeral macOS virtual machine, using Apple's Virtualization framework, cloned from a signed image for the job and deleted after it. Apple's licence allows two macOS virtual machines per Mac at once, so a Mac will run at most two jobs at a time. |
+| `g1t-runner sandbox up` | Makes the sandbox if there is none, and starts both runners. Waits until the Linux runner is asking for work. |
+| `g1t-runner sandbox down` | Stops both now. A running job is cut short, and its run says the runner was stopped. `--drain` waits for it to finish instead. `--delete` also removes the VM and everything in it; the runners stay listed on g1t until you remove them there. |
+| `g1t-runner sandbox status` | Says how each capability is, and what to do about one that is not available. |
+| `g1t-runner sandbox update` | Drains the Linux runner (the job it is running finishes), swaps in the newest release's image, and starts it again. The registration is kept, so it is the same runner on g1t. |
 
-On both, the only part on the machine itself will be a small launcher that
-makes and destroys those sandboxes from signed images; the runner and the
-job run inside them.
+| Option (`up`) | |
+| --- | --- |
+| `--url`, `--token` | Where to register and the registration token, for the first `up`. |
+| `--name` | The runners' name before `-linux` and `-windows`. The computer's name if left out. |
+| `--labels`, `--group` | As for [register](#register-options), for both runners. |
+| `--cpus` | The Linux VM's runner's CPUs, and so its jobs'. Half the computer's, at most 8, if left out. |
+| `--memory` | Its memory, such as `8g`. A quarter of the computer's, between 2 and 8 GB and never more than half, if left out. |
+| `--disk` | The VM's disk on macOS and Linux, such as `64g` (64 GB if left out). On Windows the disk is not limited: WSL can only resize it with all of WSL shut down. |
+| `--no-native`, `--native` | Leave out the native capability, or bring it back. Kept until said otherwise. |
+| `--state-dir` | Where the sandbox keeps its settings and images. `~/.g1t-runner/sandbox` if left out. Every command takes it. |
+| `--json` | Print the status as JSON when done (see below). Every command takes it. |
 
-On a Mac or Windows machine with Docker Desktop, a runner installed there
-without `--no-docker` already runs jobs in Linux containers, with
-`container` isolation.
+### How each computer runs it
+
+| Computer | Linux jobs | Native jobs |
+| --- | --- | --- |
+| Windows 11 Pro, Enterprise, Education | A WSL 2 distribution of the runner's own, `g1t-sandbox` | Windows Sandbox, one per job |
+| Windows 11 Home | A WSL 2 distribution of the runner's own, `g1t-sandbox` | Not available: Home has no Windows Sandbox |
+| macOS 13 or later | A VM under Apple's Virtualization framework, run by [vfkit](https://github.com/crc-org/vfkit) (`brew install vfkit`) | Not released: sandboxed macOS jobs are designed, not built |
+| Linux with Sysbox 0.7+ | No VM: the runner's image under Sysbox, as [above](#run-it-as-a-container) | None (Linux jobs are native) |
+| Linux without Sysbox | A VM under QEMU with KVM (`/dev/kvm`, and `qemu-system-x86_64` or `qemu-system-aarch64`) | None |
+
+Inside the VM (and on Linux with Sysbox) it is the runner's image under
+Sysbox, exactly as in [run it as a container](#run-it-as-a-container):
+each job is a fresh container on the runner's own Docker Engine, inside the
+runner's Sysbox container, inside the VM. Nothing listens on your
+computer; the VM only connects out.
+
+**What the VM gets of your computer:** no folders and no drives, no way
+to start its programs, no Docker socket, no clipboard, no GPU, display or
+sound, and no network port in. On Windows, the distribution's
+`/etc/wsl.conf` turns off WSL's drive mounts, its interop with Windows
+programs and Windows' `PATH`, and when it starts the sandbox also unmounts
+what WSL puts in every distribution anyway: `/mnt/wsl` (shared by all
+distributions, where Docker Desktop keeps sockets to its engine on
+Windows), WSLg's display and sound sockets, and Windows' GPU driver
+folders. It checks that nothing of the computer's is left, and refuses to
+run jobs if anything is. Containers in the VM, every job among them, may
+reach the internet but not your computer: a firewall rule in the VM drops
+their traffic to the computer's address, but for DNS.
+
+**Resources:** the runner's container has `--cpus` and `--memory`, and
+each job has its own limits inside that ([what a job's container gets](#what-a-jobs-container-gets)).
+On Windows these are the sandbox's share of WSL's own VM, which
+`%USERPROFILE%\.wslconfig` sizes for all of WSL.
+
+**Images and updates:** the sandbox's images are published with each
+runner release, at `g1t.sh/downloads/runner/<version>/`, and named with
+their SHA-256 in the release's manifest, which is signed with g1t's
+release key like the runner itself (see [updates](#updates)). The runner's
+image inside is named by digest in the same manifest. `update` checks the
+signature and every SHA-256 before using anything, and waits for the
+running job before it swaps the image. The runner's registration lives
+apart from the image (on its own disk on macOS and Linux; on Windows the
+launcher carries it across), so an update does not register again.
+
+### Windows jobs in Windows Sandbox
+
+With `vm` isolation, the runner on your computer takes jobs that ask for
+`runs-on: [self-hosted, windows]` and runs each in a Windows Sandbox of
+its own: a Hyper-V virtual machine with its own kernel, started fresh from
+your Windows and discarded, disk and all, when the job ends.
+
+- Its only folder from your computer is read-only and holds a copy of the
+  runner (the job's harness) and the job's script. Nothing it writes
+  outlives it.
+- No GPU, clipboard, printers, microphone or camera; networking on, so the
+  job can reach g1t and the internet.
+- A firewall rule in it blocks the address your computer is reached by.
+  The job runs as an administrator in its sandbox and could remove it, so
+  it slows a job down rather than stopping it; the wall is the VM.
+- One job at a time, as every runner. Agent work runs on Linux runners.
+- It needs Windows 11 Pro, Enterprise or Education, version 24H2 or later
+  (for the `wsb` command), with **Windows Sandbox** turned on under
+  Settings, System, Optional features, More Windows features. `status`
+  says which of these is missing.
+
+On a runner that is not under `sandbox up`, `g1t-runner register --native`
+does the same.
+
+### What it cannot stop
+
+- **WSL 2 distributions share one VM.** On Windows, every WSL 2
+  distribution, your own among them, runs in one virtual machine with one
+  Linux kernel, and root in one can reach the others' disks. That is why
+  nothing a job runs is root in the sandbox's distribution: the runner is
+  a Sysbox container whose root is an unprivileged user there, and each job
+  a container inside it. A job would have to escape its container and the
+  runner's, and then reach root in the distribution, before it could touch
+  your other distributions, from which Windows is reachable.
+- **Mirrored networking.** With `networkingMode=mirrored` in
+  `.wslconfig`, Linux reaches Windows' own `localhost`, so the sandbox
+  will not start until it is removed.
+- **The computer's network.** Jobs reach the internet, and so the other
+  machines on your network that the internet could. Only your computer's
+  own address is blocked.
+- **The VM's own root** could reach your computer's services on its
+  address. Jobs are two containers away from it.
+- **A Windows job's sandbox** is as strong as Windows Sandbox: a Hyper-V
+  VM, with one read-only folder of your computer's.
+- **macOS and Linux VMs** (vfkit and QEMU) are built to the same design,
+  with no shared folders and nothing forwarded in, but have not yet been
+  run on a Mac or a Linux machine without Sysbox. Windows is where the
+  sandbox has been checked end to end.
+
+### The status as JSON
+
+`g1t-runner sandbox status --json` prints one JSON object, which [the
+desktop app](/guides/desktop/) shows. It exits 0 whenever it could read
+the status, a sandbox in error included; `up`, `down` and `update` print
+the same object with `--json` when they are done, and exit 1 with
+`error` set when they fail.
+
+```json
+{
+  "schema": 1,
+  "state": "running",
+  "backend": "wsl2",
+  "runner_version": "0.3.0",
+  "launcher_version": "0.3.0",
+  "image_version": "0.3.0",
+  "isolation": "nested-container",
+  "job": { "kind": "workflow", "id": "job_…", "name": "build", "repo": "acme/web" },
+  "error": null,
+  "resources": { "cpus": 4, "memory_mib": 8192, "disk_gib": 64 },
+  "capabilities": [
+    { "id": "linux", "available": true, "state": "running", "isolation": "nested-container",
+      "runner_version": "0.3.0", "job": null, "cause": null, "fix": null },
+    { "id": "windows", "available": false, "state": "absent", "isolation": "vm",
+      "runner_version": null, "job": null,
+      "cause": "Windows Sandbox is not turned on, or this edition of Windows has none (Home does not).",
+      "fix": "On Windows 11 Pro, Enterprise or Education, turn on Windows Sandbox under Settings, System, Optional features, More Windows features, then restart." }
+  ],
+  "state_dir": "C:\\Users\\you\\.g1t-runner\\sandbox"
+}
+```
+
+| Field | |
+| --- | --- |
+| `state` | The Linux VM's: `absent` (never made, or deleted), `stopped`, `starting`, `running`, `updating` or `error`. |
+| `backend` | What holds it: `wsl2`, `vfkit`, `qemu` or `sysbox`. |
+| `runner_version`, `image_version`, `launcher_version` | The runner inside the VM, the VM's image, and this `g1t-runner`. |
+| `job` | What the Linux runner is running now, or null. |
+| `error` | A sentence for a person when something is wrong, or null. |
+| `capabilities` | Each kind of job the computer can run sandboxed: `linux`, and `windows` or `macos`. `available` says whether it can be had here; when not, `cause` says why and `fix` what to do. Each has its own `state`, `job` and `runner_version`. |
+
+Fields are only added; `schema` changes if one changes meaning.
 
 ## The Runners page
 
@@ -279,6 +451,7 @@ isolation with `--no-docker`. See [isolation](#isolation).
 | `--group` | A workspace runner's [group](#groups). The default group, or the one the token was made for, if left out. |
 | `--ephemeral` | Take one job, then remove itself. For [autoscaling](#autoscaling). |
 | `--no-docker` | Deprecated. Run jobs directly on the machine instead of in containers ([host mode](#host-mode-is-deprecated)). |
+| `--native` | Run jobs native to this OS, each in a throwaway VM of its own: [Windows Sandbox](#windows-jobs-in-windows-sandbox) on Windows. Registers with the OS's label and `vm` isolation, and refuses if the sandbox is not there. |
 | `--image` | The image workflow jobs run in when they name no `container:`. `node:24-bookworm` if left out. |
 | `--agent-image` | The image [agent work](#agents-on-your-runners) runs in. |
 | `--memory` | Each job container's memory, such as `8g`. Three quarters of the runner's memory if left out. |
@@ -543,6 +716,9 @@ updates itself when the release is signed by g1t's release key and its
 download matches the release's SHA-256. `g1t-runner update` does it now;
 `--no-auto-update` turns it off. Releases are at
 `https://g1t.sh/downloads/runner/<version>/`, with a `SHA256SUMS` file.
+The runner inside [the sandbox](#sandbox-on-your-computer) does not update
+itself: `g1t-runner sandbox update` swaps the whole sandbox's image, which
+carries it, once the running job is done.
 
 ## Remove a runner
 
@@ -578,6 +754,11 @@ The [Agent preset](/guides/authentication/#scopes) does not include
 | *the runner's own Docker Engine could not start* | The container is not running under Sysbox. Add `--runtime=sysbox-runc`, and check that Sysbox is installed (`docker info` lists `sysbox-runc` under runtimes). |
 | The job says *Waiting for a sandboxed runner: this repository is public …* | Every online runner with the job's labels is in host mode, which never runs a public repository's jobs. Run a runner's image under Sysbox, or register one without `--no-docker`. |
 | *… is public, and this self-hosted runner runs jobs directly on its machine* | An older runner in host mode refused a public repository's job. Update it, so g1t gives the job to a sandboxed runner instead, and run the runner's image under Sysbox. |
+| `sandbox up` says *WSL is not installed* | Open a terminal as administrator, run `wsl --install --no-distribution`, restart, and run `sandbox up` again. That is the one step that needs an administrator. |
+| `sandbox up` says *WSL is set to mirrored networking* | Remove `networkingMode=mirrored` from `%USERPROFILE%\.wslconfig`, run `wsl --shutdown`, and try again. |
+| `sandbox status` says *this sandbox can reach the computer* | Something of your computer's is mounted in the sandbox's VM, or an engine's socket is there; it lists what. Run `g1t-runner sandbox down --delete` and `up` again, which makes it from the image afresh. |
+| `sandbox status` shows the Linux runner in `error` with *The runner stopped …* | The runner inside could not register or start; the message is its last line. Check the token was still valid (an hour), and that the computer reaches `https://api.g1t.sh`. |
+| The `windows` capability is unavailable | `status` says why: Windows Sandbox is off, this is Windows 11 Home, or Windows is older than 24H2. |
 | A step's `sudo` fails | Job containers have `no-new-privileges`. Steps run as the image's user, root in most CI images, so drop the `sudo`. |
 | *could not run docker* | Install Docker and start it, and give the runner's user access to it. |
 | Agent work fails at once | Give the runner `--agent-image`. |

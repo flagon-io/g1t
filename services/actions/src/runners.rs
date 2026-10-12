@@ -391,6 +391,7 @@ impl Actions {
             last_seen_at: row.last_seen_at.clone(),
             created_at: row.created_at.clone(),
             created_by: row.created_by.clone(),
+            isolation: row.isolation.clone(),
         })
     }
 

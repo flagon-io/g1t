@@ -28,6 +28,8 @@ mod config;
 #[cfg(unix)]
 mod engine;
 mod exec;
+mod launcher;
+mod native;
 mod sandbox;
 mod service;
 mod update;
@@ -54,7 +56,7 @@ const IDLE_WAIT_MS: u64 = 20_000;
 /// How often an idle runner checks for a new version.
 const UPDATE_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
-const COMMANDS: &[&str] = &["register", "register-and-run", "run", "service", "remove", "update", "version", "--version", "help", "--help", "-h"];
+const COMMANDS: &[&str] = &["register", "register-and-run", "run", "service", "sandbox", "remove", "update", "version", "--version", "help", "--help", "-h"];
 
 /// Whether `args` (without the program) are a command of this one, rather
 /// than the harness's `MODE`.
@@ -135,7 +137,7 @@ impl Options {
                 self.values.push((name.to_owned(), value));
             }
         }
-        for name in ["ephemeral", "no-docker", "replace", "no-auto-update", "no-job-docker"] {
+        for name in ["ephemeral", "no-docker", "replace", "no-auto-update", "no-job-docker", "native"] {
             if !self.flag(name) && std::env::var(env_name(name)).is_ok_and(|v| matches!(v.as_str(), "1" | "true" | "yes")) {
                 self.flags.push(name.to_owned());
             }
@@ -155,8 +157,13 @@ const HELP: &str = "g1t-runner: a self-hosted runner for g1t.
       [--work-dir DIR] [--no-docker] [--image IMAGE] [--agent-image IMAGE]
       [--api URL] [--harness PATH] [--replace] [--no-auto-update]
       [--memory 8g] [--cpus 4] [--pids-limit 4096] [--no-job-docker]
-      [--job-docker-image IMAGE]
+      [--job-docker-image IMAGE] [--native]
   g1t-runner run [--once]          poll for work and run it
+  g1t-runner sandbox up|down|status|update [--json]
+                                   on your own computer: a Linux VM of the
+                                   runner's own for Linux jobs, and Windows
+                                   Sandbox for Windows jobs; see
+                                   `g1t-runner sandbox help`
   g1t-runner register-and-run ...  both, for containers; options may be
                                    G1T_RUNNER_URL, _TOKEN, _LABELS, _EPHEMERAL…
   g1t-runner service install|start|stop|status|uninstall
@@ -170,13 +177,19 @@ In a workflow step (the g1t/deploy and g1t/detect actions use these):
 
 Every command takes --dir DIR (default ~/.g1t-runner, or G1T_RUNNER_DIR).
 Run it as a container under Sysbox so neither it nor its jobs reach the
-machine: docker run --runtime=sysbox-runc … g1t.sh/flagon-io/g1t-runner.
---no-docker (host mode) is deprecated.
+machine: docker run --runtime=sysbox-runc … g1t.sh/flagon-io/g1t-runner,
+or on a desktop, g1t-runner sandbox up. --native runs jobs native to this
+OS, each in a throwaway VM (Windows Sandbox). --no-docker (host mode) is
+deprecated.
 Make a registration token under Settings, Runners on g1t.sh.
 Docs: https://docs.g1t.sh/guides/self-hosted-runners/";
 
 /// Runs a command. Returns the process's exit code.
 pub fn main(args: Vec<String>) -> i32 {
+    // Options of its own, and output the desktop app reads.
+    if args[0] == "sandbox" {
+        return launcher::main(&args[1..]);
+    }
     let mut takes = VALUE_OPTIONS.to_vec();
     takes.push("dir");
     let options = match Options::parse(&args[1..], &takes) {
@@ -268,11 +281,15 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         .map(|l| l.trim().to_owned())
         .filter(|l| !l.is_empty())
         .collect();
-    let docker = !options.flag("no-docker");
-    let isolation = isolation(docker)?;
+    let native = options.flag("native");
+    if native && options.flag("no-docker") {
+        bail!("--native runs each job in a VM of its own, and --no-docker runs it on this machine: pick one");
+    }
+    let docker = !options.flag("no-docker") && !native;
+    let isolation = isolation(docker, native)?;
     if isolation == sandbox::Isolation::Host {
         log(sandbox::HOST_MODE_AT_START);
-    } else if !sandbox::nested_requested() && !exec::docker_ready() {
+    } else if !native && !sandbox::nested_requested() && !exec::docker_ready() {
         log("Docker does not answer here. Jobs will fail until it does.");
     }
     let pids_limit = match options.value("pids-limit") {
@@ -284,7 +301,9 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         bail!("{} already holds a registered runner: run `g1t-runner remove` first, or register with --replace or another --dir", folder.display());
     }
     // The OS jobs run on: in Docker that is Linux, whatever the machine
-    // (Docker Desktop runs Linux containers on macOS and Windows).
+    // (Docker Desktop runs Linux containers on macOS and Windows). A
+    // runner says it runs jobs native to this OS only when it sandboxes
+    // them (--native), or when the person chose host mode (--no-docker).
     let os = match std::env::consts::OS {
         _ if docker => "linux",
         "macos" => "macos",
@@ -330,6 +349,7 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
         pids_limit,
         job_docker: !options.flag("no-job-docker"),
         job_docker_image: options.value("job-docker-image").map(str::to_owned),
+        native,
     };
     config::save(folder, &config)?;
     let place = match &config.repo {
@@ -343,14 +363,21 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
 
 /// How this runner keeps work from its machine; refuses a nested runner
 /// that can reach the machine (sandbox.rs).
-fn isolation(docker: bool) -> Result<sandbox::Isolation> {
+fn isolation(docker: bool, native: bool) -> Result<sandbox::Isolation> {
     use sandbox::{Isolation, SandboxDriver};
+    if native {
+        let Some(driver) = sandbox::native_driver() else {
+            bail!("--native: there is no sandbox for jobs native to {}; Linux jobs run in containers", std::env::consts::OS);
+        };
+        return driver.preflight().with_context(|| format!("--native needs {}", driver.name()));
+    }
     if !docker {
-        // What is coming for jobs native to this OS.
-        if let Some(driver) = sandbox::native_driver()
-            && let Err(why) = driver.preflight()
-        {
-            log(&format!("Sandboxed {} jobs, in {}: {why}.", std::env::consts::OS, driver.name()));
+        // What would sandbox jobs native to this OS instead.
+        if let Some(driver) = sandbox::native_driver() {
+            match driver.preflight() {
+                Ok(_) => log(&format!("This machine can run {} jobs sandboxed, each in {}: register with --native instead of --no-docker.", std::env::consts::OS, driver.name())),
+                Err(why) => log(&format!("Sandboxed {} jobs, in {}: {why:#}", std::env::consts::OS, driver.name())),
+            }
         }
         return Ok(Isolation::Host);
     }
@@ -430,11 +457,16 @@ fn run(folder: &Path, once: bool) -> Result<()> {
     let mut config = config::load(folder)?;
     let mut api = Api { base: config.api.clone(), runner: config.runner.clone(), credential: config.credential.clone() };
     std::fs::create_dir_all(&config.work_dir).with_context(|| format!("could not make {}", config.work_dir.display()))?;
-    let isolation = isolation(config.docker)?;
+    let isolation = isolation(config.docker, config.native)?;
     prepare(config.docker)?;
-    if isolation != sandbox::Isolation::Host {
-        exec::sweep(&config);
+    match isolation {
+        sandbox::Isolation::Host => {}
+        sandbox::Isolation::Vm => native::sweep(folder),
+        _ => exec::sweep(&config),
     }
+    // A drain or stop asked for before this start is done with.
+    let _ = std::fs::remove_file(drain_path(folder));
+    let _ = std::fs::remove_file(folder.join("stop"));
     log(&format!(
         "g1t-runner {VERSION}: {} ({}) is listening for work from {}. Isolation: {}.",
         config.name,
@@ -451,6 +483,10 @@ fn run(folder: &Path, once: bool) -> Result<()> {
     let mut last_update_check = Instant::now().checked_sub(UPDATE_EVERY).unwrap_or_else(Instant::now);
     let mut said_no_key = false;
     loop {
+        // Asked to stop now (`g1t-runner sandbox down`): as a service's stop.
+        if std::fs::remove_file(folder.join("stop")).is_ok() {
+            STOP.store(true, Ordering::SeqCst);
+        }
         if STOP.load(Ordering::SeqCst) {
             if let Some(mut running) = current.take() {
                 log(&format!("Stopping: {} is cut short.", running.name));
@@ -458,6 +494,7 @@ fn run(folder: &Path, once: bool) -> Result<()> {
                 let _ = api.finished(&running.id, 1, Some("The self-hosted runner was stopped."));
                 running.clean();
             }
+            say_status(folder, isolation, None, "stopped");
             return Ok(());
         }
         // What was running has ended: say how.
@@ -480,6 +517,21 @@ fn run(folder: &Path, once: bool) -> Result<()> {
                 return Ok(());
             }
         }
+        // Asked to drain (`g1t-runner sandbox update`, before it swaps the
+        // sandbox's image): no new work, and once idle, stop.
+        let draining = drain_path(folder).exists();
+        if draining && current.is_none() {
+            let _ = std::fs::remove_file(drain_path(folder));
+            say_status(folder, isolation, None, "stopped");
+            log("Drained: no job is running, so the runner stops here.");
+            return Ok(());
+        }
+        let state = match (&current, draining) {
+            (Some(_), true) => "draining",
+            (Some(_), false) => "busy",
+            (None, _) => "idle",
+        };
+        say_status(folder, isolation, current.as_ref(), state);
         // Idle: a newer release, now and then.
         if current.is_none() && config.auto_update && last_update_check.elapsed() >= UPDATE_EVERY {
             last_update_check = Instant::now();
@@ -562,6 +614,53 @@ fn run(folder: &Path, once: bool) -> Result<()> {
             let mut check = || current.as_mut().is_some_and(|r| r.ended().is_some());
             nap(HEARTBEAT, &mut check);
         }
+    }
+}
+
+/// The file whose presence asks a runner to drain: take no new work, and
+/// stop once idle.
+pub fn drain_path(folder: &Path) -> PathBuf {
+    folder.join("drain")
+}
+
+/// The file a runner keeps saying what it is doing, for `g1t-runner
+/// sandbox status` (which reads it from inside the sandbox).
+pub fn status_path(folder: &Path) -> PathBuf {
+    folder.join("status.json")
+}
+
+/// What a runner says it is doing, in its status file.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct RunnerStatus {
+    pub version: String,
+    pub isolation: String,
+    /// `idle`, `busy`, `draining` or `stopped`.
+    pub state: String,
+    pub job: Option<JobStatus>,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct JobStatus {
+    /// `workflow` or `agent`.
+    pub kind: String,
+    pub id: String,
+    pub name: String,
+    pub repo: String,
+}
+
+fn say_status(folder: &Path, isolation: sandbox::Isolation, running: Option<&exec::Running>, state: &str) {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    let status = RunnerStatus {
+        version: VERSION.to_owned(),
+        isolation: isolation.as_str().to_owned(),
+        state: state.to_owned(),
+        job: running.map(|r| JobStatus { kind: r.kind.clone(), id: r.id.clone(), name: r.name.clone(), repo: r.repo.clone() }),
+        updated_at: g1t_now(now),
+    };
+    let temp = folder.join("status.json.new");
+    if serde_json::to_vec_pretty(&status).ok().is_some_and(|bytes| std::fs::write(&temp, bytes).is_ok()) {
+        let _ = std::fs::rename(&temp, status_path(folder));
     }
 }
 

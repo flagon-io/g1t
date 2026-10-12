@@ -1,0 +1,6 @@
+# The VM's one network card, on the launcher's NAT: outbound only.
+[Match]
+Type=ether
+
+[Network]
+DHCP=yes

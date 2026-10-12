@@ -6,6 +6,7 @@
 //
 //   node scripts/runner-release.mjs keygen            # once: the release key
 //   node scripts/runner-release.mjs build [--targets linux-x64,windows-x64]
+//   node scripts/runner-release.mjs manifest          # again, with the sandbox's images
 //   node scripts/runner-release.mjs sign              # latest.json + .sig
 //   node scripts/runner-release.mjs verify            # checks the signature
 //   node scripts/runner-release.mjs publish [--dry-run]
@@ -15,7 +16,9 @@
 //   g1t-runner-linux-x64, -linux-arm64, -macos-x64, -macos-arm64,
 //   -windows-x64.exe    the binaries
 //   SHA256SUMS          `sha256  name`, one line each
-//   manifest.json       { version, published_at, agent_image, files: { platform: { name, sha256 } } }
+//   manifest.json       { version, published_at, agent_image, files: { platform: { name, sha256 } },
+//                         sandbox: { runner_image, files: { "wsl-x64": { name, sha256, size }, … } } }
+//   g1t-sandbox-*       the sandbox's images (scripts/sandbox-image.mjs), when built
 //
 // and at runner/: latest.json (the newest release's manifest) and
 // latest.json.sig, its Ed25519 signature in base64. A runner trusts a
@@ -89,14 +92,37 @@ export function verifyBytes(bytes, signature, publicRaw) {
 
 export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-/** The manifest of the files in a release folder. */
+/**
+ * The manifest of the files in a release folder. Its `sandbox` section, the
+ * images `g1t-runner sandbox` runs and their SHA-256, comes from
+ * sandbox.json there when scripts/sandbox-image.mjs made one, and is signed
+ * with the rest.
+ */
 export function manifest(dir, v, agentImage = process.env.RUNNER_AGENT_IMAGE || null) {
   const files = {};
   for (const [platform, target] of Object.entries(TARGETS)) {
     const path = join(dir, target.file);
     if (existsSync(path)) files[platform] = { name: target.file, sha256: sha256(readFileSync(path)) };
   }
-  return { version: v, published_at: new Date().toISOString(), agent_image: agentImage, files };
+  const m = { version: v, published_at: new Date().toISOString(), agent_image: agentImage, files };
+  const sandboxPath = join(dir, "sandbox.json");
+  if (existsSync(sandboxPath)) {
+    const sandbox = JSON.parse(readFileSync(sandboxPath, "utf8"));
+    for (const file of Object.values(sandbox.files ?? {})) {
+      if (!existsSync(join(dir, file.name))) throw new Error(`sandbox.json names ${file.name}, which is not in ${dir}`);
+    }
+    m.sandbox = sandbox;
+  }
+  return m;
+}
+
+/** Writes manifest.json and SHA256SUMS for what is in the folder now. */
+function writeManifest(dir, v) {
+  const m = manifest(dir, v);
+  writeFileSync(join(dir, "manifest.json"), `${JSON.stringify(m, null, 2)}\n`);
+  const all = [...Object.values(m.files), ...Object.values(m.sandbox?.files ?? {})];
+  writeFileSync(join(dir, "SHA256SUMS"), all.map((f) => `${f.sha256}  ${f.name}`).join("\n") + "\n");
+  return m;
 }
 
 function run(command, args, options = {}) {
@@ -118,9 +144,7 @@ function build(targets) {
     const built = join(ROOT, "target", target.triple, "release", target.exe ? "g1t-runner.exe" : "g1t-runner");
     copyFileSync(built, join(dir, target.file));
   }
-  const m = manifest(dir, v);
-  writeFileSync(join(dir, "manifest.json"), `${JSON.stringify(m, null, 2)}\n`);
-  writeFileSync(join(dir, "SHA256SUMS"), Object.values(m.files).map((f) => `${f.sha256}  ${f.name}`).join("\n") + "\n");
+  const m = writeManifest(dir, v);
   console.log(`built ${Object.keys(m.files).length} binaries of ${v} into ${dir}`);
 }
 
@@ -140,10 +164,11 @@ function verifyRelease() {
   const ok = verifyBytes(readFileSync(join(dir, "latest.json")), readFileSync(join(dir, "latest.json.sig"), "utf8"), publicRaw);
   if (!ok) throw new Error("latest.json's signature is not the release key's");
   const m = JSON.parse(readFileSync(join(dir, "latest.json"), "utf8"));
-  for (const file of Object.values(m.files)) {
+  const all = [...Object.values(m.files), ...Object.values(m.sandbox?.files ?? {})];
+  for (const file of all) {
     if (sha256(readFileSync(join(dir, file.name))) !== file.sha256) throw new Error(`${file.name}'s SHA-256 is not the manifest's`);
   }
-  console.log(`verified ${m.version}: ${Object.keys(m.files).length} files`);
+  console.log(`verified ${m.version}: ${all.length} files${m.sandbox ? `, the sandbox's runner image ${m.sandbox.runner_image ?? "(none)"}` : ""}`);
 }
 
 function publish(dryRun) {
@@ -157,7 +182,8 @@ function publish(dryRun) {
   // The version's files first; latest.json last, so no runner is pointed
   // at files that are not there yet.
   for (const name of readdirSync(dir)) {
-    if (name.startsWith("latest.json")) continue;
+    // sandbox.json is in manifest.json already.
+    if (name.startsWith("latest.json") || name === "sandbox.json") continue;
     put(`runner/${v}/${name}`, join(dir, name), name.endsWith(".json") ? "application/json" : "application/octet-stream");
   }
   put("runner/latest.json", join(dir, "latest.json"), "application/json");
@@ -181,6 +207,12 @@ if (process.argv[1]?.replaceAll("\\", "/").endsWith("scripts/runner-release.mjs"
       case "build":
         build((option("targets") ?? Object.keys(TARGETS).join(",")).split(","));
         break;
+      case "manifest": {
+        // Again, once the sandbox's images have joined the binaries.
+        const m = writeManifest(outDir(), version());
+        console.log(`manifest of ${m.version}: ${Object.keys(m.files).length} binaries, ${Object.keys(m.sandbox?.files ?? {}).length} sandbox images`);
+        break;
+      }
       case "sign":
         signRelease();
         break;

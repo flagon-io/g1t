@@ -56394,7 +56394,7 @@
           "Runners"
         ],
         "summary": "List self-hosted runners",
-        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version` and when it was last seen. A workspace's are seen by its owners; a repository's need the Admin role on it.\n\nA repository's list holds its own runners (`repo` set) and the workspace's that its runner group lets it use. A runner is `offline` when it has not polled for 90 seconds.",
+        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version`, when it was last seen, and its `isolation`: how it keeps work from its machine (`nested-container`, `vm`, `container` or `host`; null for a runner too old to say). A workspace's are seen by its owners; a repository's need the Admin role on it.\n\nA repository's list holds its own runners (`repo` set) and the workspace's that its runner group lets it use. A runner is `offline` when it has not polled for 90 seconds.",
         "x-operation": "list_runners",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_runners",
@@ -56460,7 +56460,8 @@
                     },
                     "last_seen_at": "2026-10-06T14:05:40.512Z",
                     "created_at": "2026-10-02T09:30:00.000Z",
-                    "created_by": null
+                    "created_by": null,
+                    "isolation": "nested-container"
                   },
                   {
                     "id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w9a",
@@ -56481,7 +56482,8 @@
                     "work": null,
                     "last_seen_at": "2026-10-06T14:05:40.512Z",
                     "created_at": "2026-10-02T09:30:00.000Z",
-                    "created_by": null
+                    "created_by": null,
+                    "isolation": "host"
                   }
                 ]
               }
@@ -57042,7 +57044,7 @@
           "Runners"
         ],
         "summary": "List self-hosted runners for a workspace",
-        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version` and when it was last seen. A workspace's are seen by its owners; a repository's need the Admin role on it.",
+        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version`, when it was last seen, and its `isolation`: how it keeps work from its machine (`nested-container`, `vm`, `container` or `host`; null for a runner too old to say). A workspace's are seen by its owners; a repository's need the Admin role on it.",
         "x-operation": "list_runners",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_runners",
@@ -57099,7 +57101,8 @@
                     },
                     "last_seen_at": "2026-10-06T14:05:40.512Z",
                     "created_at": "2026-10-02T09:30:00.000Z",
-                    "created_by": null
+                    "created_by": null,
+                    "isolation": "nested-container"
                   },
                   {
                     "id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w9a",
@@ -57120,7 +57123,8 @@
                     "work": null,
                     "last_seen_at": "2026-10-06T14:05:40.512Z",
                     "created_at": "2026-10-02T09:30:00.000Z",
-                    "created_by": null
+                    "created_by": null,
+                    "isolation": "host"
                   }
                 ]
               }

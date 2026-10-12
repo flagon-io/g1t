@@ -307,9 +307,14 @@ talk to the app, whichever it is, and updates still come from g1t.sh.
 
 ## What's not there yet
 
-- **The sandbox on Windows and macOS.** Until it is released, the runner
-  there runs jobs only if you choose Docker or this computer itself; see
-  [how jobs run](#how-jobs-run).
+- **The sandbox, from the app, on Windows and macOS.** The sandbox itself
+  is built: `g1t-runner sandbox up` makes a computer a self-hosted runner
+  that nothing a job runs can get out of, with Linux jobs in a Linux VM of
+  the runner's own and, on Windows 11 Pro and up, Windows jobs each in a
+  Windows Sandbox ([the sandbox](/guides/self-hosted-runners/#sandbox-on-your-computer)).
+  The app does not start it for you yet, so until it does, its runner on
+  Windows and macOS runs jobs only if you choose Docker or this computer
+  itself; see [how jobs run](#how-jobs-run).
 - **Agents on your desktop.** The runner takes workflow jobs, and agent
   work only if the workspace [sends it to its runners](/guides/self-hosted-runners/#agents-on-your-runners).
 - **Opening the conversation from a notification.** Clicking one brings
