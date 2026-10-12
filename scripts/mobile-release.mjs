@@ -77,6 +77,10 @@ export function newestBuild(list) {
   return finished[0] ?? null;
 }
 
+// A token pasted with a newline breaks the request's header, and EAS says
+// only that its GraphQL request failed.
+if (process.env.EXPO_TOKEN) process.env.EXPO_TOKEN = process.env.EXPO_TOKEN.trim();
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: options.capture ? ["ignore", "pipe", "inherit"] : "inherit", encoding: "utf8", ...options });
   if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed`);

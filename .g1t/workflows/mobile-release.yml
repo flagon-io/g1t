@@ -15,7 +15,8 @@
 #
 # Needs the repository secret EXPO_TOKEN (an Expo access token with access
 # to the g1t project), CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID as the
-# deploy has them.
+# deploy has them, and Expo's hosts as workflow-only domains (mobile-build.yml
+# lists them).
 name: Mobile release
 
 on:
@@ -68,8 +69,10 @@ jobs:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-${{ runner.os }}-
-      - name: Install Wrangler
-        run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
+      # Wrangler, from the root, and the app's own (EAS reads app.config.ts
+      # through its `expo`).
+      - name: Install Wrangler and the app
+        run: npm ci --prefer-offline --no-audit --no-fund -w @g1t/mobile --include-workspace-root
       - name: Build on EAS
         if: ${{ !inputs.build }}
         env:
