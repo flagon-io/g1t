@@ -3,7 +3,7 @@ import { Link } from "react-router";
 
 import type { DesktopBackend, DesktopDiagnosis, DesktopRunner } from "@g1t/contracts";
 
-import { BACKEND_LABEL, type DesktopRunnerAction, desktopRunner, useDesktopRunner } from "../lib/desktop-runner";
+import { BACKEND_LABEL, type DesktopRunnerAction, type DesktopRunnerCapability, desktopRunner, useDesktopRunner } from "../lib/desktop-runner";
 import { EmptyState, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -26,6 +26,8 @@ type Row = {
   diagnosis: DesktopDiagnosis;
   /** This computer's fixes, which only work here. */
   actions: DesktopRunnerAction[];
+  /** Sandboxed: each kind of job, Linux and Windows, with how it is (and here, its fixes). */
+  capabilities: DesktopRunnerCapability[];
   here: boolean;
   reportedAt: string | null;
 };
@@ -41,6 +43,7 @@ export function desktopRows(desktops: DesktopRunner[], here: ReturnType<typeof u
       version: here.version,
       diagnosis: here.diagnosis,
       actions: here.diagnosis.actions,
+      capabilities: here.diagnosis.capabilities ?? [],
       here: true,
       reportedAt: null,
     });
@@ -54,11 +57,26 @@ export function desktopRows(desktops: DesktopRunner[], here: ReturnType<typeof u
       version: desktop.version,
       diagnosis: desktop.open ? desktop.diagnosis : desktop.closed,
       actions: [],
+      capabilities: desktop.open ? (desktop.diagnosis.capabilities ?? []).map((c) => ({ ...c, actions: [] })) : [],
       here: false,
       reportedAt: desktop.reportedAt,
     });
   }
   return rows;
+}
+
+/** A diagnosis's fixes, as buttons: they work only on this computer, in the app. */
+function Actions({ actions }: { actions: DesktopRunnerAction[] }) {
+  if (actions.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {actions.map((action, at) => (
+        <Button key={action.id} size="xs" variant={at === 0 ? "secondary" : "outline"} onClick={() => void desktopRunner()?.act(action.id).catch(() => {})}>
+          {action.label}
+        </Button>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -95,14 +113,23 @@ export function DesktopRunners({ desktops, slug }: { desktops: DesktopRunner[] |
               <p className="mt-1 text-sm text-fg">{row.diagnosis.title}</p>
               {row.diagnosis.cause && <p className="mt-0.5 text-sm text-muted">{row.diagnosis.cause}</p>}
               {row.diagnosis.fix && <p className="mt-0.5 text-sm text-fg-soft">{row.diagnosis.fix}</p>}
-              {row.actions.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {row.actions.map((action, at) => (
-                    <Button key={action.id} size="xs" variant={at === 0 ? "secondary" : "outline"} onClick={() => void desktopRunner()?.act(action.id).catch(() => {})}>
-                      {action.label}
-                    </Button>
+              <Actions actions={row.actions} />
+              {row.capabilities.length > 1 && (
+                <ul className="mt-2 space-y-1.5 border-t border-line pt-2">
+                  {row.capabilities.map((capability) => (
+                    <li key={capability.id} className="flex items-start gap-2">
+                      <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${DOT[capability.tone]}`} aria-hidden />
+                      <div className="min-w-0">
+                        <p className="text-sm text-fg">
+                          {capability.label}: {capability.title}
+                        </p>
+                        {capability.cause && <p className="text-sm text-muted">{capability.cause}</p>}
+                        {capability.fix && <p className="text-sm text-fg-soft">{capability.fix}</p>}
+                        <Actions actions={capability.actions} />
+                      </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
             </div>
             <div className="shrink-0 text-right text-xs text-faint">

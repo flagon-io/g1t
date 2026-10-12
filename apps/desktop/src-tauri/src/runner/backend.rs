@@ -3,7 +3,7 @@
 //!
 //! | Backend | How | What a job can reach |
 //! | --- | --- | --- |
-//! | Sandboxed (the default) | The runner in a sandbox of its own: its image under Sysbox on Linux today (container.rs), a VM that `g1t-runner sandbox` makes on Windows and macOS once it is built (launcher.rs). Jobs are containers inside it: `nested-container` isolation. | Its own container. Not this computer. |
+//! | Sandboxed (the default) | `g1t-runner sandbox` (launcher.rs): Linux jobs in a Linux VM of the runner's own (WSL 2 on Windows, vfkit on macOS, Sysbox or QEMU with KVM on Linux), each a container inside it, `nested-container`; on Windows 11 Pro and up, Windows jobs each in a Windows Sandbox, `vm`. What the computer lacks for it, the launcher says, and the app shows. | Its own container, or its own Windows Sandbox. Not this computer. |
 //! | Docker | `g1t-runner` on this computer, driving this computer's Docker (native.rs): `container` isolation. | Its own container; but the runner controls this computer's Docker, which on Docker Desktop is a VM with the person's files shared into it. Not a sandbox. |
 //! | On this computer | `g1t-runner --no-docker` (native.rs): `host` isolation. | Everything the person's account can. |
 //!
@@ -14,8 +14,6 @@
 use std::process::{Command, Stdio};
 
 use serde::{Deserialize, Serialize};
-
-use super::launcher;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -40,9 +38,8 @@ impl Backend {
 /// What starts the runner for a backend, here.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Engine {
-    /// The runner's image under Sysbox, through this computer's Docker.
-    Sysbox,
-    /// `g1t-runner sandbox`, which makes and owns the sandbox.
+    /// `g1t-runner sandbox`, which makes and owns the sandbox, and says
+    /// itself what this computer lacks for one.
     Launcher,
     /// `g1t-runner` itself, as a child of the app; `docker` is whether its
     /// jobs run in this computer's Docker or directly on it.
@@ -54,10 +51,6 @@ pub enum Engine {
 pub enum Missing {
     /// Docker is not installed, or not running.
     Docker,
-    /// No sandbox can be made on this computer yet.
-    Sandbox,
-    /// Linux, whose sandbox needs Sysbox in its Docker, which has none.
-    Sysbox,
 }
 
 /// A program run without a console window flashing up on Windows.
@@ -83,33 +76,10 @@ pub fn docker_ready() -> bool {
         .is_ok_and(|status| status.success())
 }
 
-/// Whether this computer's Docker has Sysbox's runtime.
-fn sysbox_ready() -> bool {
-    quiet("docker")
-        .args(["info", "--format", "{{json .Runtimes}}"])
-        .stderr(Stdio::null())
-        .output()
-        .is_ok_and(|out| out.status.success() && String::from_utf8_lossy(&out.stdout).contains("sysbox-runc"))
-}
-
 /// What a backend needs, checked now: how to start it, or why it cannot.
 pub fn engine(backend: Backend) -> Result<Engine, Missing> {
     match backend {
-        Backend::Sandboxed => {
-            if launcher::READY {
-                return Ok(Engine::Launcher);
-            }
-            if !cfg!(target_os = "linux") {
-                return Err(Missing::Sandbox);
-            }
-            if !docker_ready() {
-                return Err(Missing::Docker);
-            }
-            if !sysbox_ready() {
-                return Err(Missing::Sysbox);
-            }
-            Ok(Engine::Sysbox)
-        }
+        Backend::Sandboxed => Ok(Engine::Launcher),
         Backend::Docker => {
             if docker_ready() {
                 Ok(Engine::Native { docker: true })
@@ -156,8 +126,9 @@ mod tests {
     }
 
     #[test]
-    fn on_this_computer_needs_nothing_more() {
+    fn on_this_computer_needs_nothing_more_and_the_sandbox_is_the_launchers() {
         assert_eq!(engine(Backend::Host), Ok(Engine::Native { docker: false }));
+        assert_eq!(engine(Backend::Sandboxed), Ok(Engine::Launcher));
     }
 
     #[test]

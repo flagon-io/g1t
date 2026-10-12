@@ -250,7 +250,7 @@ pub const MAX_DESKTOPS: u32 = 200;
 /// A diagnosis, as the app made it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DesktopDiagnosis {
-    /// `idle`, `busy`, `no_docker`, `no_sandbox`, `not_allowed`, …
+    /// `idle`, `busy`, `no_docker`, `no_wsl`, `sandbox_failed`, `not_allowed`, …
     pub code: String,
     /// `ok`, `working`, `off`, `warning` or `problem`.
     pub tone: String,
@@ -259,7 +259,30 @@ pub struct DesktopDiagnosis {
     pub cause: Option<String>,
     #[serde(default)]
     pub fix: Option<String>,
+    /// A sandboxed desktop's kinds of job, each with how it is: Linux jobs
+    /// can run while Windows jobs cannot. Empty for the other backends.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<DesktopCapability>,
 }
+
+/// One kind of job a sandboxed desktop runs, as its app says it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopCapability {
+    /// `linux`, `windows` or `macos`.
+    pub id: String,
+    /// `Linux jobs`.
+    pub label: String,
+    pub tone: String,
+    /// `Waiting for jobs`, `Not available`.
+    pub title: String,
+    #[serde(default)]
+    pub cause: Option<String>,
+    #[serde(default)]
+    pub fix: Option<String>,
+}
+
+/// The most kinds of job a desktop reports.
+pub const MAX_DESKTOP_CAPABILITIES: usize = 4;
 
 /// One person's computer, as its desktop app last said.
 #[derive(Clone, Debug, Serialize, Deserialize)]

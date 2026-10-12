@@ -93,6 +93,59 @@
     return item;
   }
 
+  // A fix's button. Choosing is done here, in this window; a copy says it was copied.
+  function actionButton(action, primary) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.textContent = action.label;
+    if (primary) button.className = "primary";
+    button.addEventListener("click", function () {
+      if (action.id === "choose_workspace") return byId("runnerWorkspace").focus();
+      if (action.id === "choose_backend") return byId("runnerBackend").focus();
+      invoke("runner_control", { action: action.id }).then(function () {
+        if (action.id.indexOf("copy_") !== 0) return;
+        button.textContent = "Copied";
+        setTimeout(function () {
+          button.textContent = action.label;
+        }, 2000);
+      }, fail);
+    });
+    return button;
+  }
+
+  function span(className, text) {
+    var item = document.createElement("span");
+    if (className) item.className = className;
+    item.textContent = text;
+    return item;
+  }
+
+  // Each kind of job the sandbox runs, when there is more than one: Linux
+  // jobs can run while Windows jobs cannot.
+  function renderCapabilities(capabilities) {
+    var list = byId("runner-capabilities");
+    list.textContent = "";
+    list.hidden = !capabilities || capabilities.length < 2;
+    if (list.hidden) return;
+    capabilities.forEach(function (capability) {
+      var item = document.createElement("li");
+      item.appendChild(span("dot " + capability.tone, ""));
+      var text = span("diagnosis-text", "");
+      var title = document.createElement("strong");
+      title.textContent = capability.label + ": " + capability.title;
+      text.appendChild(title);
+      if (capability.cause) text.appendChild(span("muted", capability.cause));
+      if (capability.fix) text.appendChild(span("", capability.fix));
+      var buttons = span("buttons", "");
+      capability.actions.forEach(function (action) {
+        buttons.appendChild(actionButton(action, false));
+      });
+      text.appendChild(buttons);
+      item.appendChild(text);
+      list.appendChild(item);
+    });
+  }
+
   function renderRunner(runner) {
     if (!runner) return;
     var diagnosis = runner.diagnosis;
@@ -103,18 +156,9 @@
     var actions = byId("runner-actions");
     actions.textContent = "";
     diagnosis.actions.forEach(function (action, at) {
-      var button = document.createElement("button");
-      button.type = "button";
-      button.textContent = action.label;
-      if (at === 0) button.className = "primary";
-      button.addEventListener("click", function () {
-        // Choosing is done here, in this window.
-        if (action.id === "choose_workspace") return byId("runnerWorkspace").focus();
-        if (action.id === "choose_backend") return byId("runnerBackend").focus();
-        invoke("runner_control", { action: action.id }).catch(fail);
-      });
-      actions.appendChild(button);
+      actions.appendChild(actionButton(action, at === 0));
     });
+    renderCapabilities(diagnosis.capabilities);
     byId("runner").checked = !!runner.enabled;
     var on = runner.enabled && !runner.paused;
     byId("runner-toggle").textContent = on ? "Stop" : "Start";

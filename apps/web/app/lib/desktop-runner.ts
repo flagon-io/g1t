@@ -18,14 +18,17 @@
  */
 import { useEffect, useState } from "react";
 
-import type { DesktopBackend, DesktopDiagnosis, DesktopReport } from "@g1t/contracts";
+import type { DesktopBackend, DesktopCapability, DesktopDiagnosis, DesktopReport } from "@g1t/contracts";
 
 /** A fix, as a button: its id is the app's (`runner_control`). */
 export type DesktopRunnerAction = { id: string; label: string };
 
+/** A kind of job the sandbox runs, with its fixes' buttons (`diagnosis::CapabilityLine` in the app). */
+export type DesktopRunnerCapability = DesktopCapability & { actions: DesktopRunnerAction[] };
+
 /** What the app says of its runner (`runner::View` in the app). */
 export type DesktopRunnerView = {
-  diagnosis: DesktopDiagnosis & { actions: DesktopRunnerAction[] };
+  diagnosis: Omit<DesktopDiagnosis, "capabilities"> & { actions: DesktopRunnerAction[]; capabilities?: DesktopRunnerCapability[] };
   closed: DesktopDiagnosis & { actions: DesktopRunnerAction[] };
   running: boolean;
   version: string | null;
@@ -87,7 +90,11 @@ export const HEARTBEAT_MS = 4 * 60 * 1000;
 /** What goes to the server, without the buttons, which only work on that computer. */
 export function reportOf(view: DesktopRunnerView): DesktopReport | null {
   if (!view.workspace) return null;
-  const plain = ({ code, tone, title, cause, fix }: DesktopDiagnosis): DesktopDiagnosis => ({ code, tone, title, cause, fix });
+  const plain = ({ code, tone, title, cause, fix, capabilities }: DesktopDiagnosis): DesktopDiagnosis => {
+    const said: DesktopDiagnosis = { code, tone, title, cause, fix };
+    if (capabilities?.length) said.capabilities = capabilities.map(({ id, label, tone, title, cause, fix }) => ({ id, label, tone, title, cause: cause ?? null, fix: fix ?? null }));
+    return said;
+  };
   return { workspace: view.workspace, machine: view.machine, backend: view.backend, version: view.version, diagnosis: plain(view.diagnosis), closed: plain(view.closed) };
 }
 
@@ -99,7 +106,8 @@ export function reportDue(last: { key: string; at: number } | null, report: Desk
 
 export function reportKey(report: DesktopReport): string {
   const { diagnosis } = report;
-  return [report.workspace, report.machine, report.backend, report.version, diagnosis.code, diagnosis.title, diagnosis.cause, diagnosis.fix].join("\u0000");
+  const capabilities = (diagnosis.capabilities ?? []).map((c) => [c.id, c.tone, c.title, c.cause, c.fix].join("\u0001"));
+  return [report.workspace, report.machine, report.backend, report.version, diagnosis.code, diagnosis.title, diagnosis.cause, diagnosis.fix, ...capabilities].join("\u0000");
 }
 
 /** A string with something in it, or null. */
@@ -120,7 +128,27 @@ export function diagnosisOf(value: unknown): DesktopDiagnosis | null {
   const title = text(given.title);
   const tone = TONES.find((t) => t === given.tone);
   if (!code || !title || !tone) return null;
-  return { code, tone, title, cause: text(given.cause), fix: text(given.fix) };
+  const said: DesktopDiagnosis = { code, tone, title, cause: text(given.cause), fix: text(given.fix) };
+  const capabilities = Array.isArray(given.capabilities)
+    ? given.capabilities.map(capabilityOf).filter((c): c is DesktopCapability => c !== null).slice(0, MAX_CAPABILITIES)
+    : [];
+  if (capabilities.length > 0) said.capabilities = capabilities;
+  return said;
+}
+
+/** The most kinds of job a desktop reports (the server keeps as many). */
+const MAX_CAPABILITIES = 4;
+
+/** A kind of job as the app sent it, or null when it is not one. */
+function capabilityOf(value: unknown): DesktopCapability | null {
+  if (!value || typeof value !== "object") return null;
+  const given = value as Record<string, unknown>;
+  const id = text(given.id);
+  const label = text(given.label);
+  const title = text(given.title);
+  const tone = TONES.find((t) => t === given.tone);
+  if (!id || !label || !title || !tone) return null;
+  return { id, label, tone, title, cause: text(given.cause), fix: text(given.fix) };
 }
 
 /** The words for how a desktop runs jobs, as its settings say them. */

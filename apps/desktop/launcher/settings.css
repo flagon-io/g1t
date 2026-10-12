@@ -261,6 +261,27 @@ code {
 .diagnosis-text .buttons:empty {
 	display: none;
 }
+/* With the sandbox, each kind of job it runs: Linux jobs, Windows jobs. */
+.capabilities {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin: 0.5rem 0 0;
+	padding: 0.5rem 0 0;
+	border-top: 1px solid var(--line);
+	list-style: none;
+}
+.capabilities[hidden] {
+	display: none;
+}
+.capabilities li {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.5rem;
+}
+.capabilities .dot {
+	margin-top: 0.3rem;
+}
 .dot {
 	flex: none;
 	width: 8px;

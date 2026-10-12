@@ -15,7 +15,7 @@ use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry,
 use g1t_contracts::billing::{ComputeKind, RecordSandboxArgs};
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::runners::{
-    self as model, ACTIVITY_LIMIT, CloudJob, DesktopDiagnosis, DesktopRunner, DesktopRunnersArgs, ReportDesktopArgs, HandedOverTask, RunnerActivity, RunnerActivityArgs, StuckJob, StuckJobsArgs, Assignment, CancelTaskArgs, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs, EnqueueTaskArgs, FinishedArgs,
+    self as model, ACTIVITY_LIMIT, CloudJob, DesktopCapability, DesktopDiagnosis, DesktopRunner, DesktopRunnersArgs, ReportDesktopArgs, HandedOverTask, RunnerActivity, RunnerActivityArgs, StuckJob, StuckJobsArgs, Assignment, CancelTaskArgs, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs, EnqueueTaskArgs, FinishedArgs,
     ListRunnersArgs, Poll, PollArgs, RegisterArgs, Registered, RegistrationToken, RemoveRunnerArgs, RemoveSelfArgs, RouteArgs, Runner,
     RunnerAuth, RunnerGroup, RunnerGroupsArgs, RunnerSettings, RunnerSettingsArgs, RunnerWork, RunnersOwner, SetRunnerGroupArgs,
     SetRunnerSettingsArgs, Wanted,
@@ -726,6 +726,19 @@ impl Actions {
             title: clip(&d.title, 200),
             cause: d.cause.as_deref().map(|t| clip(t, 1000)),
             fix: d.fix.as_deref().map(|t| clip(t, 1000)),
+            capabilities: d
+                .capabilities
+                .iter()
+                .take(model::MAX_DESKTOP_CAPABILITIES)
+                .map(|c| DesktopCapability {
+                    id: clip(&c.id, 20),
+                    label: clip(&c.label, 60),
+                    tone: clip(&c.tone, 20),
+                    title: clip(&c.title, 200),
+                    cause: c.cause.as_deref().map(|t| clip(t, 1000)),
+                    fix: c.fix.as_deref().map(|t| clip(t, 1000)),
+                })
+                .collect(),
         };
         let at = now_ms();
         let known = self
