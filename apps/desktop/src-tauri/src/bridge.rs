@@ -13,17 +13,15 @@ use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
 use crate::settings::{self, Settings};
-use crate::{WINDOW, badge, config, updates};
+use crate::{badge, config, frame, updates};
 
 const SCRIPT: &str = include_str!("bridge.js");
 
-/// The bridge, run at the start of every page a window loads: `window` is
-/// its label, and `custom` whether it draws g1t's title bar (frame.rs).
-pub fn script(window: &str, custom: bool) -> String {
+/// The bridge, run at the start of every page the site's web view loads:
+/// `custom` is whether g1t's title bar is above it (frame.rs).
+pub fn script(custom: bool) -> String {
     SCRIPT
-        .replace("__WINDOW__", window)
         .replace("__FRAME__", if custom { "custom" } else { "system" })
-        .replace("\"__HEIGHT__\"", &crate::frame::HEIGHT.to_string())
         .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
         .replace("__PLATFORM__", std::env::consts::OS)
         .replace("\"__OUTSIDE__\"", &serde_json::to_string(crate::navigation::OUTSIDE).expect("a list of paths is JSON"))
@@ -65,15 +63,23 @@ fn from_either(app: &AppHandle, webview: &Webview) -> Result<(), String> {
     from_site(app, webview).or_else(|_| from_launcher(webview))
 }
 
-/// The page asking is one the title bar is drawn on: the site's, the
-/// app's own, or GitHub's while signing in.
-fn from_frame(app: &AppHandle, webview: &Webview) -> Result<(), String> {
+/// The page asking is the one under the title bar, whichever it is: the
+/// site's, the launcher, or GitHub's while signing in.
+fn from_page(app: &AppHandle, webview: &Webview) -> Result<(), String> {
     let url = caller(webview)?;
-    if config::is_server(app, &url) || config::is_launcher(&url) || crate::navigation::signing_in(&url) {
-        Ok(())
-    } else {
-        Err("only g1t's own pages may ask that".into())
-    }
+    let shown = config::is_server(app, &url) || config::is_launcher(&url) || crate::navigation::signing_in(&url);
+    if webview.label() == frame::SITE && shown { Ok(()) } else { Err("only the page in the window may ask that".into()) }
+}
+
+/// The page asking is the title bar's, bundled with the app.
+fn from_bar(webview: &Webview) -> Result<(), String> {
+    from_launcher(webview)?;
+    if webview.label() == frame::BAR { Ok(()) } else { Err("only the title bar may ask that".into()) }
+}
+
+/// The page asking has window buttons: the title bar, or the settings window's own.
+fn from_frame(webview: &Webview) -> Result<(), String> {
+    from_bar(webview).or_else(|_| from_settings(webview))
 }
 
 #[tauri::command]
@@ -93,7 +99,7 @@ pub fn desktop_info(app: AppHandle, webview: Webview) -> Result<Info, String> {
 pub fn notify(app: AppHandle, webview: Webview, title: String, body: String) -> Result<(), String> {
     from_site(&app, &webview)?;
     let settings = config::settings(&app);
-    if let Some(window) = app.get_webview_window(WINDOW).filter(|window| settings.flash && !window.is_focused().unwrap_or(false)) {
+    if let Some(window) = crate::frame::window(&app).filter(|window| settings.flash && !window.is_focused().unwrap_or(false)) {
         let _ = window.request_user_attention(Some(UserAttentionType::Informational));
     }
     if !settings.notifications {
@@ -158,17 +164,38 @@ pub async fn check_for_updates(app: AppHandle, webview: Webview) -> Result<Strin
 /// `drag`, or `maximized` to ask. Answers whether the window is maximized.
 #[tauri::command]
 pub fn window_control(app: AppHandle, webview: Webview, action: String) -> Result<bool, String> {
-    from_frame(&app, &webview)?;
-    let window = app.get_webview_window(webview.label()).ok_or("no such window")?;
-    crate::frame::control(&app, &window, &action)
+    from_frame(&webview)?;
+    crate::frame::control(&app, &webview.window(), &action)
 }
 
 /// The title bar's menu button: the app's menu, at that place in the window.
 #[tauri::command]
-pub fn window_menu(app: AppHandle, webview: Webview, x: f64, y: f64) -> Result<(), String> {
-    from_frame(&app, &webview)?;
-    let window = app.get_webview_window(WINDOW).filter(|_| webview.label() == WINDOW).ok_or("only the main window has a menu")?;
-    crate::frame::menu(&window, x, y)
+pub fn window_menu(webview: Webview, x: f64, y: f64) -> Result<(), String> {
+    from_bar(&webview)?;
+    crate::frame::menu(&webview.window(), x, y)
+}
+
+/// The page under the title bar says what it is: its title, its search,
+/// whether there is a way back, its colours (frame.rs).
+#[tauri::command]
+pub fn title_bar_page(app: AppHandle, webview: Webview, page: frame::Page) -> Result<(), String> {
+    from_page(&app, &webview)?;
+    frame::page(&app, page);
+    Ok(())
+}
+
+/// What the title bar shows now: it asks as it loads.
+#[tauri::command]
+pub fn title_bar_current(app: AppHandle, webview: Webview) -> Result<frame::Page, String> {
+    from_bar(&webview)?;
+    Ok(frame::current(&app))
+}
+
+/// A title bar button that acts on the page: `back`, `forward`, `search`, `focus`.
+#[tauri::command]
+pub fn title_bar_act(app: AppHandle, webview: Webview, action: String) -> Result<(), String> {
+    from_bar(&webview)?;
+    frame::act(&app, &action)
 }
 
 /// Restarts g1t, installing a downloaded update on the way: the settings
@@ -236,12 +263,12 @@ pub fn change_server(app: AppHandle, webview: Webview) -> Result<(), String> {
 mod tests {
     #[test]
     fn the_bridge_has_nothing_left_to_fill_in() {
-        let script = super::script("main", true);
-        for placeholder in ["__VERSION__", "__PLATFORM__", "__OUTSIDE__", "__WINDOW__", "__FRAME__", "__HEIGHT__"] {
+        let script = super::script(true);
+        for placeholder in ["__VERSION__", "__PLATFORM__", "__OUTSIDE__", "__FRAME__"] {
             assert!(!script.contains(placeholder), "{placeholder} is left in the bridge");
         }
-        assert!(script.contains(r#"var HEIGHT = 36;"#) && script.contains(r#"var FRAME = "custom";"#));
-        assert!(super::script("settings", false).contains(r#"var FRAME = "system";"#));
+        assert!(script.contains(r#"var FRAME = "custom";"#));
+        assert!(super::script(false).contains(r#"var FRAME = "system";"#));
         assert!(script.contains(r#"var OUTSIDE = ["/pricing""#));
     }
 }

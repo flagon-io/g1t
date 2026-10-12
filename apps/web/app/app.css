@@ -372,23 +372,6 @@ body[data-frame="app"] {
   --topbar-h: calc(var(--frame-top) + 3.5rem);
   --page-h: calc(100dvh - var(--topbar-h) - var(--tabbar-h));
 }
-/*
- * The desktop app's own title bar (apps/desktop, src/frame.rs), drawn over
- * the top of the window on <html data-titlebar>: what is above the page is
- * the bar, whatever the frame. --titlebar-h is for frames that do not
- * read --frame-top (the public header, the standalone frame). The bar
- * pushes any page down by itself; g1t's pages make room their own way.
- */
-:root {
-  --titlebar-h: 0px;
-}
-html[data-titlebar] {
-  --titlebar-h: 36px;
-  padding-top: 0;
-}
-html[data-titlebar] body {
-  --frame-top: var(--titlebar-h);
-}
 @media (max-width: 767px) {
   body[data-frame="app"] {
     --frame-top: env(safe-area-inset-top);

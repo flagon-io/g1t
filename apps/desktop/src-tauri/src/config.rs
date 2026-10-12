@@ -165,12 +165,11 @@ const SITE: &[&str] = &[
     "allow-open-url",
     "allow-check-for-updates",
     "allow-open-settings",
-    "allow-window-control",
-    "allow-window-menu",
+    "allow-title-bar-page",
 ];
 
-/// What GitHub's pages may call while someone signs in: the title bar's buttons.
-const FRAME: &[&str] = &["allow-window-control", "allow-window-menu"];
+/// What GitHub's pages may call while someone signs in: telling the title bar their title.
+const FRAME: &[&str] = &["allow-title-bar-page"];
 
 /// Lets the server's pages call the app: a capability for its origin,
 /// added once. Pages from anywhere else get no IPC at all, and bridge.rs
@@ -187,7 +186,7 @@ pub fn allow_site(app: &AppHandle) -> tauri::Result<()> {
         site = site.permission(*permission);
     }
     app.add_capability(site)?;
-    // Signing in with GitHub: its pages get the title bar's buttons, and nothing else.
+    // Signing in with GitHub: its pages tell the title bar what they are, and nothing else.
     if allowed.is_empty() {
         let mut sign_in = CapabilityBuilder::new("sign-in").window(WINDOW).remote("https://github.com/*".to_string());
         for permission in FRAME {

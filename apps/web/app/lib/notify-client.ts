@@ -74,8 +74,8 @@ import {
  *   // The search in the middle of the app's own title bar: its label, and
  *   // what it opens. Returns what takes it away.
  *   setSearch(label, open) { return () => {} },
- *   // How tall the app's own title bar is, 0 under the system's. The page
- *   // also finds it as <html data-titlebar> and --titlebar-h (app.css).
+ *   // How tall the app's own title bar is, 0 under the system's. The bar
+ *   // is a web view of its own, above the page, never over it.
  *   titleBarHeight: 36,
  * };
  *

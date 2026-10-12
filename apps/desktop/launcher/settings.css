@@ -26,6 +26,48 @@ body {
 	user-select: none;
 	cursor: default;
 }
+/* g1t's own title bar, when the window has no system frame: fixed at the top, 36px tall. */
+.titlebar {
+	position: fixed;
+	inset: 0 0 auto 0;
+	z-index: 10;
+	height: 36px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding-left: 14px;
+	background: #050507;
+	color: var(--muted);
+	font-size: 12px;
+	font-weight: 500;
+}
+.titlebar[hidden] {
+	display: none;
+}
+.mac .titlebar {
+	padding-left: 78px;
+}
+.mac .titlebar .caption {
+	display: none;
+}
+.titlebar .caption {
+	all: unset;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 46px;
+	height: 36px;
+}
+.titlebar .caption:hover {
+	background: #c42b1c;
+	color: #fff;
+}
+/* Under it, the page scrolls on its own, so its scrollbar starts below the bar. */
+body.framed .page {
+	position: fixed;
+	inset: 36px 0 0 0;
+	overflow-y: auto;
+}
 main {
 	max-width: 36rem;
 	margin: 0 auto;

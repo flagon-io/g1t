@@ -90,7 +90,7 @@ colours of g1t's rail, in light and dark.
 
 Drag the bar to move the window, and double-click it to maximize or
 restore it. The bar is there on every page the window shows, signing in
-with GitHub included.
+with GitHub included, and the page sits below it, never under it.
 
 To have the system's title bar instead, turn on **Use the system's title
 bar** in [the settings](#settings). On Windows and Linux the menu bar

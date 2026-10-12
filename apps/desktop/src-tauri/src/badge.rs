@@ -6,12 +6,12 @@
 
 use tauri::{AppHandle, Manager};
 
-use crate::{WINDOW, config, tray};
+use crate::{config, tray};
 
 pub fn set(app: &AppHandle, count: i64) {
     *app.state::<config::State>().waiting.lock().unwrap() = count;
     let shown = if config::settings(app).badge { count } else { 0 };
-    if let Some(window) = app.get_webview_window(WINDOW) {
+    if let Some(window) = crate::frame::window(app) {
         #[cfg(target_os = "windows")]
         let _ = window.set_overlay_icon(if shown > 0 { Some(dot()) } else { None });
         #[cfg(not(target_os = "windows"))]

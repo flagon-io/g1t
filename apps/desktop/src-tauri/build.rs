@@ -21,6 +21,9 @@ fn main() {
         "restart",
         "window_control",
         "window_menu",
+        "title_bar_page",
+        "title_bar_current",
+        "title_bar_act",
     ])))
     .expect("the app's build could not be prepared");
 }

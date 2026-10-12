@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 
-use crate::{WINDOW, config};
+use crate::config;
 
 /// The settings window's label.
 pub const SETTINGS: &str = "settings";
@@ -74,6 +74,8 @@ pub struct View {
     pub checked_at: Option<u64>,
     /// The title bar setting differs from the one the windows have: a restart applies it.
     pub title_bar_changed: bool,
+    /// Whether this window draws g1t's own title bar, which the page then draws (settings.html).
+    pub custom_frame: bool,
 }
 
 pub fn view(app: &AppHandle) -> View {
@@ -86,6 +88,7 @@ pub fn view(app: &AppHandle) -> View {
         update_ready: crate::updates::ready(app),
         checked_at: crate::updates::checked_at(app),
         title_bar_changed: crate::frame::started(app) != crate::frame::custom(app),
+        custom_frame: crate::frame::started(app),
     }
 }
 
@@ -94,8 +97,8 @@ pub fn apply(app: &AppHandle, mut settings: Settings) -> Result<(), String> {
     settings.zoom = Settings::clamp_zoom(settings.zoom);
     let before = config::settings(app);
     config::set_settings(app, settings.clone())?;
-    if let Some(window) = app.get_webview_window(WINDOW).filter(|_| before.zoom != settings.zoom) {
-        let _ = window.set_zoom(settings.zoom);
+    if let Some(site) = crate::frame::site(app).filter(|_| before.zoom != settings.zoom) {
+        let _ = site.set_zoom(settings.zoom);
     }
     if before.badge != settings.badge {
         crate::badge::refresh(app);
@@ -157,9 +160,8 @@ fn show(app: &AppHandle, check: bool) {
     let page = if check { "settings.html?check" } else { "settings.html" };
     let custom = crate::frame::started(app);
     let builder = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App(page.into()))
-        .title("g1t settings")
-        .initialization_script(crate::bridge::script(SETTINGS, custom));
-    let built = crate::frame::style(builder, custom)
+        .title("g1t settings");
+    let built = crate::frame::dialog(builder, custom)
         .inner_size(560.0, 680.0)
         .min_inner_size(440.0, 420.0)
         .maximizable(false)

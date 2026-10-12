@@ -5,10 +5,10 @@
 //! every menu event, from either, comes to `handle`.
 
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Wry};
 use tauri_plugin_opener::OpenerExt;
 
-use crate::{WINDOW, links, settings, tray, updates};
+use crate::{links, settings, tray, updates};
 
 const DOCS: &str = "https://docs.g1t.sh/guides/desktop/";
 const STATUS: &str = "https://status.g1t.sh/";
@@ -130,8 +130,8 @@ fn about() -> AboutMetadata<'static> {
 
 /// Runs the script on the main window's page.
 fn eval(app: &AppHandle, script: &str) {
-    if let Some(window) = app.get_webview_window(WINDOW) {
-        let _ = window.eval(script);
+    if let Some(site) = crate::frame::site(app) {
+        let _ = site.eval(script);
     }
 }
 
@@ -147,8 +147,8 @@ pub fn handle(app: &AppHandle, id: &str) {
         "quit" => updates::quit(app),
         "close" => tray::close(app),
         "reload" => {
-            if let Some(window) = app.get_webview_window(WINDOW) {
-                let _ = window.reload();
+            if let Some(site) = crate::frame::site(app) {
+                let _ = site.reload();
             }
         }
         "zoom-in" => settings::zoom(app, 1),
