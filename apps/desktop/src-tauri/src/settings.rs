@@ -1,6 +1,6 @@
 //! The app's own settings: how it starts, what closing the window does,
-//! how it tells the person something arrived, its title bar, zoom,
-//! updates, and the runner. They open as a dialog over the site, which the
+//! how it tells the person something arrived, its title bar, zoom, the
+//! web inspector, updates, and the runner. They open as a dialog over the site, which the
 //! site's page draws (apps/web components/desktop-settings.tsx), from the
 //! title bar, the menu, the tray, or the site's account menu. While the
 //! window shows no page of the site's (the launcher, the offline page,
@@ -48,6 +48,10 @@ pub struct Settings {
     pub system_title_bar: bool,
     /// The site's zoom, 1 for as it is.
     pub zoom: f64,
+    /// The web inspector for the site's page, from the View menu, F12 and
+    /// Ctrl+Shift+I (⌥⌘I on macOS); off unless someone turns it on
+    /// (devtools.rs). On macOS and Linux it takes effect when g1t restarts.
+    pub developer_tools: bool,
     /// Updates download by themselves; a person can still check from the menu.
     /// The runner's own updates follow it too (runner/mod.rs).
     pub auto_update: bool,
@@ -113,6 +117,7 @@ impl Default for Settings {
             badge: true,
             system_title_bar: false,
             zoom: 1.0,
+            developer_tools: false,
             auto_update: true,
             runner: true,
             runner_backend: crate::runner::Backend::Sandboxed,
@@ -147,6 +152,9 @@ pub struct View {
     pub title_bar_changed: bool,
     /// Whether this window draws g1t's own title bar, which the page then draws (settings.html).
     pub custom_frame: bool,
+    /// The developer tools setting differs from the one the site's page
+    /// has, on macOS and Linux: a restart applies it (devtools.rs).
+    pub developer_tools_changed: bool,
     /// The runner's state, diagnosis and recent log.
     pub runner_view: crate::runner::View,
 }
@@ -162,6 +170,7 @@ pub fn view(app: &AppHandle) -> View {
         checked_at: crate::updates::checked_at(app),
         title_bar_changed: crate::frame::started(app) != crate::frame::custom(app),
         custom_frame: crate::frame::started(app),
+        developer_tools_changed: crate::devtools::changed(app),
         runner_view: crate::runner::view(app),
     }
 }
@@ -176,6 +185,9 @@ pub fn apply(app: &AppHandle, mut settings: Settings) -> Result<(), String> {
     }
     if before.badge != settings.badge {
         crate::badge::refresh(app);
+    }
+    if before.developer_tools != settings.developer_tools {
+        crate::devtools::setting_changed(app);
     }
     let runner = |s: &Settings| (s.runner, s.runner_backend, s.runner_workspace.clone(), s.runner_capabilities.clone());
     if runner(&before) != runner(&settings) {
@@ -340,8 +352,11 @@ fn made_aside(app: &AppHandle, window: Window) {
 
 fn build(app: &AppHandle, window: &Window) {
     let custom = crate::frame::started(app);
+    // Never an inspector: the devtools feature gives every web view one
+    // unless it is told otherwise (src/devtools.rs).
     let builder = WebviewWindowBuilder::new(app, window.label, WebviewUrl::App(window.page.into()))
-        .title(window.title);
+        .title(window.title)
+        .devtools(false);
     let built = crate::frame::dialog(builder, custom)
         .inner_size(window.size.0, window.size.1)
         .min_inner_size(440.0, 420.0)
@@ -369,6 +384,10 @@ mod tests {
         assert!(!settings.close_to_tray);
         assert!(settings.notifications);
         assert_eq!(settings.zoom, 1.0);
+        // The web inspector is off for someone who never turned it on.
+        assert!(!settings.developer_tools);
+        let developer: Settings = serde_json::from_str(r#"{"developerTools":true}"#).unwrap();
+        assert!(developer.developer_tools);
         // The runner is on, and sandboxed, for someone who never chose.
         assert!(settings.runner);
         assert_eq!(settings.runner_backend, crate::runner::Backend::Sandboxed);

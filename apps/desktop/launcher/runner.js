@@ -450,7 +450,7 @@
 
   // Every setting, as the app has it now (the settings window changes the
   // rest), with the runner's own as they are on the page.
-  var KEPT = ["startHidden", "closeToTray", "notifications", "flash", "badge", "systemTitleBar", "autoUpdate", "zoom", "runner", "runnerBackend", "runnerWorkspace", "runnerCapabilities"];
+  var KEPT = ["startHidden", "closeToTray", "notifications", "flash", "badge", "systemTitleBar", "autoUpdate", "zoom", "developerTools", "runner", "runnerBackend", "runnerWorkspace", "runnerCapabilities"];
   function save() {
     invoke("get_settings")
       .then(function (fresh) {

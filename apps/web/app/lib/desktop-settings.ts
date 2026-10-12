@@ -25,6 +25,8 @@ export type DesktopSettings = {
   badge: boolean;
   systemTitleBar: boolean;
   zoom: number;
+  /** The web inspector for the page, from F12, Ctrl+Shift+I (⌥⌘I on macOS) and the View menu (src/devtools.rs). */
+  developerTools: boolean;
   autoUpdate: boolean;
   runner: boolean;
   runnerBackend: DesktopBackend;
@@ -45,6 +47,8 @@ export type DesktopSettingsView = DesktopSettings & {
   /** The title bar setting differs from the one the window has: a restart applies it. */
   titleBarChanged: boolean;
   customFrame: boolean;
+  /** The developer tools setting differs from the one the page has, on macOS and Linux: a restart applies it. */
+  developerToolsChanged: boolean;
   runnerView: DesktopRunnerView;
 };
 
@@ -89,6 +93,7 @@ export const KEPT = [
   "badge",
   "systemTitleBar",
   "zoom",
+  "developerTools",
   "autoUpdate",
   "runner",
   "runnerBackend",
@@ -139,6 +144,7 @@ export function platformWords(platform: string) {
     flash: mac ? "Bounce the dock icon" : platform === "windows" ? "Flash the taskbar icon" : "Ask for attention",
     systemTitleBar: mac ? "In place of g1t's own, which sits under the window's buttons." : "In place of g1t's own, with the menu bar under it.",
     zoom: mac ? "The View menu changes it too: ⌘+, ⌘− and ⌘0." : "The View menu changes it too: Ctrl+=, Ctrl+− and Ctrl+0.",
+    developerTools: `F12 or ${mac ? "⌥⌘I" : "Ctrl+Shift+I"} opens the web inspector for the page, with its console, for when something goes wrong. So does Developer tools in the View menu.`,
   };
 }
 

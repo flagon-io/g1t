@@ -29,6 +29,7 @@ fn main() {
         "runner_register",
         "runner_control",
         "site_ready",
+        "open_devtools",
     ])))
     .expect("the app's build could not be prepared");
 }

@@ -13,7 +13,7 @@ use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
 use crate::settings::{self, Settings};
-use crate::{badge, config, frame, runner, updates};
+use crate::{badge, config, devtools, frame, runner, updates};
 
 const SCRIPT: &str = include_str!("bridge.js");
 
@@ -257,6 +257,16 @@ pub fn site_ready(app: AppHandle, webview: Webview, ready: bool) -> Result<(), S
     from_site_page(&app, &webview)?;
     config::set_site_ready(&app, ready);
     Ok(())
+}
+
+/// The web inspector for the page asking, the site's in the window:
+/// opened, or with `toggle` opened or closed (F12, from bridge.js). Only
+/// while Developer tools is on in settings (devtools.rs); otherwise an
+/// error that says where to turn it on.
+#[tauri::command]
+pub fn open_devtools(app: AppHandle, webview: Webview, toggle: Option<bool>) -> Result<(), String> {
+    from_site_page(&app, &webview)?;
+    if toggle == Some(true) { devtools::toggle(&app) } else { devtools::open(&app) }
 }
 
 /// What the settings show.

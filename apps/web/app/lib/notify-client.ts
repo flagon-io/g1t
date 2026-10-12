@@ -94,6 +94,9 @@ import {
  *   // diagnosis, who to register for, its token, and its fixes
  *   // (lib/desktop-runner.ts has the details).
  *   runner: { status, offer, register, act, onWanted, onStatus },
+ *   // The web inspector for this page, while Developer tools is on in the
+ *   // app's settings; rejects, saying where to turn it on, while it is off.
+ *   devtools: { open() { return Promise.resolve() } },
  * };
  *
  * The app also opens the site's pages for reading about g1t (pricing,
@@ -113,6 +116,7 @@ export type DesktopBridge = {
   openSettings?(): void;
   setSearch?(label: string, open: () => void): () => void;
   titleBarHeight?: number;
+  devtools?: { open(): Promise<void> };
   runner?: DesktopRunnerBridge;
   settings?: DesktopSettingsBridge;
 };

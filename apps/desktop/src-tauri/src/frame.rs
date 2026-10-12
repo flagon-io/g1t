@@ -88,7 +88,9 @@ pub fn fill(window: &Window, custom: bool, site: WebviewBuilder<tauri::Wry>) -> 
     let top = if custom { HEIGHT } else { 0.0 };
     if custom {
         window.add_child(
-            WebviewBuilder::new(BAR, WebviewUrl::App("titlebar.html".into())).background_color(RAIL).on_navigation(config::is_launcher),
+            // Never an inspector: the devtools feature gives every web view
+            // one unless it is told otherwise (src/devtools.rs).
+            WebviewBuilder::new(BAR, WebviewUrl::App("titlebar.html".into())).background_color(RAIL).on_navigation(config::is_launcher).devtools(false),
             LogicalPosition::new(0.0, 0.0),
             LogicalSize::new(size.width, HEIGHT),
         )?;

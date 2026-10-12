@@ -12,6 +12,7 @@ function view(over: Partial<DesktopSettingsView> = {}): DesktopSettingsView {
     badge: true,
     systemTitleBar: false,
     zoom: 1.1,
+    developerTools: false,
     autoUpdate: true,
     runner: true,
     runnerBackend: "sandboxed",
@@ -25,6 +26,7 @@ function view(over: Partial<DesktopSettingsView> = {}): DesktopSettingsView {
     checkedAt: null,
     titleBarChanged: false,
     customFrame: true,
+    developerToolsChanged: false,
     runnerView: {} as DesktopSettingsView["runnerView"],
     ...over,
   };

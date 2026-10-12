@@ -21,8 +21,8 @@ it is deployed. What the app adds is what a browser cannot do:
   computer runs the workspace's `runs-on: self-hosted` jobs while g1t is
   open, with nothing to install or register. See [the runner](#the-runner).
 - **Settings of its own**: opening when you sign in to your computer,
-  what closing the window does, notifications, the badge, zoom, updates
-  and the runner.
+  what closing the window does, notifications, the badge, zoom,
+  developer tools, updates and the runner.
 
 Get it at [g1t.sh/download](https://g1t.sh/download), or from your account
 menu, **Get the desktop app**. The page opens on the system you visit it
@@ -134,7 +134,7 @@ either way.
 | --- | --- |
 | **File** (**g1t** on macOS) | **Settings** (Ctrl+, or ⌘,), **Use another g1t…**, **Close window** (Ctrl+W), **Quit g1t** (Ctrl+Q or ⌘Q) |
 | **Edit** | Undo, redo, cut, copy, paste and select all |
-| **View** | **Reload** (Ctrl+R), **Actual size** (Ctrl+0), **Zoom in** (Ctrl+=), **Zoom out** (Ctrl+-), full screen |
+| **View** | **Reload** (Ctrl+R), **Actual size** (Ctrl+0), **Zoom in** (Ctrl+=), **Zoom out** (Ctrl+-), full screen, **Developer tools** (Ctrl+Shift+I, or ⌥⌘I), once [turned on](#developer-tools) |
 | **Go** | **Back** (Alt+Left, or ⌘[), **Forward** (Alt+Right, or ⌘]), **Home**, **Notifications** |
 | **Window** | Minimize and maximize |
 | **Help** | **Desktop app guide** and **g1t.sh status**, in your browser; **Check for updates…**; **Restart to update**, once one is downloaded; **About g1t** |
@@ -168,6 +168,7 @@ same settings.
 | **Show a badge on the icon** | On | The count, or the dot on Windows. Off, the icon stays clean; the tray's hover text still counts. |
 | **Use the system's title bar** | Off | The system's title bar in place of [g1t's own](#the-title-bar), with the menu bar under it on Windows and Linux. Takes effect when g1t restarts. |
 | **Zoom** | 100% | How large g1t is drawn, from 67% to 200%. The View menu changes it too. |
+| **Developer tools** | Off | F12 or Ctrl+Shift+I (⌥⌘I on macOS), and **Developer tools** in the View menu, open the web inspector for the page. See [Developer tools](#developer-tools). |
 | **Download updates by themselves** | On | Off, the app never checks on its own; **Check for updates** still does. The runner's updates follow it too: off, only **Check for runner updates** looks for a newer runner. |
 
 **Updates** also shows the app's version and whether it is up to date,
@@ -181,6 +182,26 @@ A button that asks the app to do something, such as **Check for updates**,
 can't be pressed again until what it asked for shows: the runner's state
 changes, the answer comes, or, after 20 seconds with no change, it is
 yours to press again. If the app couldn't do it, the settings say why.
+
+### Developer tools
+
+When a page goes wrong, such as one that says *Something went wrong*, the
+web inspector shows why: the page's console, its network requests and its
+code. It is off unless you turn on **Developer tools** in the settings'
+**Window** section. Then any of these opens it for the page in the window:
+
+- **F12**, on the page.
+- **Ctrl+Shift+I** on Windows and Linux, **⌥⌘I** (Cmd+Option+I) on macOS.
+- **Developer tools** in the View menu.
+
+On macOS and Linux the same keys, or the menu row, close it again; on
+Windows, close the inspector's own window. With the setting off, none of
+them open it, and the View menu's row is greyed out. On Windows the change
+takes effect at once; on macOS and Linux it takes effect when g1t
+restarts, and the settings offer **Restart now**.
+
+g1t's pages can open it too, from `window.g1tDesktop.devtools.open()`,
+which works only while the setting is on and only for g1t's own pages.
 
 ## The runner
 

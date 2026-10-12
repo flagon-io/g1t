@@ -182,6 +182,8 @@ const SITE: &[&str] = &[
     "allow-restart",
     "allow-restart-to-update",
     "allow-change-server",
+    // The web inspector, which answers only while Developer tools is on.
+    "allow-open-devtools",
 ];
 
 /// What GitHub's pages may call while someone signs in: telling the title bar their title.

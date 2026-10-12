@@ -309,6 +309,7 @@ function WindowSection({ view, change, fail }: { view: DesktopSettingsView; chan
   const words = platformWords(view.platform);
   const zoomId = useId();
   const restart = useBusy(String(view.titleBarChanged), fail);
+  const restartForTools = useBusy(String(view.developerToolsChanged), fail);
   return (
     <>
       <SwitchCard title="Use the system's title bar" checked={view.systemTitleBar} onCheckedChange={(on) => change({ systemTitleBar: on })}>
@@ -343,6 +344,24 @@ function WindowSection({ view, change, fail }: { view: DesktopSettingsView; chan
       >
         {words.zoom}
       </SettingCard>
+      {/* An app from before Developer tools has no such setting to change. */}
+      {typeof view.developerTools === "boolean" && (
+        <SwitchCard title="Developer tools" checked={view.developerTools} onCheckedChange={(on) => change({ developerTools: on })}>
+          {words.developerTools}
+        </SwitchCard>
+      )}
+      {view.developerToolsChanged && !view.titleBarChanged && (
+        <SettingCard
+          title={view.developerTools ? "Restart to turn on developer tools" : "Restart to turn off developer tools"}
+          control={
+            <Button size="sm" variant="accent" busy={restartForTools.busy} onClick={() => restartForTools.run(() => desktopSettings()?.restart())}>
+              Restart now
+            </Button>
+          }
+        >
+          g1t opens again where you were.
+        </SettingCard>
+      )}
     </>
   );
 }
