@@ -111,6 +111,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-linux
+          overwrite: true
           path: target/desktop-release/${{ needs.version.outputs.version }}/
 
   windows:
@@ -148,6 +149,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-windows
+          overwrite: true
           path: target/desktop-release/${{ needs.version.outputs.version }}/
 
   windows_cross:
@@ -167,10 +169,19 @@ jobs:
         run: |
           ok=0
           for try in 1 2 3; do
-            if sudo apt-get update && sudo apt-get install -y build-essential curl wget file libssl-dev nsis lld llvm; then ok=1; break; fi
+            if sudo apt-get update && sudo apt-get install -y build-essential curl wget file libssl-dev nsis clang lld llvm; then ok=1; break; fi
             sudo apt-get clean; sleep 15
           done
           [ "$ok" = 1 ]
+          # cargo-xwin compiles C (ring's, among others) with clang-cl and
+          # links with lld-link and llvm-lib, which Debian installs under
+          # versioned names only (clang-cl-19 in /usr/lib/llvm-19/bin).
+          for tool in clang-cl lld-link llvm-lib; do
+            command -v "$tool" >/dev/null && continue
+            found="$(ls /usr/lib/llvm-*/bin/"$tool" 2>/dev/null | sort -V | tail -1)"
+            [ -n "$found" ] || { echo "::error::$tool is not installed"; exit 1; }
+            sudo ln -sf "$found" "/usr/local/bin/$tool"
+          done
           cargo install --locked cargo-xwin
       - uses: actions/cache@v4
         with:
@@ -199,6 +210,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-windows
+          overwrite: true
           path: target/desktop-release/${{ needs.version.outputs.version }}/
 
   macos:
@@ -230,6 +242,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-macos
+          overwrite: true
           path: target/desktop-release/${{ needs.version.outputs.version }}/
 
   publish:
