@@ -73,6 +73,7 @@ With these headers:
 | `repo.renamed` | It was given a new name. Its old address redirects. |
 | `repo.transferred` | It moved to another workspace. |
 | `repo.default_branch_changed` | Its default branch changed, or the default branch was renamed. |
+| `git.deleted` | A push deleted a branch or tag. `data.ref` is the full ref, and `data.before` the commit it pointed to. A push that deletes more than 3 tags sends none for them. |
 | `branch.renamed` | A branch was renamed. |
 | `repo.collaborator_added`, `repo.collaborator_role_changed`, `repo.collaborator_removed` | Someone was given a role on it, had their role changed, or lost it. `data.username`, `data.role`, `data.previous_role`. See [access and roles](/guides/access-and-roles/). |
 | `team.created`, `team.edited`, `team.deleted` | A [team](/guides/teams/) was created, changed or deleted. Sent to the workspace's webhooks. `data.workspace`, `data.team` (its slug), `data.team_id`, `data.name`, `data.visibility`, `data.parent`; on `team.edited`, `data.changes`. |

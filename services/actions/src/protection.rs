@@ -498,15 +498,21 @@ impl Actions {
             let name = check!(environment_name(name).map_or_else(|problem| fail(FailureCode::Invalid, problem), Outcome::Ok));
             return Ok(Outcome::Ok(vec![self.environment_rules(&repo.id, &name).await?]));
         }
+        Ok(Outcome::Ok(self.environment_list(&repo.id).await?))
+    }
+
+    /// Every environment a repository has: those with rules, and those its
+    /// secrets, workflows or jobs name. Protected ones first.
+    pub(crate) async fn environment_list(&self, repo_id: &str) -> Result<Vec<Environment>> {
         let rows = self
             .db
             .prepare("SELECT * FROM environments WHERE repo_id = ? ORDER BY name")
-            .bind(&[repo.id.as_str().into()])?
+            .bind(&[repo_id.into()])?
             .all()
             .await?
             .results::<EnvRow>()?;
         let mut out: Vec<Environment> = rows.iter().map(EnvRow::view).collect();
-        let mut named: Vec<String> = self.secret_environments(&repo.id).await?;
+        let mut named: Vec<String> = self.secret_environments(repo_id).await?;
         #[derive(Deserialize)]
         struct Named {
             environment: String,
@@ -514,7 +520,7 @@ impl Actions {
         let used = self
             .db
             .prepare("SELECT DISTINCT environment FROM jobs WHERE repo_id = ? AND environment IS NOT NULL LIMIT 100")
-            .bind(&[repo.id.as_str().into()])?
+            .bind(&[repo_id.into()])?
             .all()
             .await?
             .results::<Named>()?;
@@ -526,7 +532,7 @@ impl Actions {
         let sources = self
             .db
             .prepare("SELECT source FROM workflows WHERE repo_id = ? AND error IS NULL")
-            .bind(&[repo.id.as_str().into()])?
+            .bind(&[repo_id.into()])?
             .all()
             .await?
             .results::<Source>()?;
@@ -551,7 +557,7 @@ impl Actions {
             }
         }
         out.sort_by(|a, b| b.protected.cmp(&a.protected).then(a.name.cmp(&b.name)));
-        Ok(Outcome::Ok(out))
+        Ok(out)
     }
 
     pub async fn set_environment(&self, a: SetEnvironmentArgs) -> Result<Outcome<Environment>> {

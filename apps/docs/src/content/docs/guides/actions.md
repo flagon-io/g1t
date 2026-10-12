@@ -49,7 +49,7 @@ gives their values out, so they cannot be copied across.
 
 | On GitHub | On g1t |
 | --- | --- |
-| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `repository_dispatch`, `release`, `deployment`, `deployment_status` | The same, from g1t's own pushes, pull requests, issues, comments, [releases](#releases), [deployments](#deployments) and [merge queue](/guides/merge-queue/). `create` starts on each new branch or tag; `repository_dispatch` on [a dispatch event](#repository-dispatch). |
+| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `delete`, `repository_dispatch`, `release`, `deployment`, `deployment_status` | The same, from g1t's own pushes, pull requests, issues, comments, [releases](#releases), [deployments](#deployments) and [merge queue](/guides/merge-queue/). `create` starts on each new branch or tag, at its commit; `delete` on each branch or tag a push deletes, on the default branch's latest commit, with `github.event.ref` and `github.event.ref_type` naming what went. As on GitHub, neither takes `branches` or `tags` filters: a workflow on them runs for every branch and tag. `repository_dispatch` starts on [a dispatch event](#repository-dispatch). |
 | `jobs`, `needs`, `if`, `outputs`, `env`, `defaults`, `timeout-minutes`, `continue-on-error` | The same. |
 | `timeout-minutes` and `continue-on-error` on a step | The same, for `run:` and `uses:` steps alike. A `uses:` step's action is stopped at its limit, with every process it started; a step inside a composite action stops at its own limit or the `uses:` step's, whichever comes first. A step stopped this way fails, unless `continue-on-error` lets the job go on. |
 | `strategy.matrix` with `include` and `exclude`, `fail-fast`, `max-parallel`, a matrix from `fromJSON(needs.…)` | The same. |
@@ -93,8 +93,11 @@ anything in it that runs differently.
   github.com. `actions/upload-artifact`, `actions/download-artifact` and
   `actions/upload-artifact/merge` work, because g1t runs them itself. See
   [actions built on the toolkit](#actions-built-on-the-toolkit).
-- **`on: delete`.** Deleting a branch or tag starts no workflows yet; the
-  workflow's page says so.
+- **`on: label`, and some activity types.** Creating, editing or deleting
+  a label starts no workflows yet, and the workflow's page says so. Nor do
+  the `pull_request` types `unassigned`, `locked` and `unlocked`, `edited`
+  for a new title or description, or the `issues` types `unassigned`,
+  `locked`, `unlocked`, `pinned` and `unpinned`.
 - **Background steps.** A step with `background: true`, or a `wait`,
   `wait-all`, `cancel` or `parallel` step, is refused: g1t does not run
   them yet.
@@ -1240,9 +1243,11 @@ default, as `opened` and `synchronize` are), `converted_to_draft`,
 `ready_for_review`, `labeled`, `unlabeled`, `milestoned`, `demilestoned`,
 `assigned`, `review_requested` and `closed`, and `edited` when the branch
 a pull request merges into changes; `issue_comment` workflows on
-`created`, `edited` (with `github.event.changes.body.from`) and `deleted`; `issues` workflows on `labeled`, `unlabeled`, `milestoned` and
+`created`, `edited` (with `github.event.changes.body.from`) and `deleted`; `issues` workflows on `assigned`, `labeled`, `unlabeled`, `milestoned` and
 `demilestoned` too. List them under `types:` to run on them. For
-`labeled` and `unlabeled`, `github.event.label` names the label. A pull
+`labeled` and `unlabeled`, `github.event.label` names the label; for
+`assigned`, `github.event.assignee` names who was assigned. Assigning
+several people at once starts one run, which names the first of them. A pull
 request's `branches` filter, `github.base_ref` and
 `pull_request.base.ref` are the branch it merges into, which is not
 always the default branch: see
@@ -1634,6 +1639,15 @@ curl -X POST https://api.g1t.sh/repos/acme/web/actions/workflows/ci.yml/dispatch
   -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
   -d '{"ref": "main", "inputs": {"environment": "staging"}}'
 ```
+
+Give only the inputs the workflow declares under
+`on.workflow_dispatch.inputs`: a run with any other input is refused, and
+the answer names the inputs it did not expect. A `boolean` input is `true`
+or `false`, a `number` a number, a `choice` one of its `options`, and an
+`environment` the name of one of the repository's
+[environments](#environments). In the run, the `inputs` context keeps
+booleans and numbers as they are, and `github.event.inputs` has every
+input as text, `"true"` and `"3"`, as on GitHub.
 
 To save an artifact from a script, follow the redirect:
 

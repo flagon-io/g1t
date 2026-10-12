@@ -295,8 +295,13 @@ The machine sizes are Cloudflare Containers' instance sizes. For more, use a
   entry under 128 MB in one request, and g1t takes at most 100 MB in one
   request, as for [pushes](#pushes-up-to-100-mb-each). The step warns and
   the job goes on; smaller and larger entries are saved.
-- `on: delete`: deleting a branch or tag starts no workflows. New branches
-  and tags start `create` and `push` workflows.
+- `on: label`: creating, editing or deleting a label starts no workflows.
+  Putting a label on an issue or a pull request starts `issues` and
+  `pull_request` workflows with the `labeled` type.
+- The `pull_request` activity types `unassigned`, `locked`, `unlocked`,
+  and `edited` for a new title or description, and the `issues` types
+  `unassigned`, `locked`, `unlocked`, `pinned` and `unpinned`: g1t starts
+  no workflows for them.
 
 See [Not yet](/guides/actions/#not-yet). **Status.** Planned.
 
