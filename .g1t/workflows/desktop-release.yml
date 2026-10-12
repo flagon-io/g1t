@@ -166,10 +166,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: What the cross build needs
+        # The tray's Linux library too: Tauri's bundler looks for it on the
+        # machine it runs on, whatever the target, and stops without it.
         run: |
           ok=0
           for try in 1 2 3; do
-            if sudo apt-get update && sudo apt-get install -y build-essential curl wget file libssl-dev nsis clang lld llvm; then ok=1; break; fi
+            if sudo apt-get update && sudo apt-get install -y build-essential curl wget file libssl-dev libayatana-appindicator3-dev nsis clang lld llvm; then ok=1; break; fi
             sudo apt-get clean; sleep 15
           done
           [ "$ok" = 1 ]
