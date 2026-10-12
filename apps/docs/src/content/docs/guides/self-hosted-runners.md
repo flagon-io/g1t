@@ -175,8 +175,9 @@ and `runner.arch` are the machine's, and `RUNNER_ENVIRONMENT` is
   `services:`, `container:`, `docker://` steps and Docker actions use
   the machine's Docker, as on GitHub's runners.
 
-A self-hosted job stops at 60 minutes unless its `timeout-minutes` says
-more, up to 24 hours (1440). Jobs on g1t's own machines stop at 60 minutes.
+A self-hosted job stops at 360 minutes unless its `timeout-minutes` says
+otherwise, as on GitHub, and can ask for up to 24 hours (1440). Jobs on
+g1t's own machines stop at 60 minutes.
 
 ## Groups
 

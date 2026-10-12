@@ -99,6 +99,24 @@ anything in it that runs differently.
 Why each of these is missing, and what to use instead, is on
 [What g1t can't do yet](/about/limitations/#actions-and-runners).
 
+## Skipping a run
+
+A commit can ask not to start the `push` and `pull_request` workflows it
+would, as on GitHub: put `[skip ci]`, `[ci skip]`, `[no ci]`,
+`[skip actions]` or `[actions skip]` anywhere in its message, or end the
+message with a `skip-checks: true` trailer. For a push, the message read
+is the pushed head's; for a pull request, its head commit's. Other
+events, such as `pull_request_target`, `workflow_dispatch` and
+`schedule`, still start their workflows.
+
+```sh
+git commit -m "Fix a typo in the README [skip ci]"
+```
+
+A required check that a skipped workflow would have reported stays
+pending, so a pull request whose merge needs it waits for a push that
+runs it.
+
 ## Schedules
 
 A workflow with `on: schedule` runs on the default branch's latest commit,
@@ -349,8 +367,14 @@ Builds that compile, such as Rust or a large TypeScript project, finish
 several times faster on one.
 
 A job on g1t's machines runs for at most 60 minutes, whatever its
-`timeout-minutes`; one on a self-hosted runner can run for up to 24 hours.
-A job stopped at its time cap fails saying so.
+`timeout-minutes`, and the workflow's page warns about a job that asks
+for more. One on a self-hosted runner runs for 360 minutes when it names
+no `timeout-minutes`, as on GitHub, and can ask for up to 24 hours. A job
+stopped at its time cap fails saying so.
+
+g1t's machines are x64. A job whose `runs-on` names an Arm label, such
+as `ubuntu-24.04-arm`, runs on x64, and the workflow's page says so; a
+self-hosted Arm runner runs it on Arm.
 
 ### What a job can reach
 

@@ -931,7 +931,7 @@ impl Actions {
                 .get("timeout-minutes")
                 .and_then(|value| expr::interpolate_value(value, &scope).ok())
                 .and_then(|value| value.as_f64().or_else(|| expr::to_text(&value).parse().ok()))
-                .map_or(MAX_TIMEOUT_MINUTES, |minutes| (minutes.ceil() as u32).clamp(1, max_minutes));
+                .map_or(g1t_actions::workflow::DEFAULT_TIMEOUT_MINUTES.min(max_minutes), |minutes| (minutes.ceil() as u32).clamp(1, max_minutes));
             let continue_on_error = raw
                 .get("continue-on-error")
                 .and_then(|value| expr::interpolate_value(value, &scope).ok())

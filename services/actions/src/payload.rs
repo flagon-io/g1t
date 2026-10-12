@@ -300,3 +300,22 @@ pub fn deployment_status(repo: &Repo, status: &Value, deployment: &Value) -> Val
     })
 }
 
+
+/// A review's `state` as GitHub's `pull_request_review` event spells it.
+pub(crate) fn review_state(verdict: g1t_contracts::work::Verdict) -> &'static str {
+    match verdict {
+        g1t_contracts::work::Verdict::Approve => "approved",
+        g1t_contracts::work::Verdict::RequestChanges => "changes_requested",
+    }
+}
+
+#[cfg(test)]
+mod review_tests {
+    use super::*;
+
+    #[test]
+    fn review_states_are_spelled_as_githubs() {
+        assert_eq!(review_state(g1t_contracts::work::Verdict::Approve), "approved");
+        assert_eq!(review_state(g1t_contracts::work::Verdict::RequestChanges), "changes_requested");
+    }
+}

@@ -57,8 +57,9 @@ use worker::{Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Reques
 pub const MAX_WORKFLOWS: usize = 50;
 /// Jobs one workspace may have running at once; the rest wait their turn.
 pub const RUNNING_PER_WORKSPACE: u32 = 4;
-/// The longest a job may run, whatever its `timeout-minutes`.
-pub const MAX_TIMEOUT_MINUTES: u32 = 60;
+/// The longest a job on g1t's own machines may run, whatever its
+/// `timeout-minutes`.
+pub const MAX_TIMEOUT_MINUTES: u32 = g1t_actions::workflow::HOSTED_MAX_TIMEOUT_MINUTES;
 /// The longest a job on a self-hosted runner may run: the machine is the
 /// workspace's own, and its time costs nothing.
 pub const SELF_HOSTED_MAX_TIMEOUT_MINUTES: u32 = 24 * 60;

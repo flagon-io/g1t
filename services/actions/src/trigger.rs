@@ -123,6 +123,17 @@ impl Actions {
         Ok(commits)
     }
 
+    /// The message of the commit `sha` in `path`, when it can be read.
+    async fn head_message(&self, path: &RepoPath, actor: &User, sha: &str) -> Result<Option<String>> {
+        let log: Outcome<Vec<Commit>> = g1t_kit::call(
+            &self.repos,
+            "log",
+            &LogArgs { path: path.clone(), viewer: Some(actor.clone()), git_ref: Some(sha.to_owned()), limit: 1 },
+        )
+        .await?;
+        Ok(log.into_result().ok().and_then(|commits| commits.into_iter().next()).map(|commit| commit.message))
+    }
+
     async fn changed_paths(&self, repo: &Repo, actor: &User, base: Option<String>, head: String) -> Result<Vec<String>> {
         let compared: Outcome<Comparison> = g1t_kit::call(
             &self.repos,
@@ -287,7 +298,7 @@ impl Actions {
                 if event_name == "pull_request_review" {
                     let review = detail.comments.iter().rev().find(|c| c.verdict.is_some() && !c.advisory);
                     payload["review"] = json!({
-                        "state": review.and_then(|r| r.verdict).map(|v| format!("{v:?}").to_lowercase()),
+                        "state": review.and_then(|r| r.verdict).map(payload::review_state),
                         "body": review.map(|r| r.body.clone()),
                         "user": review.map(|r| payload::user(&r.author.username)),
                     });
@@ -570,6 +581,17 @@ impl Actions {
             let Some(mut subject) = self.subject(event, event_name, action, &repo, &ws, &sender).await? else {
                 continue;
             };
+            // `[skip ci]` in the head commit's message, as on GitHub.
+            if matches!(event_name, "push" | "pull_request") {
+                let message = match subject.payload["head_commit"]["message"].as_str() {
+                    Some(message) => Some(message.to_owned()),
+                    None => self.head_message(&subject.source, &ws, &subject.sha).await?,
+                };
+                if message.as_deref().is_some_and(g1t_actions::events::skips_ci) {
+                    worker::console_log!("actions: {} {} at {} asks to skip its runs", event.kind, event.id, subject.sha);
+                    continue;
+                }
+            }
             // A change to workflows made on the remote, by someone g1t
             // knows nothing of, waits before it may use this repository's
             // secrets.

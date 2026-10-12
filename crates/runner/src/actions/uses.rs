@@ -402,7 +402,7 @@ impl Job {
             }
         };
         let mut commands = Commands {
-            debug: false,
+            debug: self.debug,
             ..Commands::default()
         };
         let ended = process::run(command, Duration::from_secs(6 * 3600).min(self.deadline_left()), &mut self.log, &mut commands);

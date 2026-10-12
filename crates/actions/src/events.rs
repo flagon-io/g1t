@@ -196,6 +196,21 @@ impl RunInfo {
 pub const WORKSPACE: &str = "/home/runner/work/repo";
 
 /// The `runner` context.
+/// Whether a head commit's `message` asks, as GitHub lets it, that the
+/// `push` and `pull_request` workflows it would start don't run: `[skip ci]`,
+/// `[ci skip]`, `[no ci]`, `[skip actions]` or `[actions skip]` anywhere in
+/// it, or a `skip-checks: true` trailer.
+pub fn skips_ci(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    if ["[skip ci]", "[ci skip]", "[no ci]", "[skip actions]", "[actions skip]"].iter().any(|marker| lower.contains(marker)) {
+        return true;
+    }
+    // Trailers are the last paragraph, after a blank line.
+    let trimmed = lower.trim_end();
+    let Some((_, trailers)) = trimmed.rsplit_once("\n\n") else { return false };
+    trailers.lines().any(|line| line.split_once(':').is_some_and(|(key, value)| key.trim() == "skip-checks" && value.trim() == "true"))
+}
+
 pub fn runner_context() -> Value {
     json!({
         "name": "g1t",
@@ -257,5 +272,20 @@ mod tests {
         assert_eq!(vars["GITHUB_REF_NAME"], "v1.2.0");
         assert_eq!(vars["GITHUB_JOB"], "build");
         assert_eq!(vars["RUNNER_OS"], "Linux");
+    }
+}
+
+#[cfg(test)]
+mod skip_tests {
+    use super::skips_ci;
+
+    #[test]
+    fn a_commit_can_skip_its_runs_as_on_github() {
+        for message in ["Fix typo [skip ci]", "[ci skip] docs", "Notes [no ci]", "x [skip actions]", "[Actions Skip]", "Tidy\n\nskip-checks: true", "Tidy\n\nSigned-off-by: A <a@b>\nskip-checks:true\n"] {
+            assert!(skips_ci(message), "{message:?}");
+        }
+        for message in ["Fix the skip ci flag", "skip-checks: true", "Tidy\n\nskip-checks: false", "[skip-ci]", "Tidy\n\nskip-checks: true\n\nMore"] {
+            assert!(!skips_ci(message), "{message:?}");
+        }
     }
 }

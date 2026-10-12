@@ -409,7 +409,7 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
                 _ => {}
             }
             if let Some(uses) = &step.uses
-                && let Some((severity, message)) = action_note(uses, fields.get("with").and_then(|with| with.get("cache")).is_some())
+                && let Some((severity, message)) = action_note(uses)
             {
                 note(severity, Some(id), message);
             }
@@ -436,8 +436,30 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
                         Some(id),
                         format!("`runs-on: {label}`: g1t's own runners are Linux only, so this job fails. To run it on a Windows or macOS machine of your own, add a self-hosted runner and use `runs-on: [self-hosted, ...]`."),
                     );
+                } else if lower.contains("arm") {
+                    note(
+                        Severity::Warning,
+                        Some(id),
+                        format!("`runs-on: {label}`: g1t's own runners are x64, so this job runs on x64, not Arm. A self-hosted Arm runner runs it as asked: `runs-on: [self-hosted, ARM64]`."),
+                    );
                 }
             }
+            if let Some(minutes) = spec.get("timeout-minutes").and_then(Value::as_f64)
+                && minutes > f64::from(HOSTED_MAX_TIMEOUT_MINUTES)
+            {
+                note(
+                    Severity::Warning,
+                    Some(id),
+                    format!("`timeout-minutes: {minutes}`: a job on g1t's own machines is stopped at {HOSTED_MAX_TIMEOUT_MINUTES} minutes. A self-hosted runner runs it for as long as it asks, up to 24 hours."),
+                );
+            }
+        }
+        if uses.is_some() && spec.contains_key("strategy") {
+            note(
+                Severity::Warning,
+                Some(id),
+                "`strategy` on a job that calls a reusable workflow: g1t runs the called workflow once, not once for each combination of the matrix.".to_owned(),
+            );
         }
         if spec.contains_key("services") {
             note(
@@ -534,6 +556,12 @@ fn concurrency_of(value: Option<&Value>) -> Option<Concurrency> {
     }
 }
 
+/// The longest a job on g1t's own machines may run, whatever its
+/// `timeout-minutes`.
+pub const HOSTED_MAX_TIMEOUT_MINUTES: u32 = 60;
+/// How long a job may run when it names no `timeout-minutes`, as on GitHub.
+pub const DEFAULT_TIMEOUT_MINUTES: u32 = 360;
+
 /// What to say about `permissions` names the token does not have.
 fn permission_notes(unknown: &[String], job: Option<&str>, note: &mut impl FnMut(Severity, Option<&str>, String)) {
     for name in unknown {
@@ -542,8 +570,7 @@ fn permission_notes(unknown: &[String], job: Option<&str>, note: &mut impl FnMut
 }
 
 /// What to say about an action g1t runs differently, if anything.
-/// `caches`: the step sets a `cache` input.
-fn action_note(uses: &str, caches: bool) -> Option<(Severity, String)> {
+fn action_note(uses: &str) -> Option<(Severity, String)> {
     if uses.starts_with("docker://") {
         return Some((Severity::Info, format!("`{uses}` runs in Docker (on g1t's machines, the job's own Engine).")));
     }
@@ -556,11 +583,7 @@ fn action_note(uses: &str, caches: bool) -> Option<(Severity, String)> {
         )),
         "actions/upload-artifact" | "actions/download-artifact" => Some((
             Severity::Info,
-            format!("`{name}`: g1t keeps artifacts with the run for 14 days, up to 60 MB each."),
-        )),
-        _ if caches && name.starts_with("actions/setup-") => Some((
-            Severity::Warning,
-            format!("`{name}` with `cache:` runs without that cache on g1t. Add an `actions/cache` step for the same effect."),
+            format!("`{name}`: g1t keeps artifacts with the run for 14 days unless the repository says otherwise, up to 5 GiB each."),
         )),
         _ => None,
     }
@@ -670,8 +693,26 @@ jobs:
         assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.starts_with("`docker://alpine`")));
         assert!(unsupported.iter().any(|m| m.contains("pwsh")));
         assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.contains("actions/cache")));
-        assert!(workflow.notes.iter().any(|n| n.severity == Severity::Warning && n.message.contains("actions/setup-node")));
+        // Toolkit caches work on g1t, so `setup-node` with `cache:` says nothing.
+        assert!(!workflow.notes.iter().any(|n| n.message.contains("actions/setup-node")));
         assert!(workflow.notes.iter().any(|n| n.message.contains("2 GiB an entry")));
+    }
+
+    #[test]
+    fn notes_say_what_g1ts_machines_change_about_a_job() {
+        let workflow = parse(
+            "on: push\njobs:\n  arm:\n    runs-on: ubuntu-24.04-arm\n    timeout-minutes: 90\n    steps: [{ run: 'true' }]\n  call:\n    uses: ./.g1t/workflows/build.yml\n    strategy:\n      matrix: { os: [a, b] }\n  short:\n    runs-on: ubuntu-latest\n    timeout-minutes: 30\n    steps: [{ run: 'true' }]\n  mine:\n    runs-on: [self-hosted, arm64]\n    timeout-minutes: 300\n    steps: [{ run: 'true' }]",
+        )
+        .unwrap();
+        let warned = |job: &str, text: &str| {
+            workflow.notes.iter().any(|n| n.severity == Severity::Warning && n.job.as_deref() == Some(job) && n.message.contains(text))
+        };
+        assert!(warned("arm", "runs on x64"));
+        assert!(warned("arm", "stopped at 60 minutes"));
+        assert!(warned("call", "runs the called workflow once"));
+        assert!(!workflow.notes.iter().any(|n| matches!(n.job.as_deref(), Some("short" | "mine")) && n.severity == Severity::Warning));
+        let artifacts = parse("on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{ uses: actions/upload-artifact@v4 }]").unwrap();
+        assert!(artifacts.notes.iter().any(|n| n.message.contains("5 GiB each")));
     }
 
     #[test]
