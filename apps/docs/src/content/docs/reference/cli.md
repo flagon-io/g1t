@@ -759,7 +759,7 @@ g1t session start [OPTIONS]
 | --- | --- |
 | `-i, --issue <ISSUE>` | The issue it works on. |
 | `-p, --pull <PULL>` | The pull request it works on. |
-| `--harness <HARNESS>` | The harness running it. One of `claude-code`, `codex`, `cursor`, `copilot`, `other`. Default: `other`. |
+| `--harness <HARNESS>` | The harness running it. One of `claude_code`, `codex`, `cursor`, `copilot`, `other`. Default: `other`. |
 | `--harness-session-id <ID>` | The harness's own id for the run, which makes starting again return the same session. |
 | `-t, --title <TITLE>` |  |
 | `-b, --branch <BRANCH>` | The branch it works on; the current one when left out. |

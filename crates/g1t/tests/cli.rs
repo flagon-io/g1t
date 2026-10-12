@@ -954,7 +954,7 @@ fn a_session_is_remembered_per_working_copy_and_claims_carry_it() {
     let out = g1t_with(
         &mock,
         &dir,
-        &["session", "start", "--harness", "claude-code", "--harness-session-id", "cc-9", "--issue", "12", "--json"],
+        &["session", "start", "--harness", "claude_code", "--harness-session-id", "cc-9", "--issue", "12", "--json"],
         &[],
     );
     assert_eq!(out.code, 0, "{}", out.stderr);

@@ -793,6 +793,8 @@ pub struct LogsArgs {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Harness {
+    // Spelled as the API spells it, which is what the plugin sends.
+    #[value(name = "claude_code", alias = "claude-code")]
     ClaudeCode,
     Codex,
     Cursor,
