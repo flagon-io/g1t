@@ -176,10 +176,12 @@ beforeEach(() => {
   }) as typeof fetch;
   // As production was on 2026-10-06: the project's rows still in syntaqx,
   // its apps paused there by syntaqx's limit, minutes before the transfer.
+  // Previews are kept ten years idle, so the sweep never takes one down
+  // as idle whatever today's date is.
   const db = w.state.sqlite;
   db.prepare(
     `INSERT INTO settings (project_id, repo_id, workspace, slug, enabled, previews, production, idle_days, updated_at)
-     VALUES (?, ?, 'syntaqx', 'lab-api', 1, 1, 1, 7, '2026-10-05T00:00:00Z')`,
+     VALUES (?, ?, 'syntaqx', 'lab-api', 1, 1, 1, 3650, '2026-10-05T00:00:00Z')`,
   ).run(PROJECT, API);
   const app = db.prepare(
     `INSERT INTO apps (script, project_id, workspace, slug, kind, branch, number, commit_sha, deployed_at, created_at, paused_at)

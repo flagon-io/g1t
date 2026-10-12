@@ -21,12 +21,14 @@ use g1t_contracts::security_suite::{
     SetCodeAlertStateArgs, UploadSarifArgs,
 };
 use g1t_contracts::work::{AddCommentArgs, Pull, PullDetail, SetCommitStatusArgs, ViewArgs};
+use g1t_contracts::security_suite::MAX_SUMMARY_IDS;
 use g1t_contracts::{FailureCode, Outcome, User};
 use g1t_scan::sarif::{self, Finding, Gate};
 use serde_json::{Value, json};
 use worker::Result;
 
 use crate::Security;
+use crate::summaries::Changed;
 use crate::store::{Activity, RepoRow};
 use crate::suite::link;
 use crate::suite_store::NewCodeAlert;
@@ -35,7 +37,6 @@ const SITE: &str = "https://g1t.sh";
 /// Review comments one analysis of a pull request leaves, at most.
 const MAX_COMMENTS: usize = 10;
 /// Alerts an upload announces one by one; past it, the page says the rest.
-const MAX_EVENTS: usize = 20;
 
 fn fail<T>(code: FailureCode, message: impl Into<String>) -> Outcome<T> {
     Outcome::fail(code, message)
@@ -226,13 +227,16 @@ impl Security {
                         .add_analysis(&repo.repo_id, &id, run, &a.commit_sha, &a.git_ref, None, opened.len() as u32, fixed.len() as u32)
                         .await?,
                 );
+                // An event each for webhooks, and one summary of the analysis for the inbox.
                 for (ids, action) in [(&opened, "created"), (&fixed, "fixed")] {
-                    for alert_id in ids.iter().take(MAX_EVENTS) {
+                    for alert_id in ids.iter().take(MAX_SUMMARY_IDS) {
                         if let Some(alert) = self.store.code_alert_by_id(&repo.repo_id, alert_id).await? {
                             self.alert_event(AlertType::CodeScanning, action, &repo, code_event(&repo, &alert), Some(a.actor.id.clone())).await;
                         }
                     }
                 }
+                let changed = Changed { scan: "analysis", opened: opened.clone(), fixed: fixed.clone(), ..Changed::default() };
+                self.summarize(&repo, AlertType::CodeScanning, changed, Some(a.actor.id.clone())).await?;
             } else {
                 analyses.push(self.store.add_analysis(&repo.repo_id, &id, run, &a.commit_sha, &a.git_ref, pull, 0, 0).await?);
             }
@@ -374,6 +378,8 @@ impl Security {
         };
         let event = SecurityEvent { reason: a.reason.map(|reason| reason.as_str().to_owned()), ..code_event(&repo, &alert) };
         self.alert_event(AlertType::CodeScanning, action, &repo, event, Some(a.actor.id.clone())).await;
+        let changed = Changed { scan: "change", dismissed: u32::from(action == "dismissed"), ..Changed::default() };
+        self.summarize(&repo, AlertType::CodeScanning, changed, Some(a.actor.id.clone())).await?;
         Ok(Outcome::Ok(alert))
     }
 

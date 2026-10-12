@@ -68,7 +68,8 @@ repository's commits per week over the last year.
 | --- | --- |
 | A person | By an address they confirmed on their account, or their noreply address. Several addresses of one account count as one. |
 | g1t | Its own commits, by its address. |
-| Anyone else | By the name on their commits. |
+| A coding agent or bot | Claude, Codex, Copilot, Gemini, Jules, Cursor, Devin, Aider, Dependabot, Renovate and GitHub Actions, by the address they write on their commits (as author or `Co-authored-by`), never by name. Each shows its maker's mark and a card saying what it is; none is an account on g1t. |
+| Anyone else | By the name on their commits, with a card that says they aren't on g1t and how to add the address to your account if the commits are yours. |
 
 The newest 3,000 commits are counted.
 

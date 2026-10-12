@@ -172,7 +172,7 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
     // issue, and comment.
     let mut tools = Vec::new();
     if let Ok(token) = std::env::var("G1T_AGENT_TOKEN") {
-        let config = serde_json::json!({
+        let mut config = serde_json::json!({
             "mcpServers": {
                 "g1t": {
                     "type": "http",
@@ -181,9 +181,21 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
                 }
             }
         });
+        // What the workspace's Customize gives the run (customize.rs): its
+        // plugins and library skills as plugin folders, and its connectors
+        // beside g1t's own server. The connectors' keys stay in the config
+        // file and out of the transcript.
+        let loaded = crate::customize::prepare(&token, &mut config);
+        for secret in &loaded.secrets {
+            reporter.hide(secret);
+        }
         let path = "/work/g1t-mcp.json";
         if std::fs::write(path, config.to_string()).is_ok() {
             tools = vec!["--mcp-config".to_owned(), path.to_owned()];
+        }
+        tools.extend(loaded.flags.iter().cloned());
+        if !loaded.is_empty() {
+            reporter.record(Entry::new("note", &loaded.note()));
         }
         // People can message the agent while it works: after each tool call
         // a hook asks g1t for messages and hands any to the agent.

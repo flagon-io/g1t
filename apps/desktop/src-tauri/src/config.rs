@@ -1,10 +1,11 @@
 //! What the app keeps between launches, and what it knows while running.
 //!
-//! The one setting is the server: `https://g1t.sh` unless someone runs a
-//! g1t of their own, kept in `desktop.json` in the app's config folder
-//! (`~/.config/g1t` on Linux, `~/Library/Application Support/sh.g1t.desktop`
-//! on macOS, `%APPDATA%\sh.g1t.desktop` on Windows). The server's pages are
-//! the only remote pages allowed to talk to the app (`allow_site`).
+//! The server, `https://g1t.sh` unless someone runs a g1t of their own,
+//! and the app's own settings (settings.rs) are kept in `desktop.json` in
+//! the app's config folder (`~/.config/sh.g1t.desktop` on Linux,
+//! `~/Library/Application Support/sh.g1t.desktop` on macOS,
+//! `%APPDATA%\sh.g1t.desktop` on Windows). The server's pages are the only
+//! remote pages allowed to talk to the app (`allow_site`).
 
 use std::fs;
 use std::path::PathBuf;
@@ -31,16 +32,23 @@ pub struct State {
     pub allowed: Mutex<Vec<String>>,
     /// An update downloaded and waiting to be installed, and its version.
     pub update: Mutex<Option<updates::Ready>>,
+    /// When the updater last heard back from g1t.sh, in milliseconds since 1970.
+    pub checked_at: Mutex<Option<u64>>,
     /// What the badge shows.
     pub waiting: Mutex<i64>,
+    /// The app's own settings, as the settings window last left them.
+    pub settings: Mutex<Settings>,
 }
 
+use crate::settings::Settings;
 use crate::updates;
 
 #[derive(Default, Serialize, Deserialize)]
 struct File {
     #[serde(default)]
     server: Option<String>,
+    #[serde(flatten)]
+    settings: Settings,
 }
 
 fn path(app: &AppHandle) -> Option<PathBuf> {
@@ -61,14 +69,40 @@ pub fn parse(text: &str) -> Option<Url> {
     Some(url)
 }
 
-/// Reads the saved server, or takes g1t.sh.
+/// Reads the saved server, or takes g1t.sh, and the saved settings.
 pub fn load(app: &AppHandle) {
     let file: File = path(app)
         .and_then(|path| fs::read(path).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default();
     let server = file.server.as_deref().and_then(parse).unwrap_or_else(|| Url::parse(DEFAULT_SERVER).expect("the default server is a URL"));
-    *app.state::<State>().server.lock().unwrap() = Some(server);
+    let state = app.state::<State>();
+    *state.server.lock().unwrap() = Some(server);
+    *state.settings.lock().unwrap() = file.settings;
+}
+
+/// Writes the server and the settings as they are now.
+fn save(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<State>();
+    let file = File {
+        server: state.server.lock().unwrap().as_ref().map(Url::to_string),
+        settings: state.settings.lock().unwrap().clone(),
+    };
+    let path = path(app).ok_or("The app has no folder to keep its settings in.")?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    }
+    fs::write(&path, serde_json::to_vec_pretty(&file).map_err(|error| error.to_string())?).map_err(|error| error.to_string())
+}
+
+pub fn settings(app: &AppHandle) -> Settings {
+    app.state::<State>().settings.lock().unwrap().clone()
+}
+
+/// Keeps new settings.
+pub fn set_settings(app: &AppHandle, settings: Settings) -> Result<(), String> {
+    *app.state::<State>().settings.lock().unwrap() = settings;
+    save(app)
 }
 
 pub fn server(app: &AppHandle) -> Url {
@@ -83,13 +117,8 @@ pub fn server(app: &AppHandle) -> Url {
 /// Saves a new server and lets its pages talk to the app.
 pub fn set_server(app: &AppHandle, text: &str) -> Result<Url, String> {
     let server = parse(text).ok_or("That is not a web address. It looks like https://g1t.example.com.")?;
-    let file = File { server: Some(server.to_string()) };
-    let path = path(app).ok_or("The app has no folder to keep its settings in.")?;
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|error| error.to_string())?;
-    }
-    fs::write(&path, serde_json::to_vec_pretty(&file).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
     *app.state::<State>().server.lock().unwrap() = Some(server.clone());
+    save(app)?;
     allow_site(app).map_err(|error| error.to_string())?;
     Ok(server)
 }
@@ -103,10 +132,44 @@ pub fn is_server(app: &AppHandle, url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https") && origin(url) == origin(&server(app))
 }
 
+/// Where the bundled pages are served under `tauri dev`: with no `devUrl`
+/// in tauri.conf.json, the Tauri CLI serves `launcher/` itself, from
+/// localhost, and the window starts there. Unset in a release build, which
+/// serves them from inside the app.
+static DEV_SERVER: std::sync::OnceLock<Option<Url>> = std::sync::OnceLock::new();
+
+/// Notes the dev server, once, as the app starts.
+pub fn note_dev_server(app: &AppHandle) {
+    let dev = if cfg!(debug_assertions) { app.config().build.dev_url.clone() } else { None };
+    let _ = DEV_SERVER.set(dev);
+}
+
+pub fn dev_server() -> Option<&'static Url> {
+    DEV_SERVER.get().and_then(Option::as_ref)
+}
+
 /// Whether a page is the launcher, bundled with the app.
 pub fn is_launcher(url: &Url) -> bool {
-    url.scheme() == "tauri" || (matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost"))
+    url.scheme() == "tauri"
+        || (matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost"))
+        || dev_server().is_some_and(|dev| origin(dev) == origin(url))
 }
+
+/// What the server's pages may call: the bridge's commands (bridge.rs).
+const SITE: &[&str] = &[
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-desktop-info",
+    "allow-notify",
+    "allow-set-badge",
+    "allow-open-url",
+    "allow-check-for-updates",
+    "allow-open-settings",
+    "allow-title-bar-page",
+];
+
+/// What GitHub's pages may call while someone signs in: telling the title bar their title.
+const FRAME: &[&str] = &["allow-title-bar-page"];
 
 /// Lets the server's pages call the app: a capability for its origin,
 /// added once. Pages from anywhere else get no IPC at all, and bridge.rs
@@ -118,13 +181,19 @@ pub fn allow_site(app: &AppHandle) -> tauri::Result<()> {
     if allowed.iter().any(|known| *known == origin) {
         return Ok(());
     }
-    app.add_capability(
-        CapabilityBuilder::new(format!("site-{}", allowed.len()))
-            .window(WINDOW)
-            .remote(format!("{origin}/*"))
-            .permission("core:event:allow-listen")
-            .permission("core:event:allow-unlisten"),
-    )?;
+    let mut site = CapabilityBuilder::new(format!("site-{}", allowed.len())).window(WINDOW).remote(format!("{origin}/*"));
+    for permission in SITE {
+        site = site.permission(*permission);
+    }
+    app.add_capability(site)?;
+    // Signing in with GitHub: its pages tell the title bar what they are, and nothing else.
+    if allowed.is_empty() {
+        let mut sign_in = CapabilityBuilder::new("sign-in").window(WINDOW).remote("https://github.com/*".to_string());
+        for permission in FRAME {
+            sign_in = sign_in.permission(*permission);
+        }
+        app.add_capability(sign_in)?;
+    }
     allowed.push(origin);
     Ok(())
 }

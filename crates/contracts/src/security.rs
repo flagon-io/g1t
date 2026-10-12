@@ -519,7 +519,7 @@ pub struct Vulnerability {
 /// Open alerts by severity: vulnerabilities open and not dismissed, and
 /// secrets in the history that look real, as critical. A blocked secret
 /// never landed and a likely test value is no danger, so neither counts.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeverityCounts {
     pub critical: u32,
     pub high: u32,

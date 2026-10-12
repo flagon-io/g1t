@@ -307,6 +307,9 @@ pub const READ_OPERATIONS: &[&str] = &[
     "get_security_settings",
     "get_workspace_security_settings",
     "get_security_overview",
+    "list_security_advisories",
+    "get_security_advisory",
+    "list_vulnerability_reports",
     "list_notifications",
     "get_notification_thread",
     "get_thread_subscription",
@@ -549,17 +552,21 @@ pub fn operations_for(kind: RunCredentialKind, usage: CredentialUse) -> Vec<&'st
                     "message_agent",
                     "answer_message",
                     "get_context",
+                    "customize_bundle",
                 ]);
             }
             K::Review => {
                 operations.extend(TOOLS_READ.iter().copied());
-                operations.extend(["add_comment", "review_pull_request", "get_context"]);
+                operations.extend(["add_comment", "review_pull_request", "get_context", "customize_bundle"]);
             }
             K::Plan => {
                 operations.extend(TOOLS_READ.iter().copied());
-                operations.extend(["create_issue", "get_context"]);
+                operations.extend(["create_issue", "get_context", "customize_bundle"]);
             }
-            K::Update => operations.extend(TOOLS_READ.iter().copied()),
+            K::Update => {
+                operations.extend(TOOLS_READ.iter().copied());
+                operations.push("customize_bundle");
+            }
             K::Checks | K::Queue | K::Mergecheck | K::Deploy | K::Bump => {}
         },
     }

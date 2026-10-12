@@ -46,9 +46,9 @@ const NEVER_READ: [&str; 3] = ["node_modules", "bower_components", "jspm_package
 /// Where a security policy may be.
 const POLICY_DIRS: [&str; 4] = ["", ".g1t/", ".github/", "docs/"];
 
-/// How the About is worked out; a row kept by an older version is worked
+/// How the About is worked out (2: coding agents are contributors of their own); a row kept by an older version is worked
 /// out again. 1: g1t's older commit addresses count as g1t.
-pub const STATS_VERSION: f64 = 1.0;
+pub const STATS_VERSION: f64 = 2.0;
 
 /// What `repo_stats` keeps for the About, without the full contributors.
 #[derive(Debug, Default, Deserialize)]
@@ -423,6 +423,7 @@ mod tests {
             name: "ana".into(),
             username: Some("ana".into()),
             avatar: None,
+            agent: None,
             commits: 3,
             first_at: "2026-10-01T00:00:00Z".into(),
             last_at: "2026-10-02T00:00:00Z".into(),

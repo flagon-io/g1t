@@ -124,6 +124,7 @@ impl Running {
         if let Some(container) = &self.container {
             quietly(docker().args(["kill", container]));
         }
+        #[cfg(unix)]
         if let Some(engine) = &self.engine {
             quietly(docker().args(["kill", &engine.container]));
         }

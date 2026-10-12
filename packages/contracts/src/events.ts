@@ -545,10 +545,23 @@ export type EventPayloads = {
   /** A folio went to the trash (with everything under it; one event for the folio asked about). */
   "folio.trashed": FolioEventData;
   "folio.restored": FolioEventData;
+  /**
+   * A folio was deleted for good from the trash (with everything under it;
+   * one event for each top that went): by someone with full access, by
+   * emptying the trash, or by the daily purge (`actor` null then).
+   */
+  "folio.deleted": FolioEventData;
   /** Someone was given access: who (member keys) and the role. Never content. */
   "folio.shared": FolioEventData & { principals: string[]; role: "view" | "comment" | "edit" | "manage" };
   /** Code a folio cites changed. The repository is in `data` as `owner/name` only. */
   "folio.stale": FolioEventData & { repo: string; commit: string; pull: number | null; paths: string[]; owners: string[] };
+  /**
+   * A space was deleted (services/artifacts): everything in it went to the
+   * trash (`trashed` counts the artifacts; this one event stands for them
+   * all). Like `folio.*`, published with no `repoId` and never offered to
+   * webhooks; `name` is null for a members-only space.
+   */
+  "doc.space.deleted": { workspace: string; workspaceId: string; spaceId: string; name: string | null; kind: "workspace" | "team" | "private"; trashed: number };
 };
 
 /**

@@ -11,6 +11,9 @@
 /** Where the app's OAuth sign-in comes back to. */
 export const OAUTH_CALLBACK_PATH = "/oauth/callback";
 
+/** Customize's tabs, each a screen of the app's Customize. */
+const CUSTOMIZE_TABS = new Set(["skills", "connectors", "plugins"]);
+
 /** Path segments a workspace or account can never be named (the site's own pages). */
 const NOT_OWNERS = new Set(["settings", "notifications", "oauth", "device", "login", "register", "-"]);
 
@@ -39,7 +42,16 @@ export function routeFor(sitePath: string): string | null {
       return null;
     }
     if (third === "overview" && !fourth) return `/code?${workspace}`;
-    if (third === "marketplace" || third === "integrations" || (third === "agents" && fourth === "skills")) {
+    // Customize's tabs open the app's Customize, on the same tab; its other
+    // pages (a plugin, a connector, requests) open on the site. The
+    // Marketplace, the integrations settings and the old skill library were
+    // Customize before it had the name.
+    if (third === "customize") {
+      if (!fourth) return `/customize?${workspace}`;
+      if (CUSTOMIZE_TABS.has(fourth) && !fifth) return `/customize/${fourth}?${workspace}`;
+      return null;
+    }
+    if (third === "marketplace" || third === "integrations" || (third === "agents" && fourth === "skills" && !fifth)) {
       return `/customize?${workspace}`;
     }
     return null;

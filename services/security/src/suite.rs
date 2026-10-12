@@ -1,12 +1,19 @@
 //! What the security suite's parts share: whether a repository has the
 //! paid features, telling people (events for webhooks and the inbox), and
 //! the audit log.
+//!
+//! Who hears what: per-alert events (`<type>.created`, `.fixed`, …) go to
+//! webhooks. The inbox reads the one summary each scan publishes
+//! (summaries.rs), bypass requests and their answers, and vulnerability
+//! reports; each names the workspace's owners and security managers as
+//! `notify`, and its members as `members`, those who may see findings.
 
 use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
 use g1t_contracts::billing::{Feature, HasFeatureArgs};
 use g1t_contracts::events::{NewEvent, Publish};
 use g1t_contracts::identity::{ListMembersArgs, Member};
-use g1t_contracts::security_suite::{AlertType, EVENT_TYPES, PaidFeature, SecurityEvent, needs_activation};
+use g1t_contracts::advisories::AdvisoryEvent;
+use g1t_contracts::security_suite::{AlertType, EVENT_TYPES, PaidFeature, SecurityEvent, SecuritySummary, needs_activation};
 use g1t_contracts::{FailureCode, Outcome, Role, User, new_id};
 use g1t_kit::now_ms;
 use worker::Result;
@@ -86,26 +93,53 @@ impl Security {
         }
     }
 
-    /// Publishes a security event, for webhooks and the inbox. New alerts
-    /// name the workspace's owners to tell, and its members as those who
-    /// may see findings. Failing to publish never fails the change.
-    pub(crate) async fn publish(&self, kind: &str, repo: &RepoRow, mut event: SecurityEvent, actor_id: Option<String>) {
+    /// Publishes a security event about one alert, for webhooks (and, for
+    /// a bypass request, the inbox). What the inbox tells people of new
+    /// alerts comes from the scan's summary (summaries.rs), not from these.
+    /// Failing to publish never fails the change.
+    pub(crate) async fn publish(&self, kind: &str, repo: &RepoRow, event: SecurityEvent, actor_id: Option<String>) {
+        let data = serde_json::to_value(&event).unwrap_or_default();
+        let audience = kind == "secret_scanning.bypass_requested" && event.notify.is_empty();
+        self.publish_data(kind, repo, data, audience, actor_id).await;
+    }
+
+    /// Publishes a scan's summary (`<type>.summary`): the inbox's one item
+    /// per repository and alert type, told to the workspace's owners and
+    /// security managers, and to watchers who chose security and may see
+    /// findings.
+    pub(crate) async fn publish_summary(&self, kind: &str, repo: &RepoRow, summary: &SecuritySummary, actor_id: Option<String>) {
+        let data = serde_json::to_value(summary).unwrap_or_default();
+        self.publish_data(kind, repo, data, true, actor_id).await;
+    }
+
+    /// Publishes an advisory event (`security_advisory.*`). A report tells
+    /// the owners and security managers; a published advisory, webhooks
+    /// and the repository's security watchers.
+    pub(crate) async fn publish_advisory(&self, kind: &str, repo: &RepoRow, event: &AdvisoryEvent, actor_id: Option<String>) {
+        let data = serde_json::to_value(event).unwrap_or_default();
+        self.publish_data(kind, repo, data, kind == "security_advisory.reported" || kind == "security_advisory.published", actor_id).await;
+    }
+
+    /// Publishes one of [`EVENT_TYPES`]. With `audience`, `notify` (when
+    /// empty) becomes the workspace's owners and security managers, and
+    /// `members` names its members, as those who may see findings.
+    async fn publish_data(&self, kind: &str, repo: &RepoRow, mut data: serde_json::Value, audience: bool, actor_id: Option<String>) {
         let Some(kind) = EVENT_TYPES.iter().copied().find(|known| *known == kind) else {
             worker::console_error!("security: no event called {kind}");
             return;
         };
         let Some(events) = &self.events else { return };
-        let mut data = serde_json::to_value(&event).unwrap_or_default();
-        if kind.ends_with(".created") || kind == "secret_scanning.bypass_requested" {
+        if audience {
             let members = self.members(&repo.namespace).await;
-            if event.notify.is_empty() {
-                event.notify = members
-                    .iter()
-                    .filter(|member| member.role == Role::Owner || member.org_roles.contains(&g1t_contracts::OrgRole::SecurityManager))
-                    .map(|member| member.username.clone())
-                    .collect();
+            if data["notify"].as_array().is_none_or(Vec::is_empty) {
+                data["notify"] = serde_json::json!(
+                    members
+                        .iter()
+                        .filter(|member| member.role == Role::Owner || member.org_roles.contains(&g1t_contracts::OrgRole::SecurityManager))
+                        .map(|member| member.username.clone())
+                        .collect::<Vec<_>>()
+                );
             }
-            data = serde_json::to_value(&event).unwrap_or_default();
             data["members"] = serde_json::json!(
                 members.iter().take(MAX_MEMBERS_NAMED).map(|member| member.username.clone()).collect::<Vec<_>>()
             );

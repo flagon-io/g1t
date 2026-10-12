@@ -9,6 +9,13 @@
   if (window.g1tDesktop) return;
   var VERSION = "__VERSION__";
   var PLATFORM = "__PLATFORM__";
+  // Whether g1t's own title bar is above this page ("custom"), or the
+  // system's ("system"). The bar is a page of its own (src/frame.rs); this
+  // page only tells it what to show (`report`), and is never under it.
+  var FRAME = "__FRAME__";
+  // The site's pages for reading about g1t, not using it, which open in
+  // the browser (navigation.rs); one ending in "/" is every page under it.
+  var OUTSIDE = "__OUTSIDE__";
 
   function invoke(command, args) {
     var core = window.__TAURI__ && window.__TAURI__.core;
@@ -74,12 +81,39 @@
     checkForUpdates: function () {
       return invoke("check_for_updates");
     },
+    // The app's own settings, in a window of their own.
+    openSettings: function () {
+      quietly(invoke("open_settings"));
+    },
+    // The title bar's search, in its middle: the site hands it a label
+    // ("Search Flagon") and what opens its search. Returns what takes it away.
+    setSearch: function (label, open) {
+      var mine = typeof open === "function" ? { label: String(label || "Search"), open: open } : null;
+      search = mine;
+      report();
+      return function () {
+        if (search === mine) {
+          search = null;
+          report();
+        }
+      };
+    },
+    // Whether g1t draws the title bar, and how tall it is: 0 under the system's.
+    // The page is below it, never under it: this says only that the bar is there.
+    titleBarHeight: FRAME === "custom" ? 36 : 0,
   };
   Object.defineProperty(window, "g1tDesktop", { value: Object.freeze(bridge), writable: false, configurable: false });
 
-  // Links out. A link to another site opens in the system's browser, and
-  // the window stays on g1t; a link that asks for a new tab, or a click
+  // Links out. A link to another site, or to one of the site's pages for
+  // reading about g1t, opens in the system's browser, and the window stays
+  // where it is; a link that asks for a new tab, or a click
   // with Ctrl or Cmd held, goes on in this window, which has no tabs.
+  function outside(url) {
+    var path = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, "") : url.pathname;
+    return OUTSIDE.some(function (page) {
+      return page.charAt(page.length - 1) === "/" ? path.indexOf(page) === 0 : path === page;
+    });
+  }
   function destination(href) {
     try {
       var url = new URL(href, location.href);
@@ -96,7 +130,7 @@
       if (!anchor || anchor.hasAttribute("download")) return;
       var url = destination(anchor.getAttribute("href"));
       if (!url) return;
-      if (url.origin !== location.origin) {
+      if (url.origin !== location.origin || outside(url)) {
         event.preventDefault();
         event.stopImmediatePropagation();
         bridge.openUrl(url.href);
@@ -112,10 +146,109 @@
   window.open = function (href, target, features) {
     var url = destination(href);
     if (url) {
-      if (url.origin === location.origin) location.assign(url.href);
+      if (url.origin === location.origin && !outside(url)) location.assign(url.href);
       else bridge.openUrl(url.href);
       return null;
     }
     return typeof open === "function" ? open.call(window, href, target, features) : null;
   };
+
+  // ── The title bar ─────────────────────────────────────────────────────
+  // What the bar above the page shows of it: the title, the search the
+  // site handed over (`setSearch`), whether there is a page to go back or
+  // forward to, and the page's colours, so the bar is the colour of g1t's
+  // rail, light or dark, or of whatever page is showing. Sent whenever any
+  // of it changes; the bar's search comes back as an event.
+  var search = null;
+  var report = function () {};
+  if (FRAME !== "custom") return;
+
+  // A colour the page names, resolved: `var(--color-rail)` is light-dark(…) until it is drawn.
+  var probe = null;
+  function resolve(value) {
+    if (!document.body) return "";
+    if (!probe) {
+      probe = document.createElement("span");
+      probe.setAttribute("aria-hidden", "true");
+      probe.style.cssText = "position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;";
+    }
+    if (probe.parentNode !== document.body) document.body.appendChild(probe);
+    probe.style.color = "";
+    probe.style.color = value;
+    var color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }
+  function opaque(color) {
+    return !!color && color !== "transparent" && !/rgba\(.*,\s*0\)$/.test(color);
+  }
+  function luminance(color) {
+    var parts = (color.match(/[\d.]+/g) || []).map(Number);
+    return parts.length < 3 ? 0 : (0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2]) / 255;
+  }
+  // g1t's pages name their colours (apps/web/app/app.css); any other page has its own background and text.
+  function colors() {
+    if (!document.body) return null;
+    var root = getComputedStyle(document.documentElement);
+    var ours = root.getPropertyValue("--color-rail").trim() !== "";
+    var body = getComputedStyle(document.body);
+    var background = ours ? resolve("var(--color-rail)") : body.backgroundColor;
+    if (!opaque(background)) background = root.backgroundColor;
+    if (!opaque(background)) return null;
+    var foreground = ours ? resolve("var(--color-fg)") : body.color;
+    return {
+      background: background,
+      foreground: foreground,
+      muted: ours ? resolve("var(--color-muted)") : foreground,
+      accent: ours ? resolve("var(--color-accent)") : foreground,
+      dark: luminance(background) < 0.5,
+    };
+  }
+
+  var sent = "";
+  var waiting = 0;
+  report = function () {
+    clearTimeout(waiting);
+    waiting = setTimeout(function () {
+      var nav = window.navigation;
+      var page = {
+        title: document.title || "g1t",
+        search: search ? search.label : null,
+        canGoBack: nav && typeof nav.canGoBack === "boolean" ? nav.canGoBack : null,
+        canGoForward: nav && typeof nav.canGoForward === "boolean" ? nav.canGoForward : null,
+        colors: colors(),
+      };
+      var text = JSON.stringify(page);
+      if (text === sent) return;
+      sent = text;
+      invoke("title_bar_page", { page: page }).catch(function () {});
+    }, 30);
+  };
+
+  document.addEventListener("DOMContentLoaded", function () {
+    report();
+    if (document.head) new MutationObserver(report).observe(document.head, { subtree: true, childList: true, characterData: true });
+    // The site's Light, Dark or Auto (data-theme on <html>), and the system's own.
+    new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  });
+  window.addEventListener("load", report);
+  window.addEventListener("pageshow", report);
+  window.addEventListener("popstate", report);
+  if (window.matchMedia) {
+    var scheme = window.matchMedia("(prefers-color-scheme: dark)");
+    if (typeof scheme.addEventListener === "function") scheme.addEventListener("change", report);
+  }
+  if (window.navigation && typeof window.navigation.addEventListener === "function") {
+    window.navigation.addEventListener("currententrychange", report);
+  }
+
+  // The bar's search was clicked: the site's search opens.
+  var events = window.__TAURI__ && window.__TAURI__.event;
+  if (events && typeof events.listen === "function") {
+    events
+      .listen("g1t-search", function () {
+        if (search) search.open();
+      })
+      .catch(function () {});
+  }
 })();

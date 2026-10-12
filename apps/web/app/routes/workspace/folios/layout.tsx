@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import { Outlet, data, type ShouldRevalidateFunctionArgs } from "react-router";
 
 import { type FoliosSidebar as Sidebar, shownUsername } from "@g1t/contracts";
 
 import type { Route } from "./+types/layout";
+import { sidebarChangedSinceLoad, sidebarLoaded } from "../../../components/folios/actions";
 import type { DocMentionable } from "../../../components/folios/doc/editor";
 import { workspacePeople } from "../../../lib/chat.server";
 import { readCookie } from "../../../lib/mission";
@@ -60,16 +62,22 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
 }
 
 /**
- * The sidebar changes when something is made, renamed, moved, shared or
- * trashed (a submission, or a page asking again with `useRevalidator`);
- * not when moving between pages.
+ * The sidebar changes when something is made, renamed, moved, shared,
+ * trashed, restored or deleted: a submission, a page asking again with
+ * `useRevalidator`, or a change followed by a navigation (which
+ * `takeSidebarChange` remembers, since a navigation cancels a reload in
+ * flight, so the sidebar reloads with it); not when moving between
+ * pages.
  */
 export function shouldRevalidate({ currentParams, nextParams, currentUrl, nextUrl, formMethod, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+  if (sidebarChangedSinceLoad()) return true;
   if (formMethod && formMethod !== "GET") return defaultShouldRevalidate;
   if (currentUrl.href === nextUrl.href) return defaultShouldRevalidate;
   return currentParams.owner !== nextParams.owner;
 }
 
-export default function FoliosLayout() {
+export default function FoliosLayout({ loaderData }: Route.ComponentProps) {
+  // Fresh sidebar data: every change made before it is shown.
+  useEffect(() => sidebarLoaded(), [loaderData]);
   return <Outlet />;
 }

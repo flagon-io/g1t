@@ -324,26 +324,35 @@ pub(crate) fn vulnerability_event(repo: &RepoRow, vuln: &Vulnerability) -> g1t_c
 
 impl Security {
     /// Tells of vulnerability alerts a dependency read opened or fixed,
-    /// given the ids that were open before it.
+    /// given the ids that were open before it: an event each for webhooks
+    /// (the first `MAX_SUMMARY_IDS` of each), and one summary of the read
+    /// for the inbox, which carries the counts whatever the number.
     async fn vulnerabilities_changed(&self, repo: &RepoRow, before: &BTreeSet<String>) -> Result<()> {
-        use g1t_contracts::security_suite::AlertType;
+        use g1t_contracts::security_suite::{AlertType, MAX_SUMMARY_IDS};
         let after: Vec<VulnRow> = self.store.open_vulnerabilities(&repo.repo_id).await?;
         let now: BTreeSet<&str> = after.iter().map(|row| row.id.as_str()).collect();
-        let opened: Vec<&str> = now.iter().copied().filter(|id| !before.contains(*id)).take(20).collect();
-        let fixed: Vec<&String> = before.iter().filter(|id| !now.contains(id.as_str())).take(20).collect();
-        for id in opened {
+        // Worst first, as the rows come: the summary's headline is the worst new one.
+        let opened: Vec<String> = after.iter().map(|row| row.id.clone()).filter(|id| !before.contains(id)).collect();
+        let mut fixed: Vec<String> = Vec::new();
+        for id in before.iter().filter(|id| !now.contains(id.as_str())) {
+            if let Some(vuln) = self.store.vulnerability(&repo.repo_id, id).await?
+                && vuln.status == VulnStatus::Fixed
+            {
+                fixed.push(id.clone());
+            }
+        }
+        for id in opened.iter().take(MAX_SUMMARY_IDS) {
             if let Some(vuln) = self.store.vulnerability(&repo.repo_id, id).await? {
                 self.alert_event(AlertType::Vulnerability, "created", repo, vulnerability_event(repo, &vuln), None).await;
             }
         }
-        for id in fixed {
-            if let Some(vuln) = self.store.vulnerability(&repo.repo_id, id).await?
-                && vuln.status == VulnStatus::Fixed
-            {
+        for id in fixed.iter().take(MAX_SUMMARY_IDS) {
+            if let Some(vuln) = self.store.vulnerability(&repo.repo_id, id).await? {
                 self.alert_event(AlertType::Vulnerability, "fixed", repo, vulnerability_event(repo, &vuln), None).await;
             }
         }
-        Ok(())
+        let changed = crate::summaries::Changed { scan: "dependencies", opened, fixed, ..crate::summaries::Changed::default() };
+        self.summarize(repo, AlertType::Vulnerability, changed, None).await
     }
 }
 

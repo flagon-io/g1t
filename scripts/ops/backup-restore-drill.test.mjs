@@ -75,7 +75,7 @@ test("a chain restores every ref, and the drill fails once the live repository d
     mkdirSync(origin);
     git(origin, "init", "--quiet", "--initial-branch=main");
     commit(origin, "a.txt", "one");
-    git(origin, "tag", "-a", "v1", "-m", "v1");
+    git(origin, "-c", "user.name=t", "-c", "user.email=t@example.com", "tag", "-a", "v1", "-m", "v1");
     const mirror = join(root, "mirror.git");
     const bucket = join(root, "bucket");
     const dir = join(bucket, "backups", "repo_1");

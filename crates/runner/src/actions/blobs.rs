@@ -364,7 +364,7 @@ impl Job {
         let fetched = self.fetch_to(artifact, &file).and_then(|format| {
             if format == "tgz" {
                 std::fs::create_dir_all(into).map_err(|e| e.to_string())?;
-                let script = format!("tar -xzf {} -C {}", quote(&file.display().to_string()), quote(&into.display().to_string()));
+                let script = format!("tar{} -xzf {} -C {}", tar_local(), quote(&file.display().to_string()), quote(&into.display().to_string()));
                 if self.shell(&script) { Ok(()) } else { Err("it could not be unpacked".into()) }
             } else {
                 zip::extract(&file, into).map(|_| ()).map_err(|e| format!("it could not be unpacked: {e}"))
@@ -603,7 +603,7 @@ impl Job {
                 let lookup_only = with.get("lookup-only").is_some_and(|v| v == "true");
                 let size = std::fs::metadata(&archive).map(|m| m.len()).unwrap_or(0);
                 // tar finds out from the archive whether it is zstd or gzip.
-                if !lookup_only && !self.shell(&format!("tar -xPf {}", quote(&archive.display().to_string()))) {
+                if !lookup_only && !self.shell(&format!("tar{} -xPf {}", tar_local(), quote(&archive.display().to_string()))) {
                     self.log.line("##[warning]The cache was found but could not be unpacked.");
                 }
                 let _ = std::fs::remove_file(&archive);
@@ -941,11 +941,23 @@ fn pack_script(patterns: &[String], archive: &str) -> String {
          for f in \"${{found[@]}}\"; do if [ -e \"$f\" ]; then files+=(\"$f\"); fi; done; \
          if [ ${{#files[@]}} -eq 0 ]; then exit 3; fi; \
          if command -v zstd >/dev/null; then compress='zstd -T0 -3'; else compress=gzip; fi; \
-         tar -cPf {} -I \"$compress\" {} -- \"${{files[@]}}\"",
+         tar{} -cPf {} -I \"$compress\" {} -- \"${{files[@]}}\"",
         includes.join(" "),
+        tar_local(),
         quote(archive),
         excludes.join(" ")
     )
+}
+
+/// GNU tar on Windows reads `C:...` as a host and a file; `--force-local`
+/// makes every path a local one. Elsewhere the flag is left off, since
+/// bsdtar (macOS) doesn't know it.
+pub(crate) fn tar_local() -> &'static str {
+    if cfg!(windows) {
+        " --force-local"
+    } else {
+        ""
+    }
 }
 
 fn urlencode(text: &str) -> String {
@@ -982,6 +994,12 @@ mod tests {
         );
         assert_eq!(glob_word("/w/my repo/target/**/*.rlib"), "/w/my\\ repo/target/**/*.rlib");
         assert_eq!(glob_word("/w/a'b"), "/w/a\\'b");
+    }
+
+    #[test]
+    fn packing_keeps_windows_paths_local() {
+        let script = pack_script(&["C:/w/target".into()], "C:/t/c.tar");
+        assert_eq!(script.contains("--force-local"), cfg!(windows), "{script}");
     }
 
     #[test]

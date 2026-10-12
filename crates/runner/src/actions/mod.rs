@@ -17,7 +17,8 @@ mod paths;
 mod process;
 mod report;
 mod uses;
-mod zip;
+/// Also unpacks the plugins a run gets from Customize (customize.rs).
+pub(crate) mod zip;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};

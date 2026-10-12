@@ -9,14 +9,15 @@
 import { Eye, EyeOff } from "lucide-react";
 import { Form, Link, data, useNavigation } from "react-router";
 
-import type { WatchLevel } from "@g1t/contracts";
+import type { DigestCadence, WatchLevel } from "@g1t/contracts";
 
 import type { Route } from "./+types/notifications";
 import { ErrorText, SubmitButton } from "../../components/ui";
 import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
+import { SwitchCard } from "../../components/ui/switch";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
-import { EMAIL_REASONS, WATCH_CHOICES, WATCH_EVENT_LABEL, emailReasonsFromForm } from "../../lib/inbox";
+import { EMAIL_REASONS, SECURITY_DIGEST_CHOICES, WATCH_CHOICES, WATCH_EVENT_LABEL, emailReasonsFromForm, securityDigestFromForm } from "../../lib/inbox";
 import { page } from "../../lib/meta";
 import { identity, inbox } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
@@ -51,6 +52,12 @@ export async function action({ request, context }: Route.ActionArgs) {
       case "email":
         await inbox.updateSettings(user.username, { email: emailReasonsFromForm(form) });
         return answer("Saved. You'll be emailed for what is checked.");
+      case "security": {
+        const cadence: DigestCadence | null = securityDigestFromForm(form);
+        if (!cadence) return data(answer(null, "Choose when the rest of the security alerts reach you."), { status: 400 });
+        await inbox.updateSettings(user.username, { securityAlerts: form.get("security_alerts") === "on", securityDigest: cadence });
+        return answer("Saved. Critical and high alerts on repositories you look after still reach you at once.");
+      }
       case "default_watch": {
         const level = String(form.get("default_watch") ?? "");
         if (level !== "participating" && level !== "all") return data(answer(null, "Choose one."), { status: 400 });
@@ -115,6 +122,39 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
           <ErrorText>{said("email")?.error}</ErrorText>
         </Form>
         <p className="mt-3 text-xs text-faint">Email goes only to a confirmed address, and only about repositories you can still read.</p>
+      </section>
+
+      <section aria-labelledby="security-heading">
+        <h2 id="security-heading" className="text-sm font-semibold">
+          Security
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          Each scan of a repository is one item, brought up to date by the next scan. Critical and high alerts, a push of yours that push protection refused
+          and a vulnerability report reach you at once; the rest, as you choose here. The workspaces you own, or manage security for, tell you of their
+          urgent alerts whatever you choose.
+        </p>
+        <Form method="post" className="mt-4 space-y-4">
+          <input type="hidden" name="intent" value="security" />
+          <SwitchCard name="security_alerts" title="Critical and high alerts at once" defaultChecked={settings.securityAlerts}>
+            On repositories you watch for security alerts. Off, you hear of them only in the repositories you own or manage security for.
+          </SwitchCard>
+          <div>
+            <p className="mb-2 text-sm font-medium">Medium and low alerts</p>
+            <RadioGroup name="security_digest" defaultValue={settings.securityDigest}>
+              {SECURITY_DIGEST_CHOICES.map((choice) => (
+                <RadioOption key={choice.cadence} value={choice.cadence} label={choice.label} description={choice.detail} />
+              ))}
+            </RadioGroup>
+          </div>
+          <div className="flex items-center gap-3">
+            <SubmitButton variant="outline" match={{ intent: "security" }} pending="Saving…">
+              Save security settings
+            </SubmitButton>
+            {said("security")?.saved && <p className="text-xs text-success">{said("security")?.saved}</p>}
+          </div>
+          <ErrorText>{said("security")?.error}</ErrorText>
+        </Form>
+        <p className="mt-3 text-xs text-faint">Email for security alerts follows the Email section above: on by default.</p>
       </section>
 
       <section aria-labelledby="watching-heading">

@@ -1,4 +1,4 @@
-import { ArrowUpCircle, BookOpen, ChartColumn, Check, Code, FileText, FolderOpen, Globe, Library, type LucideIcon, Plus, Send, Store } from "lucide-react";
+import { ArrowUpCircle, BookOpen, ChartColumn, Check, Code, FileText, FolderOpen, Globe, Library, type LucideIcon, Plus, Send } from "lucide-react";
 import { Link, data, useFetcher, useOutletContext } from "react-router";
 
 import {
@@ -26,6 +26,7 @@ import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
 import { Switch } from "../../../components/ui/switch";
 import { cn } from "../../../lib/cn";
+import { pluginPath } from "../../../lib/customize";
 import { skillLibrary, workspaceAgents } from "../../../lib/services.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
 
@@ -77,8 +78,9 @@ const ICONS: Record<SkillCategory, LucideIcon> = { documents: FileText, research
 /**
  * An agent's skills: g1t's foundational ones, what each does today and
  * with which of the agent's tools, what's coming; then the library's that
- * reach it, through it, its teams or every agent. Owners switch each on or
- * off, attach more, and move one to its newest version.
+ * reach it, through it, its teams or every agent, a plugin's by its
+ * qualified name and saying which plugin. Owners switch each on or off,
+ * attach more, and move one to its newest version.
  */
 export default function SkillsTab({ loaderData, params }: Route.ComponentProps) {
   const agent = useOutletContext<WorkspaceAgent>();
@@ -177,7 +179,6 @@ export default function SkillsTab({ loaderData, params }: Route.ComponentProps) 
       <Card asChild className="divide-y divide-line/60 overflow-hidden">
         <section aria-label="Coming">
           <ComingRow icon={Globe} title="Web access" body="Searching and reading the open web, set per team: open, approved sites only, or off." />
-          <ComingRow icon={Store} title="Skills from the Marketplace" body="Skills that extensions bring, added in one step." />
         </section>
       </Card>
     </div>
@@ -227,6 +228,11 @@ function LibraryLine({
             {line.name}
           </Link>
           <span className="text-xs text-faint">v{line.version}</span>
+          {line.plugin && (
+            <Link to={pluginPath(slug, line.plugin)} className="inline-flex" prefetch="intent">
+              <Badge tone="accent">from {line.plugin}</Badge>
+            </Link>
+          )}
           {line.requires_computer && <NeedsComputer />}
         </div>
         <p className="mt-0.5 text-sm text-muted">{line.description}</p>

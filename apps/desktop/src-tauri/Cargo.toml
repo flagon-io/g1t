@@ -16,7 +16,9 @@ description = "The g1t desktop app: g1t in a window of its own, with native noti
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+# `unstable`: a window holding more than one web view, so the title bar
+# and the site sit one above the other (src/frame.rs).
+tauri = { version = "2", features = ["tray-icon", "image-png", "unstable"] }
 # Updates: a signed manifest at g1t.sh/downloads/desktop/latest.json.
 tauri-plugin-updater = "2"
 # Native notifications, from the site's live feed.
@@ -29,12 +31,19 @@ tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 # The window's size and place, kept between launches.
 tauri-plugin-window-state = "2"
+# Opening g1t when someone signs in to their computer (settings.rs).
+tauri-plugin-autostart = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 url = "2"
 # Whether the server answers, before the window goes there (the same client the updater brings).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1", features = ["time"] }
+
+# Keeping the menu bar hidden under g1t's own title bar (src/frame.rs); the
+# same GTK that Tauri brings.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
 
 [profile.release]
 strip = "debuginfo"

@@ -49,6 +49,7 @@ import { registrationMode } from "./lib/registration.server";
 import { addresses } from "./lib/addresses.server";
 import { RELOADED_KEY, RELOAD_GIVE_UP_MS, clientNavigated, reloadFixes, reloadedBefore } from "./lib/stale-build";
 import { useNonce } from "./lib/nonce";
+import { useStuckNavigationRescue } from "./lib/stuck";
 import { isNeedsSignIn } from "./lib/website-token";
 import { offerTicket, setLiveViaToken } from "./lib/live-socket";
 import { socketTicketFor } from "./lib/socket-ticket.server";
@@ -356,7 +357,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     setLiveViaToken(Boolean(user?.token?.website));
     offerTicket("/-/live", root?.liveTicket);
   }
-  const { pathname, search } = useLocation();
+  const { pathname } = useLocation();
   // Drawn around the error page too: a 404 keeps the sidebar out of a
   // project or workspace the viewer cannot see.
   const error = useRouteError();
@@ -476,6 +477,8 @@ export default function App() {
     identify(userId, lastUserId.current);
     lastUserId.current = userId;
   }, [userId]);
+  // A navigation that never arrives is loaded as a whole page (lib/stuck.ts).
+  useStuckNavigationRescue();
   return <Outlet />;
 }
 

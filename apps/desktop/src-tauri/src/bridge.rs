@@ -7,18 +7,24 @@
 //! loads.
 
 use serde::Serialize;
-use tauri::{AppHandle, Webview};
+use tauri::{AppHandle, Manager, UserAttentionType, Webview};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
-use crate::{badge, config, updates};
+use crate::settings::{self, Settings};
+use crate::{badge, config, frame, updates};
 
 const SCRIPT: &str = include_str!("bridge.js");
 
-/// The bridge, run at the start of every page the window loads.
-pub fn script() -> String {
-    SCRIPT.replace("__VERSION__", env!("CARGO_PKG_VERSION")).replace("__PLATFORM__", std::env::consts::OS)
+/// The bridge, run at the start of every page the site's web view loads:
+/// `custom` is whether g1t's title bar is above it (frame.rs).
+pub fn script(custom: bool) -> String {
+    SCRIPT
+        .replace("__FRAME__", if custom { "custom" } else { "system" })
+        .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
+        .replace("__PLATFORM__", std::env::consts::OS)
+        .replace("\"__OUTSIDE__\"", &serde_json::to_string(crate::navigation::OUTSIDE).expect("a list of paths is JSON"))
 }
 
 /// What the site and the launcher learn about the app.
@@ -47,8 +53,33 @@ fn from_launcher(webview: &Webview) -> Result<(), String> {
     if config::is_launcher(&url) { Ok(()) } else { Err("only the launcher may ask that".into()) }
 }
 
+/// The page asking is the settings window's, bundled with the app.
+fn from_settings(webview: &Webview) -> Result<(), String> {
+    from_launcher(webview)?;
+    if webview.label() == settings::SETTINGS { Ok(()) } else { Err("only the settings window may ask that".into()) }
+}
+
 fn from_either(app: &AppHandle, webview: &Webview) -> Result<(), String> {
     from_site(app, webview).or_else(|_| from_launcher(webview))
+}
+
+/// The page asking is the one under the title bar, whichever it is: the
+/// site's, the launcher, or GitHub's while signing in.
+fn from_page(app: &AppHandle, webview: &Webview) -> Result<(), String> {
+    let url = caller(webview)?;
+    let shown = config::is_server(app, &url) || config::is_launcher(&url) || crate::navigation::signing_in(&url);
+    if webview.label() == frame::SITE && shown { Ok(()) } else { Err("only the page in the window may ask that".into()) }
+}
+
+/// The page asking is the title bar's, bundled with the app.
+fn from_bar(webview: &Webview) -> Result<(), String> {
+    from_launcher(webview)?;
+    if webview.label() == frame::BAR { Ok(()) } else { Err("only the title bar may ask that".into()) }
+}
+
+/// The page asking has window buttons: the title bar, or the settings window's own.
+fn from_frame(webview: &Webview) -> Result<(), String> {
+    from_bar(webview).or_else(|_| from_settings(webview))
 }
 
 #[tauri::command]
@@ -67,6 +98,13 @@ pub fn desktop_info(app: AppHandle, webview: Webview) -> Result<Info, String> {
 #[tauri::command]
 pub fn notify(app: AppHandle, webview: Webview, title: String, body: String) -> Result<(), String> {
     from_site(&app, &webview)?;
+    let settings = config::settings(&app);
+    if let Some(window) = crate::frame::window(&app).filter(|window| settings.flash && !window.is_focused().unwrap_or(false)) {
+        let _ = window.request_user_attention(Some(UserAttentionType::Informational));
+    }
+    if !settings.notifications {
+        return Ok(());
+    }
     app.notification().builder().title(title).body(body).show().map_err(|error| error.to_string())
 }
 
@@ -114,8 +152,123 @@ pub fn set_server(app: AppHandle, webview: Webview, url: String) -> Result<Strin
 }
 
 /// Looks for an update now: `current`, `ready:<version>`, or an error.
+/// The settings window shows the answer itself; anyone else asking is also
+/// told with a notification.
 #[tauri::command]
 pub async fn check_for_updates(app: AppHandle, webview: Webview) -> Result<String, String> {
     from_either(&app, &webview)?;
-    updates::check(&app, true).await
+    updates::check(&app, webview.label() != settings::SETTINGS).await
+}
+
+/// A title bar button: `minimize`, `maximize` (which toggles), `close`,
+/// `drag`, or `maximized` to ask. Answers whether the window is maximized.
+#[tauri::command]
+pub fn window_control(app: AppHandle, webview: Webview, action: String) -> Result<bool, String> {
+    from_frame(&webview)?;
+    crate::frame::control(&app, &webview.window(), &action)
+}
+
+/// The title bar's menu button: the app's menu, at that place in the window.
+#[tauri::command]
+pub fn window_menu(webview: Webview, x: f64, y: f64) -> Result<(), String> {
+    from_bar(&webview)?;
+    crate::frame::menu(&webview.window(), x, y)
+}
+
+/// The page under the title bar says what it is: its title, its search,
+/// whether there is a way back, its colours (frame.rs).
+#[tauri::command]
+pub fn title_bar_page(app: AppHandle, webview: Webview, page: frame::Page) -> Result<(), String> {
+    from_page(&app, &webview)?;
+    frame::page(&app, page);
+    Ok(())
+}
+
+/// What the title bar shows now: it asks as it loads.
+#[tauri::command]
+pub fn title_bar_current(app: AppHandle, webview: Webview) -> Result<frame::Page, String> {
+    from_bar(&webview)?;
+    Ok(frame::current(&app))
+}
+
+/// A title bar button that acts on the page: `back`, `forward`, `search`, `focus`.
+#[tauri::command]
+pub fn title_bar_act(app: AppHandle, webview: Webview, action: String) -> Result<(), String> {
+    from_bar(&webview)?;
+    frame::act(&app, &action)
+}
+
+/// Restarts g1t, installing a downloaded update on the way: the settings
+/// window offers it after a change that needs one.
+#[tauri::command]
+pub fn restart(app: AppHandle, webview: Webview) -> Result<(), String> {
+    from_settings(&webview)?;
+    if updates::ready(&app).is_some() {
+        updates::restart(&app);
+    }
+    app.restart()
+}
+
+/// The settings window's "Restart now": installs the downloaded update and starts it.
+#[tauri::command]
+pub fn restart_to_update(app: AppHandle, webview: Webview) -> Result<(), String> {
+    from_settings(&webview)?;
+    updates::restart(&app);
+    Ok(())
+}
+
+/// Opens the app's settings window: the site's account menu asks for it.
+#[tauri::command]
+pub fn open_settings(app: AppHandle, webview: Webview) -> Result<(), String> {
+    from_either(&app, &webview)?;
+    settings::open(&app);
+    Ok(())
+}
+
+/// What the settings window shows.
+#[tauri::command]
+pub fn get_settings(app: AppHandle, webview: Webview) -> Result<settings::View, String> {
+    from_settings(&webview)?;
+    Ok(settings::view(&app))
+}
+
+/// The settings window changed something: everything but opening at sign-in.
+#[tauri::command]
+pub fn save_settings(app: AppHandle, webview: Webview, settings: Settings) -> Result<settings::View, String> {
+    from_settings(&webview)?;
+    settings::apply(&app, settings)?;
+    Ok(settings::view(&app))
+}
+
+/// Opening at sign-in, which the system keeps.
+#[tauri::command]
+pub fn set_open_at_login(app: AppHandle, webview: Webview, on: bool) -> Result<settings::View, String> {
+    from_settings(&webview)?;
+    settings::open_at_login(&app, on)?;
+    Ok(settings::view(&app))
+}
+
+/// The settings window's "Change…": the main window goes to the launcher's choice of server.
+#[tauri::command]
+pub fn change_server(app: AppHandle, webview: Webview) -> Result<(), String> {
+    from_settings(&webview)?;
+    if let Some(window) = app.get_webview_window(settings::SETTINGS) {
+        let _ = window.close();
+    }
+    crate::tray::launcher(&app, "change");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_bridge_has_nothing_left_to_fill_in() {
+        let script = super::script(true);
+        for placeholder in ["__VERSION__", "__PLATFORM__", "__OUTSIDE__", "__FRAME__"] {
+            assert!(!script.contains(placeholder), "{placeholder} is left in the bridge");
+        }
+        assert!(script.contains(r#"var FRAME = "custom";"#));
+        assert!(super::script(false).contains(r#"var FRAME = "system";"#));
+        assert!(script.contains(r#"var OUTSIDE = ["/pricing""#));
+    }
 }

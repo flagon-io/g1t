@@ -1,5 +1,5 @@
 import { Box, CircleAlert, MailOpen } from "lucide-react";
-import { Form, data, redirect } from "react-router";
+import { Form, redirect } from "react-router";
 
 import { REPO_ROLE_LABELS, REPO_ROLE_SUMMARIES } from "@g1t/contracts";
 

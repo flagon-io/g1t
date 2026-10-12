@@ -67,7 +67,11 @@ Slides, Design and Dashboards say **Coming soon**.
 | **Shared** | The highest artifact of each tree someone shared with you. |
 | **Possibly out of date** | Docs whose cited code changed. Shown when there are any. |
 | **Projects' docs** | Repositories' `docs/` folders, read-only. |
-| **Trash** | What was moved to the trash. |
+| **Trash** | What was moved to the trash, with how many. |
+
+The sidebar follows every change at once: an artifact you move to the trash
+leaves it, one you restore comes back, and the count beside **Trash** moves
+with them, without reloading the page.
 
 Drag a row onto a doc to put it inside, or onto the top edge of a row to put
 it before it. Only a doc can hold other artifacts: a doc with others inside
@@ -137,8 +141,10 @@ more widely than you chose.
 
 ## Spaces
 
-Every workspace has a **General** space for what everyone should know. Make
-more from **+** beside **Spaces** in the sidebar, then **New space**.
+Every workspace starts with a **General** space for what everyone should
+know. Make more from **+** beside **Spaces** in the sidebar, then **New
+space**. No space has to exist: a workspace can have none at all, and
+artifacts in no space live in their owners' **Private**.
 
 | Who it's for | Who can open it |
 | --- | --- |
@@ -155,8 +161,23 @@ for, the base role, its members and their roles, how agents work in it, and
 the projects it's about. **Editors can share**, off by default, lets people
 who can edit what's in the space share it too, up to **Can edit**. Only
 people with full access give full access, change general access, or change
-someone else's full access. **Archive this space** takes it out of the
-sidebar and search; what's in it is kept.
+someone else's full access.
+
+### Archiving and deleting a space
+
+Both are at the bottom of a space's **Settings**, for people with full access
+to the space; workspace owners can also delete any space they can open.
+
+| | What happens |
+| --- | --- |
+| **Archive space** | It leaves the sidebar and search. Everything in it is kept. **Browse spaces** lists it under **Archived**, where **Restore** brings it back as it was, or **Delete** deletes it. |
+| **Delete space** | Everything in it goes to the trash together, where anyone who could edit an artifact restores it as usual for 30 days. The space itself, its members and settings are gone for good. |
+
+Any space can be archived or deleted, **General** included. A workspace whose
+General space is deleted has no General space; none takes its place, and
+new spaces are made as usual. An artifact restored from a deleted space
+comes back at the top of **General** when there is one you can add to, else
+in its owner's **Private**.
 
 ## Docs
 
@@ -305,9 +326,15 @@ the artifact itself. Whoever saved a template, or an owner, can delete it.
 ## Trash
 
 **⋯ → Move to trash** puts an artifact, and everything inside it, in the
-**Trash**. Anyone who can edit it can restore it from there, with what was
-inside. After 30 days in the trash it's deleted for good. Deleting it sooner
-needs full access.
+**Trash**; it leaves the sidebar at once. Anyone who can edit it can restore
+it from there, with what was inside. After 30 days in the trash it's deleted
+for good. Deleting it sooner needs full access: **Delete** beside one
+artifact, or **Empty trash** at the top of the page.
+
+**Empty trash** deletes for good every artifact in the trash you have full
+access to, with its history, comments and everything inside it. Artifacts
+you can only edit stay; the page says how many go and how many stay before
+you confirm. Emptying the trash can't be undone.
 
 ## Projects' docs
 

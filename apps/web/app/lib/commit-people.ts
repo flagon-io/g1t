@@ -9,20 +9,25 @@
  * person, not the address, so a private address stays private.
  */
 import type { Blame, Commit, Contributor, EmailOwner } from "@g1t/contracts";
+import { codingAgentById, codingAgentFor } from "@g1t/contracts/coding-agents";
 
 /**
  * One person on a commit. `user` is an account; `g1t` is g1t itself;
- * `ghost` is an account that was deleted; `author` is nobody on g1t,
- * shown by the name on the commit, with no link and no card.
+ * `ghost` is an account that was deleted; `agent` is a known coding agent
+ * or bot, by the address on the commit (@g1t/contracts coding-agents);
+ * `author` is nobody on g1t, shown by the name on the commit, with a card
+ * that says so.
  */
 export type CommitPerson = {
-  kind: "user" | "g1t" | "ghost" | "author";
+  kind: "user" | "g1t" | "ghost" | "agent" | "author";
   /** The name written on the commit. Beside an account it is a hint. */
   name: string;
   /** The account's username; null for `author`. */
   username: string | null;
   /** The account's uploaded avatar, by hash. */
   avatar: string | null;
+  /** The coding agent's id, for an `agent`. */
+  agent?: string | null;
 };
 
 /** A commit as the page gets it: its people, never their addresses. */
@@ -97,6 +102,8 @@ export function personFor(name: string, email: string, owners: Readonly<Record<s
   const owner = address ? owners[address] : undefined;
   if (owner?.username === "ghost") return { kind: "ghost", name: written, username: "ghost", avatar: null };
   if (owner) return { kind: "user", name: written, username: owner.username, avatar: owner.avatar };
+  const agent = codingAgentFor(address);
+  if (agent) return { kind: "agent", name: written, username: null, avatar: null, agent: agent.id };
   return { kind: "author", name: written, username: null, avatar: null };
 }
 
@@ -116,17 +123,21 @@ export function showCommit(commit: Commit, owners: Readonly<Record<string, Email
  * `email_owners`, then g1t's addresses, then the name), so the About, the
  * Contributors page and every commit show one person the same way.
  */
-export function contributorPerson(contributor: Pick<Contributor, "kind" | "name" | "username" | "avatar">): CommitPerson {
+export function contributorPerson(contributor: Pick<Contributor, "kind" | "name" | "username" | "avatar" | "agent">): CommitPerson {
   if (contributor.kind === "g1t") return { kind: "g1t", name: contributor.name, username: "g1t", avatar: null };
   if (contributor.kind === "user" && contributor.username === "ghost") return { kind: "ghost", name: contributor.name, username: "ghost", avatar: null };
   if (contributor.kind === "user" && contributor.username) {
     return { kind: "user", name: contributor.name, username: contributor.username, avatar: contributor.avatar ?? null };
   }
+  if (contributor.kind === "agent" && codingAgentById(contributor.agent)) {
+    return { kind: "agent", name: contributor.name, username: null, avatar: null, agent: contributor.agent ?? null };
+  }
   return { kind: "author", name: contributor.name, username: null, avatar: null };
 }
 
-/** What a person on a commit is called on the page. */
+/** What a person on a commit is called on the page: an agent by its own name, whatever the commit wrote. */
 export function shownName(person: CommitPerson): string {
+  if (person.kind === "agent") return codingAgentById(person.agent)?.name ?? person.name;
   return person.username ?? person.name;
 }
 

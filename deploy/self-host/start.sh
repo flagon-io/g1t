@@ -28,6 +28,11 @@ fi
 if ! grep -q '^IDENTITY_KEY=' "$KEYS"; then
   echo "IDENTITY_KEY=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
 fi
+# The agents service's key seals connectors' keys and OAuth tokens
+# (Customize); added to keys made before it existed.
+if ! grep -q '^CONNECTORS_KEY=' "$KEYS"; then
+  echo "CONNECTORS_KEY=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
+fi
 # The site's key, which signs the short-lived addresses of private
 # repositories' files.
 if ! grep -q '^USERCONTENT_KEY=' "$KEYS"; then

@@ -25,9 +25,18 @@ test("Code's pages open the app's Code", () => {
   assert.equal(routeFor("/acme/rocket/issues/new"), null);
 });
 
-test("the Marketplace, integrations and skills open Customize", () => {
+test("Customize's tabs open the app's Customize; its other pages stay on the site", () => {
+  assert.equal(routeFor("/acme/-/customize"), "/customize?workspace=acme");
+  assert.equal(routeFor("/acme/-/customize/plugins"), "/customize/plugins?workspace=acme");
+  assert.equal(routeFor("/acme/-/customize/connectors?view=discover"), "/customize/connectors?workspace=acme");
+  assert.equal(routeFor("/acme/-/customize/plugins/pdf%40anthropic-agent-skills"), null);
+  assert.equal(routeFor("/acme/-/customize/requests"), null);
+});
+
+test("the Marketplace, integrations and the old skill library open Customize", () => {
   assert.equal(routeFor("/acme/-/marketplace/integrations"), "/customize?workspace=acme");
   assert.equal(routeFor("/acme/-/agents/skills"), "/customize?workspace=acme");
+  assert.equal(routeFor("/acme/-/agents/skills/pdf"), null, "a skill's own page is the site's");
 });
 
 test("the app's sign-in comes back to its own screen, and the site's own pages stay on the site", () => {

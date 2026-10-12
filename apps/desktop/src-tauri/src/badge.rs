@@ -1,18 +1,21 @@
 //! The badge: what needs the person, on the app's icon and in the tray's
 //! hover text. macOS and Linux draw a count on the icon; Windows has no
-//! count, so it gets a lavender dot over the taskbar icon instead.
+//! count, so it gets a lavender dot over the taskbar icon instead. With
+//! the badge turned off in settings, the icon stays clean and only the
+//! tray's hover text counts.
 
 use tauri::{AppHandle, Manager};
 
-use crate::{WINDOW, config, tray};
+use crate::{config, tray};
 
 pub fn set(app: &AppHandle, count: i64) {
     *app.state::<config::State>().waiting.lock().unwrap() = count;
-    if let Some(window) = app.get_webview_window(WINDOW) {
+    let shown = if config::settings(app).badge { count } else { 0 };
+    if let Some(window) = crate::frame::window(app) {
         #[cfg(target_os = "windows")]
-        let _ = window.set_overlay_icon(if count > 0 { Some(dot()) } else { None });
+        let _ = window.set_overlay_icon(if shown > 0 { Some(dot()) } else { None });
         #[cfg(not(target_os = "windows"))]
-        let _ = window.set_badge_count(if count > 0 { Some(count) } else { None });
+        let _ = window.set_badge_count(if shown > 0 { Some(shown) } else { None });
     }
     if let Some(tray) = app.tray_by_id(tray::TRAY) {
         let text = match count {
@@ -22,6 +25,12 @@ pub fn set(app: &AppHandle, count: i64) {
         };
         let _ = tray.set_tooltip(Some(text));
     }
+}
+
+/// Draws the badge again, after the setting changed.
+pub fn refresh(app: &AppHandle) {
+    let count = *app.state::<config::State>().waiting.lock().unwrap();
+    set(app, count);
 }
 
 /// A lavender dot with a dark edge, 32 pixels square, drawn here so

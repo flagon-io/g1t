@@ -152,6 +152,9 @@ type SpaceRow = {
   created_by: string;
   created_at: string;
   archived_at: string | null;
+  /** Set when the space was deleted (migration 0007; src/who.ts). Docs leaves deleted spaces out everywhere. */
+  deleted_at: string | null;
+  deleted_by: string | null;
 };
 
 type PageRow = {
@@ -421,11 +424,11 @@ class Docs {
     return !!viewer.workspaces?.some((m) => m.slug === slug.toLowerCase() && m.role === "owner");
   }
 
-  /** Every space in the workspace (archived ones too when asked), with members and projects. */
+  /** Every space in the workspace (archived ones too when asked; never deleted ones), with members and projects. */
   private async allSpaces(workspace: Workspace, archived = false): Promise<Omit<Space, "role">[]> {
     const [spaces, members, projects] = await Promise.all([
       this.db
-        .prepare(`SELECT * FROM spaces WHERE workspace_id = ? ${archived ? "" : "AND archived_at IS NULL"} ORDER BY is_default DESC, name COLLATE NOCASE`)
+        .prepare(`SELECT * FROM spaces WHERE workspace_id = ? AND deleted_at IS NULL ${archived ? "" : "AND archived_at IS NULL"} ORDER BY is_default DESC, name COLLATE NOCASE`)
         .bind(workspace.id)
         .all<SpaceRow>(),
       this.db
@@ -456,7 +459,7 @@ class Docs {
     return spaces.map((s) => ({ ...s, role: roleOf(rulesOf({ ...s, role: null }), person) }));
   }
 
-  /** Makes the workspace's General space, once. */
+  /** Makes the workspace's General space, once; a deleted General (its row kept, `deleted_at` set) is not made again. */
   private async ensureDefault(workspace: Workspace, viewer: User): Promise<boolean> {
     const found = await this.db.prepare("SELECT id FROM spaces WHERE workspace_id = ? AND is_default = 1").bind(workspace.id).first<{ id: string }>();
     if (found) return false;
@@ -855,6 +858,14 @@ class Docs {
     return ok({ space: this.toSpace(space, rows.length), members, pages });
   }
 
+  /** Every space the viewer can open, archived ones included (the Spaces page lists those apart), General first. */
+  async spaces(a: { workspace: string; viewer: Viewer }): Promise<Result<DocSpace[]>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const spaces = await this.spacesFor(found.value, a.viewer!, true);
+    return ok(spaces.filter((s) => s.role).map((s) => this.toSpace(s)));
+  }
+
   async createSpace(a: { workspace: string; viewer: Viewer; input: NewDocSpace }): Promise<Result<DocSpace>> {
     const found = await this.viewerWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
@@ -946,10 +957,8 @@ class Docs {
     if (c.default_role !== undefined && (c.kind ?? space.row.kind) !== "private") set("default_role", isRole(c.default_role) ? c.default_role : null);
     if (c.agent_mode !== undefined) set("agent_mode", c.agent_mode === "edit" ? "edit" : "suggest");
     if (c.editors_can_share !== undefined) set("editors_can_share", c.editors_can_share ? 1 : 0);
-    if (c.archived !== undefined) {
-      if (space.row.is_default && c.archived) return fail("invalid", "The General space can't be archived.");
-      set("archived_at", c.archived ? now() : null);
-    }
+    // Any space archives, General too: a space is not required to exist.
+    if (c.archived !== undefined) set("archived_at", c.archived ? now() : null);
     const statements: D1PreparedStatement[] = [];
     if (sets.length) statements.push(this.db.prepare(`UPDATE spaces SET ${sets.join(", ")} WHERE id = ?`).bind(...values, space.row.id));
     if (c.projects !== undefined) {
@@ -2624,6 +2633,8 @@ async function answer(service: Docs, method: string, args: any): Promise<Respons
       return Response.json(await service.home(args));
     case "space":
       return Response.json(await service.space(args));
+    case "spaces":
+      return Response.json(await service.spaces(args));
     case "create_space":
       return Response.json(await service.createSpace(args));
     case "update_space":

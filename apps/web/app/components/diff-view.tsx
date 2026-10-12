@@ -17,7 +17,6 @@ import { Form, Link } from "react-router";
 import type { Comment, Comparison, DiffLine } from "@g1t/contracts";
 
 import type {
-  HighlightedComparison,
   HighlightedFile,
   HighlightedLine,
 } from "../lib/diff";

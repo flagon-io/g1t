@@ -14,12 +14,14 @@
 //! Other services reach it over `POST /rpc/<method>`; see
 //! `g1t_contracts::events`, `audit` and `inbox` for the methods and their
 //! arguments. `activity_digest` (digest.rs) counts a span of the log for
-//! Home.
+//! Home. Security alerts that are not urgent wait for each person's
+//! security digest (security_digest.rs), sent by a cron of its own.
 
 mod audit;
 mod digest;
 mod fanout;
 mod inbox;
+mod security_digest;
 mod subscriptions;
 
 use g1t_contracts::events::{Event, ListArgs, PublishArgs};
@@ -372,7 +374,18 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
 /// on the plan, or what staff set). Workspaces with nothing older than the
 /// shortest (`AUDIT_MIN_DAYS`, 7) are left alone.
 #[event(scheduled)]
-async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
+async fn scheduled(event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
+    // The morning cron sends the security digests that are due, and nothing else.
+    if event.cron() == security_digest::DIGEST_CRON {
+        let (Ok(db), Ok(identity)) = (env.d1("DB"), env.service("IDENTITY")) else { return };
+        let notify = env.service("NOTIFY").ok();
+        match security_digest::send_due(&db, &identity, notify.as_ref(), now_ms()).await {
+            Ok(sent) if sent > 0 => worker::console_log!("sent {sent} security digests"),
+            Ok(_) => {}
+            Err(error) => worker::console_error!("security digests not sent: {error}"),
+        }
+        return;
+    }
     let days = |name: &str, default: u32| {
         env.var(name)
             .ok()

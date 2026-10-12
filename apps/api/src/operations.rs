@@ -29,6 +29,7 @@ use crate::alerts::{AlertKind, SecurityAlert};
 use crate::checks::ChecksOp;
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
@@ -338,6 +339,9 @@ pub enum Op {
     /// Artifacts mode's docs, slides, designs and dashboards, kept by the
     /// artifacts service: folios.rs.
     Folios(FoliosOp),
+    /// A workspace's Customize: marketplaces, plugins, connectors and the
+    /// bundle a runner loads, kept by the agents service: customize.rs.
+    Customize(CustomizeOp),
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -707,7 +711,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 351] = [
+    pub const ALL: [Op; 380] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -936,6 +940,14 @@ impl Op {
         Op::Security(SecurityOp::GetWorkspaceSettings),
         Op::Security(SecurityOp::UpdateWorkspaceSettings),
         Op::Security(SecurityOp::GetOverview),
+        Op::Security(SecurityOp::ListAdvisories),
+        Op::Security(SecurityOp::GetAdvisory),
+        Op::Security(SecurityOp::CreateAdvisory),
+        Op::Security(SecurityOp::UpdateAdvisory),
+        Op::Security(SecurityOp::SetAdvisoryState),
+        Op::Security(SecurityOp::ListReports),
+        Op::Security(SecurityOp::ReportVulnerability),
+        Op::Security(SecurityOp::ReviewReport),
         Op::Rules(RulesOp::ListRepoRulesets),
         Op::Rules(RulesOp::GetRepoRuleset),
         Op::Rules(RulesOp::CreateRepoRuleset),
@@ -995,6 +1007,27 @@ impl Op {
         Op::DeployKeys(DeployKeysOp::GetDeployKey),
         Op::DeployKeys(DeployKeysOp::CreateDeployKey),
         Op::DeployKeys(DeployKeysOp::DeleteDeployKey),
+        Op::Customize(CustomizeOp::ListMarketplaces),
+        Op::Customize(CustomizeOp::AddMarketplace),
+        Op::Customize(CustomizeOp::RemoveMarketplace),
+        Op::Customize(CustomizeOp::RefreshMarketplace),
+        Op::Customize(CustomizeOp::Discover),
+        Op::Customize(CustomizeOp::ListPlugins),
+        Op::Customize(CustomizeOp::GetPlugin),
+        Op::Customize(CustomizeOp::InstallPlugin),
+        Op::Customize(CustomizeOp::SetPluginEnabled),
+        Op::Customize(CustomizeOp::UninstallPlugin),
+        Op::Customize(CustomizeOp::UpdatePlugin),
+        Op::Customize(CustomizeOp::ListPluginAgents),
+        Op::Customize(CustomizeOp::ListConnectors),
+        Op::Customize(CustomizeOp::GetConnector),
+        Op::Customize(CustomizeOp::AddConnector),
+        Op::Customize(CustomizeOp::SetConnectorKey),
+        Op::Customize(CustomizeOp::RemoveConnector),
+        Op::Customize(CustomizeOp::RefreshConnector),
+        Op::Customize(CustomizeOp::GrantConnector),
+        Op::Customize(CustomizeOp::RevokeConnector),
+        Op::Customize(CustomizeOp::Bundle),
         Op::Mirrors(MirrorsOp::GetMirror),
         Op::Mirrors(MirrorsOp::GetHandBackPlan),
         Op::Mirrors(MirrorsOp::TakeOver),
@@ -1277,6 +1310,7 @@ impl Op {
             Op::Mirrors(op) => op.name(),
             Op::Packages(op) => op.name(),
             Op::Folios(op) => op.name(),
+            Op::Customize(op) => op.name(),
         }
     }
 
@@ -1849,6 +1883,7 @@ impl Op {
             Op::Mirrors(op) => op.description(),
             Op::Packages(op) => op.description(),
             Op::Folios(op) => op.description(),
+            Op::Customize(op) => op.description(),
         }
     }
 
@@ -3342,6 +3377,7 @@ impl Op {
             Op::Mirrors(op) => op.input(),
             Op::Packages(op) => op.input(),
             Op::Folios(op) => op.input(),
+            Op::Customize(op) => op.input(),
         }
     }
 
@@ -3418,6 +3454,10 @@ impl Op {
         }
         // An artifact belongs to its workspace.
         if let Op::Folios(_) = self {
+            return false;
+        }
+        // So does its Customize.
+        if let Op::Customize(_) = self {
             return false;
         }
         if let Op::About(op) = self {
@@ -4694,7 +4734,7 @@ impl Op {
                     }
                 }
                 let status = current.as_ref().map(|pull| pull.status);
-                let mut answer = current.map(|pull| serde_json::to_value(pull)).transpose()?;
+                let mut answer = current.map(serde_json::to_value).transpose()?;
                 if wanted.as_deref() == Some("open") && status == Some(PullStatus::Closed) {
                     match pass(work, "reopen_pull", &pull_action()).await? {
                         Outcome::Ok(pull) => answer = Some(pull),
@@ -5697,6 +5737,7 @@ impl Op {
             Op::Mirrors(op) => crate::mirrors::run(op, services, viewer, input).await,
             Op::Packages(op) => crate::packages::run(op, services, viewer, input).await,
             Op::Folios(op) => crate::folios::run(op, services, viewer, input).await,
+            Op::Customize(op) => crate::customize::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,

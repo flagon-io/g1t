@@ -29,6 +29,7 @@
 //! Other services reach it over `POST /rpc/<method>`; see
 //! `g1t_contracts::security`.
 
+mod advisories;
 mod code_scanning;
 mod config;
 mod deps;
@@ -48,6 +49,7 @@ mod security_updates;
 mod store;
 mod suite;
 mod suite_store;
+mod summaries;
 mod supply_chain;
 mod timezones;
 mod update_store;
@@ -311,6 +313,13 @@ impl Security {
                 };
                 self.alert_event(g1t_contracts::security_suite::AlertType::SecretScanning, action, &repo, event, Some(a.actor.id.clone()))
                     .await;
+                let changed = summaries::Changed {
+                    scan: "change",
+                    fixed: if action == "fixed" { vec![a.id.clone()] } else { Vec::new() },
+                    dismissed: u32::from(action == "dismissed"),
+                    ..summaries::Changed::default()
+                };
+                self.summarize(&repo, g1t_contracts::security_suite::AlertType::SecretScanning, changed, Some(a.actor.id.clone())).await?;
             }
             return Ok(Outcome::Ok(AlertChange { secret, vulnerability: None }));
         }
@@ -343,6 +352,8 @@ impl Security {
         if let Some(vuln) = &vulnerability {
             let event = g1t_contracts::security_suite::SecurityEvent { reason: Some(a.reason.as_str().to_owned()), ..deps::vulnerability_event(&repo, vuln) };
             self.alert_event(g1t_contracts::security_suite::AlertType::Vulnerability, "dismissed", &repo, event, Some(a.actor.id.clone())).await;
+            let changed = summaries::Changed { scan: "change", dismissed: 1, ..summaries::Changed::default() };
+            self.summarize(&repo, g1t_contracts::security_suite::AlertType::Vulnerability, changed, Some(a.actor.id.clone())).await?;
         }
         // A security update whose alerts are now all fixed or dismissed closes.
         if let Err(error) = self.resolve_updates(&repo, None).await {
@@ -378,6 +389,9 @@ impl Security {
                     Some(a.actor.id.clone()),
                 )
                 .await;
+                // The thread's counts move; nobody is told anew of what they reopened.
+                let changed = summaries::Changed { scan: "change", ..summaries::Changed::default() };
+                self.summarize(&repo, g1t_contracts::security_suite::AlertType::SecretScanning, changed, Some(a.actor.id.clone())).await?;
             }
             return Ok(Outcome::Ok(AlertChange { secret, vulnerability: None }));
         }
@@ -399,6 +413,8 @@ impl Security {
                 Some(a.actor.id.clone()),
             )
             .await;
+            let changed = summaries::Changed { scan: "change", ..summaries::Changed::default() };
+            self.summarize(&repo, g1t_contracts::security_suite::AlertType::Vulnerability, changed, Some(a.actor.id.clone())).await?;
         }
         Ok(Outcome::Ok(AlertChange { secret: None, vulnerability }))
     }
@@ -627,6 +643,7 @@ impl Security {
             // A repository purged: everything found in it goes.
             "repo.purged" => {
                 if let Some(g1t_kit::lifecycle::Lifecycle::Purged(purged)) = g1t_kit::lifecycle::read(event) {
+                    self.store.purge_advisories(&purged.repo_id).await?;
                     self.store.purge_suite(&purged.repo_id).await?;
                     self.store.purge(&purged.repo_id).await?;
                 }
@@ -745,6 +762,16 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "set_workspace_security_settings" => reply(&security.set_workspace_security_settings(args(body)?).await?),
         "security_overview" => reply(&security.security_overview(args(body)?).await?),
         "workspace_alerts" => reply(&security.workspace_alerts(args(body)?).await?),
+        // Reporting: advisories and private vulnerability reports (advisories.rs).
+        "list_advisories" => reply(&security.list_advisories(args(body)?).await?),
+        "get_advisory" => reply(&security.get_advisory(args(body)?).await?),
+        "create_advisory" => reply(&security.create_advisory(args(body)?).await?),
+        "update_advisory" => reply(&security.update_advisory(args(body)?).await?),
+        "set_advisory_state" => reply(&security.set_advisory_state(args(body)?).await?),
+        "report_vulnerability" => reply(&security.report_vulnerability(args(body)?).await?),
+        "report_settings" => reply(&security.report_settings(args(body)?).await?),
+        "list_vulnerability_reports" => reply(&security.list_vulnerability_reports(args(body)?).await?),
+        "review_vulnerability_report" => reply(&security.review_vulnerability_report(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

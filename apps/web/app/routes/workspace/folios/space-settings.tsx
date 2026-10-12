@@ -1,5 +1,5 @@
 import { DOC_ROLES, DOC_ROLE_LABELS, DOC_ROLE_SUMMARIES, type DocRole, type DocSpace, type DocSpaceMember } from "@g1t/contracts";
-import { Archive, Share2 } from "lucide-react";
+import { Archive, Share2, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link, data, useNavigate } from "react-router";
 
@@ -47,6 +47,9 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
   const [adding, setAdding] = useState("");
   const [addRole, setAddRole] = useState<DocRole>("edit");
   const [archiving, setArchiving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  // How many artifacts the sidebar shows in it, when it shows the space.
+  const inside = layout?.sidebar?.spaces.find((s) => s.id === space.id)?.page_count ?? null;
   const listed = new Set(members.map((m) => m.key));
   const candidates = [
     ...(layout?.mentionables ?? []).map((m) => ({ value: m.kind === "agent" ? `agent:${m.id}` : `username:${m.name}`, label: m.kind === "agent" ? `${m.display_name} (agent)` : `${m.display_name} (@${m.name})` })),
@@ -155,20 +158,47 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
         )}
       </section>
 
-      {!space.is_default && (
-        <section className="mt-12 rounded-xl border border-danger/30 p-5">
-          <h2 className="text-sm font-semibold">Archive this space</h2>
-          <p className="mt-1 text-xs leading-relaxed text-muted">It leaves the sidebar and search. What's in it, its history and comments are kept.</p>
-          <Button type="button" variant="destructive" onClick={() => setArchiving(true)} className="mt-3">
-            <Archive size={14} /> Archive space
-          </Button>
-        </section>
-      )}
+      <section className="mt-12 rounded-xl border border-danger/30 p-5">
+        <h2 className="text-sm font-semibold">Archive this space</h2>
+        <p className="mt-1 text-xs leading-relaxed text-muted">It leaves the sidebar and search. What's in it, its history and comments are kept, and it comes back from the Spaces page.</p>
+        <Button type="button" variant="destructive" onClick={() => setArchiving(true)} className="mt-3">
+          <Archive size={14} /> Archive space
+        </Button>
+        <h2 className="mt-6 text-sm font-semibold">Delete this space</h2>
+        <p className="mt-1 text-xs leading-relaxed text-muted">
+          Everything in it goes to the trash, where anyone who could edit it can restore it for 30 days. The space itself, its members and settings are gone for good.
+          {space.is_default ? " A workspace needs no General space; none takes its place." : ""}
+        </p>
+        <Button type="button" variant="destructive" onClick={() => setDeleting(true)} className="mt-3">
+          <Trash2 size={14} /> Delete space
+        </Button>
+      </section>
+      <AlertDialog open={deleting} onOpenChange={setDeleting}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {space.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {inside === null ? "Everything in it goes" : inside === 1 ? "The artifact in it goes" : `The ${inside} artifacts in it go`} to the trash, where anyone who could edit it can restore it for 30 days. The space can&apos;t be brought back.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                const done = await settings.send("delete_space", { space_id: space.id });
+                if (done.ok) navigate(`/${slug}/-/artifacts`);
+              }}
+            >
+              Delete space
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={archiving} onOpenChange={setArchiving}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Archive {space.name}?</AlertDialogTitle>
-            <AlertDialogDescription>Nobody will see it in Artifacts until it is brought back.</AlertDialogDescription>
+            <AlertDialogDescription>Nobody will see it in Artifacts until it is brought back from the Spaces page.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep it</AlertDialogCancel>

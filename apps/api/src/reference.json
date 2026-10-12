@@ -4350,6 +4350,974 @@
     },
     "notes": "Credentials that do not work still answer `200`, with `ok` false and `message` saying what went wrong."
   },
+  "list_marketplaces": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "name": "claude-plugins-official",
+        "source": {
+          "source": "github",
+          "repo": "anthropics/claude-plugins-official"
+        },
+        "builtin": true,
+        "about": "Official plugins from Anthropic.",
+        "owner": "Anthropic",
+        "plugins": 42,
+        "fetched_at": "2026-10-11T14:02:11.408Z",
+        "problem": null,
+        "added_by": null,
+        "added_at": null,
+        "can_remove": false
+      },
+      {
+        "name": "flagon-tools",
+        "source": {
+          "source": "g1t",
+          "repo": "flagon-io/plugins"
+        },
+        "builtin": false,
+        "about": "Flagon's own skills and connectors.",
+        "owner": "Flagon",
+        "plugins": 3,
+        "fetched_at": "2026-10-11T14:02:12.117Z",
+        "problem": null,
+        "added_by": "syntaqx",
+        "added_at": "2026-10-09T18:20:03.512Z",
+        "can_remove": true
+      }
+    ],
+    "notes": "Every workspace reads `claude-plugins-official`, `anthropic-agent-skills` and `g1t`, which are `builtin` and cannot be removed. `source` is the marketplace's source object in the open plugin format: `github` (`repo`), `g1t` (`repo`, a repository here), `git` or `url` (`url`), or `builtin`. `problem` says why the manifest could not be read last time, if it could not. See [Customize](/guides/customize/)."
+  },
+  "add_marketplace": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "address": "flagon-io/plugins"
+    },
+    "response": {
+      "name": "flagon-tools",
+      "source": {
+        "source": "g1t",
+        "repo": "flagon-io/plugins"
+      },
+      "builtin": false,
+      "about": "Flagon's own skills and connectors.",
+      "owner": "Flagon",
+      "plugins": 3,
+      "fetched_at": "2026-10-11T14:05:40.019Z",
+      "problem": null,
+      "added_by": "syntaqx",
+      "added_at": "2026-10-11T14:05:40.019Z",
+      "can_remove": true
+    },
+    "notes": "`owner/repo` that is a repository on this g1t is read here; otherwise it is read from GitHub. The manifest is read before the marketplace is kept: an address with no `.claude-plugin/marketplace.json`, or one that cannot be read, is refused with `422`. At most 20 marketplaces a workspace."
+  },
+  "remove_marketplace": {
+    "params": {
+      "workspace": "flagon-io",
+      "marketplace": "flagon-tools"
+    },
+    "notes": "Plugins installed from it stay installed at their pinned commit. A built-in marketplace answers `409`."
+  },
+  "refresh_marketplace": {
+    "params": {
+      "workspace": "flagon-io",
+      "marketplace": "flagon-tools"
+    },
+    "response": {
+      "name": "flagon-tools",
+      "source": {
+        "source": "g1t",
+        "repo": "flagon-io/plugins"
+      },
+      "builtin": false,
+      "about": "Flagon's own skills and connectors.",
+      "owner": "Flagon",
+      "plugins": 4,
+      "fetched_at": "2026-10-11T15:12:08.330Z",
+      "problem": null,
+      "added_by": "syntaqx",
+      "added_at": "2026-10-09T18:20:03.512Z",
+      "can_remove": true
+    }
+  },
+  "discover": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "plugins": [
+        {
+          "ref": "commit-commands@claude-plugins-official",
+          "name": "commit-commands",
+          "marketplace": "claude-plugins-official",
+          "display_name": "Commit commands",
+          "description": "Commands for committing, pushing and opening pull requests.",
+          "version": "1.0.0",
+          "author": "Anthropic",
+          "homepage": null,
+          "category": "productivity",
+          "tags": [
+            "git"
+          ],
+          "keywords": [],
+          "fetch": {
+            "kind": "github",
+            "repo": "anthropics/claude-plugins-official",
+            "ref": null,
+            "sha": null,
+            "path": "plugins/commit-commands"
+          },
+          "availability": {
+            "kind": "installed",
+            "enabled": true
+          },
+          "skills": []
+        },
+        {
+          "ref": "release-notes@flagon-tools",
+          "name": "release-notes",
+          "marketplace": "flagon-tools",
+          "display_name": "Release notes",
+          "description": "Writes release notes from merged pull requests.",
+          "version": "0.3.1",
+          "author": "Flagon",
+          "homepage": "https://g1t.sh/flagon-io/plugins",
+          "category": "docs",
+          "tags": [],
+          "keywords": [
+            "releases"
+          ],
+          "fetch": {
+            "kind": "g1t",
+            "repo": "flagon-io/plugins",
+            "ref": null,
+            "path": "plugins/release-notes"
+          },
+          "availability": {
+            "kind": "available"
+          },
+          "skills": [
+            "release-notes"
+          ]
+        }
+      ],
+      "skills": [
+        {
+          "ref": "release-notes:release-notes",
+          "name": "release-notes",
+          "plugin": "release-notes",
+          "marketplace": "flagon-tools",
+          "description": "Writes release notes from merged pull requests.",
+          "category": "docs",
+          "author": "Flagon",
+          "added": false,
+          "availability": {
+            "kind": "available"
+          }
+        }
+      ],
+      "marketplaces": [
+        {
+          "name": "claude-plugins-official",
+          "source": {
+            "source": "github",
+            "repo": "anthropics/claude-plugins-official"
+          },
+          "builtin": true,
+          "about": "Official plugins from Anthropic.",
+          "owner": "Anthropic",
+          "plugins": 42,
+          "fetched_at": "2026-10-11T14:02:11.408Z",
+          "problem": null,
+          "added_by": null,
+          "added_at": null,
+          "can_remove": false
+        }
+      ]
+    },
+    "notes": "`availability.kind` is `available`, `installed` (with `enabled`), `unavailable` (with `why`: an npm or command source, or a git host g1t does not read; such a plugin still works in Claude Code) or `soon` (g1t's own, announced but not released). `fetch` is where g1t reads the plugin from: `github` (at `sha` when the listing pins one, else `ref`), `g1t`, `archive` (a zip at `url`) or `unsupported`. `skills` on a plugin lists the skills its listing names outright, so a skills-only plugin shows them before it is fetched."
+  },
+  "list_plugins": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "id": "plg_01kq9f2h4k6m8p0r2t4v6x8z0b",
+        "ref": "commit-commands@claude-plugins-official",
+        "name": "commit-commands",
+        "marketplace": "claude-plugins-official",
+        "display_name": "Commit commands",
+        "description": "Commands for committing, pushing and opening pull requests.",
+        "version": "1.0.0",
+        "sha": "9c1f4a6e8b0d2c4f6a8e1b3d5f7a9c1e3b5d7f90",
+        "fetch": {
+          "kind": "github",
+          "repo": "anthropics/claude-plugins-official",
+          "ref": null,
+          "sha": "9c1f4a6e8b0d2c4f6a8e1b3d5f7a9c1e3b5d7f90",
+          "path": "plugins/commit-commands"
+        },
+        "components": {
+          "skills": [],
+          "agents": [],
+          "commands": [
+            {
+              "name": "commit",
+              "path": "commands/commit.md"
+            },
+            {
+              "name": "commit-push-pr",
+              "path": "commands/commit-push-pr.md"
+            }
+          ],
+          "mcp_servers": [],
+          "hooks": false,
+          "lsp": false,
+          "bin": false,
+          "output_styles": false
+        },
+        "problems": [],
+        "enabled": true,
+        "installed_by": "syntaqx",
+        "installed_at": "2026-10-10T09:14:52.207Z",
+        "update": {
+          "version": "1.1.0",
+          "sha": "e3b5d7f90a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b"
+        }
+      }
+    ],
+    "notes": "`sha` is the commit the plugin was read at, which it stays pinned to; `update` is set when the marketplace now lists a newer version. `components` is what installing extracted: `skills` and `commands` joined the library as `plugin:name`, `agents` are templates to hire from, `mcp_servers` with `remote` true became connectors (stdio ones are for Claude Code only), and `hooks`, `lsp`, `bin` and `output_styles` say what only Claude Code on a runner uses."
+  },
+  "get_plugin": {
+    "params": {
+      "workspace": "flagon-io",
+      "ref": "release-notes%40flagon-tools"
+    },
+    "response": {
+      "listing": {
+        "ref": "release-notes@flagon-tools",
+        "name": "release-notes",
+        "marketplace": "flagon-tools",
+        "display_name": "Release notes",
+        "description": "Writes release notes from merged pull requests.",
+        "version": "0.3.1",
+        "author": "Flagon",
+        "homepage": "https://g1t.sh/flagon-io/plugins",
+        "category": "docs",
+        "tags": [],
+        "keywords": [
+          "releases"
+        ],
+        "fetch": {
+          "kind": "g1t",
+          "repo": "flagon-io/plugins",
+          "ref": null,
+          "path": "plugins/release-notes"
+        },
+        "availability": {
+          "kind": "available"
+        },
+        "skills": [
+          "release-notes"
+        ]
+      },
+      "install": null,
+      "components": {
+        "skills": [
+          {
+            "name": "release-notes",
+            "description": "Write release notes from the pull requests merged since the last tag.",
+            "path": "skills/release-notes/SKILL.md"
+          }
+        ],
+        "agents": [
+          {
+            "name": "release-writer",
+            "description": "Drafts a release's notes and asks a maintainer to check them.",
+            "path": "agents/release-writer.md"
+          }
+        ],
+        "commands": [],
+        "mcp_servers": [
+          {
+            "name": "linear",
+            "type": "http",
+            "url": "https://mcp.linear.app/mcp",
+            "remote": true
+          }
+        ],
+        "hooks": false,
+        "lsp": false,
+        "bin": false,
+        "output_styles": false
+      },
+      "readme": "# Release notes\n\nWrites release notes from merged pull requests…",
+      "manifest": {
+        "name": "release-notes",
+        "version": "0.3.1",
+        "license": "MIT",
+        "repository": "https://g1t.sh/flagon-io/plugins"
+      },
+      "agents": [
+        {
+          "name": "release-writer",
+          "description": "Drafts a release's notes and asks a maintainer to check them.",
+          "tools": [
+            "Read",
+            "Grep"
+          ],
+          "model": null,
+          "skills": [
+            "release-notes"
+          ],
+          "prompt": "You write release notes…"
+        }
+      ],
+      "problems": [],
+      "source": {
+        "marketplace": "flagon-tools",
+        "owner": "Flagon"
+      }
+    },
+    "notes": "In the path, `ref` is URL-encoded: `release-notes%40flagon-tools`. `install` is null until the workspace installs it. `components`, `readme`, `manifest` and `agents` are read from the plugin's source at the commit the listing names, so this takes a moment; for an `unavailable` plugin they are null or empty and `problems` says why."
+  },
+  "install_plugin": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "ref": "release-notes@flagon-tools"
+    },
+    "response": {
+      "id": "plg_01kq9g3j5l7n9q1s3u5w7y9a1c",
+      "ref": "release-notes@flagon-tools",
+      "name": "release-notes",
+      "marketplace": "flagon-tools",
+      "display_name": "Release notes",
+      "description": "Writes release notes from merged pull requests.",
+      "version": "0.3.1",
+      "sha": "4f6a8e1b3d5f7a9c1e3b5d7f90a1c3e5b7d9f1a3",
+      "fetch": {
+        "kind": "g1t",
+        "repo": "flagon-io/plugins",
+        "ref": null,
+        "path": "plugins/release-notes"
+      },
+      "components": {
+        "skills": [
+          {
+            "name": "release-notes",
+            "description": "Write release notes from the pull requests merged since the last tag.",
+            "path": "skills/release-notes/SKILL.md"
+          }
+        ],
+        "agents": [
+          {
+            "name": "release-writer",
+            "description": "Drafts a release's notes and asks a maintainer to check them.",
+            "path": "agents/release-writer.md"
+          }
+        ],
+        "commands": [],
+        "mcp_servers": [
+          {
+            "name": "linear",
+            "type": "http",
+            "url": "https://mcp.linear.app/mcp",
+            "remote": true
+          }
+        ],
+        "hooks": false,
+        "lsp": false,
+        "bin": false,
+        "output_styles": false
+      },
+      "problems": [],
+      "enabled": true,
+      "installed_by": "syntaqx",
+      "installed_at": "2026-10-11T14:20:31.904Z",
+      "update": null
+    },
+    "notes": "Its skill is now `release-notes:release-notes` in the library, `release-writer` is a template under Agents, and the `linear` server is a connector waiting for an owner to sign in (`list_connectors` shows it as `needs_sign_in`, with `from.kind` `plugin`). A plugin already installed answers `409`; one whose source g1t cannot fetch answers `422`."
+  },
+  "set_plugin_enabled": {
+    "params": {
+      "workspace": "flagon-io",
+      "ref": "release-notes%40flagon-tools"
+    },
+    "request": {
+      "enabled": false
+    },
+    "response": {
+      "id": "plg_01kq9g3j5l7n9q1s3u5w7y9a1c",
+      "ref": "release-notes@flagon-tools",
+      "name": "release-notes",
+      "marketplace": "flagon-tools",
+      "display_name": "Release notes",
+      "description": "Writes release notes from merged pull requests.",
+      "version": "0.3.1",
+      "sha": "4f6a8e1b3d5f7a9c1e3b5d7f90a1c3e5b7d9f1a3",
+      "fetch": {
+        "kind": "g1t",
+        "repo": "flagon-io/plugins",
+        "ref": null,
+        "path": "plugins/release-notes"
+      },
+      "components": {
+        "skills": [
+          {
+            "name": "release-notes",
+            "description": "Write release notes from the pull requests merged since the last tag.",
+            "path": "skills/release-notes/SKILL.md"
+          }
+        ],
+        "agents": [],
+        "commands": [],
+        "mcp_servers": [],
+        "hooks": false,
+        "lsp": false,
+        "bin": false,
+        "output_styles": false
+      },
+      "problems": [],
+      "enabled": false,
+      "installed_by": "syntaqx",
+      "installed_at": "2026-10-11T14:20:31.904Z",
+      "update": null
+    },
+    "notes": "A switched-off plugin stays installed and keeps its pinned commit, but agents lose its skills, templates and connectors until it is switched on again, and runners' bundles leave it out."
+  },
+  "uninstall_plugin": {
+    "params": {
+      "workspace": "flagon-io",
+      "ref": "release-notes%40flagon-tools"
+    },
+    "notes": "Its skills leave the library, its templates go, and the connectors it brought are removed with their secrets. Agents hired from its templates stay as they are."
+  },
+  "update_plugin": {
+    "params": {
+      "workspace": "flagon-io",
+      "ref": "commit-commands%40claude-plugins-official"
+    },
+    "response": {
+      "id": "plg_01kq9f2h4k6m8p0r2t4v6x8z0b",
+      "ref": "commit-commands@claude-plugins-official",
+      "name": "commit-commands",
+      "marketplace": "claude-plugins-official",
+      "display_name": "Commit commands",
+      "description": "Commands for committing, pushing and opening pull requests.",
+      "version": "1.1.0",
+      "sha": "e3b5d7f90a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b",
+      "fetch": {
+        "kind": "github",
+        "repo": "anthropics/claude-plugins-official",
+        "ref": null,
+        "sha": "e3b5d7f90a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b",
+        "path": "plugins/commit-commands"
+      },
+      "components": {
+        "skills": [],
+        "agents": [],
+        "commands": [
+          {
+            "name": "commit",
+            "path": "commands/commit.md"
+          },
+          {
+            "name": "commit-push-pr",
+            "path": "commands/commit-push-pr.md"
+          },
+          {
+            "name": "clean-gone",
+            "path": "commands/clean-gone.md"
+          }
+        ],
+        "mcp_servers": [],
+        "hooks": false,
+        "lsp": false,
+        "bin": false,
+        "output_styles": false
+      },
+      "problems": [],
+      "enabled": true,
+      "installed_by": "syntaqx",
+      "installed_at": "2026-10-10T09:14:52.207Z",
+      "update": null
+    },
+    "notes": "The plugin is read again at the commit its marketplace lists now and pinned there: its skills get new versions (agents and teams that had them keep them), skills it no longer has are archived, its templates and `components` are rewritten, and a server it already brought keeps its connector. A plugin already at that commit comes back as it was. Runners fetch the new commit from the next run on."
+  },
+  "list_plugin_agents": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "ref": "release-notes:release-writer",
+        "plugin": "release-notes",
+        "marketplace": "flagon-tools",
+        "name": "release-writer",
+        "description": "Drafts a release's notes and asks a maintainer to check them.",
+        "prompt": "You write release notes…",
+        "model": null,
+        "skills": [
+          "release-notes"
+        ],
+        "tools": [
+          "Read",
+          "Grep"
+        ]
+      }
+    ],
+    "notes": "Each is a subagent file (`agents/<name>.md`) from an installed, switched-on plugin: its front matter as fields and its body as `prompt`. They are listed under Agents → Templates, From plugins, to hire an agent from."
+  },
+  "list_connectors": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+        "name": "linear",
+        "title": "Linear",
+        "url": "https://mcp.linear.app/mcp",
+        "category": "work",
+        "about": "Issues, projects and cycles in Linear.",
+        "auth": "oauth",
+        "state": "connected",
+        "problem": null,
+        "from": {
+          "kind": "directory",
+          "id": "linear"
+        },
+        "tools": [
+          {
+            "name": "list_issues",
+            "description": "List issues in a team or project.",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "team": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "checked_at": "2026-10-11T14:31:05.772Z",
+        "header_name": null,
+        "signed_in_as": "chase@flagon.io",
+        "signed_in_at": "2026-10-11T14:31:05.772Z",
+        "grants": [
+          {
+            "id": "cgr_01kq9h5l7n9q1s3u5w7y9a1c3e",
+            "scope": "workspace",
+            "target": null,
+            "label": "Every agent",
+            "granted_by": "syntaqx",
+            "granted_at": "2026-10-11T14:32:10.004Z"
+          }
+        ],
+        "added_by": "syntaqx",
+        "added_at": "2026-10-11T14:30:12.618Z"
+      },
+      {
+        "id": "con_01kq9j6m8p0r2t4v6x8z0b2d4f",
+        "name": "docs-search",
+        "title": "docs-search",
+        "url": "https://mcp.flagon.dev/docs",
+        "category": null,
+        "about": null,
+        "auth": "header",
+        "state": "needs_key",
+        "problem": null,
+        "from": {
+          "kind": "address"
+        },
+        "tools": [],
+        "checked_at": null,
+        "header_name": "X-Api-Key",
+        "signed_in_as": null,
+        "signed_in_at": null,
+        "grants": [],
+        "added_by": "syntaqx",
+        "added_at": "2026-10-11T14:40:55.130Z"
+      }
+    ],
+    "notes": "`state` is `connected`, `needs_sign_in` (OAuth, not signed in yet: an owner signs in on the site), `needs_key` (header auth without a value yet) or `problem` (with `problem` saying why the server could not be reached). `tools` is what the server listed last, at `checked_at`; agents are offered each as `<name>__<tool>`. Keys and tokens are never returned: `header_name` says only which header a key is sent as. g1t's own integrations (GitHub, Jira, Sentry, model providers…) are [`list_integrations`](/reference/api/integrations/list-integrations/)."
+  },
+  "get_connector": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d"
+    },
+    "response": {
+      "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+      "name": "linear",
+      "title": "Linear",
+      "url": "https://mcp.linear.app/mcp",
+      "category": "work",
+      "about": "Issues, projects and cycles in Linear.",
+      "auth": "oauth",
+      "state": "connected",
+      "problem": null,
+      "from": {
+        "kind": "directory",
+        "id": "linear"
+      },
+      "tools": [
+        {
+          "name": "list_issues",
+          "description": "List issues in a team or project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "team": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "checked_at": "2026-10-11T14:31:05.772Z",
+      "header_name": null,
+      "signed_in_as": "chase@flagon.io",
+      "signed_in_at": "2026-10-11T14:31:05.772Z",
+      "grants": [
+        {
+          "id": "cgr_01kq9h5l7n9q1s3u5w7y9a1c3e",
+          "scope": "workspace",
+          "target": null,
+          "label": "Every agent",
+          "granted_by": "syntaqx",
+          "granted_at": "2026-10-11T14:32:10.004Z"
+        }
+      ],
+      "added_by": "syntaqx",
+      "added_at": "2026-10-11T14:30:12.618Z"
+    }
+  },
+  "add_connector": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "from": {
+        "kind": "address",
+        "name": "docs-search",
+        "url": "https://mcp.flagon.dev/docs"
+      },
+      "auth": "header",
+      "header": {
+        "name": "X-Api-Key",
+        "value": "fd_live_…"
+      }
+    },
+    "response": {
+      "id": "con_01kq9j6m8p0r2t4v6x8z0b2d4f",
+      "name": "docs-search",
+      "title": "docs-search",
+      "url": "https://mcp.flagon.dev/docs",
+      "category": null,
+      "about": null,
+      "auth": "header",
+      "state": "connected",
+      "problem": null,
+      "from": {
+        "kind": "address"
+      },
+      "tools": [
+        {
+          "name": "search_docs",
+          "description": "Search Flagon's documentation.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ]
+          }
+        }
+      ],
+      "checked_at": "2026-10-11T14:40:56.402Z",
+      "header_name": "X-Api-Key",
+      "signed_in_as": null,
+      "signed_in_at": null,
+      "grants": [],
+      "added_by": "syntaqx",
+      "added_at": "2026-10-11T14:40:55.130Z"
+    },
+    "notes": "`from` is `{\"kind\": \"directory\", \"id\"}` for a server in g1t's directory, `{\"kind\": \"plugin\", \"ref\", \"server\"}` for one an installed plugin names in its `.mcp.json`, or `{\"kind\": \"address\", \"name\", \"url\"}` for any MCP server over HTTP. With `auth` `oauth` the connector starts as `needs_sign_in` and an owner signs in on the site. The key's value is sealed under the workspace's `CONNECTORS_KEY` and never returned. A new connector reaches no agent until it is granted: see [`grant_connector`](/reference/api/customize/grant-connector/). At most 50 connectors a workspace."
+  },
+  "set_connector_key": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "con_01kq9j6m8p0r2t4v6x8z0b2d4f"
+    },
+    "request": {
+      "value": "fd_live_…"
+    },
+    "response": {
+      "id": "con_01kq9j6m8p0r2t4v6x8z0b2d4f",
+      "name": "docs-search",
+      "title": "docs-search",
+      "url": "https://mcp.flagon.dev/docs",
+      "category": null,
+      "about": null,
+      "auth": "header",
+      "state": "connected",
+      "problem": null,
+      "from": {
+        "kind": "address"
+      },
+      "tools": [
+        {
+          "name": "search_docs",
+          "description": "Search Flagon's documentation.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ]
+          }
+        }
+      ],
+      "checked_at": "2026-10-11T15:02:17.950Z",
+      "header_name": "X-Api-Key",
+      "signed_in_as": null,
+      "signed_in_at": null,
+      "grants": [],
+      "added_by": "syntaqx",
+      "added_at": "2026-10-11T14:40:55.130Z"
+    },
+    "notes": "Rotates a key, or gives a `needs_key` connector its first one. `header_name` changes which header it is sent as; left out, the connector keeps its own, or uses `Authorization`. The tools are listed again with the new key, so `state` says at once whether it works."
+  },
+  "remove_connector": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "con_01kq9j6m8p0r2t4v6x8z0b2d4f"
+    },
+    "notes": "Its sealed secrets and its grants go with it. Agents that had it lose its tools at their next turn."
+  },
+  "refresh_connector": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d"
+    },
+    "response": {
+      "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+      "name": "linear",
+      "title": "Linear",
+      "url": "https://mcp.linear.app/mcp",
+      "category": "work",
+      "about": "Issues, projects and cycles in Linear.",
+      "auth": "oauth",
+      "state": "connected",
+      "problem": null,
+      "from": {
+        "kind": "directory",
+        "id": "linear"
+      },
+      "tools": [
+        {
+          "name": "list_issues",
+          "description": "List issues in a team or project.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "team": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "create_issue",
+          "description": "Create an issue.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title"
+            ]
+          }
+        }
+      ],
+      "checked_at": "2026-10-11T15:10:44.207Z",
+      "header_name": null,
+      "signed_in_as": "chase@flagon.io",
+      "signed_in_at": "2026-10-11T14:31:05.772Z",
+      "grants": [
+        {
+          "id": "cgr_01kq9h5l7n9q1s3u5w7y9a1c3e",
+          "scope": "workspace",
+          "target": null,
+          "label": "Every agent",
+          "granted_by": "syntaqx",
+          "granted_at": "2026-10-11T14:32:10.004Z"
+        }
+      ],
+      "added_by": "syntaqx",
+      "added_at": "2026-10-11T14:30:12.618Z"
+    },
+    "notes": "Asks the server for its tools now. A server that cannot be reached, or refuses the sign-in, leaves the connector in `state` `problem` with `problem` saying why; the tools it listed last are kept."
+  },
+  "grant_connector": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d"
+    },
+    "request": {
+      "scope": "team",
+      "target": "platform"
+    },
+    "response": {
+      "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+      "name": "linear",
+      "title": "Linear",
+      "url": "https://mcp.linear.app/mcp",
+      "category": "work",
+      "about": "Issues, projects and cycles in Linear.",
+      "auth": "oauth",
+      "state": "connected",
+      "problem": null,
+      "from": {
+        "kind": "directory",
+        "id": "linear"
+      },
+      "tools": [],
+      "checked_at": "2026-10-11T14:31:05.772Z",
+      "header_name": null,
+      "signed_in_as": "chase@flagon.io",
+      "signed_in_at": "2026-10-11T14:31:05.772Z",
+      "grants": [
+        {
+          "id": "cgr_01kq9h5l7n9q1s3u5w7y9a1c3e",
+          "scope": "workspace",
+          "target": null,
+          "label": "Every agent",
+          "granted_by": "syntaqx",
+          "granted_at": "2026-10-11T14:32:10.004Z"
+        },
+        {
+          "id": "cgr_01kq9k7n9q1s3u5w7y9a1c3e5g",
+          "scope": "team",
+          "target": "platform",
+          "label": "Platform",
+          "granted_by": "syntaqx",
+          "granted_at": "2026-10-11T15:20:02.561Z"
+        }
+      ],
+      "added_by": "syntaqx",
+      "added_at": "2026-10-11T14:30:12.618Z"
+    },
+    "notes": "The same reach as a skill's: `workspace` gives it to every agent, `team` to a team's agents (`target` is the team's slug), `agent` to one agent (`target` is its handle, with or without `@`). A grant that is already there is returned as it is. Each agent's Abilities tab shows the connectors that reach it, with a level per tool."
+  },
+  "revoke_connector": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+      "grant": "cgr_01kq9k7n9q1s3u5w7y9a1c3e5g"
+    },
+    "response": {
+      "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+      "name": "linear",
+      "title": "Linear",
+      "url": "https://mcp.linear.app/mcp",
+      "category": "work",
+      "about": "Issues, projects and cycles in Linear.",
+      "auth": "oauth",
+      "state": "connected",
+      "problem": null,
+      "from": {
+        "kind": "directory",
+        "id": "linear"
+      },
+      "tools": [],
+      "checked_at": "2026-10-11T14:31:05.772Z",
+      "header_name": null,
+      "signed_in_as": "chase@flagon.io",
+      "signed_in_at": "2026-10-11T14:31:05.772Z",
+      "grants": [
+        {
+          "id": "cgr_01kq9h5l7n9q1s3u5w7y9a1c3e",
+          "scope": "workspace",
+          "target": null,
+          "label": "Every agent",
+          "granted_by": "syntaqx",
+          "granted_at": "2026-10-11T14:32:10.004Z"
+        }
+      ],
+      "added_by": "syntaqx",
+      "added_at": "2026-10-11T14:30:12.618Z"
+    }
+  },
+  "customize_bundle": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "plugins": [
+        {
+          "ref": "commit-commands@claude-plugins-official",
+          "name": "commit-commands",
+          "fetch": {
+            "kind": "github",
+            "repo": "anthropics/claude-plugins-official",
+            "ref": null,
+            "sha": "9c1f4a6e8b0d2c4f6a8e1b3d5f7a9c1e3b5d7f90",
+            "path": "plugins/commit-commands"
+          },
+          "version": "1.0.0"
+        }
+      ],
+      "skills": [
+        {
+          "name": "house-style",
+          "plugin": null,
+          "files": [
+            {
+              "path": "SKILL.md",
+              "content": "---\nname: house-style\ndescription: How Flagon writes code and prose.\n---\n\n# House style\n…",
+              "encoding": "utf8"
+            },
+            {
+              "path": "examples/commit.md",
+              "content": "# A good commit message\n…",
+              "encoding": "utf8"
+            }
+          ]
+        }
+      ],
+      "connectors": [
+        {
+          "name": "linear",
+          "url": "https://mcp.linear.app/mcp",
+          "headers": {
+            "Authorization": "Bearer lin_oauth_…"
+          }
+        }
+      ]
+    },
+    "notes": "Read with the job's agent token: what comes back is what reaches that agent (its own grants, its teams' and the workspace's). A workspace's token gets everything the workspace has; a person's token is refused with `403`. `plugins` are switched-on installs, to fetch at `fetch.sha` (or `fetch.ref`); a plugin's skills are not repeated in `skills`, since Claude Code reads them from the plugin. `skills` are the library's own, as files for a synthetic plugin called `g1t-library`, so each is `/g1t-library:<name>` in Claude Code. `connectors` are the connected ones that reach the agent, with the headers that sign them in, refreshed when a sign-in had expired: it is for the runner's `--mcp-config`, and g1t never keeps or logs it. See [what a run gets from Customize](/guides/self-hosted-runners/#what-a-run-gets-from-customize)."
+  },
   "get_model_routes": {
     "params": {
       "workspace": "flagon-io"
@@ -8535,7 +9503,9 @@
         "review_deny_licenses": [
           "AGPL-3.0-only"
         ],
-        "review_comment": true
+        "review_comment": true,
+        "history_alerts": true,
+        "private_vulnerability_reporting": false
       },
       "workspace": {
         "delegated_bypass": true,
@@ -8565,7 +9535,9 @@
         "review_deny_licenses": [
           "AGPL-3.0-only"
         ],
-        "review_comment": true
+        "review_comment": true,
+        "history_alerts": true,
+        "private_vulnerability_reporting": true
       },
       "workspace": {
         "delegated_bypass": true,
@@ -8603,6 +9575,312 @@
       },
       "activated": true
     }
+  },
+  "list_security_advisories": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello"
+    },
+    "query": {
+      "state": "published"
+    },
+    "response": [
+      {
+        "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+        "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+        "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+        "repo": "flagon-io/hello",
+        "title": "Path traversal in the archive reader",
+        "description": "A crafted archive could write outside the directory it is extracted to.\n\nUpgrade to 1.4.1.",
+        "severity": "high",
+        "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+        "cvss_score": 8.1,
+        "cve_id": "CVE-2026-12345",
+        "ecosystem": "npm",
+        "package": "@flagon/hello",
+        "affected_versions": ">= 1.2.0, < 1.4.1",
+        "patched_versions": ">= 1.4.1",
+        "state": "published",
+        "credits": [
+          "ana"
+        ],
+        "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+        "created_by": "syntaqx",
+        "created_at": "2026-10-06T09:14:02.118Z",
+        "updated_at": "2026-10-07T15:02:40.000Z",
+        "published_at": "2026-10-07T15:02:40.000Z",
+        "withdrawn_at": null
+      }
+    ],
+    "notes": "Without a token, or with one that has no Write on the repository, only published advisories are listed. `state` filters to `draft`, `published` or `withdrawn`; drafts and withdrawn advisories are shown only to those who see the repository's findings."
+  },
+  "get_security_advisory": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "G1TSA-2026-h7kd-3mqw"
+    },
+    "response": {
+      "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+      "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+      "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+      "repo": "flagon-io/hello",
+      "title": "Path traversal in the archive reader",
+      "description": "A crafted archive could write outside the directory it is extracted to.\n\nUpgrade to 1.4.1.",
+      "severity": "high",
+      "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+      "cvss_score": 8.1,
+      "cve_id": "CVE-2026-12345",
+      "ecosystem": "npm",
+      "package": "@flagon/hello",
+      "affected_versions": ">= 1.2.0, < 1.4.1",
+      "patched_versions": ">= 1.4.1",
+      "state": "published",
+      "credits": [
+        "ana"
+      ],
+      "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+      "created_by": "syntaqx",
+      "created_at": "2026-10-06T09:14:02.118Z",
+      "updated_at": "2026-10-07T15:02:40.000Z",
+      "published_at": "2026-10-07T15:02:40.000Z",
+      "withdrawn_at": null
+    },
+    "notes": "`id` is the advisory's `adv_…` id or its `G1TSA-…` id. A draft or withdrawn advisory is `404` to anyone who does not see the repository's findings."
+  },
+  "create_security_advisory": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello"
+    },
+    "request": {
+      "title": "Path traversal in the archive reader",
+      "description": "A crafted archive could write outside the directory it is extracted to.",
+      "severity": "high",
+      "ecosystem": "npm",
+      "package": "@flagon/hello",
+      "affected_versions": ">= 1.2.0, < 1.4.1",
+      "patched_versions": ">= 1.4.1",
+      "credits": [
+        "ana"
+      ]
+    },
+    "response": {
+      "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+      "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+      "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+      "repo": "flagon-io/hello",
+      "title": "Path traversal in the archive reader",
+      "description": "A crafted archive could write outside the directory it is extracted to.",
+      "severity": "high",
+      "cvss_vector": null,
+      "cvss_score": null,
+      "cve_id": null,
+      "ecosystem": "npm",
+      "package": "@flagon/hello",
+      "affected_versions": ">= 1.2.0, < 1.4.1",
+      "patched_versions": ">= 1.4.1",
+      "state": "draft",
+      "credits": [
+        "ana"
+      ],
+      "report_id": null,
+      "created_by": "syntaqx",
+      "created_at": "2026-10-06T09:14:02.118Z",
+      "updated_at": "2026-10-06T09:14:02.118Z",
+      "published_at": null,
+      "withdrawn_at": null
+    },
+    "notes": "The advisory starts as a draft nobody but the maintainers sees; publish it with `POST …/advisories/{id}/state`. Takes the Admin role, or a security manager of the workspace. A title or severity that is missing, or a `cve_id` that is not of the form `CVE-2026-12345`, is `422`."
+  },
+  "update_security_advisory": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r"
+    },
+    "request": {
+      "cve_id": "CVE-2026-12345",
+      "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+      "cvss_score": 8.1
+    },
+    "response": {
+      "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+      "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+      "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+      "repo": "flagon-io/hello",
+      "title": "Path traversal in the archive reader",
+      "description": "A crafted archive could write outside the directory it is extracted to.",
+      "severity": "high",
+      "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+      "cvss_score": 8.1,
+      "cve_id": "CVE-2026-12345",
+      "ecosystem": "npm",
+      "package": "@flagon/hello",
+      "affected_versions": ">= 1.2.0, < 1.4.1",
+      "patched_versions": ">= 1.4.1",
+      "state": "draft",
+      "credits": [
+        "ana"
+      ],
+      "report_id": null,
+      "created_by": "syntaqx",
+      "created_at": "2026-10-06T09:14:02.118Z",
+      "updated_at": "2026-10-06T10:30:00.000Z",
+      "published_at": null,
+      "withdrawn_at": null
+    },
+    "notes": "What the request leaves out stays as it is. A published advisory may be changed; its page shows the change at once."
+  },
+  "set_security_advisory_state": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r"
+    },
+    "request": {
+      "state": "published"
+    },
+    "response": {
+      "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+      "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+      "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+      "repo": "flagon-io/hello",
+      "title": "Path traversal in the archive reader",
+      "description": "A crafted archive could write outside the directory it is extracted to.",
+      "severity": "high",
+      "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+      "cvss_score": 8.1,
+      "cve_id": "CVE-2026-12345",
+      "ecosystem": "npm",
+      "package": "@flagon/hello",
+      "affected_versions": ">= 1.2.0, < 1.4.1",
+      "patched_versions": ">= 1.4.1",
+      "state": "published",
+      "credits": [
+        "ana"
+      ],
+      "report_id": null,
+      "created_by": "syntaqx",
+      "created_at": "2026-10-06T09:14:02.118Z",
+      "updated_at": "2026-10-07T15:02:40.000Z",
+      "published_at": "2026-10-07T15:02:40.000Z",
+      "withdrawn_at": null
+    },
+    "notes": "Publishing a draft with no description is `422`. Publishing sends `security_advisory.published` to webhooks and tells the repository's watchers who chose security alerts; withdrawing (`state` `withdrawn`) sends `security_advisory.withdrawn`. A withdrawn advisory can be published again. Asking for the state it already has is `409`."
+  },
+  "list_vulnerability_reports": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello"
+    },
+    "query": {
+      "state": "new"
+    },
+    "response": [
+      {
+        "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+        "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+        "repo": "flagon-io/hello",
+        "reporter": null,
+        "reporter_email": "finder@example.com",
+        "title": "Path traversal in the archive reader",
+        "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+        "severity": "high",
+        "state": "new",
+        "advisory_id": null,
+        "created_at": "2026-10-06T08:40:11.000Z",
+        "reviewed_by": null,
+        "reviewed_at": null,
+        "review_note": null
+      }
+    ],
+    "notes": "New reports first. Those who see the repository's findings (Write, or a security manager) read them; a reporter never sees another's. `state` is `new`, `accepted` or `declined`."
+  },
+  "report_vulnerability": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello"
+    },
+    "request": {
+      "title": "Path traversal in the archive reader",
+      "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+      "severity": "high",
+      "email": "finder@example.com"
+    },
+    "response": {
+      "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+      "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+      "repo": "flagon-io/hello",
+      "reporter": null,
+      "reporter_email": "finder@example.com",
+      "title": "Path traversal in the archive reader",
+      "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+      "severity": "high",
+      "state": "new",
+      "advisory_id": null,
+      "created_at": "2026-10-06T08:40:11.000Z",
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "review_note": null
+    },
+    "notes": "Needs private vulnerability reporting on for the repository (`409` otherwise). With a token, the report is yours by username; without one, on a public repository, give `email`, or the request is `422`. The workspace's owners and security managers are told at once. More than 5 reports a day from one reporter to one repository, or a repository with 50 new reports waiting, is refused."
+  },
+  "review_vulnerability_report": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r"
+    },
+    "request": {
+      "decision": "accept",
+      "note": "Confirmed on 1.4.0."
+    },
+    "response": {
+      "report": {
+        "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+        "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+        "repo": "flagon-io/hello",
+        "reporter": null,
+        "reporter_email": "finder@example.com",
+        "title": "Path traversal in the archive reader",
+        "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+        "severity": "high",
+        "state": "accepted",
+        "advisory_id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+        "created_at": "2026-10-06T08:40:11.000Z",
+        "reviewed_by": "syntaqx",
+        "reviewed_at": "2026-10-06T09:14:02.118Z",
+        "review_note": "Confirmed on 1.4.0."
+      },
+      "advisory": {
+        "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+        "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+        "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+        "repo": "flagon-io/hello",
+        "title": "Path traversal in the archive reader",
+        "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+        "severity": "high",
+        "cvss_vector": null,
+        "cvss_score": null,
+        "cve_id": null,
+        "ecosystem": null,
+        "package": null,
+        "affected_versions": null,
+        "patched_versions": null,
+        "state": "draft",
+        "credits": [
+          "finder@example.com"
+        ],
+        "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+        "created_by": "syntaqx",
+        "created_at": "2026-10-06T09:14:02.118Z",
+        "updated_at": "2026-10-06T09:14:02.118Z",
+        "published_at": null,
+        "withdrawn_at": null
+      }
+    },
+    "notes": "`accept` makes a draft advisory from the report, in the report's words and crediting the reporter, for the maintainers to finish and publish; `advisory` is that draft. `decline` closes the report; `advisory` is null. A report that was reviewed already is `409`. Takes the Admin role, or a security manager of the workspace."
   },
   "get_security_overview": {
     "params": {

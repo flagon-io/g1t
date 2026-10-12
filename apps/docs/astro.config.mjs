@@ -13,6 +13,7 @@ export default defineConfig({
 	redirects: {
 		'/guides/g1t-agents/': '/guides/working-with-g1t/',
 		'/guides/inbox/': '/guides/notifications/',
+		'/guides/marketplace/': '/guides/customize/',
 		'/guides/today/': '/guides/home/',
 	},
 	integrations: [
@@ -130,6 +131,7 @@ export default defineConfig({
 						{ label: 'Secret protection', slug: 'guides/security/secret-protection' },
 						{ label: 'Code scanning', slug: 'guides/security/code-scanning' },
 						{ label: 'Supply chain', slug: 'guides/security/supply-chain' },
+						{ label: 'Advisories and reporting', slug: 'guides/security/advisories' },
 						{ label: 'Security overview', slug: 'guides/security/security-overview' },
 						{ label: "What's free and what's paid", slug: 'guides/security/pricing' },
 					],
@@ -149,7 +151,7 @@ export default defineConfig({
 				{
 					label: 'Connect your tools',
 					items: [
-						{ label: 'Marketplace', slug: 'guides/marketplace' },
+						{ label: 'Customize', slug: 'guides/customize' },
 						{ label: 'Integrations', slug: 'guides/integrations' },
 						{ label: 'Model providers', slug: 'guides/models' },
 						{ label: 'AI Gateway', slug: 'guides/ai-gateway' },

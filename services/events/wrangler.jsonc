@@ -62,7 +62,9 @@
 	// everyone (keep it at least billing's AUDIT_MAX_DAYS), then each
 	// workspace's older than its own days. Only workspaces with entries
 	// older than AUDIT_MIN_DAYS, the shortest any plan keeps, are asked about.
-	"triggers": { "crons": ["41 3 * * *"] },
+	// At 08:00 UTC the security digests that are due go out (src/security_digest.rs):
+	// daily ones every day, weekly ones on Monday.
+	"triggers": { "crons": ["41 3 * * *", "0 8 * * *"] },
 	"vars": { "AUDIT_MAX_DAYS": "400", "AUDIT_MIN_DAYS": "7" },
 	// Logs of a tenth of requests: every change in g1t is an event.
 	"observability": { "enabled": true, "head_sampling_rate": 0.1 }

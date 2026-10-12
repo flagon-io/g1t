@@ -10,7 +10,7 @@ import { eventsClient, type EventPayloads, type FolioEventData, type ServiceBind
 
 import { actorOf } from "../events.ts";
 
-export type FolioEventType = "folio.created" | "folio.updated" | "folio.trashed" | "folio.restored" | "folio.shared" | "folio.stale";
+export type FolioEventType = "folio.created" | "folio.updated" | "folio.trashed" | "folio.restored" | "folio.deleted" | "folio.shared" | "folio.stale";
 
 export async function publishFolioEvent<T extends FolioEventType>(events: ServiceBinding | undefined, type: T, data: EventPayloads[T] & FolioEventData, actor: string | null): Promise<void> {
   if (!events) return;
@@ -18,5 +18,15 @@ export async function publishFolioEvent<T extends FolioEventType>(events: Servic
     await eventsClient(events).publish([{ type, source: "docs", repoId: null, actor: actorOf(actor), data } as never]);
   } catch (error) {
     console.error("folios could not publish", type, String(error));
+  }
+}
+
+/** A space was deleted: the one event that stands for everything in it going to the trash. Never throws. */
+export async function publishSpaceDeleted(events: ServiceBinding | undefined, data: EventPayloads["doc.space.deleted"], actor: string | null): Promise<void> {
+  if (!events) return;
+  try {
+    await eventsClient(events).publish([{ type: "doc.space.deleted", source: "docs", repoId: null, actor: actorOf(actor), data } as never]);
+  } catch (error) {
+    console.error("folios could not publish doc.space.deleted", String(error));
   }
 }

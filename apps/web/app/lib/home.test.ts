@@ -782,7 +782,7 @@ test("decisions: kept decisions in memory and requests answered, in the span", (
 });
 
 test("an open install request needs an owner; answered ones don't", () => {
-  assert.equal(installRequestRow(request({}), "acme")?.action.to, "/acme/-/marketplace/requests");
+  assert.equal(installRequestRow(request({}), "acme")?.action.to, "/acme/-/customize/requests");
   assert.equal(installRequestRow(request({ status: "done" }), "acme"), null);
   const base = { slug: "acme", code: true, codeNeeds: [], capped: [], agents: [], canManage: true, notifications: [], chat: [] };
   assert.equal(attention({ ...base, requests: [request({})] }).rows[0]?.kind, "install_request");

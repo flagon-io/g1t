@@ -56,6 +56,12 @@
 		// objects, which sessions run commands on and the Computer tab reads.
 		{ "binding": "RUNNER", "service": "g1t-runner" }
 	],
+	// Secrets (npx wrangler secret put):
+	// - CONNECTORS_KEY, 64 hex characters: seals connectors' keys and OAuth
+	//   tokens (src/connectors.ts). Without it, connectors that sign in
+	//   can't be kept; open servers still work.
+	// - GITHUB_TOKEN, optional: reads marketplaces and plugins from GitHub
+	//   with a higher rate limit (src/customize-fetch.ts).
 	// Every five minutes: routines that are due, and session steps a desk
 	// lost (src/routines.ts, src/sessions.ts).
 	"triggers": { "crons": ["*/5 * * * *"] },

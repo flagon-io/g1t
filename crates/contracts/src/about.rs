@@ -40,13 +40,15 @@ pub struct License {
 }
 
 /// Who a contributor is: a person with an account (their commits' address
-/// is one they confirmed), g1t itself, or an author g1t cannot match to an
-/// account.
+/// is one they confirmed), g1t itself, a known coding agent or bot by the
+/// address on its commits (`coding_agents`), or an author g1t cannot match
+/// to anyone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContributorKind {
     User,
     G1t,
+    Agent,
     Author,
 }
 
@@ -71,6 +73,9 @@ pub struct Contributor {
     /// The uploaded avatar's hash, for a `user` who has one.
     #[serde(default)]
     pub avatar: Option<String>,
+    /// The coding agent's id (`coding_agents`), for an `agent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
     pub commits: u32,
     /// RFC 3339: their first and latest commit read.
     pub first_at: String,

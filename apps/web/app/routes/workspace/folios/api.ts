@@ -116,6 +116,8 @@ export async function action({ params, context, request }: Route.ActionArgs) {
         return folios.restore(slug, viewer, id);
       case "delete":
         return folios.delete(slug, viewer, id);
+      case "empty_trash":
+        return folios.emptyTrash(slug, viewer);
       case "favorite":
         return folios.favorite(slug, viewer, id, !!sent.on);
       case "access":
@@ -142,6 +144,9 @@ export async function action({ params, context, request }: Route.ActionArgs) {
         return docs.createSpace(slug, viewer, sent.space ?? ({ name: "", kind: "workspace" } as NewDocSpace));
       case "update_space":
         return docs.updateSpace(slug, sent.space_id ?? "", viewer, sent.space_change ?? {});
+      // Deleting one trashes its artifacts, which is the folio code's.
+      case "delete_space":
+        return folios.deleteSpace(slug, viewer, sent.space_id ?? "");
       case "set_member":
         return docs.setSpaceMember(slug, sent.space_id ?? "", viewer, sent.member ?? "", sent.role ?? null);
       case "add_repo_space":

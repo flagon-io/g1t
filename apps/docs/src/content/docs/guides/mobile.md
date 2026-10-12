@@ -126,7 +126,7 @@ pages it has screens for:
 | `g1t://<workspace>/-/chat`, `…/-/chat/<channel>`, `…/-/chat/dm/<id>` | Chat, or the conversation, in that workspace |
 | `g1t://<owner>/<repo>` | The repository |
 | `g1t://<owner>/<repo>/pull/<number>`, `…/issues/<number>` | The pull request or issue |
-| `g1t://<workspace>/-/marketplace…`, `…/-/agents/skills` | Customize |
+| `g1t://<workspace>/-/customize…`, `…/-/agents/skills` | [Customize](/guides/customize/). The old `…/-/marketplace…` links open it too |
 
 Any other page opens on the site, in the browser.
 

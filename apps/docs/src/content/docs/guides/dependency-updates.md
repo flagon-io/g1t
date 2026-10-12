@@ -312,7 +312,8 @@ These commands are not mentions: they never start an agent.
 ## Security updates follow the same file
 
 [Security updates](/guides/security/#security-updates) are still turned on
-and off with the **Security updates** switch. When the file has an entry
+and off with the **Security updates** switch, on the Security overview,
+on **Vulnerabilities** and in the repository's Security settings. When the file has an entry
 for a vulnerable package's ecosystem, in a directory that holds the
 package's lockfile, that entry shapes the security update:
 

@@ -267,6 +267,17 @@ g1t makes its own key for the GitHub tokens it keeps (`IDENTITY_KEY`, in
 the `g1t-data` volume) on first start. What the app can do, and what comes
 across from GitHub, is in [GitHub](/guides/github/).
 
+## Customize
+
+[Customize](/guides/customize/) works on a g1t you run yourself:
+marketplaces and plugins are read from public repositories on GitHub and
+from repositories on your installation, and connectors sign in to MCP
+servers from your installation's address. The agents service's
+`CONNECTORS_KEY` seals connectors' keys and OAuth tokens; `start.sh` makes
+it on first start, in `keys.env` beside the other sealing keys, and adds
+it to a `keys.env` from before it existed. Without it, open MCP servers
+work and nothing that signs in can be kept.
+
 ## Where your data lives
 
 | Volume | Holds |
@@ -285,8 +296,8 @@ docker run --rm -v g1t_g1t-data:/data -v g1t_g1t-git:/git -v "$PWD":/backup \
 docker compose -f deploy/self-host/docker-compose.yml start
 ```
 
-Keep `keys.env` with the backup. Without it, saved webhook, integration and
-Actions secrets cannot be opened.
+Keep `keys.env` with the backup. Without it, saved webhook, integration,
+connector and Actions secrets cannot be opened.
 
 ## Upgrade
 

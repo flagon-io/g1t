@@ -315,6 +315,20 @@
       ]
     },
     {
+      "name": "Security advisories",
+      "description": "What a repository says about vulnerabilities in what it ships: advisories drafted, published and withdrawn by its maintainers, and the vulnerability reports people send them privately when the repository takes them.",
+      "x-tools": [
+        "list_security_advisories",
+        "create_security_advisory",
+        "get_security_advisory",
+        "update_security_advisory",
+        "set_security_advisory_state",
+        "list_vulnerability_reports",
+        "report_vulnerability",
+        "review_vulnerability_report"
+      ]
+    },
+    {
       "name": "Rules",
       "description": "Rulesets: what may happen to a repository's branches and tags and what a pull request needs before it merges, for a repository or across a workspace; the rules that hold for one branch; and how they judged each push and merge, with insights.",
       "x-tools": [
@@ -593,6 +607,33 @@
         "set_model_routes",
         "get_context",
         "import_issue"
+      ]
+    },
+    {
+      "name": "Customize",
+      "description": "What shapes how a workspace's agents work, in the formats Claude Code reads: the marketplaces it reads plugins from, what Discover lists, the plugins it installed (their skills, subagents and remote MCP servers reach g1t's agents; the rest reaches Claude Code on a runner), and its connectors: MCP servers connected once, then given to every agent, a team or one agent. The bundle is what a job's Claude Code loads on a runner.",
+      "x-tools": [
+        "list_marketplaces",
+        "add_marketplace",
+        "remove_marketplace",
+        "refresh_marketplace",
+        "discover",
+        "list_plugins",
+        "get_plugin",
+        "install_plugin",
+        "set_plugin_enabled",
+        "uninstall_plugin",
+        "update_plugin",
+        "list_plugin_agents",
+        "list_connectors",
+        "get_connector",
+        "add_connector",
+        "set_connector_key",
+        "remove_connector",
+        "refresh_connector",
+        "grant_connector",
+        "revoke_connector",
+        "customize_bundle"
       ]
     },
     {
@@ -23077,7 +23118,7 @@
           "Security settings"
         ],
         "summary": "Get a repository's security settings",
-        "description": "Get a repository's security settings: when the Code scanning check fails, dependency review and its policy, its workspace's settings, and whether the paid features are on for it.",
+        "description": "Get a repository's security settings: when the Code scanning check fails, dependency review and its policy, whether secrets in the history open alerts, whether it takes private vulnerability reports, its workspace's settings, and whether the paid features are on for it.",
         "x-operation": "get_security_settings",
         "x-mcp-tool": "security",
         "x-mcp-action": "settings",
@@ -23123,7 +23164,9 @@
                     "review_deny_licenses": [
                       "AGPL-3.0-only"
                     ],
-                    "review_comment": true
+                    "review_comment": true,
+                    "history_alerts": true,
+                    "private_vulnerability_reporting": false
                   },
                   "workspace": {
                     "delegated_bypass": true,
@@ -23188,7 +23231,7 @@
           "Security settings"
         ],
         "summary": "Update a repository's security settings",
-        "description": "Change a repository's security settings: code_scanning_gate (none, errors, critical, high, medium or any), dependency_review, review_fail_on (critical, high, medium, low or none), review_deny_licenses (SPDX ids) and review_comment. Takes the Admin role, or a security manager of the workspace. Require the Code scanning and Dependency review checks in branch protection to gate merges on them.\n\nOnly what you send changes. The `Code scanning` and `Dependency review` checks gate merges once you require them in branch protection.",
+        "description": "Change a repository's security settings: code_scanning_gate (none, errors, critical, high, medium or any), dependency_review, review_fail_on (critical, high, medium, low or none), review_deny_licenses (SPDX ids), review_comment, history_alerts (whether secrets found in the history open alerts; push protection stays on) and private_vulnerability_reporting. Takes the Admin role, or a security manager of the workspace. Require the Code scanning and Dependency review checks in branch protection to gate merges on them.\n\nOnly what you send changes. The `Code scanning` and `Dependency review` checks gate merges once you require them in branch protection.",
         "x-operation": "update_security_settings",
         "x-mcp-tool": "security",
         "x-mcp-action": "update_settings",
@@ -23234,7 +23277,9 @@
                     "review_deny_licenses": [
                       "AGPL-3.0-only"
                     ],
-                    "review_comment": true
+                    "review_comment": true,
+                    "history_alerts": true,
+                    "private_vulnerability_reporting": true
                   },
                   "workspace": {
                     "delegated_bypass": true,
@@ -23342,6 +23387,14 @@
                   "review_comment": {
                     "type": "boolean",
                     "description": "Whether the review comments its summary on the pull request."
+                  },
+                  "history_alerts": {
+                    "type": "boolean",
+                    "description": "Whether secrets found in the history, and in pushes too large to scan first, open alerts and tell people. Push protection stays on either way."
+                  },
+                  "private_vulnerability_reporting": {
+                    "type": "boolean",
+                    "description": "Whether anyone who can see the repository may report a vulnerability privately to its maintainers."
                   }
                 }
               },
@@ -23759,6 +23812,1346 @@
         },
         "x-example-query": {
           "days": "30"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/security/advisories": {
+      "get": {
+        "operationId": "list_security_advisories",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "List security advisories",
+        "description": "List a repository's security advisories, newest first: what it says about vulnerabilities in what it ships. Anyone who can see the repository sees the published ones; those who see its findings (Write, or a security manager) see drafts and withdrawn ones too. Filter by state (draft, published, withdrawn).\n\nWithout a token, or with one that has no Write on the repository, only published advisories are listed. `state` filters to `draft`, `published` or `withdrawn`; drafts and withdrawn advisories are shown only to those who see the repository's findings.",
+        "x-operation": "list_security_advisories",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "advisories",
+        "x-scope": "security:read",
+        "security": [
+          {
+            "token": [
+              "security:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "withdrawn"
+              ]
+            },
+            "description": "Only advisories in this state."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                    "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo": "flagon-io/hello",
+                    "title": "Path traversal in the archive reader",
+                    "description": "A crafted archive could write outside the directory it is extracted to.\n\nUpgrade to 1.4.1.",
+                    "severity": "high",
+                    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                    "cvss_score": 8.1,
+                    "cve_id": "CVE-2026-12345",
+                    "ecosystem": "npm",
+                    "package": "@flagon/hello",
+                    "affected_versions": ">= 1.2.0, < 1.4.1",
+                    "patched_versions": ">= 1.4.1",
+                    "state": "published",
+                    "credits": [
+                      "ana"
+                    ],
+                    "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-06T09:14:02.118Z",
+                    "updated_at": "2026-10-07T15:02:40.000Z",
+                    "published_at": "2026-10-07T15:02:40.000Z",
+                    "withdrawn_at": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        },
+        "x-example-query": {
+          "state": "published"
+        }
+      },
+      "post": {
+        "operationId": "create_security_advisory",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Create a security advisory",
+        "description": "Create a draft security advisory: title, description (Markdown), severity (critical, high, medium or low), and optionally cvss_vector and cvss_score, cve_id, the package affected (ecosystem, package, affected_versions, patched_versions) and credits. Admin on the repository, or a security manager of its workspace. Nobody is told of a draft.\n\nThe advisory starts as a draft nobody but the maintainers sees; publish it with `POST …/advisories/{id}/state`. Takes the Admin role, or a security manager of the workspace. A title or severity that is missing, or a `cve_id` that is not of the form `CVE-2026-12345`, is `422`.",
+        "x-operation": "create_security_advisory",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "create_advisory",
+        "x-scope": "security:write",
+        "security": [
+          {
+            "token": [
+              "security:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                  "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo": "flagon-io/hello",
+                  "title": "Path traversal in the archive reader",
+                  "description": "A crafted archive could write outside the directory it is extracted to.",
+                  "severity": "high",
+                  "cvss_vector": null,
+                  "cvss_score": null,
+                  "cve_id": null,
+                  "ecosystem": "npm",
+                  "package": "@flagon/hello",
+                  "affected_versions": ">= 1.2.0, < 1.4.1",
+                  "patched_versions": ">= 1.4.1",
+                  "state": "draft",
+                  "credits": [
+                    "ana"
+                  ],
+                  "report_id": null,
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-06T09:14:02.118Z",
+                  "updated_at": "2026-10-06T09:14:02.118Z",
+                  "published_at": null,
+                  "withdrawn_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "One line: what the vulnerability is. At most 200 characters."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Markdown: what is affected, how it is exploited, what to do. At most 20,000 characters."
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "high",
+                      "medium",
+                      "low"
+                    ],
+                    "description": "How bad it is."
+                  },
+                  "cvss_vector": {
+                    "type": "string",
+                    "description": "A CVSS vector string, when scored: CVSS:3.1/AV:N/…"
+                  },
+                  "cvss_score": {
+                    "type": "number",
+                    "description": "The CVSS base score, 0 to 10."
+                  },
+                  "cve_id": {
+                    "type": "string",
+                    "description": "CVE-2026-12345, when one was issued elsewhere."
+                  },
+                  "ecosystem": {
+                    "type": "string",
+                    "description": "How the affected package is distributed: npm, crates.io, Go, PyPI, or how the project ships."
+                  },
+                  "package": {
+                    "type": "string",
+                    "description": "The package affected."
+                  },
+                  "affected_versions": {
+                    "type": "string",
+                    "description": "The versions affected, as a range: >= 1.2.0, < 1.4.1"
+                  },
+                  "patched_versions": {
+                    "type": "string",
+                    "description": "The versions that fix it: >= 1.4.1"
+                  },
+                  "credits": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Who found or fixed it: usernames or names, up to 20."
+                  }
+                },
+                "required": [
+                  "title",
+                  "severity"
+                ]
+              },
+              "example": {
+                "title": "Path traversal in the archive reader",
+                "description": "A crafted archive could write outside the directory it is extracted to.",
+                "severity": "high",
+                "ecosystem": "npm",
+                "package": "@flagon/hello",
+                "affected_versions": ">= 1.2.0, < 1.4.1",
+                "patched_versions": ">= 1.4.1",
+                "credits": [
+                  "ana"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/security/advisories/{id}": {
+      "get": {
+        "operationId": "get_security_advisory",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Get a security advisory",
+        "description": "Get one security advisory by its adv_… id or its G1TSA-… id, with the same visibility as the list.\n\n`id` is the advisory's `adv_…` id or its `G1TSA-…` id. A draft or withdrawn advisory is `404` to anyone who does not see the repository's findings.",
+        "x-operation": "get_security_advisory",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "advisory",
+        "x-scope": "security:read",
+        "security": [
+          {
+            "token": [
+              "security:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The advisory's id: adv_…, or its G1TSA-… id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                  "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo": "flagon-io/hello",
+                  "title": "Path traversal in the archive reader",
+                  "description": "A crafted archive could write outside the directory it is extracted to.\n\nUpgrade to 1.4.1.",
+                  "severity": "high",
+                  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                  "cvss_score": 8.1,
+                  "cve_id": "CVE-2026-12345",
+                  "ecosystem": "npm",
+                  "package": "@flagon/hello",
+                  "affected_versions": ">= 1.2.0, < 1.4.1",
+                  "patched_versions": ">= 1.4.1",
+                  "state": "published",
+                  "credits": [
+                    "ana"
+                  ],
+                  "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-06T09:14:02.118Z",
+                  "updated_at": "2026-10-07T15:02:40.000Z",
+                  "published_at": "2026-10-07T15:02:40.000Z",
+                  "withdrawn_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "G1TSA-2026-h7kd-3mqw"
+        }
+      },
+      "patch": {
+        "operationId": "update_security_advisory",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Update a security advisory",
+        "description": "Change an advisory's fields, in any state; what is not given stays as it is. A published advisory's change is visible at once. Admin, or a security manager.\n\nWhat the request leaves out stays as it is. A published advisory may be changed; its page shows the change at once.",
+        "x-operation": "update_security_advisory",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "update_advisory",
+        "x-scope": "security:write",
+        "security": [
+          {
+            "token": [
+              "security:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The advisory's id: adv_…, or its G1TSA-… id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                  "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo": "flagon-io/hello",
+                  "title": "Path traversal in the archive reader",
+                  "description": "A crafted archive could write outside the directory it is extracted to.",
+                  "severity": "high",
+                  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                  "cvss_score": 8.1,
+                  "cve_id": "CVE-2026-12345",
+                  "ecosystem": "npm",
+                  "package": "@flagon/hello",
+                  "affected_versions": ">= 1.2.0, < 1.4.1",
+                  "patched_versions": ">= 1.4.1",
+                  "state": "draft",
+                  "credits": [
+                    "ana"
+                  ],
+                  "report_id": null,
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-06T09:14:02.118Z",
+                  "updated_at": "2026-10-06T10:30:00.000Z",
+                  "published_at": null,
+                  "withdrawn_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "One line: what the vulnerability is. At most 200 characters."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Markdown: what is affected, how it is exploited, what to do. At most 20,000 characters."
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "high",
+                      "medium",
+                      "low"
+                    ],
+                    "description": "How bad it is."
+                  },
+                  "cvss_vector": {
+                    "type": "string",
+                    "description": "A CVSS vector string, when scored: CVSS:3.1/AV:N/…"
+                  },
+                  "cvss_score": {
+                    "type": "number",
+                    "description": "The CVSS base score, 0 to 10."
+                  },
+                  "cve_id": {
+                    "type": "string",
+                    "description": "CVE-2026-12345, when one was issued elsewhere."
+                  },
+                  "ecosystem": {
+                    "type": "string",
+                    "description": "How the affected package is distributed: npm, crates.io, Go, PyPI, or how the project ships."
+                  },
+                  "package": {
+                    "type": "string",
+                    "description": "The package affected."
+                  },
+                  "affected_versions": {
+                    "type": "string",
+                    "description": "The versions affected, as a range: >= 1.2.0, < 1.4.1"
+                  },
+                  "patched_versions": {
+                    "type": "string",
+                    "description": "The versions that fix it: >= 1.4.1"
+                  },
+                  "credits": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Who found or fixed it: usernames or names, up to 20."
+                  }
+                }
+              },
+              "example": {
+                "cve_id": "CVE-2026-12345",
+                "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                "cvss_score": 8.1
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/security/advisories/{id}/state": {
+      "post": {
+        "operationId": "set_security_advisory_state",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Publish or withdraw a security advisory",
+        "description": "Publish a draft (state published), withdraw a published advisory (state withdrawn), or publish a withdrawn one again. Publishing needs a description, tells webhooks (security_advisory.published) and the repository's watchers who chose security alerts, and makes the advisory visible to anyone who can see the repository. Admin, or a security manager.\n\nPublishing a draft with no description is `422`. Publishing sends `security_advisory.published` to webhooks and tells the repository's watchers who chose security alerts; withdrawing (`state` `withdrawn`) sends `security_advisory.withdrawn`. A withdrawn advisory can be published again. Asking for the state it already has is `409`.",
+        "x-operation": "set_security_advisory_state",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "set_advisory_state",
+        "x-scope": "security:write",
+        "security": [
+          {
+            "token": [
+              "security:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The advisory's id: adv_…, or its G1TSA-… id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                  "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo": "flagon-io/hello",
+                  "title": "Path traversal in the archive reader",
+                  "description": "A crafted archive could write outside the directory it is extracted to.",
+                  "severity": "high",
+                  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                  "cvss_score": 8.1,
+                  "cve_id": "CVE-2026-12345",
+                  "ecosystem": "npm",
+                  "package": "@flagon/hello",
+                  "affected_versions": ">= 1.2.0, < 1.4.1",
+                  "patched_versions": ">= 1.4.1",
+                  "state": "published",
+                  "credits": [
+                    "ana"
+                  ],
+                  "report_id": null,
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-06T09:14:02.118Z",
+                  "updated_at": "2026-10-07T15:02:40.000Z",
+                  "published_at": "2026-10-07T15:02:40.000Z",
+                  "withdrawn_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "published",
+                      "withdrawn"
+                    ],
+                    "description": "published to publish (or publish again), withdrawn to withdraw."
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "example": {
+                "state": "published"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/security/reports": {
+      "get": {
+        "operationId": "list_vulnerability_reports",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "List vulnerability reports",
+        "description": "List the vulnerability reports people sent the repository's maintainers privately, new ones first. Those who see findings (Write, or a security manager). Filter by state (new, accepted, declined). Reporters never see this list.\n\nNew reports first. Those who see the repository's findings (Write, or a security manager) read them; a reporter never sees another's. `state` is `new`, `accepted` or `declined`.",
+        "x-operation": "list_vulnerability_reports",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "reports",
+        "x-scope": "security:read",
+        "security": [
+          {
+            "token": [
+              "security:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "new",
+                "accepted",
+                "declined"
+              ]
+            },
+            "description": "Only reports in this state."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo": "flagon-io/hello",
+                    "reporter": null,
+                    "reporter_email": "finder@example.com",
+                    "title": "Path traversal in the archive reader",
+                    "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+                    "severity": "high",
+                    "state": "new",
+                    "advisory_id": null,
+                    "created_at": "2026-10-06T08:40:11.000Z",
+                    "reviewed_by": null,
+                    "reviewed_at": null,
+                    "review_note": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        },
+        "x-example-query": {
+          "state": "new"
+        }
+      },
+      "post": {
+        "operationId": "report_vulnerability",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Report a vulnerability privately",
+        "description": "Report a vulnerability privately to a repository's maintainers: title, description and, if you like, severity. Needs private vulnerability reporting on for the repository. Anyone who can see the repository may report; on a public one you may report without a token by giving an email the maintainers can answer at. At most 5 reports a day per reporter and repository. The workspace's owners and security managers are told at once. You see only your own report.\n\nNeeds private vulnerability reporting on for the repository (`409` otherwise). With a token, the report is yours by username; without one, on a public repository, give `email`, or the request is `422`. The workspace's owners and security managers are told at once. More than 5 reports a day from one reporter to one repository, or a repository with 50 new reports waiting, is refused.",
+        "x-operation": "report_vulnerability",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "report_vulnerability",
+        "x-scope": "security:write",
+        "security": [
+          {
+            "token": [
+              "security:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                  "repo": "flagon-io/hello",
+                  "reporter": null,
+                  "reporter_email": "finder@example.com",
+                  "title": "Path traversal in the archive reader",
+                  "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+                  "severity": "high",
+                  "state": "new",
+                  "advisory_id": null,
+                  "created_at": "2026-10-06T08:40:11.000Z",
+                  "reviewed_by": null,
+                  "reviewed_at": null,
+                  "review_note": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "One line: what you found. At most 200 characters."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "What is affected and how to reproduce it. At most 20,000 characters."
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "high",
+                      "medium",
+                      "low"
+                    ],
+                    "description": "How bad you think it is, if you like."
+                  },
+                  "email": {
+                    "type": "string",
+                    "description": "Without a token: where the maintainers can answer you."
+                  }
+                },
+                "required": [
+                  "title",
+                  "description"
+                ]
+              },
+              "example": {
+                "title": "Path traversal in the archive reader",
+                "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+                "severity": "high",
+                "email": "finder@example.com"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/security/reports/{id}": {
+      "patch": {
+        "operationId": "review_vulnerability_report",
+        "tags": [
+          "Security advisories"
+        ],
+        "summary": "Accept or decline a vulnerability report",
+        "description": "Accept a report (decision accept), which makes a draft advisory from it crediting the reporter, or decline it (decision decline), with an optional note. Admin, or a security manager.\n\n`accept` makes a draft advisory from the report, in the report's words and crediting the reporter, for the maintainers to finish and publish; `advisory` is that draft. `decline` closes the report; `advisory` is null. A report that was reviewed already is `409`. Takes the Admin role, or a security manager of the workspace.",
+        "x-operation": "review_vulnerability_report",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "review_report",
+        "x-scope": "security:write",
+        "security": [
+          {
+            "token": [
+              "security:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The report's id: vrp_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "report": {
+                    "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo": "flagon-io/hello",
+                    "reporter": null,
+                    "reporter_email": "finder@example.com",
+                    "title": "Path traversal in the archive reader",
+                    "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+                    "severity": "high",
+                    "state": "accepted",
+                    "advisory_id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "created_at": "2026-10-06T08:40:11.000Z",
+                    "reviewed_by": "syntaqx",
+                    "reviewed_at": "2026-10-06T09:14:02.118Z",
+                    "review_note": "Confirmed on 1.4.0."
+                  },
+                  "advisory": {
+                    "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "g1tsa_id": "G1TSA-2026-h7kd-3mqw",
+                    "repo_id": "rep_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "repo": "flagon-io/hello",
+                    "title": "Path traversal in the archive reader",
+                    "description": "Extracting an archive with an entry named ../../etc/passwd writes outside the target directory. Steps: …",
+                    "severity": "high",
+                    "cvss_vector": null,
+                    "cvss_score": null,
+                    "cve_id": null,
+                    "ecosystem": null,
+                    "package": null,
+                    "affected_versions": null,
+                    "patched_versions": null,
+                    "state": "draft",
+                    "credits": [
+                      "finder@example.com"
+                    ],
+                    "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-06T09:14:02.118Z",
+                    "updated_at": "2026-10-06T09:14:02.118Z",
+                    "published_at": null,
+                    "withdrawn_at": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "accept",
+                      "decline"
+                    ],
+                    "description": "accept makes a draft advisory from it; decline closes it."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "A note for the record, in a sentence. At most 1,000 characters."
+                  }
+                },
+                "required": [
+                  "decision"
+                ]
+              },
+              "example": {
+                "decision": "accept",
+                "note": "Confirmed on 1.4.0."
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r"
         }
       }
     },
@@ -40355,7 +41748,13 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
+                        "secret_scanning_alert.summary",
+                        "code_scanning_alert.summary",
                         "vulnerability_alert.reopened",
+                        "vulnerability_alert.summary",
+                        "security_advisory.published",
+                        "security_advisory.withdrawn",
+                        "security_advisory.reported",
                         "mirror.unreachable",
                         "mirror.reachable",
                         "mirror.state_changed",
@@ -40631,7 +42030,13 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
+                        "secret_scanning_alert.summary",
+                        "code_scanning_alert.summary",
                         "vulnerability_alert.reopened",
+                        "vulnerability_alert.summary",
+                        "security_advisory.published",
+                        "security_advisory.withdrawn",
+                        "security_advisory.reported",
                         "mirror.unreachable",
                         "mirror.reachable",
                         "mirror.state_changed",
@@ -41553,7 +42958,13 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
+                        "secret_scanning_alert.summary",
+                        "code_scanning_alert.summary",
                         "vulnerability_alert.reopened",
+                        "vulnerability_alert.summary",
+                        "security_advisory.published",
+                        "security_advisory.withdrawn",
+                        "security_advisory.reported",
                         "mirror.unreachable",
                         "mirror.reachable",
                         "mirror.state_changed",
@@ -41815,7 +43226,13 @@
                         "vulnerability_alert.created",
                         "vulnerability_alert.fixed",
                         "vulnerability_alert.dismissed",
+                        "secret_scanning_alert.summary",
+                        "code_scanning_alert.summary",
                         "vulnerability_alert.reopened",
+                        "vulnerability_alert.summary",
+                        "security_advisory.published",
+                        "security_advisory.withdrawn",
+                        "security_advisory.reported",
                         "mirror.unreachable",
                         "mirror.reachable",
                         "mirror.state_changed",
@@ -42976,6 +44393,3046 @@
         "x-example-params": {
           "workspace": "flagon-io",
           "id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/marketplaces": {
+      "get": {
+        "operationId": "list_marketplaces",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "List marketplaces",
+        "description": "The marketplaces a workspace reads plugins from, in the open plugin format (`.claude-plugin/marketplace.json`): each with its `name` (the `@marketplace` part of a plugin's ref), `source` (`github` with `repo`, `g1t` with `repo`, `git` or `url` with `url`, or `builtin`), `builtin` (every workspace has it and it cannot be removed: claude-plugins-official, anthropic-agent-skills and g1t), `about`, `owner`, how many `plugins` it lists, `fetched_at` and `problem` (why its manifest could not be read, when it could not), who added it and when, and `can_remove`. Members only.\n\nEvery workspace reads `claude-plugins-official`, `anthropic-agent-skills` and `g1t`, which are `builtin` and cannot be removed. `source` is the marketplace's source object in the open plugin format: `github` (`repo`), `g1t` (`repo`, a repository here), `git` or `url` (`url`), or `builtin`. `problem` says why the manifest could not be read last time, if it could not. See [Customize](/guides/customize/).",
+        "x-operation": "list_marketplaces",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "list_marketplaces",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "name": "claude-plugins-official",
+                    "source": {
+                      "source": "github",
+                      "repo": "anthropics/claude-plugins-official"
+                    },
+                    "builtin": true,
+                    "about": "Official plugins from Anthropic.",
+                    "owner": "Anthropic",
+                    "plugins": 42,
+                    "fetched_at": "2026-10-11T14:02:11.408Z",
+                    "problem": null,
+                    "added_by": null,
+                    "added_at": null,
+                    "can_remove": false
+                  },
+                  {
+                    "name": "flagon-tools",
+                    "source": {
+                      "source": "g1t",
+                      "repo": "flagon-io/plugins"
+                    },
+                    "builtin": false,
+                    "about": "Flagon's own skills and connectors.",
+                    "owner": "Flagon",
+                    "plugins": 3,
+                    "fetched_at": "2026-10-11T14:02:12.117Z",
+                    "problem": null,
+                    "added_by": "syntaqx",
+                    "added_at": "2026-10-09T18:20:03.512Z",
+                    "can_remove": true
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "post": {
+        "operationId": "add_marketplace",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Add a marketplace",
+        "description": "Add a marketplace by `address`: `owner/repo` on GitHub, `workspace/name` for a repository on this g1t, a git address, or a link to a `marketplace.json`. `name` overrides the one its manifest gives. Its manifest is read at once; a marketplace that cannot be read is refused with `422`, saying why. At most 20 a workspace. Owners only. Recorded in the audit log.\n\n`owner/repo` that is a repository on this g1t is read here; otherwise it is read from GitHub. The manifest is read before the marketplace is kept: an address with no `.claude-plugin/marketplace.json`, or one that cannot be read, is refused with `422`. At most 20 marketplaces a workspace.",
+        "x-operation": "add_marketplace",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "add_marketplace",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "name": "flagon-tools",
+                  "source": {
+                    "source": "g1t",
+                    "repo": "flagon-io/plugins"
+                  },
+                  "builtin": false,
+                  "about": "Flagon's own skills and connectors.",
+                  "owner": "Flagon",
+                  "plugins": 3,
+                  "fetched_at": "2026-10-11T14:05:40.019Z",
+                  "problem": null,
+                  "added_by": "syntaqx",
+                  "added_at": "2026-10-11T14:05:40.019Z",
+                  "can_remove": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "address": {
+                    "type": "string",
+                    "description": "owner/repo on GitHub, workspace/name for a repository here, a git address, or a link to a marketplace.json."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "What to call it here. The name its manifest gives when left out."
+                  }
+                },
+                "required": [
+                  "address"
+                ]
+              },
+              "example": {
+                "address": "flagon-io/plugins"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/marketplaces/{marketplace}": {
+      "delete": {
+        "operationId": "remove_marketplace",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Remove a marketplace",
+        "description": "Remove a marketplace by its name (`marketplace`). Plugins installed from it stay installed, but get no updates and cannot be installed again until it is added back. Built-in marketplaces cannot be removed (`409`). Owners only. Recorded in the audit log.\n\nPlugins installed from it stay installed at their pinned commit. A built-in marketplace answers `409`.",
+        "x-operation": "remove_marketplace",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "remove_marketplace",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "marketplace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The marketplace's name, as list_marketplaces gives it."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success. There is no body."
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "marketplace": "flagon-tools"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/marketplaces/{marketplace}/refresh": {
+      "post": {
+        "operationId": "refresh_marketplace",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Refresh a marketplace",
+        "description": "Read a marketplace's manifest again now, by its name (`marketplace`), and return it as list_marketplaces gives it. Marketplaces are refreshed on their own in the background; this is for seeing a change at once. Owners only.",
+        "x-operation": "refresh_marketplace",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "refresh_marketplace",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "marketplace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The marketplace's name, as list_marketplaces gives it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "name": "flagon-tools",
+                  "source": {
+                    "source": "g1t",
+                    "repo": "flagon-io/plugins"
+                  },
+                  "builtin": false,
+                  "about": "Flagon's own skills and connectors.",
+                  "owner": "Flagon",
+                  "plugins": 4,
+                  "fetched_at": "2026-10-11T15:12:08.330Z",
+                  "problem": null,
+                  "added_by": "syntaqx",
+                  "added_at": "2026-10-09T18:20:03.512Z",
+                  "can_remove": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "marketplace": "flagon-tools"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/discover": {
+      "get": {
+        "operationId": "discover",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Discover plugins and skills",
+        "description": "What a workspace can add, from every marketplace it reads: `plugins`, one per listing (`ref` as `name@marketplace`, `display_name`, `description`, `version`, `author`, `category`, `tags`, how g1t would `fetch` it, and `availability`: `available`, `installed` with `enabled`, `unavailable` with `why` for sources g1t cannot read such as npm or a command, or `soon` for g1t's own announced ones), `skills`, one per skill inside those plugins (`ref` as `plugin:skill`, with `added` when the library already has it), and the `marketplaces` themselves. Members only.\n\n`availability.kind` is `available`, `installed` (with `enabled`), `unavailable` (with `why`: an npm or command source, or a git host g1t does not read; such a plugin still works in Claude Code) or `soon` (g1t's own, announced but not released). `fetch` is where g1t reads the plugin from: `github` (at `sha` when the listing pins one, else `ref`), `g1t`, `archive` (a zip at `url`) or `unsupported`. `skills` on a plugin lists the skills its listing names outright, so a skills-only plugin shows them before it is fetched.",
+        "x-operation": "discover",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "discover",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "plugins": [
+                    {
+                      "ref": "commit-commands@claude-plugins-official",
+                      "name": "commit-commands",
+                      "marketplace": "claude-plugins-official",
+                      "display_name": "Commit commands",
+                      "description": "Commands for committing, pushing and opening pull requests.",
+                      "version": "1.0.0",
+                      "author": "Anthropic",
+                      "homepage": null,
+                      "category": "productivity",
+                      "tags": [
+                        "git"
+                      ],
+                      "keywords": [],
+                      "fetch": {
+                        "kind": "github",
+                        "repo": "anthropics/claude-plugins-official",
+                        "ref": null,
+                        "sha": null,
+                        "path": "plugins/commit-commands"
+                      },
+                      "availability": {
+                        "kind": "installed",
+                        "enabled": true
+                      },
+                      "skills": []
+                    },
+                    {
+                      "ref": "release-notes@flagon-tools",
+                      "name": "release-notes",
+                      "marketplace": "flagon-tools",
+                      "display_name": "Release notes",
+                      "description": "Writes release notes from merged pull requests.",
+                      "version": "0.3.1",
+                      "author": "Flagon",
+                      "homepage": "https://g1t.sh/flagon-io/plugins",
+                      "category": "docs",
+                      "tags": [],
+                      "keywords": [
+                        "releases"
+                      ],
+                      "fetch": {
+                        "kind": "g1t",
+                        "repo": "flagon-io/plugins",
+                        "ref": null,
+                        "path": "plugins/release-notes"
+                      },
+                      "availability": {
+                        "kind": "available"
+                      },
+                      "skills": [
+                        "release-notes"
+                      ]
+                    }
+                  ],
+                  "skills": [
+                    {
+                      "ref": "release-notes:release-notes",
+                      "name": "release-notes",
+                      "plugin": "release-notes",
+                      "marketplace": "flagon-tools",
+                      "description": "Writes release notes from merged pull requests.",
+                      "category": "docs",
+                      "author": "Flagon",
+                      "added": false,
+                      "availability": {
+                        "kind": "available"
+                      }
+                    }
+                  ],
+                  "marketplaces": [
+                    {
+                      "name": "claude-plugins-official",
+                      "source": {
+                        "source": "github",
+                        "repo": "anthropics/claude-plugins-official"
+                      },
+                      "builtin": true,
+                      "about": "Official plugins from Anthropic.",
+                      "owner": "Anthropic",
+                      "plugins": 42,
+                      "fetched_at": "2026-10-11T14:02:11.408Z",
+                      "problem": null,
+                      "added_by": null,
+                      "added_at": null,
+                      "can_remove": false
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/plugins": {
+      "get": {
+        "operationId": "list_plugins",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "List installed plugins",
+        "description": "The plugins a workspace installed, switched off ones included: each with its `ref` (`name@marketplace`), `name`, `marketplace`, `display_name`, `description`, `version`, the commit it was read at (`sha`), how it is fetched (`fetch`), what it brought (`components`: skills, agents, commands, mcp_servers, and whether it carries hooks, lsp, bin or output_styles, which only Claude Code on a runner uses), `problems` met when installing, `enabled`, who installed it and when, and `update` when the marketplace lists a newer version. Members only.\n\n`sha` is the commit the plugin was read at, which it stays pinned to; `update` is set when the marketplace now lists a newer version. `components` is what installing extracted: `skills` and `commands` joined the library as `plugin:name`, `agents` are templates to hire from, `mcp_servers` with `remote` true became connectors (stdio ones are for Claude Code only), and `hooks`, `lsp`, `bin` and `output_styles` say what only Claude Code on a runner uses.",
+        "x-operation": "list_plugins",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "list_plugins",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "plg_01kq9f2h4k6m8p0r2t4v6x8z0b",
+                    "ref": "commit-commands@claude-plugins-official",
+                    "name": "commit-commands",
+                    "marketplace": "claude-plugins-official",
+                    "display_name": "Commit commands",
+                    "description": "Commands for committing, pushing and opening pull requests.",
+                    "version": "1.0.0",
+                    "sha": "9c1f4a6e8b0d2c4f6a8e1b3d5f7a9c1e3b5d7f90",
+                    "fetch": {
+                      "kind": "github",
+                      "repo": "anthropics/claude-plugins-official",
+                      "ref": null,
+                      "sha": "9c1f4a6e8b0d2c4f6a8e1b3d5f7a9c1e3b5d7f90",
+                      "path": "plugins/commit-commands"
+                    },
+                    "components": {
+                      "skills": [],
+                      "agents": [],
+                      "commands": [
+                        {
+                          "name": "commit",
+                          "path": "commands/commit.md"
+                        },
+                        {
+                          "name": "commit-push-pr",
+                          "path": "commands/commit-push-pr.md"
+                        }
+                      ],
+                      "mcp_servers": [],
+                      "hooks": false,
+                      "lsp": false,
+                      "bin": false,
+                      "output_styles": false
+                    },
+                    "problems": [],
+                    "enabled": true,
+                    "installed_by": "syntaqx",
+                    "installed_at": "2026-10-10T09:14:52.207Z",
+                    "update": {
+                      "version": "1.1.0",
+                      "sha": "e3b5d7f90a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "post": {
+        "operationId": "install_plugin",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Install a plugin",
+        "description": "Install a plugin by `ref` (`name@marketplace`) from a marketplace the workspace reads, at the commit its listing names, which it stays pinned to. Its skills and commands join the workspace's library as `plugin:skill`, its subagents become templates to hire from, and the remote MCP servers of its `.mcp.json` become connectors, unconnected until an owner signs in or gives a key; its hooks, LSP servers, output styles and binaries reach Claude Code on runners and never g1t's own agents. A plugin g1t cannot fetch (npm, a command, a git host g1t does not read) is refused with `422`. At most 100 a workspace. Owners only. Recorded in the audit log.\n\nIts skill is now `release-notes:release-notes` in the library, `release-writer` is a template under Agents, and the `linear` server is a connector waiting for an owner to sign in (`list_connectors` shows it as `needs_sign_in`, with `from.kind` `plugin`). A plugin already installed answers `409`; one whose source g1t cannot fetch answers `422`.",
+        "x-operation": "install_plugin",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "install_plugin",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "plg_01kq9g3j5l7n9q1s3u5w7y9a1c",
+                  "ref": "release-notes@flagon-tools",
+                  "name": "release-notes",
+                  "marketplace": "flagon-tools",
+                  "display_name": "Release notes",
+                  "description": "Writes release notes from merged pull requests.",
+                  "version": "0.3.1",
+                  "sha": "4f6a8e1b3d5f7a9c1e3b5d7f90a1c3e5b7d9f1a3",
+                  "fetch": {
+                    "kind": "g1t",
+                    "repo": "flagon-io/plugins",
+                    "ref": null,
+                    "path": "plugins/release-notes"
+                  },
+                  "components": {
+                    "skills": [
+                      {
+                        "name": "release-notes",
+                        "description": "Write release notes from the pull requests merged since the last tag.",
+                        "path": "skills/release-notes/SKILL.md"
+                      }
+                    ],
+                    "agents": [
+                      {
+                        "name": "release-writer",
+                        "description": "Drafts a release's notes and asks a maintainer to check them.",
+                        "path": "agents/release-writer.md"
+                      }
+                    ],
+                    "commands": [],
+                    "mcp_servers": [
+                      {
+                        "name": "linear",
+                        "type": "http",
+                        "url": "https://mcp.linear.app/mcp",
+                        "remote": true
+                      }
+                    ],
+                    "hooks": false,
+                    "lsp": false,
+                    "bin": false,
+                    "output_styles": false
+                  },
+                  "problems": [],
+                  "enabled": true,
+                  "installed_by": "syntaqx",
+                  "installed_at": "2026-10-11T14:20:31.904Z",
+                  "update": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ref": {
+                    "type": "string",
+                    "description": "The plugin as name@marketplace, such as commit-commands@claude-plugins-official."
+                  }
+                },
+                "required": [
+                  "ref"
+                ]
+              },
+              "example": {
+                "ref": "release-notes@flagon-tools"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/plugins/{ref}": {
+      "get": {
+        "operationId": "get_plugin",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Get a plugin",
+        "description": "One plugin's page by `ref` (`name@marketplace`, URL-encoded in a path: `@` as `%40`), installed or not: its marketplace `listing`, its `install` if any, its `components` and `readme` read from its source, its `manifest`, its subagents in full (`agents`) for hiring from, `problems`, and the marketplace it is listed in (`source`). Reads the plugin's files, so it takes a moment. Members only.\n\nIn the path, `ref` is URL-encoded: `release-notes%40flagon-tools`. `install` is null until the workspace installs it. `components`, `readme`, `manifest` and `agents` are read from the plugin's source at the commit the listing names, so this takes a moment; for an `unavailable` plugin they are null or empty and `problems` says why.",
+        "x-operation": "get_plugin",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "get_plugin",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The plugin as name@marketplace, such as commit-commands@claude-plugins-official."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "listing": {
+                    "ref": "release-notes@flagon-tools",
+                    "name": "release-notes",
+                    "marketplace": "flagon-tools",
+                    "display_name": "Release notes",
+                    "description": "Writes release notes from merged pull requests.",
+                    "version": "0.3.1",
+                    "author": "Flagon",
+                    "homepage": "https://g1t.sh/flagon-io/plugins",
+                    "category": "docs",
+                    "tags": [],
+                    "keywords": [
+                      "releases"
+                    ],
+                    "fetch": {
+                      "kind": "g1t",
+                      "repo": "flagon-io/plugins",
+                      "ref": null,
+                      "path": "plugins/release-notes"
+                    },
+                    "availability": {
+                      "kind": "available"
+                    },
+                    "skills": [
+                      "release-notes"
+                    ]
+                  },
+                  "install": null,
+                  "components": {
+                    "skills": [
+                      {
+                        "name": "release-notes",
+                        "description": "Write release notes from the pull requests merged since the last tag.",
+                        "path": "skills/release-notes/SKILL.md"
+                      }
+                    ],
+                    "agents": [
+                      {
+                        "name": "release-writer",
+                        "description": "Drafts a release's notes and asks a maintainer to check them.",
+                        "path": "agents/release-writer.md"
+                      }
+                    ],
+                    "commands": [],
+                    "mcp_servers": [
+                      {
+                        "name": "linear",
+                        "type": "http",
+                        "url": "https://mcp.linear.app/mcp",
+                        "remote": true
+                      }
+                    ],
+                    "hooks": false,
+                    "lsp": false,
+                    "bin": false,
+                    "output_styles": false
+                  },
+                  "readme": "# Release notes\n\nWrites release notes from merged pull requests…",
+                  "manifest": {
+                    "name": "release-notes",
+                    "version": "0.3.1",
+                    "license": "MIT",
+                    "repository": "https://g1t.sh/flagon-io/plugins"
+                  },
+                  "agents": [
+                    {
+                      "name": "release-writer",
+                      "description": "Drafts a release's notes and asks a maintainer to check them.",
+                      "tools": [
+                        "Read",
+                        "Grep"
+                      ],
+                      "model": null,
+                      "skills": [
+                        "release-notes"
+                      ],
+                      "prompt": "You write release notes…"
+                    }
+                  ],
+                  "problems": [],
+                  "source": {
+                    "marketplace": "flagon-tools",
+                    "owner": "Flagon"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "ref": "release-notes%40flagon-tools"
+        }
+      },
+      "patch": {
+        "operationId": "set_plugin_enabled",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Switch a plugin on or off",
+        "description": "Switch an installed plugin on or off by `ref`: `enabled` false keeps it installed but takes its skills, agents and connectors away from agents and leaves it out of runners' bundles; true brings them back. Owners only. Recorded in the audit log.\n\nA switched-off plugin stays installed and keeps its pinned commit, but agents lose its skills, templates and connectors until it is switched on again, and runners' bundles leave it out.",
+        "x-operation": "set_plugin_enabled",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "set_plugin_enabled",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The plugin as name@marketplace, such as commit-commands@claude-plugins-official."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "plg_01kq9g3j5l7n9q1s3u5w7y9a1c",
+                  "ref": "release-notes@flagon-tools",
+                  "name": "release-notes",
+                  "marketplace": "flagon-tools",
+                  "display_name": "Release notes",
+                  "description": "Writes release notes from merged pull requests.",
+                  "version": "0.3.1",
+                  "sha": "4f6a8e1b3d5f7a9c1e3b5d7f90a1c3e5b7d9f1a3",
+                  "fetch": {
+                    "kind": "g1t",
+                    "repo": "flagon-io/plugins",
+                    "ref": null,
+                    "path": "plugins/release-notes"
+                  },
+                  "components": {
+                    "skills": [
+                      {
+                        "name": "release-notes",
+                        "description": "Write release notes from the pull requests merged since the last tag.",
+                        "path": "skills/release-notes/SKILL.md"
+                      }
+                    ],
+                    "agents": [],
+                    "commands": [],
+                    "mcp_servers": [],
+                    "hooks": false,
+                    "lsp": false,
+                    "bin": false,
+                    "output_styles": false
+                  },
+                  "problems": [],
+                  "enabled": false,
+                  "installed_by": "syntaqx",
+                  "installed_at": "2026-10-11T14:20:31.904Z",
+                  "update": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "True to switch it on, false to switch it off."
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "example": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "ref": "release-notes%40flagon-tools"
+        }
+      },
+      "delete": {
+        "operationId": "uninstall_plugin",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Uninstall a plugin",
+        "description": "Uninstall a plugin by `ref`: its skills leave the library, its agent templates go, and the connectors it brought are removed with their secrets. Agents hired from its templates stay. Owners only. Recorded in the audit log.\n\nIts skills leave the library, its templates go, and the connectors it brought are removed with their secrets. Agents hired from its templates stay as they are.",
+        "x-operation": "uninstall_plugin",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "uninstall_plugin",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The plugin as name@marketplace, such as commit-commands@claude-plugins-official."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success. There is no body."
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "ref": "release-notes%40flagon-tools"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/plugins/{ref}/update": {
+      "post": {
+        "operationId": "update_plugin",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Update a plugin",
+        "description": "Update an installed plugin by `ref`: read it again at the commit its marketplace now lists and pin it there. Its skills get new versions and keep their attachments, skills it no longer has are archived, its agent templates and components are rewritten, and a server it already brought keeps its connector; new remote servers become connectors. A plugin already at its marketplace's commit comes back unchanged. list_plugins shows `update` when there is one to take. Owners only. Recorded in the audit log.\n\nThe plugin is read again at the commit its marketplace lists now and pinned there: its skills get new versions (agents and teams that had them keep them), skills it no longer has are archived, its templates and `components` are rewritten, and a server it already brought keeps its connector. A plugin already at that commit comes back as it was. Runners fetch the new commit from the next run on.",
+        "x-operation": "update_plugin",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "update_plugin",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The plugin as name@marketplace, such as commit-commands@claude-plugins-official."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "plg_01kq9f2h4k6m8p0r2t4v6x8z0b",
+                  "ref": "commit-commands@claude-plugins-official",
+                  "name": "commit-commands",
+                  "marketplace": "claude-plugins-official",
+                  "display_name": "Commit commands",
+                  "description": "Commands for committing, pushing and opening pull requests.",
+                  "version": "1.1.0",
+                  "sha": "e3b5d7f90a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b",
+                  "fetch": {
+                    "kind": "github",
+                    "repo": "anthropics/claude-plugins-official",
+                    "ref": null,
+                    "sha": "e3b5d7f90a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b",
+                    "path": "plugins/commit-commands"
+                  },
+                  "components": {
+                    "skills": [],
+                    "agents": [],
+                    "commands": [
+                      {
+                        "name": "commit",
+                        "path": "commands/commit.md"
+                      },
+                      {
+                        "name": "commit-push-pr",
+                        "path": "commands/commit-push-pr.md"
+                      },
+                      {
+                        "name": "clean-gone",
+                        "path": "commands/clean-gone.md"
+                      }
+                    ],
+                    "mcp_servers": [],
+                    "hooks": false,
+                    "lsp": false,
+                    "bin": false,
+                    "output_styles": false
+                  },
+                  "problems": [],
+                  "enabled": true,
+                  "installed_by": "syntaqx",
+                  "installed_at": "2026-10-10T09:14:52.207Z",
+                  "update": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "ref": "commit-commands%40claude-plugins-official"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/agents": {
+      "get": {
+        "operationId": "list_plugin_agents",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "List plugin agents",
+        "description": "The subagents installed plugins brought, as templates to hire an agent from: each with its `ref` (`plugin:agent`), `plugin`, `marketplace`, `name`, `description`, the system prompt as `prompt`, and its `model`, `skills` and `tools`. Members only.\n\nEach is a subagent file (`agents/<name>.md`) from an installed, switched-on plugin: its front matter as fields and its body as `prompt`. They are listed under Agents → Templates, From plugins, to hire an agent from.",
+        "x-operation": "list_plugin_agents",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "list_plugin_agents",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "ref": "release-notes:release-writer",
+                    "plugin": "release-notes",
+                    "marketplace": "flagon-tools",
+                    "name": "release-writer",
+                    "description": "Drafts a release's notes and asks a maintainer to check them.",
+                    "prompt": "You write release notes…",
+                    "model": null,
+                    "skills": [
+                      "release-notes"
+                    ],
+                    "tools": [
+                      "Read",
+                      "Grep"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/connectors": {
+      "get": {
+        "operationId": "list_connectors",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "List connectors",
+        "description": "A workspace's connectors: MCP servers connected once and given to agents. Each has its `id` (`con_…`), `name` (tools are offered to agents as `<name>__<tool>`), `title`, `url`, `category`, `auth` (`none`, `header` or `oauth`), `state` (`connected`, `needs_sign_in`, `needs_key` or `problem`, with `problem` saying why), `from` (the directory, a plugin's server, an address, or one agent's own server), its `tools` as last listed and `checked_at`, `header_name` for a key (the key itself is never returned), who it is `signed_in_as` for OAuth, its `grants` (where it reaches: every agent, a team or one agent), and who added it. g1t's own integrations (GitHub, trackers, alert sources, model providers) are list_integrations. Members only.\n\n`state` is `connected`, `needs_sign_in` (OAuth, not signed in yet: an owner signs in on the site), `needs_key` (header auth without a value yet) or `problem` (with `problem` saying why the server could not be reached). `tools` is what the server listed last, at `checked_at`; agents are offered each as `<name>__<tool>`. Keys and tokens are never returned: `header_name` says only which header a key is sent as. g1t's own integrations (GitHub, Jira, Sentry, model providers…) are [`list_integrations`](/reference/api/integrations/list-integrations/).",
+        "x-operation": "list_connectors",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "list_connectors",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+                    "name": "linear",
+                    "title": "Linear",
+                    "url": "https://mcp.linear.app/mcp",
+                    "category": "work",
+                    "about": "Issues, projects and cycles in Linear.",
+                    "auth": "oauth",
+                    "state": "connected",
+                    "problem": null,
+                    "from": {
+                      "kind": "directory",
+                      "id": "linear"
+                    },
+                    "tools": [
+                      {
+                        "name": "list_issues",
+                        "description": "List issues in a team or project.",
+                        "input_schema": {
+                          "type": "object",
+                          "properties": {
+                            "team": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    ],
+                    "checked_at": "2026-10-11T14:31:05.772Z",
+                    "header_name": null,
+                    "signed_in_as": "chase@flagon.io",
+                    "signed_in_at": "2026-10-11T14:31:05.772Z",
+                    "grants": [
+                      {
+                        "id": "cgr_01kq9h5l7n9q1s3u5w7y9a1c3e",
+                        "scope": "workspace",
+                        "target": null,
+                        "label": "Every agent",
+                        "granted_by": "syntaqx",
+                        "granted_at": "2026-10-11T14:32:10.004Z"
+                      }
+                    ],
+                    "added_by": "syntaqx",
+                    "added_at": "2026-10-11T14:30:12.618Z"
+                  },
+                  {
+                    "id": "con_01kq9j6m8p0r2t4v6x8z0b2d4f",
+                    "name": "docs-search",
+                    "title": "docs-search",
+                    "url": "https://mcp.flagon.dev/docs",
+                    "category": null,
+                    "about": null,
+                    "auth": "header",
+                    "state": "needs_key",
+                    "problem": null,
+                    "from": {
+                      "kind": "address"
+                    },
+                    "tools": [],
+                    "checked_at": null,
+                    "header_name": "X-Api-Key",
+                    "signed_in_as": null,
+                    "signed_in_at": null,
+                    "grants": [],
+                    "added_by": "syntaqx",
+                    "added_at": "2026-10-11T14:40:55.130Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "post": {
+        "operationId": "add_connector",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Add a connector",
+        "description": "Add a connector. `from` says where it comes from: `{\"kind\": \"directory\", \"id\"}` for one of the directory's remote MCP servers, `{\"kind\": \"plugin\", \"ref\", \"server\"}` for a server an installed plugin names, or `{\"kind\": \"address\", \"name\", \"url\"}` for any MCP server over HTTP (`name` is 2 to 32 lowercase letters, digits and hyphens). `auth` is `none`, `header` (give `header` with the header's `name` and `value`, kept sealed and never returned) or `oauth` (an owner then signs in on the site: sign-in needs a browser, so it has no route). Its tools are listed as soon as it can be reached. At most 50 a workspace. Owners only. Recorded in the audit log.\n\n`from` is `{\"kind\": \"directory\", \"id\"}` for a server in g1t's directory, `{\"kind\": \"plugin\", \"ref\", \"server\"}` for one an installed plugin names in its `.mcp.json`, or `{\"kind\": \"address\", \"name\", \"url\"}` for any MCP server over HTTP. With `auth` `oauth` the connector starts as `needs_sign_in` and an owner signs in on the site. The key's value is sealed under the workspace's `CONNECTORS_KEY` and never returned. A new connector reaches no agent until it is granted: see [`grant_connector`](/reference/api/customize/grant-connector/). At most 50 connectors a workspace.",
+        "x-operation": "add_connector",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "add_connector",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "con_01kq9j6m8p0r2t4v6x8z0b2d4f",
+                  "name": "docs-search",
+                  "title": "docs-search",
+                  "url": "https://mcp.flagon.dev/docs",
+                  "category": null,
+                  "about": null,
+                  "auth": "header",
+                  "state": "connected",
+                  "problem": null,
+                  "from": {
+                    "kind": "address"
+                  },
+                  "tools": [
+                    {
+                      "name": "search_docs",
+                      "description": "Search Flagon's documentation.",
+                      "input_schema": {
+                        "type": "object",
+                        "properties": {
+                          "query": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "query"
+                        ]
+                      }
+                    }
+                  ],
+                  "checked_at": "2026-10-11T14:40:56.402Z",
+                  "header_name": "X-Api-Key",
+                  "signed_in_as": null,
+                  "signed_in_at": null,
+                  "grants": [],
+                  "added_by": "syntaqx",
+                  "added_at": "2026-10-11T14:40:55.130Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "object",
+                    "description": "Where it comes from: {\"kind\": \"directory\", \"id\"}, {\"kind\": \"plugin\", \"ref\", \"server\"} or {\"kind\": \"address\", \"name\", \"url\"}.",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "directory",
+                          "plugin",
+                          "address"
+                        ]
+                      },
+                      "id": {
+                        "type": "string",
+                        "description": "For directory: the directory entry's id."
+                      },
+                      "ref": {
+                        "type": "string",
+                        "description": "For plugin: the installed plugin, as name@marketplace."
+                      },
+                      "server": {
+                        "type": "string",
+                        "description": "For plugin: the server's name in its .mcp.json."
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "For address: 2 to 32 lowercase letters, digits and hyphens."
+                      },
+                      "url": {
+                        "type": "string",
+                        "description": "For address: the MCP server's https address."
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "auth": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "header",
+                      "oauth"
+                    ],
+                    "description": "How it signs in. none when left out."
+                  },
+                  "header": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "description": "For header auth: the header's name and value. The value is kept sealed and never returned.",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "value"
+                    ]
+                  }
+                },
+                "required": [
+                  "from"
+                ]
+              },
+              "example": {
+                "from": {
+                  "kind": "address",
+                  "name": "docs-search",
+                  "url": "https://mcp.flagon.dev/docs"
+                },
+                "auth": "header",
+                "header": {
+                  "name": "X-Api-Key",
+                  "value": "fd_live_…"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/connectors/{id}": {
+      "get": {
+        "operationId": "get_connector",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Get a connector",
+        "description": "One connector by `id`, in the shape list_connectors gives. Members only.",
+        "x-operation": "get_connector",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "get_connector",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The connector's id (con_…), from list_connectors."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+                  "name": "linear",
+                  "title": "Linear",
+                  "url": "https://mcp.linear.app/mcp",
+                  "category": "work",
+                  "about": "Issues, projects and cycles in Linear.",
+                  "auth": "oauth",
+                  "state": "connected",
+                  "problem": null,
+                  "from": {
+                    "kind": "directory",
+                    "id": "linear"
+                  },
+                  "tools": [
+                    {
+                      "name": "list_issues",
+                      "description": "List issues in a team or project.",
+                      "input_schema": {
+                        "type": "object",
+                        "properties": {
+                          "team": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "checked_at": "2026-10-11T14:31:05.772Z",
+                  "header_name": null,
+                  "signed_in_as": "chase@flagon.io",
+                  "signed_in_at": "2026-10-11T14:31:05.772Z",
+                  "grants": [
+                    {
+                      "id": "cgr_01kq9h5l7n9q1s3u5w7y9a1c3e",
+                      "scope": "workspace",
+                      "target": null,
+                      "label": "Every agent",
+                      "granted_by": "syntaqx",
+                      "granted_at": "2026-10-11T14:32:10.004Z"
+                    }
+                  ],
+                  "added_by": "syntaqx",
+                  "added_at": "2026-10-11T14:30:12.618Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d"
+        }
+      },
+      "patch": {
+        "operationId": "set_connector_key",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Set a connector's key",
+        "description": "Put a key on a connector by `id`: `value` is the header's value, kept sealed and never returned, and `header_name` the header it is sent as (the one it had, or Authorization, when left out). Makes the connector use header auth, lists its tools again, and returns it. Owners only. Recorded in the audit log.\n\nRotates a key, or gives a `needs_key` connector its first one. `header_name` changes which header it is sent as; left out, the connector keeps its own, or uses `Authorization`. The tools are listed again with the new key, so `state` says at once whether it works.",
+        "x-operation": "set_connector_key",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "set_connector_key",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The connector's id (con_…), from list_connectors."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "con_01kq9j6m8p0r2t4v6x8z0b2d4f",
+                  "name": "docs-search",
+                  "title": "docs-search",
+                  "url": "https://mcp.flagon.dev/docs",
+                  "category": null,
+                  "about": null,
+                  "auth": "header",
+                  "state": "connected",
+                  "problem": null,
+                  "from": {
+                    "kind": "address"
+                  },
+                  "tools": [
+                    {
+                      "name": "search_docs",
+                      "description": "Search Flagon's documentation.",
+                      "input_schema": {
+                        "type": "object",
+                        "properties": {
+                          "query": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "query"
+                        ]
+                      }
+                    }
+                  ],
+                  "checked_at": "2026-10-11T15:02:17.950Z",
+                  "header_name": "X-Api-Key",
+                  "signed_in_as": null,
+                  "signed_in_at": null,
+                  "grants": [],
+                  "added_by": "syntaqx",
+                  "added_at": "2026-10-11T14:40:55.130Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "header_name": {
+                    "type": "string",
+                    "description": "The header the key is sent as. The one it had, or Authorization, when left out."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The key. Kept sealed; never returned."
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              },
+              "example": {
+                "value": "fd_live_…"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "con_01kq9j6m8p0r2t4v6x8z0b2d4f"
+        }
+      },
+      "delete": {
+        "operationId": "remove_connector",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Remove a connector",
+        "description": "Remove a connector by `id`, with its secrets and grants. Agents that had it lose its tools at their next turn. Owners only. Recorded in the audit log.\n\nIts sealed secrets and its grants go with it. Agents that had it lose its tools at their next turn.",
+        "x-operation": "remove_connector",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "remove_connector",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The connector's id (con_…), from list_connectors."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success. There is no body."
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "con_01kq9j6m8p0r2t4v6x8z0b2d4f"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/connectors/{id}/refresh": {
+      "post": {
+        "operationId": "refresh_connector",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Refresh a connector's tools",
+        "description": "Ask a connector's server for its tools again now, by `id`, and return the connector with its `tools`, `checked_at` and `state` as they are now. Owners only.\n\nAsks the server for its tools now. A server that cannot be reached, or refuses the sign-in, leaves the connector in `state` `problem` with `problem` saying why; the tools it listed last are kept.",
+        "x-operation": "refresh_connector",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "refresh_connector",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The connector's id (con_…), from list_connectors."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+                  "name": "linear",
+                  "title": "Linear",
+                  "url": "https://mcp.linear.app/mcp",
+                  "category": "work",
+                  "about": "Issues, projects and cycles in Linear.",
+                  "auth": "oauth",
+                  "state": "connected",
+                  "problem": null,
+                  "from": {
+                    "kind": "directory",
+                    "id": "linear"
+                  },
+                  "tools": [
+                    {
+                      "name": "list_issues",
+                      "description": "List issues in a team or project.",
+                      "input_schema": {
+                        "type": "object",
+                        "properties": {
+                          "team": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "name": "create_issue",
+                      "description": "Create an issue.",
+                      "input_schema": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "title"
+                        ]
+                      }
+                    }
+                  ],
+                  "checked_at": "2026-10-11T15:10:44.207Z",
+                  "header_name": null,
+                  "signed_in_as": "chase@flagon.io",
+                  "signed_in_at": "2026-10-11T14:31:05.772Z",
+                  "grants": [
+                    {
+                      "id": "cgr_01kq9h5l7n9q1s3u5w7y9a1c3e",
+                      "scope": "workspace",
+                      "target": null,
+                      "label": "Every agent",
+                      "granted_by": "syntaqx",
+                      "granted_at": "2026-10-11T14:32:10.004Z"
+                    }
+                  ],
+                  "added_by": "syntaqx",
+                  "added_at": "2026-10-11T14:30:12.618Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/connectors/{id}/grants": {
+      "post": {
+        "operationId": "grant_connector",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Give a connector to agents",
+        "description": "Give a connector by `id` to agents: `scope` is `workspace` (every agent), `team` (with `target`, the team's slug) or `agent` (with `target`, the agent's handle). Returns the connector with its `grants`. Owners only. Recorded in the audit log.\n\nThe same reach as a skill's: `workspace` gives it to every agent, `team` to a team's agents (`target` is the team's slug), `agent` to one agent (`target` is its handle, with or without `@`). A grant that is already there is returned as it is. Each agent's Abilities tab shows the connectors that reach it, with a level per tool.",
+        "x-operation": "grant_connector",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "grant_connector",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The connector's id (con_…), from list_connectors."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+                  "name": "linear",
+                  "title": "Linear",
+                  "url": "https://mcp.linear.app/mcp",
+                  "category": "work",
+                  "about": "Issues, projects and cycles in Linear.",
+                  "auth": "oauth",
+                  "state": "connected",
+                  "problem": null,
+                  "from": {
+                    "kind": "directory",
+                    "id": "linear"
+                  },
+                  "tools": [],
+                  "checked_at": "2026-10-11T14:31:05.772Z",
+                  "header_name": null,
+                  "signed_in_as": "chase@flagon.io",
+                  "signed_in_at": "2026-10-11T14:31:05.772Z",
+                  "grants": [
+                    {
+                      "id": "cgr_01kq9h5l7n9q1s3u5w7y9a1c3e",
+                      "scope": "workspace",
+                      "target": null,
+                      "label": "Every agent",
+                      "granted_by": "syntaqx",
+                      "granted_at": "2026-10-11T14:32:10.004Z"
+                    },
+                    {
+                      "id": "cgr_01kq9k7n9q1s3u5w7y9a1c3e5g",
+                      "scope": "team",
+                      "target": "platform",
+                      "label": "Platform",
+                      "granted_by": "syntaqx",
+                      "granted_at": "2026-10-11T15:20:02.561Z"
+                    }
+                  ],
+                  "added_by": "syntaqx",
+                  "added_at": "2026-10-11T14:30:12.618Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "workspace",
+                      "team",
+                      "agent"
+                    ],
+                    "description": "Every agent, a team's agents, or one agent."
+                  },
+                  "target": {
+                    "type": "string",
+                    "description": "The team's slug or the agent's handle; nothing for workspace."
+                  }
+                },
+                "required": [
+                  "scope"
+                ]
+              },
+              "example": {
+                "scope": "team",
+                "target": "platform"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/connectors/{id}/grants/{grant}": {
+      "delete": {
+        "operationId": "revoke_connector",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Take a connector back",
+        "description": "Take a connector back from where one grant reaches, by the connector's `id` and the grant's id (`grant`). Returns the connector with its `grants`. Owners only. Recorded in the audit log.",
+        "x-operation": "revoke_connector",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "revoke_connector",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The connector's id (con_…), from list_connectors."
+          },
+          {
+            "name": "grant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The grant's id, from the connector's grants."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+                  "name": "linear",
+                  "title": "Linear",
+                  "url": "https://mcp.linear.app/mcp",
+                  "category": "work",
+                  "about": "Issues, projects and cycles in Linear.",
+                  "auth": "oauth",
+                  "state": "connected",
+                  "problem": null,
+                  "from": {
+                    "kind": "directory",
+                    "id": "linear"
+                  },
+                  "tools": [],
+                  "checked_at": "2026-10-11T14:31:05.772Z",
+                  "header_name": null,
+                  "signed_in_as": "chase@flagon.io",
+                  "signed_in_at": "2026-10-11T14:31:05.772Z",
+                  "grants": [
+                    {
+                      "id": "cgr_01kq9h5l7n9q1s3u5w7y9a1c3e",
+                      "scope": "workspace",
+                      "target": null,
+                      "label": "Every agent",
+                      "granted_by": "syntaqx",
+                      "granted_at": "2026-10-11T14:32:10.004Z"
+                    }
+                  ],
+                  "added_by": "syntaqx",
+                  "added_at": "2026-10-11T14:30:12.618Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "con_01kq9h4k6m8p0r2t4v6x8z0b2d",
+          "grant": "cgr_01kq9k7n9q1s3u5w7y9a1c3e5g"
+        }
+      }
+    },
+    "/workspaces/{workspace}/customize/bundle": {
+      "get": {
+        "operationId": "customize_bundle",
+        "tags": [
+          "Customize"
+        ],
+        "summary": "Get the runner bundle",
+        "description": "What a job's Claude Code loads from the workspace's Customize, read once per job with the job's agent token (or a workspace's token; a person's token is refused): `plugins` to fetch at their pinned commit (`ref`, `name`, `fetch`, `version`; switched-off ones left out), the library `skills` that reach the job's agent as files (each `name` with its `files`: `path`, `content`, `encoding` utf8 or base64; a plugin's skills come with the plugin), and the `connectors` that reach it and are connected, each with its `name`, `url` and the `headers` that sign it in. Secrets are in it: it is for the runner, and g1t never keeps or logs it. See self-hosted runners, \"What a run gets from Customize\".\n\nRead with the job's agent token: what comes back is what reaches that agent (its own grants, its teams' and the workspace's). A workspace's token gets everything the workspace has; a person's token is refused with `403`. `plugins` are switched-on installs, to fetch at `fetch.sha` (or `fetch.ref`); a plugin's skills are not repeated in `skills`, since Claude Code reads them from the plugin. `skills` are the library's own, as files for a synthetic plugin called `g1t-library`, so each is `/g1t-library:<name>` in Claude Code. `connectors` are the connected ones that reach the agent, with the headers that sign them in, refreshed when a sign-in had expired: it is for the runner's `--mcp-config`, and g1t never keeps or logs it. See [what a run gets from Customize](/guides/self-hosted-runners/#what-a-run-gets-from-customize).",
+        "x-operation": "customize_bundle",
+        "x-mcp-tool": "customize",
+        "x-mcp-action": "bundle",
+        "x-scope": "agents:run",
+        "security": [
+          {
+            "token": [
+              "agents:run"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "plugins": [
+                    {
+                      "ref": "commit-commands@claude-plugins-official",
+                      "name": "commit-commands",
+                      "fetch": {
+                        "kind": "github",
+                        "repo": "anthropics/claude-plugins-official",
+                        "ref": null,
+                        "sha": "9c1f4a6e8b0d2c4f6a8e1b3d5f7a9c1e3b5d7f90",
+                        "path": "plugins/commit-commands"
+                      },
+                      "version": "1.0.0"
+                    }
+                  ],
+                  "skills": [
+                    {
+                      "name": "house-style",
+                      "plugin": null,
+                      "files": [
+                        {
+                          "path": "SKILL.md",
+                          "content": "---\nname: house-style\ndescription: How Flagon writes code and prose.\n---\n\n# House style\n…",
+                          "encoding": "utf8"
+                        },
+                        {
+                          "path": "examples/commit.md",
+                          "content": "# A good commit message\n…",
+                          "encoding": "utf8"
+                        }
+                      ]
+                    }
+                  ],
+                  "connectors": [
+                    {
+                      "name": "linear",
+                      "url": "https://mcp.linear.app/mcp",
+                      "headers": {
+                        "Authorization": "Bearer lin_oauth_…"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
         }
       }
     },

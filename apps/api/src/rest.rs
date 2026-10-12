@@ -4,6 +4,7 @@ use serde_json::{Map, Value};
 
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
@@ -255,6 +256,15 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/workspaces/:workspace/security/settings", Op::Security(SecurityOp::GetWorkspaceSettings), &[]),
     route("PATCH", "/workspaces/:workspace/security/settings", Op::Security(SecurityOp::UpdateWorkspaceSettings), &[]),
     route("GET", "/workspaces/:workspace/security/overview", Op::Security(SecurityOp::GetOverview), &[("days", "days")]),
+    // Reporting: a repository's advisories, and the vulnerability reports sent to its maintainers.
+    route("GET", "/repos/:owner/:name/security/advisories", Op::Security(SecurityOp::ListAdvisories), &[("state", "state")]),
+    route("POST", "/repos/:owner/:name/security/advisories", Op::Security(SecurityOp::CreateAdvisory), &[]),
+    route("GET", "/repos/:owner/:name/security/advisories/:id", Op::Security(SecurityOp::GetAdvisory), &[]),
+    route("PATCH", "/repos/:owner/:name/security/advisories/:id", Op::Security(SecurityOp::UpdateAdvisory), &[]),
+    route("POST", "/repos/:owner/:name/security/advisories/:id/state", Op::Security(SecurityOp::SetAdvisoryState), &[]),
+    route("GET", "/repos/:owner/:name/security/reports", Op::Security(SecurityOp::ListReports), &[("state", "state")]),
+    route("POST", "/repos/:owner/:name/security/reports", Op::Security(SecurityOp::ReportVulnerability), &[]),
+    route("PATCH", "/repos/:owner/:name/security/reports/:id", Op::Security(SecurityOp::ReviewReport), &[]),
     route("GET", "/repos", Op::ListRepos, &[("q", "query")]),
     route(
         "GET",
@@ -651,6 +661,29 @@ pub const ROUTES: &[Route] = &[
         Op::TestIntegration,
         &[],
     ),
+    // Customize: marketplaces, Discover, plugins and connectors. A plugin's
+    // ref is `name@marketplace`, URL-encoded (`@` as `%40`).
+    route("GET", "/workspaces/:workspace/customize/marketplaces", Op::Customize(CustomizeOp::ListMarketplaces), &[]),
+    route("POST", "/workspaces/:workspace/customize/marketplaces", Op::Customize(CustomizeOp::AddMarketplace), &[]),
+    route("DELETE", "/workspaces/:workspace/customize/marketplaces/:marketplace", Op::Customize(CustomizeOp::RemoveMarketplace), &[]),
+    route("POST", "/workspaces/:workspace/customize/marketplaces/:marketplace/refresh", Op::Customize(CustomizeOp::RefreshMarketplace), &[]),
+    route("GET", "/workspaces/:workspace/customize/discover", Op::Customize(CustomizeOp::Discover), &[]),
+    route("GET", "/workspaces/:workspace/customize/plugins", Op::Customize(CustomizeOp::ListPlugins), &[]),
+    route("POST", "/workspaces/:workspace/customize/plugins", Op::Customize(CustomizeOp::InstallPlugin), &[]),
+    route("GET", "/workspaces/:workspace/customize/plugins/:ref", Op::Customize(CustomizeOp::GetPlugin), &[]),
+    route("PATCH", "/workspaces/:workspace/customize/plugins/:ref", Op::Customize(CustomizeOp::SetPluginEnabled), &[]),
+    route("DELETE", "/workspaces/:workspace/customize/plugins/:ref", Op::Customize(CustomizeOp::UninstallPlugin), &[]),
+    route("POST", "/workspaces/:workspace/customize/plugins/:ref/update", Op::Customize(CustomizeOp::UpdatePlugin), &[]),
+    route("GET", "/workspaces/:workspace/customize/agents", Op::Customize(CustomizeOp::ListPluginAgents), &[]),
+    route("GET", "/workspaces/:workspace/customize/connectors", Op::Customize(CustomizeOp::ListConnectors), &[]),
+    route("POST", "/workspaces/:workspace/customize/connectors", Op::Customize(CustomizeOp::AddConnector), &[]),
+    route("GET", "/workspaces/:workspace/customize/connectors/:id", Op::Customize(CustomizeOp::GetConnector), &[]),
+    route("PATCH", "/workspaces/:workspace/customize/connectors/:id", Op::Customize(CustomizeOp::SetConnectorKey), &[]),
+    route("DELETE", "/workspaces/:workspace/customize/connectors/:id", Op::Customize(CustomizeOp::RemoveConnector), &[]),
+    route("POST", "/workspaces/:workspace/customize/connectors/:id/refresh", Op::Customize(CustomizeOp::RefreshConnector), &[]),
+    route("POST", "/workspaces/:workspace/customize/connectors/:id/grants", Op::Customize(CustomizeOp::GrantConnector), &[]),
+    route("DELETE", "/workspaces/:workspace/customize/connectors/:id/grants/:grant", Op::Customize(CustomizeOp::RevokeConnector), &[]),
+    route("GET", "/workspaces/:workspace/customize/bundle", Op::Customize(CustomizeOp::Bundle), &[]),
     route(
         "GET",
         "/repos/:owner/:name/actions/workflows",
@@ -995,7 +1028,11 @@ impl Route {
     /// Whether the route answers success with `204` and no body, as
     /// GitHub's address for the same does. MCP still answers `true`.
     pub fn no_content(&self) -> bool {
-        self.op == Op::DeleteComment
+        matches!(
+            self.op,
+            Op::DeleteComment
+                | Op::Customize(CustomizeOp::RemoveMarketplace | CustomizeOp::UninstallPlugin | CustomizeOp::RemoveConnector)
+        )
     }
 
     /// The names of the route's path parameters, in order.

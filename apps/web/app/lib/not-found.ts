@@ -10,16 +10,6 @@ export type MissingKind = "project" | "issue" | "pull" | "workspace" | "person" 
 
 const KINDS: readonly MissingKind[] = ["project", "issue", "pull", "workspace", "person", "page"];
 
-/** Words for each kind, as a sentence uses them. */
-const NOUN: Record<MissingKind, string> = {
-  project: "project",
-  issue: "issue",
-  pull: "pull request",
-  workspace: "workspace",
-  person: "person",
-  page: "page",
-};
-
 /** Names that are pages of g1t itself, never a workspace. */
 const RESERVED = new Set([
   "settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout",

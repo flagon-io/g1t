@@ -1,5 +1,6 @@
 // The launcher's work: ask the app for its server, check that it answers,
-// go there. `?change` opens the choice of server instead. Everything it
+// go there, as the desktop app (`?app=desktop`, which takes someone signed
+// out to the sign-in page rather than the site's landing page). `?change` opens the choice of server instead. Everything it
 // asks is a command in src/bridge.rs, answered only to this page.
 (function () {
   var sections = { connecting: byId("connecting"), offline: byId("offline"), choose: byId("choose") };
@@ -29,12 +30,22 @@
     }
   }
 
+  function appUrl(server) {
+    try {
+      var url = new URL(server);
+      url.searchParams.set("app", "desktop");
+      return url.href;
+    } catch (error) {
+      return server;
+    }
+  }
+
   function connect(server) {
     show("connecting");
     byId("connecting-text").textContent = "Connecting to " + hostOf(server) + "…";
     invoke("reachable", { url: server })
       .then(function (ok) {
-        if (ok) location.replace(server);
+        if (ok) location.replace(appUrl(server));
         else offline(server);
       })
       .catch(function () {

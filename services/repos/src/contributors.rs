@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use g1t_contracts::about::{Contributor, ContributorKind, MAX_CONTRIBUTOR_WEEKS, MAX_CONTRIBUTORS, WeekCommits, next_week, week_of};
 use g1t_contracts::accounts::EmailOwner;
+use g1t_contracts::coding_agents::coding_agent_for;
 
 /// The address g1t's own commits carry.
 pub const G1T_EMAIL: &str = "g1t@users.noreply.g1t.sh";
@@ -37,6 +38,7 @@ struct Tally {
     name: String,
     username: Option<String>,
     avatar: Option<String>,
+    agent: Option<String>,
     commits: u32,
     first_at: String,
     last_at: String,
@@ -52,17 +54,20 @@ pub fn tally(commits: &[Authored], owners: &HashMap<String, EmailOwner>) -> (Vec
     let mut all_weeks: BTreeMap<String, u32> = BTreeMap::new();
     for commit in commits {
         let email = commit.email.trim().to_ascii_lowercase();
-        let (key, kind, name, username, avatar) = if is_g1t(commit) {
-            ("g1t".to_owned(), ContributorKind::G1t, "g1t".to_owned(), None, None)
+        let (key, kind, name, username, avatar, agent) = if is_g1t(commit) {
+            ("g1t".to_owned(), ContributorKind::G1t, "g1t".to_owned(), None, None, None)
         } else if let Some(owner) = owners.get(&email) {
-            (format!("user:{}", owner.id), ContributorKind::User, owner.username.clone(), Some(owner.username.clone()), owner.avatar.clone())
+            (format!("user:{}", owner.id), ContributorKind::User, owner.username.clone(), Some(owner.username.clone()), owner.avatar.clone(), None)
+        } else if let Some(agent) = coding_agent_for(&email) {
+            // One contributor per agent, whichever of its addresses a commit carries.
+            (format!("agent:{agent}"), ContributorKind::Agent, commit.name.trim().to_owned(), None, None, Some(agent.to_owned()))
         } else {
             let key = if email.is_empty() { format!("name:{}", commit.name.trim().to_lowercase()) } else { format!("email:{email}") };
-            (key, ContributorKind::Author, commit.name.trim().to_owned(), None, None)
+            (key, ContributorKind::Author, commit.name.trim().to_owned(), None, None, None)
         };
         let tally = by_key.entry(key).or_default();
         if tally.kind.is_none() {
-            *tally = Tally { kind: Some(kind), name, username, avatar, first_at: commit.at.clone(), last_at: commit.at.clone(), ..Tally::default() };
+            *tally = Tally { kind: Some(kind), name, username, avatar, agent, first_at: commit.at.clone(), last_at: commit.at.clone(), ..Tally::default() };
         }
         tally.commits += 1;
         if commit.at < tally.first_at {
@@ -88,6 +93,7 @@ pub fn tally(commits: &[Authored], owners: &HashMap<String, EmailOwner>) -> (Vec
             name: tally.name,
             username: tally.username,
             avatar: tally.avatar,
+            agent: tally.agent,
             commits: tally.commits,
             first_at: tally.first_at,
             last_at: tally.last_at,
@@ -154,6 +160,21 @@ mod tests {
         let named: Vec<(&str, u32)> = weeks.iter().map(|week| (week.week.as_str(), week.commits)).collect();
         assert_eq!(named, vec![("2026-09-14", 2), ("2026-09-21", 0), ("2026-09-28", 2), ("2026-10-05", 2)]);
         assert_eq!(contributors[1].weeks.len(), 2);
+    }
+
+    #[test]
+    fn coding_agents_are_agents_by_their_address_whatever_the_name() {
+        let commits = vec![
+            authored("Claude", "noreply@anthropic.com", "2026-10-01T10:00:00Z"),
+            authored("claude[bot]", "209825114+claude[bot]@users.noreply.github.com", "2026-10-02T10:00:00Z"),
+            authored("Claude", "claude@example.com", "2026-10-03T10:00:00Z"),
+        ];
+        let (contributors, total, _) = tally(&commits, &HashMap::new());
+        assert_eq!(total, 2);
+        assert_eq!(contributors[0].kind, ContributorKind::Agent);
+        assert_eq!(contributors[0].agent.as_deref(), Some("claude"));
+        assert_eq!(contributors[0].commits, 2, "both of its addresses");
+        assert_eq!(contributors[1].kind, ContributorKind::Author, "a person who calls themselves Claude stays a person");
     }
 
     #[test]

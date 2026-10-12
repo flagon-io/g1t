@@ -94,6 +94,8 @@ test("the client calls exactly the artifacts service's folio methods", async () 
     client.restore(ws, viewer, f),
     client.delete(ws, viewer, f),
     client.trashed(ws, viewer),
+    client.emptyTrash(ws, viewer),
+    client.deleteSpace(ws, viewer, "spc_1"),
     client.favorite(ws, viewer, f, true),
     client.content(ws, viewer, f),
     client.edit(ws, viewer, f, { kind: "doc", target: { kind: "append" }, markdown: "x" }),

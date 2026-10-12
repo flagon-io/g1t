@@ -164,8 +164,8 @@ export default [
       // Templates: starting points for a new agent, each configured once started.
       route("templates", "routes/workspace/agents/templates.tsx"),
       route("templates/:template", "routes/workspace/agents/template.tsx"),
-      // The skill library: every skill, one skill, the editor and import.
-      route("skills", "routes/workspace/agents/skill-library.tsx"),
+      // The skill library is Customize's Skills tab now; each skill's page, the editor and import stay here.
+      route("skills", "routes/workspace/moved.ts", { id: "routes/workspace/moved-agents-skills" }),
       route("skills/new", "routes/workspace/agents/skill-edit.tsx", { id: "routes/workspace/agents/skill-new" }),
       route("skills/import", "routes/workspace/agents/skill-import.tsx"),
       route("skills/:name", "routes/workspace/agents/skill.tsx"),
@@ -228,19 +228,25 @@ export default [
     route("-/home/seen", "routes/workspace/home-seen.ts"),
     route("-/today", "routes/workspace/moved.ts", { id: "routes/workspace/moved-today" }),
     route("-/apps", "routes/workspace/apps.tsx"),
-    // The Marketplace: anyone browses it; owners add extensions and
-    // integrations, and everyone else asks (`requests` takes every form it
-    // posts). Agent templates were its Agents tab; they are under Agents now.
-    route("-/marketplace", "routes/workspace/marketplace/layout.tsx", [
-      index("routes/workspace/marketplace/discover.tsx"),
-      route("extensions", "routes/workspace/marketplace/extensions.tsx"),
-      route("extensions/:extension", "routes/workspace/marketplace/extension.tsx"),
-      route("integrations", "routes/workspace/marketplace/integrations.tsx"),
-      route("integrations/:integration", "routes/workspace/marketplace/integration.tsx"),
-      route("requests", "routes/workspace/marketplace/requests.tsx"),
+    // Customize: Skills, Connectors and Plugins, each with Yours and
+    // Discover; anyone browses, owners add, everyone else asks (`requests`
+    // takes the asking and the answers; every other form posts to its page).
+    // `new` and `callback` are no connector's id.
+    route("-/customize", "routes/workspace/customize/layout.tsx", [
+      index("routes/workspace/customize/index.ts"),
+      route("skills", "routes/workspace/customize/skills.tsx"),
+      route("connectors", "routes/workspace/customize/connectors.tsx"),
+      route("connectors/new", "routes/workspace/customize/connector-new.tsx"),
+      route("connectors/callback", "routes/workspace/customize/connector-callback.ts"),
+      route("connectors/:id", "routes/workspace/customize/connector.tsx"),
+      route("plugins", "routes/workspace/customize/plugins.tsx"),
+      route("plugins/:ref", "routes/workspace/customize/plugin.tsx"),
+      route("marketplaces", "routes/workspace/customize/marketplaces.tsx"),
+      route("requests", "routes/workspace/customize/requests.tsx"),
     ]),
-    route("-/marketplace/agents", "routes/workspace/moved.ts", { id: "routes/workspace/moved-marketplace-agents" }),
-    route("-/marketplace/agents/:template", "routes/workspace/moved.ts", { id: "routes/workspace/moved-marketplace-agent" }),
+    // The Marketplace became Customize; its addresses lead there (lib/workspace-nav.ts MOVED).
+    route("-/marketplace", "routes/workspace/moved.ts", { id: "routes/workspace/moved-marketplace" }),
+    route("-/marketplace/*", "routes/workspace/moved.ts", { id: "routes/workspace/moved-marketplace-under" }),
     // What Code's pages say to a member without Code.
     route("-/code-access", "routes/workspace/code-access.tsx"),
     route("-/memory", "routes/workspace/memory.tsx"),
@@ -342,6 +348,14 @@ export default [
     route("security/dependency-updates", "routes/repo/security-updates.tsx"),
     route("security/pulls/:number", "routes/repo/security-pull.tsx"),
     route("security/settings", "routes/repo/security-settings.tsx"),
+    // Reporting: the policy's pull request, advisories, and private vulnerability reports.
+    route("security/policy/setup", "routes/repo/security-policy-setup.ts"),
+    route("security/advisories", "routes/repo/security-advisories.tsx"),
+    route("security/advisories/new", "routes/repo/security-advisory-edit.tsx", { id: "routes/repo/security-advisory-new" }),
+    route("security/advisories/:id", "routes/repo/security-advisory.tsx"),
+    route("security/advisories/:id/edit", "routes/repo/security-advisory-edit.tsx"),
+    route("security/reports", "routes/repo/security-reports.tsx"),
+    route("security/report", "routes/repo/security-report.tsx"),
     route("plans", "routes/repo/plans.tsx"),
     route("plans/:id", "routes/repo/plan.tsx"),
     route("settings", "routes/repo/settings.tsx"),

@@ -50,6 +50,14 @@ export type SpaceRow = {
   created_by: string;
   created_at: string;
   archived_at: string | null;
+  /**
+   * Set when the space was deleted (migration 0007). The row stays, so the
+   * trash's rows that point at it keep their space's name and rules (whoever
+   * could edit them still restores them) and General, once deleted, is not
+   * made again; listings leave deleted spaces out.
+   */
+  deleted_at: string | null;
+  deleted_by: string | null;
 };
 
 /** A space, with who is in it and the viewer's role (null: they can't read it). */
@@ -271,7 +279,11 @@ export class Who {
     return spaces.map((s) => ({ ...s, role: roleOf(rulesOf(s), person) }));
   }
 
-  /** Makes the workspace's General space, once. */
+  /**
+   * Makes the workspace's General space, once. A deleted General still
+   * has its row (`deleted_at` set), so it is never made again: a
+   * workspace may have no spaces.
+   */
   async ensureDefault(workspace: Workspace, viewer: User): Promise<void> {
     if (defaultsMade.has(workspace.id)) return;
     const db = this.env.DB;
