@@ -1166,6 +1166,9 @@ page asks for more every second while a step is running.
   logs** shows or hides the times; your browser remembers which.
 - A download (the job's `log.txt` and the run's zip) has the time at the
   start of every line, as GitHub's downloaded logs do.
+- The runner numbers each batch of the log it sends. When it sends a
+  batch again because g1t's answer didn't reach it, g1t keeps the batch
+  once, so a line never shows twice.
 - If the page cannot reach g1t for a moment, it says **Reconnecting to the
   log** and tries again, waiting longer each time up to half a minute.
   A tab you are not looking at stops asking, and catches up when you come

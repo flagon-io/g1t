@@ -170,6 +170,10 @@ pub(crate) struct Log {
     sent: Instant,
     /// The problem matchers steps added, which last the whole job.
     pub(crate) matchers: super::matchers::Matchers,
+    /// The number of the last batch sent, 1 for the job's first: each
+    /// batch carries its own, and keeps it when it is sent again, so g1t
+    /// keeps a batch it already has once.
+    chunk: u64,
     /// Everything sent so far, so a test reads the whole log however its
     /// batches fell (`buffered`).
     #[cfg(test)]
@@ -188,6 +192,7 @@ impl Log {
             last: Instant::now(),
             sent: Instant::now(),
             matchers: super::matchers::Matchers::default(),
+            chunk: 0,
             #[cfg(test)]
             flushed: String::new(),
         }
@@ -263,7 +268,14 @@ impl Log {
         let text = std::mem::take(&mut self.buffer);
         #[cfg(test)]
         self.flushed.push_str(&text);
-        self.api.report(json!({ "kind": "log", "step": self.step, "text": text }));
+        let report = self.log_report(text);
+        self.api.report(report);
+    }
+
+    /// The next batch of the log, numbered.
+    fn log_report(&mut self, text: String) -> Value {
+        self.chunk += 1;
+        json!({ "kind": "log", "step": self.step, "chunk": self.chunk, "text": text })
     }
 
     pub(crate) fn steps(&self, names: &[String]) {
@@ -414,6 +426,61 @@ mod tests {
 
     fn log(secrets: &[&str]) -> Log {
         Log::new(Api::offline(), mask::all_variants(secrets.iter().copied()))
+    }
+
+    /// A server that answers the first `fail` requests with a 500 and the
+    /// rest with `{}`, and hands back each request's body.
+    fn flaky_server(fail: usize, requests: usize) -> (String, std::thread::JoinHandle<Vec<Value>>) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let serving = std::thread::spawn(move || {
+            let mut bodies = Vec::new();
+            for answered in 0..requests {
+                let (stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream);
+                let mut length = 0;
+                loop {
+                    let mut header = String::new();
+                    reader.read_line(&mut header).unwrap();
+                    if header.trim().is_empty() {
+                        break;
+                    }
+                    if let Some((name, value)) = header.split_once(':')
+                        && name.eq_ignore_ascii_case("content-length")
+                    {
+                        length = value.trim().parse().unwrap();
+                    }
+                }
+                let mut body = vec![0; length];
+                reader.read_exact(&mut body).unwrap();
+                bodies.push(serde_json::from_slice::<Value>(&body).unwrap());
+                let status = if answered < fail { "500 Internal Server Error" } else { "200 OK" };
+                write!(reader.get_mut(), "HTTP/1.1 {status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}").unwrap();
+            }
+            bodies
+        });
+        (base, serving)
+    }
+
+    #[test]
+    fn each_batch_of_the_log_keeps_its_number_when_sent_again() {
+        let (base, serving) = flaky_server(1, 3);
+        let mut log = Log::new(Api { base, job: "job_1".into(), token: "t".into() }, Vec::new());
+        log.line("one");
+        log.flush();
+        log.line("two");
+        log.flush();
+        log.flush(); // Nothing waits: no batch, and no number used.
+        let bodies = serving.join().unwrap();
+        let sent: Vec<(u64, String)> = bodies
+            .iter()
+            .map(|body| (body["report"]["chunk"].as_u64().unwrap(), unstamped(body["report"]["text"].as_str().unwrap())))
+            .collect();
+        // The first batch failed and was sent again with its number; the
+        // next is the job's second.
+        assert_eq!(sent, [(1, "one\n".into()), (1, "one\n".into()), (2, "two\n".into())]);
+        assert_eq!(bodies[0], bodies[1], "a batch sent again is the same batch");
     }
 
     #[test]
