@@ -233,7 +233,7 @@ impl Store {
         values.push(LISTED.into());
         let rows = self
             .db
-            .prepare(format!("SELECT {ADVISORY_COLUMNS} FROM advisories WHERE repo_id = ? AND state IN ({marks}) ORDER BY created_at DESC LIMIT ?"))
+            .prepare(format!("SELECT {ADVISORY_COLUMNS} FROM security_advisories WHERE repo_id = ? AND state IN ({marks}) ORDER BY created_at DESC LIMIT ?"))
             .bind(&values)?
             .all()
             .await?
@@ -246,7 +246,7 @@ impl Store {
         let column = if is_g1tsa_id(id) { "g1tsa_id" } else { "id" };
         Ok(self
             .db
-            .prepare(format!("SELECT {ADVISORY_COLUMNS} FROM advisories WHERE repo_id = ? AND {column} = ?"))
+            .prepare(format!("SELECT {ADVISORY_COLUMNS} FROM security_advisories WHERE repo_id = ? AND {column} = ?"))
             .bind(&[repo.repo_id.as_str().into(), id.into()])?
             .first::<AdvisoryRow>(None)
             .await?
@@ -263,7 +263,7 @@ impl Store {
         let at = rfc3339(now_ms);
         self.db
             .prepare(
-                "INSERT INTO advisories (id, g1tsa_id, repo_id, title, description, severity, cvss_vector, cvss_score, cve_id, ecosystem,
+                "INSERT INTO security_advisories (id, g1tsa_id, repo_id, title, description, severity, cvss_vector, cvss_score, cve_id, ecosystem,
                    package, affected_versions, patched_versions, state, credits, report_id, created_by, created_at, updated_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)",
             )
@@ -295,7 +295,7 @@ impl Store {
     pub async fn update_advisory(&self, repo: &RepoRow, id: &str, input: &AdvisoryInput) -> Result<()> {
         self.db
             .prepare(
-                "UPDATE advisories SET title = ?, description = ?, severity = ?, cvss_vector = ?, cvss_score = ?, cve_id = ?, ecosystem = ?,
+                "UPDATE security_advisories SET title = ?, description = ?, severity = ?, cvss_vector = ?, cvss_score = ?, cve_id = ?, ecosystem = ?,
                    package = ?, affected_versions = ?, patched_versions = ?, credits = ?, updated_at = ?
                  WHERE repo_id = ? AND id = ?",
             )
@@ -328,7 +328,7 @@ impl Store {
             _ => "published_at = published_at",
         };
         self.db
-            .prepare(format!("UPDATE advisories SET state = ?2, updated_at = ?1, {stamp} WHERE repo_id = ?3 AND id = ?4"))
+            .prepare(format!("UPDATE security_advisories SET state = ?2, updated_at = ?1, {stamp} WHERE repo_id = ?3 AND id = ?4"))
             .bind(&[at.as_str().into(), state.into(), repo.repo_id.as_str().into(), id.into()])?
             .run()
             .await?;
@@ -443,7 +443,7 @@ impl Store {
     pub async fn purge_advisories(&self, repo_id: &str) -> Result<()> {
         self.db
             .batch(vec![
-                self.db.prepare("DELETE FROM advisories WHERE repo_id = ?").bind(&[repo_id.into()])?,
+                self.db.prepare("DELETE FROM security_advisories WHERE repo_id = ?").bind(&[repo_id.into()])?,
                 self.db.prepare("DELETE FROM vulnerability_reports WHERE repo_id = ?").bind(&[repo_id.into()])?,
             ])
             .await?;

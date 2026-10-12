@@ -7,7 +7,7 @@
 --   state: draft | published | withdrawn
 --   severity: critical | high | medium | low
 --   credits: JSON array of strings
-CREATE TABLE advisories (
+CREATE TABLE security_advisories (
   id TEXT PRIMARY KEY,
   g1tsa_id TEXT NOT NULL UNIQUE,
   repo_id TEXT NOT NULL,
@@ -30,7 +30,7 @@ CREATE TABLE advisories (
   published_at TEXT,
   withdrawn_at TEXT
 );
-CREATE INDEX advisories_repo ON advisories (repo_id, state, created_at);
+CREATE INDEX security_advisories_repo ON security_advisories (repo_id, state, created_at);
 
 -- A report: what someone told the maintainers privately, when the
 -- repository takes private vulnerability reports. The reporter is a
