@@ -2562,7 +2562,12 @@ class Deployments {
     for (const row of building.results) held.add(row.script);
     const cutoff = Date.now() - ORPHAN_AFTER_MS;
     for (const script of await cloudflare.listScripts()) {
-      if (!held.has(script.id) && Date.parse(script.modified_on) < cutoff) await cloudflare.deleteScript(script.id);
+      if (!held.has(script.id) && Date.parse(script.modified_on) < cutoff) {
+        // A container app's old name (a redirect that expired) has its
+        // Container application still: it goes too.
+        await cloudflare.deleteContainer(script.id).catch((error) => console.error("could not remove container", script.id, error));
+        await cloudflare.deleteScript(script.id);
+      }
     }
   }
 
