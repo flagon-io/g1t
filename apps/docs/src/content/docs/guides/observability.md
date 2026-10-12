@@ -127,6 +127,14 @@ const config: ResolveConfigFn = (env: Env) => ({
 export default instrument({ async fetch(request, env) { /* … */ } }, config);
 ```
 
+### Cloudflare's own spans
+
+Every app on g1t.page is also traced by Cloudflare itself, with nothing in
+its code: a span for each `fetch` it makes, each KV, D1, R2 and Durable
+Object call, and its cache, under the request. They arrive in the
+request's trace, next to any spans of the app's own SDK. Its logs are not
+sent this way: they already arrive with each request.
+
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` yourself, under the project's
 [secrets and variables](/guides/secrets-and-variables/), to send the
 app's OpenTelemetry somewhere else instead: g1t then sets none of these.
@@ -263,7 +271,9 @@ with its own SQLite database, so one project's volume never slows another's
 pages. Log bodies are indexed for full-text search.
 
 - **g1t.page.** The dispatcher in front of every app names the telemetry
-  service as its Tail Worker, and so does each app. The dispatcher's half
+  service as its Tail Worker, and so does each app. Each app's own
+  Cloudflare tracing is exported to the service too, over OTLP, and filed
+  under the app's project and deployment. The dispatcher's half
   of a request (status, time, place) and the app's half (logs, exceptions,
   CPU time) arrive apart and are joined by the request's id.
 - **OTLP.** The endpoint reads the project from the token, checks it

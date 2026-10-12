@@ -30,7 +30,10 @@ git remote set-url origin https://g1t.sh/<new-workspace>/<repo>.git
 Pushing, and reading private repositories, needs credentials. Use your
 username, and as the password either your account password or an
 [access token](https://g1t.sh/settings/tokens). Tokens are recommended: they can be revoked
-individually and they also work for the API.
+individually and they also work for the API. With
+[two-factor authentication](/guides/authentication/#two-factor-authentication)
+on, your password is not accepted for git, since it would get past your
+second factor: use a token, with Code at read and write to push.
 
 To avoid typing it each time, let git store it:
 

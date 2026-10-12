@@ -20,6 +20,26 @@ export const TELEMETRY_WORKER = "g1t-telemetry";
 
 export const TAIL_CONSUMERS = [{ service: TELEMETRY_WORKER }];
 
+/**
+ * Cloudflare's own tracing of an app (a span for each fetch, KV, D1 and
+ * other call it makes), sent to the Workers Observability destination
+ * named `destination`, which points at the telemetry service's
+ * `/cloudflare/v1/traces`. Traces only: the app's logs already arrive
+ * through its Tail Worker, and nothing is kept in Cloudflare's own
+ * storage. Nothing at all without a destination.
+ */
+export function observabilityMetadata(destination: string | null | undefined): Record<string, unknown> {
+  if (!destination) return {};
+  return {
+    observability: {
+      enabled: true,
+      head_sampling_rate: 1,
+      logs: { enabled: false, invocation_logs: false },
+      traces: { enabled: true, destinations: [destination], head_sampling_rate: 1, persist: false },
+    },
+  };
+}
+
 export function telemetryTags(projectId: string, deploymentId: string): string[] {
   return [`${TELEMETRY_TAG.project}${projectId}`, `${TELEMETRY_TAG.deployment}${deploymentId}`];
 }

@@ -57,7 +57,12 @@
 		// while off, a container build is refused at its registry step.
 		"CONTAINERS": "off",
 		// Where container apps' Workers report how long they ran.
-		"G1T_API": "https://api.g1t.sh"
+		"G1T_API": "https://api.g1t.sh",
+		// Cloudflare's own tracing of each app (a span for every fetch, KV,
+		// D1 and other call), sent to this Workers Observability destination
+		// on the account, which points at otel.g1t.sh/cloudflare/v1/traces
+		// with the telemetry service's CLOUDFLARE_EXPORT_KEY. Empty: none.
+		"TRACES_DESTINATION": "g1t-traces"
 	},
 	// Custom domains: hostname to app, written here and read by the
 	// dispatcher (services/pages). Made by scripts/setup-custom-domains.sh.

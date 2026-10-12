@@ -9,7 +9,7 @@
  * else.
  */
 
-import { TAIL_CONSUMERS } from "./telemetry";
+import { TAIL_CONSUMERS, observabilityMetadata } from "./telemetry";
 import { APP_CLASS, APP_WORKER, REGISTRY_HOST, applicationName, applicationRequest, pushLoginRequest, rolloutRequest } from "./containers";
 import { redirectScript } from "./redirect";
 
@@ -59,6 +59,8 @@ export class Cloudflare {
     private readonly token: string,
     private readonly account: string,
     readonly namespace: string,
+    /** The Workers Observability destination apps send their traces to (src/telemetry.ts); none, none sent. */
+    private readonly tracesDestination: string | null = null,
   ) {}
 
   private async call<T>(method: string, path: string, body?: BodyInit, contentType?: string): Promise<T> {
@@ -142,6 +144,7 @@ export class Cloudflare {
         tags,
         // Each request it answers, with its logs, goes to observability (src/telemetry.ts).
         tail_consumers: TAIL_CONSUMERS,
+        ...observabilityMetadata(this.tracesDestination),
         ...(completionJwt ? { assets: { jwt: completionJwt, config: assetsConfig } } : {}),
       }),
     );
@@ -209,7 +212,7 @@ export class Cloudflare {
   /** Puts a container app's Worker (`APP_WORKER`, g1t's own) in the namespace, with `metadata`. */
   async putContainerWorker(script: string, metadata: Record<string, unknown>): Promise<void> {
     const form = new FormData();
-    form.append("metadata", JSON.stringify(metadata));
+    form.append("metadata", JSON.stringify({ ...metadata, ...observabilityMetadata(this.tracesDestination) }));
     form.append("index.js", new File([APP_WORKER], "index.js", { type: "application/javascript+module" }));
     await this.call("PUT", this.scriptPath(script), form);
   }

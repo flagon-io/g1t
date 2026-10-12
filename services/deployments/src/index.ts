@@ -134,6 +134,11 @@ type Env = {
   DOMAINS?: KVNamespace;
   /** Observability: each project's deployments token (services/telemetry). */
   TELEMETRY?: ServiceBinding;
+  /**
+   * The Workers Observability destination apps send Cloudflare's own
+   * traces to (src/telemetry.ts); empty, none are sent.
+   */
+  TRACES_DESTINATION?: string;
   /** The g1t.page zone, where custom hostnames are added (Cloudflare for SaaS). */
   CUSTOM_HOSTNAMES_ZONE_ID?: string;
   /**
@@ -373,7 +378,7 @@ class Deployments {
 
   private get cloudflare(): Cloudflare | null {
     const token = this.env.CLOUDFLARE_API_TOKEN;
-    return token ? new Cloudflare(token, this.env.CLOUDFLARE_ACCOUNT_ID, this.env.DISPATCH_NAMESPACE) : null;
+    return token ? new Cloudflare(token, this.env.CLOUDFLARE_ACCOUNT_ID, this.env.DISPATCH_NAMESPACE, this.env.TRACES_DESTINATION || null) : null;
   }
 
   private get db() {
