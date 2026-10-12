@@ -1,7 +1,7 @@
 /**
  * The Files page's About, streamed in after the files: what the default
  * branch says, stars and releases from repos; how many watch it from the
- * inbox; packages published from it. Each is its own promise, so a slow
+ * inbox; packages published from it; how many tags it has. Each is its own promise, so a slow
  * one holds up only its own section, and a failure shows the section
  * without it rather than failing the page.
  */
@@ -28,5 +28,6 @@ export function aboutFor(path: RepoPath, viewer: Viewer, repoId: string): AboutD
     packages: within(
       packages.list(path.namespace, viewer, { repoId }).then((found): PackageSummary[] | null => (found.ok ? found.value : null)),
     ),
+    tags: within(repos.tags(path, viewer).then((found) => (found.ok ? found.value.length : null))),
   };
 }

@@ -110,7 +110,6 @@ pub static LANGUAGES: &[Language] = &[
     lang("Svelte", "#ff3e00", Markup),
     lang("Swift", "#F05138", Programming),
     lang("TOML", "#9c4221", Data),
-    lang("TSX", "#3178c6", Programming),
     lang("Twig", "#c1d026", Markup),
     lang("TypeScript", "#3178c6", Programming),
     lang("Vim Script", "#199f4b", Programming),
@@ -214,9 +213,9 @@ fn by_extension(extension: &str) -> Option<&'static str> {
         "svelte" => "Svelte",
         "swift" => "Swift",
         "toml" => "TOML",
-        "tsx" => "TSX",
         "twig" => "Twig",
-        "ts" | "mts" | "cts" => "TypeScript",
+        // TSX is TypeScript, as JSX is JavaScript: one language on the bar.
+        "ts" | "tsx" | "mts" | "cts" => "TypeScript",
         "vim" => "Vim Script",
         "vb" => "Visual Basic .NET",
         "vue" => "Vue",
@@ -431,7 +430,7 @@ mod tests {
     #[test]
     fn files_are_known_by_extension_and_name() {
         assert_eq!(name("src/main.rs"), Some("Rust"));
-        assert_eq!(name("app/routes/home.tsx"), Some("TSX"));
+        assert_eq!(name("app/routes/home.tsx"), Some("TypeScript"));
         assert_eq!(name("lib/x.mts"), Some("TypeScript"));
         assert_eq!(name("Dockerfile"), Some("Dockerfile"));
         assert_eq!(name("deploy/Dockerfile.prod"), Some("Dockerfile"));
