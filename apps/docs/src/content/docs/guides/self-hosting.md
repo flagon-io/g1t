@@ -171,6 +171,7 @@ Set these in the environment, or in a `.env` file next to
 | `BACKUP_S3_BUCKET` | `g1t-backups` | The bucket on the same store that nightly repository backups (a `git bundle` of each repository whose branches or tags changed) are kept in. The bundles are cut by g1t's runner, which this installation does not run yet, so the bucket stays empty for now: copy the volumes, as below. |
 | `STATUS_PORT` | `8788` | The port the status page is published on |
 | `STATUS_PROBE_REPO` | (none) | A public repository, `workspace/repo`, whose branches the status page lists every minute as a clone would. Empty: git is not checked. |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET` | (none) | A [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) widget's site key and secret key, to check that a person fills in the sign-up form. With either unset, sign-up has no such check. |
 | `PHONE_PUSH` | `on` | `off`: send [the phone app](#the-phone-app) no notifications, so their words never pass through Expo's push service. Browser and desktop notifications are not affected. |
 
 ## The phone app

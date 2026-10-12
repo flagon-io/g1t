@@ -249,6 +249,11 @@ function selfHosted(service) {
   // /.well-known/g1t.json tells the app so.
   if (service.web || hosted.name === "g1t-notify") config.vars.PHONE_PUSH = process.env.PHONE_PUSH === "off" ? "off" : "on";
   if (hosted.name === "g1t-identity") config.vars.SITE_URL = PUBLIC_URL;
+  // Cloudflare Turnstile on sign-up, only with both of your widget's keys.
+  if (service.web) {
+    config.vars.TURNSTILE_SITE_KEY = process.env.TURNSTILE_SITE_KEY ?? "";
+    if (process.env.TURNSTILE_SECRET) config.vars.TURNSTILE_SECRET = process.env.TURNSTILE_SECRET;
+  }
   // Nightly backups' bundles go to a bucket of their own on the same
   // S3-compatible store, instead of the BACKUPS R2 bucket, and so do the
   // packs kept for fresh clones (src/pack_cache.rs), instead of GIT_PACKS.

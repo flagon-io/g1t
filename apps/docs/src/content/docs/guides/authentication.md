@@ -1140,7 +1140,10 @@ hour, [g1t.sh/register](https://g1t.sh/register) answers "Too many accounts
 were made from your network in the last hour" until the hour is up. A form
 with a mistake in it (a username that cannot be used, an address that is
 not one, a short password) is not counted. Signing up with GitHub is not
-counted this way: it needs a GitHub account with a verified address.
+counted this way: it needs a GitHub account with a verified address. The
+sign-up form also has a Cloudflare Turnstile check above its button, which
+usually passes without you doing anything; wait for it to finish before
+you select **Create account**.
 
 g1t also counts wrong passwords, on the sign-in page, for git over HTTPS and
 when confirming it is you, against the account and against where they come

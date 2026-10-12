@@ -42,6 +42,9 @@ services:
       # Your own GitHub App, for "Continue with GitHub" and importing from
       # GitHub. Leave these unset to have neither. See the self-hosting guide.
       GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      # Cloudflare Turnstile on sign-up: both keys, or neither.
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
       GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
       GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:-}
       GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:-}

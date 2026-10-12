@@ -12,6 +12,8 @@ import { ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { identity } from "../lib/services.server";
 import { cleanCode, cleanProof, invitePath, looksAutomated } from "../lib/invites";
 import { clientKey } from "../lib/registration.server";
+import { TURNSTILE_FAILED, TURNSTILE_SCRIPT } from "../lib/turnstile";
+import { turnstile, turnstileOk } from "../lib/turnstile.server";
 import {
   assertSameOrigin,
   getViewer,
@@ -40,6 +42,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     github: await githubSignInEnabled(),
     githubUrl: next !== "/" ? `/auth/github?${new URLSearchParams({ next })}` : "/auth/github",
     started: Date.now(),
+    // Turnstile's public site key when it is on (lib/turnstile.ts).
+    turnstile: turnstile()?.siteKey ?? null,
   };
 }
 
@@ -47,6 +51,7 @@ export async function action({ request }: Route.ActionArgs) {
   assertSameOrigin(request);
   const form = await request.formData();
   if (looksAutomated(form)) return data({ error: "Something went wrong. Try again." }, { status: 422 });
+  if (!(await turnstileOk(form, clientKey(request)))) return data({ error: TURNSTILE_FAILED }, { status: 422 });
   const result = await identity.register(
     String(form.get("username") ?? ""),
     String(form.get("email") ?? ""),
@@ -108,6 +113,12 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
             minLength={10}
           />
         </Field>
+        {loaderData.turnstile && (
+          <>
+            <script src={TURNSTILE_SCRIPT} async defer />
+            <div className="cf-turnstile" data-sitekey={loaderData.turnstile} data-theme="auto" data-size="flexible" />
+          </>
+        )}
         <ErrorText>{error}</ErrorText>
         <div className="pt-2 *:w-full">
           <SubmitButton pending="Creating account…">Create account</SubmitButton>
