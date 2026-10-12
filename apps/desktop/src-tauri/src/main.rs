@@ -26,6 +26,10 @@ mod updates;
 use tauri::{RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_window_state::{StateFlags, WindowExt};
 
+/// What the window keeps between launches: its size, place, and whether it
+/// was maximized or full screen; not its frame.
+const KEPT: StateFlags = StateFlags::all().difference(StateFlags::DECORATIONS);
+
 /// The one window's label.
 pub const WINDOW: &str = "main";
 
@@ -40,8 +44,17 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         // The window's size and place come back in setup, without the plugin
-        // also showing it: at sign-in g1t may start in the tray.
-        .plugin(tauri_plugin_window_state::Builder::new().skip_initial_state(WINDOW).with_denylist(&[settings::SETTINGS]).build())
+        // also showing it: at sign-in g1t may start in the tray. Whether it
+        // has the system's frame is the title bar setting's (frame.rs), never
+        // what an earlier run left: kept, it would put the frame back round
+        // g1t's own title bar.
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(KEPT)
+                .skip_initial_state(WINDOW)
+                .with_denylist(&[settings::SETTINGS])
+                .build(),
+        )
         // Opening at sign-in, which settings turn on; the argument tells that start from someone's.
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![settings::AT_LOGIN])))
         .manage(config::State::default())
@@ -93,7 +106,7 @@ fn main() {
             let builder = builder.menu(menu::build(&handle)?);
             let window = frame::style(builder, custom).build()?;
             // Opened at sign-in, g1t waits in the tray; otherwise the window comes up where it was.
-            let _ = window.restore_state(StateFlags::all() - StateFlags::VISIBLE);
+            let _ = window.restore_state(KEPT - StateFlags::VISIBLE);
             #[cfg(not(target_os = "macos"))]
             frame::menu_bar(&window, custom);
             if !hidden {
