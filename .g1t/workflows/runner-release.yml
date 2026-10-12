@@ -126,6 +126,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: binaries-*
+          merge-multiple: true
           path: release
       - name: QEMU for arm64, if this machine allows it
         id: qemu
@@ -170,6 +171,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: binaries-*
+          merge-multiple: true
           path: target/runner-release
       - name: QEMU for arm64, if this machine allows it
         id: qemu
@@ -217,6 +219,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: binaries-*
+          merge-multiple: true
           path: target/runner-release
       - uses: actions/download-artifact@v4
         if: ${{ needs.sandbox.result == 'success' }}
