@@ -122,7 +122,7 @@ test("restored repositories are served read-only, and pushes taken later are rec
     mkdirSync(origin);
     git(origin, "init", "--quiet", "--initial-branch=main");
     commit(origin, "a.txt", "one");
-    git(origin, "tag", "-a", "v1", "-m", "v1");
+    git(origin, "-c", "user.name=t", "-c", "user.email=t@example.com", "tag", "-a", "v1", "-m", "v1");
     const bucket = backUp(root, origin, "repo_1", "g1t-us-1/acme--rocket");
     const index = join(root, "index.json");
     writeFileSync(index, JSON.stringify([{ id: "repo_1", store: "g1t-us-1/acme--rocket", path: "acme/rocket" }, { id: "repo_2", store: "acme--gone", path: "acme/gone" }]));

@@ -24,7 +24,12 @@
   "overrides": {
     "basic-ftp": "^6.2.1",
     "fflate": "^0.7.5",
+    "katex": "^0.19.0",
     "postcss-selector-parser": "^7.1.6",
-    "sharp": "^0.35.5"
+    "query-string": "^9.5.1",
+    "sharp": "^0.35.5",
+    "xcode": {
+      "uuid": "^11.1.1"
+    }
   }
 }
