@@ -3,7 +3,8 @@
 //! the moment it is deployed and nothing here needs a new build for it;
 //! only what is native lives in this program: notifications from the
 //! system, a badge on the icon, a tray, a menu, `g1t://` links, the server
-//! to use, the app's own settings, and updates that install themselves
+//! to use, the app's own settings, updates that install themselves, and a
+//! self-hosted runner for the signed-in person (runner/mod.rs)
 //! (docs.g1t.sh/guides/desktop/).
 //!
 //! The site finds the app at `window.g1tDesktop` (bridge.js), the one
@@ -19,6 +20,7 @@ mod frame;
 mod links;
 mod menu;
 mod navigation;
+mod runner;
 mod settings;
 mod tray;
 mod updates;
@@ -60,6 +62,7 @@ fn main() {
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![settings::AT_LOGIN])))
         .manage(config::State::default())
         .manage(frame::State::default())
+        .manage(runner::Shared::default())
         .invoke_handler(tauri::generate_handler![
             bridge::desktop_info,
             bridge::notify,
@@ -80,6 +83,10 @@ fn main() {
             bridge::title_bar_page,
             bridge::title_bar_current,
             bridge::title_bar_act,
+            bridge::runner_status,
+            bridge::runner_offer,
+            bridge::runner_register,
+            bridge::runner_control,
         ])
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .setup(|app| {
@@ -139,7 +146,9 @@ fn main() {
             });
             tray::install(&handle)?;
             links::install(&handle);
-            updates::schedule(handle);
+            updates::schedule(handle.clone());
+            // The runner starts on a thread of its own, a few seconds after the window.
+            runner::install(&handle);
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -150,6 +159,8 @@ fn main() {
             RunEvent::Reopen { .. } => tray::show(app),
             // No window open is not a reason to quit: the tray is still there.
             RunEvent::ExitRequested { api, code: None, .. } => api.prevent_exit(),
+            // However g1t ends, the runner it started ends with it.
+            RunEvent::Exit => runner::shutdown(app),
             _ => {
                 let _ = app;
             }

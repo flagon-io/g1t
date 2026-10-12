@@ -139,7 +139,8 @@ fn eval(app: &AppHandle, script: &str) {
 pub fn handle(app: &AppHandle, id: &str) {
     match id {
         "open" => tray::show(app),
-        "settings" => settings::open(app),
+        "settings" | "runner-status" => settings::open(app),
+        "runner-toggle" => crate::runner::toggle(app),
         "server" => tray::launcher(app, "change"),
         // The settings window asks, and shows the answer where it cannot be missed.
         "check" => settings::open_and_check(app),
