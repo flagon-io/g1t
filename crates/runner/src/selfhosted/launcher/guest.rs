@@ -79,6 +79,10 @@ pub struct Settings {
     pub labels: Vec<String>,
     #[serde(default)]
     pub group: Option<String>,
+    /// The computer's fingerprint (`machine_fingerprint`), which the
+    /// runner in the VM can't work out for itself.
+    #[serde(default)]
+    pub machine: Option<String>,
     /// The runner's container's share of the VM, and so its jobs'.
     #[serde(default)]
     pub cpus: u32,
@@ -237,6 +241,9 @@ pub fn register_env(settings: &Settings) -> Result<String> {
     if let Some(group) = &settings.group {
         lines.push(format!("G1T_RUNNER_GROUP={group}"));
     }
+    if let Some(machine) = &settings.machine {
+        lines.push(format!("G1T_RUNNER_MACHINE={machine}"));
+    }
     if lines.iter().any(|l| l.contains('\n') || l.contains('\r')) {
         bail!("a registration setting has a line break in it");
     }
@@ -387,6 +394,9 @@ fn configure(bytes: &[u8]) -> Result<()> {
     }
     if given.group.is_some() {
         settings.group = given.group;
+    }
+    if given.machine.is_some() {
+        settings.machine = given.machine;
     }
     if given.cpus > 0 {
         settings.cpus = given.cpus;
@@ -916,6 +926,9 @@ eth0\t00E01EAC\t00000000\t0001\t0\t0\t0\t00F0FFFF\t0\t0\t0\n";
         };
         let env = register_env(&settings).unwrap();
         assert_eq!(env, "G1T_RUNNER_URL=https://g1t.sh\nG1T_RUNNER_TOKEN=g1trt_x\nG1T_RUNNER_NAME=box-linux\nG1T_RUNNER_LABELS=gpu\n");
+        // The computer's fingerprint, which the runner in the VM can't work out.
+        settings.machine = Some("ab".repeat(32));
+        assert!(register_env(&settings).unwrap().ends_with(&format!("G1T_RUNNER_MACHINE={}\n", "ab".repeat(32))));
         settings.name = Some("a\nG1T_RUNNER_URL=https://evil".into());
         assert!(register_env(&settings).is_err());
         assert!(register_env(&Settings::default()).is_err());

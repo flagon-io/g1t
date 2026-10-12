@@ -551,8 +551,29 @@ isolation with `--no-docker`. See [isolation](#isolation).
 | `--job-docker-image` | The image a job's own Docker Engine runs. `docker:28-dind` if left out. |
 | `--work-dir` | Where jobs run with `--no-docker` keep their files. `~/.g1t-runner/work` if left out. |
 | `--dir` | Where the runner keeps its configuration and credential. `~/.g1t-runner`, or `G1T_RUNNER_DIR`, if left out. Every command takes it. |
-| `--replace` | Take the place of a runner with the same name. |
+| `--replace` | Take the place of a runner with the same name, registered from any computer. A runner registering again from the computer it registered from takes its name back without it ([registering again](#registering-again)). |
+| `--machine` | Which computer this is, as 32 to 128 hex digits, for a runner that can't tell ([registering again](#registering-again)). Worked out from the operating system if left out. |
 | `--no-auto-update` | Never update itself. |
+
+### Registering again
+
+A runner says which computer it is when it registers: a fingerprint made
+from the operating system's machine id (Windows' `MachineGuid`, macOS's
+platform UUID, Linux's `/etc/machine-id`), hashed so the id itself never
+leaves the computer, and kept by g1t hashed again with your workspace. When
+a computer registers a runner under a name one of its own runners already
+has, because its sandbox was made again or its `--dir` was lost, the new
+registration takes the old one's place, with no `--replace`. A runner of
+the same name from another computer is left alone.
+
+A runner in a container can't tell which computer it is on, since its
+machine id is its image's, so it sends no fingerprint unless given one
+with `--machine` or `G1T_RUNNER_MACHINE`. `g1t-runner sandbox` and the
+desktop app pass the computer's to the runner in the sandbox.
+
+A runner registered before runners sent a fingerprint is taken over when
+the person who made the new registration token made its token too, and it
+has been offline for more than 90 seconds.
 
 To run several runners on one machine, give each its own `--dir` and
 `--name`.
@@ -793,7 +814,7 @@ running fails. Runners offline for 14 days are removed by themselves.
 | The job says *Waiting for a self-hosted runner with labels …* | No online runner has every one of those labels in a group that allows the repository. Compare the labels on the **Runners** page, check the runner's group, or start the runner. |
 | *Pull requests from forks do not run on self-hosted runners here.* | The run is from a fork. Allow it under **Where work runs**, if you trust everyone who can open a pull request. |
 | `register` says the token is not valid | It expired after an hour, or was mistyped. Make a new one. |
-| `register` says a runner with that name is registered | Choose another `--name`, or add `--replace`. |
+| `register` says a runner with that name is registered | Another computer's runner has that name, or one registered before the computer was known. Choose another `--name`, or add `--replace`. |
 | `run` says *g1t no longer knows this runner* | It was removed, or its credential was. Register it again. |
 | *this runner is not sandboxed from its machine, so it will not take work* | The runner's container can reach the machine: it lists why. Remove the machine's Docker socket and `--privileged`, and run it with `--runtime=sysbox-runc`. See [run it as a container](#run-it-as-a-container). |
 | *the runner's own Docker Engine could not start* | The container is not running under Sysbox. Add `--runtime=sysbox-runc`, and check that Sysbox is installed (`docker info` lists `sysbox-runc` under runtimes). |

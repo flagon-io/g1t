@@ -525,6 +525,14 @@ pub struct RegisterArgs {
     /// runners leave it out.
     #[serde(default)]
     pub isolation: Option<String>,
+    /// Which computer it is: a fingerprint the runner derives from its
+    /// operating system's machine id, never the id itself. A runner of the
+    /// same name registered from the same computer is taken over without
+    /// `replace`, so a computer whose sandbox was made again registers
+    /// again by itself. Older runners, and those in a container that can't
+    /// tell, leave it out.
+    #[serde(default)]
+    pub machine: Option<String>,
 }
 
 /// The isolation levels a runner may say it has (`RegisterArgs::isolation`).

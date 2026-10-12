@@ -108,6 +108,7 @@ impl Backend for SysboxHost {
             name: given.name.or(merged.name),
             labels: if given.labels.is_empty() { merged.labels } else { given.labels },
             group: given.group.or(merged.group),
+            machine: given.machine.or(merged.machine),
             cpus: if given.cpus > 0 { given.cpus } else { merged.cpus },
             memory_mib: if given.memory_mib > 0 { given.memory_mib } else { merged.memory_mib },
             runner_image: if given.runner_image.is_empty() { merged.runner_image } else { given.runner_image },

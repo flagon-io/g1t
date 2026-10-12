@@ -148,8 +148,8 @@ impl Options {
 }
 
 /// The options that take a value.
-const VALUE_OPTIONS: [&str; 13] =
-    ["url", "api", "token", "name", "labels", "group", "work-dir", "image", "harness", "memory", "cpus", "pids-limit", "job-docker-image"];
+const VALUE_OPTIONS: [&str; 14] =
+    ["url", "api", "token", "name", "labels", "group", "work-dir", "image", "harness", "memory", "cpus", "pids-limit", "job-docker-image", "machine"];
 
 const HELP: &str = "g1t-runner: a self-hosted runner for g1t.
 
@@ -259,6 +259,48 @@ fn hostname() -> String {
         .unwrap_or_else(|| "runner".to_owned())
 }
 
+/// Which computer this is, for g1t to know it when it registers again (its
+/// sandbox made again, its state lost) and let it take its runners' names
+/// back: a hash of the operating system's machine id, never the id itself.
+/// None in a container, whose machine id is its image's and so shared by
+/// every container made from it (the sandbox's launcher passes the
+/// computer's as `G1T_RUNNER_MACHINE`), and where the OS has none.
+pub fn machine_fingerprint() -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let id = os_machine_id()?;
+    Some(hex::encode(Sha256::digest(format!("g1t-runner machine\n{id}"))))
+}
+
+fn os_machine_id() -> Option<String> {
+    let id = if cfg!(windows) {
+        // HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid, set when Windows is installed.
+        let out = hidden(std::process::Command::new("reg").args(["query", r"HKLM\SOFTWARE\Microsoft\Cryptography", "/v", "MachineGuid"])).output().ok()?;
+        String::from_utf8_lossy(&out.stdout).lines().find(|l| l.contains("MachineGuid"))?.split_whitespace().last()?.to_owned()
+    } else if cfg!(target_os = "macos") {
+        let out = std::process::Command::new("ioreg").args(["-rd1", "-c", "IOPlatformExpertDevice"]).output().ok()?;
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        text.lines().find(|l| l.contains("\"IOPlatformUUID\""))?.rsplit('"').nth(1)?.to_owned()
+    } else {
+        if Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists() {
+            return None;
+        }
+        ["/etc/machine-id", "/var/lib/dbus/machine-id"].iter().find_map(|path| std::fs::read_to_string(path).ok())?
+    };
+    let id = id.trim().to_ascii_lowercase();
+    (id.len() >= 8 && id.chars().any(|c| c != '0' && c != '-')).then_some(id)
+}
+
+/// No console window for a helper the runner runs on Windows.
+fn hidden(command: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
 /// A runner's name from a machine's: what g1t accepts.
 fn runner_name(given: &str) -> String {
     let name: String = given
@@ -325,6 +367,7 @@ fn register(options: &Options, folder: &Path) -> Result<()> {
             "group": options.value("group"),
             "replace": options.flag("replace"),
             "isolation": isolation.as_str(),
+            "machine": options.value("machine").map(str::to_owned).or_else(machine_fingerprint),
         }),
     )?;
     let work_dir = options.value("work-dir").map(PathBuf::from).unwrap_or_else(|| folder.join("work"));

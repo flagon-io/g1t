@@ -82,6 +82,11 @@ pub struct RunnerRow {
     /// for a runner that never said.
     #[serde(default)]
     pub isolation: Option<String>,
+    /// Which computer it registered from (migration 0022): a hash of the
+    /// fingerprint it sent, with its workspace; none for a runner that
+    /// never said.
+    #[serde(default)]
+    pub machine_hash: Option<String>,
 }
 
 impl RunnerRow {
@@ -192,6 +197,25 @@ fn valid_group_name(name: &str) -> std::result::Result<String, String> {
 /// token is found by.
 fn hash(secret: &str) -> String {
     sha256_hex(secret)
+}
+
+/// What a runner's machine fingerprint is kept as: hashed with its
+/// workspace, so the same computer is not recognisable across workspaces.
+/// A fingerprint is 32 to 128 hex digits; anything else counts as none.
+fn machine_hash(workspace: &str, machine: Option<&str>) -> Option<String> {
+    let machine = machine.map(str::trim).filter(|m| (32..=128).contains(&m.len()) && m.chars().all(|c| c.is_ascii_hexdigit()))?;
+    Some(hash(&format!("{workspace}\n{}", machine.to_ascii_lowercase())))
+}
+
+/// Whether a registration takes the place of `existing`, a runner of the
+/// same name: when asked to (`--replace`); when it is the same computer
+/// registering again (its sandbox made again, its state lost); or, for a
+/// runner from before runners said which computer they are, when the same
+/// person registered it and it is no longer heard from.
+fn takes_over(existing: &RunnerRow, replace: bool, machine_hash: Option<&str>, created_by: Option<&str>, now: u64) -> bool {
+    let same_machine = machine_hash.is_some() && existing.machine_hash.as_deref() == machine_hash;
+    let left_behind = existing.machine_hash.is_none() && created_by.is_some() && existing.created_by.as_deref() == created_by && !existing.online(now);
+    replace || same_machine || left_behind
 }
 
 /// The actor of a runner's own entries in the audit log.
@@ -1010,11 +1034,13 @@ impl Actions {
             .bind(&[workspace.as_str().into(), registration.repo_id.clone().unwrap_or_default().into(), name.as_str().into()])?
             .first::<RunnerRow>(None)
             .await?;
+        let machine_hash = machine_hash(&workspace, a.machine.as_deref());
         if let Some(existing) = &existing {
-            if !a.replace {
+            if !takes_over(existing, a.replace, machine_hash.as_deref(), registration.created_by.as_deref(), at) {
+                let elsewhere = if existing.machine_hash.is_some() && machine_hash.is_some() { " from another computer" } else { "" };
                 return Ok(fail(
                     FailureCode::Conflict,
-                    format!("A runner called {name} is already registered here. Register with --replace to take its place, or choose another --name."),
+                    format!("A runner called {name} is already registered here{elsewhere}. Register with --replace to take its place, or choose another --name."),
                 ));
             }
             self.forget_runner(existing, &format!("The runner {name} was replaced by a new registration.")).await?;
@@ -1029,8 +1055,8 @@ impl Actions {
         self.db
             .prepare(
                 "INSERT INTO runners (id, workspace, repo_id, repo, group_id, name, labels, os, arch, version, ephemeral, credential_hash,
-                   rotated_at, last_seen_at, created_at, created_by, isolation)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   rotated_at, last_seen_at, created_at, created_by, isolation, machine_hash)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -1051,6 +1077,7 @@ impl Actions {
                 // The person who made the token: a desktop's runner is theirs.
                 optional(registration.created_by.as_deref()),
                 optional(isolation),
+                optional(machine_hash.as_deref()),
             ])?
             .run()
             .await?;
@@ -1985,6 +2012,7 @@ mod tests {
             created_at: String::new(),
             created_by: None,
             isolation: isolation.map(str::to_owned),
+            machine_hash: None,
         };
         let wanted = Wanted::of(&["self-hosted".to_owned(), "linux".to_owned()], None);
         let takes = |row: &RunnerRow| takes_public_job(row, &[], "rep_1", "acme/web", &wanted, at);
@@ -2021,9 +2049,63 @@ mod tests {
             created_at: String::new(),
             created_by: None,
             isolation: None,
+            machine_hash: None,
         };
         assert!(row.online(1_000_000_000 + 60_000));
         assert!(!row.online(1_000_000_000 + 120_000));
         assert_eq!(row.workspace, "acme");
+    }
+
+    #[test]
+    fn a_machine_fingerprint_is_kept_per_workspace_and_only_when_it_is_one() {
+        let print = "ab".repeat(32);
+        assert_eq!(machine_hash("acme", Some(&print)), machine_hash("acme", Some(&print.to_ascii_uppercase())));
+        assert_ne!(machine_hash("acme", Some(&print)), machine_hash("other", Some(&print)));
+        assert_eq!(machine_hash("acme", Some("SYNTAQX")), None);
+        assert_eq!(machine_hash("acme", Some("abc")), None);
+        assert_eq!(machine_hash("acme", None), None);
+    }
+
+    #[test]
+    fn the_same_computer_takes_its_runners_name_back() {
+        let at = 1_000_000_000;
+        let ours = machine_hash("acme", Some(&"ab".repeat(32)));
+        let theirs = machine_hash("acme", Some(&"cd".repeat(32)));
+        let row = |machine_hash: Option<String>, created_by: Option<&str>, seen: u64| RunnerRow {
+            id: "rnr_1".into(),
+            workspace: "acme".into(),
+            repo_id: None,
+            repo: None,
+            group_id: None,
+            name: "box-linux".into(),
+            labels: "[]".into(),
+            os: "linux".into(),
+            arch: "x64".into(),
+            version: String::new(),
+            ephemeral: 0,
+            credential_hash: String::new(),
+            previous_hash: None,
+            rotated_at: String::new(),
+            work_id: None,
+            work_kind: None,
+            spent: 0,
+            last_seen_at: Some(rfc3339(seen)),
+            created_at: String::new(),
+            created_by: created_by.map(str::to_owned),
+            isolation: None,
+            machine_hash,
+        };
+        // The same computer, even while the old one still looks online.
+        assert!(takes_over(&row(ours.clone(), Some("u1"), at), false, ours.as_deref(), Some("u1"), at));
+        // Another computer of the same name: only when asked to.
+        assert!(!takes_over(&row(theirs.clone(), Some("u1"), 0), false, ours.as_deref(), Some("u1"), at));
+        assert!(takes_over(&row(theirs, Some("u1"), at), true, ours.as_deref(), Some("u1"), at));
+        // One from before fingerprints: the same person's, gone quiet.
+        assert!(takes_over(&row(None, Some("u1"), 0), false, ours.as_deref(), Some("u1"), at));
+        assert!(!takes_over(&row(None, Some("u1"), at), false, ours.as_deref(), Some("u1"), at));
+        assert!(!takes_over(&row(None, Some("u2"), 0), false, ours.as_deref(), Some("u1"), at));
+        assert!(!takes_over(&row(None, None, 0), false, ours.as_deref(), None, at));
+        // A runner without a fingerprint never matches one without.
+        assert!(!takes_over(&row(None, Some("u1"), at), false, None, Some("u1"), at));
     }
 }

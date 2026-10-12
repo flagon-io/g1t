@@ -970,6 +970,7 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
                 name: Some(format!("{}-linux", base_name(saved))),
                 labels: saved.labels.clone(),
                 group: saved.group.clone(),
+                machine: super::machine_fingerprint(),
                 cpus: saved.resources.cpus,
                 memory_mib: saved.resources.memory_mib,
                 runner_image,
@@ -1161,6 +1162,7 @@ fn update_sandbox(options: &Options, dir: &Path) -> Result<()> {
             name: Some(format!("{}-linux", base_name(saved))),
             labels: saved.labels.clone(),
             group: saved.group.clone(),
+            machine: super::machine_fingerprint(),
             ..Settings::default()
         })?;
         if was_running {
