@@ -15,6 +15,7 @@ do, and act with the access you give them:
 | Push code | git over HTTPS, with an [access token](/guides/authentication/#access-tokens) |
 | Start the agent when something happens | [Webhooks](/guides/webhooks/), or a [workflow](/guides/actions/) on `issues` or `issue_comment` |
 | Show people how a change was made | The pull request's [session](/guides/why-blame/#sessions) |
+| See who is working on what, and not collide | [Sessions, claims and dependencies](/guides/sessions/) |
 | Pass what one agent learned to the next | [Memory](/guides/memory/) |
 | Script anything else | The [REST API](/reference/api/), which has the same operations as the tools |
 
@@ -74,8 +75,10 @@ the agent does is done as you, and shows as you in the
 
 ## How an agent works on an issue
 
-1. `issue` with `get`, to read the description, including what done means
-   if it says, and to see which pull requests already exist for it.
+1. `issue` with `work`, to load everything about it in one call: what
+   done means, who has claimed it, the pull requests already made for it,
+   and what it is blocked by. Then `issue` with `claim`, which also says
+   who else is on it.
 2. `memory` with `recall`, to read what the project remembers: how to
    build, conventions and traps.
 3. `pull_request` with `create` and the issue's number. This opens a draft
@@ -267,8 +270,9 @@ requests as the repository and a `number`.
 | --- | --- |
 | `search` | Code, repositories, issues, pull requests and people across g1t; a tracker's ticket |
 | `repository` | Repositories, their settings, rulesets, branches, labels, milestones and releases |
-| `issue` | Issues, labels and comments |
+| `issue` | Issues, labels and comments; an issue's whole context, and claims |
 | `pull_request` | Pull requests: create, record and read sessions, review, merge, the merge queue |
+| `session` | Your harness's session: start, heartbeat, record, end; who else is working |
 | `memory` | `recall` and `remember` |
 | `workflow` | Workflow runs and logs, checks, deployments, environments and runners |
 | `observability` | A project's requests, logs, traces, errors and metrics in production |

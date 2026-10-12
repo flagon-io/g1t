@@ -111,7 +111,11 @@ With these headers:
 | `deployment_status.created` | A deployment got a status, from any source. `data.repo_id`, `data.deployment` without its `payload`, and `data.deployment_status`. |
 | `release.created`, `.published`, `.released`, `.prereleased`, `.edited`, `.unpublished`, `.deleted` | A [release](/guides/releases/) changed; one change can send several, as the [release activity types](/guides/actions/#releases) say. `data.release_id`, `data.tag_name`, and `data.release` (`tag_name`, `target`, `name`, `body`, `draft`, `prerelease`, `author`, `created_at`, `published_at`), as it was for `release.deleted`. On `release.edited`, `data.changes` holds the old `name` and `body`. |
 | `queue.changed` | The merge queue gained, lost or settled an entry. |
-| `session.appended` | A pull request's [session](/guides/why-blame/#sessions) grew: a coding agent recorded entries with `record_session`. Busy: choose it only if you need it. |
+| `session.appended` | A pull request's [session](/guides/why-blame/#sessions) grew: a coding agent recorded entries with `record_session`, or a session on it recorded some. Busy: choose it only if you need it. |
+| `session.started`, `session.ended` | A [session](/guides/sessions/#sessions) of someone's harness started (not on a repeated start), or ended or timed out. `data.session`, and `data.number` (its pull request, else its issue) and `data.issue`. |
+| `work.claimed`, `work.released`, `work.claim_expired`, `work.handoff_requested` | A [claim](/guides/sessions/#claims) on an issue was made, released, expired or handed off. `data.number` and `data.issue` (the issue), `data.claim`; on `work.claimed`, `data.others` (the other active claims) and `data.took_over`; on `work.released`, `data.reason`; on a hand-off, `data.from`, `data.to` and `data.note`. |
+| `dependency.changed` | What an issue is [blocked by](/guides/sessions/#dependencies) changed, or a blocker closed or had its pull request merged. `data.number` (the blocked issue), `data.blocked_by`, `data.added`, `data.removed`, `data.cleared`, `data.remaining` (blockers still open) and `data.merged_pull`. |
+| `overlap.detected` | A push made a pull request [change files another open one changes](/guides/sessions/#overlaps). Sent once for each of the two: `data.pull`, `data.other_pull`, `data.files`, `data.issue` and `data.other_issue`. |
 
 [Managing a repository](/guides/managing-repositories/) says what each of
 the `repo.` and `branch.` changes does.

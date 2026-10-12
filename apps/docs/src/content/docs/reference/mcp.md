@@ -4,9 +4,9 @@ description: The g1t MCP server's resource tools, each action they take with its
 ---
 
 The MCP server at `https://mcp.g1t.sh` is how a coding agent, such as
-Claude Code, Codex, Cursor or OpenCode, works on g1t. It exposes 18 tools,
+Claude Code, Codex, Cursor or OpenCode, works on g1t. It exposes 19 tools,
 one per kind of thing on g1t: `search`, `repository`, `issue`,
-`pull_request`, `memory`, `workflow`, `observability`, `package`, `secret`,
+`pull_request`, `session`, `memory`, `workflow`, `observability`, `package`, `secret`,
 `security`, `webhook`, `access`, `team`, `workspace`, `billing`,
 `notifications`, `account` and `artifact`. Each tool takes an `action` that says what to do. Every
 action is the same operation as a route of the [REST API](/reference/api/),
@@ -315,16 +315,17 @@ of these changes, and what refuses it, and
 
 ## `issue`
 
-Issues: what should change. Read one before working on it, to see the pull
-requests already made for it. Issues and pull requests share numbers, so
-`comment` works on either.
+Issues: what should change. Before working on one, `work` gives everything
+about it, and `claim` says you are on it; see
+[sessions, claims and dependencies](/guides/sessions/). Issues and pull
+requests share numbers, so `comment` works on either.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`list`](/reference/api/issues/list-issues/) | Issues, newest first, by `state`, `label` and `milestone` (its number). | `repo` | `issues:read` |
 | [`get`](/reference/api/issues/get-issue/) | An issue: description (which may say what done means, under **Definition of done**), labels, comments, and every pull request made for it. | `repo`, `number` | `issues:read` |
 | [`create`](/reference/api/issues/create-issue/) | Open an issue, with `body`, `labels` and `milestone`. A label the repository lacks is created for someone with the Write role. `checks` is deprecated: its commands are added to the body under **Definition of done**, and the result carries a `deprecation` note. | `repo`, `title` | `issues:write` |
-| [`update`](/reference/api/issues/update-issue/) | Change its title, body, labels, milestone or assignees. Labels and assignees each replace the whole set; `milestone` `null` or `0` takes it out of its milestone. | `repo`, `number` | `issues:write` |
+| [`update`](/reference/api/issues/update-issue/) | Change its title, body, labels, milestone, assignees or `blocked_by` (the issues that must land first). Labels, assignees and `blocked_by` each replace the whole set; `milestone` `null` or `0` takes it out of its milestone. A `blocked_by` that names the issue itself, something not an issue of the repository, or makes a cycle is refused. | `repo`, `number` | `issues:write` |
 | [`labels`](/reference/api/issues/list-issue-labels/) | The labels an issue or pull request carries, with their colors. | `repo`, `number` | `issues:read` |
 | [`add_labels`](/reference/api/issues/add-issue-labels/) | Add `labels` to an issue or pull request, keeping the ones it has. | `repo`, `number`, `labels` | `issues:write` |
 | [`set_labels`](/reference/api/issues/set-issue-labels/) | Replace an issue's or pull request's labels with `labels`. | `repo`, `number`, `labels` | `issues:write` |
@@ -335,6 +336,11 @@ requests already made for it. Issues and pull requests share numbers, so
 | [`edit_comment`](/reference/api/issues/edit-comment/) | Change a comment's text, by its id from `get`. Your own, or anyone's with the Maintain role or higher. Notes of what happened cannot be edited. | `repo`, `comment_id`, `body` | `issues:write` |
 | [`delete_comment`](/reference/api/issues/delete-comment/) | Delete a comment, by its id. Your own, or anyone's with the Maintain role or higher. A review that approved or requested changes cannot be deleted. | `repo`, `comment_id` | `issues:write` |
 | [`import`](/reference/api/integrations/import-issue/) | Open an issue from a Jira, Linear or Sentry item, linked to it. | `repo`, `reference` | `issues:write` |
+| [`work`](/reference/api/claims-and-work/get-work/) | Everything to pick an issue up: its definition of done and required checks, active claims, sessions, pull requests (checks, mergeability, overlaps, queue place), what it is blocked by and blocks, decisions, and its recent coordination events. | `repo`, `number` | `issues:read` |
+| [`claim`](/reference/api/claims-and-work/claim-issue/) | Say you are working on an open issue: advisory and expiring (`ttl_minutes`, 30 unless you say, at most 240), never a lock. Returns `others` already on it and what it is `blocked_by`. Claiming again, or a heartbeat of its `session_id`, renews it. | `repo`, `number` | `issues:write` |
+| [`release`](/reference/api/claims-and-work/release-claim/) | Give up your claim, with an optional `reason`. | `repo`, `number` | `issues:write` |
+| [`handoff`](/reference/api/claims-and-work/hand-off-issue/) | End your claim as handed off, `to` someone or anyone, with a `note` on where the work stands. | `repo`, `number`, `note` | `issues:write` |
+| [`list_claims`](/reference/api/claims-and-work/list-claims/) | Claims on a repository's issues, newest first: active unless `state` says otherwise, `issue` for one. | `repo` | `issues:read` |
 
 ## `pull_request`
 
@@ -365,6 +371,21 @@ far.
 `message`, `tool_call`, `tool_result` or `note`) and `text`, and `tool` for
 tool entries. See [sessions and why-blame](/guides/why-blame/) and the
 [merge queue](/guides/merge-queue/).
+
+## `session`
+
+Your harness's session on a repository, so others see who is working on
+what. Start one per run of your harness, heartbeat it, record what it does,
+and end it. See [sessions](/guides/sessions/#sessions).
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`start`](/reference/api/sessions/start-session/) | Start a session: `harness` (`claude_code`, `codex`, `cursor`, `copilot` or `other`), and `harness_session_id`, which makes starting again return the same session. `issue`, `pull`, `branch`, `title` and `head_commit` as you know them. | `repo`, `harness` | `pull_requests:write` |
+| [`update`](/reference/api/sessions/update-session/) | A heartbeat, and renews the session's claims; with fields, attaches an `issue` or `pull`, or sets `branch`, `head_commit` or `title`. | `repo`, `id` | `pull_requests:write` |
+| [`record`](/reference/api/sessions/record-session-entries/) | Record up to 200 `entries`, each with `kind` and `text`, `tool` for tools, and a `key` that makes recording it again a no-op. | `repo`, `id`, `entries` | `pull_requests:write` |
+| [`end`](/reference/api/sessions/end-session/) | End it, with an optional `reason`. | `repo`, `id` | `pull_requests:write` |
+| [`get`](/reference/api/sessions/get-session/) | A session and its entries; `after` pages through them. | `repo`, `id` | `pull_requests:read` |
+| [`list`](/reference/api/sessions/list-sessions/) | A repository's sessions, most recently heard from first, by `state` (`active`, `idle`, `ended`), `issue` or `pull`. | `repo` | `pull_requests:read` |
 
 ## `memory`
 

@@ -9,8 +9,9 @@ That comes from **sessions**, the record of how each pull request was made.
 
 ## Sessions
 
-A session belongs to a pull request. It records how the change was made,
-entry by entry, as it happens:
+A pull request's session records how the change was made, entry by entry,
+as it happens. Entries come from `record_session` on the pull request, and
+from any [harness session](/guides/sessions/#sessions) attached to it:
 
 | Kind | What it holds |
 | --- | --- |
