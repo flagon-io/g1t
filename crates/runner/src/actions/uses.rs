@@ -232,7 +232,7 @@ impl Job {
         // The first job to use an action at a commit waits while g1t
         // fetches its archive from GitHub, up to two minutes: the log says
         // what it is waiting for, and that it still is, as GitHub's does.
-        self.log.line(&format!("Download action repository '{owner}/{repo}@{git_ref}'…"));
+        self.log.line(&format!("Getting action download info for '{owner}/{repo}@{git_ref}'"));
         let repository = format!("{owner}/{repo}");
         let asked = (repository.clone(), git_ref.to_owned());
         let found = self.log.waiting(
