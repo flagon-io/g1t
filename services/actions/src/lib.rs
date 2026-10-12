@@ -112,6 +112,10 @@ pub struct Actions {
     /// Deployments: a job with an `environment:` deploys to it, and its
     /// run's deployment is recorded there (plan.rs `report_deployment`).
     deployments: Fetcher,
+    /// Notify, optional: pages open on a repository hear its runs' jobs
+    /// start and finish (plan.rs `tell_live`). Without it they catch up
+    /// on their own.
+    notify: Option<Fetcher>,
     /// Where the API keeps cache entries, for deleting evicted ones.
     cache: Option<worker::Bucket>,
     /// Seals secrets; absent until `ACTIONS_KEY` is set, when secrets
@@ -133,6 +137,7 @@ impl Actions {
             projects: env.service("PROJECTS")?,
             billing: env.service("BILLING")?,
             deployments: env.service("DEPLOYMENTS")?,
+            notify: env.service("NOTIFY").ok(),
             cache: env.bucket("ACTIONS_CACHE").ok(),
             sealer: env.secret("ACTIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
             blob_key: env.secret("ACTIONS_KEY").ok().map(|key| runtime::blob_key(&key.to_string())),

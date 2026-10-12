@@ -55,7 +55,8 @@
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "REPOS", "service": "g1t-repos" },
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		// Each new inbox item, told live in the person's tabs and pushed (services/notify).
+		// Each new inbox item, told live in the person's tabs and pushed, and
+		// what changed in each repository, for the pages open on it (services/notify).
 		{ "binding": "NOTIFY", "service": "g1t-notify" }
 	],
 	// Once a day, audit entries older than AUDIT_MAX_DAYS are removed for

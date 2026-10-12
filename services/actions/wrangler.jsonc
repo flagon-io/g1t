@@ -30,7 +30,9 @@
 		// Self-hosted runners' time, recorded on usage at $0.
 		{ "binding": "BILLING", "service": "g1t-billing" },
 		// A job with an `environment:` makes its run's deployment there.
-		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" }
+		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
+		// Pages open on a repository hear its runs' jobs start and finish.
+		{ "binding": "NOTIFY", "service": "g1t-notify" }
 	],
 	// actions/cache entries and artifacts, which the API writes: deleted here when they
 	// are evicted or expire.

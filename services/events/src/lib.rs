@@ -16,11 +16,16 @@
 //! arguments. `activity_digest` (digest.rs) counts a span of the log for
 //! Home. Security alerts that are not urgent wait for each person's
 //! security digest (security_digest.rs), sent by a cron of its own.
+//!
+//! Repository pages open in someone's browser refresh themselves: each
+//! batch's events that such a page shows are passed to the notify service
+//! (live.rs), which tells those watching the repository.
 
 mod audit;
 mod digest;
 mod fanout;
 mod inbox;
+mod live;
 mod security_digest;
 mod subscriptions;
 
@@ -251,6 +256,10 @@ impl Events {
         );
         // Optional: without it the inbox still fills, nobody is told live.
         let notify = self.env.service("NOTIFY").ok();
+        // Pages open on the repositories: told first, as nobody waits longer.
+        if let Some(notify) = notify.as_ref() {
+            live::tell(notify, events).await;
+        }
         let sources = inbox::Sources {
             work: &work,
             repos: &repos,

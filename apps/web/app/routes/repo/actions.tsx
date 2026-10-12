@@ -23,6 +23,8 @@ import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { accessFor, refusal, repoFor } from "../../lib/access.server";
 import { useRefreshWhile } from "../../lib/refresh";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Workflows · ${params.owner}/${params.repo} · g1t` });
@@ -84,9 +86,14 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   return started.ok ? { started: started.value } : { error: started.error.message };
 }
 
-/** Re-reads the page every few seconds while something is still running. */
+/**
+ * Runs start, move and finish live (lib/use-repo-live.ts). While something
+ * runs the page also asks again now and then, in case a change was missed:
+ * every 30 s with the live socket, every few seconds without it.
+ */
 function useLiveWhile(running: boolean) {
-  useRefreshWhile(running, 3000);
+  const { live } = useRepoLive({ match: repoPages.runs() });
+  useRefreshWhile(running, live ? 30_000 : 3000);
 }
 
 const EVENT_WORDS: Record<string, string> = {

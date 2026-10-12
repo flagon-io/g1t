@@ -12,6 +12,8 @@ import { commitChecksFor } from "../../lib/commit-checks.server";
 import { showCommits } from "../../lib/commit-people.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Tags · ${params.owner}/${params.repo} · g1t` });
@@ -32,6 +34,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 export default function Tags({ loaderData, params }: Route.ComponentProps) {
   const { tags, checks } = loaderData;
+  // New tags and releases show as they are pushed.
+  useRepoLive({ match: repoPages.tags() });
   const base = `/${params.owner}/${params.repo}`;
   const path = (name: string) => name.split("/").map(encodeURIComponent).join("/");
   return (

@@ -29,6 +29,8 @@ import { whyNot } from "../../lib/access";
 import { legacySecurityTarget, severityCounts } from "../../lib/security-suite";
 import { type OverviewRow, POLICY_PATHS, STATUS_LABEL, STATUS_TONE, overviewRows, rowsIn } from "../../lib/security-overview";
 import { SEVERITY_LABEL } from "../../lib/advisories";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Security · ${params.owner}/${params.repo} · g1t` });
@@ -204,6 +206,8 @@ function AdvisoryLine({ advisory, base }: { advisory: Advisory; base: string }) 
 
 export default function SecurityOverview({ loaderData, params }: Route.ComponentProps) {
   const base = `/${params.owner}/${params.repo}`;
+  // Alerts opening, fixed and dismissed show as it happens.
+  useRepoLive({ match: repoPages.security() });
   if (loaderData.kind === "public") {
     const { policy, advisories: published, reporting, signedIn } = loaderData;
     return (

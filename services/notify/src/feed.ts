@@ -13,12 +13,18 @@
  * devices (the phone app, pushed through Expo: src/expopush.ts) and
  * preferences, and
  * the person's status, Do Not Disturb and whether they set themselves away,
- * and when they were last on each workspace's Home page (src/visits.ts).
+ * and when they were last on each workspace's Home page (src/visits.ts),
+ * and which repositories' pages their tabs are watching (src/watch.ts).
  *
  * Presence is worked out here from the tabs (src/presence.ts) and told to
  * the room of every workspace the person belongs to (src/room.ts), which
  * passes it to everyone there who is online. A status or Do Not Disturb
  * that runs out is cleared by an alarm and told the same way.
+ *
+ * Live repository pages: a tab on a repository's page has the site ask
+ * the feed to watch it (`watchRepo`), which tells the repository's topic
+ * (src/topic.ts); the topic hands back what changes there (`repoChanged`),
+ * and the feed sends it to the tabs as a `repo` event.
  *
  * The feed authorizes nothing: the Worker reaches it only for the person
  * the site checked (src/index.ts).
@@ -35,6 +41,7 @@ import {
   type FeedEvent,
   type FeedNotification,
   type FeedSeed,
+  type RepoChange,
   type NotifyPreferences,
   type NotifyStatus,
   type PushDevice,
@@ -59,7 +66,9 @@ import {
   type Kept,
 } from "./presence.ts";
 import type { Room } from "./room.ts";
+import type { Topic } from "./topic.ts";
 import { type Visit, lastVisit, markVisit } from "./visits.ts";
+import { MAX_WATCHING, stillWatching, watchUntil } from "./watch.ts";
 import { sendPush, type Vapid } from "./webpush.ts";
 
 export type FeedEnv = {
@@ -81,6 +90,8 @@ export type FeedEnv = {
   PHONE_PUSH?: string;
   /** One presence room per workspace (src/room.ts); without it, presence stays in the person's own tabs. */
   ROOMS?: DurableObjectNamespace<Room>;
+  /** One live topic per repository (src/topic.ts); without it, repository pages refresh on their own. */
+  TOPICS?: DurableObjectNamespace<Topic>;
 };
 
 /** The headers the Worker passes the person's id and username in, with a socket (src/index.ts). */
@@ -122,6 +133,8 @@ export class Feed extends DurableObject<FeedEnv> {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
     // When the person was last on each workspace's Home page (src/visits.ts).
     this.sql.exec(`CREATE TABLE IF NOT EXISTS visits (workspace TEXT PRIMARY KEY, seen_at INTEGER NOT NULL, previous_at INTEGER)`);
+    // The repositories whose pages the person's tabs are watching, until when (src/watch.ts).
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS watching (repo_id TEXT PRIMARY KEY, until INTEGER NOT NULL)`);
   }
 
   // ── Kept state ──────────────────────────────────────────────────────────
@@ -636,6 +649,49 @@ export class Feed extends DurableObject<FeedEnv> {
   private remember(person: { user_id: string; username: string }): void {
     if (person.user_id) this.setMeta("user_id", person.user_id.slice(0, 100));
     if (person.username) this.setMeta("username", person.username.slice(0, 100));
+  }
+
+  // ── Live repository pages ───────────────────────────────────────────────
+
+  private openSockets(): WebSocket[] {
+    return this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN);
+  }
+
+  /**
+   * The person's tabs hear what changes in repository `repoId` (`repo` is
+   * its `owner/name`) for REPO_WATCH_MS. The site checked they may read it.
+   */
+  async watchRepo(userId: string, repoId: string, repo: string): Promise<{ ok: boolean; until: string | null }> {
+    const topics = this.env.TOPICS;
+    if (!topics) return { ok: false, until: null };
+    const now = Date.now();
+    const until = watchUntil(now);
+    this.sql.exec("DELETE FROM watching WHERE until <= ?", now);
+    this.sql.exec("INSERT OR REPLACE INTO watching (repo_id, until) VALUES (?, ?)", repoId, until);
+    this.sql.exec("DELETE FROM watching WHERE repo_id NOT IN (SELECT repo_id FROM watching ORDER BY until DESC LIMIT ?)", MAX_WATCHING);
+    await topics.get(topics.idFromName(repoId)).watch(userId, repo, until);
+    return { ok: true, until: new Date(until).toISOString() };
+  }
+
+  /**
+   * What changed in a repository, from its topic: sent to the tabs, which
+   * each keep what is about the page they show. False when nobody here is
+   * watching it any more, so the topic drops this feed.
+   */
+  async repoChanged(repoId: string, changes: RepoChange[]): Promise<boolean> {
+    const row = this.sql.exec<{ until: number }>("SELECT until FROM watching WHERE repo_id = ?", repoId).toArray()[0];
+    if (!stillWatching(row?.until, Date.now())) return false;
+    const sockets = this.openSockets();
+    if (!sockets.length) return false;
+    const text = JSON.stringify({ type: "repo", changes } satisfies FeedEvent);
+    for (const socket of sockets) {
+      try {
+        socket.send(text);
+      } catch {
+        // Closing already.
+      }
+    }
+    return true;
   }
 
   private visit(workspace: string): Visit | null {

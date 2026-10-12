@@ -16,10 +16,14 @@
  * for `IDLE_MS`) or comes back, the feed sends how everyone in the
  * workspace shows (`presence`) and your own (`me`), and `setPresence`
  * changes yours (lib/presence.ts, components/presence.tsx).
+ *
+ * So do repository pages: a tab on one watches its repository, and what
+ * changes there arrives as `repo` events, handed to the page's
+ * `useRepoLive` (lib/use-repo-live.ts) through `onRepoChanges`.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences, OwnPresence, PresenceChange, PresenceEntry } from "@g1t/contracts";
+import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences, OwnPresence, PresenceChange, PresenceEntry, RepoChange } from "@g1t/contracts";
 
 import { openLive } from "./live-socket";
 import { dndOn, isIdle, mergePeople } from "./presence";
@@ -431,8 +435,27 @@ export function reportInbox(unread: number): void {
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "inbox", unread }));
 }
 
+// ── Live repository pages ────────────────────────────────────────────────
+
+const repoListeners = new Set<(changes: RepoChange[]) => void>();
+
+/** Hears what changes in the repositories this tab watches (lib/use-repo-live.ts). Returns how to stop. */
+export function onRepoChanges(listener: (changes: RepoChange[]) => void): () => void {
+  repoListeners.add(listener);
+  return () => repoListeners.delete(listener);
+}
+
 function onEvent(event: FeedEvent): void {
   switch (event.type) {
+    case "repo":
+      for (const listener of repoListeners) {
+        try {
+          listener(Array.isArray(event.changes) ? event.changes : []);
+        } catch (error) {
+          console.error("notify: a live page failed on a change", error);
+        }
+      }
+      break;
     case "hello":
       set({ preferences: event.preferences, vapidKey: event.vapid_public_key, recent: addRecent(state.recent, event.notifications ?? []) });
       break;

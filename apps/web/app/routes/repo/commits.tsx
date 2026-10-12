@@ -8,12 +8,16 @@ import type { Route } from "./+types/commits";
 import { page } from "../../lib/meta";
 import { CommitChecksBadge } from "../../components/commit-checks";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
+import { NewItemsBar } from "../../components/repo-live";
 import { EmptyState, TimeAgo } from "../../components/ui";
 import { Card } from "../../components/ui/card";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { showCommits } from "../../lib/commit-people.server";
 import { repos } from "../../lib/services.server";
+import { isPushTo, newCommits, repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 import { getViewer, unwrap } from "../../lib/session.server";
+import { useProject } from "./layout";
 
 const PAGE_SIZE = 50;
 
@@ -56,10 +60,17 @@ function dayLabel(day: string): string {
 export default function Commits({ loaderData, params }: Route.ComponentProps) {
   const { commits, checks } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
+  // Live: new commits on the branch wait under "N new commits" rather than
+  // moving the list under the reader; checks on the shown ones update.
+  const branch = useProject()?.repo.defaultBranch ?? null;
+  const pushed = (change: Parameters<typeof isPushTo>[0]) => change.kind === "git.push" && isPushTo(change, branch);
+  const { held, show } = useRepoLive({ match: repoPages.commits(branch), hold: commits.length > 0 ? pushed : undefined });
   if (commits.length === 0) {
     return <EmptyState title="No commits yet" />;
   }
   return (
+    <>
+    <NewItemsBar held={held.length > 0} count={newCommits(held, branch)} noun={["commit", "commits"]} onShow={show} />
     <div className="relative space-y-8 before:absolute before:top-3 before:bottom-3 before:left-1.75 before:w-px before:bg-line">
       {byDay(commits).map(([day, list]) => (
         <section key={day} className="relative pl-7">
@@ -103,5 +114,6 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
         </section>
       ))}
     </div>
+    </>
   );
 }

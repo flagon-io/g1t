@@ -27,6 +27,7 @@ pub mod github;
 pub mod guardrails;
 pub mod identity;
 pub mod inbox;
+pub mod live;
 pub mod integrations;
 pub mod members;
 pub mod mirrors;

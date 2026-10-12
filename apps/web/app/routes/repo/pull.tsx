@@ -101,6 +101,8 @@ import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
 import { useMirrorReason } from "../../components/mirror";
 import { REFRESH_MS, useRefreshWhile } from "../../lib/refresh";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 const EMPTY_COMPARISON: Comparison = { base: null, head: "", files: [], truncated: false };
 const TABS = ["conversation", "session", "changes"] as const;
@@ -755,6 +757,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const probing = active && mergeable === "checking";
   const conflicting = active && mergeable === "conflicting";
   useRefreshWhile(working || checking || reviewPending || catchingUp || settling || moving || landing || probing);
+  // New commits, checks, reviews and comments, and its merge or close, as
+  // they happen: the timeline grows where the reader is, and one reading
+  // at its end follows it.
+  useRepoLive({ match: repoPages.pull(pull.number, { branch: pull.branch, sha: pull.headCommit }), followBottom: true });
   // The rules of its base it does not meet: checks show in their own
   // section, so the rest stop the button here. Someone a ruleset lets
   // bypass it may tick a box and merge past them.

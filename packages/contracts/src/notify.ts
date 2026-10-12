@@ -184,6 +184,43 @@ export type PresenceChange = {
   dnd_until?: string | null;
 };
 
+// ── Live repository pages ────────────────────────────────────────────────
+//
+// A tab on a repository's page asks to watch it (`watchRepo`, through the
+// site, which first checks the person may read it). The events service
+// then tells notify of everything that happens there that a page shows
+// (`repoChanged`, from crates/contracts/src/live.rs), and the actions
+// service of runs' jobs starting and finishing; notify passes each change
+// to the feeds watching that repository (one topic per repository), whose
+// tabs refresh the page (apps/web/app/lib/repo-live.ts).
+
+/**
+ * Something that happened in a repository, as live pages hear of it: what
+ * kind of thing moved and where, never anything written in it.
+ */
+export type RepoChange = {
+  repo_id: string;
+  /** `owner/name`, as the person watching it asked for it; filled in by notify. */
+  repo?: string | null;
+  /** The event's type (`git.push`, `pull.updated`, `checks.completed`, …), or `run.updated` for a run's job starting or finishing. */
+  kind: string;
+  /** The full ref a push or deletion moved (`refs/heads/main`), or a run's. */
+  ref?: string | null;
+  /** The issue or pull request it is on, or the pull request a run ran for. */
+  number?: number | null;
+  /** The commit: where a push left its ref, the one checked or reported on. */
+  sha?: string | null;
+  /** A workflow run's id. */
+  run?: string | null;
+  /** How many commits a push brought to its branch, when it was counted. */
+  commits?: number | null;
+  /** RFC 3339. */
+  at: string;
+};
+
+/** How long one `watchRepo` lasts: a page open longer asks again before it runs out. */
+export const REPO_WATCH_MS = 15 * 60_000;
+
 /** What the feed socket sends a tab. */
 export type FeedEvent =
   | { type: "hello"; notifications: FeedNotification[]; vapid_public_key: string | null; preferences: NotifyPreferences }
@@ -198,7 +235,9 @@ export type FeedEvent =
    */
   | { type: "presence"; workspace: string; people: PresenceEntry[]; full: boolean }
   /** Your own presence, status and Do Not Disturb, on connect and after every change. */
-  | { type: "me"; me: OwnPresence };
+  | { type: "me"; me: OwnPresence }
+  /** What changed in repositories you are watching the pages of (`watchRepo`). */
+  | { type: "repo"; changes: RepoChange[] };
 
 /**
  * What a tab sends over the feed socket: plain `ping` every 25 s (answered
@@ -294,6 +333,14 @@ export type NotifyApi = {
    * past now nor more than a day behind it.
    */
   markVisit(user: Pick<User, "id">, workspace: string, at: string): Promise<{ seen_at: string | null }>;
+  /**
+   * The person's tabs hear what changes in the repository, for
+   * `REPO_WATCH_MS`. The caller must have checked they may read it: notify
+   * checks nothing. `repo` is its `owner/name`, passed on with each change.
+   */
+  watchRepo(user: Pick<User, "id">, repoId: string, repo: string): Promise<{ ok: boolean; until: string | null }>;
+  /** For services: what changed in repositories (`crates/contracts/src/live.rs`), told to whoever watches each. */
+  repoChanged(changes: RepoChange[]): Promise<{ ok: boolean }>;
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -323,5 +370,7 @@ export function notifyClient(service: ServiceBinding): NotifyApi {
     workspacePresence: (workspace, userIds) => call("workspace_presence", { workspace, user_ids: userIds ?? null }),
     lastVisit: (user, workspace) => call("last_visit", { user_id: user.id, workspace }),
     markVisit: (user, workspace, at) => call("mark_visit", { user_id: user.id, workspace, at }),
+    watchRepo: (user, repoId, repo) => call("watch_repo", { user_id: user.id, repo_id: repoId, repo }),
+    repoChanged: (changes) => call("repo_changed", { changes }),
   };
 }
