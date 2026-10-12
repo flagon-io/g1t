@@ -200,13 +200,23 @@ function collect() {
     }
   }
   if (entries.length === 0) throw new Error("no bundles found: run build first");
-  // One notes file per machine, so the folders of several machines merge
-  // by copying them together (the release workflow does).
-  writeFileSync(join(dir, `collect-${hostPlatform()}.json`), `${JSON.stringify(entries, null, 2)}\n`);
+  // One notes file per set of platforms collected, so the folders of
+  // several jobs merge by copying them together (the release workflow
+  // does). It is named for what it holds, not the machine: the Windows
+  // build on Linux runs on the same kind of machine as the Linux build, and
+  // a file named for the machine replaced the Linux notes, which left
+  // Linux out of the manifest.
+  writeFileSync(join(dir, notesName(entries)), `${JSON.stringify(entries, null, 2)}\n`);
   console.log(`collected ${entries.length} files of ${v} into ${dir}`);
 }
 
 const isNotes = (name) => /^collect-.*\.json$/.test(name);
+
+/** The notes file's name for these entries: the platforms they are for, such as `collect-linux-x64.json`. */
+export function notesName(entries) {
+  const platforms = [...new Set(entries.map((entry) => `${entry.platform}-${entry.arch}`))].sort();
+  return `collect-${platforms.join("+")}.json`;
+}
 
 function writeManifest(notes) {
   const v = version();

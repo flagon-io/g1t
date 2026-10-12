@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { classify, hostPlatform, manifest, platformOfTriple } from "./desktop-release.mjs";
+import { classify, hostPlatform, manifest, notesName, platformOfTriple } from "./desktop-release.mjs";
+
+test("each job's notes are named for the platforms they hold, so jobs on the same kind of machine do not overwrite each other", () => {
+  const linux = [{ platform: "linux", arch: "x64" }, { platform: "linux", arch: "x64" }];
+  const windows = [{ platform: "windows", arch: "x64" }];
+  assert.equal(notesName(linux), "collect-linux-x64.json");
+  assert.equal(notesName(windows), "collect-windows-x64.json");
+  assert.notEqual(notesName(linux), notesName(windows));
+  assert.equal(notesName([...windows, ...linux]), "collect-linux-x64+windows-x64.json");
+});
 
 test("a bundle's place in a release", () => {
   assert.deepEqual(classify("g1t_0.1.0_x64-setup.exe", "windows-x64", "0.1.0"), {
