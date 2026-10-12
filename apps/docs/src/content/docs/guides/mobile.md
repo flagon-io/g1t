@@ -18,16 +18,19 @@ opens it from anywhere.
 1. On your Android phone, choose **Download for Android**. On a computer,
    scan the code beside it with the phone's camera instead.
 2. Open the downloaded file. Android asks once to allow your browser to
-   install apps: allow it.
+   install apps: allow it. If Play Protect warns about an unknown app,
+   choose **More details**, then **Install anyway**.
 3. Open **g1t (beta)** and choose **Sign in with g1t**.
 
 Point at the file's name on the page to see its SHA-256, to check the file
-you have is the one g1t published.
+you have is the one g1t published. Like every g1t build during the alpha,
+the app isn't code-signed yet, which is why Android warns
+([unsigned during the alpha](/guides/desktop/#unsigned-during-the-alpha)).
 
 **Why a download, and not Google Play?** Google Play and the App Store
 publish a company's apps only once it is verified with a D-U-N-S number,
 and Flagon's is on its way. Until then the Android app is published on
-g1t.sh, signed by g1t, as [the desktop app](/guides/desktop/) is. It moves
+g1t.sh, as [the desktop app](/guides/desktop/) is. It moves
 into Google Play as soon as it can. iOS has no way in but the App Store,
 so it follows then.
 

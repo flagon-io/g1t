@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { connectLink } from "@g1t/contracts/discovery";
-import { ArrowRight, Bell, Download, Link2, RefreshCw, Server, Smartphone } from "lucide-react";
+import { ArrowRight, Bell, Download, Link2, RefreshCw, Server, ShieldAlert, Smartphone } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useLoaderData } from "react-router";
 
@@ -9,6 +9,7 @@ import { PlatformMark } from "../components/platform-mark";
 import { QrCode } from "../components/qr-code";
 import { ButtonLink } from "../components/ui";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
+import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -134,6 +135,18 @@ const PLATFORMS: Record<PlatformId, { name: string; device: string; note: string
   ios: { name: "iOS", device: "iPhone", note: "" },
 };
 
+/**
+ * What each system says about an app that isn't code-signed, and how to
+ * open it anyway. Every build is unsigned while g1t is in alpha.
+ */
+const UNSIGNED: Record<PlatformId, string | null> = {
+  windows: "Windows may say it protected your PC: choose More info, then Run anyway.",
+  macos: "macOS may say it can't check g1t: open System Settings, Privacy & Security, and choose Open Anyway.",
+  linux: "Your package manager may say the package isn't signed. The AppImage needs only to be made executable.",
+  android: "Play Protect may warn about an unknown app: choose More details, then Install anyway.",
+  ios: null,
+};
+
 const KINDS: Record<string, string> = {
   installer: "Installer",
   dmg: "Disk image",
@@ -227,6 +240,16 @@ export default function DownloadPage() {
               ))}
             </TabsList>
           </div>
+          <Alert tone="warn" className="mx-auto mt-6 flex max-w-3xl gap-3 px-4 py-3">
+            <ShieldAlert size={16} className="mt-0.5 shrink-0 text-warn" />
+            <div>
+              <AlertTitle>Unsigned while g1t is in alpha</AlertTitle>
+              <AlertDescription>
+                The desktop app, the Android app, the runner and the CLI aren't code-signed yet, so your system warns you before it opens them.{" "}
+                {UNSIGNED[tab] ?? "Every download here is unsigned until g1t leaves alpha."} Each file's SHA-256 is listed to check it against.
+              </AlertDescription>
+            </div>
+          </Alert>
           {PLATFORM_IDS.map((id) => (
             <TabsContent key={id} value={id} className="mt-6">
               {isDesktop(id) ? (
@@ -648,13 +671,28 @@ function Questions({ hosted, release }: { hosted: boolean; release: Data["releas
             <AccordionTrigger>Why a download, and not Google Play or the App Store?</AccordionTrigger>
             <AccordionContent>
               Both stores publish a company's apps only once it is verified with a D-U-N-S number, and Flagon's is on its way. Until then the Android app is
-              published {hosted ? "here" : "on g1t.sh"}, signed by g1t, as the desktop app is. It moves into Google Play as soon as it can, and iOS follows
-              through the App Store.
+              published {hosted ? "here" : "on g1t.sh"}, as the desktop app is. It moves into Google Play as soon as it can, and iOS follows through the App
+              Store.
             </AccordionContent>
           </AccordionItem>
-          <AccordionItem value="macos">
-            <AccordionTrigger>Why does macOS ask before opening it?</AccordionTrigger>
-            <AccordionContent>The app isn't notarized with Apple yet. The first time, right-click it and choose Open.</AccordionContent>
+          <AccordionItem value="unsigned">
+            <AccordionTrigger>Why does my system warn me before opening it?</AccordionTrigger>
+            <AccordionContent>
+              <p>
+                While g1t is in alpha, none of its builds are code-signed: not the desktop app, the Android app, the runner or the CLI. Your system can't tell
+                who made them, so it warns you the first time. To open one anyway:
+              </p>
+              <ul className="mt-3 space-y-1.5">
+                {(["windows", "macos", "linux", "android"] as const).map((id) => (
+                  <li key={id}>
+                    <span className="text-fg-soft">{PLATFORMS[id].name}:</span> {UNSIGNED[id]}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3">
+                Check a download against its SHA-256 first. The desktop app's own updates are checked against g1t's signature before they install.
+              </p>
+            </AccordionContent>
           </AccordionItem>
           <AccordionItem value="check">
             <AccordionTrigger>How do I check a download?</AccordionTrigger>

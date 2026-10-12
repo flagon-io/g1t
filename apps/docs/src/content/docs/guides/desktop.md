@@ -35,11 +35,28 @@ under **Command line**.
 | Platform | What you get | Notes |
 | --- | --- | --- |
 | **Windows** 10 and 11 | An installer, `g1t-<version>-windows-x64-setup.exe` | Installs for your account alone; no administrator needed. Uses the WebView2 runtime Windows already has, and fetches it if a machine lacks it. |
-| **macOS** 11 and later | A disk image, Apple silicon or Intel | Drag g1t to Applications. The app is not yet notarized with Apple: the first time, right-click it and choose **Open**. |
+| **macOS** 11 and later | A disk image, Apple silicon or Intel | Drag g1t to Applications. |
 | **Linux** | An AppImage, a `.deb` or an `.rpm` | The AppImage runs anywhere once made executable (`chmod +x`). It needs WebKitGTK 4.1, which the packages install for you. |
 
 Every file's SHA-256 is in `SHA256SUMS` beside it, at
 `https://g1t.sh/downloads/desktop/<version>/`.
+
+### Unsigned during the alpha
+
+While g1t is in alpha, none of its builds are code-signed: not the desktop
+app, the Android app, the runner or the CLI. Your system can't tell who made
+them, so it warns you the first time you open one. Check the file against
+its SHA-256, then:
+
+- **Windows**: when SmartScreen says it protected your PC, choose **More
+  info**, then **Run anyway**.
+- **macOS**: when it says it can't check g1t, open **System Settings →
+  Privacy & Security** and choose **Open Anyway**.
+- **Linux**: your package manager may say the `.deb` or `.rpm` isn't
+  signed. The AppImage needs only `chmod +x`.
+
+The app's own updates are different: each is checked against g1t's
+signature before it installs.
 
 The app opens on g1t.sh's sign-in page, not the site's landing page: it
 is for using g1t, not for reading about it. It keeps you signed in like a
