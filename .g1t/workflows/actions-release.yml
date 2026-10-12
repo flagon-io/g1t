@@ -1,7 +1,7 @@
 # Publishes g1t's own actions: each folder of actions/ (deploy, detect…)
 # is pushed, as the whole of its own history, to the repository of the
-# same name in the g1t workspace on g1t.sh (actions/deploy to g1t/deploy),
-# and its major tag, v1, is moved to it. Workflows anywhere use them as
+# same name under g1t/ on g1t.sh (actions/deploy to g1t/deploy), and its
+# major tag, v1, is moved to it. Workflows anywhere use them as
 # `uses: g1t/deploy@v1`. A change to an action that breaks how it is
 # used gets a new major tag here (MAJOR below), and the old one stays.
 #
@@ -9,13 +9,26 @@
 # way (workflows/.g1t/workflows/deploy.yml is
 # `g1t/workflows/.g1t/workflows/deploy.yml@v1`).
 #
+# `g1t` is a workspace alias: on g1t.sh it is flagon-io's, so g1t/deploy
+# is the repository flagon-io/deploy, and the API, git and `uses:` all
+# answer for it under either name (see the workspaces guide, "Workspace
+# aliases"). This workflow names the alias throughout and never needs to
+# know which workspace it leads to.
+#
+# A repository that does not exist yet is created first, public, through
+# the API (POST /repos with `"workspace": "g1t"`, which the alias runs in
+# flagon-io); one that exists but is private stops the run, as nobody
+# outside its workspace could use it.
+#
 # Runs on a push to main that changes actions/ or workflows/, and by hand.
 #
 # Needs the repository secret G1T_ACTIONS_PUBLISH_TOKEN: an access token of
-# the g1t workspace with contents: write on its action repositories
-# (g1t/deploy, g1t/detect, and one for each new folder, made public
-# before its first release). The job's own token reaches this repository
-# only, so it cannot push there.
+# the workspace g1t leads to (flagon-io), with the scopes repo:write (to
+# create a missing repository) and code:write (to push and move tags).
+# A token without repo:write still publishes to repositories
+# that exist, and the run says which one to create by hand. The job's own
+# token reaches this repository only, so it can neither create nor push
+# to the others.
 name: Actions release
 
 on:
@@ -50,6 +63,7 @@ jobs:
         env:
           PUBLISH_TOKEN: ${{ secrets.G1T_ACTIONS_PUBLISH_TOKEN }}
           SERVER: ${{ github.server_url }}
+          API: ${{ github.api_url }}
         run: |
           set -euo pipefail
           if [ -z "${PUBLISH_TOKEN}" ]; then
@@ -58,11 +72,45 @@ jobs:
           fi
           echo "::add-mask::${PUBLISH_TOKEN}"
           auth="Authorization: Basic $(printf 'g1t:%s' "${PUBLISH_TOKEN}" | base64 -w0)"
+          bearer="Authorization: Bearer ${PUBLISH_TOKEN}"
           git config user.name g1t
           git config user.email g1t@users.noreply.g1t.sh
+
+          # The repository g1t/<name>, public: created when it is missing.
+          ensure() {
+            local name="$1" description="$2" found status
+            found="$(mktemp)"
+            status="$(curl -sS -o "${found}" -w '%{http_code}' -H "${bearer}" "${API}/repos/${NAMESPACE}/${name}")"
+            case "${status}" in
+              200)
+                if [ "$(jq -r '.is_private' "${found}")" != "false" ]; then
+                  echo "::error::$(jq -r '.namespace + "/" + .name' "${found}") is private, so no workflow outside its workspace could use ${NAMESPACE}/${name}. Make it public, then run this again."
+                  exit 1
+                fi
+                return 0
+                ;;
+              404) ;;
+              *)
+                echo "::error::Looking for ${NAMESPACE}/${name} answered ${status}: $(cat "${found}")"
+                exit 1
+                ;;
+            esac
+            echo "Creating ${NAMESPACE}/${name}, public"
+            status="$(jq -n --arg workspace "${NAMESPACE}" --arg name "${name}" --arg description "${description}" \
+                '{ workspace: $workspace, name: $name, description: $description, private: false }' \
+              | curl -sS -o "${found}" -w '%{http_code}' -X POST -H "${bearer}" -H "Content-Type: application/json" \
+                  --data-binary @- "${API}/repos")"
+            if [ "${status}" != "201" ] && [ "${status}" != "200" ]; then
+              echo "::error::Creating ${NAMESPACE}/${name} answered ${status}: $(cat "${found}"). Give G1T_ACTIONS_PUBLISH_TOKEN the repo:write scope, or create ${NAMESPACE}/${name} once by hand, public."
+              exit 1
+            fi
+            echo "- Created \`$(jq -r '.namespace + "/" + .name' "${found}")\` for \`${NAMESPACE}/${name}\`" >> "${GITHUB_STEP_SUMMARY}"
+          }
+
           for dir in actions/*/; do
             name="$(basename "${dir}")"
             [ -f "${dir}action.yml" ] || { echo "::warning::${dir} has no action.yml; skipped."; continue; }
+            ensure "${name}" "$(sed -n 's/^description: *//p' "${dir}action.yml" | head -n 1 | tr -d "\"'")"
             commit="$(git subtree split --prefix "actions/${name}" HEAD)"
             remote="${SERVER}/${NAMESPACE}/${name}.git"
             echo "Publishing actions/${name} (${commit}) to ${NAMESPACE}/${name}"
@@ -72,6 +120,7 @@ jobs:
           done
           # g1t's reusable workflows, from workflows/, as g1t/workflows.
           if [ -d workflows/.g1t/workflows ]; then
+            ensure workflows "g1t's reusable workflows, such as .g1t/workflows/deploy.yml."
             commit="$(git subtree split --prefix workflows HEAD)"
             remote="${SERVER}/${NAMESPACE}/workflows.git"
             echo "Publishing workflows (${commit}) to ${NAMESPACE}/workflows"

@@ -140,6 +140,11 @@ pub fn missing_scope(op: Op, viewer: &Viewer, input: &Value) -> Option<scopes::S
         .find(|scope| !access.allows(*scope))
 }
 
+/// Whether a decision refuses the call.
+fn refused(decision: &Option<Decision>) -> bool {
+    decision.as_ref().is_some_and(|decision| !decision.allowed)
+}
+
 /// Runs `op` for `viewer`: enforcing an agent's scope first, and recording
 /// what happened.
 pub async fn run(
@@ -148,7 +153,23 @@ pub async fn run(
     viewer: &Viewer,
     input: &Value,
 ) -> Result<Outcome<Value>> {
-    let decision = decide(op, services, viewer, input);
+    let mut input = std::borrow::Cow::Borrowed(input);
+    let mut decision = decide(op, services, viewer, &input);
+    // A token or an agent's run that reaches one repository knows it by its
+    // workspace's slug. A call that names it under the workspace's alias
+    // (`g1t/deploy` for `flagon-io/deploy`) or an old slug is decided again,
+    // and run, under the slug it resolves to; only a refusal pays for the
+    // lookup, and the call is allowed only as the repository it is.
+    if refused(&decision)
+        && let Some(retargeted) = crate::renamed::retarget(services, &input).await?
+    {
+        let again = decide(op, services, viewer, &retargeted);
+        if !refused(&again) {
+            decision = again;
+            input = std::borrow::Cow::Owned(retargeted);
+        }
+    }
+    let input = input.as_ref();
     if let Some(decision) = decision.as_ref().filter(|decision| !decision.allowed) {
         record(op, services, viewer, input, decision, None).await;
         return Ok(Outcome::fail(
@@ -278,6 +299,33 @@ mod tests {
             })),
             ..User::default()
         }
+    }
+
+    /// A workflow job's token reaches its own repository, by its
+    /// workspace's slug; named under the workspace's alias, the call is
+    /// refused as written and decided again under the slug.
+    #[test]
+    fn a_repositorys_token_reaches_it_under_its_workspaces_alias() {
+        let job = User {
+            id: "usr_1".to_owned(),
+            username: "syntaqx".to_owned(),
+            token: Some(Box::new(TokenAccess {
+                token_id: "tok_job".to_owned(),
+                scopes: Some(vec![Scope::RepoRead.as_str().to_owned()]),
+                repo: Some("flagon-io/deploy".to_owned()),
+                ..TokenAccess::default()
+            })),
+            ..User::default()
+        };
+        let aliased = json!({ "repo": "g1t/deploy" });
+        let first = token_decision(Op::GetRepo, &job, &aliased);
+        assert!(refused(&first));
+        let retargeted = crate::renamed::rewrite(&aliased, "g1t", "flagon-io");
+        assert!(!refused(&token_decision(Op::GetRepo, &job, &retargeted)));
+        // Another repository of the same workspace stays out of reach.
+        let other = crate::renamed::rewrite(&json!({ "repo": "g1t/internal" }), "g1t", "flagon-io");
+        assert!(refused(&token_decision(Op::GetRepo, &job, &other)));
+        assert!(!refused(&None));
     }
 
     #[test]
