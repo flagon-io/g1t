@@ -144,12 +144,17 @@ function BranchName({ row, base, isDefault }: { row: BranchRowData; base: string
 function Updated({ row, base }: { row: BranchRowData; base: string }) {
   if (!row.commit) return <span className="text-faint">—</span>;
   return (
-    <Hint label={row.commit.message}>
-      <Link to={`${base}/commit/${row.commit.hash}`} className="inline-flex items-center gap-1.5 whitespace-nowrap text-muted hover:text-fg">
-        <CommitAvatars commit={row.commit} size={18} max={2} />
-        <TimeAgo at={row.commit.at} />
-      </Link>
-    </Hint>
+    // The avatars link to their people, so they sit beside the commit's
+    // link rather than in it: a link inside a link is split apart by the
+    // browser, and the page then fails to hydrate.
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <CommitAvatars commit={row.commit} size={18} max={2} />
+      <Hint label={row.commit.message}>
+        <Link to={`${base}/commit/${row.commit.hash}`} className="text-muted hover:text-fg">
+          <TimeAgo at={row.commit.at} />
+        </Link>
+      </Hint>
+    </span>
   );
 }
 
