@@ -2,12 +2,12 @@ import { Bot, Boxes, Cpu, Plus, ServerCog, ShieldAlert, Trash2 } from "lucide-re
 import { useEffect, useState } from "react";
 import { Form, Link } from "react-router";
 
-import { type RegistrationToken, RUNNER_DOWNLOADS, RUNNER_FILES, RUNNER_IMAGE, type Runner, type RunnerGroup } from "@g1t/contracts";
+import { type RegistrationToken, RUNNER_DOWNLOADS, RUNNER_FILES, RUNNER_IMAGE, type Runner, type RunnerGroup, type RunnerIsolation } from "@g1t/contracts";
 
 import { agentRunHref, workflowRunHref } from "../lib/runners";
 import type { RunnersAction, RunnersData } from "../lib/runners.server";
 import { CopyLine, EmptyState, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
-import { Badge } from "./ui/badge";
+import { Badge, type BadgeTone } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Checkbox } from "./ui/checkbox";
@@ -15,6 +15,7 @@ import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { SelectField } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** Online and waiting for work reads as Idle; online and working, Busy. */
 export const STATUS: Record<Runner["status"], { dot: string; text: string; label: string }> = {
@@ -30,6 +31,46 @@ function workHref(work: NonNullable<Runner["work"]>): string | null {
 }
 
 export const OS_NAMES: Record<Runner["os"], string> = { linux: "Linux", macos: "macOS", windows: "Windows" };
+
+/** How a runner keeps work from its machine, as a badge and what it means. */
+export const ISOLATION: Record<RunnerIsolation, { label: string; tone: BadgeTone; about: string }> = {
+  "nested-container": {
+    label: "Sandboxed",
+    tone: "success",
+    about: "Each job runs in a fresh container inside the runner's own sandboxed container. Neither reaches the machine.",
+  },
+  vm: {
+    label: "VM per job",
+    tone: "success",
+    about: "Each job runs in a throwaway virtual machine of its own, such as Windows Sandbox, with no folder of the machine's.",
+  },
+  container: {
+    label: "Shared Docker",
+    tone: "warn",
+    about: "Each job runs in a container, but the runner shares the machine's Docker Engine, so anything that takes it over controls the machine.",
+  },
+  host: {
+    label: "Unsandboxed",
+    tone: "danger",
+    about: "Jobs run directly on the machine (host mode). It is not given public repositories' work.",
+  },
+};
+
+function IsolationBadge({ isolation }: { isolation: Runner["isolation"] }) {
+  if (!isolation) return null;
+  const level = ISOLATION[isolation];
+  if (!level) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge size="md" tone={level.tone} tabIndex={0}>
+          {level.label}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-72">{level.about}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 function Section({ icon, title, about, children }: { icon: React.ReactNode; title: string; about: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -56,6 +97,7 @@ export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-medium">{runner.name}</span>
           <span className={`text-xs font-medium ${status.text}`}>{status.label}</span>
+          <IsolationBadge isolation={runner.isolation} />
           {runner.ephemeral && <Badge size="md">ephemeral</Badge>}
           {runner.group && <span className="text-xs text-faint">in {runner.group}</span>}
         </div>

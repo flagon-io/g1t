@@ -7,14 +7,17 @@
 //!
 //! | Isolation | How | Wall from the machine |
 //! | --- | --- | --- |
-//! | `nested-container` | The runner is a container under Sysbox (`docker run --runtime=sysbox-runc`), with its own Docker Engine inside; each job is a container on that engine. | Two: the job's container, then the runner's, whose root is no one on the machine. |
+//! | `nested-container` | The runner is a container under Sysbox (`docker run --runtime=sysbox-runc`), with its own Docker Engine inside; each job is a container on that engine. On a desktop, `g1t-runner sandbox up` runs exactly this inside a Linux VM of the runner's own (launcher/). | Two: the job's container, then the runner's, whose root is no one on the machine; a third, the VM, under `sandbox up`. |
+//! | `vm` | Jobs native to the machine's OS, each in a throwaway VM: Windows Sandbox on Windows, a cloned macOS VM on a Mac (native.rs). The runner stays on the machine and only makes and destroys those VMs. | One, a hypervisor: the job's VM, which gets no folder of the machine's but a read-only copy of the harness. |
 //! | `container` | The runner drives a Docker Engine it shares with the machine (installed on it, or a container with the machine's Docker socket); each job is a container on it. | One: the job's container. The runner itself can do anything the machine's Docker can, which is everything. |
 //! | `host` | `--no-docker`: each job is a process on the machine, in a folder of its own. Deprecated. | None. |
 //!
 //! [`SandboxDriver`] is what makes a job's sandbox. [`NestedDocker`] (and
 //! [`SharedDocker`], the same on a shared engine) is built: exec.rs runs
-//! jobs through it. [`HyperVContainer`] and [`MacVm`] are the designs for
-//! Windows and macOS, declared so the shape is fixed, and not built.
+//! jobs through it. For jobs native to the machine's OS,
+//! [`super::native::WindowsSandbox`] is built and runs on Windows 11 Pro,
+//! Enterprise and Education; [`super::native::MacVm`] is designed, its
+//! commands built and tested, and not yet run on a Mac.
 
 use std::path::Path;
 
@@ -26,6 +29,8 @@ use anyhow::{Result, bail};
 pub enum Isolation {
     /// A container per job, inside the runner's own sandboxed container.
     NestedContainer,
+    /// A throwaway VM per job, native to the machine's OS (native.rs).
+    Vm,
     /// A container per job, on a Docker Engine shared with the machine.
     Container,
     /// Directly on the machine.
@@ -36,6 +41,7 @@ impl Isolation {
     pub fn as_str(self) -> &'static str {
         match self {
             Isolation::NestedContainer => "nested-container",
+            Isolation::Vm => "vm",
             Isolation::Container => "container",
             Isolation::Host => "host",
         }
@@ -46,6 +52,9 @@ impl Isolation {
         match self {
             Isolation::NestedContainer => {
                 "nested-container: each job runs in a fresh container on this runner's own Docker Engine, inside the runner's sandboxed container; neither reaches the machine"
+            }
+            Isolation::Vm => {
+                "vm: each job runs in a throwaway virtual machine of its own, native to this OS, made for it and destroyed after; it gets no folder of this machine's but a read-only copy of the harness"
             }
             Isolation::Container => {
                 "container: each job runs in a fresh container, but the runner is not sandboxed from the machine (it shares the machine's Docker Engine, or its container's root is the machine's), so the runner, and anything that takes it over, controls the machine. Run the runner's image under Sysbox for nested-container isolation"
@@ -267,74 +276,13 @@ impl SandboxDriver for SharedDocker {
     }
 }
 
-/// The driver for jobs native to this OS, once there is one: what a
-/// Windows or macOS runner in host mode says is coming.
+/// The driver for jobs native to this OS, where there is one: Windows
+/// Sandbox on Windows, a cloned macOS VM on a Mac (native.rs).
 pub fn native_driver() -> Option<Box<dyn SandboxDriver>> {
     match std::env::consts::OS {
-        "windows" => Some(Box::new(HyperVContainer)),
-        "macos" => Some(Box::new(MacVm)),
+        "windows" => Some(Box::new(super::native::WindowsSandbox)),
+        "macos" => Some(Box::new(super::native::MacVm)),
         _ => None,
-    }
-}
-
-/// **Windows: not built.** The design:
-///
-/// - A minimal launcher on the host, the only part that runs there. It
-///   polls nothing and runs no job code: it creates a sandbox from a
-///   signed image when the runner inside asks for one, and destroys it
-///   when the job ends. Its whole job is "create from signed image" and
-///   "destroy", so there is little to attack.
-/// - Each job is a Windows container with Hyper-V isolation
-///   (`docker run --isolation=hyperv`, or the HCS API directly): its own
-///   utility VM and kernel, so a job that escapes its container is still
-///   in a VM, not on the host. Process isolation shares the host's kernel
-///   and is not enough.
-/// - The image is pinned by digest and its signature checked before it is
-///   used; the job gets the harness read-only, its own token, and a
-///   scratch disk destroyed with the VM.
-///
-/// It needs a Windows host with Hyper-V and the Containers feature, and
-/// cannot be built or tested on Linux. Until it is, Windows jobs run in
-/// host mode, which is deprecated.
-pub struct HyperVContainer;
-
-impl SandboxDriver for HyperVContainer {
-    fn name(&self) -> &'static str {
-        "Windows containers with Hyper-V isolation"
-    }
-    fn preflight(&self) -> Result<Isolation> {
-        bail!("Hyper-V-isolated Windows containers are not built yet; Windows jobs run on the host (deprecated)")
-    }
-}
-
-/// **macOS: not built.** The design:
-///
-/// - The same minimal host launcher as on Windows, using Apple's
-///   Virtualization framework (`VZVirtualMachine`) to boot an ephemeral
-///   macOS VM per job from a signed base image, cloned copy-on-write
-///   (APFS clones) so a fresh VM costs seconds, and deleted after.
-/// - Apple's licence allows at most two macOS VMs per Mac at once, so a
-///   Mac runs two jobs at a time at most, and the launcher refuses a
-///   third.
-/// - The runner and harness run inside the VM; the host keeps only the
-///   launcher and the signed images.
-///
-/// It needs Apple silicon and macOS 13 or later, and cannot be built or
-/// tested on Linux. Until it is, macOS jobs run in host mode, which is
-/// deprecated.
-pub struct MacVm;
-
-impl MacVm {
-    /// Apple's macOS licence: two virtual copies per Mac.
-    pub const MAX_VMS: u32 = 2;
-}
-
-impl SandboxDriver for MacVm {
-    fn name(&self) -> &'static str {
-        "ephemeral macOS VMs"
-    }
-    fn preflight(&self) -> Result<Isolation> {
-        bail!("ephemeral macOS VMs (at most {} per Mac) are not built yet; macOS jobs run on the host (deprecated)", MacVm::MAX_VMS)
     }
 }
 
@@ -420,10 +368,9 @@ mod tests {
     }
 
     #[test]
-    fn the_unbuilt_drivers_say_so() {
-        assert!(HyperVContainer.preflight().is_err());
-        assert!(MacVm.preflight().unwrap_err().to_string().contains("at most 2"));
+    fn a_shared_engine_is_one_wall_and_a_vm_says_so() {
         assert_eq!(SharedDocker.preflight().unwrap(), Isolation::Container);
-        assert_eq!(MacVm::MAX_VMS, 2);
+        assert_eq!(Isolation::Vm.as_str(), "vm");
+        assert!(Isolation::Vm.describe().contains("throwaway virtual machine"));
     }
 }

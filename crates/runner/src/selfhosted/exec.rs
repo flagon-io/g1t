@@ -66,6 +66,7 @@ pub struct Running {
     pub id: String,
     pub kind: String,
     pub name: String,
+    pub repo: String,
     child: Child,
     container: Option<String>,
     /// The job's network and work volume, removed after.
@@ -74,9 +75,17 @@ pub struct Running {
     /// The job's own Docker Engine, when it may have one.
     engine: Option<JobEngine>,
     folder: Option<PathBuf>,
+    /// The job's own VM, for a job native to this OS (native.rs); `child`
+    /// is then `wsb exec`, whose output carries the job's exit code.
+    native: Option<WsbJob>,
+    /// How it ended, once read: a native job's code is read once from
+    /// `wsb exec`'s output.
+    exit: Option<i32>,
     /// Past its time limit and a grace for g1t to say so: stopped here.
     deadline: Instant,
 }
+
+use super::native::{self, WsbJob};
 
 #[cfg(unix)]
 use super::engine::JobEngine;
@@ -112,11 +121,23 @@ impl Running {
 
     /// Its exit code once it has ended.
     pub fn ended(&mut self) -> Option<i32> {
-        match self.child.try_wait() {
+        if self.exit.is_some() {
+            return self.exit;
+        }
+        self.exit = match self.child.try_wait() {
+            Ok(Some(_)) if self.native.is_some() => {
+                use std::io::Read;
+                let mut text = String::new();
+                if let Some(out) = self.child.stdout.as_mut() {
+                    let _ = out.read_to_string(&mut text);
+                }
+                Some(native::parse_exit_code(&text).unwrap_or(1))
+            }
             Ok(Some(status)) => Some(status.code().unwrap_or(1)),
             Ok(None) => None,
             Err(_) => Some(1),
-        }
+        };
+        self.exit
     }
 
     /// Stops it: the container, then the process and everything it started.
@@ -127,6 +148,9 @@ impl Running {
         #[cfg(unix)]
         if let Some(engine) = &self.engine {
             quietly(docker().args(["kill", &engine.container]));
+        }
+        if let Some(job) = &self.native {
+            job.stop();
         }
         let pid = self.child.id().to_string();
         if cfg!(windows) {
@@ -156,6 +180,9 @@ impl Running {
         }
         if let Some(folder) = &self.folder {
             let _ = std::fs::remove_dir_all(folder);
+        }
+        if let Some(job) = self.native.take() {
+            job.clean();
         }
     }
 }
@@ -202,11 +229,68 @@ fn harness_env(config: &Config, work: &Assignment) -> Result<BTreeMap<String, St
 /// the runner tells g1t how the process ended.
 pub fn start(config: &Config, isolation: Isolation, folder: &Path, work: &Assignment) -> Result<Running> {
     let env = harness_env(config, work)?;
-    if isolation == Isolation::Host {
-        refuse_public_on_host(work)?;
-        return directly(config, work, env);
+    match isolation {
+        Isolation::Host => {
+            refuse_public_on_host(work)?;
+            directly(config, work, env)
+        }
+        Isolation::Vm => in_native_vm(config, folder, work, env),
+        _ => in_docker(config, isolation, folder, work, env),
     }
-    in_docker(config, isolation, folder, work, env)
+}
+
+/// A memory size as `--memory` takes it (`8g`, `4096m`), in MiB.
+pub fn mib(text: &str) -> Option<u64> {
+    let text = text.trim().to_ascii_lowercase();
+    let (number, unit) = text.split_at(text.find(|c: char| !c.is_ascii_digit()).unwrap_or(text.len()));
+    let number: u64 = number.parse().ok()?;
+    match unit.trim_end_matches('b').trim_end_matches('i') {
+        "" | "m" => Some(number),
+        "g" => Some(number * 1024),
+        "k" => Some(number / 1024),
+        _ => None,
+    }
+}
+
+/// A job native to this OS, in a throwaway VM of its own (native.rs):
+/// Windows Sandbox on Windows. Agent work needs g1t's Linux sandbox
+/// layout and runs on a Linux runner.
+fn in_native_vm(config: &Config, folder: &Path, work: &Assignment, env: BTreeMap<String, String>) -> Result<Running> {
+    if work.kind != "workflow" {
+        bail!("agent work runs on Linux runners: this one runs jobs native to {}", std::env::consts::OS);
+    }
+    if !cfg!(windows) {
+        bail!("this runner has no sandbox for jobs native to {}", std::env::consts::OS);
+    }
+    let memory = config.memory.as_deref().and_then(mib).unwrap_or(4096);
+    let drop = folder.join("native").join(container_name(&work.id));
+    let job = WsbJob::start(drop, &env, memory)?;
+    let child = match job.exec().spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            job.clean();
+            return Err(error).context("could not run wsb exec");
+        }
+    };
+    log(&format!(
+        "Running {} {} in a Windows Sandbox of its own ({memory} MiB): no folder of this machine's but its read-only harness, discarded after",
+        work.kind, work.name
+    ));
+    Ok(Running {
+        id: work.id.clone(),
+        repo: work.repo.clone(),
+        kind: work.kind.clone(),
+        name: work.name.clone(),
+        child,
+        container: None,
+        network: None,
+        volume: None,
+        engine: None,
+        folder: None,
+        native: Some(job),
+        exit: None,
+        deadline: deadline(work),
+    })
 }
 
 /// Host mode does not take a public repository's work: anyone can propose
@@ -375,6 +459,7 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
     };
     Ok(Running {
         id: work.id.clone(),
+        repo: work.repo.clone(),
         kind: work.kind.clone(),
         name: work.name.clone(),
         child,
@@ -383,6 +468,8 @@ fn in_docker(config: &Config, isolation: Isolation, folder: &Path, work: &Assign
         volume,
         engine,
         folder: None,
+        native: None,
+        exit: None,
         deadline: deadline(work),
     })
 }
@@ -439,6 +526,7 @@ fn directly(config: &Config, work: &Assignment, env: BTreeMap<String, String>) -
     let child = command.spawn().context("could not start the job's process")?;
     Ok(Running {
         id: work.id.clone(),
+        repo: work.repo.clone(),
         kind: work.kind.clone(),
         name: work.name.clone(),
         child,
@@ -447,6 +535,8 @@ fn directly(config: &Config, work: &Assignment, env: BTreeMap<String, String>) -
         volume: None,
         engine: None,
         folder,
+        native: None,
+        exit: None,
         deadline: deadline(work),
     })
 }
@@ -512,6 +602,7 @@ mod tests {
             pids_limit: None,
             job_docker: true,
             job_docker_image: None,
+            native: false,
         }
     }
 

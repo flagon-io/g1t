@@ -107,6 +107,10 @@ pub struct Runner {
     pub last_seen_at: Option<String>,
     pub created_at: String,
     pub created_by: Option<String>,
+    /// How it keeps work from its machine, as it last said
+    /// ([`ISOLATIONS`]); null for a runner from before runners said.
+    #[serde(default)]
+    pub isolation: Option<String>,
 }
 
 /// Which of a workspace's repositories may use its runners.
@@ -360,6 +364,7 @@ pub struct RegisterArgs {
     pub replace: bool,
     /// How the runner keeps work from its machine: `nested-container` (a
     /// container per job, inside the runner's own sandboxed container),
+    /// `vm` (a throwaway VM per job, native to the machine's OS),
     /// `container` (a container per job, on a Docker Engine it shares with
     /// its machine) or `host` (directly on the machine). A `host` runner is
     /// given no public repository's work ([`isolation_allows`]); older
@@ -369,7 +374,7 @@ pub struct RegisterArgs {
 }
 
 /// The isolation levels a runner may say it has (`RegisterArgs::isolation`).
-pub const ISOLATIONS: &[&str] = &["nested-container", "container", "host"];
+pub const ISOLATIONS: &[&str] = &["nested-container", "vm", "container", "host"];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Registered {

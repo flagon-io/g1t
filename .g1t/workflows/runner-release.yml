@@ -1,12 +1,21 @@
 # Releases the self-hosted runner, g1t-runner (crates/runner): builds it for
-# Linux, macOS and Windows on x64 and arm64, signs the release, publishes it
-# to g1t.sh/downloads/runner/ (the g1t-downloads R2 bucket), and pushes its
-# container image. Runners already out there update themselves to it.
+# Linux, macOS and Windows on x64 and arm64, pushes its container image,
+# builds the images `g1t-runner sandbox` runs on people's own computers,
+# signs the release (binaries and sandbox images in one manifest), and
+# publishes it to g1t.sh/downloads/runner/ (the g1t-downloads R2 bucket).
+# Runners already out there update themselves to it.
 #
 # A release is a tag `runner-v<version>`, where the version is the one in
 # crates/runner/Cargo.toml; or run it by hand. scripts/runner-release.mjs
-# does the work, and its header says how to make the release key the first
-# time; CONTRIBUTING.md ("Deploying") says how a release is made.
+# and scripts/sandbox-image.mjs do the work, and the first's header says how
+# to make the release key the first time; CONTRIBUTING.md ("Deploying")
+# says how a release is made.
+#
+# The image jobs run on g1t's own machines (g1t-4core), whose jobs have a
+# Docker Engine of their own (crates/runner/src/docker/engine.rs). arm64
+# images need QEMU's emulators registered with the kernel; each image job
+# tries that, and when the machine does not allow it, builds amd64 alone
+# and says so in a warning rather than failing the release.
 name: Runner release
 
 on:
@@ -27,13 +36,8 @@ env:
 
 jobs:
   binaries:
-    name: Build, sign and publish
+    name: Build
     runs-on: ubuntu-latest
-    # Production's secrets, without a deployment: a release is not a deploy of
-    # g1t.sh, and would otherwise show on its card as one in progress.
-    environment:
-      name: production
-      deployment: false
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -64,11 +68,136 @@ jobs:
           G1T_RUNNER_RELEASE_KEY: ${{ vars.RUNNER_RELEASE_PUBLIC_KEY }}
           RUNNER_AGENT_IMAGE: ${{ vars.RUNNER_AGENT_IMAGE }}
         run: node scripts/runner-release.mjs build --targets linux-x64,linux-arm64,windows-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: target/runner-release/
+
+  image:
+    name: Container image
+    needs: binaries
+    runs-on: g1t-4core
+    # Production's secrets, without a deployment: a release is not a deploy of
+    # g1t.sh, and would otherwise show on its card as one in progress.
+    environment:
+      name: production
+      deployment: false
+    timeout-minutes: 45
+    # Its token pushes the image to g1t's registry.
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      # The pushed image by digest, which the sandbox's manifest names.
+      runner_image: ${{ steps.push.outputs.runner_image }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: release
+      - name: QEMU for arm64, if this machine allows it
+        id: qemu
+        run: |
+          if docker run --privileged --rm tonistiigi/binfmt --install arm64 >/dev/null 2>&1 \
+             && [ "$(docker run --rm --platform linux/arm64 debian:bookworm-slim uname -m 2>/dev/null)" = aarch64 ]; then
+            echo "arches=amd64 arm64" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::This machine cannot run arm64 programs (QEMU's emulators could not be registered), so the runner's image is built for amd64 alone this time."
+            echo "arches=amd64" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and push
+        id: push
+        # To g1t's own registry, where flagon-io keeps it public.
+        env:
+          IMAGE: g1t.sh/flagon-io/g1t-runner
+          ARCHES: ${{ steps.qemu.outputs.arches }}
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/runner/Cargo.toml | head -1)"
+          echo "${{ secrets.G1T_TOKEN }}" | docker login g1t.sh -u g1t --password-stdin
+          tags=()
+          for arch in $ARCHES; do
+            mkdir -p "context-$arch"
+            cp deploy/runner/Dockerfile "context-$arch/"
+            name="g1t-runner-linux-$([ "$arch" = amd64 ] && echo x64 || echo arm64)"
+            cp release/*/"$name" "context-$arch/g1t-runner"
+            docker buildx build --platform "linux/$arch" -t "$IMAGE:$version-$arch" --load "context-$arch"
+            docker push "$IMAGE:$version-$arch"
+            tags+=("$IMAGE:$version-$arch")
+          done
+          docker buildx imagetools create -t "$IMAGE:$version" -t "$IMAGE:latest" "${tags[@]}"
+          digest="$(docker buildx imagetools inspect "$IMAGE:$version" --format '{{json .Manifest}}' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).digest))')"
+          echo "runner_image=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
+
+  sandbox:
+    name: Sandbox images
+    needs: [binaries, image]
+    runs-on: g1t-4core
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: target/runner-release
+      - name: QEMU for arm64, if this machine allows it
+        id: qemu
+        run: |
+          if docker run --privileged --rm tonistiigi/binfmt --install arm64 >/dev/null 2>&1 \
+             && [ "$(docker run --rm --platform linux/arm64 debian:bookworm-slim uname -m 2>/dev/null)" = aarch64 ]; then
+            echo "arches=x64 arm64" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::This machine cannot run arm64 programs, so the sandbox's images are built for x64 alone this time: an arm64 Mac or Linux machine keeps the sandbox image it has."
+            echo "arches=x64" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build the WSL root filesystem and the VM's disk
+        env:
+          ARCHES: ${{ steps.qemu.outputs.arches }}
+        run: |
+          dir="$(echo target/runner-release/*/)"
+          for arch in $ARCHES; do
+            node scripts/sandbox-image.mjs build --arch "$arch" --runner "${dir}g1t-runner-linux-$arch" --out "$dir"
+          done
+      - name: The manifest's sandbox section
+        env:
+          RUNNER_SANDBOX_IMAGE: ${{ needs.image.outputs.runner_image }}
+        run: node scripts/sandbox-image.mjs section --dir "$(echo target/runner-release/*/)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sandbox
+          path: |
+            target/runner-release/*/g1t-sandbox-*
+            target/runner-release/*/sandbox.json
+
+  publish:
+    name: Sign and publish
+    needs: [binaries, image, sandbox]
+    # The binaries go out even when an image job failed: the manifest then
+    # names no sandbox images, and computers keep the sandbox they have.
+    if: ${{ always() && needs.binaries.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      deployment: false
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: target/runner-release
+      - uses: actions/download-artifact@v4
+        if: ${{ needs.sandbox.result == 'success' }}
+        with:
+          name: sandbox
+          path: target/runner-release
       - name: Sign
         env:
           RUNNER_RELEASE_KEY: ${{ secrets.RUNNER_RELEASE_KEY }}
           G1T_RUNNER_RELEASE_KEY: ${{ vars.RUNNER_RELEASE_PUBLIC_KEY }}
+          RUNNER_AGENT_IMAGE: ${{ vars.RUNNER_AGENT_IMAGE }}
         run: |
+          node scripts/runner-release.mjs manifest
           node scripts/runner-release.mjs sign
           node scripts/runner-release.mjs verify
       # npm's downloads, kept between runs: an install reads them first
@@ -86,47 +215,3 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: node scripts/runner-release.mjs publish
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-binaries
-          path: |
-            target/runner-release/*/g1t-runner-linux-x64
-            target/runner-release/*/g1t-runner-linux-arm64
-
-  image:
-    name: Container image
-    needs: binaries
-    # Builds for arm64 as well as amd64, which needs QEMU's emulators
-    # registered on the machine: a self-hosted runner's, for now.
-    runs-on: [self-hosted, docker]
-    # Production's secrets, without a deployment: a release is not a deploy of
-    # g1t.sh, and would otherwise show on its card as one in progress.
-    environment:
-      name: production
-      deployment: false
-    timeout-minutes: 30
-    # Its token pushes the image to g1t's registry.
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
-        with:
-          name: linux-binaries
-          path: release
-      - name: Build and push for amd64 and arm64
-        # To g1t's own registry, where flagon-io keeps it public.
-        env:
-          IMAGE: g1t.sh/flagon-io/g1t-runner
-        run: |
-          version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/runner/Cargo.toml | head -1)"
-          echo "${{ secrets.G1T_TOKEN }}" | docker login g1t.sh -u g1t --password-stdin
-          for arch in amd64 arm64; do
-            mkdir -p "context-$arch"
-            cp deploy/runner/Dockerfile "context-$arch/"
-            name="g1t-runner-linux-$([ "$arch" = amd64 ] && echo x64 || echo arm64)"
-            cp release/*/"$name" "context-$arch/g1t-runner"
-            docker buildx build --platform "linux/$arch" -t "$IMAGE:$version-$arch" --push "context-$arch"
-          done
-          docker buildx imagetools create -t "$IMAGE:$version" -t "$IMAGE:latest" "$IMAGE:$version-amd64" "$IMAGE:$version-arm64"

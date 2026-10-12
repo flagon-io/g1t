@@ -63,6 +63,10 @@ pub struct Config {
     /// The image a job's own engine runs: `docker:28-dind` if left out.
     #[serde(default)]
     pub job_docker_image: Option<String>,
+    /// Runs jobs native to this OS, each in a throwaway VM of its own
+    /// (`--native`, native.rs): Windows Sandbox on Windows.
+    #[serde(default)]
+    pub native: bool,
 }
 
 fn yes() -> bool {
@@ -173,6 +177,7 @@ mod tests {
             pids_limit: None,
             job_docker: true,
             job_docker_image: None,
+            native: false,
         };
         save(&dir, &config).unwrap();
         let back = load(&dir).unwrap();

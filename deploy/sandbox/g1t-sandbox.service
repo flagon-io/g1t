@@ -1,0 +1,20 @@
+# The sandbox in a VM on macOS or Linux (deploy/sandbox/Dockerfile, `vm`):
+# reads its settings from the seed disk the launcher wrote (/dev/vdc),
+# keeps the runner's registration on its own disk (/dev/vdb), and says how
+# it is on the console. Stopping it (the VM shutting down) drains the runner
+# first when the launcher asked for that, so it may take as long as a job.
+[Unit]
+Description=g1t sandbox
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/g1t-runner sandbox guest run --seed /dev/vdc --state-disk /dev/vdb --console /dev/hvc0
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=infinity
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -196,7 +196,11 @@ talk to the app, whichever it is, and updates still come from g1t.sh.
 
 - **A runner inside the app**, so an agent can work on your own machine
   with what only it reaches, as [the runners page](/guides/self-hosted-runners/)
-  says. The self-hosted runner works on the same machine meanwhile.
+  says. Meanwhile [the sandbox](/guides/self-hosted-runners/#sandbox-on-your-computer),
+  `g1t-runner sandbox up`, makes this computer a self-hosted runner that
+  nothing a job runs can get out of: Linux jobs in a Linux VM of the
+  runner's own, and on Windows 11 Pro and up, Windows jobs each in a
+  Windows Sandbox.
 - **Opening the conversation from a notification.** Clicking one brings
   the app forward; the page it is about is coming.
 - **A page of its own while offline.** If the network goes away while a

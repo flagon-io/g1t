@@ -38,7 +38,17 @@ export type Runner = {
   lastSeenAt: string | null;
   createdAt: string;
   createdBy: string | null;
+  /** How it keeps work from its machine, as it last said; null for a runner from before runners said. */
+  isolation?: RunnerIsolation | null;
 };
+
+/**
+ * `nested-container`: a container per job inside the runner's own sandboxed container (or VM).
+ * `vm`: a throwaway VM per job, native to the machine's OS (Windows Sandbox).
+ * `container`: a container per job on a Docker Engine shared with the machine.
+ * `host`: directly on the machine, unsandboxed.
+ */
+export type RunnerIsolation = "nested-container" | "vm" | "container" | "host";
 
 export type RunnerGroup = {
   id: string;

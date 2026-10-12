@@ -42,6 +42,32 @@ pub struct Manifest {
     pub agent_image: Option<String>,
     /// By platform: `linux-x64`, `macos-arm64`, `windows-x64`…
     pub files: std::collections::BTreeMap<String, File>,
+    /// The sandbox's images (`g1t-runner sandbox`, launcher/), signed with
+    /// the rest. None in releases from before it.
+    #[serde(default)]
+    pub sandbox: Option<SandboxRelease>,
+}
+
+/// What `g1t-runner sandbox` runs, in a release.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct SandboxRelease {
+    /// The runner's image inside the sandbox, by digest
+    /// (`g1t.sh/flagon-io/g1t-runner@sha256:…`), so pulling it checks it.
+    #[serde(default)]
+    pub runner_image: Option<String>,
+    /// By kind and architecture: `wsl-x64` (a root filesystem, `.tar.gz`,
+    /// for a WSL distribution), `vm-arm64-kernel`, `vm-arm64-initrd`,
+    /// `vm-arm64-disk` (a VM's boot files and its system disk, `.gz`).
+    #[serde(default)]
+    pub files: std::collections::BTreeMap<String, SandboxFile>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SandboxFile {
+    pub name: String,
+    pub sha256: String,
+    #[serde(default)]
+    pub size: u64,
 }
 
 /// This machine's platform, as releases name it.
@@ -56,7 +82,12 @@ pub fn platform() -> String {
 }
 
 fn downloads(config: &Config) -> String {
-    format!("{}/downloads/runner", config.url.trim_end_matches('/'))
+    downloads_at(&config.url)
+}
+
+/// Where a site keeps the runner's releases.
+pub fn downloads_at(site: &str) -> String {
+    format!("{}/downloads/runner", site.trim_end_matches('/'))
 }
 
 /// `a.b.c` newer than `x.y.z`.
@@ -88,8 +119,14 @@ pub fn verify(message: &[u8], signature: &str, key: &str) -> Result<()> {
 
 /// The newest release, signed. `None` when this build has no release key.
 fn latest_signed(config: &Config) -> Result<Option<Manifest>> {
+    latest_signed_at(&config.url)
+}
+
+/// The newest release of `site`, signed. `None` when this build has no
+/// release key.
+pub fn latest_signed_at(site: &str) -> Result<Option<Manifest>> {
     let Some(key) = RELEASE_KEY else { return Ok(None) };
-    let base = downloads(config);
+    let base = downloads_at(site);
     let manifest = download(&format!("{base}/latest.json"))?;
     let signature = String::from_utf8(download(&format!("{base}/latest.json.sig"))?)?;
     verify(&manifest, &signature, key)?;
