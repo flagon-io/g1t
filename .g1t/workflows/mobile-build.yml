@@ -18,8 +18,10 @@
 #   api.expo.dev | mobile-build.yml, mobile-release.yml
 #   expo.dev | mobile-build.yml, mobile-release.yml
 #   storage.googleapis.com | mobile-build.yml, mobile-release.yml
+#   *.eascdn.net | mobile-build.yml, mobile-release.yml
 #
-# (the API, its artifacts, and where EAS uploads the project's archive).
+# (the API, its artifact links, where EAS uploads the project's archive,
+# and where an artifact link sends the APK's download).
 name: Mobile build
 
 on:
