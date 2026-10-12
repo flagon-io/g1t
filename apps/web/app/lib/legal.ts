@@ -89,6 +89,13 @@ export const POLICIES: Policy[] = [
   },
 ];
 
+/**
+ * The policies are drafts until g1t's general launch: while this is true,
+ * the policies index and every policy page say so at the top
+ * (components/policies-draft.tsx). Set it to false to take the note down.
+ */
+export const POLICIES_DRAFT = true;
+
 /** When any policy last changed, `YYYY-MM-DD`. */
 export const POLICIES_UPDATED = "2026-10-09";
 

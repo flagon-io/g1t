@@ -1,6 +1,7 @@
 import { data, Link } from "react-router";
 
 import type { Route } from "./+types/policy";
+import { PoliciesDraft } from "../components/policies-draft";
 import { Contents, PolicyText, TrustPage, outline } from "../components/legal-doc";
 import { POLICIES, POLICIES_UPDATED, longDate } from "../lib/legal";
 import { page } from "../lib/meta";
@@ -47,6 +48,7 @@ export default function Policy({ loaderData }: Route.ComponentProps) {
       lede={<p className="text-sm">Last updated {longDate(POLICIES_UPDATED)}.</p>}
       aside={<Contents items={outline(source)} />}
     >
+      <PoliciesDraft />
       <PolicyText source={source} />
       <nav aria-label="Other policies" className="mt-14 max-w-3xl border-t border-line pt-6">
         <p className="text-sm font-medium">Other policies</p>

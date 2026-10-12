@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { Link } from "react-router";
 
 import type { Route } from "./+types/policies";
+import { PoliciesDraft } from "../components/policies-draft";
 import { TrustPage } from "../components/trust-page";
 import { CONTACT, POLICIES, POLICIES_UPDATED, POLICY_HISTORY, longDate } from "../lib/legal";
 import { page } from "../lib/meta";
@@ -27,6 +28,7 @@ export default function Policies() {
         </p>
       }
     >
+      <PoliciesDraft />
       <ul className="grid gap-3 sm:grid-cols-2">
         {POLICIES.map((policy) => (
           <li key={policy.slug}>
