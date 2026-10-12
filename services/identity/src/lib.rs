@@ -387,10 +387,6 @@ impl Identity {
         let email = a.email.trim().to_lowercase();
         let invalid = |message: &str| Ok(Outcome::fail(FailureCode::Invalid, message));
         let invite_code = a.invite_code.as_deref().map(str::trim).filter(|code| !code.is_empty());
-        // The invite first: without one, nothing else on the form matters.
-        if self.invites_required() && invite_code.is_none() {
-            return Ok(Outcome::fail(FailureCode::Forbidden, invites::MISSING));
-        }
         if !claimable {
             return invalid(USERNAME_RULES);
         }
@@ -403,6 +399,12 @@ impl Identity {
         }
         if a.password.chars().count() < MIN_PASSWORD_LENGTH {
             return invalid(PASSWORD_TOO_SHORT);
+        }
+        // Anyone may sign up, so many accounts from one address is the
+        // abuse to stop: counted once the form is well formed, before
+        // anything is looked up or written.
+        if !self.sign_up_allowed(a.client.as_deref()).await? {
+            return Ok(Identity::too_many_sign_ups());
         }
         let taken = self
             .db
@@ -440,7 +442,6 @@ impl Identity {
                 verified: false,
                 invite_code,
                 email_proof: a.email_proof.as_deref(),
-                client: a.client.as_deref(),
             })
             .await?
         {
@@ -827,17 +828,12 @@ impl Identity {
     }
 }
 
-/// Every 15 minutes: staff hear about waitlist requests that arrived while
-/// the last summary's window was still open, so none waits on a later one;
-/// and deleted workspaces and accounts past their restore window are purged
-/// (deletion.rs, account_deletion.rs).
+/// Every 15 minutes: deleted workspaces and accounts past their restore
+/// window are purged (deletion.rs, account_deletion.rs).
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let Ok(db) = env.d1("DB") else { return };
     let identity = Identity { db, env };
-    if let Err(error) = identity.notify_staff_of_requests().await {
-        worker::console_error!("waitlist summary: {error}");
-    }
     if let Err(error) = identity.purge_due_workspaces().await {
         worker::console_error!("workspace purge: {error}");
     }
@@ -1032,11 +1028,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "create_job_token" => reply(&identity.create_job_token(args(body)?).await?),
         "revoke_job_tokens" => reply(&identity.revoke_job_tokens(args(body)?).await?),
         "remove_access_token" => reply(&identity.remove_access_token(args(body)?).await?),
-        // Invites and the waitlist; see invites.rs.
-        "registration" => reply(&identity.registration_mode()),
-        "list_invites" => reply(&identity.list_invites(args(body)?).await?),
-        "create_invite" => reply(&identity.create_invite(args(body)?).await?),
-        "revoke_invite" => reply(&identity.revoke_invite(args(body)?).await?),
+        // Invites; see invites.rs.
         "check_invite" => reply(&identity.check_invite(args(body)?).await?),
         "accept_invite" => reply(&identity.accept_invite(args(body)?).await?),
         "invite_member" => reply(&identity.invite_member(args(body)?).await?),
@@ -1047,7 +1039,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "workspace_invites" => reply(&identity.workspace_invites(args(body)?).await?),
         "revoke_workspace_invite" => reply(&identity.revoke_workspace_invite(args(body)?).await?),
         "resend_workspace_invite" => reply(&identity.resend_workspace_invite(args(body)?).await?),
-        "request_access" => reply(&identity.request_access(args(body)?).await?),
         // Who has access to a repository; see access.rs.
         "repo_access" => reply(&identity.repo_access(args(body)?).await?),
         "add_collaborator" => reply(&identity.add_collaborator(args(body)?).await?),
@@ -1099,19 +1090,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "notify_owners" => reply(&identity.notify_owners(args(body)?).await?),
         "admin_workspaces" => reply(&identity.admin_workspaces(args(body)?).await?),
         "admin_workspace" => reply(&identity.admin_workspace(args(body)?).await?),
-        "admin_waitlist" => reply(&identity.admin_waitlist(args(body)?).await?),
-        "admin_decide_waitlist" => reply(&identity.admin_decide_waitlist(args(body)?).await?),
-        "admin_waitlist_pending" => reply(&identity.admin_waitlist_pending().await?),
         "admin_invites" => reply(&identity.admin_invites(args(body)?).await?),
         "admin_revoke_invite" => reply(&identity.admin_revoke_invite(args(body)?).await?),
-        "admin_mint_invite" => reply(&identity.admin_mint_invite(args(body)?).await?),
-        "admin_grant_invites" => reply(&identity.admin_grant_invites(args(body)?).await?),
-        "admin_invite_tree" => reply(&identity.admin_invite_tree(args(body)?).await?),
-        "admin_workspace_invites" => reply(&identity.admin_workspace_invites(args(body)?).await?),
-        // Shared invite links for a group; see shared_invites.rs.
-        "admin_shared_invites" => reply(&identity.admin_shared_invites().await?),
-        "admin_create_shared_invite" => reply(&identity.admin_create_shared_invite(args(body)?).await?),
-        "admin_revoke_shared_invite" => reply(&identity.admin_revoke_shared_invite(args(body)?).await?),
         // Deleted workspaces, restored or purged by staff; see deletion.rs.
         "admin_deleted_workspaces" => reply(&identity.admin_deleted_workspaces().await?),
         "admin_restore_workspace" => reply(&identity.admin_restore_workspace(args(body)?).await?),

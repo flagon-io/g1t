@@ -241,7 +241,7 @@ mod tests {
     use super::*;
 
     /// Types published on the bus that hooks are not offered.
-    const UNOFFERED: [&str; 30] = [
+    const UNOFFERED: [&str; 29] = [
         "pull.mergecheck",
         "pull.mergeability",
         "deployment.review_requested",
@@ -249,7 +249,6 @@ mod tests {
         "abuse.flagged",
         "invite.created",
         "invite.redeemed",
-        "waitlist.requested",
         "user.updated",
         "user.deleting",
         "user.restored",

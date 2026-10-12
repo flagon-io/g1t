@@ -147,11 +147,6 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     revokeMemberToken: (actor, slug, id, reason) =>
       call("revoke_member_token", { actor, slug, id, reason: reason ?? null, surface: "web" }),
     userForSession: (sessionToken) => call("user_for_session", { sessionToken }),
-    registration: () => call("registration", {}),
-    listInvites: (user) => call("list_invites", { user }),
-    createInvite: (user, options = {}) =>
-      call("create_invite", { user, email: options.email ?? null, workspace: options.workspace ?? null, join: options.join ?? null, join_role: options.join ? (options.joinRole ?? null) : null }),
-    revokeInvite: (user, id) => call("revoke_invite", { user, id }),
     checkInvite: (code, client, options = {}) =>
       call("check_invite", {
         code,
@@ -170,7 +165,6 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     workspaceInvites: (slug, viewer) => call("workspace_invites", { slug, viewer }),
     revokeWorkspaceInvite: (actor, slug, id) => call("revoke_workspace_invite", { actor, slug, id }),
     resendWorkspaceInvite: (actor, slug, id) => call("resend_workspace_invite", { actor, slug, id }),
-    requestAccess: (email, about, client) => call("request_access", { email, about, client: client ?? null }),
     userForGitCredentials: (username, secret) =>
       call("user_for_git_credentials", { username, secret }),
     userForAccessToken: (token) => call("user_for_access_token", { token }),
@@ -336,26 +330,8 @@ export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
   return {
     workspaces: (query) => call("admin_workspaces", { query: query ?? null }),
     workspace: (slug) => call("admin_workspace", { slug }),
-    waitlist: (query, status) => call("admin_waitlist", { query: query ?? null, status: status ?? null }),
-    waitlistPending: () => call("admin_waitlist_pending", {}),
-    decideWaitlist: (id, approve, staff, note) => call("admin_decide_waitlist", { id, approve, staff, note: note ?? null }),
     invites: (query) => call("admin_invites", { query: query ?? null }),
     revokeInvite: (id, staff) => call("admin_revoke_invite", { id, staff }),
-    mintInvite: (email, staff) => call("admin_mint_invite", { email, staff }),
-    grantInvites: (target, name, amount, note, staff) =>
-      call("admin_grant_invites", { target, name, amount, note, staff }),
-    inviteTree: (username) => call("admin_invite_tree", { username }),
-    workspaceInvites: (slug) => call("admin_workspace_invites", { slug }),
-    sharedInvites: () => call("admin_shared_invites", {}),
-    createSharedInvite: (link, staff) =>
-      call("admin_create_shared_invite", {
-        label: link.label,
-        max_uses: link.maxUses,
-        expires_on: link.expiresOn,
-        domains: link.domains,
-        staff,
-      }),
-    revokeSharedInvite: (id, staff) => call("admin_revoke_shared_invite", { id, staff }),
     deletedWorkspaces: () => call("admin_deleted_workspaces", {}),
     restoreWorkspace: (workspaceId, staff) => call("admin_restore_workspace", { workspaceId, staff }),
     purgeWorkspace: (workspaceId, staff, confirm) => call("admin_purge_workspace", { workspaceId, staff, confirm }),

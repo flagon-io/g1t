@@ -151,10 +151,7 @@ export default function User({ loaderData, actionData }: Route.ComponentProps) {
             Account <span className="font-mono">{user.id}</span>, made <When at={user.createdAt} />.{" "}
             {user.joinedThrough && (
               <>
-                <Link to={`/invites?tab=shared#${user.joinedThrough.id}`} className="text-accent hover:underline">
-                  {joinedThrough(user.joinedThrough.label)}
-                </Link>
-                .{" "}
+                {joinedThrough(user.joinedThrough.label)}.{" "}
               </>
             )}
             {user.privateEmail ? "Keeps its address private on commits." : "Shows its primary address on commits."}

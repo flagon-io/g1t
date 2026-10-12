@@ -1,37 +1,27 @@
-//! Invite-only registration: invite codes, allowances, the waitlist, and
-//! the one place every new account is made.
+//! Invite codes, and the one place every new account is made.
 //!
 //! [`Identity::create_account`] is the only way an account comes to exist.
-//! While `REGISTRATION_MODE` is `invite` (or unset), it needs an invite
-//! code: unknown, used, revoked and expired codes all get the same answer,
-//! an email-bound code works only with that address, and the code is spent
-//! in the same transaction that makes the account, so two people racing
-//! with one code cannot both get in.
+//! Anyone may register; an invite code is optional. An invitation into a
+//! workspace or onto a repository, sent to an address without an account,
+//! carries one: an account made with it gets that invitation once its
+//! address is confirmed. A code that is unknown, spent, revoked, expired or
+//! for another address is ignored and the account is made without it. The
+//! code is spent in the same transaction that makes the account, so two
+//! people racing with one code cannot both use it.
 //!
 //! A code is 160 random bits in Crockford base32, shown as `g1t-` and eight
 //! groups of four. Only its SHA-256 is kept to find it, with a copy sealed
 //! under IDENTITY_KEY so whoever made it can copy the link again while it
 //! is pending.
 //!
-//! Each person may have `INVITES_PER_USER` (5) invites out: pending and
-//! used ones count, and a revoked or expired one that was never used comes
-//! back. Staff grant more in sudo, to a person or to a workspace, whose
-//! owners share them. Owners of the workspaces in
-//! `INVITE_STAFF_WORKSPACES` (g1t's own) have no limit. Inviting an address
-//! into a workspace always makes an invite bound to it, and, while g1t is
-//! invite-only, costs one only when the address has no account (the
-//! invitation then lets it make one), so the answer never says which.
-//! Once registration is open it costs nothing.
+//! Sign-ups with a password are rate limited per client address
+//! ([`REGISTRATIONS_PER_HOUR`]); new accounts confirm their address before
+//! they can invite anyone.
 //!
-//! A code may instead be a shared invite link's, which staff hand to a
-//! group: it makes up to a set number of accounts, each its own, and is
-//! checked and spent here the same way (shared_invites.rs).
-//!
-//! Vars: REGISTRATION_MODE (`invite` | `open`), INVITES_PER_USER,
-//! INVITE_TTL_DAYS, INVITE_STAFF_WORKSPACES (comma separated slugs).
+//! Vars: INVITE_TTL_DAYS.
 
 use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
-use g1t_contracts::events::{InviteCreated, InviteRedeemed, JoinedHow, WaitlistRequested};
+use g1t_contracts::events::{InviteCreated, InviteRedeemed, JoinedHow};
 use g1t_contracts::identity::*;
 use g1t_contracts::time::{SQL_NOW, rfc3339};
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, new_id};
@@ -41,7 +31,6 @@ use serde::Deserialize;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use crate::shared_invites::{SharedAdmits, shared_admits, wrong_domain};
 use crate::{Identity, crypto};
 
 mod invitations;
@@ -55,29 +44,23 @@ const GROUP: usize = 4;
 pub const INVALID: &str =
     "That invite code is not valid. It may have been used, revoked or expired; ask whoever invited you for a new one.";
 pub const WRONG_EMAIL: &str = "This invite is for a different email address. Use the address it was sent to.";
-pub const MISSING: &str = "g1t is invite-only for now. Enter your invite code, or request access.";
 const TOO_MANY: &str = "Too many attempts. Try again in an hour.";
 const PEOPLE_ONLY: &str = "Only a person can make invites, not an agent or a workspace's token.";
 const CONFIRM_FIRST: &str = "Confirm your email address before inviting anyone.";
-const BAD_EMAIL: &str = "Enter a valid email address.";
 
 const HOUR_MS: u64 = 60 * 60 * 1000;
 /// Invites one person may make in an hour, whatever their allowance.
 const CREATES_PER_HOUR: u32 = 20;
 /// Wrong codes one client may try in an hour before being turned away.
 const FAILURES_PER_HOUR: u32 = 20;
-/// Access requests from one client in an hour.
-const REQUESTS_PER_HOUR: u32 = 5;
-/// Access requests from clients that sent no address, together, in an hour.
-const ANONYMOUS_REQUESTS_PER_HOUR: u32 = 200;
-/// Confirmations of access requests, to everyone together, in an hour.
-const CONFIRMATIONS_PER_HOUR: u32 = 300;
-/// The least time between two summaries of new requests to staff.
-const SUMMARY_EVERY_MS: u64 = 15 * 60 * 1000;
-/// The most invites a person's or workspace's list shows.
+/// Accounts one client address may make with a password in an hour.
+pub const REGISTRATIONS_PER_HOUR: u32 = 5;
+/// Accounts made with a password by clients that sent no address,
+/// together, in an hour.
+const ANONYMOUS_REGISTRATIONS_PER_HOUR: u32 = 100;
+/// The most invites a workspace's list shows.
 const LIST_LIMIT: u32 = 200;
-/// How far down the invite tree staff see.
-const TREE_DEPTH: usize = 3;
+const TOO_MANY_SIGN_UPS: &str = "Too many accounts were made from your network in the last hour. Try again later.";
 
 // --- Codes ------------------------------------------------------------------
 
@@ -216,31 +199,6 @@ pub fn answered_status(
     base
 }
 
-/// Whether an invite in this state uses up one of an allowance: pending
-/// and used ones do; a revoked or expired one never used gives it back.
-#[cfg(test)]
-pub fn counts_against_allowance(status: InviteStatus) -> bool {
-    matches!(
-        status,
-        InviteStatus::Pending | InviteStatus::AwaitingConfirmation | InviteStatus::AwaitingAnswer | InviteStatus::Redeemed
-    )
-}
-
-/// The SQL condition that matches [`counts_against_allowance`] for rows of
-/// `invites` aliased `i`.
-fn counted_sql() -> String {
-    format!("(i.redeemed_at IS NOT NULL OR (i.revoked_at IS NULL AND i.expires_at > {SQL_NOW}))")
-}
-
-/// How many invites someone may have out: the default plus staff grants,
-/// never below zero; None for no limit.
-pub fn limit_for(default: u32, granted: i64, unlimited: bool) -> Option<u32> {
-    if unlimited {
-        return None;
-    }
-    Some((i64::from(default) + granted).clamp(0, i64::from(u32::MAX)) as u32)
-}
-
 /// Why an invite cannot make an account.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -249,9 +207,6 @@ pub enum Refusal {
     Invalid,
     /// It is bound to another address.
     WrongEmail,
-    /// A shared invite link limited to email domains the address is not
-    /// at (shared_invites.rs).
-    WrongDomain,
 }
 
 /// The parts of an invite that decide whether it admits someone.
@@ -302,8 +257,8 @@ pub fn proves_email(key: &[u8], invite_id: &str, bound: Option<&str>, email: &st
 /// Whether a new account starts with its address confirmed: GitHub
 /// confirmed it (`verified`), or `invite`, the one-person invite that
 /// admitted it, was followed from its own email with `proof` and `email` is
-/// the address it was sent to. A shared link, a code typed in or passed on,
-/// or an invite bound to no address: confirmed as any other is.
+/// the address it was sent to. A code typed in or passed on, or an invite
+/// bound to no address: confirmed as any other is.
 pub fn starts_confirmed(key: &[u8], verified: bool, invite: Option<&InviteRow>, email: &str, proof: Option<&str>) -> bool {
     verified
         || invite.is_some_and(|row| row.kind == "account" && proves_email(key, &row.id, row.email.as_deref(), email, proof))
@@ -377,16 +332,10 @@ pub fn bucket(now_ms: u64, window_ms: u64) -> u64 {
     now_ms / window_ms
 }
 
-/// Whether staff may be sent a summary of new requests: none was sent yet,
-/// or the last went before `since` (15 minutes ago). RFC 3339 times.
-pub fn summary_due(last: Option<&str>, since: &str) -> bool {
-    last.is_none_or(|last| last <= since)
-}
-
 // --- Rows ---------------------------------------------------------------------
 
 const COLUMNS: &str = "i.id, i.hint, i.sealed_code, i.email, i.kind, i.workspace_id, w.slug AS workspace,
-  i.inviter_id, iu.username AS inviter, i.staff, i.charged_to, i.charged_workspace_id, i.created_at, i.expires_at,
+  i.inviter_id, iu.username AS inviter, i.staff, i.created_at, i.expires_at,
   i.revoked_at, i.redeemed_by, ru.username AS redeemer, i.redeemed_at, i.applied_at,
   i.invitee_id, vu.username AS invitee, i.role, i.accepted_at, i.declined_at
   FROM invites i
@@ -407,7 +356,6 @@ pub struct InviteRow {
     pub inviter_id: Option<String>,
     pub inviter: Option<String>,
     pub staff: Option<String>,
-    pub charged_to: String,
     pub created_at: String,
     pub expires_at: String,
     pub revoked_at: Option<String>,
@@ -466,14 +414,6 @@ fn kind_of(kind: &str) -> InviteKind {
     if kind == "workspace" { InviteKind::Workspace } else { InviteKind::Account }
 }
 
-fn charge_of(charged_to: &str) -> InviteCharge {
-    match charged_to {
-        "user" => InviteCharge::User,
-        "workspace" => InviteCharge::Workspace,
-        _ => InviteCharge::None,
-    }
-}
-
 #[derive(Deserialize)]
 struct Count {
     n: f64,
@@ -482,51 +422,6 @@ struct Count {
 #[derive(Deserialize)]
 struct Id {
     id: String,
-}
-
-#[derive(Deserialize)]
-struct WaitlistRow {
-    id: String,
-    email: String,
-    about: Option<String>,
-    status: String,
-    invite_id: Option<String>,
-    decided_by: Option<String>,
-    decided_at: Option<String>,
-    #[serde(default)]
-    note: Option<String>,
-    #[serde(default)]
-    joined_as: Option<String>,
-    created_at: String,
-    updated_at: String,
-}
-
-const WAITLIST_COLUMNS: &str = "wl.id, wl.email, wl.about, wl.status, wl.invite_id, wl.decided_by, wl.decided_at, wl.note,
-  ju.username AS joined_as, wl.created_at, wl.updated_at
-  FROM waitlist wl
-  LEFT JOIN invites wi ON wi.id = wl.invite_id
-  LEFT JOIN users ju ON ju.id = wi.redeemed_by";
-
-impl From<WaitlistRow> for WaitlistEntry {
-    fn from(row: WaitlistRow) -> Self {
-        WaitlistEntry {
-            id: row.id,
-            email: row.email,
-            about: row.about,
-            status: match row.status.as_str() {
-                "invited" => WaitlistStatus::Invited,
-                "dismissed" => WaitlistStatus::Dismissed,
-                _ => WaitlistStatus::Waiting,
-            },
-            invite_id: row.invite_id,
-            decided_by: row.decided_by,
-            decided_at: row.decided_at,
-            note: row.note,
-            joined_as: row.joined_as,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-        }
-    }
 }
 
 /// What a new account is made from.
@@ -547,8 +442,6 @@ pub struct NewAccount<'a> {
     /// is the invite's and `email` is the address the invite was sent to,
     /// the account starts with that address confirmed.
     pub email_proof: Option<&'a str>,
-    /// Who is asking, for rate limits.
-    pub client: Option<&'a str>,
 }
 
 /// What an invite was made for.
@@ -559,11 +452,6 @@ struct Draft<'a> {
     workspace_id: Option<&'a str>,
     inviter: Option<&'a User>,
     staff: Option<&'a str>,
-    /// `user`, `workspace` or `none`; the workspace for `workspace`; and
-    /// the limit when there is one.
-    charged_to: &'a str,
-    charged_workspace_id: Option<&'a str>,
-    limit: Option<u32>,
     /// The account a workspace invitation is for, when it has one already.
     invitee_id: Option<&'a str>,
     /// The role joining `workspace_id` gives: `member` or `owner`.
@@ -573,37 +461,12 @@ struct Draft<'a> {
 impl Identity {
     // --- Settings ---
 
-    pub fn registration_mode(&self) -> RegistrationMode {
-        RegistrationMode::parse(self.env.var("REGISTRATION_MODE").ok().map(|v| v.to_string()).as_deref())
-    }
-
-    /// Whether new accounts need an invite code.
-    pub fn invites_required(&self) -> bool {
-        self.registration_mode() == RegistrationMode::Invite
-    }
-
     fn var_number(&self, name: &str) -> Option<u64> {
         self.env.var(name).ok()?.to_string().trim().parse().ok()
     }
 
-    fn invites_per_user(&self) -> u32 {
-        self.var_number("INVITES_PER_USER").map_or(INVITES_PER_USER, |n| n.min(u64::from(u32::MAX)) as u32)
-    }
-
     fn invite_ttl_days(&self) -> u64 {
         self.var_number("INVITE_TTL_DAYS").filter(|days| (1..=365).contains(days)).unwrap_or(INVITE_TTL_DAYS)
-    }
-
-    /// The workspaces whose owners invite without limit: g1t's own.
-    fn staff_workspaces(&self) -> Vec<String> {
-        self.env
-            .var("INVITE_STAFF_WORKSPACES")
-            .map(|v| v.to_string())
-            .unwrap_or_default()
-            .split(',')
-            .map(|slug| slug.trim().to_lowercase())
-            .filter(|slug| !slug.is_empty())
-            .collect()
     }
 
     pub(crate) fn invite_sealer(&self) -> Option<Sealer> {
@@ -728,7 +591,6 @@ impl Identity {
             kind: kind_of(&row.kind),
             workspace: row.workspace,
             status,
-            charged_to: charge_of(&row.charged_to),
             invited_by: row.inviter,
             redeemed_by: row.redeemer,
             created_at: row.created_at,
@@ -750,64 +612,6 @@ impl Identity {
             .results::<InviteRow>()
     }
 
-    async fn granted(&self, target: GrantTarget, id: &str) -> Result<i64> {
-        Ok(self
-            .db
-            .prepare("SELECT COALESCE(SUM(amount), 0) AS n FROM invite_grants WHERE target_kind = ? AND target_id = ?")
-            .bind(&[target.as_str().into(), id.into()])?
-            .first::<Count>(None)
-            .await?
-            .map_or(0, |count| count.n as i64))
-    }
-
-    async fn is_invite_staff(&self, user_id: &str) -> Result<bool> {
-        let staff = self.staff_workspaces();
-        if staff.is_empty() {
-            return Ok(false);
-        }
-        let marks = vec!["?"; staff.len()].join(", ");
-        let mut binds: Vec<JsValue> = vec![user_id.into()];
-        binds.extend(staff.iter().map(|slug| JsValue::from(slug.as_str())));
-        Ok(self
-            .db
-            .prepare(format!(
-                "SELECT count(*) AS n FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
-                 WHERE m.user_id = ? AND m.role = 'owner' AND w.deleted_at IS NULL AND w.slug IN ({marks})"
-            ))
-            .bind(&binds)?
-            .first::<Count>(None)
-            .await?
-            .is_some_and(|count| count.n > 0.0))
-    }
-
-    async fn used(&self, column: &'static str, id: &str, charged_to: &str) -> Result<u32> {
-        Ok(self
-            .db
-            .prepare(format!(
-                "SELECT count(*) AS n FROM invites i WHERE i.{column} = ? AND i.charged_to = ? AND {}",
-                counted_sql()
-            ))
-            .bind(&[id.into(), charged_to.into()])?
-            .first::<Count>(None)
-            .await?
-            .map_or(0, |count| count.n as u32))
-    }
-
-    /// A person's own allowance.
-    pub async fn user_allowance(&self, user_id: &str) -> Result<Allowance> {
-        let unlimited = self.is_invite_staff(user_id).await?;
-        let granted = self.granted(GrantTarget::User, user_id).await?;
-        let used = self.used("inviter_id", user_id, "user").await?;
-        Ok(Allowance::new(limit_for(self.invites_per_user(), granted, unlimited), used))
-    }
-
-    /// A workspace's shared allowance: only what staff granted it.
-    async fn workspace_allowance(&self, workspace_id: &str) -> Result<Allowance> {
-        let granted = self.granted(GrantTarget::Workspace, workspace_id).await?;
-        let used = self.used("charged_workspace_id", workspace_id, "workspace").await?;
-        Ok(Allowance::new(limit_for(0, granted, false), used))
-    }
-
     async fn workspace_id(&self, slug: &str) -> Result<Option<String>> {
         Ok(self
             .db
@@ -826,56 +630,40 @@ impl Identity {
 
     // --- The gate ---
 
-    /// Makes an account: the only place one is made. While registration is
-    /// invite-only, `invite_code` must admit `email`; the code is spent in
-    /// the same transaction as the account is made. What the invite gives
-    /// (a workspace, repository invitations) is applied once the address
-    /// is confirmed: at once for an address GitHub has confirmed or one
-    /// proven by the invite email's link ([`proves_email`]), otherwise
-    /// in the transaction that confirms it (emails.rs, `confirm_address`).
-    /// In open mode a code is used if it is good and otherwise ignored.
-    pub async fn create_account(&self, new: NewAccount<'_>) -> Result<Outcome<User>> {
-        let required = self.invites_required();
-        let code = new.invite_code.map(str::trim).filter(|code| !code.is_empty());
-        let mut invite = None;
-        // A shared invite link's code instead (shared_invites.rs).
-        let mut shared = None;
-        match code {
-            None if required => return Ok(Outcome::fail(FailureCode::Forbidden, MISSING)),
-            None => {}
-            Some(code) => {
-                if required && self.turned_away(new.client).await? {
-                    return Ok(Outcome::fail(FailureCode::Conflict, TOO_MANY));
-                }
-                let row = self.invite_by_code(code).await?;
-                let link = match row {
-                    None => self.shared_by_code(code).await?,
-                    Some(_) => None,
-                };
-                let now = rfc3339(now_ms());
-                let verdict = match &link {
-                    Some(link) => {
-                        let domains = link.domains();
-                        let admits = SharedAdmits { status: link.status(&now), domains: &domains };
-                        shared_admits(Some(&admits), new.email)
-                    }
-                    None => admits(row.as_ref().map(|row| row.admits(&now)).as_ref(), new.email, true),
-                };
-                match verdict {
-                    Ok(()) => (invite, shared) = (row, link),
-                    Err(_) if !required => {}
-                    Err(refusal) => {
-                        self.count_failure(new.client).await?;
-                        let message = match refusal {
-                            Refusal::WrongEmail => WRONG_EMAIL.to_owned(),
-                            Refusal::WrongDomain => wrong_domain(&link.map(|link| link.domains()).unwrap_or_default()),
-                            Refusal::Invalid => INVALID.to_owned(),
-                        };
-                        return Ok(Outcome::fail(FailureCode::Forbidden, message));
-                    }
-                }
-            }
+    /// Counts one sign-up with a password from `client`; false once that
+    /// address (or, without one, every client that sent none) made
+    /// [`REGISTRATIONS_PER_HOUR`] sign-ups this hour. Asked once the form
+    /// is well formed, before anything is looked up or written.
+    pub(crate) async fn sign_up_allowed(&self, client: Option<&str>) -> Result<bool> {
+        match client.map(str::trim).filter(|client| !client.is_empty()) {
+            Some(client) => self.hit(&format!("register:{}", crypto::sha256_hex(client)), REGISTRATIONS_PER_HOUR).await,
+            None => self.hit("register:anonymous", ANONYMOUS_REGISTRATIONS_PER_HOUR).await,
         }
+    }
+
+    pub(crate) fn too_many_sign_ups() -> Outcome<SignedIn> {
+        Outcome::fail(FailureCode::Limit, TOO_MANY_SIGN_UPS)
+    }
+
+    /// Makes an account: the only place one is made. `invite_code` is
+    /// optional; a good one admitting `email` is spent in the same
+    /// transaction as the account is made, and anything else is ignored.
+    /// What the invite gives (a workspace invitation, repository
+    /// invitations) is applied once the address is confirmed: at once for
+    /// an address GitHub has confirmed or one proven by the invite email's
+    /// link ([`proves_email`]), otherwise in the transaction that confirms
+    /// it (emails.rs, `confirm_address`).
+    pub async fn create_account(&self, new: NewAccount<'_>) -> Result<Outcome<User>> {
+        let code = new.invite_code.map(str::trim).filter(|code| !code.is_empty());
+        let invite = match code {
+            Some(code) => {
+                let now = rfc3339(now_ms());
+                self.invite_by_code(code)
+                    .await?
+                    .filter(|row| admits(Some(&row.admits(&now)), new.email, true).is_ok())
+            }
+            None => None,
+        };
 
         // An address GitHub has confirmed starts confirmed, and so does the
         // address an invite was emailed to, when the link followed was the
@@ -896,30 +684,15 @@ impl Identity {
             new.email.into(),
             new.password_hash.into(),
         ];
-        let made = match (&invite, &shared) {
-            // Take a use of the shared link, then make the account only if
-            // this request took it: one transaction, counted in the
-            // statement that takes it, so racing past its uses is
-            // impossible.
-            (None, Some(link)) => self
-                .db
-                .batch(self.shared_account_statements(link, &values, verified_at)?)
-                .await
-                .map(|_| ()),
-            (None, None) => {
-                self.db
-                    .prepare(format!(
-                        "INSERT INTO users (id, username, email, password_hash, email_verified_at)
-                         VALUES (?, ?, ?, ?, {verified_at})"
-                    ))
-                    .bind(&values)?
-                    .run()
-                    .await
-                    .map(|_| ())
-            }
+        let plain = format!(
+            "INSERT INTO users (id, username, email, password_hash, email_verified_at)
+             VALUES (?, ?, ?, ?, {verified_at})"
+        );
+        let made = match &invite {
+            None => self.db.prepare(&plain).bind(&values)?.run().await.map(|_| ()),
             // Spend the code, then make the account only if this request
             // spent it: one transaction, so a second use finds it gone.
-            (Some(row), _) => {
+            Some(row) => {
                 let mut insert = values.to_vec();
                 insert.extend([JsValue::from(row.id.as_str()), user.id.as_str().into()]);
                 self.db
@@ -943,11 +716,12 @@ impl Identity {
                     .map(|_| ())
             }
         };
+        let taken = || Ok(Outcome::fail(FailureCode::Conflict, "That username or email is already registered."));
         if let Err(error) = made {
             // Someone took the username or email a moment ago; nothing
             // was written, the code included.
             if error.to_string().contains("UNIQUE") {
-                return Ok(Outcome::fail(FailureCode::Conflict, "That username or email is already registered."));
+                return taken();
             }
             return Err(error);
         }
@@ -959,12 +733,36 @@ impl Identity {
             .await?
             .is_some();
         if !exists {
-            // Another sign-up spent the code first.
-            self.count_failure(new.client).await?;
-            return Ok(Outcome::fail(FailureCode::Forbidden, INVALID));
+            // Another sign-up spent the code first: the account is made
+            // without it, and confirms its address like any other.
+            let user = User { verified: new.verified, ..user.clone() };
+            let verified_at = if user.verified { SQL_NOW } else { "NULL" };
+            let made = self
+                .db
+                .prepare(format!(
+                    "INSERT INTO users (id, username, email, password_hash, email_verified_at)
+                     VALUES (?, ?, ?, ?, {verified_at})"
+                ))
+                .bind(&values)?
+                .run()
+                .await;
+            if let Err(error) = made {
+                if error.to_string().contains("UNIQUE") {
+                    return taken();
+                }
+                return Err(error);
+            }
+            return self.account_made(user, new.display_username, None).await;
         }
+        self.account_made(user, new.display_username, invite).await
+    }
+
+    /// What follows a new account being made: the case its name was
+    /// chosen in, a workspace of its own unless its invite brings it into
+    /// one, and, once its address is confirmed, what its invite gives.
+    async fn account_made(&self, user: User, display_username: Option<&str>, invite: Option<InviteRow>) -> Result<Outcome<User>> {
         // The case it was chosen in, beside the lowercased name everything finds it by.
-        let user = match new.display_username.filter(|display| display.eq_ignore_ascii_case(new.username) && *display != new.username) {
+        let user = match display_username.filter(|display| display.eq_ignore_ascii_case(&user.username) && *display != user.username) {
             Some(display) => {
                 self.db
                     .prepare("UPDATE users SET display_username = ? WHERE id = ?")
@@ -986,22 +784,6 @@ impl Identity {
             && user.verified
         {
             self.after_redeemed(&row, &user, true).await?;
-        }
-        // A shared link gives nothing to wait for: the account makes its
-        // own workspace.
-        if let Some(link) = shared {
-            self.announce(
-                "invite.redeemed",
-                Some(&user.id),
-                InviteRedeemed {
-                    invite_id: link.id,
-                    user_id: user.id.clone(),
-                    inviter_id: None,
-                    workspace_id: None,
-                    created_account: true,
-                },
-            )
-            .await;
         }
         Ok(Outcome::Ok(user))
     }
@@ -1184,8 +966,7 @@ impl Identity {
         None
     }
 
-    /// Stores a new invite and returns it with its code, or None when the
-    /// allowance ran out between reading it and writing.
+    /// Stores a new invite and returns it with its code.
     async fn insert_invite(&self, draft: Draft<'_>) -> Result<Option<Invite>> {
         let body = new_code_body();
         let code = format_code(&body);
@@ -1195,7 +976,7 @@ impl Identity {
         let expires_at = rfc3339(now + self.invite_ttl_days() * 24 * HOUR_MS);
         let created_at = rfc3339(now);
         let opt = |value: Option<&str>| value.map_or(JsValue::NULL, JsValue::from);
-        let mut binds = vec![
+        let binds = vec![
             JsValue::from(id.as_str()),
             code_hash(&body).into(),
             code_hint(&body).into(),
@@ -1205,38 +986,17 @@ impl Identity {
             opt(draft.workspace_id),
             opt(draft.inviter.map(|user| user.id.as_str())),
             opt(draft.staff),
-            draft.charged_to.into(),
-            opt(draft.charged_workspace_id),
             created_at.as_str().into(),
             expires_at.as_str().into(),
             opt(draft.invitee_id),
             opt(draft.role),
         ];
-        // The allowance is checked in the insert itself, so two invites made
-        // at once cannot both take the last one.
-        let guard = match (draft.charged_to, draft.limit) {
-            ("user", Some(limit)) => {
-                binds.extend([opt(draft.inviter.map(|user| user.id.as_str())), f64::from(limit).into()]);
-                format!(
-                    "WHERE (SELECT count(*) FROM invites i WHERE i.inviter_id = ? AND i.charged_to = 'user' AND {}) < ?",
-                    counted_sql()
-                )
-            }
-            ("workspace", Some(limit)) => {
-                binds.extend([opt(draft.charged_workspace_id), f64::from(limit).into()]);
-                format!(
-                    "WHERE (SELECT count(*) FROM invites i WHERE i.charged_workspace_id = ? AND i.charged_to = 'workspace' AND {}) < ?",
-                    counted_sql()
-                )
-            }
-            _ => String::new(),
-        };
         let inserted = self
             .db
             .prepare(format!(
                 "INSERT INTO invites (id, code_hash, hint, sealed_code, email, kind, workspace_id, inviter_id,
-                   staff, charged_to, charged_workspace_id, created_at, expires_at, invitee_id, role)
-                 SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? {guard}
+                   staff, charged_to, created_at, expires_at, invitee_id, role)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', ?, ?, ?, ?)
                  RETURNING id"
             ))
             .bind(&binds)?
@@ -1262,114 +1022,6 @@ impl Identity {
         let mut invite = self.shown(row, false, false);
         invite.code = Some(code);
         Ok(Some(invite))
-    }
-
-    fn out_of_invites() -> Outcome<Invite> {
-        Outcome::fail(
-            FailureCode::Limit,
-            "You have no invites left. Need more? Contact us at hey@flagon.io with the subject [g1t Invites].",
-        )
-    }
-
-    pub async fn create_invite(&self, a: CreateInviteArgs) -> Result<Outcome<Invite>> {
-        if let Some(reason) = Self::draft_allowed(&a.user) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, reason));
-        }
-        let email = match a.email.as_deref().map(str::trim).filter(|email| !email.is_empty()) {
-            Some(email) => match normalize_email(email) {
-                Some(email) => Some(email),
-                None => return Ok(Outcome::fail(FailureCode::Invalid, BAD_EMAIL)),
-            },
-            None => None,
-        };
-        if !self.hit(&format!("invite.create:{}", a.user.id), CREATES_PER_HOUR).await? {
-            return Ok(Outcome::fail(FailureCode::Conflict, TOO_MANY));
-        }
-        if let Some(email) = &email {
-            if self.email_has_account(email).await? {
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    "That address already has a g1t account. Add them to a workspace from its People page instead.",
-                ));
-            }
-            let pending = self
-                .rows(
-                    &format!(
-                        "WHERE i.inviter_id = ? AND i.email = ? AND i.redeemed_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > {SQL_NOW}"
-                    ),
-                    &[a.user.id.as_str().into(), email.as_str().into()],
-                    1,
-                )
-                .await?;
-            if !pending.is_empty() {
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    "You already have a pending invite for that address. Revoke it to send a new one.",
-                ));
-            }
-        }
-        // A workspace's granted invites, for its owners.
-        let (workspace_id, charged_to, limit) = match a.workspace.as_deref().map(str::trim).filter(|slug| !slug.is_empty()) {
-            Some(slug) => {
-                let slug = slug.to_lowercase();
-                if a.user.role_in(&slug) != Some(Role::Owner) {
-                    return Ok(Outcome::fail(FailureCode::Forbidden, "Only a workspace's owners can use its invites."));
-                }
-                let Some(id) = self.workspace_id(&slug).await? else {
-                    return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
-                };
-                let allowance = self.workspace_allowance(&id).await?;
-                if allowance.exhausted() {
-                    return Ok(Outcome::fail(
-                        FailureCode::Limit,
-                        format!("{slug} has no invites left. Need more? Contact us at hey@flagon.io with the subject [g1t Invites]."),
-                    ));
-                }
-                (Some(id), "workspace", allowance.limit)
-            }
-            None => {
-                let allowance = self.user_allowance(&a.user.id).await?;
-                if allowance.exhausted() {
-                    return Ok(Self::out_of_invites());
-                }
-                (None, "user", allowance.limit)
-            }
-        };
-        // The workspace it brings them into, if any (invitations.rs).
-        let joins = match self.joinable_workspace(&a.user, a.join.as_deref()).await? {
-            Outcome::Ok(joins) => joins,
-            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
-        };
-        let draft = Draft {
-            email: email.as_deref(),
-            kind: "account",
-            workspace_id: joins.as_ref().map(|(id, _)| id.as_str()),
-            inviter: Some(&a.user),
-            staff: None,
-            charged_to,
-            charged_workspace_id: workspace_id.as_deref(),
-            limit,
-            invitee_id: None,
-            role: joins.as_ref().map(|_| if a.join_role == Some(Role::Owner) { "owner" } else { "member" }),
-        };
-        let Some(invite) = self.insert_invite(draft).await? else {
-            return Ok(Self::out_of_invites());
-        };
-        if let (Some(email), Some(code)) = (&email, &invite.code) {
-            let from = self.display_name(&a.user).await;
-            let workspace = match &joins {
-                Some((id, slug)) => Some(self.workspace_name(id, slug).await),
-                None => None,
-            };
-            self.send_invite_email(email, Some(&from), workspace.as_deref(), false, code, &invite.id, None).await;
-        }
-        let mut logs: Vec<String> = a.user.workspaces.iter().map(|membership| membership.slug.clone()).collect();
-        if let Some((_, slug)) = &joins {
-            logs = vec![slug.clone()];
-        }
-        self.audit_invites(&a.user, "invite.created", logs, a.surface.unwrap_or(Surface::Web), format!("Created invite {}", invite.hint))
-            .await;
-        Ok(Outcome::Ok(invite))
     }
 
     async fn send_invite_email(
@@ -1443,37 +1095,11 @@ impl Identity {
             .and_then(|row| row.email))
     }
 
-    pub async fn list_invites(&self, a: UserArgs) -> Result<InvitesOverview> {
-        let invites: Vec<Invite> = self
-            .rows("WHERE i.inviter_id = ?", &[a.user.id.as_str().into()], LIST_LIMIT)
-            .await?
-            .into_iter()
-            .map(|row| self.shown(row, true, false))
-            .collect();
-        let mut workspaces = Vec::new();
-        for membership in a.user.workspaces.iter().filter(|membership| membership.role == Role::Owner) {
-            if let Some(id) = self.workspace_id(&membership.slug).await?
-                && self.granted(GrantTarget::Workspace, &id).await? != 0
-            {
-                workspaces.push(WorkspaceAllowance {
-                    slug: membership.slug.clone(),
-                    allowance: self.workspace_allowance(&id).await?,
-                });
-            }
-        }
-        Ok(InvitesOverview {
-            mode: self.registration_mode(),
-            allowance: self.user_allowance(&a.user.id).await?,
-            workspaces,
-            invites,
-        })
-    }
-
-    /// Revokes a pending invite the person made, or one made for (or
-    /// charged to) a workspace they own. An invite used to sign up whose
+    /// Revokes a pending invite the person made, or one made for a
+    /// workspace they own. An invite used to sign up whose
     /// account has not confirmed its address yet can be revoked too: the
     /// account stays, and joins nothing when it confirms.
-    pub async fn revoke_invite(&self, a: RemoveArgs) -> Result<Outcome<Invite>> {
+    async fn revoke_invite(&self, a: RemoveArgs) -> Result<Outcome<Invite>> {
         if a.user.kind != PrincipalKind::User || a.user.acting.is_some() {
             return Ok(Outcome::fail(FailureCode::Forbidden, PEOPLE_ONLY));
         }
@@ -1486,8 +1112,7 @@ impl Identity {
                      -- A workspace invitation not yet answered.
                      OR (workspace_id IS NOT NULL AND accepted_at IS NULL))
                    AND (inviter_id = ?1
-                     OR workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = ?1 AND role = 'owner')
-                     OR charged_workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = ?1 AND role = 'owner'))
+                     OR workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = ?1 AND role = 'owner'))
                  RETURNING id"
             ))
             .bind(&[a.user.id.as_str().into(), a.id.as_str().into()])?
@@ -1516,15 +1141,6 @@ impl Identity {
         }
         let now = rfc3339(now_ms());
         let found = self.invite_by_code(&a.code).await?;
-        // A shared invite link's code, while it is live: its label and
-        // domains are for the sign-up page. Expired, revoked and used up
-        // get the one answer below, whatever `any_status` asks.
-        if found.is_none()
-            && let Some(link) = self.shared_by_code(&a.code).await?
-            && link.status(&now) == SharedInviteStatus::Live
-        {
-            return Ok(Outcome::Ok(self.shared_preview(&link)));
-        }
         // A spent code is still a real one (160 random bits): saying what
         // became of it tells a guesser nothing.
         let row = found.filter(|row| a.any_status || row.status(&now) == InviteStatus::Pending);
@@ -1600,8 +1216,6 @@ impl Identity {
             has_account,
             for_viewer,
             expires_at: row.expires_at,
-            shared_label: None,
-            shared_domains: Vec::new(),
             email_proven,
         }))
     }
@@ -1754,53 +1368,28 @@ impl Identity {
         // whether the address has an account.
         let invitee = self.user_with_verified_email(&email).await?;
         let draft = if has_account {
-            // Costs nothing: the person is on g1t already.
             Draft {
                 email: Some(&email),
                 kind: "workspace",
                 workspace_id: Some(&workspace_id),
                 inviter: Some(&a.actor),
                 staff: None,
-                charged_to: "none",
-                charged_workspace_id: None,
-                limit: None,
                 invitee_id: invitee.as_deref(),
                 role: Some(role_name),
             }
         } else {
-            // While g1t is invite-only, the invitation also lets the address
-            // make its account, so it costs an invite: the workspace's shared
-            // ones first, then the owner's own. Once anyone can sign up, an
-            // account needs no invite and it costs nothing.
-            let (charged_to, charged_workspace_id, limit) = if self.invites_required() {
-                let shared = self.workspace_allowance(&workspace_id).await?;
-                if shared.remaining.is_some_and(|left| left > 0) {
-                    ("workspace", Some(workspace_id.as_str()), shared.limit)
-                } else {
-                    let own = self.user_allowance(&a.actor.id).await?;
-                    if own.exhausted() {
-                        return Ok(Self::out_of_invites());
-                    }
-                    ("user", None, own.limit)
-                }
-            } else {
-                ("none", None, None)
-            };
             Draft {
                 email: Some(&email),
                 kind: "account",
                 workspace_id: Some(&workspace_id),
                 inviter: Some(&a.actor),
                 staff: None,
-                charged_to,
-                charged_workspace_id,
-                limit,
                 invitee_id: None,
                 role: Some(role_name),
             }
         };
         let Some(invite) = self.insert_invite(draft).await? else {
-            return Ok(Self::out_of_invites());
+            return Ok(Outcome::fail(FailureCode::Conflict, "The invitation could not be made. Try again."));
         };
         if let Some(code) = &invite.code {
             let from = self.display_name(&a.actor).await;
@@ -1820,42 +1409,28 @@ impl Identity {
     }
 
     /// An invite code for an address without an account, invited to
-    /// collaborate on one repository of `workspace_id` (access.rs). Charged
-    /// as a workspace invite is: the workspace's shared invites first, then
-    /// the inviter's own. The code joins no workspace; redeeming it accepts
-    /// the repository invitation that names it.
-    pub(crate) async fn repo_invite_code(&self, actor: &User, email: &str, workspace_id: &str) -> Result<Outcome<Invite>> {
+    /// collaborate on one repository (access.rs). The code joins no
+    /// workspace; redeeming it accepts the repository invitation that
+    /// names it.
+    pub(crate) async fn repo_invite_code(&self, actor: &User, email: &str) -> Result<Outcome<Invite>> {
         if let Some(reason) = Self::draft_allowed(actor) {
             return Ok(Outcome::fail(FailureCode::Forbidden, reason));
         }
         if !self.hit(&format!("invite.create:{}", actor.id), CREATES_PER_HOUR).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, TOO_MANY));
         }
-        let shared = self.workspace_allowance(workspace_id).await?;
-        let (charged_to, charged_workspace_id, limit) = if shared.remaining.is_some_and(|left| left > 0) {
-            ("workspace", Some(workspace_id), shared.limit)
-        } else {
-            let own = self.user_allowance(&actor.id).await?;
-            if own.exhausted() {
-                return Ok(Self::out_of_invites());
-            }
-            ("user", None, own.limit)
-        };
         let draft = Draft {
             email: Some(email),
             kind: "account",
             workspace_id: None,
             inviter: Some(actor),
             staff: None,
-            charged_to,
-            charged_workspace_id,
-            limit,
             invitee_id: None,
             role: None,
         };
         Ok(match self.insert_invite(draft).await? {
             Some(invite) => Outcome::Ok(invite),
-            None => Self::out_of_invites(),
+            None => Outcome::fail(FailureCode::Conflict, "The invitation could not be made. Try again."),
         })
     }
 
@@ -1956,248 +1531,7 @@ impl Identity {
             .and_then(|row| row.email))
     }
 
-    // --- The waitlist ---
-
-    pub async fn request_access(&self, a: RequestAccessArgs) -> Result<Outcome<bool>> {
-        let Some(email) = normalize_email(&a.email) else {
-            return Ok(Outcome::fail(FailureCode::Invalid, BAD_EMAIL));
-        };
-        let allowed = match a.client.as_deref().filter(|client| !client.is_empty()) {
-            Some(client) => self.hit(&format!("waitlist:{}", crypto::sha256_hex(client)), REQUESTS_PER_HOUR).await?,
-            None => self.hit("waitlist:anonymous", ANONYMOUS_REQUESTS_PER_HOUR).await?,
-        };
-        if !allowed {
-            return Ok(Outcome::fail(FailureCode::Conflict, TOO_MANY));
-        }
-        let about: String = a.about.trim().chars().take(MAX_WAITLIST_ABOUT).collect();
-        let now = rfc3339(now_ms());
-        #[derive(Deserialize)]
-        struct Upserted {
-            id: String,
-            created_at: String,
-        }
-        let row = self
-            .db
-            .prepare(
-                "INSERT INTO waitlist (id, email, about, status, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, 'waiting', ?4, ?4)
-                 ON CONFLICT (email) DO UPDATE SET
-                   about = COALESCE(excluded.about, waitlist.about), updated_at = excluded.updated_at
-                 RETURNING id, created_at",
-            )
-            .bind(&[
-                new_id("wl", now_ms()).into(),
-                email.as_str().into(),
-                if about.is_empty() { JsValue::NULL } else { about.as_str().into() },
-                now.as_str().into(),
-            ])?
-            .first::<Upserted>(None)
-            .await?;
-        if let Some(row) = row.filter(|row| row.created_at == now) {
-            self.announce("waitlist.requested", None, WaitlistRequested { entry_id: row.id.clone() }).await;
-            self.acknowledge_request(&row.id, &email).await?;
-            self.notify_staff_of_requests().await?;
-        }
-        Ok(Outcome::Ok(true))
-    }
-
-    /// The one confirmation an address gets for asking: claimed in the
-    /// database first, so a repeat request (or two at once) never sends a
-    /// second, and capped across everyone, since anyone can type any
-    /// address.
-    async fn acknowledge_request(&self, id: &str, email: &str) -> Result<()> {
-        if !self.hit("waitlist.ack", CONFIRMATIONS_PER_HOUR).await? {
-            return Ok(());
-        }
-        let claimed = self
-            .db
-            .prepare(format!(
-                "UPDATE waitlist SET acknowledged_at = {SQL_NOW} WHERE id = ? AND acknowledged_at IS NULL RETURNING id"
-            ))
-            .bind(&[id.into()])?
-            .first::<Id>(None)
-            .await?;
-        if claimed.is_none() {
-            return Ok(());
-        }
-        if let Err(error) = crate::email::send_waitlist_confirmation(&self.env, email).await {
-            worker::console_error!("waitlist confirmation failed: {error}");
-            // Not sent: leave it unclaimed, so staff can see it was not.
-            self.db
-                .prepare("UPDATE waitlist SET acknowledged_at = NULL WHERE id = ?")
-                .bind(&[id.into()])?
-                .run()
-                .await?;
-        }
-        Ok(())
-    }
-
-    /// Where staff hear about new requests: WAITLIST_NOTIFY_EMAIL, unset or
-    /// empty for nobody.
-    fn waitlist_notify_email(&self) -> Option<String> {
-        let to = self.env.var("WAITLIST_NOTIFY_EMAIL").ok()?.to_string();
-        normalize_email(&to)
-    }
-
-    /// Tells staff about every request they have not heard about, unless a
-    /// summary went in the last 15 minutes: then the next request after
-    /// that brings them all in one. The rows are claimed before sending, so
-    /// two requests at once send one summary.
-    pub(crate) async fn notify_staff_of_requests(&self) -> Result<()> {
-        let Some(to) = self.waitlist_notify_email() else {
-            return Ok(());
-        };
-        #[derive(Deserialize)]
-        struct Last {
-            at: Option<String>,
-        }
-        let last = self
-            .db
-            .prepare("SELECT max(notified_at) AS at FROM waitlist")
-            .first::<Last>(None)
-            .await?
-            .and_then(|last| last.at);
-        let now = now_ms();
-        if !summary_due(last.as_deref(), &rfc3339(now.saturating_sub(SUMMARY_EVERY_MS))) {
-            return Ok(());
-        }
-        let stamp = rfc3339(now);
-        #[derive(Deserialize)]
-        struct New {
-            email: String,
-            about: Option<String>,
-            created_at: String,
-        }
-        let mut new = self
-            .db
-            .prepare(
-                "UPDATE waitlist SET notified_at = ? WHERE notified_at IS NULL AND status = 'waiting'
-                 RETURNING email, about, created_at",
-            )
-            .bind(&[stamp.as_str().into()])?
-            .all()
-            .await?
-            .results::<New>()?;
-        if new.is_empty() {
-            return Ok(());
-        }
-        new.sort_by(|a, b| a.created_at.cmp(&b.created_at));
-        let waiting = self
-            .db
-            .prepare("SELECT count(*) AS n FROM waitlist WHERE status = 'waiting'")
-            .first::<Count>(None)
-            .await?
-            .map_or(0, |count| count.n as u32);
-        let new: Vec<crate::email::Requested> = new
-            .into_iter()
-            .map(|row| crate::email::Requested { email: row.email, about: row.about })
-            .collect();
-        if let Err(error) = crate::email::send_waitlist_summary(&self.env, &to, &new, waiting).await {
-            worker::console_error!("waitlist summary failed: {error}");
-            // Not sent: the next request tries again with these too.
-            self.db
-                .prepare("UPDATE waitlist SET notified_at = NULL WHERE notified_at = ?")
-                .bind(&[stamp.as_str().into()])?
-                .run()
-                .await?;
-        }
-        Ok(())
-    }
-
     // --- Staff ---
-
-    pub async fn admin_waitlist(&self, a: AdminWaitlistArgs) -> Result<Vec<WaitlistEntry>> {
-        let mut filters = Vec::new();
-        let mut binds: Vec<JsValue> = Vec::new();
-        if let Some(status) = a.status {
-            filters.push("wl.status = ?".to_owned());
-            binds.push(status.as_str().into());
-        }
-        if let Some(pattern) = crate::admin::like_pattern(a.query.as_deref()) {
-            filters.push("(wl.email LIKE ? ESCAPE '\\' OR lower(wl.about) LIKE ? ESCAPE '\\')".to_owned());
-            binds.push(pattern.as_str().into());
-            binds.push(pattern.as_str().into());
-        }
-        let filter = if filters.is_empty() { String::new() } else { format!("WHERE {}", filters.join(" AND ")) };
-        Ok(self
-            .db
-            .prepare(format!(
-                "SELECT {WAITLIST_COLUMNS} {filter} ORDER BY wl.created_at DESC, wl.id DESC LIMIT {ADMIN_INVITES_LIMIT}"
-            ))
-            .bind(&binds)?
-            .all()
-            .await?
-            .results::<WaitlistRow>()?
-            .into_iter()
-            .map(WaitlistEntry::from)
-            .collect())
-    }
-
-    async fn waitlist_entry(&self, id: &str) -> Result<Option<WaitlistRow>> {
-        self.db
-            .prepare(format!("SELECT {WAITLIST_COLUMNS} WHERE wl.id = ?"))
-            .bind(&[id.into()])?
-            .first::<WaitlistRow>(None)
-            .await
-    }
-
-    /// How many requests are waiting, for sudo's navigation.
-    pub async fn admin_waitlist_pending(&self) -> Result<u32> {
-        Ok(self
-            .db
-            .prepare("SELECT count(*) AS n FROM waitlist WHERE status = 'waiting'")
-            .first::<Count>(None)
-            .await?
-            .map_or(0, |count| count.n as u32))
-    }
-
-    pub async fn admin_decide_waitlist(&self, a: AdminDecideWaitlistArgs) -> Result<Outcome<WaitlistEntry>> {
-        let Some(entry) = self.waitlist_entry(&a.id).await? else {
-            return Ok(Outcome::fail(FailureCode::NotFound, "That request is not on the waitlist."));
-        };
-        let staff = a.staff.trim();
-        if staff.is_empty() {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Say which staff member decided."));
-        }
-        if entry.status != "waiting" {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("{} was already {} by {}.", entry.email, entry.status, entry.decided_by.as_deref().unwrap_or("staff")),
-            ));
-        }
-        let note: String = a.note.as_deref().unwrap_or_default().trim().chars().take(MAX_WAITLIST_NOTE).collect();
-        let note = (!note.is_empty()).then_some(note);
-        let mut invite_id = JsValue::NULL;
-        if a.approve {
-            if self.email_has_account(&entry.email).await? {
-                return Ok(Outcome::fail(FailureCode::Conflict, "That address already has a g1t account."));
-            }
-            let minted = match self.mint_staff_invite(Some(entry.email.clone()), staff, note.as_deref()).await? {
-                Outcome::Ok(invite) => invite,
-                Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
-            };
-            invite_id = minted.id.as_str().into();
-        }
-        self.db
-            .prepare(format!(
-                "UPDATE waitlist SET status = ?, invite_id = COALESCE(?, invite_id), decided_by = ?, decided_at = {SQL_NOW},
-                   note = ?, notified_at = COALESCE(notified_at, {SQL_NOW})
-                 WHERE id = ?"
-            ))
-            .bind(&[
-                if a.approve { "invited" } else { "dismissed" }.into(),
-                invite_id,
-                staff.into(),
-                note.as_deref().map_or(JsValue::NULL, JsValue::from),
-                entry.id.as_str().into(),
-            ])?
-            .run()
-            .await?;
-        Ok(match self.waitlist_entry(&entry.id).await? {
-            Some(row) => Outcome::Ok(row.into()),
-            None => Outcome::fail(FailureCode::NotFound, "That request is not on the waitlist."),
-        })
-    }
 
     pub async fn admin_invites(&self, a: AdminInvitesArgs) -> Result<Vec<Invite>> {
         let query = a.query.as_deref().map(str::trim).filter(|query| !query.is_empty());
@@ -2241,233 +1575,6 @@ impl Identity {
             Some(row) => Outcome::Ok(self.shown(row, false, true)),
             None => Outcome::fail(FailureCode::NotFound, "Invite not found."),
         })
-    }
-
-    pub async fn admin_mint_invite(&self, a: AdminMintInviteArgs) -> Result<Outcome<Invite>> {
-        self.mint_staff_invite(a.email, &a.staff, None).await
-    }
-
-    /// An invite staff make, emailed with `note` when it is for an address.
-    async fn mint_staff_invite(&self, email: Option<String>, staff: &str, note: Option<&str>) -> Result<Outcome<Invite>> {
-        let staff = staff.trim();
-        if staff.is_empty() {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Say which staff member is minting it."));
-        }
-        let email = match email.as_deref().map(str::trim).filter(|email| !email.is_empty()) {
-            Some(email) => match normalize_email(email) {
-                Some(email) => Some(email),
-                None => return Ok(Outcome::fail(FailureCode::Invalid, BAD_EMAIL)),
-            },
-            None => None,
-        };
-        let draft = Draft {
-            email: email.as_deref(),
-            kind: "account",
-            workspace_id: None,
-            inviter: None,
-            staff: Some(staff),
-            charged_to: "none",
-            charged_workspace_id: None,
-            limit: None,
-            invitee_id: None,
-            role: None,
-        };
-        let Some(mut invite) = self.insert_invite(draft).await? else {
-            return Ok(Outcome::fail(FailureCode::Conflict, "The invite could not be made. Try again."));
-        };
-        if let (Some(email), Some(code)) = (&email, &invite.code) {
-            self.send_invite_email(email, None, None, false, code, &invite.id, note).await;
-        }
-        invite.staff = Some(staff.to_owned());
-        Ok(Outcome::Ok(invite))
-    }
-
-    pub async fn admin_grant_invites(&self, a: AdminGrantInvitesArgs) -> Result<Outcome<Allowance>> {
-        if a.amount == 0 || a.amount.abs() > MAX_INVITE_GRANT {
-            return Ok(Outcome::fail(FailureCode::Invalid, format!("Grant between 1 and {MAX_INVITE_GRANT} invites, or take some back with a negative number.")));
-        }
-        let staff = a.staff.trim();
-        if staff.is_empty() {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Say which staff member granted them."));
-        }
-        let name = a.name.trim().to_lowercase();
-        let target_id = match a.target {
-            GrantTarget::User => self
-                .db
-                .prepare("SELECT id FROM users WHERE username = ?")
-                .bind(&[name.as_str().into()])?
-                .first::<Id>(None)
-                .await?
-                .map(|row| row.id),
-            GrantTarget::Workspace => self.workspace_id(&name).await?,
-        };
-        let Some(target_id) = target_id else {
-            return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no {} named {name}.", a.target.as_str())));
-        };
-        let note = a.note.trim();
-        self.db
-            .prepare(
-                "INSERT INTO invite_grants (id, target_kind, target_id, amount, note, granted_by, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(&[
-                new_id("igr", now_ms()).into(),
-                a.target.as_str().into(),
-                target_id.as_str().into(),
-                f64::from(a.amount).into(),
-                if note.is_empty() { JsValue::NULL } else { note.into() },
-                staff.into(),
-                rfc3339(now_ms()).into(),
-            ])?
-            .run()
-            .await?;
-        Ok(Outcome::Ok(match a.target {
-            GrantTarget::User => self.user_allowance(&target_id).await?,
-            GrantTarget::Workspace => self.workspace_allowance(&target_id).await?,
-        }))
-    }
-
-    async fn grants(&self, target: GrantTarget, id: &str) -> Result<Vec<InviteGrant>> {
-        #[derive(Deserialize)]
-        struct Row {
-            amount: f64,
-            note: Option<String>,
-            granted_by: String,
-            created_at: String,
-        }
-        Ok(self
-            .db
-            .prepare(
-                "SELECT amount, note, granted_by, created_at FROM invite_grants
-                 WHERE target_kind = ? AND target_id = ? ORDER BY created_at DESC LIMIT 100",
-            )
-            .bind(&[target.as_str().into(), id.into()])?
-            .all()
-            .await?
-            .results::<Row>()?
-            .into_iter()
-            .map(|row| InviteGrant {
-                amount: row.amount as i32,
-                note: row.note,
-                granted_by: row.granted_by,
-                created_at: row.created_at,
-            })
-            .collect())
-    }
-
-    /// Whom `user_id` invited, `depth` levels down.
-    async fn invited_by_user(&self, user_id: &str, depth: usize) -> Result<Vec<InviteTreeNode>> {
-        #[derive(Deserialize)]
-        struct Row {
-            id: String,
-            username: String,
-            redeemed_at: String,
-        }
-        let rows = self
-            .db
-            .prepare(
-                "SELECT u.id, u.username, i.redeemed_at FROM invites i JOIN users u ON u.id = i.redeemed_by
-                 WHERE i.inviter_id = ? AND i.kind = 'account' ORDER BY i.redeemed_at LIMIT 200",
-            )
-            .bind(&[user_id.into()])?
-            .all()
-            .await?
-            .results::<Row>()?;
-        let mut nodes = Vec::with_capacity(rows.len());
-        for row in rows {
-            let invited = if depth > 1 { Box::pin(self.invited_by_user(&row.id, depth - 1)).await? } else { Vec::new() };
-            nodes.push(InviteTreeNode {
-                username: row.username,
-                joined_at: row.redeemed_at,
-                invited,
-            });
-        }
-        Ok(nodes)
-    }
-
-    pub async fn admin_invite_tree(&self, a: UsernameArgs) -> Result<Option<InviteTree>> {
-        let name = a.username.trim().to_lowercase();
-        let Some(user) = self
-            .db
-            .prepare("SELECT id FROM users WHERE username = ?")
-            .bind(&[name.as_str().into()])?
-            .first::<Id>(None)
-            .await?
-        else {
-            return Ok(None);
-        };
-        // Up the tree: who invited them, and who invited that person.
-        #[derive(Deserialize)]
-        struct Parent {
-            inviter_id: Option<String>,
-            inviter: Option<String>,
-            staff: Option<String>,
-        }
-        let mut invited_by = Vec::new();
-        let mut staff = None;
-        let mut current = user.id.clone();
-        for _ in 0..20 {
-            let parent = self
-                .db
-                .prepare(
-                    "SELECT i.inviter_id, u.username AS inviter, i.staff FROM invites i
-                     LEFT JOIN users u ON u.id = i.inviter_id
-                     WHERE i.redeemed_by = ? AND i.kind = 'account' LIMIT 1",
-                )
-                .bind(&[current.as_str().into()])?
-                .first::<Parent>(None)
-                .await?;
-            let Some(parent) = parent else { break };
-            if invited_by.is_empty() {
-                staff = parent.staff.clone();
-            }
-            match (parent.inviter_id, parent.inviter) {
-                (Some(id), Some(username)) if !invited_by.contains(&username) => {
-                    invited_by.push(username);
-                    current = id;
-                }
-                _ => break,
-            }
-        }
-        let invites = self
-            .rows("WHERE i.inviter_id = ?", &[user.id.as_str().into()], LIST_LIMIT)
-            .await?
-            .into_iter()
-            .map(|row| self.shown(row, false, true))
-            .collect();
-        Ok(Some(InviteTree {
-            username: name,
-            invited_by,
-            staff,
-            allowance: self.user_allowance(&user.id).await?,
-            grants: self.grants(GrantTarget::User, &user.id).await?,
-            invites,
-            invited: self.invited_by_user(&user.id, TREE_DEPTH).await?,
-            shared: self.shared_source(&user.id).await?,
-        }))
-    }
-
-    pub async fn admin_workspace_invites(&self, a: SlugArgs) -> Result<Option<InviteTree>> {
-        let slug = a.slug.trim().to_lowercase();
-        let Some(id) = self.workspace_id(&slug).await? else {
-            return Ok(None);
-        };
-        let invites = self
-            .rows("WHERE i.workspace_id = ?1 OR i.charged_workspace_id = ?1", &[id.as_str().into()], LIST_LIMIT)
-            .await?
-            .into_iter()
-            .map(|row| self.shown(row, false, true))
-            .collect();
-        Ok(Some(InviteTree {
-            username: slug,
-            invited_by: Vec::new(),
-            staff: None,
-            allowance: self.workspace_allowance(&id).await?,
-            grants: self.grants(GrantTarget::Workspace, &id).await?,
-            invites,
-            invited: Vec::new(),
-            shared: None,
-        }))
     }
 
     // --- Audit ---
@@ -2615,9 +1722,7 @@ mod tests {
         // Revoked while waiting: revoked, whatever happens when it settles.
         assert_eq!(status_of(Some(NOW), Some(EARLIER), None, LATER, NOW), InviteStatus::Revoked);
         assert_eq!(status_of(Some(NOW), Some(EARLIER), Some(NOW), LATER, NOW), InviteStatus::Revoked);
-        // A spent invite still counts against the allowance while it waits,
-        // and cannot be used again.
-        assert!(counts_against_allowance(InviteStatus::AwaitingConfirmation));
+        // A spent invite cannot be used again while it waits.
         let waiting = invite("account", None, InviteStatus::AwaitingConfirmation);
         assert_eq!(admits(Some(&waiting), "anyone@example.com", true), Err(Refusal::Invalid));
     }
@@ -2634,7 +1739,6 @@ mod tests {
             inviter_id: Some("usr_owner".into()),
             inviter: Some("bo".into()),
             staff: None,
-            charged_to: "user".into(),
             created_at: EARLIER.into(),
             expires_at: expires_at.into(),
             revoked_at: revoked.then(|| NOW.to_owned()),
@@ -2685,38 +1789,6 @@ mod tests {
         assert!(matches!(awaiting_join(&row(Some(("wsp_1", Some("acme"))), false, LATER), NOW), AwaitingJoin::Invited { .. }));
         // Revoked beats expired; an invite without a workspace lapses too.
         assert!(lapsed(awaiting_join(&row(None, true, EARLIER), NOW)).contains("no longer applies"));
-    }
-
-    #[test]
-    fn revoked_and_expired_invites_give_the_allowance_back() {
-        assert!(counts_against_allowance(InviteStatus::Pending));
-        assert!(counts_against_allowance(InviteStatus::Redeemed));
-        assert!(!counts_against_allowance(InviteStatus::Revoked));
-        assert!(!counts_against_allowance(InviteStatus::Expired));
-        // The SQL says the same: used, or neither revoked nor expired.
-        let sql = counted_sql();
-        assert!(sql.contains("i.redeemed_at IS NOT NULL OR (i.revoked_at IS NULL AND i.expires_at >"));
-    }
-
-    #[test]
-    fn allowances_are_five_plus_grants_or_unlimited_for_staff() {
-        assert_eq!(limit_for(INVITES_PER_USER, 0, false), Some(5));
-        assert_eq!(limit_for(5, 10, false), Some(15));
-        assert_eq!(limit_for(5, -3, false), Some(2));
-        assert_eq!(limit_for(5, -30, false), Some(0));
-        assert_eq!(limit_for(5, 0, true), None);
-        // A workspace has only what staff granted it.
-        assert_eq!(limit_for(0, 0, false), Some(0));
-        assert_eq!(limit_for(0, 25, false), Some(25));
-        let full = Allowance::new(Some(5), 5);
-        assert!(full.exhausted());
-        assert_eq!(full.remaining, Some(0));
-        let over = Allowance::new(Some(2), 4);
-        assert_eq!(over.remaining, Some(0));
-        let open = Allowance::new(None, 400);
-        assert!(!open.exhausted());
-        assert_eq!(open.remaining, None);
-        assert_eq!(Allowance::new(Some(5), 3).remaining, Some(2));
     }
 
     fn invite(kind: &'static str, email: Option<&'static str>, status: InviteStatus) -> Admits<'static> {
@@ -2800,7 +1872,7 @@ mod tests {
         assert!(!starts_confirmed(KEY, false, Some(&invite), "ada@example.com", Some("0123")));
         // A different address than the invite's.
         assert!(!starts_confirmed(KEY, false, Some(&invite), "eve@example.com", Some(&proof)));
-        // No invite (open registration, or a shared link), or one bound to no address.
+        // No invite, or one bound to no address.
         assert!(!starts_confirmed(KEY, false, None, "ada@example.com", Some(&proof)));
         let unbound = InviteRow { email: None, ..row(None, false, LATER) };
         assert!(!starts_confirmed(KEY, false, Some(&unbound), "ada@example.com", Some(&proof)));
@@ -2829,27 +1901,9 @@ mod tests {
         // The limits stop guessing long before a code could be found, and
         // leave room for people who mistype.
         assert!((5..=100).contains(&FAILURES_PER_HOUR));
-        const { assert!(CREATES_PER_HOUR >= INVITES_PER_USER) };
-        const { assert!(REQUESTS_PER_HOUR >= 1) };
-    }
-
-    #[test]
-    fn staff_hear_about_requests_at_most_every_15_minutes() {
-        assert_eq!(SUMMARY_EVERY_MS, 15 * 60 * 1000);
-        let since = "2026-10-05T11:45:00.000Z";
-        assert!(summary_due(None, since));
-        assert!(summary_due(Some("2026-10-05T11:30:00.000Z"), since));
-        assert!(summary_due(Some(since), since));
-        assert!(!summary_due(Some("2026-10-05T11:50:00.000Z"), since));
-        const { assert!(CONFIRMATIONS_PER_HOUR >= ANONYMOUS_REQUESTS_PER_HOUR) };
-    }
-
-    #[test]
-    fn registration_is_invite_only_unless_opened() {
-        assert_eq!(RegistrationMode::parse(None), RegistrationMode::Invite);
-        assert_eq!(RegistrationMode::parse(Some("invite")), RegistrationMode::Invite);
-        assert_eq!(RegistrationMode::parse(Some("")), RegistrationMode::Invite);
-        assert_eq!(RegistrationMode::parse(Some("opne")), RegistrationMode::Invite);
-        assert_eq!(RegistrationMode::parse(Some(" Open ")), RegistrationMode::Open);
+        // A household or an office can still sign up a few people, and a
+        // script cannot make accounts by the thousand.
+        assert!((3..=20).contains(&REGISTRATIONS_PER_HOUR));
+        const { assert!(ANONYMOUS_REGISTRATIONS_PER_HOUR >= REGISTRATIONS_PER_HOUR) };
     }
 }

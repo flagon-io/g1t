@@ -383,110 +383,6 @@
     },
     "notes": "Only the fields given change. `primary` and `backup` need `password`; `private_email` and `block_private_pushes` do not."
   },
-  "list_invites": {
-    "response": {
-      "mode": "invite",
-      "allowance": {
-        "limit": 5,
-        "used": 2,
-        "remaining": 3
-      },
-      "workspaces": [
-        {
-          "slug": "acme-labs",
-          "allowance": {
-            "limit": 20,
-            "used": 4,
-            "remaining": 16
-          }
-        }
-      ],
-      "invites": [
-        {
-          "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
-          "code": "g1t-k7m2-q9xd-4hpw-…",
-          "hint": "g1t-k7m2",
-          "email": "ada@example.com",
-          "kind": "account",
-          "workspace": null,
-          "status": "pending",
-          "charged_to": "user",
-          "invited_by": "syntaqx",
-          "redeemed_by": null,
-          "created_at": "2026-10-05T17:00:00.000Z",
-          "expires_at": "2026-11-04T17:00:00.000Z",
-          "redeemed_at": null,
-          "revoked_at": null,
-          "invitee": null,
-          "role": null
-        },
-        {
-          "id": "inv_01kp1v3c4d5e6f7g8h9j0k1m2n",
-          "code": null,
-          "hint": "g1t-p3rt",
-          "email": null,
-          "kind": "account",
-          "workspace": null,
-          "status": "redeemed",
-          "charged_to": "user",
-          "invited_by": "syntaqx",
-          "redeemed_by": "grace",
-          "created_at": "2026-10-02T09:12:40.000Z",
-          "expires_at": "2026-11-01T09:12:40.000Z",
-          "redeemed_at": "2026-10-02T11:30:05.000Z",
-          "revoked_at": null,
-          "invitee": "grace",
-          "role": null
-        }
-      ]
-    },
-    "notes": "`allowance.limit` and `allowance.remaining` are null when you have no limit. A revoked or expired invite that was never used is not counted. `status` is `pending`, `awaiting_confirmation`, `awaiting_answer` (the account it made has yet to accept or decline the workspace in `workspace`), `redeemed`, `declined`, `expired` or `revoked`. Ask for more at hey@flagon.io with the subject `[g1t Invites]`. See [Invites](/guides/authentication/#invites)."
-  },
-  "create_invite": {
-    "request": {
-      "email": "ada@example.com",
-      "workspace": "acme-labs"
-    },
-    "response": {
-      "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
-      "code": "g1t-k7m2-q9xd-4hpw-…",
-      "hint": "g1t-k7m2",
-      "email": "ada@example.com",
-      "kind": "account",
-      "workspace": "acme-labs",
-      "status": "pending",
-      "charged_to": "user",
-      "invited_by": "syntaqx",
-      "redeemed_by": null,
-      "created_at": "2026-10-05T17:00:00.000Z",
-      "expires_at": "2026-11-04T17:00:00.000Z",
-      "redeemed_at": null,
-      "revoked_at": null,
-      "invitee": null,
-      "role": "member"
-    },
-    "notes": "`workspace` brings the new account into a workspace you own: once it confirms its address it gets an invitation to join as a member, which it accepts or declines, and no workspace of its own is made for it. Leave `workspace` out and the new account gets a free workspace of its own. A workspace on the free plan cannot bring anyone in: `402` with `payment_required`, until it starts the g1t plan. `charge_workspace` is separate: it uses one of the invites g1t granted that workspace instead of one of yours, and works with or without `workspace`. Refused with `402` (`limit`) when you have no invites left, with `409` when you already have a pending invite for that address or it already has a g1t account, and with `403` for an agent's or a workspace's token. The code is returned in full; send people the link `https://g1t.sh/invite/<code>`."
-  },
-  "revoke_invite": {
-    "response": {
-      "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
-      "code": null,
-      "hint": "g1t-k7m2",
-      "email": "ada@example.com",
-      "kind": "account",
-      "workspace": null,
-      "status": "revoked",
-      "charged_to": "user",
-      "invited_by": "syntaqx",
-      "redeemed_by": null,
-      "created_at": "2026-10-05T17:00:00.000Z",
-      "expires_at": "2026-11-04T17:00:00.000Z",
-      "redeemed_at": null,
-      "revoked_at": "2026-10-06T08:00:00.000Z",
-      "invitee": null,
-      "role": null
-    }
-  },
   "list_workspace_invites": {
     "response": [
       {
@@ -497,7 +393,6 @@
         "kind": "account",
         "workspace": "acme-labs",
         "status": "pending",
-        "charged_to": "workspace",
         "invited_by": "syntaqx",
         "redeemed_by": null,
         "created_at": "2026-10-05T17:00:00.000Z",
@@ -515,7 +410,6 @@
         "kind": "workspace",
         "workspace": "acme-labs",
         "status": "pending",
-        "charged_to": "none",
         "invited_by": "syntaqx",
         "redeemed_by": null,
         "created_at": "2026-10-05T17:00:00.000Z",
@@ -540,7 +434,6 @@
       "kind": "workspace",
       "workspace": "acme-labs",
       "status": "pending",
-      "charged_to": "none",
       "invited_by": "syntaqx",
       "redeemed_by": null,
       "created_at": "2026-10-05T17:00:00.000Z",
@@ -561,7 +454,6 @@
       "kind": "account",
       "workspace": "acme-labs",
       "status": "revoked",
-      "charged_to": "workspace",
       "invited_by": "syntaqx",
       "redeemed_by": null,
       "created_at": "2026-10-05T17:00:00.000Z",

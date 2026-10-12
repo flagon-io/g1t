@@ -173,9 +173,6 @@ pub struct Facts<'a> {
     /// The suggested username, and whether it can be registered.
     pub suggestion: String,
     pub suggestion_free: bool,
-    /// g1t is invite-only and no invite code came with the sign-in: a new
-    /// account waits for one.
-    pub invite_missing: bool,
 }
 
 pub fn decide(facts: &Facts) -> Decision {
@@ -205,7 +202,7 @@ pub fn decide(facts: &Facts) -> Decision {
     if facts.email_taken {
         return Decision::NeedsLink;
     }
-    if facts.suggestion_free && !facts.invite_missing {
+    if facts.suggestion_free {
         Decision::Create(facts.suggestion.clone())
     } else {
         Decision::NeedsUsername(facts.suggestion.clone())
@@ -594,7 +591,6 @@ impl Identity {
                 invite_code,
                 // GitHub has confirmed the address already.
                 email_proof: None,
-                client: None,
             })
             .await?
         {
@@ -604,12 +600,6 @@ impl Identity {
         self.link(&user.id, github_id, login, tokens).await?;
         self.announce_user(username, Some(&user.id)).await;
         Ok(Outcome::Ok(user))
-    }
-
-    /// Whether new accounts need an invite code: REGISTRATION_MODE, read
-    /// by invites.rs. Unset means they do.
-    fn github_invites_required(&self) -> bool {
-        self.invites_required()
     }
 
     pub async fn github_finish(&self, a: GithubFinishArgs) -> Result<Outcome<GithubFinished>> {
@@ -664,7 +654,6 @@ impl Identity {
             email_taken: linked.is_none() && self.email_taken(&github.emails).await?,
             suggestion_free: linked.is_none() && self.username_free(&suggestion).await?,
             suggestion: suggestion.clone(),
-            invite_missing: self.github_invites_required() && state.invite_code.is_none(),
         };
         let next = state.next;
         let decision = decide(&facts);
@@ -699,15 +688,14 @@ impl Identity {
                 let invite = state.invite_code.as_deref();
                 match self.create_from_github(&username, &email, github.id, &github.login, Some(&tokens), invite).await? {
                     Outcome::Ok(user) => self.signed_in(user, true, next).await?,
-                    // A code that did not pass: the person can enter another.
+                    // The name was taken a moment ago: the person chooses another.
                     Outcome::Fail(_) => {
-                        let pending = self.hold(&github, "username", Some(&username), &tokens, &next, None).await?;
+                        let pending = self.hold(&github, "username", Some(&username), &tokens, &next, invite).await?;
                         Outcome::Ok(GithubFinished::NeedsUsername {
                             pending,
                             login: github.login,
                             suggestion: username,
                             next,
-                            invite_required: self.github_invites_required(),
                         })
                     }
                 }
@@ -720,7 +708,6 @@ impl Identity {
                     login: github.login,
                     suggestion,
                     next,
-                    invite_required: self.github_invites_required() && invite.is_none(),
                 })
             }
         })
@@ -738,7 +725,6 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::NotFound, "This GitHub sign-in has expired. Start again."));
         };
         Ok(Outcome::Ok(GithubPending {
-            invite_required: row.kind == "username" && self.github_invites_required() && row.invite_code.is_none(),
             login: row.login,
             kind: row.kind,
             suggestion: row.suggestion,
@@ -763,8 +749,7 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Conflict, "An account already uses this GitHub account or email. Sign in instead."));
         }
         let tokens = self.open_tokens(row.tokens.as_deref(), &row.id);
-        let given = a.invite_code.as_deref().map(str::trim).filter(|code| !code.is_empty());
-        let invite = given.or(row.invite_code.as_deref());
+        let invite = row.invite_code.as_deref();
         let user = match self
             .create_from_github(&username, &row.email, row.github_id, &row.login, tokens.as_ref(), invite)
             .await?
@@ -1116,17 +1101,6 @@ mod tests {
         assert_eq!(emails, ["ada@home.example", "ada@work.example"]);
         assert!(!put_first(&mut emails, "eve@example.com"));
         assert_eq!(emails, ["ada@home.example", "ada@work.example"]);
-    }
-
-    #[test]
-    fn an_invite_only_g1t_waits_for_a_code() {
-        let waiting = Facts { invite_missing: true, ..facts() };
-        assert_eq!(decide(&waiting), Decision::NeedsUsername("octocat".to_owned()));
-        // Existing accounts sign in and link without one.
-        let linked = Facts { invite_missing: true, linked_to: Some("usr_1"), ..facts() };
-        assert_eq!(decide(&linked), Decision::SignIn("usr_1".to_owned()));
-        let matching = Facts { invite_missing: true, email_taken: true, ..facts() };
-        assert_eq!(decide(&matching), Decision::NeedsLink);
     }
 
     #[test]

@@ -818,11 +818,11 @@ cannot. Name an issue or pull request by a thread's `id`, or by `repo` and
 
 ## `account`
 
-Who the token acts as and its workspaces, your email addresses, your
-invites while g1t is [invite-only](/guides/authentication/#invites), and
-invitations to workspaces and repositories waiting for you. `whoami` is the default
+Who the token acts as and its workspaces, your email addresses, and
+[invitations](/guides/authentication/#invites) to workspaces and
+repositories waiting for you. `whoami` is the default
 action, and needs no scope. An agent's token and a workspace's token cannot
-use the email and invite actions. An account that has not confirmed its
+use the email and invitation actions. An account that has not confirmed its
 email address gets `403` from every tool until it does; see
 [until you confirm](/guides/authentication/#until-you-confirm).
 
@@ -834,9 +834,6 @@ email address gets `403` from every tool until it does; see
 | [`confirm_email`](/reference/api/accounts/confirm-email/) | Confirm an address with the six-digit code from its email. See [confirming your email address](/guides/authentication/#confirming-your-email-address). | `code` | `account:write` |
 | [`remove_email`](/reference/api/accounts/remove-email/) | Remove an address; never the primary or the last confirmed one. | `email`, `password` | `account:write` |
 | [`update_email_settings`](/reference/api/accounts/update-email-settings/) | Change `primary` or `backup` (with `password`), `private_email` or `block_private_pushes`. See [email addresses](/guides/authentication/#email-addresses). | None | `account:write` |
-| [`list_invites`](/reference/api/invites/list-invites/) | Your invites, newest first, and how many you have left. | None | `account:read` |
-| [`create_invite`](/reference/api/invites/create-invite/) | Make an invite; with `email`, only that address can use it and it is emailed there. With `workspace`, the new account is invited to that workspace (one you own, on the g1t plan) once it confirms its address, instead of getting a workspace of its own. With `charge_workspace`, use that workspace's granted invites instead of yours. | None | `account:write` |
-| [`revoke_invite`](/reference/api/invites/revoke-invite/) | Revoke a pending invite; it comes back to whoever it was charged to. | `id` | `account:write` |
 | [`list_workspace_invitations`](/reference/api/invites/list-invitations/) | The invitations to workspaces waiting for your answer, each with its `workspace`, the `role` it gives and who sent it. | None | `account:read` |
 | [`accept_workspace_invitation`](/reference/api/invites/accept-invitation/) | Accept one; you join the workspace at once with its role. | `id` | `account:write` |
 | [`decline_workspace_invitation`](/reference/api/invites/decline-invitation/) | Decline one; whoever sent it is told. | `id` | `account:write` |

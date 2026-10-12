@@ -258,16 +258,17 @@ pub struct CreatedAccessToken {
 /// `register`: creates an account and signs it in.
 /// Returns `Outcome<SignedIn>`.
 ///
-/// While registration is invite-only (`REGISTRATION_MODE=invite`), every
-/// new account needs `invite_code`: an unused, unexpired invite, and, when
-/// the invite names an email, that address. See [`CreateInviteArgs`].
+/// Anyone may register. `invite_code` is optional: an invitation sent to
+/// an address without an account (`invite_member`, or a repository
+/// invitation) carries one, and using it applies the invitation once the
+/// address is confirmed.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegisterArgs {
     pub username: String,
     pub email: String,
     pub password: String,
-    /// An invite code such as `g1t-k7m2-q9xd-4hpw-…`. Ignored while
-    /// registration is open.
+    /// An invite code such as `g1t-k7m2-q9xd-4hpw-…`, from an invitation.
+    /// One that is unknown, spent or for another address is ignored.
     #[serde(default)]
     pub invite_code: Option<String>,
     /// The `proof` from the invite email's link. When it is the invite's
@@ -1225,44 +1226,17 @@ pub struct DirectoryPage {
 
 // --- Invites ---------------------------------------------------------------
 //
-// While registration is invite-only, every new account (with a password or
-// through GitHub) needs an invite code. Each person may have
-// `INVITES_PER_USER` invites out at a time; staff grant more to a person or
-// to a workspace, whose owners share them. Inviting an email with no
-// account into a workspace makes an invite bound to that address, which
-// registers and joins in one step. See services/identity/src/invites.rs.
-
-/// Whether anyone may make an account, or only someone with an invite. Set
-/// by identity's `REGISTRATION_MODE` var; anything but `open`, including
-/// leaving it unset, is `invite`, so a missing setting never opens sign-up.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RegistrationMode {
-    #[default]
-    Invite,
-    Open,
-}
-
-impl RegistrationMode {
-    pub fn parse(text: Option<&str>) -> RegistrationMode {
-        match text.map(|text| text.trim().to_ascii_lowercase()).as_deref() {
-            Some("open") => RegistrationMode::Open,
-            _ => RegistrationMode::Invite,
-        }
-    }
-}
-
-/// How many invites a person may have out at once, unless identity's
-/// `INVITES_PER_USER` var says otherwise.
-pub const INVITES_PER_USER: u32 = 5;
+// An invitation into a workspace or onto a repository, sent to an address
+// without an account, carries an invite code: registering with it applies
+// the invitation once the address is confirmed. Anyone may register
+// without one. See services/identity/src/invites.rs.
 
 /// How long an invite works, unless identity's `INVITE_TTL_DAYS` var says
 /// otherwise.
 pub const INVITE_TTL_DAYS: u64 = 30;
 
 /// Where an invite stands. Only a pending invite can be used. A pending
-/// invite can be revoked, and so can one awaiting confirmation. An expired
-/// or revoked invite that was never used gives its inviter the invite back.
+/// invite can be revoked, and so can one awaiting confirmation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InviteStatus {
@@ -1292,18 +1266,6 @@ pub enum InviteKind {
     Workspace,
 }
 
-/// Whose allowance an invite uses.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InviteCharge {
-    /// Its inviter's own.
-    User,
-    /// The workspace's, granted by staff and shared by its owners.
-    Workspace,
-    /// Nobody's: staff minted it, or it invites an existing account.
-    None,
-}
-
 /// One invite, as the person who made it sees it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1322,7 +1284,6 @@ pub struct Invite {
     /// The workspace it joins, by slug.
     pub workspace: Option<String>,
     pub status: InviteStatus,
-    pub charged_to: InviteCharge,
     /// Who made it, by username. Null when g1t staff did.
     pub invited_by: Option<String>,
     /// The account that used it, by username.
@@ -1345,83 +1306,6 @@ pub struct Invite {
     /// The staff member who minted it. Only in staff views.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staff: Option<String>,
-}
-
-/// How many invites someone may have out, and how many they have.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Allowance {
-    /// Null: no limit.
-    pub limit: Option<u32>,
-    /// Pending and used invites; revoked and expired ones are not counted.
-    pub used: u32,
-    /// Null: no limit.
-    pub remaining: Option<u32>,
-}
-
-impl Allowance {
-    pub fn new(limit: Option<u32>, used: u32) -> Allowance {
-        Allowance {
-            limit,
-            used,
-            remaining: limit.map(|limit| limit.saturating_sub(used)),
-        }
-    }
-
-    pub fn exhausted(&self) -> bool {
-        self.remaining == Some(0)
-    }
-}
-
-/// A workspace's shared invites, for one of its owners.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WorkspaceAllowance {
-    pub slug: String,
-    pub allowance: Allowance,
-}
-
-/// `list_invites` (takes `UserArgs`): a person's invites, newest first,
-/// and what they have left. Returns `InvitesOverview`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct InvitesOverview {
-    pub mode: RegistrationMode,
-    pub allowance: Allowance,
-    /// Workspaces the person owns that staff granted invites to.
-    pub workspaces: Vec<WorkspaceAllowance>,
-    pub invites: Vec<Invite>,
-}
-
-/// `create_invite`: a person makes an invite, optionally for one email
-/// address. People only; never an agent or a workspace's token, and not
-/// before their email is confirmed. Uses one of the person's invites, or,
-/// with `workspace`, one of the invites staff granted that workspace (its
-/// owners only). Emails the address when one is given. Returns
-/// `Outcome<Invite>`, with the code.
-///
-/// `revoke_invite` (takes `RemoveArgs`): its maker revokes a pending
-/// invite; a workspace's owners may revoke one made for the workspace.
-/// The invite comes back to whoever it was charged to. Returns
-/// `Outcome<Invite>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateInviteArgs {
-    pub user: User,
-    #[serde(default)]
-    pub email: Option<String>,
-    /// Use this workspace's granted invites, by slug.
-    #[serde(default)]
-    pub workspace: Option<String>,
-    /// The workspace the new account is invited to, by slug: one the
-    /// person owns that can add members (not on the free plan). Once the
-    /// account is confirmed it gets a workspace invitation to accept, as a
-    /// member, and no workspace of its own is made for it.
-    #[serde(default)]
-    pub join: Option<String>,
-    /// The role `join` invites them with; member when absent. Ignored
-    /// without `join`.
-    #[serde(default)]
-    pub join_role: Option<crate::Role>,
-    /// Where the request came in, for the audit log; g1t.sh when absent.
-    #[serde(default)]
-    pub surface: Option<crate::audit::Surface>,
 }
 
 /// `check_invite`: what an invite code is for, before using it. Returns
@@ -1491,15 +1375,6 @@ pub struct InvitePreview {
     pub for_viewer: Option<bool>,
     /// RFC 3339.
     pub expires_at: String,
-    /// For a shared invite link ([`SharedInvite`]): the group it was made
-    /// for, such as `Cloudflare judges`. Not secret; the sign-up page shows
-    /// it. Null for a one-person invite.
-    #[serde(default)]
-    pub shared_label: Option<String>,
-    /// For a shared invite link limited to some email domains: those
-    /// domains, such as `["cloudflare.com"]`. Empty for any address.
-    #[serde(default)]
-    pub shared_domains: Vec<String>,
     /// Whether `email_proof` was this pending invite's own, from the email
     /// it was sent in: the account made with it starts with `address`
     /// confirmed. False without a proof, with a wrong one, and for an
@@ -1521,9 +1396,8 @@ pub struct AcceptInviteArgs {
 /// `invite_member`: an owner invites an email address into a workspace.
 /// It always makes an invite bound to that address and emails it, so the
 /// answer never says whether the address has an account. Without one, the
-/// invite registers and joins in one step, and uses one of the workspace's
-/// granted invites or else one of the owner's own. With one, it costs
-/// nothing. Returns `Outcome<Invite>`, with the code.
+/// invite registers and joins in one step. Returns `Outcome<Invite>`, with
+/// the code.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InviteMemberArgs {
     pub actor: User,
@@ -1611,103 +1485,10 @@ pub struct WorkspaceInviteArgs {
     pub id: String,
 }
 
-/// `request_access`: someone without an invite asks for one. Kept on the
-/// waitlist, one entry per address. Answers the same way whether or not
-/// the address is already on it. Returns `Outcome<bool>`.
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct RequestAccessArgs {
-    pub email: String,
-    /// What they will build, if they said.
-    #[serde(default)]
-    pub about: String,
-    /// Who is asking, such as the visitor's IP address, for rate limits.
-    #[serde(default)]
-    pub client: Option<String>,
-}
-
-/// The most characters `RequestAccessArgs::about` keeps.
-pub const MAX_WAITLIST_ABOUT: usize = 1000;
-
-// `registration` takes `{}` and returns `RegistrationMode`.
-
 // --- Invites, staff only ---
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WaitlistStatus {
-    Waiting,
-    Invited,
-    Dismissed,
-}
-
-impl WaitlistStatus {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            WaitlistStatus::Waiting => "waiting",
-            WaitlistStatus::Invited => "invited",
-            WaitlistStatus::Dismissed => "dismissed",
-        }
-    }
-}
-
-/// Someone who asked for access.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WaitlistEntry {
-    pub id: String,
-    pub email: String,
-    pub about: Option<String>,
-    pub status: WaitlistStatus,
-    pub invite_id: Option<String>,
-    pub decided_by: Option<String>,
-    /// RFC 3339.
-    pub decided_at: Option<String>,
-    /// What staff wrote when approving; it went in the invite email.
-    #[serde(default)]
-    pub note: Option<String>,
-    /// The account made with the invite, once it was used.
-    #[serde(default)]
-    pub joined_as: Option<String>,
-    /// When they first asked. RFC 3339.
-    pub created_at: String,
-    /// When they last asked. RFC 3339.
-    pub updated_at: String,
-}
-
-/// `admin_waitlist`: the waitlist, newest first, at most
-/// [`ADMIN_INVITES_LIMIT`]. Returns `Vec<WaitlistEntry>`.
-///
-/// `admin_waitlist_pending` takes `{}` and returns the number of requests
-/// still waiting, for sudo's navigation.
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct AdminWaitlistArgs {
-    /// Part of an email address or of what they said.
-    #[serde(default)]
-    pub query: Option<String>,
-    /// Null: every status.
-    #[serde(default)]
-    pub status: Option<WaitlistStatus>,
-}
-
-/// The most rows one staff listing of invites or the waitlist returns.
+/// The most rows one staff listing of invites returns.
 pub const ADMIN_INVITES_LIMIT: usize = 500;
-
-/// `admin_decide_waitlist`: approving mints an invite bound to the
-/// address, charged to nobody, and emails it, with `note` if given;
-/// dismissing only marks the entry. Returns `Outcome<WaitlistEntry>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AdminDecideWaitlistArgs {
-    pub id: String,
-    pub approve: bool,
-    /// The staff member, by email.
-    pub staff: String,
-    /// A line for the invite email, up to [`MAX_WAITLIST_NOTE`] characters.
-    #[serde(default)]
-    pub note: Option<String>,
-}
-
-/// The most characters an approval's note keeps.
-pub const MAX_WAITLIST_NOTE: usize = 500;
 
 /// `admin_invites`: every invite, newest first, at most
 /// [`ADMIN_INVITES_LIMIT`], optionally only those whose code starts with
@@ -1727,209 +1508,17 @@ pub struct AdminRevokeInviteArgs {
     pub staff: String,
 }
 
-/// `admin_mint_invite`: staff make an invite that uses nobody's
-/// allowance, optionally bound to (and emailed to) an address. Returns
-/// `Outcome<Invite>`, with the code.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AdminMintInviteArgs {
-    #[serde(default)]
-    pub email: Option<String>,
-    pub staff: String,
-}
-
-/// Who staff grant invites to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum GrantTarget {
-    User,
-    Workspace,
-}
-
-impl GrantTarget {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            GrantTarget::User => "user",
-            GrantTarget::Workspace => "workspace",
-        }
-    }
-}
-
-/// `admin_grant_invites`: gives a person (by username) or a workspace (by
-/// slug) `amount` more invites; a negative amount takes some back. Returns
-/// `Outcome<Allowance>`: theirs afterwards.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AdminGrantInvitesArgs {
-    pub target: GrantTarget,
-    pub name: String,
-    pub amount: i32,
-    #[serde(default)]
-    pub note: String,
-    pub staff: String,
-}
-
-/// The most invites one grant gives or takes back.
-pub const MAX_INVITE_GRANT: i32 = 1000;
-
-/// Invites staff granted.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InviteGrant {
-    pub amount: i32,
-    pub note: Option<String>,
-    pub granted_by: String,
-    /// RFC 3339.
-    pub created_at: String,
-}
-
-/// Someone a person invited, and whom they invited in turn.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InviteTreeNode {
-    pub username: String,
-    /// When they used the invite. RFC 3339.
-    pub joined_at: String,
-    pub invited: Vec<InviteTreeNode>,
-}
-
-/// `admin_invite_tree` (takes `UsernameArgs`): where a person came from
-/// and whom they brought, for tracing abuse. Returns `Option<InviteTree>`.
-///
-/// `admin_workspace_invites` (takes `SlugArgs`): a workspace's granted
-/// invites, grants and invites. Returns `Option<InviteTree>` with
-/// `username` the slug and no `invited_by`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InviteTree {
-    pub username: String,
-    /// Who invited them, then who invited that person, and so on. Empty
-    /// for an account made without an invite.
-    pub invited_by: Vec<String>,
-    /// The staff member who minted their invite, when staff did.
-    pub staff: Option<String>,
-    pub allowance: Allowance,
-    pub grants: Vec<InviteGrant>,
-    /// Their invites, newest first.
-    pub invites: Vec<Invite>,
-    /// Whom they invited, three levels down.
-    pub invited: Vec<InviteTreeNode>,
-    /// The shared invite link the account was made with, if it was.
-    #[serde(default)]
-    pub shared: Option<SharedInviteSource>,
-}
-
-// --- Shared invite links, staff only ---
+// --- Shared invite links ---
 //
-// One link for a group (a conference's judges, a post, a community): up
-// to `max_uses` new accounts, until it expires or staff revoke it,
-// optionally only for addresses at some domains. Each use makes a new
-// account, which then makes its own workspace; a shared link never joins
-// anyone to an existing workspace, and uses nobody's allowance. Its code
-// looks and is stored like any invite code (only a hash, and a sealed copy
-// staff can copy again while it is live); the link is
-// `https://g1t.sh/register?invite=<code>`. See
-// services/identity/src/shared_invites.rs.
-
-/// How long a shared invite link works when staff give no date.
-pub const SHARED_INVITE_TTL_DAYS: u64 = 14;
-/// The furthest ahead a shared invite link's last day may be set.
-pub const SHARED_INVITE_MAX_DAYS: u64 = 365;
-/// The most accounts one shared invite link makes.
-pub const MAX_SHARED_INVITE_USES: u32 = 1000;
-/// The most characters a shared invite link's label keeps.
-pub const MAX_SHARED_INVITE_LABEL: usize = 80;
-/// The most email domains one shared invite link may be limited to.
-pub const MAX_SHARED_INVITE_DOMAINS: usize = 10;
-
-/// Where a shared invite link stands. Only a live one makes accounts.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SharedInviteStatus {
-    Live,
-    /// Every use is taken.
-    UsedUp,
-    Expired,
-    Revoked,
-}
+// Before registration opened, staff handed groups shared invite links.
+// None are made or used any more; staff still see which one an account
+// was made with.
 
 /// The shared invite link an account was made with.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SharedInviteSource {
     pub id: String,
     pub label: String,
-}
-
-/// An account made with a shared invite link.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SharedInviteAccount {
-    /// Null once the account is purged.
-    pub username: Option<String>,
-    /// When it was made with the link. RFC 3339.
-    pub joined_at: String,
-}
-
-/// One shared invite link, as staff see it.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SharedInvite {
-    /// `sinv_…`.
-    pub id: String,
-    /// Whom it is for, such as `Cloudflare judges`.
-    pub label: String,
-    /// The code, while it is live (and IDENTITY_KEY is set).
-    pub code: Option<String>,
-    /// The code's first group, such as `g1t-k7m2`.
-    pub hint: String,
-    pub max_uses: u32,
-    /// Accounts made with it so far.
-    pub uses: u32,
-    /// Only addresses at these domains may use it; empty for any.
-    pub domains: Vec<String>,
-    pub status: SharedInviteStatus,
-    /// The staff member who made it, by email.
-    pub staff: String,
-    /// RFC 3339.
-    pub created_at: String,
-    /// RFC 3339.
-    pub expires_at: String,
-    pub revoked_at: Option<String>,
-    pub revoked_by: Option<String>,
-    /// The accounts made with it, oldest first.
-    pub accounts: Vec<SharedInviteAccount>,
-}
-
-/// `admin_shared_invites` takes `{}`: shared invite links, newest first,
-/// at most 200, each with the accounts it made. Returns
-/// `Vec<SharedInvite>`.
-///
-/// `admin_create_shared_invite`: staff make a shared invite link. Recorded
-/// in sudo's audit log. Returns `Outcome<SharedInvite>`, with the code.
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct AdminCreateSharedInviteArgs {
-    /// Required, up to [`MAX_SHARED_INVITE_LABEL`] characters.
-    pub label: String,
-    /// 1 to [`MAX_SHARED_INVITE_USES`].
-    pub max_uses: u32,
-    /// The last day it works, `YYYY-MM-DD` (UTC; it works until the end of
-    /// that day), at most [`SHARED_INVITE_MAX_DAYS`] ahead. Null for
-    /// [`SHARED_INVITE_TTL_DAYS`] from now.
-    #[serde(default)]
-    pub expires_on: Option<String>,
-    /// Email domains it is limited to, such as `cloudflare.com`; empty for
-    /// any address. Up to [`MAX_SHARED_INVITE_DOMAINS`].
-    #[serde(default)]
-    pub domains: Vec<String>,
-    /// The staff member, by email.
-    pub staff: String,
-}
-
-/// `admin_revoke_shared_invite`: stops a shared invite link making any
-/// more accounts. Those it made stay. Recorded in sudo's audit log.
-/// Returns `Outcome<SharedInvite>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AdminRevokeSharedInviteArgs {
-    pub id: String,
-    pub staff: String,
 }
 
 #[cfg(test)]

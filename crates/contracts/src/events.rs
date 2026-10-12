@@ -990,14 +990,6 @@ pub struct InviteRedeemed {
     pub created_account: bool,
 }
 
-/// `waitlist.requested`: someone asked for access. Ask identity's staff
-/// methods for the entry; the address is not in the event.
-#[derive(Debug, Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WaitlistRequested {
-    pub entry_id: String,
-}
-
 /// The payload of `package.published`, `package.version_deleted`,
 /// `package.deleted` and `package.visibility_changed`; each uses the fields
 /// that apply to it. `repo_id` is the repository the package is linked to.

@@ -28,10 +28,11 @@ The first time, g1t makes your account:
 - **Password**: none. Sign in with GitHub, or set a password later with
   [Forgot your password](https://g1t.sh/forgot).
 
-g1t is invite-only for now. To create an account with GitHub, open the
-invite link you were given and choose **Continue with GitHub** there, or
-enter your invite code when g1t asks for it after GitHub. Signing in to an
-account you already have needs no invite.
+Anyone can create an account with GitHub: choose **Continue with GitHub**
+on [g1t.sh/register](https://g1t.sh/register). If someone invited you into
+a workspace or onto a repository, open their invite link and choose
+**Continue with GitHub** there instead, so the new account gets the
+invitation.
 
 Signing in with GitHub does not start a trial or give your workspace
 compute. That works as it does for any account: see

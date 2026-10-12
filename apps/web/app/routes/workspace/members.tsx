@@ -38,7 +38,6 @@ import { StartPlanToInvite } from "../../components/start-plan";
 import { UserCard } from "../../components/user-card";
 import { inviteFromForm } from "../../lib/member-invitations.server";
 import { filterMembers, invitationFilterOf, memberFilters } from "../../lib/invites";
-import { registrationMode } from "../../lib/registration.server";
 import { billing, identity } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { forgetWorkspace } from "../../lib/workspace-choice";
@@ -60,7 +59,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // someone a repository is shared with, gets nothing here.
   if (!role) throw data(null, { status: 404 });
   const owner = role === "owner";
-  const [members, workspace, outside, teams, free, mode, invites] = await Promise.all([
+  const [members, workspace, outside, teams, free, invites] = await Promise.all([
     identity.listMembers(params.owner, viewer),
     identity.getWorkspace(params.owner),
     owner ? identity.outsideCollaborators(viewer, params.owner).catch(() => null) : null,
@@ -69,15 +68,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // A free workspace adds no one until it starts the plan; identity
     // refuses it either way, so a failure here only hides the note.
     billing.freeWorkspaces([params.owner]).catch(() => [] as string[]),
-    // Whether sign-up takes an invite: the invite dialog says what that means.
-    registrationMode(),
     // How many invitations wait, for the line that leads to them.
     owner ? identity.workspaceInvites(params.owner, viewer).catch(() => null) : null,
   ]);
   return {
     role,
     name: workspace?.name?.trim() || params.owner,
-    inviteOnly: mode !== "open",
     free: free.includes(params.owner.toLowerCase()),
     members: unwrap(members),
     outside: outside?.ok ? outside.value : [],
@@ -370,7 +366,7 @@ function MembersToolbar({
 }
 
 export default function WorkspaceMembers({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { role, members, outside, teams, free, me, name, inviteOnly, pendingInvitations } = loaderData;
+  const { role, members, outside, teams, free, me, name, pendingInvitations } = loaderData;
   const owner = role === "owner";
   const owners = members.filter((member) => member.role === "owner").length;
   const rowError = (username: string) =>
@@ -386,7 +382,7 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
   );
   // Who was just invited from the dialog, said under the list.
   const [invited, setInvited] = useState<string | null>(null);
-  const invite = owner && !free ? <InviteDialog slug={params.owner} name={name} inviteOnly={inviteOnly} action={`/${params.owner}/-/members`} onInvited={setInvited} /> : null;
+  const invite = owner && !free ? <InviteDialog name={name} action={`/${params.owner}/-/members`} onInvited={setInvited} /> : null;
   const membersTab = (
     <>
       <MembersToolbar owner={owner} teams={teamChoices} invite={invite} />

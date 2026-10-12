@@ -8,7 +8,7 @@ import { MobileBar, Sidebar } from "./components/shell";
 import { ButtonLink } from "./components/ui";
 import type { NavCounts } from "./lib/nav";
 import { pauseBanner, spendBanner } from "./lib/costs";
-import { admin, identity, statusAdmin } from "./lib/services.server";
+import { admin, statusAdmin } from "./lib/services.server";
 import { settle } from "./lib/settle";
 import { requireStaff, zoneContext } from "./lib/staff";
 
@@ -27,14 +27,13 @@ export const meta: Route.MetaFunction = () => [
 export async function loader({ context }: Route.LoaderArgs) {
   const { email } = requireStaff(context);
   // The sidebar's counts: a service that does not answer shows none.
-  const [waitlist, incidents, alerts, caps, guard] = await Promise.all([
-    settle(identity.waitlistPending()),
+  const [incidents, alerts, caps, guard] = await Promise.all([
     settle(statusAdmin.openCount()),
     settle(admin.costAlerts()),
     settle(admin.spendCaps()),
     settle(admin.platformGuard()),
   ]);
-  const counts: NavCounts = { waitlist: waitlist.ok ? waitlist.value : 0, incidents: incidents.ok ? incidents.value : 0 };
+  const counts: NavCounts = { incidents: incidents.ok ? incidents.value : 0 };
   // Every page says times in this zone (components/ui.tsx `When`).
   const { zone, chosen } = context.get(zoneContext);
   // Margin alerts (billing's margin guard): a red bar on every page until they clear.

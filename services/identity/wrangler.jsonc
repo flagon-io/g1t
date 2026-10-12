@@ -7,8 +7,8 @@
 	// and each would otherwise cross the distance to it.
 	"placement": { "mode": "off" },
 	"main": "build/index.js",
-	// Staff waitlist summaries, and purging deleted workspaces and accounts
-	// once their restore window passes (src/lib.rs `scheduled`).
+	// Purging deleted workspaces and accounts once their restore window
+	// passes (src/lib.rs `scheduled`).
 	"triggers": { "crons": ["*/15 * * * *"] },
 	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
 	// Reached only through service bindings.
@@ -42,16 +42,10 @@
 	// GitHub user tokens kept for each linked account. Without the client ID
 	// and secret, nobody is offered GitHub sign-in.
 	//
-	// Invites (src/invites.rs): g1t.sh is invite-only, so every new account
-	// needs an invite code; "open" lets anyone register. Unset means
-	// invite. Each person may have INVITES_PER_USER invites out, each
-	// working INVITE_TTL_DAYS; owners of INVITE_STAFF_WORKSPACES (g1t's own)
-	// have no limit. IDENTITY_KEY also seals invite codes so their makers
+	// Invites (src/invites.rs): anyone may register. An invitation sent to
+	// an address without an account carries an invite code, working
+	// INVITE_TTL_DAYS. IDENTITY_KEY also seals invite codes so their makers
 	// can copy them again.
-	//
-	// The waitlist: whoever asks for access gets one confirmation, and
-	// WAITLIST_NOTIFY_EMAIL gets a summary of new requests at most every
-	// 15 minutes, linking to sudo's Waitlist. Empty sends none.
 	//
 	// PROTECTED_WORKSPACES: workspaces nobody can ever delete, by owner,
 	// token or staff, as comma-separated slugs or workspace ids. flagon-io
@@ -64,11 +58,7 @@
 		"PROTECTED_WORKSPACES": "flagon-io",
 		"PROTECTED_ACCOUNTS": "",
 		"GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW",
-		"REGISTRATION_MODE": "invite",
-		"INVITES_PER_USER": "5",
-		"INVITE_TTL_DAYS": "30",
-		"INVITE_STAFF_WORKSPACES": "flagon-io",
-		"WAITLIST_NOTIFY_EMAIL": "hey@flagon.io"
+		"INVITE_TTL_DAYS": "30"
 	},
 	// Every log kept: sign-ins and tokens, where every failure matters.
 	"observability": { "enabled": true, "head_sampling_rate": 1 }
