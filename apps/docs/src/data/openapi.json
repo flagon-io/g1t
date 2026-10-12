@@ -57571,7 +57571,7 @@
           "Secrets and variables"
         ],
         "summary": "List secrets",
-        "description": "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, and whether workflows (`secrets.NAME`), deployments, or both read it. Values are never returned. A repository's need the Admin role on it; a workspace's, a member.\n\nValues are never returned. A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment.",
+        "description": "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, whether workflows (`secrets.NAME`), deployments, or both read it, and for a brokered secret the hosts g1t fills it in for (`brokered_hosts`). Values are never returned. A repository's need the Admin role on it; a workspace's, a member.\n\nValues are never returned. A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment; empty `brokered_hosts`, a secret that is not brokered.",
         "x-operation": "list_actions_secrets",
         "x-mcp-tool": "secret",
         "x-mcp-action": "list_secrets",
@@ -57623,7 +57623,10 @@
                     "environments": [],
                     "projects": [],
                     "note": null,
-                    "updated_by": "syntaqx"
+                    "updated_by": "syntaqx",
+                    "brokered_hosts": [
+                      "registry.npmjs.org"
+                    ]
                   },
                   {
                     "id": "set_01kpv9q4r7s0t3v6w9x2y5z8ac",
@@ -57641,7 +57644,8 @@
                     ],
                     "projects": [],
                     "note": "Rotate in the Stripe dashboard.",
-                    "updated_by": "syntaqx"
+                    "updated_by": "syntaqx",
+                    "brokered_hosts": []
                   }
                 ]
               }
@@ -57697,7 +57701,7 @@
           "Secrets and variables"
         ],
         "summary": "Set a secret",
-        "description": "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `available_to` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. A repository's need the Admin role on it; a workspace's, an owner. Workspace tokens, G1T_TOKEN included, cannot change them.\n\nKeys are uppercased. See [secrets and variables](/guides/secrets-and-variables/).",
+        "description": "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `available_to` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. `brokered_hosts` brokers the secret: workflow jobs on g1t's machines get a stand-in in place of its value, and g1t puts the real value on the job's requests to those hosts (in headers, Basic auth included, and the query string) as they leave its sandbox, so the value never enters it. A brokered secret is read by workflows only and its value is at least 8 characters; an empty list stops brokering it. A repository's need the Admin role on it; a workspace's, an owner. Workspace tokens, G1T_TOKEN included, cannot change them.\n\nKeys are uppercased. See [secrets and variables](/guides/secrets-and-variables/).",
         "x-operation": "set_actions_secret",
         "x-mcp-tool": "secret",
         "x-mcp-action": "set_secret",
@@ -57760,7 +57764,8 @@
                   ],
                   "projects": [],
                   "note": null,
-                  "updated_by": "syntaqx"
+                  "updated_by": "syntaqx",
+                  "brokered_hosts": []
                 }
               }
             }
@@ -57859,6 +57864,13 @@
                   "note": {
                     "type": "string",
                     "description": "Where to rotate it, or who to ask."
+                  },
+                  "brokered_hosts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "A secret's: the hosts g1t fills it in for, such as api.example.com or *.example.com. Jobs get a stand-in in place of its value. Empty stops brokering it; left out, unchanged."
                   },
                   "workspace": {
                     "type": "string",
@@ -58286,6 +58298,13 @@
                     "type": "string",
                     "description": "Where to rotate it, or who to ask."
                   },
+                  "brokered_hosts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "A secret's: the hosts g1t fills it in for, such as api.example.com or *.example.com. Jobs get a stand-in in place of its value. Empty stops brokering it; left out, unchanged."
+                  },
                   "workspace": {
                     "type": "string",
                     "description": "Instead of repo: the workspace, for the ones every repository in it reads."
@@ -58472,6 +58491,13 @@
                     "type": "string",
                     "description": "Where to rotate it, or who to ask."
                   },
+                  "brokered_hosts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "A secret's: the hosts g1t fills it in for, such as api.example.com or *.example.com. Jobs get a stand-in in place of its value. Empty stops brokering it; left out, unchanged."
+                  },
                   "workspace": {
                     "type": "string",
                     "description": "Instead of repo: the workspace, for the ones every repository in it reads."
@@ -58628,7 +58654,7 @@
           "Secrets and variables"
         ],
         "summary": "List secrets for a workspace",
-        "description": "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, and whether workflows (`secrets.NAME`), deployments, or both read it. Values are never returned. A repository's need the Admin role on it; a workspace's, a member.\n\nValues are never returned. A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment.",
+        "description": "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, whether workflows (`secrets.NAME`), deployments, or both read it, and for a brokered secret the hosts g1t fills it in for (`brokered_hosts`). Values are never returned. A repository's need the Admin role on it; a workspace's, a member.\n\nValues are never returned. A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment; empty `brokered_hosts`, a secret that is not brokered.",
         "x-operation": "list_actions_secrets",
         "x-mcp-tool": "secret",
         "x-mcp-action": "list_secrets",
@@ -58671,7 +58697,10 @@
                     "environments": [],
                     "projects": [],
                     "note": null,
-                    "updated_by": "syntaqx"
+                    "updated_by": "syntaqx",
+                    "brokered_hosts": [
+                      "registry.npmjs.org"
+                    ]
                   }
                 ]
               }
@@ -58730,7 +58759,7 @@
           "Secrets and variables"
         ],
         "summary": "Set a secret for a workspace",
-        "description": "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `available_to` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. A repository's need the Admin role on it; a workspace's, an owner. Workspace tokens, G1T_TOKEN included, cannot change them.",
+        "description": "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `available_to` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. `brokered_hosts` brokers the secret: workflow jobs on g1t's machines get a stand-in in place of its value, and g1t puts the real value on the job's requests to those hosts (in headers, Basic auth included, and the query string) as they leave its sandbox, so the value never enters it. A brokered secret is read by workflows only and its value is at least 8 characters; an empty list stops brokering it. A repository's need the Admin role on it; a workspace's, an owner. Workspace tokens, G1T_TOKEN included, cannot change them.",
         "x-operation": "set_actions_secret",
         "x-mcp-tool": "secret",
         "x-mcp-action": "set_secret",
@@ -58783,7 +58812,10 @@
                     "hello"
                   ],
                   "note": null,
-                  "updated_by": "syntaqx"
+                  "updated_by": "syntaqx",
+                  "brokered_hosts": [
+                    "registry.npmjs.org"
+                  ]
                 }
               }
             }
@@ -58882,6 +58914,13 @@
                   "note": {
                     "type": "string",
                     "description": "Where to rotate it, or who to ask."
+                  },
+                  "brokered_hosts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "A secret's: the hosts g1t fills it in for, such as api.example.com or *.example.com. Jobs get a stand-in in place of its value. Empty stops brokering it; left out, unchanged."
                   }
                 }
               },
@@ -58889,6 +58928,9 @@
                 "value": "npm_…",
                 "projects": [
                   "hello"
+                ],
+                "brokered_hosts": [
+                  "registry.npmjs.org"
                 ]
               }
             }
@@ -59274,6 +59316,13 @@
                   "note": {
                     "type": "string",
                     "description": "Where to rotate it, or who to ask."
+                  },
+                  "brokered_hosts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "A secret's: the hosts g1t fills it in for, such as api.example.com or *.example.com. Jobs get a stand-in in place of its value. Empty stops brokering it; left out, unchanged."
                   }
                 },
                 "required": [
@@ -59450,6 +59499,13 @@
                   "note": {
                     "type": "string",
                     "description": "Where to rotate it, or who to ask."
+                  },
+                  "brokered_hosts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "A secret's: the hosts g1t fills it in for, such as api.example.com or *.example.com. Jobs get a stand-in in place of its value. Empty stops brokering it; left out, unchanged."
                   }
                 }
               },

@@ -3180,7 +3180,10 @@
         "environments": [],
         "projects": [],
         "note": null,
-        "updated_by": "syntaqx"
+        "updated_by": "syntaqx",
+        "brokered_hosts": [
+          "registry.npmjs.org"
+        ]
       },
       {
         "id": "set_01kpv9q4r7s0t3v6w9x2y5z8ac",
@@ -3198,10 +3201,11 @@
         ],
         "projects": [],
         "note": "Rotate in the Stripe dashboard.",
-        "updated_by": "syntaqx"
+        "updated_by": "syntaqx",
+        "brokered_hosts": []
       }
     ],
-    "notes": "Values are never returned. A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment."
+    "notes": "Values are never returned. A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment; empty `brokered_hosts`, a secret that is not brokered."
   },
   "list_actions_secrets_for_workspace": {
     "params": {
@@ -3221,10 +3225,13 @@
         "environments": [],
         "projects": [],
         "note": null,
-        "updated_by": "syntaqx"
+        "updated_by": "syntaqx",
+        "brokered_hosts": [
+          "registry.npmjs.org"
+        ]
       }
     ],
-    "notes": "Values are never returned. A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment."
+    "notes": "Values are never returned. A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment; empty `brokered_hosts`, a secret that is not brokered."
   },
   "set_actions_secret": {
     "params": {
@@ -3256,7 +3263,8 @@
       ],
       "projects": [],
       "note": null,
-      "updated_by": "syntaqx"
+      "updated_by": "syntaqx",
+      "brokered_hosts": []
     },
     "notes": "Keys are uppercased. See [secrets and variables](/guides/secrets-and-variables/)."
   },
@@ -3269,6 +3277,9 @@
       "value": "npm_…",
       "projects": [
         "hello"
+      ],
+      "brokered_hosts": [
+        "registry.npmjs.org"
       ]
     },
     "response": {
@@ -3286,7 +3297,10 @@
         "hello"
       ],
       "note": null,
-      "updated_by": "syntaqx"
+      "updated_by": "syntaqx",
+      "brokered_hosts": [
+        "registry.npmjs.org"
+      ]
     }
   },
   "delete_actions_secret": {

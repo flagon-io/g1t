@@ -71,6 +71,19 @@ export async function actOnSecrets(owner: SettingsOwner, actor: User, form: Form
   if (availableTo.length === 0) return { error: "Choose who reads it: Workflows, Deployments, or both." };
   const linked =
     "workspace" in owner && form.get("reach") === "some" ? form.getAll("project").map(String) : [];
+  // A secret is brokered when it names hosts; unticked, it stops being.
+  const brokeredHosts =
+    kind === "secret"
+      ? form.get("brokered") === "on"
+        ? String(form.get("brokeredHosts") ?? "")
+            .split(/[\s,]+/)
+            .map((host) => host.trim())
+            .filter(Boolean)
+        : []
+      : undefined;
+  if (brokeredHosts && form.get("brokered") === "on" && brokeredHosts.length === 0) {
+    return { error: "Name the hosts a brokered secret is for, such as api.example.com." };
+  }
   const note = String(form.get("note") ?? "");
   const key = String(form.get("key") ?? "").trim();
   const value = String(form.get("value") ?? "");
@@ -86,6 +99,7 @@ export async function actOnSecrets(owner: SettingsOwner, actor: User, form: Form
       environments,
       projects: "workspace" in owner ? linked : undefined,
       note,
+      brokeredHosts,
     });
     if (!saved.ok) return { error: pasted.length > 0 ? `${name}: ${saved.error.message}` : saved.error.message };
   }

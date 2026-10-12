@@ -619,6 +619,22 @@ lets only `deploy.yml`'s jobs with `environment: production` reach it.
 Agents never reach those hosts, and neither do runs of pull requests from
 forks. See [workflow-only domains](/guides/guardrails/#workflow-only-domains).
 
+### Brokered secrets
+
+A secret a job uses only to call an API can be brokered: the job gets a
+stand-in (`g1tsec_…`) in place of `${{ secrets.KEY }}`, and g1t puts the
+real value on the job's requests to the hosts the secret names as they
+leave its sandbox, in headers (Basic auth included) and the query string.
+The value never enters the job, so neither its steps nor a compromised
+dependency can read it. A stand-in sent to any other host goes as it is,
+and the log says so once. This works on g1t's machines, whether the
+project's network is restricted or open; a job on a self-hosted runner
+gets the stand-in too, never the value, and its log warns that it will
+not work there yet. A secret the job must read itself (a database
+password over raw TCP, a signing key, a key to files it decrypts) cannot
+be brokered. See
+[brokered secrets](/guides/secrets-and-variables/#brokered-secrets).
+
 g1t does not run cryptocurrency miners: a step that names one (`xmrig`,
 a `stratum+tcp://` pool, `--donate-level`) is not run, and a job that
 looks like it is mining is stopped. See
@@ -1483,6 +1499,11 @@ A job output that holds a secret in any of those forms is left out, with
 a warning in the log, since outputs go to other jobs and to the run's page.
 A value of one character is not masked: it would hide that character
 everywhere.
+
+A [brokered secret](#brokered-secrets)'s stand-in is masked the same way.
+Its real value never reaches the job, so the job cannot mask it; g1t
+masks it in the log as the log arrives, should an answer have carried it
+in.
 
 ## Pull requests
 

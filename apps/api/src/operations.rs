@@ -1687,10 +1687,10 @@ impl Op {
             }
             Op::UpdateWorkflow => "Turn a workflow on or off without changing its file. Needs the Maintain role or higher.",
             Op::ListActionsSecrets => {
-                "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, and whether workflows (`secrets.NAME`), deployments, or both read it. Values are never returned. A repository's need the Admin role on it; a workspace's, a member."
+                "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, whether workflows (`secrets.NAME`), deployments, or both read it, and for a brokered secret the hosts g1t fills it in for (`brokered_hosts`). Values are never returned. A repository's need the Admin role on it; a workspace's, a member."
             }
             Op::SetActionsSecret => {
-                "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `available_to` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. A repository's need the Admin role on it; a workspace's, an owner. Workspace tokens, G1T_TOKEN included, cannot change them."
+                "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `available_to` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. `brokered_hosts` brokers the secret: workflow jobs on g1t's machines get a stand-in in place of its value, and g1t puts the real value on the job's requests to those hosts (in headers, Basic auth included, and the query string) as they leave its sandbox, so the value never enters it. A brokered secret is read by workflows only and its value is at least 8 characters; an empty list stops brokering it. A repository's need the Admin role on it; a workspace's, an owner. Workspace tokens, G1T_TOKEN included, cannot change them."
             }
             Op::DeleteActionsSecret => "Remove a secret: one row by `id`, or every row of the key.",
             Op::ListActionsVariables => {
@@ -2899,6 +2899,11 @@ impl Op {
                         "description": "A workspace's row: the projects it reaches, by slug. Empty is every one."
                     },
                     "note": { "type": "string", "description": "Where to rotate it, or who to ask." },
+                    "brokered_hosts": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "A secret's: the hosts g1t fills it in for, such as api.example.com or *.example.com. Jobs get a stand-in in place of its value. Empty stops brokering it; left out, unchanged."
+                    },
                 })),
                 &["setting"],
             ),
@@ -5180,7 +5185,13 @@ impl Op {
                 }
                 // Request bodies arrive in snake_case; the actions service
                 // takes `availableTo`.
-                for (key, to) in [("available_to", "availableTo"), ("environments", "environments"), ("repositories", "projects"), ("projects", "projects")] {
+                for (key, to) in [
+                    ("available_to", "availableTo"),
+                    ("environments", "environments"),
+                    ("repositories", "projects"),
+                    ("projects", "projects"),
+                    ("brokered_hosts", "brokeredHosts"),
+                ] {
                     if let Some(list) = strings(input, key) {
                         args[to] = json!(list);
                     }
