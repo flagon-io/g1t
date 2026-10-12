@@ -126,14 +126,16 @@ step `*/10`; days take `mon` to `sun`, and months `jan` to `dec`.
 
 A step's `uses: owner/repo@ref` (or `owner/repo/path@ref`) and a job's
 `uses: owner/repo/.g1t/workflows/build.yml@ref` name another repository.
-g1t looks for it on g1t first:
+g1t looks for it on g1t first, but a name means what it means on GitHub
+whenever GitHub has it:
 
 | The repository | What happens |
 | --- | --- |
-| On g1t and public | Your workflows use it, from any workspace. |
+| On g1t and public: in your workspace, under `g1t/`, or with a name GitHub has no public repository of | Your workflows use it, from any workspace. |
 | On g1t, private, in your workspace, with **Access** set to *Accessible from repositories in* the workspace | Your private repositories' workflows use it. A job reads it with a read-only token for that repository alone, which ends with the job. |
 | On g1t, private, and not shared that way | The step or job fails, and says why. A private repository's actions are never used by a public repository's workflows, whose logs anyone can read, nor from another workspace. |
 | Not on g1t, or private in a workspace you cannot see | An action comes from GitHub, at the commit its ref names there (see [actions from GitHub](#actions-from-github)); a reusable workflow is read from a public repository on GitHub. |
+| On g1t, public, in another workspace, with a name GitHub has a public repository of | GitHub's is used, as on GitHub: anyone can make a workspace, so a workspace called `actions` never answers for `actions/setup-node`. When g1t can't reach GitHub to tell, GitHub's is used too. |
 
 `ref` is a branch, a tag or a commit. A reusable workflow may be under
 `.g1t/workflows/` or `.github/workflows/`; a `.github/workflows/` path

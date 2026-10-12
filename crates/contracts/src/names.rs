@@ -57,10 +57,47 @@ const ROUTES: &[&str] = &[
 /// `aliases.rs`).
 const OWN: &[&str] = &["g1t", "g1t-agent", "ghost"];
 
+/// The GitHub accounts whose actions workflows use most. A workflow's
+/// `uses: actions/setup-node@v4` means GitHub's `actions`, so nobody may
+/// register these on g1t and be mistaken for them. They are not reserved
+/// as [`is_reserved_name`] is: an account that already has one keeps it,
+/// mentions and invitations still find it, and staff can give one, as an
+/// alias, to the account that proves it owns the name on GitHub.
+const ACTION_OWNERS: &[&str] = &[
+    "actions", "actions-ecosystem", "actions-rs", "amannn", "anchore", "appleboy", "aquasecurity",
+    "arduino", "astral-sh", "aws-actions", "azure", "browser-actions", "bufbuild", "cachix",
+    "changesets", "chromaui", "cloudflare", "codecov", "conda-incubator", "coursier", "crazy-max",
+    "cypress-io", "dawidd6", "denoland", "dependabot", "dessant", "determinatesystems",
+    "devcontainers", "digitalocean", "docker", "dorny", "dtolnay", "endbug", "erlef",
+    "firebaseextended", "fluxcd", "getsentry", "github", "golangci", "google-github-actions",
+    "googleapis", "goreleaser", "gradle", "gradle-update", "hadolint", "hashicorp",
+    "haskell-actions", "hecrj", "helm", "ilammy", "jamesives", "jetbrains", "julia-actions",
+    "kubernetes-sigs", "lukka", "marocchino", "microsoft", "mikepenz", "mozilla-actions", "msys2",
+    "mxschmitt", "ncipollo", "netlify", "nick-fields", "nwtgck", "octokit", "ossf", "oven-sh",
+    "peaceiris", "peter-evans", "pnpm", "pre-commit", "pypa", "r-lib", "release-drafter",
+    "renovatebot", "reviewdog", "rhysd", "ruby", "rust-lang", "sbt", "shivammathur", "sigstore",
+    "slackapi", "slsa-framework", "snyk", "softprops", "sonarsource", "stefanzweifel",
+    "step-security", "styfle", "subosito", "supabase", "super-linter", "superfly", "svenstaro",
+    "swatinem", "taiki-e", "tj-actions", "treosh", "vercel", "webfactory",
+];
+
 /// Whether `value`, whatever its case, is a name nobody can register or
 /// rename a workspace to: a route, or g1t's own.
 pub fn is_reserved_name(value: &str) -> bool {
     is_route_name(value) || OWN.iter().any(|own| own.eq_ignore_ascii_case(value.trim()))
+}
+
+/// Whether `value`, whatever its case, names one of the GitHub accounts
+/// whose actions workflows use most: see [`ACTION_OWNERS`].
+pub fn is_action_owner_name(value: &str) -> bool {
+    ACTION_OWNERS.iter().any(|owner| owner.eq_ignore_ascii_case(value.trim()))
+}
+
+/// Whether a person or workspace may take `value` as its name now, by
+/// signing up, creating a workspace or renaming one: a valid namespace
+/// that no well-known GitHub action owner goes by.
+pub fn is_claimable_name(value: &str) -> bool {
+    is_valid_namespace(value) && !is_action_owner_name(value)
 }
 
 /// Whether `value`, whatever its case, is one of the site's own routes.
@@ -99,7 +136,7 @@ pub fn aliasable_name(value: &str) -> Option<String> {
 /// reserved.
 pub fn claimable_namespace(value: &str) -> Option<String> {
     let value = value.trim().to_lowercase();
-    is_valid_namespace(&value).then_some(value)
+    is_claimable_name(&value).then_some(value)
 }
 
 /// A username as someone typed it, if it can be registered: the name
@@ -114,7 +151,7 @@ pub fn claimable_username(value: &str) -> Option<Username> {
         return None;
     }
     let canonical = display.to_ascii_lowercase();
-    is_valid_namespace(&canonical).then(|| Username { canonical, display: display.to_owned() })
+    is_claimable_name(&canonical).then(|| Username { canonical, display: display.to_owned() })
 }
 
 /// A username in its two forms: see [`claimable_username`].
@@ -166,6 +203,25 @@ mod tests {
         assert!(!is_valid_namespace("g1t-agent"));
         assert!(!is_valid_namespace("ghost"));
         assert_eq!(claimable_namespace(" Ghost "), None);
+    }
+
+    #[test]
+    fn github_action_owners_cannot_be_claimed_but_stay_findable() {
+        for name in ["actions", "Actions", " docker ", "aws-actions", "Swatinem"] {
+            assert!(is_action_owner_name(name), "{name}");
+            assert_eq!(claimable_namespace(name), None, "{name}");
+            assert_eq!(claimable_username(name), None, "{name}");
+        }
+        // An account that has one already is still a valid name to find,
+        // mention and invite, can be given one as an alias, and is not
+        // protected the way g1t's own names are.
+        assert!(is_valid_namespace("actions"));
+        assert!(!is_reserved_name("actions"));
+        assert_eq!(aliasable_name("Actions").as_deref(), Some("actions"));
+        assert!(!is_action_owner_name("actions-team"));
+        for owner in ACTION_OWNERS {
+            assert!(is_namespace_shaped(owner) && *owner == owner.to_ascii_lowercase(), "{owner}");
+        }
     }
 
     #[test]

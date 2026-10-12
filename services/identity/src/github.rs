@@ -26,7 +26,7 @@ use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry,
 use g1t_contracts::github::*;
 use g1t_contracts::identity::{SignedIn, UserArgs};
 use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
-use g1t_contracts::{FailureCode, Outcome, User, claimable_username, is_reserved_name, is_valid_namespace, new_id};
+use g1t_contracts::{FailureCode, Outcome, User, claimable_username, is_action_owner_name, is_claimable_name, is_reserved_name, is_valid_namespace, new_id};
 use g1t_kit::now_ms;
 use g1t_secrets::Sealer;
 use serde::{Deserialize, Serialize};
@@ -137,7 +137,7 @@ pub fn suggest_username(login: &str) -> String {
     }
     let out: String = out.trim_matches('-').chars().take(39).collect();
     let out = out.trim_end_matches('-');
-    if is_reserved_name(out) { format!("{out}-gh") } else { out.to_owned() }
+    if is_reserved_name(out) || is_action_owner_name(out) { format!("{out}-gh") } else { out.to_owned() }
 }
 
 /// What a return from GitHub should do.
@@ -458,7 +458,7 @@ impl Identity {
     async fn username_free(&self, username: &str) -> Result<bool> {
         // Taken in any case: names are found lowercased.
         let username = &username.to_ascii_lowercase();
-        if !is_valid_namespace(username) {
+        if !is_claimable_name(username) {
             return Ok(false);
         }
         let taken = self
@@ -1058,6 +1058,10 @@ mod tests {
         assert!(is_valid_namespace(&suggest_username("g1t")));
         assert!(claimable_username(&suggest_username("G1T")).is_some());
         assert_eq!(suggest_username("g1t-fan"), "g1t-fan");
+        // A GitHub account named like a well-known action owner signs up
+        // under a name of its own too.
+        assert_eq!(suggest_username("Docker"), "Docker-gh");
+        assert!(claimable_username(&suggest_username("actions")).is_some());
         // So signing up goes ahead, rather than failing on the login.
         let facts = Facts { suggestion: suggest_username("g1t"), ..facts() };
         assert_eq!(decide(&facts), Decision::Create("g1t-gh".to_owned()));

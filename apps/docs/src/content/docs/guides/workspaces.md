@@ -154,7 +154,8 @@ READMEs and docs, CI configuration, API clients and MCP clients.
   register a username with the old name. Links and remotes that still use
   it then reach whatever has the name, or nothing.
 - The new name follows the same rules as a new workspace: lowercase letters,
-  digits and single hyphens, up to 39 characters, not a reserved word, and
+  digits and single hyphens, up to 39 characters, not a reserved word or a
+  well-known GitHub action owner's name (such as `actions` or `docker`), and
   not another workspace's slug or someone else's username.
 
 ## Data residency

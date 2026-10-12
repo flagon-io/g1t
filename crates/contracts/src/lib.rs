@@ -52,7 +52,7 @@ pub mod work;
 
 pub use ids::{id_floor, new_id};
 pub use names::{
-    Username, aliasable_name, claimable_namespace, claimable_username, is_namespace_shaped, is_reserved_name, is_route_name,
+    Username, aliasable_name, claimable_namespace, is_action_owner_name, is_claimable_name, claimable_username, is_namespace_shaped, is_reserved_name, is_route_name,
     is_valid_namespace, is_valid_repo_name,
 };
 pub use outcome::{Failure, FailureCode, Outcome};

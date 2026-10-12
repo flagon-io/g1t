@@ -75,6 +75,15 @@ pub(crate) fn may_use(caller: &Repo, target: &Repo, access_level: &str) -> std::
     Ok(())
 }
 
+/// Whether `target` on g1t answers for its `owner/repo` name even when
+/// GitHub has a repository of the same name: when it is in the caller's own
+/// workspace, or is one of g1t's own (`g1t` is a name nobody can register).
+/// Any other workspace's repository answers only for names GitHub doesn't
+/// publish.
+pub(crate) fn answers_for_its_name(caller: &Repo, target: &Repo) -> bool {
+    caller.namespace.eq_ignore_ascii_case(&target.namespace) || target.namespace.eq_ignore_ascii_case("g1t")
+}
+
 /// Where another repository's action or workflow comes from.
 pub(crate) enum Found {
     /// g1t has it, and the caller may use it.
@@ -91,6 +100,13 @@ impl Actions {
         let Some(target) = self.visible_repo(&path, &Some(ws.clone())).await? else {
             return Ok(Outcome::Ok(Found::GitHub));
         };
+        // A name GitHub publishes means GitHub's repository, unless the
+        // repository on g1t is the caller's own workspace's or g1t's: anyone
+        // can make a workspace called `actions`, and must not get to answer
+        // for `actions/setup-node`.
+        if !answers_for_its_name(caller, &target) && self.github_publishes(&used.full_name()).await? != Some(false) {
+            return Ok(Outcome::Ok(Found::GitHub));
+        }
         let level = if target.is_private && target.id != caller.id { self.access_level_of(&target.id).await? } else { "none" };
         Ok(match may_use(caller, &target, level) {
             Ok(()) => Outcome::Ok(Found::G1t(target)),
@@ -436,5 +452,17 @@ mod tests {
         // Never from another workspace, nor from a public repository.
         assert!(may_use(&repo("x", "other", true), &shared, "organization").unwrap_err().contains("only repositories in acme"));
         assert!(may_use(&repo("site", "acme", false), &shared, "organization").unwrap_err().contains("public repository"));
+    }
+
+    #[test]
+    fn only_its_own_workspace_or_g1t_answers_for_a_name_github_has() {
+        let web = repo("web", "acme", true);
+        // The caller's own workspace, and g1t's own actions, whatever GitHub has.
+        assert!(answers_for_its_name(&web, &repo("setup", "acme", true)));
+        assert!(answers_for_its_name(&web, &repo("setup", "ACME", false)));
+        assert!(answers_for_its_name(&web, &repo("deploy", "g1t", false)));
+        // Anyone else's public repository named like GitHub's `actions/setup-node`
+        // does not: GitHub's is used when GitHub has one.
+        assert!(!answers_for_its_name(&web, &repo("setup-node", "actions", false)));
     }
 }
