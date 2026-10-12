@@ -711,3 +711,29 @@ p.buttons {
 .runner-line .dot {
 	margin-top: 0;
 }
+/* A button at work: a small spinner before its label until the status that follows. */
+button.busy {
+	cursor: progress;
+}
+button.busy::before {
+	content: "";
+	display: inline-block;
+	width: 0.75em;
+	height: 0.75em;
+	margin-right: 0.5em;
+	vertical-align: -0.1em;
+	border: 2px solid currentColor;
+	border-right-color: transparent;
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	button.busy::before {
+		animation: none;
+	}
+}

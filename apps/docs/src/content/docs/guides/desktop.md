@@ -253,10 +253,13 @@ The other two choices run `g1t-runner` from the same data folder, with
 each one's registration beside it.
 
 On Windows the sandbox is the WSL distribution `g1t-sandbox`, of which a
-computer has one. If you made one yourself with `g1t-runner sandbox up`,
-the app leaves it alone and says *this computer has another sandbox*:
-remove it with `g1t-runner sandbox down --delete` for the app to make its
-own, or keep it and turn the app's runner off.
+computer has one. If this copy of g1t has no record of making the one
+there (you made it with `g1t-runner sandbox up`, or g1t was uninstalled
+with its data deleted and installed again), the app leaves it alone and
+says *this computer has another sandbox*: **Remove it and start again**
+removes it, with its VM and registration, and makes the app's own; or keep
+it and turn the app's runner off. Uninstalling g1t with **Delete the
+application data** ticked removes the sandbox too.
 
 ### Registering
 
@@ -343,7 +346,7 @@ the settings and the Runners page.
 | *Not running: the sandbox's image didn't check out* | The image that downloaded isn't the one the release signed (its signature or SHA-256), so it wasn't used. | It downloads it again by itself. If it keeps happening, something between your computer and g1t, such as a proxy or antivirus, is changing downloads: **Report** it. |
 | *Not running: the sandbox can't run here* | Something else the sandbox needs, in its own words. | What it says. |
 | *Not running: the sandbox failed* | The sandbox stopped, or didn't start, with its reason. | It starts again by itself, waiting longer each time. **Retry**, or **View log**. |
-| *Not running: this computer has another sandbox* | A sandbox you made with `g1t-runner sandbox up`; a computer has one. | Remove it with `g1t-runner sandbox down --delete`, then **Retry**; or keep it, and turn the app's runner off. |
+| *Not running: this computer has another sandbox* | A sandbox this copy of g1t has no record of making: one you made with `g1t-runner sandbox up`, or one left from before g1t was installed again. A computer has one. | **Remove it and start again**, which asks first; its old runners stay listed on g1t, offline, until you remove them there. Or keep it, and turn the app's runner off. |
 | *Not running: this g1t-runner has no sandbox* | The app's `g1t-runner` is from before the sandbox. | It downloads a newer one by itself; **Retry** looks now. |
 | *Windows jobs: Not available*: *Windows Sandbox is off*, *Windows needs an update* | Windows Sandbox is off, this Windows is Home, or it is older than 24H2. Linux jobs still run. | On Pro, Enterprise or Education, turn on Windows Sandbox (**Open Windows features**) and restart, or update Windows. |
 | *Windows jobs: Problem*: *Its runner didn't start* or *Its runner stopped* | The runner for Windows jobs didn't start, with why, or stopped by itself, while Linux jobs run. | It is started again by itself in a few minutes; **Retry** now, or **View log**. |

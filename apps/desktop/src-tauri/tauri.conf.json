@@ -33,6 +33,7 @@
 			"webviewInstallMode": { "type": "downloadBootstrapper" },
 			"nsis": {
 				"installMode": "currentUser",
+				"installerHooks": "./windows/hooks.nsh",
 				"languages": ["English"]
 			}
 		},

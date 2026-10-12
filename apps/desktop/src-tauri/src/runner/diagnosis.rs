@@ -314,6 +314,10 @@ const CHECK_NOW: Action = Action { id: "retry", label: "Check now" };
 /// Looks for a newer runner now, and installs it as soon as its kinds of job are idle.
 const CHECK_UPDATES: Action = Action { id: "check_updates", label: "Check for runner updates" };
 const CHECK_AGAIN: Action = Action { id: "check_updates", label: "Check again" };
+/// Removes the sandbox this computer has (`sandbox down --delete`, in the
+/// app's own folder for it) and starts the app's own: what the command a
+/// person would type does, without needing to know where that folder is.
+const REMOVE_SANDBOX: Action = Action { id: "remove_sandbox", label: "Remove it and start again" };
 const RESTART: Action = Action { id: "restart", label: "Restart" };
 const SIGN_IN: Action = Action { id: "sign_in", label: "Sign in" };
 const CHOOSE_WORKSPACE: Action = Action { id: "choose_workspace", label: "Choose workspace" };
@@ -543,9 +547,9 @@ pub fn diagnose(code: Code, facts: &Facts) -> Diagnosis {
         Code::SandboxTaken => (
             Tone::Warning,
             "Not running: this computer has another sandbox".into(),
-            some("This computer already has a g1t-runner sandbox that g1t didn't make, such as one started with `g1t-runner sandbox up`, and it has room for one."),
-            some("Remove it with `g1t-runner sandbox down --delete`, then Retry; its runners stay listed on g1t until you remove them there. Or keep it, and turn off running jobs in g1t."),
-            vec![RETRY, LEARN_MORE],
+            some("This computer already has a g1t-runner sandbox that this copy of g1t has no record of making, such as one from before g1t was installed again, or one started with `g1t-runner sandbox up`. A computer has room for one."),
+            some("Remove it and start again: g1t removes it, with the jobs' VM and its registration, and makes its own, registered with your workspace. Its old runners stay listed on g1t, offline, until you remove them there. Or keep it, and turn off running jobs in g1t."),
+            vec![REMOVE_SANDBOX, LEARN_MORE],
         ),
         Code::Updating => (Tone::Working, "Updating".into(), detail, some("The runner starts again as soon as it's done."), vec![]),
         Code::UpdateFailed => (
