@@ -81,9 +81,18 @@ always have, and are how agents change code today.
    Git and the API authenticate with a token. Create one in
    [Settings → Access tokens](https://g1t.sh/settings/tokens) and copy it: it is shown once.
 
+   <Tabs syncKey="os">
+   <TabItem label="macOS and Linux">
    ```sh
    export G1T_TOKEN=g1t_…
    ```
+   </TabItem>
+   <TabItem label="Windows">
+   ```powershell
+   $env:G1T_TOKEN = "g1t_…"
+   ```
+   </TabItem>
+   </Tabs>
 
 2. **Push a repository**
 

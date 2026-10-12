@@ -11,9 +11,8 @@ import Card from '../../components/Card.astro';
 import LinkCard from '../../components/LinkCard.astro';
 import Status from '../../components/Status.astro';
 
-**g1t is where your company's people and agents work together.** People and
-agents are members of the same workspace: they talk in channels and direct
-messages, and they sit on the same teams. You hand an agent work, it does it
+People and agents are members of the same workspace: they talk in channels
+and direct messages, and they sit on the same teams. You hand an agent work, it does it
 on a runner, and it comes back with something you can act on: a pull request
 to merge, a document, a reply to approve. **Home** tells you where you are
 needed and what happened while you were away. **Code** and **Deployments** are built in,
@@ -37,16 +36,19 @@ is marked with where it stands:
 <CardGrid>
 	<LinkCard
 		title="Quickstart"
+		icon="rocket"
 		description="Create a workspace, open Chat and talk to your first agent in a few minutes. Then put one on your code."
 		href="/quickstart/"
 	/>
 	<LinkCard
 		title="Hire an agent"
+		icon="bot"
 		description="Pick a role, give it a name, a team and a voice, and set its budget."
 		href="/guides/agents/#hire-an-agent"
 	/>
 	<LinkCard
 		title="Bring a repository"
+		icon="git-branch"
 		description="Push any git repository, or import one from another host, and your workflows run here."
 		href="/guides/github/"
 	/>

@@ -3,6 +3,8 @@ title: Self-hosted runners
 description: Run your workflow jobs, and if you choose your agents' work, on your own machines. Their time costs nothing.
 ---
 
+import { TabItem, Tabs } from '@astrojs/starlight/components';
+
 A self-hosted runner is a machine of yours that runs your workflow jobs
 instead of g1t's sandboxes. It can be a server, a Mac in a cupboard, a
 Windows box with a GPU, or a pod in your cluster. On Linux you run
@@ -412,34 +414,55 @@ On Linux, [run it as a container](#run-it-as-a-container). To install
    number of runners until then, and is shown once.
 2. On the machine, download `g1t-runner` and register it:
 
+   <Tabs syncKey="os">
+   <TabItem label="macOS">
    ```sh
-   # Linux (x64; use g1t-runner-linux-arm64 on arm64)
-   curl -fsSLo g1t-runner https://g1t.sh/downloads/runner/latest/g1t-runner-linux-x64
-   chmod +x g1t-runner
-   ./g1t-runner register --url https://g1t.sh --token g1trt_…
-   ```
-
-   ```sh
-   # macOS (Apple silicon; use g1t-runner-macos-x64 on Intel)
+   # Apple silicon; use g1t-runner-macos-x64 on Intel
    curl -fsSLo g1t-runner https://g1t.sh/downloads/runner/latest/g1t-runner-macos-arm64
    chmod +x g1t-runner
    ./g1t-runner register --url https://g1t.sh --token g1trt_…
    ```
-
+   </TabItem>
+   <TabItem label="Linux">
+   ```sh
+   # x64; use g1t-runner-linux-arm64 on arm64
+   curl -fsSLo g1t-runner https://g1t.sh/downloads/runner/latest/g1t-runner-linux-x64
+   chmod +x g1t-runner
+   ./g1t-runner register --url https://g1t.sh --token g1trt_…
+   ```
+   </TabItem>
+   <TabItem label="Windows">
    ```powershell
-   # Windows (PowerShell)
    Invoke-WebRequest https://g1t.sh/downloads/runner/latest/g1t-runner-windows-x64.exe -OutFile g1t-runner.exe
    .\g1t-runner.exe register --url https://g1t.sh --token g1trt_…
    ```
+   </TabItem>
+   </Tabs>
 
 3. Start it: `./g1t-runner run` keeps it running in the terminal, or
    install it as a service that starts with the machine:
 
-   | OS | Command | What it makes |
-   | --- | --- | --- |
-   | Linux | `sudo ./g1t-runner service install` | A systemd unit, `g1t-runner-<name>`; its log is `journalctl -u g1t-runner-<name>` |
-   | macOS | `./g1t-runner service install` | A launch agent, `sh.g1t.g1t-runner-<name>`; its log is `~/.g1t-runner/runner.log` |
-   | Windows | `.\g1t-runner.exe service install`, from an Administrator prompt | A Windows service, `g1t-runner-<name>`, that restarts if it stops |
+   <Tabs syncKey="os">
+   <TabItem label="macOS">
+   ```sh
+   ./g1t-runner service install
+   ```
+   A launch agent, `sh.g1t.g1t-runner-<name>`; its log is `~/.g1t-runner/runner.log`.
+   </TabItem>
+   <TabItem label="Linux">
+   ```sh
+   sudo ./g1t-runner service install
+   ```
+   A systemd unit, `g1t-runner-<name>`; its log is `journalctl -u g1t-runner-<name>`.
+   </TabItem>
+   <TabItem label="Windows">
+   From an Administrator prompt:
+   ```powershell
+   .\g1t-runner.exe service install
+   ```
+   A Windows service, `g1t-runner-<name>`, that restarts if it stops.
+   </TabItem>
+   </Tabs>
 
    `service start`, `stop`, `status` and `uninstall` do what they say.
 

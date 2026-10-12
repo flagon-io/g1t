@@ -606,3 +606,30 @@ site-search button[data-open-modal]:hover {
 		margin-top: 0;
 	}
 }
+
+/* Tabs in a page, such as one per OS: quiet labels on a hairline, the
+   chosen one in ink over a lavender line. */
+starlight-tabs .tablist-wrapper {
+	margin-bottom: 0.75rem;
+}
+starlight-tabs [role='tablist'] {
+	gap: 0.25rem;
+	border-bottom: 1px solid var(--g1t-line);
+}
+starlight-tabs [role='tab'] {
+	margin-bottom: -1px;
+	border-bottom: 2px solid transparent;
+	padding: 0.4rem 0.75rem;
+	font-size: 0.875rem;
+	font-weight: 500;
+	color: var(--g1t-muted);
+	transition: color 0.15s, border-color 0.15s;
+}
+starlight-tabs [role='tab']:hover {
+	color: var(--g1t-fg);
+}
+starlight-tabs [role='tab'][aria-selected='true'] {
+	border-color: var(--g1t-accent);
+	color: var(--g1t-fg);
+	font-weight: 600;
+}
