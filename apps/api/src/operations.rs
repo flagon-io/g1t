@@ -707,7 +707,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 350] = [
+    pub const ALL: [Op; 351] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -983,6 +983,7 @@ impl Op {
         Op::Deployments(DeploymentsOp::CreateDeploymentStatus),
         Op::Deployments(DeploymentsOp::ListEnvironments),
         Op::Deployments(DeploymentsOp::GetEnvironment),
+        Op::Deployments(DeploymentsOp::StartDeploymentBuild),
         Op::Artifacts(ArtifactsOp::ListArtifacts),
         Op::Artifacts(ArtifactsOp::ListRunArtifacts),
         Op::Artifacts(ArtifactsOp::GetArtifact),

@@ -516,6 +516,7 @@ export const OPERATION_SCOPES = [
   ["get_environment", "deployments:read"],
   ["create_deployment", "deployments:write"],
   ["create_deployment_status", "deployments:write"],
+  ["start_deployment_build", "deployments:write"],
   // What keeps runs safe: the runs environments hold and reviewing them,
   // approving a pull request's run, and a repository's own rules for its
   // environments and tokens, which are an admin's.
