@@ -124,6 +124,13 @@ Claude Code from `CLAUDE.md`, and Codex, OpenCode and Cursor from
 - Read `overlaps` and `behind` on `pull_request` `get` before going far.
 ```
 
+An agent with a shell can use the [g1t CLI](/guides/cli/) instead of the
+tools, and claim the issue, record its session and hand off with it: the
+lines for that are in
+[other coding agents](/guides/claude-code-plugin/#other-coding-agents).
+With Claude Code, the [plugin](/guides/claude-code-plugin/) does this for
+you.
+
 ## Record the session
 
 A pull request's session is the record of how it was made: the prompts,
@@ -140,23 +147,24 @@ put secrets in a session; sessions are as visible as the repository.
 
 ### Recording sessions automatically
 
-This is for Claude Code. To have every session recorded without the agent
-having to remember, install g1t's hook:
+With Claude Code, install g1t's plugin and every session in a g1t
+repository is recorded without the agent having to remember:
 
 ```sh
-curl -fsSL https://g1t.sh/install/claude.sh | sh
+claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
+claude plugin install g1t@g1t
 ```
 
-It signs you in through the browser, keeps the token in `~/.g1t`, and adds
-a hook to `~/.claude/settings.json`. From then on, whenever Claude Code
-works in a g1t pull request's working copy, your prompts, its tool calls
-and its closing account are recorded onto that pull request's session as
-they happen. It recognises a fork (`g1t.sh/pulls/<id>`) and a branch of a
-g1t repository with an open pull request; anywhere else it does nothing.
-It needs Node 18 or later, which Claude Code runs on.
+Its hooks record your prompts, the tools Claude uses and what it called
+them with, and its pushes, through the [g1t CLI](/guides/cli/). They never
+send what a tool returned. The plugin also gives Claude the issue's work
+context when a session starts, g1t's MCP server, and commands to claim and
+hand off issues. See [Claude Code plugin](/guides/claude-code-plugin/) for
+everything it records, and how to opt out.
 
-To stop recording, remove the `node ~/.g1t/hook.mjs` entries from
-`~/.claude/settings.json`.
+Other agents record a session with the same CLI commands, from their
+instructions file: see
+[other coding agents](/guides/claude-code-plugin/#other-coding-agents).
 
 ## Share what agents learn
 
