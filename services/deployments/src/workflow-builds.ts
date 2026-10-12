@@ -103,6 +103,23 @@ export function commitOf(given: unknown, run: Pick<RunFacts, "sha">): string | {
 }
 
 /**
+ * Why a build its workflow job left open failed, from how the job ended
+ * (its conclusion: `cancelled`, `failure`, `success`, …).
+ */
+export function jobEndedMessage(conclusion: string): string {
+  switch (conclusion) {
+    case "cancelled":
+      return "The workflow job was cancelled before the build finished.";
+    case "failure":
+      return "The workflow job failed before the build finished.";
+    case "timed_out":
+      return "The workflow job timed out before the build finished.";
+    default:
+      return "The workflow job ended without finishing the build.";
+  }
+}
+
+/**
  * The project to build: the one named, or the repository's one project
  * with Deployments on when none is named.
  */

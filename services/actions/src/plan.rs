@@ -1680,6 +1680,11 @@ impl Actions {
         let Some(job) = finished else { return Ok(()) };
         // Its G1T_TOKEN stops working with it.
         self.revoke_job_tokens(&job.id).await;
+        // A g1t.page build it opened and did not finish fails now, not at
+        // the deployments sweep. Only a job that ran can have opened one.
+        if job.started_at.is_some() {
+            self.end_job_builds(&job.id, conclusion).await;
+        }
         // A job that deploys failed: so did its run's deployment, now.
         if conclusion == "failure" && job.continue_on_error == 0 && job.started_at.is_some()
             && let Some(run) = self.run_row(&job.run_id).await?
@@ -1774,6 +1779,7 @@ impl Actions {
             .await?;
         if stopped.as_ref().is_some_and(|row| row.started_at.is_some()) {
             self.revoke_job_tokens(&job.id).await;
+            self.end_job_builds(&job.id, "cancelled").await;
         }
         if let Some(stopped) = stopped.filter(|row| row.runner_id.is_some()) {
             self.released(&stopped).await?;
@@ -1869,6 +1875,18 @@ impl Actions {
             }
         }
         Ok(())
+    }
+
+    /// Tells the deployments service that a job ended (`workflow_job_ended`),
+    /// so a build it opened with `start_from_workflow` and left open fails
+    /// at once. Never fails the job: an answer that does not come is
+    /// logged, and the sweep fails the build later.
+    async fn end_job_builds(&self, job_id: &str, conclusion: &str) {
+        let ended: Result<Value> =
+            g1t_kit::call(&self.deployments, "workflow_job_ended", &json!({ "jobId": job_id, "conclusion": conclusion })).await;
+        if let Err(error) = ended {
+            worker::console_log!("actions: could not tell deployments that job {job_id} ended: {error}");
+        }
     }
 
     /// Tells the deployments service how a run's deployment to `env` stands:
