@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { answered, describeError, tellStopped, withinTimeCap } from "./lifecycle.ts";
+import { answered, capReached, describeError, stoppedShort, tellStopped, withinTimeCap } from "./lifecycle.ts";
 
 const quiet = { waitMs: 0 };
 
@@ -83,4 +83,32 @@ test("a sandbox with no cap or no start is stopped for inactivity as before", ()
   assert.equal(withinTimeCap(now - 1000, undefined, now, 180), false);
   assert.equal(withinTimeCap(now - 1000, null, now, 180), false);
   assert.equal(withinTimeCap(now - 1000, 0, now, 180), false);
+});
+
+test("an earlier attempt's time cap does not stop the attempt running now", () => {
+  const minute = 60_000;
+  // Desktop release, Linux job: attempt 1 started 12:47:17 with a 60-minute
+  // cap, so its alarm fired at 13:50:17, four minutes into attempt 3 in the
+  // same Durable Object.
+  const attempt3 = Date.UTC(2026, 9, 12, 13, 46, 15);
+  const alarm = Date.UTC(2026, 9, 12, 13, 50, 17);
+  assert.equal(capReached(attempt3, 60, alarm), false);
+  // Its own alarm, at its cap and the alarm's grace, does stop it.
+  assert.equal(capReached(attempt3, 60, attempt3 + 63 * minute), true);
+  assert.equal(capReached(attempt3, 60, attempt3 + 60 * minute), true);
+  assert.equal(capReached(attempt3, 60, attempt3 + 60 * minute - 1), false);
+});
+
+test("a sandbox with no run or no cap is never stopped for time", () => {
+  const now = Date.now();
+  assert.equal(capReached(undefined, 60, now), false);
+  assert.equal(capReached(now - 120 * 60_000, undefined, now), false);
+  assert.equal(capReached(now - 120 * 60_000, 0, now), false);
+});
+
+test("a sandbox g1t stopped fails even when its exit code says 0", () => {
+  assert.equal(stoppedShort(0, null), false);
+  assert.equal(stoppedShort(0, "It ran into its time cap of 60 minutes."), true);
+  assert.equal(stoppedShort(137, null), true);
+  assert.equal(stoppedShort(1, "why"), true);
 });
