@@ -1673,6 +1673,10 @@ pub struct Entitlements {
     /// spend spike is waiting for an owner to confirm it, or g1t staff put
     /// a hold on it. None when it is not.
     pub paused: Option<String>,
+    /// g1t staff put a hold on the account (sudo, Allowances): besides new
+    /// compute, nothing new is set up for it, such as a self-hosted runner.
+    #[serde(default)]
+    pub held: bool,
     // What the workspace's plan gives it, for its pages.
     /// What open reservations hold now.
     #[serde(default)]

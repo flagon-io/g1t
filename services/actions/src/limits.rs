@@ -81,3 +81,38 @@ mod tests {
         assert_eq!(shown_bytes(500 * 1024 * 1024), "500 MB");
     }
 }
+
+/// Whether a workspace without the plan may start one more job on its
+/// self-hosted runners, with `running` going already. `cap` 0 is no cap.
+pub fn self_hosted_room(running: u64, cap: u64) -> bool {
+    cap == 0 || running < cap
+}
+
+impl crate::Actions {
+    /// The workspace's standing with billing: its plan, and any hold staff
+    /// put on it. None when billing does not answer: callers let things
+    /// through rather than stop everyone's work on billing's account.
+    pub(crate) async fn standing(&self, workspace: &str) -> Option<g1t_contracts::billing::Entitlements> {
+        let args = g1t_contracts::billing::EntitlementsArgs { workspace: workspace.to_lowercase() };
+        match g1t_kit::call(&self.billing, "entitlements", &args).await {
+            Ok(entitlements) => Some(entitlements),
+            Err(error) => {
+                worker::console_error!("actions: billing's entitlements for {workspace} failed: {error}");
+                None
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod room_tests {
+    use super::self_hosted_room;
+
+    #[test]
+    fn free_workspaces_run_a_few_self_hosted_jobs_at_once() {
+        assert!(self_hosted_room(0, 4));
+        assert!(self_hosted_room(3, 4));
+        assert!(!self_hosted_room(4, 4));
+        assert!(self_hosted_room(400, 0));
+    }
+}

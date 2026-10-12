@@ -502,6 +502,7 @@ impl Billing {
             ceiling_micros: ceiling,
             exposure_micros: limit.exposure_micros,
             paused,
+            held: account.allowances.hold.as_deref().is_some_and(|hold| !hold.trim().is_empty()),
             held_micros: held,
             prepaid_micros: limit.prepaid_micros,
             included_micros: if has_plan { self.plans.plan_included_micros } else { 0 },

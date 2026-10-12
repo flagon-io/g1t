@@ -701,7 +701,11 @@ Time on your runners is free. Each job's minutes go on
 so you can see how much ran there.
 
 - Workflow jobs on your runners need no plan and no card: they work on the
-  free tier.
+  free tier. A workspace on the free plan runs **4** of its workflow jobs
+  on its runners at once, however many runners it has; the rest stay
+  queued until one finishes. On the g1t plan there is no such cap.
+- A workspace g1t has put a hold on cannot register new runners: making a
+  registration token answers that it is held.
 - Agent work on your runners still needs its model paid for: the g1t plan,
   the trial, the open-source pool on a public repository, or your own
   model provider, which makes the run free.
