@@ -95,6 +95,9 @@ export default [
   route("download", "routes/download.tsx"),
   // Releases of the desktop app, the self-hosted runner and the g1t CLI, from R2.
   route("downloads/:tool/*", "routes/downloads-runner.ts"),
+  // The g1t CLI's install scripts, for Linux and macOS and for Windows. `install` is reserved.
+  route("install", "routes/install-script.ts", { id: "routes/install-sh" }),
+  route("install.ps1", "routes/install-script.ts", { id: "routes/install-ps1" }),
   // A workspace's own pages sit under `-`, which no repository can be named.
   route(":owner", "routes/workspace/layout.tsx", [
     index("routes/workspace/overview.tsx"),

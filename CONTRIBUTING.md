@@ -128,6 +128,17 @@ setup.
   `.g1t/workflows/runner-release.yml` builds, signs and publishes it, and
   runners update themselves to it. `scripts/runner-release.mjs` does the
   same by hand.
+- **The g1t CLI** is released the same way: bump `version` in
+  `crates/g1t/Cargo.toml`, merge, and push a `cli-v<version>` tag.
+  `.g1t/workflows/cli-release.yml` builds it for every platform, signs
+  the release with the runner's release key and publishes it to
+  g1t.sh/downloads/cli/, where g1t.sh/install and g1t.sh/install.ps1
+  find it. `scripts/cli-release.mjs` does the same by hand. The command
+  reference in the docs is generated from the CLI
+  (`G1T_WRITE_DOCS=1 cargo test -p g1t cli_reference`), and its table of
+  API operations from the OpenAPI document
+  (`G1T_WRITE_OPS=1 cargo test -p g1t ops_table`); tests fail when either
+  falls behind. The guide is [The g1t CLI](https://docs.g1t.sh/guides/cli/).
 - **The desktop app** is released the same way: bump `version` in
   `apps/desktop/src-tauri/Cargo.toml`, merge, and push a
   `desktop-v<version>` tag. `.g1t/workflows/desktop-release.yml` builds
