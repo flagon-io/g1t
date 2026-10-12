@@ -150,6 +150,10 @@ const HELP: &str = "g1t-runner: a self-hosted runner for g1t.
   g1t-runner update                update to the newest release
   g1t-runner version
 
+In a workflow step (the g1t/deploy and g1t/detect actions use these):
+  g1t-runner deploy                build this checkout and put it on g1t.page
+  g1t-runner detect [--root-dir DIR]  what that build would find
+
 Every command takes --dir DIR (default ~/.g1t-runner, or G1T_RUNNER_DIR).
 Make a registration token under Settings, Runners on g1t.sh.
 Docs: https://docs.g1t.sh/guides/self-hosted-runners/";

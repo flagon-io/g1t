@@ -191,6 +191,121 @@ When production goes live, g1t takes a screenshot of its home page, as a
 The [checklist on the overview](/guides/projects/#get-to-production) also
 tracks the first production deploy, a custom domain and a first preview.
 
+## Deploying from a workflow
+
+A [workflow](/guides/actions/) job can build and deploy the project
+itself, with g1t's own action, `g1t/deploy`. Use it when the build needs
+steps of yours first (generated code, a test that must pass, a tool the
+default build lacks), or to deploy from a branch without a pull request.
+The app, its address, its checks and its custom domains are the same as
+for the builds g1t starts by itself.
+
+```yaml
+# .g1t/workflows/deploy.yml
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm test
+      - id: deploy
+        uses: g1t/deploy@v1
+        with:
+          build-command: npm run build
+      - run: echo "Live at ${{ steps.deploy.outputs.url }}"
+```
+
+1. Turn Deployments on for the project, as in
+   [Turn on deployments](#turn-on-deployments).
+2. Add a workflow like the one above. The job needs `deployments: write`
+   (or `pages: write`) in its `permissions:`.
+3. Push. The run on `main` deploys production; a pull request's run
+   deploys its preview.
+
+What the run builds:
+
+| The run | Builds |
+| --- | --- |
+| On the project's production branch (a push, `workflow_dispatch` or `schedule` there) | Production |
+| For a pull request (`pull_request`, `pull_request_target`) | That pull request's preview, at its branch's address, or `pr-<number>` for one from a fork |
+| On another branch | That branch's preview |
+| For a tag | Nothing: the step fails and says to run the workflow on a branch |
+
+`g1t/deploy` takes these inputs:
+
+| Input | Default | |
+| --- | --- | --- |
+| `project` | The repository's one project with Deployments on | The project's slug. Needed when the repository has several. |
+| `root-dir` | The project's **Root directory** | Where the project is in the checkout. |
+| `build-command` | The project's **Build command**, else what the build finds | What builds it, run after the install. |
+| `output-dir` | The project's **Output directory**, else the first folder found | The folder a static build writes. |
+| `sha` | The run's commit | The commit the `g1t / deploy` check goes on. |
+| `token` | `${{ github.token }}` | The job's own token. No other token can open a build. |
+
+Its outputs are `url` (the app's address), `deployment-id` (`dpl_…`) and
+`kind` (`production` or `preview`).
+
+The action calls
+[`POST /repos/{owner}/{repo}/deployments/builds`](/reference/api/deployments/start-deployment-build/),
+which checks the plan and the spend limit as any build does, sets the
+commit's `g1t / deploy` check to pending, and answers with a token for
+that build alone and the project's
+[variables and secrets](#secrets-and-variables) for production or
+previews. The action masks the token and every secret in the log, then
+runs `g1t-runner deploy` in the checkout, which installs, builds and
+uploads exactly as [What deploys](#what-deploys) says; its output is in
+the step's log and on the deployment's page. When the build fails, or
+g1t does not take what it built, the step fails and the deployment says
+why.
+
+- **Secrets.** A pull request from a fork or from someone without the
+  Write role, and a run that had to be
+  [approved](/guides/actions/#pull-requests), build without
+  the project's secrets, as previews of them always have. Their token is
+  read-only, so they cannot open a build at all unless the workflow runs
+  on `pull_request_target`.
+- **Cost.** The build runs in the job, so its time is the job's
+  [Actions time](/guides/usage-and-billing/), free on a
+  [self-hosted runner](/guides/self-hosted-runners/), and is not charged
+  again as build seconds. Requests, CPU time and custom domains are
+  charged as for any app.
+- **g1t's own builds still run.** A push to the production branch and a
+  pull request's push still start g1t's build too. Whichever starts
+  later replaces the other, so the app ends up at the newest commit
+  either way.
+- **On your own machines**, the action uses the `g1t-runner` on `PATH`, or
+  downloads the newest release and checks it against its `SHA256SUMS`. It
+  runs on Linux and macOS, with `curl` and `jq` or `python3`.
+
+`g1t/detect` says what a build of the checkout would find, without
+building anything: its outputs are `kind` (`workers`, `static`, `html` or
+`none`), `install`, `build` and `output-dir`. Use them to cache, or to
+fail early:
+
+```yaml
+- id: detect
+  uses: g1t/detect@v1
+- if: steps.detect.outputs.kind == 'none'
+  run: |
+    echo "::error::Nothing here would be served: add an index.html or a build script."
+    exit 1
+```
+
 ## Custom domains
 
 Production can be served at a domain of your own, such as `example.com` or
@@ -352,7 +467,7 @@ plan's $10 of included usage first; past it, it is charged up to your
 | | Costs g1t | You pay |
 | --- | --- | --- |
 | Projects, previews and the apps behind them | Next to nothing | Not charged |
-| Builds, by the second, whether they succeed or fail | About $0.001 a minute | About $0.0012 a minute |
+| Builds g1t runs, by the second, whether they succeed or fail (a [workflow's build](#deploying-from-a-workflow) is its job's Actions time instead) | About $0.001 a minute | About $0.0012 a minute |
 | Requests, to all of the workspace's apps | $0.30 a million | $0.36 a million |
 | CPU time your code spends computing (waiting on the network is not counted) | $0.02 a million ms | $0.024 a million ms |
 | Custom domains, with their certificates (a www/apex pair is two) | $0.10 a month | $0.12 a month, by the most the workspace had at once that month |
@@ -450,6 +565,9 @@ you sign in to.
 | A domain stays at **Waiting for DNS** | Check the record against the one listed, remove other `A`/`AAAA` records for the same name, then choose **Check now**. |
 | A domain says "This domain is not set up" | It points at g1t, but no project has added it. Add it under **Settings → Domains**. |
 | "This pull request's commit no longer exists" | The pull request's head was force-pushed over, or its branch deleted, after the build was asked for. Push to the pull request again, or close it. g1t does not try that commit again. |
+| g1t/deploy says "The job's token needs `deployments: write`" | Add `deployments: write` to the workflow's or the job's `permissions:`. A pull request's run from outside gets a read-only token and cannot deploy. |
+| g1t/deploy says "Name the project to build" | The repository has several projects with Deployments on: give `project:`. |
+| g1t/deploy says "g1t.page deploys branches and pull requests" | The run is for a tag. Run the workflow on a branch, such as on a push to `main`. |
 | "The build did not finish in 45 minutes" | The build stopped reporting: a build stops at 30 minutes, and one not heard from after 45 is failed. Make the build faster, or build less for previews with **Build command**. |
 
 ## Running your own g1t

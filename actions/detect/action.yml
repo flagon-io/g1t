@@ -1,0 +1,47 @@
+name: Detect a g1t.page project
+description: Says what a g1t.page build of this checkout would find, without building anything. Its kind, how it installs, what builds it and where its output is.
+author: g1t
+
+inputs:
+  root-dir:
+    description: Where the project is in the checkout. The checkout itself unless you say.
+    required: false
+    default: ""
+  build-command:
+    description: A build command of your own, as g1t/deploy takes it.
+    required: false
+    default: ""
+  output-dir:
+    description: An output folder of your own, as g1t/deploy takes it.
+    required: false
+    default: ""
+
+outputs:
+  kind:
+    description: workers (a Wrangler config), static (a site a build writes), html (the files as they are) or none.
+    value: ${{ steps.detect.outputs.kind }}
+  install:
+    description: How its dependencies are installed, such as npm ci. Empty without a package.json.
+    value: ${{ steps.detect.outputs.install }}
+  build:
+    description: What builds it. Empty when nothing does.
+    value: ${{ steps.detect.outputs.build }}
+  output-dir:
+    description: The folder that is served, relative to the project (. for the project itself). Empty when a build has yet to write it.
+    value: ${{ steps.detect.outputs.output-dir }}
+
+runs:
+  using: composite
+  steps:
+    - id: detect
+      shell: bash
+      env:
+        ROOT_DIR: ${{ inputs.root-dir }}
+        BUILD_COMMAND: ${{ inputs.build-command }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        set -euo pipefail
+        runner="$(bash "$GITHUB_ACTION_PATH/runner.sh")"
+        found="$("$runner" detect)"
+        echo "$found"
+        echo "$found" >> "$GITHUB_OUTPUT"

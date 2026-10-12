@@ -28,6 +28,15 @@
 //! - `BUILD_ENV`, `BUILD_SECRETS`: JSON objects of the repository's
 //!   variables and secrets for deploy builds. Both are set for the build;
 //!   secrets' values are redacted from its log.
+//!
+//! From a workflow step, `g1t-runner deploy` runs the same build in the
+//! job's own checkout: without `GIT_REMOTE` nothing is cloned, and the
+//! project is the current directory (`ROOT_DIR` below it). The build's id
+//! and token come from `POST /repos/{owner}/{repo}/deployments/builds`,
+//! which the `g1t/deploy` action calls (actions/deploy). Its output goes
+//! to the step's log as well as the deployment's. `g1t-runner detect`
+//! says what the build would find, as `key=value` lines for
+//! `$GITHUB_OUTPUT`, without building anything.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -43,7 +52,7 @@ use sha2::{Digest, Sha256};
 use crate::checks::{redact, run_command};
 use crate::{WORKDIR, auth_option, env, git};
 
-/// Where `wrangler deploy --dry-run` writes the bundle.
+/// Where `wrangler deploy --dry-run` writes the bundle in a sandbox.
 const BUNDLE_DIR: &str = "/work/g1t-bundle";
 /// Cloudflare's limits on a Worker's static assets.
 const MAX_FILES: usize = 20_000;
@@ -81,16 +90,21 @@ impl Reporter {
     }
 }
 
-/// The build's log, kept to its end.
+/// The build's log, kept to its end; also printed, in a workflow step.
 #[derive(Default)]
 struct Log {
     text: String,
+    /// Each line to standard output as well, redacted.
+    echo: Option<Vec<String>>,
 }
 
 impl Log {
     fn line(&mut self, line: &str) {
         self.text.push_str(line);
         self.text.push('\n');
+        if let Some(secrets) = &self.echo {
+            println!("{}", redact(line, secrets));
+        }
     }
 
     fn tail(&self) -> String {
@@ -378,17 +392,17 @@ struct Module {
 }
 
 /// The bundle `wrangler deploy --dry-run` wrote, main module first.
-fn bundle_modules(main: &str) -> Result<(String, Vec<Module>)> {
+fn bundle_modules(main: &str, bundle: &Path) -> Result<(String, Vec<Module>)> {
     let stem = Path::new(main)
         .file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())
         .unwrap_or_else(|| "index".to_owned());
     let mut modules = Vec::new();
     let mut files = Vec::new();
-    collect_files(Path::new(BUNDLE_DIR), &mut files)?;
+    collect_files(bundle, &mut files)?;
     for file in files {
         let name = file
-            .strip_prefix(BUNDLE_DIR)?
+            .strip_prefix(bundle)?
             .to_string_lossy()
             .replace('\\', "/");
         let kind = match name.rsplit('.').next().unwrap_or("") {
@@ -470,9 +484,75 @@ fn static_kind(project: &Path, assets_dir: &Path, built: bool) -> &'static str {
     if !built && assets_dir == project { "html" } else { "static" }
 }
 
+/// The command that bundles a Workers project, without deploying it,
+/// into `bundle` when given.
+fn wrangler_build(bundle: Option<&Path>) -> String {
+    match bundle {
+        Some(bundle) => format!("npx --yes wrangler@4 deploy --dry-run --outdir {}", bundle.display()),
+        None => "npx --yes wrangler@4 deploy --dry-run".to_owned(),
+    }
+}
+
+/// The first of the usual output directories a static build wrote (or the
+/// project's own `index.html`), relative to the project: `.` for itself.
+fn find_output(dir: &Path) -> Option<String> {
+    OUTPUT_DIRS
+        .iter()
+        .find(|name| {
+            let path = dir.join(name);
+            path.join("index.html").exists() || (path.is_dir() && **name != "public")
+        })
+        .map(|name| (*name).to_owned())
+        .or_else(|| dir.join("index.html").exists().then(|| ".".to_owned()))
+}
+
+/// What a build of the project at `dir` does, found before anything runs:
+/// what it is, how its dependencies are installed, what builds it, and
+/// where what it serves is. For a site with a build of its own, the output
+/// directory may only exist once it has run; then `output_dir` is `None`
+/// unless one was chosen.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Detected {
+    /// `workers`, `static`, `html`, or `none` when there is nothing to serve.
+    pub kind: &'static str,
+    pub install: Option<&'static str>,
+    pub build: Option<String>,
+    pub output_dir: Option<String>,
+}
+
+pub(crate) fn detect(dir: &Path, custom_build: Option<&str>, chosen_output: Option<&str>) -> Result<Detected> {
+    let custom_build = custom_build.map(str::trim).filter(|c| !c.is_empty());
+    let chosen_output = chosen_output.map(|d| d.trim().trim_matches('/')).filter(|d| !d.is_empty());
+    let install = install_command(dir);
+    if let Some(config) = read_wrangler(dir)? {
+        let mut steps: Vec<String> = custom_build.map(str::to_owned).into_iter().collect();
+        if config.main.is_some() {
+            steps.push(wrangler_build(None));
+        }
+        return Ok(Detected {
+            kind: "workers",
+            install,
+            build: (!steps.is_empty()).then(|| steps.join(" && ")),
+            output_dir: config.assets.and_then(|assets| assets.directory),
+        });
+    }
+    let build = custom_build
+        .map(str::to_owned)
+        .or_else(|| has_build_script(dir).then(|| "npm run build".to_owned()));
+    let output_dir = chosen_output.map(str::to_owned).or_else(|| find_output(dir));
+    // `.` is the project itself: its own files, served as they are.
+    let kind = match (&build, output_dir.as_deref()) {
+        (None, Some(".")) => "html",
+        (None, None) => "none",
+        _ => "static",
+    };
+    Ok(Detected { kind, install, build, output_dir })
+}
+
 fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
     let project = project_dir();
     let dir = project.as_path();
+    let bundle = bundle_dir();
     let config = read_wrangler(dir)?;
     let custom_build = std::env::var("BUILD_COMMAND").ok().filter(|c| !c.trim().is_empty());
     if let Some(install) = install_command(dir) {
@@ -493,12 +573,9 @@ fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
             if let Some(main) = &config.main {
                 // `--dry-run` runs the project's own build and bundles it,
                 // without deploying anywhere.
-                step(
-                    log,
-                    &format!("npx --yes wrangler@4 deploy --dry-run --outdir {BUNDLE_DIR}"),
-                    secrets,
-                )?;
-                let (main_module, modules) = bundle_modules(main)?;
+                let _ = std::fs::remove_dir_all(&bundle);
+                step(log, &wrangler_build(Some(&bundle)), secrets)?;
+                let (main_module, modules) = bundle_modules(main, &bundle)?;
                 worker["mainModule"] = main_module.into();
                 worker["modules"] = serde_json::to_value(modules)?;
             }
@@ -530,14 +607,12 @@ fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
                     }
                     path
                 }
-                None => OUTPUT_DIRS
-                    .iter()
-                    .map(|name| dir.join(name))
-                    .find(|path| path.join("index.html").exists() || (path.is_dir() && path != &dir.join("public")))
-                    .or_else(|| dir.join("index.html").exists().then(|| dir.to_path_buf()))
-                    .context(
-                        "found nothing to serve: no Workers config, no index.html, and none of dist, build, out, public, _site or .output/public",
-                    )?,
+                None => match find_output(dir).context(
+                    "found nothing to serve: no Workers config, no index.html, and none of dist, build, out, public, _site or .output/public",
+                )? {
+                    own if own == "." => dir.to_path_buf(),
+                    output => dir.join(output),
+                },
             };
             let spa = !assets_dir.join("404.html").exists();
             Ok(Built {
@@ -555,15 +630,46 @@ fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
     }
 }
 
-/// Where the project lives in the checkout: its root directory.
-fn project_dir() -> PathBuf {
-    let root = std::env::var("ROOT_DIR").unwrap_or_default();
-    let root = root.trim_matches('/');
-    if root.is_empty() || root.split('/').any(|part| part == "..") {
+/// Whether the build checks out its own commit (a sandbox, given
+/// `GIT_REMOTE`) rather than building the checkout it runs in.
+fn clones() -> bool {
+    std::env::var("GIT_REMOTE").is_ok_and(|remote| !remote.trim().is_empty())
+}
+
+/// The checkout the build runs in: the sandbox's clone, or, from a
+/// workflow step, the current directory.
+fn checkout_dir() -> PathBuf {
+    if clones() {
         PathBuf::from(WORKDIR)
     } else {
-        Path::new(WORKDIR).join(root)
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
     }
+}
+
+/// Where `wrangler deploy --dry-run` writes the bundle: in a workflow
+/// step, a directory of the job's temporary space, never the checkout.
+fn bundle_dir() -> PathBuf {
+    if clones() {
+        return PathBuf::from(BUNDLE_DIR);
+    }
+    let base = std::env::var_os("RUNNER_TEMP").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    base.join(format!("g1t-bundle-{}", std::process::id()))
+}
+
+/// Where the project lives in the checkout `base`: its root directory,
+/// never above the checkout.
+fn project_dir_in(base: &Path, root: &str) -> PathBuf {
+    let root = root.trim().trim_matches('/');
+    if root.is_empty() || root == "." || root.split('/').any(|part| part == "..") {
+        base.to_path_buf()
+    } else {
+        base.join(root)
+    }
+}
+
+/// Where the project lives: `ROOT_DIR` in the checkout.
+fn project_dir() -> PathBuf {
+    project_dir_in(&checkout_dir(), &std::env::var("ROOT_DIR").unwrap_or_default())
 }
 
 fn check_out(secrets: &[String]) -> Result<()> {
@@ -585,7 +691,15 @@ fn check_out(secrets: &[String]) -> Result<()> {
 }
 
 fn deploy(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Value> {
-    check_out(secrets).context("the commit could not be checked out")?;
+    if clones() {
+        check_out(secrets).context("the commit could not be checked out")?;
+    } else {
+        let dir = project_dir();
+        if !dir.is_dir() {
+            bail!("the project's directory {} does not exist in this checkout", dir.display());
+        }
+        log.line(&format!("Building {} as it is checked out.", dir.display()));
+    }
     // The repository's variables and secrets for deploy builds.
     for source in ["BUILD_ENV", "BUILD_SECRETS"] {
         if let Ok(vars) = std::env::var(source)
@@ -605,6 +719,9 @@ fn deploy(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Valu
         "warnings": built.warnings,
         "detected": built.detected,
     });
+    for warning in &built.warnings {
+        log.line(&format!("Warning: {warning}"));
+    }
     if let Some(dir) = &built.assets_dir {
         let skip_project = *dir == project_dir();
         let mut assets = Vec::new();
@@ -640,10 +757,34 @@ fn deploy(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Valu
     Ok(finish)
 }
 
+/// A sandbox's build (`MODE=deploy`).
 pub fn main() -> i32 {
+    run(false)
+}
+
+/// `g1t-runner deploy`, from a workflow step: the build in the job's own
+/// checkout, its log in the step's as well. Exits 1 when the build fails,
+/// after reporting it, so the step fails too.
+pub fn cli(args: &[String]) -> i32 {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!("{CLI_HELP}");
+        return 0;
+    }
+    run(true)
+}
+
+const CLI_HELP: &str = "g1t-runner deploy: builds the project in this checkout and puts it on g1t.page.
+
+Reads DEPLOY_ID and DEPLOY_TOKEN (from POST /repos/{owner}/{repo}/deployments/builds),
+G1T_API (https://api.g1t.sh), and optionally ROOT_DIR, BUILD_COMMAND, OUTPUT_DIR,
+BUILD_ENV and BUILD_SECRETS (JSON objects). The g1t/deploy action sets them all.
+
+g1t-runner detect prints what the build would find, as key=value lines.";
+
+fn run(step_log: bool) -> i32 {
     let reporter = match (env("G1T_API"), env("DEPLOY_ID"), env("DEPLOY_TOKEN")) {
         (Ok(api), Ok(id), Ok(token)) => Reporter {
-            base: format!("{api}/deployments/jobs/{id}"),
+            base: format!("{}/deployments/jobs/{id}", api.trim_end_matches('/')),
             token,
         },
         _ => {
@@ -665,31 +806,90 @@ pub fn main() -> i32 {
         return 1;
     }
     let started = Instant::now();
-    let mut log = Log::default();
+    let mut log = Log { echo: step_log.then(|| secrets.clone()), ..Log::default() };
     let outcome = deploy(&reporter, &mut log, &secrets);
     let seconds = started.elapsed().as_secs();
-    let sent = match outcome {
+    if step_log {
+        let _ = std::fs::remove_dir_all(bundle_dir());
+    }
+    let (sent, failed) = match outcome {
         Ok(mut finish) => {
             finish["log"] = redact(&log.tail(), &secrets).into();
             finish["buildSeconds"] = seconds.into();
-            reporter.send("finish", finish)
+            (reporter.send("finish", finish), false)
         }
         Err(error) => {
             let message = redact(&format!("{error:#}"), &secrets);
             log.line(&format!("The build failed: {message}"));
-            reporter.send(
+            let sent = reporter.send(
                 "fail",
                 json!({ "message": message, "log": redact(&log.tail(), &secrets), "buildSeconds": seconds }),
-            )
+            );
+            (sent, true)
         }
     };
     match sent {
+        // A sandbox's build has said how it ended; a step fails with its build.
+        Ok(answer) if step_log && (failed || answer["ok"] == false || answer["value"] == false) => {
+            if !failed {
+                eprintln!("g1t-runner: g1t did not take the build; its deployment says why");
+            }
+            1
+        }
         Ok(_) => 0,
         Err(error) => {
             eprintln!("g1t-runner: {error:#}");
             1
         }
     }
+}
+
+/// `g1t-runner detect`: what a build of the project would find, as
+/// `key=value` lines for `$GITHUB_OUTPUT`: `kind`, `install`, `build` and
+/// `output-dir`. Reads `ROOT_DIR`, `BUILD_COMMAND` and `OUTPUT_DIR` as the
+/// build does; `--root-dir DIR` is the same as `ROOT_DIR`.
+pub fn detect_cli(args: &[String]) -> i32 {
+    let mut root = std::env::var("ROOT_DIR").unwrap_or_default();
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "--root-dir" => root = rest.next().cloned().unwrap_or_default(),
+            "--help" | "-h" => {
+                println!("g1t-runner detect [--root-dir DIR]: prints kind, install, build and output-dir as key=value lines.");
+                return 0;
+            }
+            other => {
+                eprintln!("g1t-runner detect: unknown argument {other}");
+                return 2;
+            }
+        }
+    }
+    let dir = project_dir_in(&checkout_dir(), &root);
+    let custom = std::env::var("BUILD_COMMAND").ok();
+    let output = std::env::var("OUTPUT_DIR").ok();
+    match detect(&dir, custom.as_deref(), output.as_deref()) {
+        Ok(found) => {
+            print!("{}", output_lines(&found));
+            0
+        }
+        Err(error) => {
+            eprintln!("g1t-runner detect: {error:#}");
+            1
+        }
+    }
+}
+
+/// `Detected` as `$GITHUB_OUTPUT` lines; a value on one line, empty when
+/// there is none.
+fn output_lines(found: &Detected) -> String {
+    let one_line = |value: Option<&str>| value.unwrap_or_default().replace(['\r', '\n'], " ");
+    format!(
+        "kind={}\ninstall={}\nbuild={}\noutput-dir={}\n",
+        found.kind,
+        one_line(found.install),
+        one_line(found.build.as_deref()),
+        one_line(found.output_dir.as_deref()),
+    )
 }
 
 #[cfg(test)]
@@ -757,5 +957,83 @@ crons = [\"0 * * * *\"]
         assert_eq!(content_type("/index.HTML"), "text/html");
         assert_eq!(content_type("/a/b.woff2"), "font/woff2");
         assert_eq!(content_type("/LICENSE"), "application/octet-stream");
+    }
+
+    /// A fresh directory with `files` (path, contents) in it.
+    fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("g1t-detect-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for (path, text) in files {
+            let path = dir.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn detect_finds_a_workers_project_and_how_it_builds() {
+        let dir = project(
+            "workers",
+            &[
+                ("wrangler.jsonc", r#"{ "main": "src/index.ts", "assets": { "directory": "./public" }, }"#),
+                ("package.json", "{}"),
+                ("pnpm-lock.yaml", ""),
+            ],
+        );
+        let found = detect(&dir, None, None).unwrap();
+        assert_eq!(found.kind, "workers");
+        assert_eq!(found.install, Some("corepack enable && pnpm install --frozen-lockfile"));
+        assert_eq!(found.build.as_deref(), Some("npx --yes wrangler@4 deploy --dry-run"));
+        assert_eq!(found.output_dir.as_deref(), Some("./public"));
+        // The project's own build command runs first.
+        let custom = detect(&dir, Some("npm run codegen"), None).unwrap();
+        assert_eq!(custom.build.as_deref(), Some("npm run codegen && npx --yes wrangler@4 deploy --dry-run"));
+    }
+
+    #[test]
+    fn detect_finds_a_static_build_and_a_plain_site() {
+        let built = project("static", &[("package.json", r#"{ "scripts": { "build": "vite build" } }"#), ("package-lock.json", "{}")]);
+        let found = detect(&built, None, None).unwrap();
+        assert_eq!(
+            found,
+            Detected { kind: "static", install: Some("npm ci"), build: Some("npm run build".into()), output_dir: None },
+            "its output is found once it has built"
+        );
+        std::fs::create_dir_all(built.join("dist")).unwrap();
+        std::fs::write(built.join("dist/index.html"), "<h1>hi</h1>").unwrap();
+        assert_eq!(detect(&built, None, None).unwrap().output_dir.as_deref(), Some("dist"));
+        assert_eq!(detect(&built, None, Some("/site/")).unwrap().output_dir.as_deref(), Some("site"));
+
+        let html = project("html", &[("index.html", "<h1>hi</h1>")]);
+        assert_eq!(detect(&html, None, None).unwrap(), Detected { kind: "html", install: None, build: None, output_dir: Some(".".into()) });
+        // A `public` folder alone, without an index.html, is not a site.
+        let empty = project("empty", &[("public/robots.txt", ""), ("README.md", "")]);
+        assert_eq!(detect(&empty, None, None).unwrap().kind, "none");
+    }
+
+    #[test]
+    fn detect_prints_lines_for_github_output() {
+        let found = Detected { kind: "static", install: Some("npm ci"), build: Some("a\nb".into()), output_dir: None };
+        assert_eq!(output_lines(&found), "kind=static\ninstall=npm ci\nbuild=a b\noutput-dir=\n");
+    }
+
+    #[test]
+    fn the_root_directory_stays_inside_the_checkout() {
+        let base = Path::new("/w/repo");
+        assert_eq!(project_dir_in(base, ""), base);
+        assert_eq!(project_dir_in(base, "."), base);
+        assert_eq!(project_dir_in(base, "/apps/site/"), base.join("apps/site"));
+        assert_eq!(project_dir_in(base, "../etc"), base);
+        assert_eq!(project_dir_in(base, "apps/../../x"), base);
+    }
+
+    #[test]
+    fn a_step_prints_the_log_redacted() {
+        let mut log = Log { echo: Some(vec!["hunter22".to_owned()]), ..Log::default() };
+        log.line("token hunter22 used");
+        assert!(log.text.contains("hunter22"), "the deployment's log is redacted when it is sent");
+        assert_eq!(wrangler_build(Some(Path::new("/tmp/b"))), "npx --yes wrangler@4 deploy --dry-run --outdir /tmp/b");
     }
 }

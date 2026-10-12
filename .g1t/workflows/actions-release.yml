@@ -1,0 +1,67 @@
+# Publishes g1t's own actions: each folder of actions/ (deploy, detect…)
+# is pushed, as the whole of its own history, to the repository of the
+# same name in the g1t workspace on g1t.sh (actions/deploy to g1t/deploy),
+# and its major tag, v1, is moved to it. Workflows anywhere use them as
+# `uses: g1t/deploy@v1`. A change to an action that breaks how it is
+# used gets a new major tag here (MAJOR below), and the old one stays.
+#
+# Runs on a push to main that changes actions/, and by hand.
+#
+# Needs the repository secret G1T_ACTIONS_PUBLISH_TOKEN: an access token of
+# the g1t workspace with contents: write on its action repositories
+# (g1t/deploy, g1t/detect, and one for each new folder, made public
+# before its first release). The job's own token reaches this repository
+# only, so it cannot push there.
+name: Actions release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - actions/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: actions-release
+  cancel-in-progress: false
+
+env:
+  MAJOR: v1
+  NAMESPACE: g1t
+
+jobs:
+  publish:
+    name: Publish g1t/<action>
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Push each action and move its major tag
+        env:
+          PUBLISH_TOKEN: ${{ secrets.G1T_ACTIONS_PUBLISH_TOKEN }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PUBLISH_TOKEN}" ]; then
+            echo "::error::Set the repository secret G1T_ACTIONS_PUBLISH_TOKEN (this workflow's header says what it needs)."
+            exit 1
+          fi
+          echo "::add-mask::${PUBLISH_TOKEN}"
+          auth="Authorization: Basic $(printf 'g1t:%s' "${PUBLISH_TOKEN}" | base64 -w0)"
+          git config user.name g1t
+          git config user.email g1t@users.noreply.g1t.sh
+          for dir in actions/*/; do
+            name="$(basename "${dir}")"
+            [ -f "${dir}action.yml" ] || { echo "::warning::${dir} has no action.yml; skipped."; continue; }
+            commit="$(git subtree split --prefix "actions/${name}" HEAD)"
+            remote="${SERVER}/${NAMESPACE}/${name}.git"
+            echo "Publishing actions/${name} (${commit}) to ${NAMESPACE}/${name}"
+            git -c http.extraHeader="${auth}" push "${remote}" "${commit}:refs/heads/main"
+            git -c http.extraHeader="${auth}" push --force "${remote}" "${commit}:refs/tags/${MAJOR}"
+            echo "- \`${NAMESPACE}/${name}@${MAJOR}\` is ${commit}" >> "${GITHUB_STEP_SUMMARY}"
+          done

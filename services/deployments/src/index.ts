@@ -12,6 +12,11 @@
  * for Platforms namespace, where the `*.g1t.page` dispatcher finds it by
  * hostname.
  *
+ * A g1t Actions job can open a build too (`startFromWorkflow`, for
+ * `POST /repos/{owner}/{repo}/deployments/builds` and the `g1t/deploy`
+ * action) and build it in its own checkout with `g1t-runner deploy`; it
+ * reports the same way, and its time is the job's, not a sandbox's.
+ *
  * Nothing here is free, and nothing is capped. On the plan, every build
  * second is charged as it happens; requests, CPU time and custom domains
  * are charged from the first once the month is over, all at cost plus the
@@ -32,6 +37,7 @@ import {
   DEPLOYMENT_COSTS,
   SLUG_HOLD_DAYS,
   ComputeGate,
+  actionsClient,
   allows,
   billingClient,
   can,
@@ -85,6 +91,7 @@ import { moveTargets, ownerOf, rebuildOutcome, type DroppedBuild, type MoveTarge
 import { commitMissing, MAX_IDENTICAL_FAILURES, missingCommitMessage, retryDecision, type PastBuild } from "./retries";
 import { appHost, appUrl, label, uniqueLabel } from "./names";
 import { RepoDeployments, sourceOf } from "./repo-deployments";
+import { commitOf, jobOf, projectNamed, runTrusted, targetOf, type WorkflowBuild } from "./workflow-builds";
 
 type Env = {
   DB: D1Database;
@@ -219,7 +226,42 @@ type DeploymentRow = {
   created_by: string;
   created_at: string;
   finished_at: string | null;
+  /** Set for a build a g1t Actions job runs (migration 0011): the job pays for its time. */
+  run_id?: string | null;
+  job_id?: string | null;
 };
+
+/** What opening any build takes; see `open`. */
+type OpenInput = {
+  project: Project;
+  kind: DeployKind;
+  branch: string | null;
+  number: number | null;
+  commit: string;
+  createdBy: string;
+  settings: SettingsRow;
+  /** A push, or work by a member or an agent; see `insider`. */
+  trusted: boolean;
+  /** The g1t Actions job that builds it, for a build opened from a workflow. */
+  workflow?: { runId: string; jobId: string };
+};
+
+/** Why a build was not opened: the plan or the limit, or g1t itself. */
+type Refusal = "payment_required" | "conflict";
+
+/** A sandbox's reservation with billing; none for a workflow job's build. */
+type Compute = { reservation: string | null; microsPerSecond: number; maxRunMinutes: number | null };
+
+type Opened =
+  | { refused: string; code: Refusal; id: string }
+  | {
+      refused: null;
+      id: string;
+      token: string;
+      script: string;
+      build: { secrets: Record<string, string>; variables: Record<string, string> };
+      compute: Compute;
+    };
 
 type AppRow = {
   script: string;
@@ -689,22 +731,63 @@ class Deployments {
   // ---- Starting builds -----------------------------------------------
 
   /**
-   * Opens a deployment and starts its build. Skipped, with the reason
-   * recorded, when the workspace's plan is off.
+   * Opens a deployment and starts its build in a sandbox. Skipped, with the
+   * reason recorded, when the workspace's plan is off.
    */
-  private async start(input: {
-    project: Project;
-    kind: DeployKind;
-    branch: string | null;
-    number: number | null;
-    commit: string;
+  private async start(input: OpenInput & {
+    /** Where the build reads the commit from: the project, or a pull request's fork. */
     source: RepoPath;
+    /** Who reads it: the workspace, or whoever the pull request is for. */
     reader: User;
-    createdBy: string;
-    settings: SettingsRow;
-    /** A push, or work by a member or an agent; see `insider`. */
-    trusted: boolean;
   }): Promise<Result<Deployment>> {
+    const { project } = input;
+    const repo = repoOf(project);
+    const opened = await this.open(input, { reserve: true });
+    if (opened.refused !== null) return ok(toDeployment((await this.deploymentRow(opened.id))!));
+    const { build, compute } = opened;
+    const response = await this.env.RUNNER.fetch("https://runner/rpc/start_deploy", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        deployId: opened.id,
+        token: opened.token,
+        workspace: project.workspace,
+        reservation: compute.reservation,
+        microsPerSecond: compute.microsPerSecond,
+        maxRunMinutes: compute.maxRunMinutes,
+        actor: input.reader,
+        source: input.source,
+        // The project, whose guardrails the build runs under: a preview's
+        // source is its pull request's working copy, not the project.
+        repo: repo.path,
+        repoId: repo.id,
+        commit: input.commit,
+        rootDir: project.source.rootDir,
+        buildCommand: input.settings.build_command,
+        outputDir: input.settings.output_dir,
+        buildEnv: build.variables,
+        buildSecrets: build.secrets,
+      }),
+    });
+    const started = response.ok ? ((await response.json()) as Result<true>) : fail("conflict", `The runner answered ${response.status}.`);
+    if (!started.ok) {
+      // Never reached a sandbox: what was reserved is given back.
+      if (compute.reservation) await gateFor(this.env.BILLING).settle(compute.reservation, 0);
+      await this.finishFailed(opened.id, started.error.message, null, null);
+    }
+    return ok(toDeployment((await this.deploymentRow(opened.id))!));
+  }
+
+  /**
+   * What every build does before anything builds it: checks the plan and
+   * the spend limit (and, for a sandbox, reserves its compute with
+   * billing), records the deployment with a token for that build alone,
+   * replaces older builds of the same app, sets the commit's status, and
+   * reads what the project's secrets and variables give builds of its
+   * kind. A refusal is the deployment's status, saying what to do; nothing
+   * is resolved for a refused build.
+   */
+  private async open(input: OpenInput, options: { reserve: boolean }): Promise<Opened> {
     const { project } = input;
     const repo = repoOf(project);
     const script = await this.scriptFor(project, input.branch);
@@ -712,47 +795,50 @@ class Deployments {
     const token = randomToken();
     const plan = await billingClient(this.env.BILLING).hasFeature(project.workspace, "deployments");
     const limit = await billingClient(this.env.BILLING).checkLimit(project.workspace);
+    const stopped = limit.ok && limit.value.state === "stopped";
     const cloudflare = this.cloudflare;
     let refused = !plan.ok
       ? plan.error.message
-      : limit.ok && limit.value.state === "stopped"
+      : stopped
         ? (limit.value.message ?? "The workspace reached its usage limit.")
       : !cloudflare
         ? "Deployments are not set up on this g1t: it has no Cloudflare token."
         : null;
-    // A build is compute: reserved with billing before it starts, and
-    // settled by its sandbox when it stops. A refusal is the deployment's
-    // status, saying what to do.
-    const compute = gateFor(this.env.BILLING);
-    let reservation: string | null = null;
-    let microsPerSecond = 0;
-    let maxRunMinutes: number | null = null;
-    if (!refused) {
-      const ent = await compute.entitlements(project.workspace);
-      microsPerSecond = await compute.microsPerSecond();
-      maxRunMinutes = ent && ent.maxRunMinutes > 0 ? ent.maxRunMinutes : null;
+    let code: Refusal = plan.ok && !stopped ? "conflict" : "payment_required";
+    // A sandbox's build is compute: reserved with billing before it starts,
+    // and settled by its sandbox when it stops. A workflow job's build runs
+    // in the job, which pays for its own time.
+    const compute: Compute = { reservation: null, microsPerSecond: 0, maxRunMinutes: null };
+    if (!refused && options.reserve) {
+      const gate = gateFor(this.env.BILLING);
+      const ent = await gate.entitlements(project.workspace);
+      compute.microsPerSecond = await gate.microsPerSecond();
+      compute.maxRunMinutes = ent && ent.maxRunMinutes > 0 ? ent.maxRunMinutes : null;
       const isPrivate = await reposClient(this.env.REPOS)
         .get(repo.path, null)
         .then((found) => !found.ok || found.value.isPrivate)
         .catch(() => true);
-      const admitted = await compute.admit(
+      const admitted = await gate.admit(
         {
           workspace: project.workspace,
           repo: repo.path,
           public: !isPrivate,
           kind: "deploy",
-          estimateMicros: sandboxEstimateMicros(Math.min(BUILD_MINUTES, maxRunMinutes ?? BUILD_MINUTES), microsPerSecond),
+          estimateMicros: sandboxEstimateMicros(Math.min(BUILD_MINUTES, compute.maxRunMinutes ?? BUILD_MINUTES), compute.microsPerSecond),
         },
         ent,
       );
-      if (admitted.ok) reservation = admitted.reservation?.id ?? null;
-      else refused = admitted.message;
+      if (admitted.ok) compute.reservation = admitted.reservation?.id ?? null;
+      else {
+        refused = admitted.message;
+        code = "payment_required";
+      }
     }
     await this.db
       .prepare(
         `INSERT INTO deployments (id, project_id, workspace, slug, repo_id, repo, kind, branch, number, commit_sha,
-           script, status, error, token_hash, trusted, created_by, created_at, finished_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           script, status, error, token_hash, trusted, created_by, created_at, finished_at, run_id, job_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -773,9 +859,11 @@ class Deployments {
         input.createdBy,
         now(),
         refused ? now() : null,
+        input.workflow?.runId ?? null,
+        input.workflow?.jobId ?? null,
       )
       .run();
-    if (refused) return ok(toDeployment((await this.deploymentRow(id))!));
+    if (refused) return { refused, code, id };
     // Older builds of the same app are replaced by this one.
     await this.db
       .prepare(
@@ -792,37 +880,104 @@ class Deployments {
       input.kind,
       input.trusted,
     );
-    const response = await this.env.RUNNER.fetch("https://runner/rpc/start_deploy", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        deployId: id,
-        token,
-        workspace: project.workspace,
-        reservation,
-        microsPerSecond,
-        maxRunMinutes,
-        actor: input.reader,
-        source: input.source,
-        // The project, whose guardrails the build runs under: a preview's
-        // source is its pull request's working copy, not the project.
-        repo: repo.path,
-        repoId: repo.id,
-        commit: input.commit,
-        rootDir: project.source.rootDir,
-        buildCommand: input.settings.build_command,
-        outputDir: input.settings.output_dir,
-        buildEnv: build.variables,
-        buildSecrets: build.secrets,
-      }),
-    });
-    const started = response.ok ? ((await response.json()) as Result<true>) : fail("conflict", `The runner answered ${response.status}.`);
-    if (!started.ok) {
-      // Never reached a sandbox: what was reserved is given back.
-      if (reservation) await compute.settle(reservation, 0);
-      await this.finishFailed(id, started.error.message, null, null);
+    return { refused: null, id, token, script, build, compute };
+  }
+
+  /**
+   * For a g1t Actions job (`POST /repos/{owner}/{repo}/deployments/builds`):
+   * opens a g1t.page build of one of the repository's projects, which the
+   * job builds in its own checkout with `g1t-runner deploy`. The caller is
+   * the job's own token (`token.job`), which needs `deployments: write` and
+   * reaches this repository only. The run decides what is built: a run on
+   * the project's production branch builds production, a pull request's
+   * run its preview, a run on another branch that branch's preview. A pull
+   * request from a fork or from someone who cannot push here, and a run
+   * that needed approval, get no build secrets. The job pays for its own
+   * time, so nothing is reserved or charged here for the build; the plan
+   * and the spend limit are checked as for any build.
+   */
+  async startFromWorkflow(a: { actor: User; repo: RepoPath; project?: string | null; sha?: string | null }): Promise<Result<WorkflowBuild>> {
+    const repoPath = { namespace: String(a.repo?.namespace ?? ""), name: String(a.repo?.name ?? "") };
+    const job = jobOf(a.actor, repoPath);
+    if ("error" in job) return fail("forbidden", job.error);
+    const actor = await this.workspaceActor(repoPath.namespace);
+    if (!actor) return fail("not_found", "There is no such repository.");
+    const found = await reposClient(this.env.REPOS).get(repoPath, actor);
+    if (!found.ok) return fail("not_found", "There is no such repository.");
+    const projects = await this.projects.byRepo(found.value.id);
+    const rows = new Map(await Promise.all(projects.map(async (p) => [p.id, await this.settingsRow(p.id)] as const)));
+    const live = (row: SettingsRow | null | undefined): row is SettingsRow =>
+      !!row?.enabled && !row.repo_deleted_at && !row.workspace_deleted_at;
+    const chosen = projectNamed(projects, (p) => live(rows.get(p.id)), a.project);
+    if ("error" in chosen) return fail(chosen.code, chosen.error);
+    const project = chosen;
+    if (project.source.kind !== "hosted") return fail("conflict", "Only projects hosted on g1t deploy so far.");
+    if (!can(a.actor, repoRef(project), NEEDS.redeploy)) return fail("forbidden", needs(NEEDS.redeploy));
+    const settings = rows.get(project.id);
+    if (!live(settings)) return fail("conflict", `Deployments are off for ${project.slug}.`);
+    const repo = repoOf(project);
+
+    // The run and its job, as the actions service has them: still running.
+    const detail = await actionsClient(this.env.ACTIONS).run(repo.path, actor, job.runId);
+    if (!detail.ok) return fail("not_found", "The job's run was not found.");
+    const { run } = detail.value;
+    const running = detail.value.jobs.find((j) => j.id === job.jobId);
+    if (run.status === "completed" || !running || running.status === "completed") {
+      return fail("conflict", "The job has finished: a build is opened from a job while it runs.");
     }
-    return ok(toDeployment((await this.deploymentRow(id))!));
+    const commit = commitOf(a.sha, run);
+    if (typeof commit !== "string") return fail("invalid", commit.error);
+
+    const target = targetOf(run, repo.defaultBranch);
+    if ("error" in target) return fail("invalid", target.error);
+    let kind: DeployKind = "production";
+    let branch: string | null = null;
+    let number: number | null = null;
+    let trusted = runTrusted({ approval: detail.value.approval, pull: null, insider: true });
+    if (target.kind === "pull") {
+      const pull = await workClient(this.env.WORK).getPull(repo.path, target.number, actor);
+      if (!pull.ok) return fail("not_found", `Pull request #${target.number} was not found.`);
+      const open = pull.value.pull;
+      if (open.status !== "open" && open.status !== "draft") {
+        return fail("conflict", `Pull request #${target.number} is not open, so it has no preview.`);
+      }
+      kind = "preview";
+      // A pull request from a fork has no branch here (see `deployPreview`).
+      branch = open.branch ?? `pr-${target.number}`;
+      number = target.number;
+      trusted = runTrusted({
+        approval: detail.value.approval,
+        pull: open,
+        insider: await this.insider(repo.path, workOwner(open), actor),
+      });
+    } else if (target.kind === "branch") {
+      kind = "preview";
+      branch = target.branch;
+    }
+    if (kind === "production" && !settings.production) return fail("conflict", `Production deploys are off for ${project.slug}.`);
+    if (kind === "preview" && !settings.previews) return fail("conflict", `Previews are off for ${project.slug}.`);
+
+    const opened = await this.open(
+      { project, kind, branch, number, commit, createdBy: run.actor ?? "g1t", settings, trusted, workflow: job },
+      { reserve: false },
+    );
+    if (opened.refused !== null) return fail(opened.code, opened.refused);
+    return ok({
+      deploy_id: opened.id,
+      token: opened.token,
+      kind,
+      project: project.slug,
+      branch,
+      number,
+      commit,
+      url: appUrl(opened.script),
+      trusted,
+      root_dir: project.source.rootDir ?? "",
+      build_command: settings.build_command,
+      output_dir: settings.output_dir,
+      build_env: opened.build.variables,
+      build_secrets: opened.build.secrets,
+    });
   }
 
   private async deployProduction(project: Project, commit: string | null, createdBy: string): Promise<Result<Deployment> | null> {
@@ -1128,8 +1283,13 @@ class Deployments {
       .catch((reason: unknown) => console.error("deployment not published", row.id, String(reason)));
   }
 
-  /** Each build is charged by the second, from the first, at the container price plus the margin. */
+  /**
+   * Each build is charged by the second, from the first, at the container
+   * price plus the margin. A build a workflow job ran is not: the job's
+   * time is charged as Actions time.
+   */
   private async chargeBuild(row: DeploymentRow, seconds: number): Promise<void> {
+    if (row.run_id) return;
     const costs = await this.costs();
     const cost = Math.ceil(Math.ceil(seconds) * costs.buildSecond);
     if (cost <= 0) return;
@@ -2213,6 +2373,9 @@ async function rpc(service: Deployments, method: string, args: any, ctx: Executi
       return service.get(args);
     case "redeploy":
       return service.redeploy(args);
+    // For the API: a g1t Actions job opening a build it runs itself.
+    case "start_from_workflow":
+      return service.startFromWorkflow(args);
     case "take_down":
       return service.takeDown(args);
     case "overview":
