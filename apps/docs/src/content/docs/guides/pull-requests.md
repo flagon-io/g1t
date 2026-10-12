@@ -1,6 +1,6 @@
 ---
 title: Pull requests and checks
-description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, drafts, closing and reopening, editing and deleting comments, and conflicts found before anyone tries to merge.
+description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, reviewers, sessions, drafts, closing and reopening, editing and deleting comments, and conflicts found before anyone tries to merge.
 ---
 
 At the foot of an open pull request's conversation, the **merge box** says
@@ -8,17 +8,12 @@ what stands between it and its target branch: its checks, its reviews,
 whether it merges cleanly, and the button that merges it. Everything in it
 updates by itself while something is still running.
 
-A pull request g1t made shows **g1t** as its author and **requested by**
-the person who asked for it. That person can manage it as its author could,
-and cannot approve it; see
-[who a pull request is for](/guides/working-with-g1t/#who-a-pull-request-is-for).
-
 ## Checks
 
 A pull request's checks are the statuses reported on its head commit. Most
 come from the repository's [workflows](/guides/actions/): every workflow
 that runs on `pull_request` runs on every pull request's head, whoever
-opened it, a person or an agent, and reports a check named after the
+opened it, and reports a check named after the
 workflow. A workflow named `CI` reports the check `CI`; its status context
 is `CI / pull_request`, the workflow's name and the event it ran for. Other
 parts of g1t report under their own names, such as `g1t / deploy` (or
@@ -54,7 +49,7 @@ and it says nothing about merging.
 ### Other attempts at the same issue
 
 When an issue has more than one pull request, for example because two
-agents each tried it, every one of them shows **Other attempts at #N**: the
+people or two coding agents each tried it, every one of them shows **Other attempts at #N**: the
 pull requests for that issue side by side, this one first. Each row has its
 state (open, merged, or closed because another was merged instead), its
 head commit's checks, where its review stands, its size, and the files it
@@ -72,7 +67,7 @@ again on the new head.
 ### A repository with no checks
 
 When a repository has no workflows, the merge box says **This repository
-has no checks**: nothing proves a change works, for people or for agents.
+has no checks**: nothing proves a change works.
 **Add CI** writes a starter workflow for you; see
 [add CI](/guides/actions/#add-ci). The same offer is on the
 **Branches and merging** settings page and the **Actions** page.
@@ -82,19 +77,19 @@ has no checks**: nothing proves a change works, for people or for agents.
 What a pull request needs before it merges is set by the
 [rulesets](/guides/rules/) that cover the branch it merges into, the
 repository's and its workspace's. They hold for every pull request into
-that branch, a person's or an agent's. Someone with the Admin
+that branch, whoever opened it. Someone with the Admin
 [role](/guides/access-and-roles/) sets them under the
 repository's **Settings → Rules**:
 
 | Rule | What it does |
 | --- | --- |
-| Require a pull request before merging | Refuses pushes to the branch, so changes reach it only by merging. Sets the approvals a merge needs, whether an agent's approval counts, whether approvals before the latest push count, and whether [code owners](/guides/codeowners/#require-review-from-code-owners) must approve. |
+| Require a pull request before merging | Refuses pushes to the branch, so changes reach it only by merging. Sets the approvals a merge needs, whether approvals before the latest push count, and whether [code owners](/guides/codeowners/#require-review-from-code-owners) must approve. |
 | Require status checks to pass | The checks that must pass on a pull request's head before it merges, whether it must be up to date with the branch first, whether someone who may merge can bypass the checks, and optionally only when some paths change. |
 | Require the merge queue | See [merge queue](/guides/merge-queue/). |
 | Require deployments to succeed | A pull request's head must have deployed to these environments. |
 
 [Rules](/guides/rules/#rules) lists every rule, including those for
-agents' changes, confidence, cost, sensitive paths and merge windows.
+sensitive paths and merge windows.
 The merge box on a pull request lists each rule it does not meet yet, with
 the ruleset it comes from and what to do about it.
 
@@ -126,8 +121,7 @@ and one that was cancelled fails it.
 
 The same rule holds wherever a pull request merges: the merge button,
 [`merge_pull_request`](/reference/api/pull-requests/merge-pull-request/),
-a g1t agent's [automatic merge](/guides/working-with-g1t/#merging-automatically)
-and the [merge queue](/guides/merge-queue/). Where the rule lets a merger bypass the
+auto-merge and the [merge queue](/guides/merge-queue/). Where the rule lets a merger bypass the
 required checks, the merge button has a **bypass** box, and the API takes
 `ignore_checks: true`.
 
@@ -155,7 +149,7 @@ curl -X PATCH https://api.g1t.sh/repos/<workspace>/<repo>/settings \
 
 [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)
 takes `required_checks`, which replaces the whole list, along with
-`required_approvals`, `count_agent_approvals`, `require_up_to_date`,
+`required_approvals`, `require_up_to_date`,
 `merge_queue`, `allow_ignoring_checks` and `require_code_owner_review`;
 [`get_repo_settings`](/reference/api/repositories/get-repo-settings/)
 returns them. On the MCP server they are the `repository` tool's
@@ -185,58 +179,18 @@ already; `DELETE` on the same route takes requests away. On
 the MCP server they are the `pull_request` tool's `request_reviewers` and
 `remove_requested_reviewers` actions.
 
-## Agent reviews
+## Sessions
 
-Your workspace's [agents](/guides/agents/) comment on issues and pull
-requests, and review pull requests, as themselves: a comment from Margo
-shows her pixel face, her name with an **Agent** badge (linked to
-[her page](/guides/agents/#the-agents-page)), and **on behalf of @ana**,
-the person she was working for.
-
-An agent's review is **advisory**. It shows its verdict (approved,
-requested changes, or reviewed, for one that only comments) with an
-**Advisory** chip, and in the summary of reviews at the top of the pull
-request, but it counts toward nothing:
-
-- It never satisfies the approvals a branch requires, nor a
-  [code owner's](/guides/codeowners/) approval. A person still approves.
-- A request for changes from an agent never blocks a merge and never sends
-  g1t back to revise; a person's does.
-- It is never counted as a review on the profile of the person it acted
-  for.
-
-What an agent may do on a pull request is capped by the person it acts
-for: they must be able to read the repository and comment on it, as if
-they wrote it themselves, and an archived repository refuses it. Beyond
-that:
-
-- An agent doesn't review a draft, nor a closed or merged pull request. It
-  can still comment on them.
-- An agent writes at most 5 comments and reviews on one issue or pull
-  request an hour.
-- Mentioning `@g1t` in an agent's comment doesn't put g1t to work, and an
-  agent can't give commands on [dependency updates](/guides/dependency-updates/).
-
-The person it acted for can edit and delete what the agent wrote, as its
-author could, and so can anyone with the Maintain
-[role](/guides/access-and-roles/) or higher. A review stays, as a
-person's does.
-
-People mentioned in an agent's comment, and everyone subscribed to the
-pull request, hear of it in their [notifications](/guides/notifications/) as from
-**Margo (agent)**, with "(advisory)" on a review. It publishes
-`comment.created` as a person's comment does, with `agent` (its `id`,
-`handle`, `display_name` and `avatar_seed`), `acting_for`, and for a
-review `advisory: true` and the verdict, so [webhooks](/guides/webhooks/)
-see it too; its `actor` is the person it acted for. Through the API and
-the MCP server, each such comment has `agent`, `acting_for` and, for a
-review, `advisory: true`; its `author` is the agent, of kind `agent`.
+A coding agent that works on a pull request can record how it made the
+change, entry by entry, with the `pull_request` tool's `record_session`
+action. Read it on the pull request's **Session** tab, or with
+`read_session`. Blame uses it to say why a line is the way it is. See
+[sessions and why-blame](/guides/why-blame/).
 
 ## Drafts, closing and reopening
 
 A draft is still being worked on: it can be reviewed, but it cannot merge
-until it is marked ready for review. Its author, whoever asked g1t for it,
-and anyone with the Triage [role](/guides/access-and-roles/) or higher can
+until it is marked ready for review. Its author and anyone with the Triage [role](/guides/access-and-roles/) or higher can
 move a pull request between these states. An
 [archived](/guides/managing-repositories/) repository refuses all of them.
 
@@ -244,9 +198,7 @@ move a pull request between these states. An
 
 When you open a pull request from a branch, choose **Open as draft** to
 say it isn't ready yet. Push to the branch as often as you like; select
-**Mark ready for review** when it is. Routines that review pull requests
-(an agent's routine that runs when a pull request is ready for review) run
-then, not before. Through the API, send `"draft": true` when you open it.
+**Mark ready for review** when it is. Through the API, send `"draft": true` when you open it.
 
 ### Convert to a draft
 
@@ -294,9 +246,7 @@ edit and delete anyone's.
   removed for everyone and cannot be brought back.
 
 A review that approved or requested changes can be edited but not deleted,
-so its verdict stays on record. What an
-[agent wrote as itself](#agent-reviews) is the person it acted for's to
-edit and delete. The notes in the timeline of what happened,
+so its verdict stays on record. The notes in the timeline of what happened,
 such as "closed this", cannot be edited or deleted.
 
 Through the API, `PATCH /repos/{owner}/{name}/issues/comments/{comment_id}`
@@ -321,22 +271,16 @@ the pull request, or anything landing on the target branch.
    since then. If they share none, the merge cannot conflict, and that is
    the answer.
 2. **With a short probe.** If they share files, a sandbox merges the two
-   commits without an agent and pushes nothing, and reports the files that
+   commits and pushes nothing, and reports the files that
    conflict. Meanwhile the box says **Checking whether this merges cleanly**,
    and the merge button waits. Probes are metered as sandbox time; each
    pair of commits is probed once, and a repository runs at most
    three at a time, the rest following in turn.
 
 A pull request that conflicts shows **This branch has conflicts that must
-be resolved**, the conflicting files, each linked to its diff, and three
-ways to resolve them:
+be resolved**, the conflicting files, each linked to its diff, and how to
+resolve them:
 
-- **Resolve with g1t.** g1t merges the target branch in,
-  resolves the conflicts keeping what both sides meant, and pushes the
-  result. It is told which files conflict. Available to whoever can push to
-  the pull request: for a pull request's fork, whoever opened it (whoever
-  asked g1t for one it made); for a branch, anyone with the Write role or
-  higher.
 - **Resolve in the browser.** Coming soon.
 - **On the command line.** The box lists the commands, each with a copy
   button. For a pull request from a branch:
@@ -370,35 +314,21 @@ requires pull requests to be up to date.
 
 When the target branch has moved, the merge box says **main has moved since
 this was made**. Whoever can push to the pull request (whoever opened it,
-or asked g1t for it, for one in its own fork; anyone with the Write
+for one in its own fork; anyone with the Write
 [role](/guides/access-and-roles/) or higher, for a branch) can
-press **Catch up with main now**:
+press **Catch up with main now** when the two changed different files.
+g1t merges `main` in itself, in a few seconds. The merge commit is named
+**Merge main into *branch***, has the pull request's head and `main`'s
+head as its parents, and is authored and pushed as you. The box then says
+**Brought up to date with main**, and the workflows run again on the new
+commit, as after any push.
 
-1. **When the two changed different files**, g1t merges `main` in itself,
-   in a few seconds. The merge commit is named **Merge main into
-   *branch***, has the pull request's head and `main`'s head as its
-   parents, and is authored and pushed as you. The box then says **Brought
-   up to date with main**, and the workflows run again on the
-   new commit, as after any push.
-2. **When both changed some of the same files**, a sandbox merges `main` in
-   with git, and [g1t](/guides/working-with-g1t/) resolves any conflict.
-   The box says what is happening (**g1t is resolving conflicts with
-   main** when the merge is known to conflict) with the run's live step and
-   how long it has taken. It usually takes about a minute. When the result
-   is pushed, the box shows the pull request up to date; if the run fails,
-   or nothing has been pushed after five minutes, the box says so and
-   offers **Try again**. Nothing is pushed by a run that fails.
+The merge is pushed only if the pull request's branch is still where it
+was when the catch-up started. If someone pushed to it meanwhile, the
+catch-up stops with nothing lost, and you can press it again.
 
-Either way the merge is pushed only if the pull request's branch is still
-where it was when the catch-up started. If someone pushed to it meanwhile,
-the catch-up stops with nothing lost, and you can press it again.
-
-The second case needs g1t's agent enabled for the workspace and is
-[charged](/guides/usage-and-billing/#what-is-charged) as agent work; the
-first is not.
-
-A pull request [g1t](/guides/working-with-g1t/) opened that is found to conflict
-is sent back to resolve it by itself, before it is ready.
+When both changed some of the same files, merge `main` in yourself, with
+the commands under [conflicts](#conflicts).
 
 ## From the API
 
@@ -415,4 +345,5 @@ is sent back to resolve it by itself, before it is ready.
 | `reviewers`, `team_reviewers` | The people and the [teams](/guides/teams/#review-requests) asked to review it. |
 | `code_owners` | Who owns the files it changes and whose approval is still needed; see [CODEOWNERS](/guides/codeowners/#through-the-api). Absent when its target has no CODEOWNERS file. |
 
-An agent sees the same through the `pull_request` tool's `get` action.
+A coding agent sees the same through the `pull_request` tool's `get`
+action.

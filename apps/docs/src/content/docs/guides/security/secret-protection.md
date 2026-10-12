@@ -52,8 +52,8 @@ repository's secret alerts. Filter them by:
 
 Each alert has its own page with every place the secret was found (file,
 line and commit), what happened to it, its bypass requests, and its
-actions: **Dismiss** or **Reopen** (Admin), **Check with its issuer**,
-**Fix with g1t** and, for a blocked push, **Bypass**.
+actions: **Dismiss** or **Reopen** (Admin), **Check with its issuer**
+and, for a blocked push, **Bypass**.
 
 A secret is one alert however many places hold it: the same value found
 in another file or another commit adds a location, not an alert.
@@ -184,17 +184,6 @@ have no read-only identity call. Custom pattern matches are never checked.
 Open alerts are checked again weekly, and on request with **Check with its
 issuer** on the alert.
 
-## Fix with g1t
-
-**Fix with g1t** on a secret alert opens an issue for g1t to take the
-secret out of the code and read it from configuration instead (an
-environment variable, or the repository's
-[Actions secrets](/guides/secrets-and-variables/)). Its pull request lands
-through your required checks. Taking a secret out of the code does not make
-it safe: it is in the history, so whoever owns it still rotates it with its
-issuer and marks the alert **Revoked**. The agent's run is charged as
-[agent usage](/guides/usage-and-billing/).
-
 ## API and MCP
 
 | Route | What it does | Scope |
@@ -216,7 +205,6 @@ Over MCP, the [`security` tool](/reference/mcp/#security) has the actions
 `secret_alerts`, `secret_alert`, `update_secret_alert`, `secret_locations`,
 `bypass`, `check_validity`, `bypass_requests`, `review_bypass`, `patterns`,
 `create_pattern`, `update_pattern`, `delete_pattern` and
-`dry_run_pattern`. g1t's own agents never bypass, dismiss or change
-patterns. Webhooks: `secret_scanning_alert.created`, `.fixed`,
+`dry_run_pattern`. Webhooks: `secret_scanning_alert.created`, `.fixed`,
 `.dismissed`, `.reopened`, and `secret_scanning.bypass_requested`,
 `secret_scanning.bypass_reviewed`; see [Webhooks](/guides/webhooks/).

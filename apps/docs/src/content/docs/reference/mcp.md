@@ -3,17 +3,19 @@ title: MCP tools
 description: The g1t MCP server's resource tools, each action they take with its required inputs and scope, and how to call them.
 ---
 
-The MCP server at `https://mcp.g1t.sh` exposes 21 tools, one per kind of
-thing on g1t: `search`, `repository`, `issue`, `pull_request`, `agent`,
-`plan`, `memory`, `workflow`, `observability`, `package`, `secret`, `security`, `webhook`, `access`,
-`team`, `workspace`, `customize`, `billing`, `notifications`, `account` and `artifact`. Each tool takes an `action` that says what to do. Every
+The MCP server at `https://mcp.g1t.sh` is how a coding agent, such as
+Claude Code, Codex, Cursor or OpenCode, works on g1t. It exposes 18 tools,
+one per kind of thing on g1t: `search`, `repository`, `issue`,
+`pull_request`, `memory`, `workflow`, `observability`, `package`, `secret`,
+`security`, `webhook`, `access`, `team`, `workspace`, `billing`,
+`notifications`, `account` and `artifact`. Each tool takes an `action` that says what to do. Every
 action is the same operation as a route of the [REST API](/reference/api/),
 with the same inputs, permissions and results, so the two always agree.
 
 ## Connect
 
 To connect Claude Code, Codex, OpenCode, Cursor or another client, see
-[connect an agent](/guides/bring-your-own-agent/). With Claude Code:
+[connect a coding agent](/guides/bring-your-own-agent/). With Claude Code:
 
 ```sh
 claude mcp add --transport http g1t https://mcp.g1t.sh
@@ -146,10 +148,9 @@ permissions allow:
   `This access token needs the issues:write scope to use create_issue.`
 
 For example, a token with only `issues:write` sees `issue` (its `list` and
-`get` too, since `write` includes `read`), `plan` with `get` and `apply`,
-and `account` with `whoami`. A token with the
+`get` too, since `write` includes `read`), and `account` with `whoami`. A token with the
 [Read only preset](/guides/authentication/#presets) sees only the reading
-actions of each tool, and no `agent` tool at all.
+actions of each tool.
 
 What a token may do is also bounded by the role of whoever it acts as, and
 by [where it reaches](/guides/authentication/#where-a-token-reaches): all
@@ -169,7 +170,7 @@ token can see. Clients use them to decide when to ask you before a call.
 | --- | --- |
 | `title` | The tool's name for people, such as `Pull requests`. |
 | `readOnlyHint` | `true` when every action shown only reads. |
-| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, deleting a team or taking its role on a repository away, disconnecting an integration, removing a marketplace, uninstalling a plugin, removing a connector, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, removing a member, transferring a workspace's ownership, leaving a workspace, merging a pull request, removing a self-hosted runner, deleting a runner group, changing runner settings, sharing an artifact, and deleting an artifact for good. |
+| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, deleting a team or taking its role on a repository away, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, setting a workspace's base permission, removing a member, transferring a workspace's ownership, leaving a workspace, merging a pull request, removing a self-hosted runner, deleting a runner group, changing runner settings, sharing an artifact, and deleting an artifact for good. |
 | `idempotentHint` | The same as `readOnlyHint`. |
 | `openWorldHint` | Always `false`. |
 
@@ -196,8 +197,7 @@ operation.
 | `get_pull_request` | `pull_request` with `"action": "get"` |
 | `recall`, `remember` | `memory` with `"action": "recall"` or `"remember"` |
 | `search` | `search`, with `"action": "code"` or none |
-| `search_context`, `get_entity`, `get_context` | `search` with `"action": "context"`, `"entity"` or `"ticket"` |
-| `assign_issue`, `delegate` | `agent` with `"action": "assign"` or `"delegate"` |
+| `get_context` | `search` with `"action": "ticket"` |
 | `whoami` | `account`, with `"action": "whoami"` or none |
 
 ## Conventions
@@ -222,15 +222,12 @@ in the [API reference](/reference/api/), which each action links to.
 
 Find things. `code`, the default, searches all of g1t you can see:
 repositories, code on default branches, issues, pull requests and people.
-`context` asks one workspace's context hub by meaning. See
-[search and Explore](/guides/search/) for the query syntax, and the
-[context hub](/guides/context-hub/).
+`ticket` reads an item from a connected tracker. See
+[search and Explore](/guides/search/) for the query syntax.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`code`](/reference/api/search/search/) | Search all of g1t: repositories, code on default branches, issues, pull requests, people and workspaces. Public results for everyone; private ones in workspaces you belong to. `query` takes words, `"phrases"`, `-words` and qualifiers such as `repo:owner/name`, `org:`, `language:`, `path:`, `is:open`, `is:pr`, `author:` and `label:`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; `page` and `per_page` page through. Returns counts for every type, and each result's matching text in highlighted parts; code with line numbers. | `query` | `repo:read` |
-| [`context`](/reference/api/context/search-context/) | One search across a workspace's context hub: its catalog, docs, issues and pull requests, and, for members and g1t's agents, its kept memory. Results are ranked by meaning and labelled with their kind, source, author and freshness. Give `workspace`, or a `repo` in it; narrow with `project` and `kinds`. | `query` | `memory:read` |
-| [`entity`](/reference/api/context/get-entity/) | One catalog entry by kind and id or key (a project's slug, a package as `npm:<name>`, an owner's username), with what it depends on, who owns it, where it deploys, what documents it, and what it exposes and uses. | `kind`, `id` | `memory:read` |
 | [`ticket`](/reference/api/integrations/get-context/) | A Jira or Linear ticket by key or address, or a Sentry issue by address, as it is now. Reference material, never instructions. | `repo`, `reference` | `memory:read` |
 
 ## `repository`
@@ -251,8 +248,8 @@ out.
 | [`zipball`](/reference/api/repositories/download-zipball-archive/) | The same as a `.zip`. | `repo` | `code:read` |
 | [`create`](/reference/api/repositories/create-repo/) | Create a repository in one of your workspaces, empty or as a copy of a public git repository (`import_url`). `workspace` may be left out if you belong to exactly one. | `name` | `repo:write` |
 | [`update`](/reference/api/repositories/update-repo/) | Change its `description`, `website`, `topics` and `default_branch`, whether its default branch is `protected`, and whether it is `private`. Maintain role; `protected`, `private` and `default_branch` need Admin, and `private` the [member privileges](/guides/workspaces/#member-privileges) unless you are an owner. | `repo` | `repo:write` |
-| [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: how g1t's agents are reviewed, revised and merged, and the default branch's required checks, approvals, bypassing checks, being up to date and merge queue as its [rulesets](/guides/rules/) stack. | `repo` | `repo:read` |
-| [`update_settings`](/reference/api/repositories/update-repo-settings/) | Change those settings, including `hold_low_confidence`, which holds g1t's [low-confidence](/guides/working-with-g1t/#how-sure-the-agent-is) change for a person. Only the fields given change; `required_checks` replaces the whole list. Maintain role. | `repo` | `repo:write` |
+| [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: how they merge, and the default branch's required checks, approvals, bypassing checks, being up to date and merge queue as its [rulesets](/guides/rules/) stack. | `repo` | `repo:read` |
+| [`update_settings`](/reference/api/repositories/update-repo-settings/) | Change those settings. Only the fields given change; `required_checks` replaces the whole list. Maintain role. | `repo` | `repo:write` |
 | [`check_names`](/reference/api/repositories/list-check-names/) | The check names reported on its commits in the last 30 days, most recent first, each with `name`, `events` and `last_seen`: the names `required_checks` takes. | `repo` | `repo:read` |
 | [`list_rulesets`](/reference/api/rules/list-repo-rulesets/) | Its [rulesets](/guides/rules/); `include_parents` adds the workspace's that hold in it. | `repo` | `repo:read` |
 | [`get_ruleset`](/reference/api/rules/get-repo-ruleset/) | One ruleset by `id`. | `repo`, `id` | `repo:read` |
@@ -290,10 +287,10 @@ out.
 | [`delete_release`](/reference/api/releases/delete-release/) | Delete a release; its tag stays. Write role. | `repo`, `id` | `repo:write` |
 | [`rename_branch`](/reference/api/repositories/rename-branch/) | Rename a branch; its pull requests follow, and web addresses that name the old branch redirect. Write role; the default branch needs Admin. | `repo`, `branch`, `new_name` | `repo:write` |
 | [`create_branch`](/reference/api/repositories/create-branch/) | Make a branch at another branch, a tag or a commit (`from`; the default branch when left out). Making one again at the commit `delete_branch` answered with restores it. Write role; the rules for creating it hold. | `repo`, `name` | `repo:write` |
-| [`delete_branch`](/reference/api/repositories/delete-branch/) | Delete a branch, never the default; answers with the commit it pointed to. With `head`, a branch that has moved is left alone. Write role; the rules for deleting it hold. People only: g1t's token never deletes a branch. | `repo`, `branch` | `repo:write` |
+| [`delete_branch`](/reference/api/repositories/delete-branch/) | Delete a branch, never the default; answers with the commit it pointed to. With `head`, a branch that has moved is left alone. Write role; the rules for deleting it hold.  | `repo`, `branch` | `repo:write` |
 | [`rename`](/reference/api/repositories/rename-repo/) | Give it a new name in its workspace; the old address redirects. Admin role. | `repo`, `name` | `repo:admin` |
 | [`transfer`](/reference/api/repositories/transfer-repo/) | Move it to another workspace, keeping its name; the old address redirects. An owner, or an Admin when the member privileges allow it; and someone who can create a repository in the other workspace. See [transferring a repository](/guides/transferring-repositories/). | `repo`, `to` | `repo:admin` |
-| [`archive`](/reference/api/repositories/archive-repo/) | Make it read-only: pushes and merges are refused, issues and pull requests are locked, agents and workflows stop. Admin role. | `repo` | `repo:admin` |
+| [`archive`](/reference/api/repositories/archive-repo/) | Make it read-only: pushes and merges are refused, issues and pull requests are locked, and workflows stop. Admin role. | `repo` | `repo:admin` |
 | [`unarchive`](/reference/api/repositories/unarchive-repo/) | Make it writable again. Admin role. | `repo` | `repo:admin` |
 | [`set_visibility`](/reference/api/repositories/set-repo-visibility/) | Make it public or private; `confirm` is its full name. Admin role. | `repo`, `private`, `confirm` | `repo:admin` |
 | [`delete`](/reference/api/repositories/delete-repo/) | Delete it; `confirm` is its full name. It can be restored for 30 days, then it is purged. Owners only. | `repo`, `confirm` | `repo:admin` |
@@ -305,13 +302,11 @@ out.
 | [`reopen_alert`](/reference/api/security/reopen-security-alert/) | Open a dismissed alert again. The same roles as dismissing. | `repo`, `id` | `repo:admin` |
 
 `update_settings` takes `required_checks` (at most 20 names),
-`required_approvals`, `count_agent_approvals`,
-`allow_ignoring_checks`, `require_up_to_date`, `agent_review`,
-`max_revisions`, `auto_merge`, `merge_queue`, `hold_low_confidence` and
-`require_code_owner_review`, which holds a merge until the
-[code owners](/guides/codeowners/) of every file it changes approve. See
-[required status checks](/guides/pull-requests/#required-status-checks) and
-[what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for).
+`required_approvals`, `allow_ignoring_checks`, `require_up_to_date`,
+`auto_merge`, `merge_queue` and `require_code_owner_review`, which holds a
+merge until the [code owners](/guides/codeowners/) of every file it changes
+approve. See
+[required status checks](/guides/pull-requests/#required-status-checks).
 `update` with `private` or `default_branch` also needs `repo:admin`.
 
 See [managing a repository](/guides/managing-repositories/) for what each
@@ -339,10 +334,7 @@ requests already made for it. Issues and pull requests share numbers, so
 | [`comment`](/reference/api/issues/add-comment/) | Comment on an issue or a pull request; with `path` and `line`, on one line of a pull request's change. | `repo`, `number`, `body` | `issues:write` |
 | [`edit_comment`](/reference/api/issues/edit-comment/) | Change a comment's text, by its id from `get`. Your own, or anyone's with the Maintain role or higher. Notes of what happened cannot be edited. | `repo`, `comment_id`, `body` | `issues:write` |
 | [`delete_comment`](/reference/api/issues/delete-comment/) | Delete a comment, by its id. Your own, or anyone's with the Maintain role or higher. A review that approved or requested changes cannot be deleted. | `repo`, `comment_id` | `issues:write` |
-| [`import`](/reference/api/integrations/import-issue/) | Open an issue from a ticket, linked to it. `assign` assigns it to g1t. | `repo`, `reference` | `issues:write` |
-
-`import` with `assign` also needs `agents:run`, since it puts an agent to
-work.
+| [`import`](/reference/api/integrations/import-issue/) | Open an issue from a Jira, Linear or Sentry item, linked to it. | `repo`, `reference` | `issues:write` |
 
 ## `pull_request`
 
@@ -353,7 +345,7 @@ far.
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`list`](/reference/api/pull-requests/list-pull-requests/) | Pull requests, newest first. `open` covers drafts and those ready for review. `label`, `milestone` and `base` filter them. | `repo` | `pull_requests:read` |
-| [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, who is asked to review (`pull.reviewers`, and `pull.team_reviewers` as `workspace/team`), its issue, its checks (`statuses`, and `required_checks`: each check the default branch requires, as `success`, `failure`, `pending` or `expected`), `code_owners` (whose approval the changed files need, and what is still `missing`), `behind`, and `overlaps`. A comment or review one of the workspace's agents wrote as itself has `agent` and `acting_for`; an agent's review has `advisory: true` and never counts toward approvals ([agent reviews](/guides/pull-requests/#agent-reviews)). | `repo`, `number` | `pull_requests:read` |
+| [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, who is asked to review (`pull.reviewers`, and `pull.team_reviewers` as `workspace/team`), its issue, its checks (`statuses`, and `required_checks`: each check the default branch requires, as `success`, `failure`, `pending` or `expected`), `code_owners` (whose approval the changed files need, and what is still `missing`), `behind`, and `overlaps`. | `repo`, `number` | `pull_requests:read` |
 | [`changes`](/reference/api/pull-requests/get-pull-request-changes/) | The files it changes, with line-by-line diffs. | `repo`, `number` | `pull_requests:read` |
 | [`create`](/reference/api/pull-requests/create-pull-request/) | Open a draft pull request with its own fork and get its git remote; or, with `branch`, one from a branch already pushed. Give `issue` whenever there is one. It merges into the default branch unless `base` names another. | `repo` | `pull_requests:write` |
 | [`update`](/reference/api/pull-requests/update-pull-request/) | Change its `base` (the branch it merges into; Write role), `labels`, `milestone`, `assignees` or `reviewers`. `state` `open` reopens it and `closed` closes it. | `repo`, `number` | `pull_requests:write` |
@@ -361,9 +353,9 @@ far.
 | [`read_session`](/reference/api/sessions/read-session/) | The recorded session, oldest first. `after` skips to entries after a sequence number. | `repo`, `number` | `pull_requests:read` |
 | [`ready`](/reference/api/pull-requests/mark-pull-request-ready/) | Mark a draft ready for review. The summary becomes its description. | `repo`, `number`, `summary` | `pull_requests:write` |
 | [`draft`](/reference/api/pull-requests/convert-pull-request-to-draft/) | Turn a pull request that is ready for review back into a draft. It leaves the merge queue. Its author, or the Triage role. | `repo`, `number` | `pull_requests:write` |
-| [`request_reviewers`](/reference/api/pull-requests/request-reviewers/) | Ask more people (`reviewers`, by username; `g1t` for a g1t agent) or teams (`team_reviewers`, as `workspace/team` or a slug of the repository's workspace) to review it, added to whoever is asked already. Its author, or the Triage role. | `repo`, `number` | `pull_requests:write` |
+| [`request_reviewers`](/reference/api/pull-requests/request-reviewers/) | Ask more people (`reviewers`, by username) or teams (`team_reviewers`, as `workspace/team` or a slug of the repository's workspace) to review it, added to whoever is asked already. Its author, or the Triage role. | `repo`, `number` | `pull_requests:write` |
 | [`remove_requested_reviewers`](/reference/api/pull-requests/remove-requested-reviewers/) | Stop asking them. Reviews they gave stay. | `repo`, `number` | `pull_requests:write` |
-| [`review`](/reference/api/pull-requests/review-pull-request/) | `approve`, or `request_changes` with a `body`. Not on your own pull request, nor one g1t made for you. | `repo`, `number`, `verdict` | `pull_requests:write` |
+| [`review`](/reference/api/pull-requests/review-pull-request/) | `approve`, or `request_changes` with a `body`. Not on your own pull request. | `repo`, `number`, `verdict` | `pull_requests:write` |
 | [`close`](/reference/api/pull-requests/close-pull-request/) | Close it without merging. | `repo`, `number` | `pull_requests:write` |
 | [`reopen`](/reference/api/pull-requests/reopen-pull-request/) | Reopen a closed pull request, as the draft it was if it was closed as one. Never a merged one. Its author, or the Triage role. | `repo`, `number` | `pull_requests:write` |
 | [`merge`](/reference/api/pull-requests/merge-pull-request/) | Land it on its [base](/guides/base-branches/), or add it to the [merge queue](/guides/merge-queue/), once it meets every [rule](/guides/rules/) of its base, required checks included; `bypass_rules` merges past rules a ruleset lets you bypass. Into the default branch, it resolves its issue. `ignore_checks` bypasses required checks where the repository allows it. Write role. | `repo`, `number` | `pull_requests:write` |
@@ -374,47 +366,12 @@ far.
 tool entries. See [sessions and why-blame](/guides/why-blame/) and the
 [merge queue](/guides/merge-queue/).
 
-## `agent`
-
-Put [g1t](/guides/working-with-g1t/) to work and talk to it. One run
-works on each issue; to do more at once, use more issues. Starting an agent
-uses the workspace's money. `delegate` also needs `issues:write`, since it
-opens the issue.
-
-| Action | What it does | Required | Scope |
-| --- | --- | --- | --- |
-| [`delegate`](/reference/api/issues/delegate/) | Put an agent on something in one step: open an issue, with `body`, and assign it to g1t at once. Write role; nothing is opened without it. The issue opens even when the agent cannot start: `agent.status` is `started`, `queued` or `not_started`, with `agent.code`, `agent.message` and `agent.fix_url` saying why and where to fix it. `checks` is deprecated, as for `issue` `create`. See [put an agent on it](/guides/working-with-g1t/#put-an-agent-on-it-in-one-step). | `repo`, `title` | `agents:run` |
-| [`assign`](/reference/api/issues/assign-issue/) | Assign an existing issue to [g1t](/guides/working-with-g1t/), which opens a pull request and sees it through. Preview. | `repo`, `number` | `agents:run` |
-| [`message`](/reference/api/pull-requests/message-agent/) | Send the agent working on a pull request a message, received at its next step. g1t sends a `question` or a `handoff`, with its own pull request as `from_number`. | `repo`, `number`, `body` | `agents:run` |
-| [`answer`](/reference/api/pull-requests/answer-message/) | Answer a question or a handoff by the message's id; `decline` a handoff that is not yours. The answer reaches the asking agent at its next step. | `repo`, `id`, `body` | `agents:run` |
-| [`take_messages`](/reference/api/pull-requests/take-messages/) | For g1t at work: the messages it has not seen yet, each returned once. | `repo`, `number` | `agents:run` |
-| [`computer`](/reference/api/agents-computers/get-agent-computer/) | A workspace agent's [own computer](/guides/agents/#its-computer): its `status` (state, disk, saved home, where it runs), recent `commands`, and `can_manage`. Members; a personal agent's only its member and the owners. | `workspace`, `agent` | `agents:run` |
-| [`wake_computer`](/reference/api/agents-computers/wake-agent-computer/) | Wake it: its home is restored and its time is metered until it sleeps. Owners, or a personal agent's member. `payment_required` when the plan refuses compute. | `workspace`, `agent` | `agents:run` |
-| [`sleep_computer`](/reference/api/agents-computers/sleep-agent-computer/) | Save its home and stop it. `conflict` while a command runs, or when the home is over its 5 GB cap. | `workspace`, `agent` | `agents:run` |
-| [`reset_computer`](/reference/api/agents-computers/reset-agent-computer/) | Wipe its home and command history; memory and artifacts are kept. | `workspace`, `agent` | `agents:run` |
-| [`computer_commands`](/reference/api/agents-computers/list-agent-computer-commands/) | The commands it ran most recently, newest first, with output cut at 64 KB. | `workspace`, `agent` | `agents:run` |
-
-See [talk to agents](/guides/talking-to-agents/), and
-[its computer](/guides/agents/#its-computer) for what the computer is.
-
-## `plan`
-
-Turn an outcome into issues: an agent proposes them with what done means
-for each and their dependencies, and nothing opens until you apply the plan. `apply` with
-`assign` also needs `agents:run`. See [hand off an outcome](/guides/outcomes/).
-
-| Action | What it does | Required | Scope |
-| --- | --- | --- | --- |
-| [`create`](/reference/api/plans/plan-work/) | Have an agent turn an outcome into proposed issues, each with what done means (`done`) and its dependencies. Returns the plan's id at once. Write role. | `repo`, `brief` | `agents:run` |
-| [`get`](/reference/api/plans/get-plan/) | The plan: its status (`planning`, `ready`, `failed` or `applied`), the issues it proposes, and once applied, where each stands. | `repo`, `plan` | `issues:read` |
-| [`apply`](/reference/api/plans/apply-plan/) | Open its issues. `assign` assigns them to g1t in dependency order; `keep` opens only some, by position from 1. | `repo`, `plan` | `issues:write` |
-
 ## `memory`
 
-What the project and its workspace remember for the next agent: how to
-build, conventions, decisions and traps. Recall before you start; remember
-one short fact at a time, never a secret. See
-[agents, sessions and memory](/guides/agents-and-memory/).
+What the project and its workspace remember for whoever works on it next,
+person or agent: how to build, conventions, decisions and traps. Recall
+before you start; remember one short fact at a time, never a secret. See
+[memory](/guides/memory/).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -494,7 +451,7 @@ deployments; and the self-hosted runners workflows run on. See
 | [`create_runner_group`](/reference/api/runners/create-runner-group/) | A group for some `repositories` (empty for all). Owners. | `workspace`, `name` | `runners:admin` |
 | [`update_runner_group`](/reference/api/runners/update-runner-group/) | Rename a group or change its repositories. Owners. | `workspace`, `id` | `runners:admin` |
 | [`delete_runner_group`](/reference/api/runners/delete-runner-group/) | Delete a group; its runners join the default. Owners. | `workspace`, `id` | `runners:admin` |
-| [`get_runner_settings`](/reference/api/runners/get-runner-settings-for-workspace/) | Whether agent work runs on self-hosted runners and on which labels, and whether pull requests from forks may use them. | `workspace` or `repo` | `runners:read` |
+| [`get_runner_settings`](/reference/api/runners/get-runner-settings-for-workspace/) | Whether g1t's own runs for a repository (checks, merge checks and merge-queue test runs) run on self-hosted runners and on which labels, and whether pull requests from forks may use them. | `workspace` or `repo` | `runners:read` |
 | [`update_runner_settings`](/reference/api/runners/update-runner-settings-for-workspace/) | Change them: `agents_on_self_hosted`, `agent_labels`, `fork_pull_requests`, or `inherit` for a repository. | `workspace` or `repo` | `runners:admin` |
 
 ## `observability`
@@ -601,7 +558,6 @@ refused with `402` without it.
 | [`analyses`](/reference/api/code-scanning/list-code-scanning-analyses/) | Analyses, newest first. | `repo` | `security:read` |
 | [`upload_sarif`](/reference/api/code-scanning/upload-sarif/) | Upload a SARIF 2.1.0 file, gzipped and base64-encoded, for a `commit_sha` and `ref`. | `repo`, `commit_sha`, `ref`, `sarif` | `security:write` |
 | [`sarif_upload`](/reference/api/code-scanning/get-sarif-upload/) | Whether an upload was read, its analyses and errors. | `repo`, `id` | `security:read` |
-| [`fix`](/reference/api/code-scanning/fix-security-alert/) | Put g1t on an issue to fix a code scanning, vulnerability or secret alert. Also needs `issues:write` and `agents:run`. | `repo`, `id` | `security:write` |
 | [`vulnerability_alerts`](/reference/api/supply-chain/list-vulnerability-alerts/) | Vulnerability alerts: `repo`, or `workspace`. Filter with `state`, `severity`, `ecosystem`, `package`. | None | `security:read` |
 | [`vulnerability_alert`](/reference/api/supply-chain/get-vulnerability-alert/) | One alert by `id`. | `repo`, `id` | `security:read` |
 | [`update_vulnerability_alert`](/reference/api/supply-chain/update-vulnerability-alert/) | Dismiss (`state` `dismissed`, `reason` `fix_started`, `no_bandwidth`, `tolerable_risk`, `inaccurate` or `not_used`) or reopen. | `repo`, `id`, `state` | `security:write` |
@@ -636,7 +592,6 @@ Who can do what in a repository: its people and their
 [roles](/guides/access-and-roles/) (read, triage, write, maintain and
 admin), invitations, outside collaborators, a workspace's base
 permission, and a repository's [deploy keys](/guides/git/#deploy-keys).
-An agent's token cannot use any of these.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -661,7 +616,7 @@ repositories together, mentioned as `@workspace/team` and asked to review
 together. Name a team by `workspace` and its slug, `team`. Any member may
 create one; the workspace's owners and the team's maintainers manage it. A
 `secret` team is seen only by its own people and the owners. Changes are
-for people: an agent's or a workspace's token cannot make them.
+for people: a workspace's token cannot make them.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -684,7 +639,7 @@ for people: an agent's or a workspace's token cannot make them.
 
 Workspaces own repositories: create, update or delete one, invite members,
 manage its members and owners,
-connect [integrations](/guides/integrations/) and model providers, read and
+connect [integrations](/guides/integrations/), read and
 change its [projects](/guides/projects/) (what each is, where it runs, its
 links), and keep your own
 [pinned projects](/guides/workspaces/#pinned-and-recent-projects) at the top
@@ -705,12 +660,10 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 | [`invite_member`](/reference/api/invites/invite-member/) | Invite someone into a workspace by `username` or `email`, to join with `role` (`member` or `owner`; `member` when left out). Nobody joins without saying yes: they get an invitation to accept or decline. Owners only. A free workspace cannot invite: refused with `402` until it starts the plan. | `workspace`, and `username` or `email` | `workspace:admin` |
 | [`revoke_invite`](/reference/api/invites/revoke-workspace-invite/) | Revoke a workspace's pending invite. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`list_integrations`](/reference/api/integrations/list-integrations/) | The workspace's connections. Secrets are never returned. Members only. | `workspace` | `workspace:read` |
-| [`connect_integration`](/reference/api/integrations/connect-integration/) | Connect a model provider (Anthropic, OpenAI, Gemini, or a compatible endpoint), Sentry, Datadog, a webhook, Jira or Linear, with `config` and `secret`. Owners only. | `workspace`, `provider` | `workspace:admin` |
-| [`update_integration`](/reference/api/integrations/update-integration/) | Change one: its `name`, its `config` (replaced whole) or its `secret` (write-only, never returned). Rotates a model provider's key, or sets `config.gateway_models`, the [AI Gateway](/guides/ai-gateway/#your-own-providers) models it takes. Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`connect_integration`](/reference/api/integrations/connect-integration/) | Connect Sentry, Datadog, a webhook, Jira or Linear, with `config` and `secret`. Owners only. | `workspace`, `provider` | `workspace:admin` |
+| [`update_integration`](/reference/api/integrations/update-integration/) | Change one: its `name`, its `config` (replaced whole) or its `secret` (write-only, never returned). Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`disconnect_integration`](/reference/api/integrations/disconnect-integration/) | Remove it and its secrets. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`test_integration`](/reference/api/integrations/test-integration/) | Check its credentials against the system it connects to. Owners only. | `workspace`, `id` | `workspace:admin` |
-| [`get_model_routes`](/reference/api/integrations/get-model-routes/) | Which provider and model each kind of work goes to. Members only. | `workspace` | `workspace:read` |
-| [`set_model_routes`](/reference/api/integrations/set-model-routes/) | Replace them: each route has `task`, `connection_id` (null for g1t's models) and `model` (on g1t's models: `small`, `large`, `frontier`, or null for Auto). Owners only. | `workspace`, `routes` | `workspace:admin` |
 | [`list_projects`](/reference/api/projects/list-projects/) | Its projects you can see, by name: each with its `kind` and `kind_reason`, where it `runs` and its `production_url`, its repository and `root_dir`, and its `links`. | `workspace` | `repo:read` |
 | [`get_project`](/reference/api/projects/get-project/) | One project, with what a person set (`setting`) and what detection decides (`detected`). | `workspace`, `project` | `repo:read` |
 | [`update_project`](/reference/api/projects/update-project/) | Change its `name`, `description`, `root_dir`, `kind`, `runs`, `production_url`, `homepage`, `docs_url` or `links`; only what you give changes. `auto` leaves `kind` or `runs` to detection, null clears a link or goes back to the repository's, and `links` replaces its other links (at most 10). Maintain role or higher. | `workspace`, `project` | `repo:write` |
@@ -731,51 +684,14 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 | [`review_token_request`](/reference/api/personal-access-tokens/review-token-request/) | Approve or deny one: `decision` is `approve` or `deny`, with an optional `reason` its owner is shown. Owners only, as people. | `workspace`, `id`, `decision` | `access:admin` |
 | [`revoke_member_token`](/reference/api/personal-access-tokens/revoke-member-token/) | Take a member's token out of the workspace, with an optional `reason`. A token made for it stops reaching it; one made for all of its owner's workspaces keeps working elsewhere. Owners only, as people. | `workspace`, `id` | `access:admin` |
 
-## `customize`
-
-What shapes how a workspace's agents work, in the formats Claude Code
-reads: the marketplaces it reads plugins from (`.claude-plugin/marketplace.json`),
-what Discover lists, the plugins it installed as `name@marketplace` (their
-skills join the library as `plugin:skill`, their subagents become
-templates, their remote MCP servers become connectors), and its
-connectors: MCP servers connected once with a key or a sign-in, then given
-to every agent, a team or one agent. Members read; owners change. Signing a
-connector in with OAuth needs a browser, so it is done on the site. `bundle`
-is what a job's Claude Code loads on a runner, for the job's own token. See
-[Customize](/guides/customize/).
-
-| Action | What it does | Required | Scope |
-| --- | --- | --- | --- |
-| [`list_marketplaces`](/reference/api/customize/list-marketplaces/) | The marketplaces the workspace reads plugins from: `name`, `source`, whether `builtin`, how many `plugins`, `fetched_at` and `problem`. Members only. | `workspace` | `workspace:read` |
-| [`add_marketplace`](/reference/api/customize/add-marketplace/) | Add one by `address`: `owner/repo` on GitHub, `workspace/name` here, a git address or a `marketplace.json` link; `name` overrides its own. Its manifest is read first. Owners only. | `workspace`, `address` | `workspace:admin` |
-| [`remove_marketplace`](/reference/api/customize/remove-marketplace/) | Remove one by its name (`marketplace`); plugins installed from it stay. Never a built-in one. Owners only. | `workspace`, `marketplace` | `workspace:admin` |
-| [`refresh_marketplace`](/reference/api/customize/refresh-marketplace/) | Read its manifest again now. Owners only. | `workspace`, `marketplace` | `workspace:admin` |
-| [`discover`](/reference/api/customize/discover/) | Every plugin and skill the workspace can add, with each one's `availability` (`available`, `installed`, `unavailable` with why, or `soon`), and the marketplaces. Members only. | `workspace` | `workspace:read` |
-| [`list_plugins`](/reference/api/customize/list-plugins/) | Installed plugins, switched-off ones included: pinned `sha`, `fetch`, `components`, `problems`, `enabled` and `update`. Members only. | `workspace` | `workspace:read` |
-| [`get_plugin`](/reference/api/customize/get-plugin/) | One plugin by `ref` (`name@marketplace`), installed or not: its listing, install, components, README, manifest and subagents, read from its source. Members only. | `workspace`, `ref` | `workspace:read` |
-| [`install_plugin`](/reference/api/customize/install-plugin/) | Install one at the commit its listing names: skills to the library as `plugin:skill`, subagents to Templates, remote servers to connectors. Owners only. | `workspace`, `ref` | `workspace:admin` |
-| [`set_plugin_enabled`](/reference/api/customize/set-plugin-enabled/) | Switch an installed one off (`enabled` false: its skills, templates and connectors leave agents, and runners leave it out) or on. Owners only. | `workspace`, `ref`, `enabled` | `workspace:admin` |
-| [`uninstall_plugin`](/reference/api/customize/uninstall-plugin/) | Uninstall one: its skills, templates and the connectors it brought go. Owners only. | `workspace`, `ref` | `workspace:admin` |
-| [`update_plugin`](/reference/api/customize/update-plugin/) | Read one again at its marketplace's current commit and pin it there: skills get new versions, ones it lost are archived, a server it already brought keeps its connector. Owners only. | `workspace`, `ref` | `workspace:admin` |
-| [`list_plugin_agents`](/reference/api/customize/list-plugin-agents/) | The subagents installed plugins brought, as templates to hire from (`plugin:agent`, with `prompt`, `model`, `skills`, `tools`). Members only. | `workspace` | `workspace:read` |
-| [`list_connectors`](/reference/api/customize/list-connectors/) | The workspace's connectors: `name`, `url`, `auth`, `state` (`connected`, `needs_sign_in`, `needs_key`, `problem`), `from`, `tools`, `grants`. Keys are never returned. Members only. | `workspace` | `workspace:read` |
-| [`get_connector`](/reference/api/customize/get-connector/) | One connector by `id` (`con_…`). Members only. | `workspace`, `id` | `workspace:read` |
-| [`add_connector`](/reference/api/customize/add-connector/) | Add one `from` the directory (`id`), an installed plugin's server (`ref`, `server`) or an address (`name`, `url`), with `auth` `none`, `header` (and `header` `name` and `value`) or `oauth`. Owners only. | `workspace`, `from` | `workspace:admin` |
-| [`set_connector_key`](/reference/api/customize/set-connector-key/) | Put a key on one: `value`, sent as `header_name` (its own, or `Authorization`). Kept sealed, never returned. Owners only. | `workspace`, `id`, `value` | `workspace:admin` |
-| [`remove_connector`](/reference/api/customize/remove-connector/) | Remove one with its secrets and grants. Owners only. | `workspace`, `id` | `workspace:admin` |
-| [`refresh_connector`](/reference/api/customize/refresh-connector/) | List its tools again now. Owners only. | `workspace`, `id` | `workspace:admin` |
-| [`grant_connector`](/reference/api/customize/grant-connector/) | Give it to every agent (`scope` `workspace`), a team (`team`, `target` its slug) or one agent (`agent`, `target` its handle). Owners only. | `workspace`, `id`, `scope` | `workspace:admin` |
-| [`revoke_connector`](/reference/api/customize/revoke-connector/) | Take one grant back, by its id (`grant`). Owners only. | `workspace`, `id`, `grant` | `workspace:admin` |
-| [`bundle`](/reference/api/customize/customize-bundle/) | What a job's Claude Code loads: switched-on `plugins` with where to fetch each at its pinned commit, the library `skills` that reach the job's agent as files, and the `connectors` that reach it with the headers that sign them in. A job's agent token or a workspace's token; a person's is refused. Secrets are in it: g1t never keeps or logs it. | `workspace` | `agents:run` |
-
 ## `billing`
 
-A workspace's billing: its usage, its budget, its AI credit, its
-invoices and its [AI Gateway](/guides/ai-gateway/) requests. `usage` is the default action. Amounts are whole millionths of a
+A workspace's billing: its usage, its budget, its AI credit and its
+invoices. `usage` is the default action. Amounts are whole millionths of a
 dollar (`_micros`), or cents where a field says `_cents`. Members of the
 workspace read it, a workspace's own token included. Changing the budget
 and buying AI credit are for its owners, as people: signed in or with a
-personal access token. A workspace's token and g1t's agents never change
+personal access token. A workspace's token never changes
 billing, whatever their scopes, and no preset but full access includes
 `billing:write`. See [usage and billing](/guides/usage-and-billing/).
 
@@ -788,7 +704,6 @@ billing, whatever their scopes, and no preset but full access includes
 | [`buy_ai_credit`](/reference/api/billing/buy-ai-credit/) | A payment page (`url`) to buy `amount_cents` of credit, in whole dollars from $10 to $1,000, for a person to open and pay; it returns to the workspace's billing page. Owners, as people. | `workspace`, `amount_cents` | `billing:write` |
 | [`invoices`](/reference/api/billing/list-invoices/) | Every invoice (`invoices`, in cents), g1t's itemised usage invoices (`usage_invoices`), and what the next one comes to so far (`upcoming`). | `workspace` | `billing:read` |
 | [`billing_details`](/reference/api/billing/get-billing-details/) | Who invoices are made out to, and the payment method on file as far as it is safe to show. | `workspace` | `billing:read` |
-| [`gateway_requests`](/reference/api/billing/list-gateway-requests/) | The workspace's recent [AI Gateway](/guides/ai-gateway/) requests, newest first: model, `format` (`anthropic` or `openai`), `provider` and `connection` (who served it), tokens by kind with `cache_write_hour`, `cost_micros`, `charged_micros`, `status`, `own_key` and the token that sent each. `limit` (50, at most 200) and `before` (the last page's `next`) page through them. Kept 30 days. | `workspace` | `models:read` |
 
 ## `notifications`
 
@@ -821,7 +736,7 @@ cannot. Name an issue or pull request by a thread's `id`, or by `repo` and
 Who the token acts as and its workspaces, your email addresses, your
 invites while g1t is [invite-only](/guides/authentication/#invites), and
 invitations to workspaces and repositories waiting for you. `whoami` is the default
-action, and needs no scope. An agent's token and a workspace's token cannot
+action, and needs no scope. A workspace's token cannot
 use the email and invite actions. An account that has not confirmed its
 email address gets `403` from every tool until it does; see
 [until you confirm](/guides/authentication/#until-you-confirm).
@@ -853,7 +768,7 @@ scope. Name one by its id (`fol_…`) or its link as `artifact_id`, and its
 space by slug or id. Not workflow runs' artifacts, which are the
 `workflow` tool's. Slides, designs and dashboards answer `422` saying they
 are not here yet. A workspace's own token cannot use this tool. See
-[artifacts for agents](/guides/bring-your-own-agent/#artifacts).
+[artifacts](/guides/bring-your-own-agent/#artifacts).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -872,36 +787,5 @@ are not here yet. A workspace's own token cannot use this tool. See
 | [`trash`](/reference/api/artifacts/trash-workspace-artifact/) | Move it, and what is under it, to the trash; deleted for good after 30 days. | `workspace`, `artifact_id` | `artifacts:write` |
 | [`restore`](/reference/api/artifacts/restore-workspace-artifact/) | Bring it back from the trash. | `workspace`, `artifact_id` | `artifacts:write` |
 | [`restore_version`](/reference/api/artifacts/restore-workspace-artifact-version/) | Make an earlier version its content again, as a new version. | `workspace`, `artifact_id`, `version_id` | `artifacts:write` |
-| [`share`](/reference/api/artifacts/set-workspace-artifact-access/) | Share it with a `username`, `team` or `agent` at a `role` (`view`, `comment`, `edit`, `manage`, or `none` to take access away); set `general_access` and `general_role`, `inherit` or `agent_mode`. Takes full access to it; where its space lets editors share, edit access shares up to `edit`. | `workspace`, `artifact_id` | `artifacts:admin` |
+| [`share`](/reference/api/artifacts/set-workspace-artifact-access/) | Share it with a `username` or `team` at a `role` (`view`, `comment`, `edit`, `manage`, or `none` to take access away); set `general_access` and `general_role`, or `inherit`. Takes full access to it; where its space lets editors share, edit access shares up to `edit`. | `workspace`, `artifact_id` | `artifacts:admin` |
 | [`purge`](/reference/api/artifacts/purge-workspace-artifact/) | Delete one in the trash for good. Takes full access to it. | `workspace`, `artifact_id` | `artifacts:admin` |
-
-## What g1t can use
-
-g1t works with a [run credential](/guides/working-with-g1t/#credentials):
-a token bound to its run and its own repository, acting as `g1t` on
-behalf of the person who started the work, and only while that person is
-still a member of the workspace or has a role on one of its repositories. It
-has that person's role on its repository, but never more than Write. Which
-actions it may use depends on the kind of run.
-
-| Run | Actions |
-| --- | --- |
-| Implement, revise, answer | Reading: `repository` `get`, `list_labels`, `list_milestones`, `get_milestone` and `list_events`; `issue` `list`, `get` and `labels`; `pull_request` `list`, `get`, `changes`, `read_session` and `merge_queue`; `memory` `recall`; `search` `code`, `context` and `entity`; `workflow` `list`, `list_runs`, `get_run` and `job_logs`; `customize` `bundle`, which the runner reads before Claude Code starts. Then `issue` `create` and `comment`, `memory` `remember`, `agent` `message`, `answer` and `take_messages`, and `search` `ticket`. |
-| Review | The same reading actions, and `issue` `comment`, `pull_request` `review` and `search` `ticket`. |
-| Plan | The same reading actions, and `issue` `create` and `search` `ticket`. |
-| Catch up | The reading actions only. |
-
-No agent's token can use the `workspace`, `access`, `team`, `secret`, `webhook` or
-`notifications` tools, or any `customize` action but `bundle` (g1t acts as `g1t`, which has no notifications), the controls of `workflow`, or `pull_request` `merge`, `agent`
-`assign` and `delegate`, `plan` `create` and `apply`, `issue` `import`, or
-any `repository` action that creates, changes, renames, archives,
-transfers, deletes, restores or purges a repository, or dismisses or
-reopens a security alert, or the `security` actions that decide about
-security: `update_secret_alert`, `bypass`, `review_bypass`, the pattern
-changes, `update_code_alert`, `update_vulnerability_alert`, `fix`,
-`update_settings` and `update_workspace_settings`, or `artifact` `share`
-and `purge`. Every repository it
-names must be its own. `tools/list` shows such a token only the tools and
-actions it may use; a call to any other is refused with the rule that
-refused it, and recorded in the workspace's [audit log](/guides/audit-log/),
-as is every call it makes.

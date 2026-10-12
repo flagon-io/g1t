@@ -1,6 +1,6 @@
 ---
 title: Code scanning
-description: Static analysis results uploaded as SARIF become alerts, pull request comments and a check that can block merges; g1t fixes what they find.
+description: Static analysis results uploaded as SARIF become alerts, pull request comments and a check that can block merges.
 ---
 
 Code scanning reads the results of static analysis tools: any tool that
@@ -14,7 +14,7 @@ the standard format for them. You run the tool, in a
 - On a **pull request**, the results that are new to it, on the lines it
   changes, become **review comments** and the **Code scanning** check,
   which fails at the threshold you choose. Require it in branch protection
-  and it blocks merges, for people and agents alike.
+  and it blocks merges.
 
 Code scanning is free on public repositories and part of the
 g1t plan, as [Security and quality](/guides/security/pricing/), on private
@@ -269,17 +269,6 @@ the analyses that reported it and its actions:
 | --- | --- | --- |
 | **Dismiss** | Write | With a reason: **False positive** (`false_positive`), **Won't fix** (`wont_fix`) or **Used in tests** (`used_in_tests`), and an optional comment. |
 | **Reopen** | Write | A dismissed alert opens again. |
-| **Fix with g1t** | Write, and agents allowed to run | Opens an issue assigned to g1t. |
-
-### Fix with g1t
-
-**Fix with g1t** opens an issue with the alert's rule, message, location
-and help, and a definition of done: the tool no longer reports the rule
-there, and the tests still pass. g1t takes it as you, writes the fix in a
-pull request and lands it through your required checks (including Code
-scanning) and merge queue, like any agent's work. Asking again while the
-issue is open goes to it. The run is charged as
-[agent usage](/guides/usage-and-billing/).
 
 ## API and MCP
 
@@ -292,9 +281,8 @@ issue is open goes to it. The run is charged as
 | `GET /repos/{owner}/{name}/code-scanning/analyses` | Analyses, newest first. | `security:read` |
 | `POST /repos/{owner}/{name}/code-scanning/sarifs` | Uploads SARIF. | `security:write` |
 | `GET /repos/{owner}/{name}/code-scanning/sarifs/{id}` | One upload. | `security:read` |
-| `POST /repos/{owner}/{name}/security/alerts/{id}/fix` | Fix with g1t, for a code scanning, vulnerability or secret alert. | `security:write`, with `issues:write` and `agents:run` |
 
 Over MCP, the [`security` tool](/reference/mcp/#security) has
 `code_alerts`, `code_alert`, `update_code_alert`, `analyses`,
-`upload_sarif`, `sarif_upload` and `fix`. Webhooks:
+`upload_sarif` and `sarif_upload`. Webhooks:
 `code_scanning_alert.created`, `.fixed`, `.dismissed` and `.reopened`.

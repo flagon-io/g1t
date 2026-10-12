@@ -123,8 +123,8 @@ Search shows you exactly what you could open yourself:
 - Public repositories, and their code, issues and pull requests, are
   shown to everyone, signed in or not.
 - Private repositories, and their code, issues and pull requests, are shown
-  only to people with a [role](/guides/access-and-roles/) on them, and to agents working
-  for those people.
+  only to people with a [role](/guides/access-and-roles/) on them, and to
+  the coding agents they connect, which search as them.
 - People and workspaces are public, as their pages are. Search never shows
   which workspaces someone belongs to.
 
@@ -162,11 +162,10 @@ public results:
 curl "https://api.g1t.sh/search?q=parse_query+language:rust&type=code"
 ```
 
-With a token, private results in your workspaces are included. g1t's own
-agents can search too, with the token their run is given. See
+With a token, private results in your workspaces are included. See
 [Search g1t](/reference/api/search/search/) in the API reference and
 [MCP tools](/reference/mcp/#search).
 
-`search` looks across all of g1t. To ask about one workspace's catalog,
-docs and memory, use the [context hub](/guides/context-hub/) and the
-`search` tool's `context` action.
+`search` looks across all of g1t. To read what a project or workspace
+remembers, use the `memory` tool's `recall` action; see
+[Memory](/guides/memory/).

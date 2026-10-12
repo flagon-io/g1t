@@ -27,7 +27,6 @@ would make, over the public internet:
 | MCP server | Loads `mcp.g1t.sh/` |
 | Documentation | Loads `docs.g1t.sh/` |
 | Deployments | Loads `g1t.page/`. Each deployed app is not checked one by one. |
-| Agents' model proxy | Loads `models.g1t.sh/`. The model providers behind it are not checked. |
 | Sandboxes | Not checked yet: starting a sandbox costs money and takes seconds. The page says so rather than showing green. |
 | Billing | Reads billing's price book. Stripe itself is not checked. |
 
@@ -110,7 +109,7 @@ page, which shows each part's impact instead.
 | Severity | Meaning | Public updates |
 | --- | --- | --- |
 | SEV1 | Critical: g1t is down or unusable for most people, or data is at risk | At least every 30 minutes; subscribers are emailed |
-| SEV2 | Major: a core part (sign-in, git, the API, agents) is broken or badly degraded for many people | At least hourly; subscribers are emailed |
+| SEV2 | Major: a core part (sign-in, git, the API) is broken or badly degraded for many people | At least hourly; subscribers are emailed |
 | SEV3 | Minor: one part is degraded or broken for some people, and there is a way around it | As things change |
 | SEV4 | Low: little or no customer impact | As things change |
 

@@ -1,6 +1,6 @@
 ---
 title: Self-hosted runners
-description: Run your workflow jobs, and if you choose your agents' work, on your own machines. Their time costs nothing.
+description: Run your workflow jobs, and if you choose g1t's checks and merge queue, on your own machines. Their time costs nothing.
 ---
 
 import { TabItem, Tabs } from '@astrojs/starlight/components';
@@ -120,7 +120,7 @@ container made for it and removed after it:
 | Mounts | The harness (`g1t-runner`), read-only, and a volume of its own at `/home/runner`, removed after the job. Nothing else of the runner's or the machine's. |
 | Network | A Docker network of its own, removed after the job. Never the machine's network. |
 | Capabilities | Every one dropped but `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `SETUID`, `SETGID`, `KILL` and `NET_BIND_SERVICE`, which installing packages and running test servers need. Raw sockets (`ping`) are among those dropped. |
-| Privileges | `no-new-privileges`: a setuid program such as `sudo` gains nothing. Run steps as the image's root user rather than with `sudo`. Agent work keeps `sudo`, which its image uses once to put its guardrails out of the agent's reach. |
+| Privileges | `no-new-privileges`: a setuid program such as `sudo` gains nothing. Run steps as the image's root user rather than with `sudo`. |
 | Limits | `--memory` (three quarters of the runner's memory unless you set it, with no swap beyond it), `--cpus` (every CPU unless you set it) and `--pids-limit` (4096 unless you set it). |
 | Credentials | Only the job's own short-lived token, passed by name. Never the runner's credential. |
 
@@ -155,8 +155,8 @@ folder of its own. It will be removed. Until then:
   unsandboxed …*
 - It is not given a public repository's work, which anyone can propose
   code to. The runner says how it is isolated when it registers and on
-  every poll, and g1t hands a public repository's jobs and agent work
-  only to runners that are not in host mode. A job no other online runner
+  every poll, and g1t hands a public repository's jobs only to
+  runners that are not in host mode. A job no other online runner
   could take waits, and its page says *Waiting for a sandboxed runner:
   this repository is public, and host-mode runners don't run public
   repositories' jobs.* It starts once a sandboxed runner with its labels
@@ -279,7 +279,7 @@ your Windows and discarded, disk and all, when the job ends.
 - A firewall rule in it blocks the address your computer is reached by.
   The job runs as an administrator in its sandbox and could remove it, so
   it slows a job down rather than stopping it; the wall is the VM.
-- One job at a time, as every runner. Agent work runs on Linux runners.
+- One job at a time, as every runner.
 - It needs Windows 11 Pro, Enterprise or Education, version 24H2 or later
   (for the `wsb` command), with **Windows Sandbox** turned on under
   Settings, System, Optional features, More Windows features. `status`
@@ -364,23 +364,16 @@ by side, with what each is running now and this month's time on each.
 
 | Part | What it shows |
 | --- | --- |
-| **g1t cloud** | How many agent runs and workflow jobs are running in g1t's sandboxes now, this month's sandbox time and what it came to at price, the price per minute from g1t's [price book](/guides/usage-and-billing/), and how many agent runs your plan allows at once. |
-| **Your runners** | How many are online, busy, idle and offline, this month's self-hosted time (always $0), how many jobs and agent runs are waiting for one of them, and whether they take agent work. |
-| **On g1t cloud now** | Each running agent run and workflow job, linked to its run, with its kind, project and when it started. Work handed to one of your runners is listed under that runner instead. |
+| **g1t cloud** | How many workflow jobs are running in g1t's sandboxes now, this month's sandbox time and what it came to at price, and the price per minute from g1t's [price book](/guides/usage-and-billing/). |
+| **Your runners** | How many are online, busy, idle and offline, this month's self-hosted time (always $0), how many jobs are waiting for one of them, and whether they take [g1t's work](#g1ts-work-on-your-runners). |
+| **On g1t cloud now** | Each running workflow job, linked to its run, with its kind, project and when it started. Work handed to one of your runners is listed under that runner instead. |
 | **Machine time** | This month's time on g1t cloud against your runners', from your [usage](/guides/usage-and-billing/). |
-| **Your runners** list | Each runner's status, labels, OS, architecture, `g1t-runner` version and when it was last heard from, and what it is running, linked to the workflow run or the agent run. |
-| **Where work runs** | What decides where each kind of work runs, and the [agent setting](#agents-on-your-runners). |
+| **Your runners** list | Each runner's status, labels, OS, architecture, `g1t-runner` version and when it was last heard from, and what it is running, linked to its run. |
+| **Where work runs** | What decides where each kind of work runs, and whether [g1t's work](#g1ts-work-on-your-runners) runs on your runners. |
 
 A runner is **Idle** when it is online with nothing to do, **Busy** while it
-runs a job or an agent run, and **Offline** when it has not polled for 90
+runs a job, and **Offline** when it has not polled for 90
 seconds. When a service does not answer, only its part of the page says so.
-
-Sessions that persist are here for workspace agents: each has
-[a computer of its own](/guides/agents/#its-computer) on g1t cloud, whose
-home stays between sessions and which sleeps when idle; the page says so
-under **Agents' computers and more**. Pinning an agent's computer to one of
-your own runners and an official agent image are coming, and the page
-labels them so.
 
 **Desktops** lists every computer in the workspace with [the desktop
 app](/guides/desktop/#the-runner), whose runner runs while g1t is open
@@ -484,7 +477,6 @@ isolation with `--no-docker`. See [isolation](#isolation).
 | `--no-docker` | Deprecated. Run jobs directly on the machine instead of in containers ([host mode](#host-mode-is-deprecated)). |
 | `--native` | Run jobs native to this OS, each in a throwaway VM of its own: [Windows Sandbox](#windows-jobs-in-windows-sandbox) on Windows. Registers with the OS's label and `vm` isolation, and refuses if the sandbox is not there. |
 | `--image` | The image workflow jobs run in when they name no `container:`. `node:24-bookworm` if left out. |
-| `--agent-image` | The image [agent work](#agents-on-your-runners) runs in. |
 | `--memory` | Each job container's memory, such as `8g`. Three quarters of the runner's memory if left out. |
 | `--cpus` | Each job container's CPUs, such as `4` or `1.5`. Every CPU if left out. |
 | `--pids-limit` | The most processes in a job container. 4096 if left out. |
@@ -523,9 +515,7 @@ jobs:
 
 Until a runner with every label the job names takes it, the job waits, and
 its page says what for: *Waiting for a self-hosted runner with labels
-self-hosted, linux, gpu.* A job that waits a day fails. Jobs that have
-waited ten minutes with no matching runner online show under **Needs you**
-on Mission control.
+self-hosted, linux, gpu.* A job that waits a day fails.
 
 `runs-on: { group: GPU, labels: [linux] }` asks for a runner in the group
 called GPU as well.
@@ -577,64 +567,21 @@ To keep a set of machines for some repositories, open the workspace's
 repositories. Then click **New runner** with that group chosen, or register
 with `--group`. Deleting a group moves its runners to the default group.
 
-## Agents on your runners
+## g1t's work on your runners
 
-**Runners → Where work runs** can send g1t's own work to your
-runners too: agent runs, checks, reviews, merge checks and the merge queue.
-Switch on **Run g1t's work on self-hosted runners** and give the labels
-a runner needs to take it (`self-hosted` is always one).
+**Runners → Where work runs** can send g1t's own work to your runners
+too: the checks g1t runs on pull requests, merge checks and the merge
+queue's test runs. Switch on **Run g1t's work on self-hosted runners** and
+give the labels a runner needs to take it (`self-hosted` is always one).
 
-- The agent works exactly as in g1t's sandbox: the same harness, with a
+- The work runs exactly as in g1t's sandbox: the same harness, with a
   short-lived credential that can do only what that kind of run may, in
   that repository, revoked when it ends.
-- Its model calls still go through g1t's model proxy, `models.g1t.sh`, with
-  that credential, so budgets, caps and the audit log work as before. With
-  your own [model provider](/guides/models/), g1t charges nothing for the
-  run; otherwise the model is paid as usual and the machine is free.
-- Agent work needs an image with git, Node, `tar` and the agent's CLI:
-  register the runner with `--agent-image` and an image of yours that has
-  them. Host mode on a Linux machine set aside for it, where `/work` can be
-  written, also works, and is deprecated. g1t does not publish an agent
-  image yet.
-- [Guardrails](/guides/guardrails/) still apply to what the agent does, but
-  their network list cannot be enforced on your machine. The run's session
-  says so when it starts.
+- Its machine time is free, as for every job on your runners.
+- [Guardrails](/guides/guardrails/) cannot enforce their network list on
+  your machine.
 
 A project can have its own setting, or follow the workspace's.
-
-## What a run gets from Customize
-
-When g1t's work runs Claude Code on a runner (on g1t's own machines too),
-the job gets what the workspace set up in [Customize](/guides/customize/),
-as the job's agent would have it. Before Claude Code starts, the runner
-reads the workspace's bundle with the job's short-lived agent credential,
-once per job, and makes it ready:
-
-| In the bundle | What the runner does | In Claude Code |
-| --- | --- | --- |
-| Installed plugins that are switched on, each with where to fetch it and the commit it is pinned to | Fetches each at that commit (GitHub's archive of the commit, a clone of the repository here, or the zip the marketplace names) into `/work/.g1t/plugins/<name>/` and passes it with `--plugin-dir`, one flag per plugin | Its skills as `/<plugin>:<skill>`, its subagents as `<plugin>:<agent>`, and its hooks, LSP servers, output styles and `bin/`, which run only here and never on g1t's own agents |
-| The library's own skills that reach the agent, as files | Writes them as one more plugin, `g1t-library`, with a `skills/<name>/` folder each, passed with `--plugin-dir` too. A plugin's skills come with the plugin itself | `/g1t-library:<skill>` |
-| The connectors that reach the agent and are connected, with the headers that sign them in | Merges each into the `--mcp-config` file's `mcpServers`, by its name, beside g1t's own server | `mcp__<name>__<tool>` |
-
-The run's session gets one line saying what was loaded: *Loaded 2 plugins,
-1 library skill and 3 connectors from the workspace's Customize.* A plugin
-that could not be fetched, or a bundle that could not be read, is named
-there and the run goes on without it; nothing from Customize fails a run.
-Plugins from GitHub need `tar` on the machine.
-
-A run on a fork's head loads none of the fork's own settings, hooks, MCP
-servers or commands ([guardrails](/guides/guardrails/)). The workspace's
-plugins and connectors are the workspace's, not the checkout's, so they are
-still passed and merged; but every skill and command is switched off on
-such a run, the plugins' and the library's included, so an agent cannot
-invoke them there.
-
-The bundle carries the connectors' sign-ins, so only a job's agent
-credential or a workspace's token reads it, never a person's:
-[`GET /workspaces/{workspace}/customize/bundle`](/reference/api/customize/customize-bundle/),
-scope `agents:run`. g1t never keeps or logs it, and the runner keeps the
-keys it brought out of the session. See
-[what a run gets](/guides/customize/#what-a-run-gets).
 
 ## Billing
 
@@ -642,11 +589,8 @@ Time on your runners is free. Each job's minutes go on
 [usage](/guides/usage-and-billing/) as **Self-hosted runner time** at $0,
 so you can see how much ran there.
 
-- Workflow jobs on your runners need no plan and no card: they work on the
-  free tier.
-- Agent work on your runners still needs its model paid for: the g1t plan,
-  the trial, the open-source pool on a public repository, or your own
-  model provider, which makes the run free.
+Workflow jobs on your runners need no plan and no card: they work on the
+free tier.
 
 ## Security
 
@@ -767,10 +711,6 @@ running fails. Runners offline for 14 days are removed by themselves.
 | Remove a runner | [`DELETE …/actions/runners/{id}`](/reference/api/runners/remove-runner-for-workspace/) | `remove_runner` | `runners:admin` |
 | Groups | [`GET`](/reference/api/runners/list-runner-groups/), [`POST`](/reference/api/runners/create-runner-group/), [`PATCH`](/reference/api/runners/update-runner-group/), [`DELETE`](/reference/api/runners/delete-runner-group/) `/workspaces/{workspace}/actions/runner-groups` | `list_runner_groups`, `create_runner_group`, `update_runner_group`, `delete_runner_group` | `runners:read`, `runners:admin` |
 | Where work runs | [`GET`](/reference/api/runners/get-runner-settings-for-workspace/), [`PATCH`](/reference/api/runners/update-runner-settings-for-workspace/) `…/actions/runner-settings` | `get_runner_settings`, `update_runner_settings` | `runners:read`, `runners:admin` |
-| What a run gets from Customize | [`GET /workspaces/{workspace}/customize/bundle`](/reference/api/customize/customize-bundle/) | `customize` tool, `bundle` | `agents:run`, with a job's agent token |
-
-The [Agent preset](/guides/authentication/#scopes) does not include
-`runners:read`.
 
 ## Troubleshooting
 
@@ -792,5 +732,4 @@ The [Agent preset](/guides/authentication/#scopes) does not include
 | The `windows` capability is unavailable | `status` says why: Windows Sandbox is off, this is Windows 11 Home, or Windows is older than 24H2. |
 | A step's `sudo` fails | Job containers have `no-new-privileges`. Steps run as the image's user, root in most CI images, so drop the `sudo`. |
 | *could not run docker* | Install Docker and start it, and give the runner's user access to it. |
-| Agent work fails at once | Give the runner `--agent-image`. |
 | The runner is offline in the list | It has not polled for 90 seconds. Check its log (`journalctl -u g1t-runner-<name>`, `~/.g1t-runner/runner.log`, or the terminal) and that the machine can reach `https://api.g1t.sh`. |

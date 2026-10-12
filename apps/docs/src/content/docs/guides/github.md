@@ -106,15 +106,13 @@ another browser, or the return to g1t was lost, add it from g1t instead:
 
 1. Make sure your GitHub account is linked: **Connect GitHub** on the import
    page, or **Link GitHub** in [Settings → GitHub](https://g1t.sh/settings/github).
-2. Open `g1t.sh/new/github?workspace=<workspace>`. You can also get there
-   from **Connect** beside GitHub in **Customize → Connectors**.
+2. Open `g1t.sh/new/github?workspace=<workspace>`.
 3. Under **Already installed on GitHub**, choose **Add to** the workspace
    beside the GitHub account or organization.
 
 Only a workspace owner can add one, and only an installation your own
 GitHub account can see: on your account, or on an organization you belong
-to. Once added, GitHub shows as connected under **Customize →
-Connectors**.
+to.
 
 If GitHub sends you to g1t after an installation that did not start from
 g1t, g1t asks which of the workspaces you own to add it to. It is the same

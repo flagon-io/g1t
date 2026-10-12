@@ -303,8 +303,6 @@ raises a dependency to 5.0.0, `@g1t ignore this major version` records
 `>= 5.a, < 6`. Ignore conditions set by comments apply to version and
 security updates, and the Security page lists them.
 
-These commands are not mentions: they never start an agent.
-
 ## Security updates follow the same file
 
 [Security updates](/guides/security/#security-updates) are still turned on

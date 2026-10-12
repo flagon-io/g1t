@@ -33,8 +33,7 @@ token, cannot transfer. Your email address must be confirmed.
    confirm, and choose **Transfer**.
 
 You land on the repository's settings at its new address. Everything kept
-about it elsewhere in g1t (search, the context hub, deployments and the
-rest) follows within a few seconds.
+about it elsewhere in g1t (search, deployments and the rest) follows within a few seconds.
 
 From the API, call
 [`POST /repos/{owner}/{name}/transfer`](/reference/api/repositories/transfer-repo/)
@@ -55,7 +54,7 @@ own both workspaces, as on the site.
 
 | Response | Why | What to do |
 | --- | --- | --- |
-| `403 forbidden` | You do not own one of the two workspaces, or you are using a workspace or agent token. | Ask an owner of both to transfer it, or use a personal token. |
+| `403 forbidden` | You do not own one of the two workspaces, or you are using a workspace token. | Ask an owner of both to transfer it, or use a personal token. |
 | `409 conflict` | The destination already has a repository with that name, or a recently deleted one held it. | Rename or move that repository first, or purge the deleted one. |
 | `402 payment_required` | The repository is private, the destination is on no plan, and its private repositories would hold more than a free workspace's 1 GB. | Start the g1t plan in the destination, or make the repository public first. |
 | `422 invalid` | No destination, or the destination is the workspace it is already in. | Name another workspace. |
@@ -73,7 +72,6 @@ Everything that belongs to the repository moves with it:
 | Its own settings | Merge rules, branch protection, guardrails, and the project's memory. |
 | Its own secrets and variables | Set on the repository, they move with it. |
 | Its own webhooks | They now name the repository by its new path. |
-| Agents at work on it | Their runs carry on and are listed in the new workspace. |
 
 These belong to the old workspace and stay with it:
 
@@ -81,7 +79,7 @@ These belong to the old workspace and stay with it:
 | --- | --- |
 | Workspace secrets and variables | The old workspace's stop reaching the repository; the new workspace's start, if they reach every repository or name this one. |
 | Workspace webhooks | The old workspace's stop hearing about the repository; the new one's start. |
-| Integrations | Model providers, Sentry, Datadog, Jira and Linear connections stay with their workspace. Connect them in the new one if you need them there. |
+| Integrations | Sentry, Datadog, Jira and Linear connections stay with their workspace. Connect them in the new one if you need them there. |
 | Workspace memory and guardrails | The new workspace's apply from now on. |
 | The audit log | What happened before the transfer stays in the old workspace's log. Each workspace's log records the transfer itself. |
 | Billing history | See [billing](#billing). |
@@ -130,7 +128,7 @@ and is tried again until it can.
 ## Billing
 
 - Usage from the moment of the transfer is charged to the new workspace:
-  agent runs, builds, app traffic, git operations and storage.
+  workflow jobs, builds, app traffic, git operations and storage.
 - What the repository used before stays on the old workspace's bill.
   Runs already under way finish on the bill they started on.
 - Storage follows the repository: from the next daily count it is the new

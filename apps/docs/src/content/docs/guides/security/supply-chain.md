@@ -106,9 +106,7 @@ curl -s -H "Authorization: Bearer $G1T_TOKEN" \
 Vulnerability alerts are at `g1t.sh/<owner>/<project>/security/vulnerabilities`.
 How they are found, dismissed and fixed by security updates is in
 [Security](/guides/security/#dependencies). Like the other alerts, each can
-be dismissed with a reason, reopened, and put to g1t with **Fix with g1t**
-over the API (`POST /repos/{owner}/{name}/security/alerts/{id}/fix`), which
-opens an issue to upgrade the package and change the code that needs it.
+be dismissed with a reason and reopened.
 
 ## API and MCP
 

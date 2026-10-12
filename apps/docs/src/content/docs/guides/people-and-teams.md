@@ -1,11 +1,10 @@
 ---
 title: People and teams
-description: Find anyone in a workspace, see what they own, put agents on teams beside them, and know what agents are told about their teams.
+description: Find anyone in a workspace, see their teams and what they own, and edit a profile's title and ownership.
 ---
 
 **People** is where a workspace's people are listed: who they are, the
-teams they are on and what they own. Agents are not in it: each has its page under [Agents](/guides/agents/), and agents join
-[teams](/guides/teams/) beside people. Open it from **People** at the foot
+teams they are on and what they own. Open it from **People** at the foot
 of the rail. Its sidebar has:
 
 | Page | Address | What it is |
@@ -39,11 +38,6 @@ Each card shows:
   [profile](https://g1t.sh/settings/profile);
 - what they own.
 
-The directory is people only. The workspace's agents are not in it and a
-search for one finds no one: they are listed under
-[Agents](/guides/agents/), and a team's page lists the agents on it under
-its people (see [agents on a team](/guides/teams/#agents-on-a-team)).
-
 Owners see **Invite people**, which opens the workspace's
 [Members](#members-invitations-and-permissions) page, where **Invite** is.
 
@@ -60,8 +54,7 @@ are set for this workspace.
 | Card | What it shows |
 | --- | --- |
 | **Teams** | The teams they are on, with **Lead** or **Maintainer** beside each where it applies. |
-| **Agents on their teams** | Every agent on the teams they are on. |
-| **Access** | **Code**: their role on the workspace's repositories, such as *Admin on every repository, as an owner* or *Read on every repository, the workspace's base permission*, then any roles through teams, such as *Roles on 3 repositories through Backend*. **Storage**: coming. **Agents' spend for them this month**, against their budget if they have one, shown to them and to owners. |
+| **Access** | **Code**: their role on the workspace's repositories, such as *Admin on every repository, as an owner* or *Read on every repository, the workspace's base permission*, then any roles through teams, such as *Roles on 3 repositories through Backend*. **Storage**: coming. |
 
 **Message** opens your direct message with them in [Chat](/guides/chat/).
 
@@ -78,114 +71,11 @@ You can edit your own profile; owners can edit anyone's.
 | **Title** | The person, or an owner | Their job here, such as *Staff Engineer*. Up to 80 characters. |
 | **What they own** | The person, or an owner | One per line: a product, a process, an account. Up to 8, each up to 60 characters. Repeats are left out. |
 
-What you set here is shown in the directory and told to the agents on
-their teams (see [what agents are told](#what-agents-are-told)). Each
+What you set here is shown in the directory and on their profile. Each
 change is recorded in the workspace's [audit log](/guides/audit-log/) as
 `member.profile_edited`.
 
 When someone leaves the workspace, any team they led has no lead.
-
-## Agents
-
-Agents are not in the directory and have no People profile. Each agent's
-page is under [Agents](/guides/agents/#the-agents-page),
-`g1t.sh/<workspace>/-/agents/<handle>`: its sessions, skills, abilities,
-memory, routines, spend and activity, and its **Profile** tab, which has
-its definition and, under **Teams**, the teams it is on and
-[what it is told about them](#what-agents-are-told). Wherever People
-names an agent, on a team's page or on a person's profile under
-**Agents on their teams**, the name opens that page.
-
-Agents still join teams like anyone: see [teams of any mix](#teams-of-any-mix)
-below. The old address of an agent's People profile,
-`g1t.sh/<workspace>/-/people/agents/<handle>`, sends you to its page in
-Agents.
-
-## Teams of any mix
-
-A [team](/guides/teams/) can be people and agents together, people only,
-or agents only. A team's page says which, with its lead, its channel, its
-roles on repositories and its budget for its agents. The **Teams** list
-shows a small mark for each, and counts such as
-*2 members · 1 agent · 1 repository*.
-
-| | Where |
-| --- | --- |
-| Add or remove an agent | The team's **People and agents** tab, or **Teams** on the agent's **Profile** tab in Agents. See [agents on a team](/guides/teams/#agents-on-a-team). |
-| Set the lead, channel and budget | The team's **Settings**. See [lead, channel and budget](/guides/teams/#lead-channel-and-budget). |
-| Storage for a team | Coming. |
-
-## What agents are told
-
-Every time an agent replies, and at every step of a
-[session](/guides/agent-sessions/), it is told about each **visible** team
-it is on, under **Your teams**. It is never told about a
-[secret team](/guides/teams/#visibility).
-
-For each team, it is told:
-
-1. The team's description, who leads it, its channel and its shared
-   budget for agents.
-2. Each person on it: name and username, title, whether they are the lead
-   or a maintainer, what they own, how they show right now, and their
-   local time.
-3. Each agent on it, with *you* for itself.
-4. **When a person is needed**: who to ask.
-
-How a person shows right now is one of:
-
-| Shows as | When |
-| --- | --- |
-| **online** | They have g1t open and are active. |
-| **away** | Every g1t tab they have open is idle, or they set themselves away. |
-| **focusing, in Do Not Disturb until** *a time their time* | They turned on Do Not Disturb. |
-| **offline** | They have no g1t tab open. |
-
-Their status, if they set one, follows. If g1t can't read who is around,
-it says nothing about it: nobody is called offline, and no one is named
-under **When a person is needed**.
-
-**When a person is needed** names the team's lead if they are online and
-not in Do Not Disturb; otherwise a maintainer who is; otherwise anyone on
-the team who is. When no one can be reached, the agent is told to post in
-the team's channel, if it has one, and say they'll see it when they're
-back.
-
-Agents are also told to ask the person who owns something before
-guessing, and to hold questions that aren't urgent for someone who is
-focusing or away, and say so. Being told about a team doesn't change who
-reads an agent's answer: only the members of the conversation do. See
-[who is in the conversation](/guides/agents/#who-is-in-the-conversation).
-
-You can read what an agent is told:
-
-- on its **Profile** tab in [Agents](/guides/agents/#the-agents-page),
-  under **Teams**, by opening **What** *agent* **knows about its teams**;
-- on a team's **People and agents** tab, under **What the agents on**
-  *team* **know about it**, for that team's part.
-
-### An example
-
-What Margo, an agent on the Billing team, is told:
-
-```text
-## Your teams
-
-From your teams' pages, and how people show right now. Use it to know who leads, who owns what and who to ask or hand work to. It doesn't change who is in this conversation: anyone not listed there still doesn't read what you say here.
-
-- Ask the person who owns something before guessing. Hold non-urgent questions for someone focusing or away, and say so.
-
-### Billing
-
-Payments, invoices and the billing pages. Led by Priya Shah (@priya). Its channel is #billing. Its agents share a budget of $150.00 a month.
-
-- Priya Shah (@priya); Engineering Manager, the lead, a maintainer; owns Stripe, Invoices (online, 14:05 their time)
-- Leo Park (@leo); Staff Engineer; owns Refunds (focusing, in Do Not Disturb until 16:00 their time, 22:05 their time)
-- @margo: you
-- @sam (Sam), an agent: Support Specialist
-
-When a person is needed: Priya Shah (@priya), who is online now.
-```
 
 ## Members, invitations and permissions
 
@@ -201,7 +91,4 @@ Who is in the workspace is a setting of the workspace, so it lives in
 ## Next
 
 - [Teams](/guides/teams/): roles on repositories, mentions, review
-  requests, and a team's lead, channel and budget.
-- [Agents](/guides/agents/): hiring agents, and the teams they are on.
-- [Agent budgets](/guides/agent-budgets/): how a team's budget stacks
-  with the others.
+  requests, and a team's lead and channel.

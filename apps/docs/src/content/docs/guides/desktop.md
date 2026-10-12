@@ -4,12 +4,12 @@ description: g1t in a window of its own, for Windows, macOS and Linux, with noti
 ---
 
 The desktop app is g1t in a window of its own. Everything in it is the
-site, [g1t.sh](https://g1t.sh), loaded live: chat, agents, artifacts and
-code, exactly as in a browser, so every change to g1t reaches the app the
-moment it is deployed. What the app adds is what a browser cannot do:
+site, [g1t.sh](https://g1t.sh), loaded live: chat, artifacts and code,
+exactly as in a browser, so every change to g1t reaches the app the moment
+it is deployed. What the app adds is what a browser cannot do:
 
-- **Notifications from your system**, for a message to you, a mention or
-  an agent finishing something, while the window is behind another.
+- **Notifications from your system**, for a message to you or a mention,
+  while the window is behind another.
 - **A badge on the icon**, with what is waiting for you, and a tray icon
   that keeps g1t running when the window is closed.
 - **`g1t://` links**, which open a page in the app from anywhere on your
@@ -408,8 +408,6 @@ talk to the app, whichever it is, and updates still come from g1t.sh.
 - **Choosing the sandbox's share of the computer.** It takes half the
   CPUs (at most 8) and a quarter of the memory (2 to 8 GB); the app has no
   setting for it yet.
-- **Agents on your desktop.** The runner takes workflow jobs, and agent
-  work only if the workspace [sends it to its runners](/guides/self-hosted-runners/#agents-on-your-runners).
 - **Opening the conversation from a notification.** Clicking one brings
   the app forward; the page it is about is coming.
 - **A page of its own while offline.** If the network goes away while a

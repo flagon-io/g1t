@@ -237,9 +237,6 @@ report under. To require only what was reported through the API, pin the
 check to the `api` integration in a ruleset:
 `{"context": "lint", "integration": "api"}`.
 
-A pull request [g1t is working on](/guides/working-with-g1t/#seeing-it-through)
-goes back to g1t when a check fails, whatever reported it.
-
 ## Run again
 
 [`rerequest_check_run`](/reference/api/checks/rerequest-check-run/) and
@@ -272,10 +269,6 @@ These are left out of a repository's timeline.
 | Anyone who can read the repository | See its checks, and read them through the API with `checks:read` (no token for a public repository) |
 | The Write role and up, with `checks:write` | Report statuses and check runs, and ask for them to run again |
 | A workflow job, with `G1T_TOKEN` and `checks: write` or `statuses: write` | The same, in its repository |
-| g1t's agents | Read checks, never report them |
-
-An agent's own work is never judged by checks it reported: what a check
-says is up to your CI and integrations.
 
 ## From the API and MCP
 

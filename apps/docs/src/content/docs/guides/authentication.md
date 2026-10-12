@@ -179,8 +179,7 @@ repository, or just making an account), and finishes the job there:
 Nobody joins a workspace without saying yes. With an existing account,
 accepting on the invite's page is that yes: you land in the workspace (or
 the repository) the invite was for, with a one-time "You're in" banner,
-and it becomes the workspace your sidebar shows. The workspace's @g1t
-says a short welcome in your direct message with it, once; see
+and it becomes the workspace your sidebar shows. See
 [when someone joins](/guides/workspaces/#when-someone-joins).
 
 A new account made from an invite that names a workspace is invited to
@@ -295,8 +294,8 @@ pending, confirming their email (used to sign up by someone who has not
 confirmed their address yet), waiting for them to accept (the account is
 made and confirmed, and the workspace invitation waits for its answer),
 joined (with the username of who joined), declined, expired or revoked. You
-must confirm your email before you can make invites. An agent's token and
-a workspace's token cannot make them.
+must confirm your email before you can make invites. A workspace's token
+cannot make them.
 
 ### Inviting someone into a workspace
 
@@ -327,8 +326,7 @@ answered, the workspace's owners see it as **Pending** on its
 [Invitations](/guides/workspaces/#add-people) page, and can send it again
 or revoke it. A workspace on the free plan cannot add
 people, so an invitation to one cannot be accepted until it starts the
-plan. Only you can answer your invitations: an agent's token and a
-workspace's token cannot.
+plan. Only you can answer your invitations: a workspace's token cannot.
 
 ### Your first workspace
 
@@ -517,7 +515,7 @@ including an address that was just removed, and written to your
 
 **Keep my email address private** is on for every account unless you turn
 it off. While it is on, commits g1t makes for you (merging a pull request
-on the web, catching a branch up, and commits an agent makes for you) carry
+on the web, or catching a branch up) carry
 your noreply address instead of your primary:
 
 ```
@@ -549,8 +547,7 @@ To push those commits:
 3. Push again.
 
 Only your own addresses are checked: commits by other people in the same
-push go through, and so does your noreply address. A push an agent makes
-for you follows your settings.
+push go through, and so does your noreply address.
 
 ### How commits are attributed
 
@@ -575,8 +572,8 @@ for setting your noreply address in git.
 
 Through the API, `password` is the proof a sensitive change needs. Without
 it, or with the wrong one, the answer is `403` with the code
-`reauth_required`. Only a person's own token can use these: an agent's
-token and a workspace's token are refused.
+`reauth_required`. Only a person's own token can use these: a workspace's
+token is refused.
 
 ## Workspaces
 
@@ -824,12 +821,11 @@ Repository permissions apply in every repository the token reaches:
 | Packages | read, read and write, read, write and delete | `packages:read`, `packages:write`, `packages:delete` |
 | Issues | read, read and write | `issues:read`, `issues:write` |
 | Pull requests | read, read and write | `pull_requests:read`, `pull_requests:write` |
-| g1t agents | run | `agents:run` |
 | Workflows | read, read and write | `workflows:read`, `workflows:write` |
 | Workflow files | write | `workflow_files:write` |
 | Checks and statuses | read, read and write | `checks:read`, `checks:write` |
 | Deployments | read, read and write | `deployments:read`, `deployments:write` |
-| Memory and context | read, read and write | `memory:read`, `memory:write` |
+| Memory | read, read and write | `memory:read`, `memory:write` |
 | Who has access | read, admin | `access:read`, `access:admin` |
 | Webhooks | read, admin | `webhooks:read`, `webhooks:admin` |
 | Secrets and variables | read, admin | `secrets:read`, `secrets:admin` |
@@ -841,7 +837,6 @@ Workspace permissions apply to the workspaces the token reaches themselves:
 | Workspaces | read, admin | `workspace:read`, `workspace:admin` |
 | Billing | read, read and write | `billing:read`, `billing:write` |
 | Self-hosted runners | read, admin | `runners:read`, `runners:admin` |
-| AI Gateway | read, read and write | `models:read`, `models:write` |
 | Artifacts | read, read and write, admin | `artifacts:read`, `artifacts:write`, `artifacts:admin` |
 
 Account permissions are about you, wherever you are, and only a personal
@@ -886,7 +881,7 @@ any row.
 | Preset | Permissions |
 | --- | --- |
 | Read only | Every resource at read except Chat. Changes nothing. |
-| Agent | Every resource at read except Self-hosted runners and Chat, and Code, Issues, Pull requests, Memory and context and Notifications at read and write, and g1t agents at run. Reads everything, works on issues and pull requests, pushes code, puts g1t to work, and answers your inbox. No admin level. |
+| Agent | Every resource at read except Self-hosted runners and Chat, and Code, Issues, Pull requests, Memory and Notifications at read and write. For a [coding agent](/guides/bring-your-own-agent/): reads everything, works on issues and pull requests, pushes code, and answers your inbox. No admin level. |
 | CI | Repositories: read; Code, Packages, Workflows, Checks and statuses, and Deployments: read and write. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments. |
 
 **All** is not a preset that grows: it ticks every permission there is
@@ -920,11 +915,10 @@ one.
 | `packages:read` | Pull container images and install private [packages](/guides/packages/). Public ones need no scope. |
 | `packages:write` | Push container images and publish packages; with the Admin role on a package, change its settings |
 | `packages:delete` | Delete and restore packages and their versions |
-| `issues:read` | Read issues, comments and plans |
+| `issues:read` | Read issues and comments |
 | `issues:write` | Open, edit, close and comment on issues |
 | `pull_requests:read` | Read pull requests, their changes, sessions and merge queues |
 | `pull_requests:write` | Open, review, close and merge pull requests |
-| `agents:run` | Put g1t to work and message it, which uses the workspace's money |
 | `workflows:read` | Read workflows, runs and logs |
 | `workflows:write` | Run, cancel, rerun and turn workflows on or off |
 | `workflow_files:write` | Add, change and delete [workflow files](#workflow-files) under `.g1t/workflows` and `.github/workflows`, with git or the API. Not in any preset. |
@@ -932,28 +926,26 @@ one.
 | `checks:write` | Report [statuses and check runs](/guides/checks/) on commits, and ask for checks to run again |
 | `deployments:read` | See [deployments](/guides/deployments-api/), their statuses and environments |
 | `deployments:write` | Report deployments and their statuses, from any CI |
-| `memory:read` | Recall memory and search the workspace's context |
-| `memory:write` | Save memory for the next agent |
+| `memory:read` | Recall a project's and the workspace's [memory](/guides/memory/) |
+| `memory:write` | Save to a project's or the workspace's memory |
 | `account:read` | Read your email addresses, invites, invitations, pinned projects and stars |
 | `account:write` | Change your email addresses, make invites, answer invitations, pin projects and star repositories |
 | `notifications:read` | See your [notifications](/guides/notifications/), its threads, and what you subscribe to and watch |
 | `notifications:write` | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories |
 | `chat:read` | Read the conversations you are in: channels, direct messages, threads and reactions, live. Not in any preset. See [Chat and notifications without the website](#chat-and-notifications-without-the-website). |
 | `chat:write` | Send, edit and delete your messages, react, mark conversations read, and answer cards in chat. Not in any preset. |
-| `workspace:read` | Read workspace settings, invites, integrations, model routes and [teams](/guides/teams/) |
+| `workspace:read` | Read workspace settings, invites, integrations and [teams](/guides/teams/) |
 | `workspace:admin` | Create and delete workspaces, invite members, manage teams, connect integrations |
-| `billing:read` | See a workspace's [usage, budget, AI credit and invoices](/guides/usage-and-billing/) |
-| `billing:write` | Change a workspace's budget and buy AI credit. Only owners, as people: a workspace's own token and g1t's agents never change billing, whatever their scopes. Not in any preset. |
+| `billing:read` | See a workspace's [usage, budget and invoices](/guides/usage-and-billing/) |
+| `billing:write` | Change a workspace's budget. Only owners, as people: a workspace's own token never changes billing, whatever its scopes. Not in any preset. |
 | `access:read` | See who has access to repositories |
 | `access:admin` | Give people and teams access to repositories, and take it away |
 | `webhooks:read` | See webhooks and their deliveries |
 | `webhooks:admin` | Create, change and delete webhooks |
 | `secrets:read` | List secrets (never their values) and read variables |
 | `secrets:admin` | Set and delete secrets and variables |
-| `runners:read` | See [self-hosted runners](/guides/self-hosted-runners/), their groups and where agents run. Not in the Agent preset. |
+| `runners:read` | See [self-hosted runners](/guides/self-hosted-runners/), their groups and the jobs they run. Not in the Agent preset. |
 | `runners:admin` | Register and remove self-hosted runners, change their groups and settings |
-| `models:read` | See the workspace's [AI Gateway](/guides/ai-gateway/) requests: their models, tokens, cost and status |
-| `models:write` | Send model requests through the [AI Gateway](/guides/ai-gateway/), which uses the workspace's AI credit. Only a workspace's own token can send them. Not in any preset. |
 | `artifacts:read` | List, read and search the [artifacts](/guides/bring-your-own-agent/#artifacts) you can open (docs, and later slides, designs and dashboards), their versions and who can open them. Not workflow runs' artifacts, which are `workflows:read`. |
 | `artifacts:write` | Create, rename, move, edit, trash and restore artifacts, and suggest changes to them |
 | `artifacts:admin` | Share artifacts, change who can open them, and delete them for good. Not in any preset. |
@@ -962,13 +954,11 @@ Every operation of the API and the MCP server needs exactly one of these,
 except `whoami` (`GET /user`), which any token may use. Each endpoint's page
 in the [API reference](/reference/api/) names its scope, and so does each
 action in [MCP tools](/reference/mcp/); the MCP server lists only the tools
-a token's permissions can use. A few calls need a second scope for what
-they ask:
+a token's permissions can use. One call needs a second scope for what it
+asks:
 
 | Call | Also needs |
 | --- | --- |
-| `delegate` (`POST /repos/{owner}/{name}/issues/delegate`, the `agent` tool's `delegate`), which opens an issue | `issues:write`, beside `agents:run` |
-| `apply_plan` or `import_issue` (the `plan` tool's `apply`, the `issue` tool's `import`) with `assign: true` | `agents:run` |
 | `update_repo` with `private` or `default_branch` | `repo:admin` |
 
 ### What a token can do
@@ -1062,6 +1052,10 @@ full access too, marked **Legacy · full access**: select **Change access**
 in [Connected applications](https://g1t.sh/settings/applications) to narrow
 it.
 
+A token or application that was given `agents:run`, `models:read` or
+`models:write` keeps working for its other scopes; those three grant
+nothing.
+
 The old addresses of the token settings lead to the list and to each
 token's page.
 
@@ -1151,7 +1145,7 @@ everything you can.
 
 An application that asks for no scopes in particular gets the
 [Agent preset](#presets): every `read` scope except `runners:read` and `chat:read`, and `code:write`,
-`issues:write`, `pull_requests:write`, `agents:run`, `memory:write` and
+`issues:write`, `pull_requests:write`, `memory:write` and
 `notifications:write`.
 It never gets an admin scope unless it asks for one and you leave it
 ticked, and it gets `chat:read` and `chat:write` only by asking for them;
@@ -1288,7 +1282,7 @@ After 30 days it is removed for good.
 
 There is no API route or MCP tool for deleting an account, by design: like
 [creating one](#creating-an-account), it happens only in a browser, signed
-in as yourself, never with a token or as an agent.
+in as yourself, never with a token.
 
 ### What stands in the way
 

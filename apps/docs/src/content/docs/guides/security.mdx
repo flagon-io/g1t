@@ -43,7 +43,6 @@ is public or private:
 | See alerts, **Re-scan now** | Write |
 | **Dismiss** or **Reopen** an alert: a secret, a dependency or code scanning | Write |
 | **Bypass** push protection for a blocked secret | Write (or a request, with [delegated bypass](/guides/security/secret-protection/#delegated-bypass)) |
-| **Fix with g1t** | Write, and agents allowed to run |
 | **Security updates** on or off, **Set up code scanning**, **Set up a security policy** | Maintain |
 | **Security settings**, **Custom patterns**, reviewing bypass requests, writing and publishing advisories, reviewing reports | Admin |
 
@@ -157,8 +156,8 @@ critical. Private keys are judged by the words only.
 When a push over HTTPS adds a secret, g1t refuses the whole push and nothing
 is stored. Only the lines the push adds are checked, so a secret that is
 already in the repository does not block every later push to the same file.
-This applies to every push, including the pushes g1t and its agents make to
-pull requests.
+This applies to every push, including the pushes g1t makes to pull
+requests.
 
 Very large pushes are scanned after they land, not before. Such a push is
 too large to read in full before it is stored, so it goes through, and g1t
@@ -409,8 +408,6 @@ for it:
   failing checks for you to decide on: push the code changes it needs to
   its branch, or close it.
 
-To have an agent make the change, use **Fix with g1t** on the alert: it
-opens an issue and assigns it to [g1t](/guides/working-with-g1t/), as you.
 If the vulnerable code is never reached, dismiss the alert with a reason.
 
 Turn **Security updates** off under **Vulnerabilities** to stop g1t opening

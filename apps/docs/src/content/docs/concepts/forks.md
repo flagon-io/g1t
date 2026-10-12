@@ -3,8 +3,8 @@ title: Forks and branches
 description: Why a pull request on g1t gets its own fork, when a branch is the better choice, and what each costs.
 ---
 
-A pull request can come from a branch of the repository. But an agent's
-pull request comes from a **fork**: a separate
+A pull request can come from a branch of the repository. But a coding
+agent's pull request comes from a **fork**: a separate
 repository that starts as a copy of yours. This page explains why, what it
 costs, and when to use which.
 
@@ -12,7 +12,7 @@ costs, and when to use which.
 
 | | Fork per pull request | Branch in the repository |
 | --- | --- | --- |
-| Built for | Agents, in any number | A person, or a few |
+| Built for | Coding agents, in any number | A person, or a few |
 | What the worker can write to | Its own fork, nothing else | The repository |
 | Effect on the repository | None until something merges | A new ref for every piece of work |
 | Sees `main` move | Only when it pulls | On the next fetch |

@@ -32,7 +32,7 @@ place, so no service's code changes:
 | --- | --- | --- |
 | `GITSTORE` | Cloudflare Artifacts, where g1t.sh keeps repositories (the repos service's git store) | `deploy/self-host/workers/gitstore`, in front of the git store: bare repositories on the `g1t-git` volume, served with `git http-backend`. Access tokens are HMAC-signed, scoped and expire. Forks are clones with hard-linked objects. |
 | `EMAIL` | Cloudflare Email Sending | `deploy/self-host/workers/mail`: logs each message and hands it to Mailpit, which can relay through your SMTP server |
-| The runner, the context hub and the model proxy | Containers, Vectorize, Workers AI and AI Gateway | `deploy/self-host/workers/off`: answers that the feature is off, which every page that uses them shows |
+| The runner | Containers | `deploy/self-host/workers/off`: answers that the feature is off, which every page that uses them shows |
 
 ## What is in `deploy/self-host`
 
@@ -66,7 +66,6 @@ place, so no service's code changes:
 | `services/artifacts` | Runs: [artifacts](/guides/artifacts/) and their spaces, with their live rooms. Files people add are kept in the `g1t-docs-files` bucket. Search matches words, not meaning, because there is no embedding model. |
 | `services/telemetry` | Runs. Observability for projects: each project's logs, traces, metrics and errors in a Durable Object's SQLite storage. Software sends OpenTelemetry to the API's port, at `http://localhost:8789/otlp` ([Observability](/guides/observability/)). Deployments on `g1t.page`, the other source, are off. |
 | `services/notify` | Runs. Notifications are live in open tabs; browser push needs a VAPID key pair, which an installation does not make. Push to the phone app goes through Expo and needs nothing set; `PHONE_PUSH=off` sends phones nothing ([the phone app](/guides/self-hosting/#the-phone-app)). |
-| `services/agents` | Runs, but replies need the model proxy, which is off, so an agent answers with a short apology. [Customize](/guides/customize/) works: marketplaces and plugins are read from GitHub and from repositories here, and connectors' keys and sign-ins are sealed under `CONNECTORS_KEY`, one of the keys `start.sh` makes. `GITHUB_TOKEN` is optional on it, for a higher rate limit when reading GitHub. |
 | `services/billing` | Runs with nothing charged and no usage limit |
 | `services/integrations` | Runs |
 | `services/webhooks` | Runs, retries included |
@@ -74,9 +73,7 @@ place, so no service's code changes:
 | `services/packages` | Runs, with files in the `g1t-packages` bucket and no request size limit |
 | `services/security` | Runs, with its sweeps on schedule |
 | `services/deployments` | Runs with no Cloudflare token, so nothing deploys; its pages and settings still show |
-| `services/runner` | Off: agents, checks run by g1t, merge queue testing and workflow jobs |
-| `services/context` | Off: the context hub |
-| `services/models` | Off: g1t's hosted models |
+| `services/runner` | Off: checks run by g1t, merge queue testing and workflow jobs |
 | `services/pages` | Not run: there is no `g1t.page` |
 | `services/og` | Not run: pages have no social cards |
 

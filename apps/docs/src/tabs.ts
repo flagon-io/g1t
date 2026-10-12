@@ -9,7 +9,8 @@ export type Tab = { label: string; groups: string[] };
 
 export const TABS: Tab[] = [
 	{ label: 'Get started', groups: ['Get started', 'About'] },
-	{ label: 'Chat and agents', groups: ['Chat and agents', 'Agents on code'] },
+	{ label: 'Coding agents', groups: ['Coding agents'] },
+	{ label: 'Chat', groups: ['Chat'] },
 	{ label: 'Code', groups: ['Landing changes', 'Security'] },
 	{ label: 'Projects', groups: ['Projects'] },
 	{ label: 'Workspaces', groups: ['Workspaces', 'Connect your tools'] },

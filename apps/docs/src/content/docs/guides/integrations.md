@@ -4,11 +4,10 @@ description: Connect the tools your team and you already use. Workspace integrat
 ---
 
 g1t connects to the tools your work already lives in: where errors are
-reported, where tickets are tracked, which models your agents think with,
-where code came from. Every integration is listed in one directory, by
-category, whether it works today or is still being built. The directory
-is **Customize → Connectors** (see [Customize](/guides/customize/#connectors)),
-beside the MCP servers a workspace connects there.
+reported, where tickets are tracked, where code came from. Every
+integration is listed in one directory, by category, whether it works
+today or is still being built. The directory is **Integrations**, at
+`g1t.sh/<workspace>/-/integrations`.
 
 ## Workspace and personal
 
@@ -16,10 +15,10 @@ There are two places to connect things, and they are for different people:
 
 | | Workspace integrations | Your integrations |
 | --- | --- | --- |
-| Where | **Customize → Connectors**, at `g1t.sh/<workspace>/-/customize/connectors`, with each integration's setup page under `g1t.sh/<workspace>/-/integrations` | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
-| Who it is for | Everyone in that workspace, people and agents | Just you, in every workspace you belong to |
+| Where | **Integrations**, at `g1t.sh/<workspace>/-/integrations`, with each integration's setup page under it | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
+| Who it is for | Everyone in that workspace | Just you, in every workspace you belong to |
 | Who connects | Workspace owners. Members see what is connected. | You |
-| Examples | Model providers, Sentry, Jira, Linear, GitHub mirroring, webhooks | Signing in with GitHub, agents you connect through MCP, and soon your calendar |
+| Examples | Sentry, Jira, Linear, GitHub mirroring, webhooks | Signing in with GitHub, coding agents you connect through MCP, and soon your calendar |
 
 Some tools have both sides. GitHub, for instance: a workspace owner
 installs g1t's GitHub App to import and mirror the team's repositories, and
@@ -28,15 +27,14 @@ the other side exists.
 
 ## The directory
 
-Both pages are the same directory, the one **Customize → Connectors →
-Discover** shows for a workspace:
+Both pages are the same directory:
 
 - **Categories** down the side (along the top on a phone): Code & CI,
   Issues & projects, Chat & meetings, Calendar & email, Docs & knowledge,
-  Monitoring & incidents, Cloud & deploy, AI models, Data & analytics,
-  CRM & support, Design, Security & identity, and Files & storage. Each
-  shows how many integrations it has. A link can open on one, with
-  `?category=ai` and so on.
+  Monitoring & incidents, Cloud & deploy, Data & analytics, CRM & support,
+  Design, Security & identity, and Files & storage. Each shows how many
+  integrations it has. A link can open on one, with `?category=code` and
+  so on.
 - **Search** finds an integration by name, by what it does ("in a meeting",
   "opens issues"), or by a tag, across every category.
 - **Connected** comes first: what is set up here, with a line about each
@@ -46,38 +44,26 @@ Discover** shows for a workspace:
 - **Available** can be connected now. Choose one to open its setup page.
 - **Soon** is being built. Each says what it will do, and **Ask for this**
   tells g1t you want it (below).
-- **Connect** on a tool that publishes a remote MCP server (Linear, Notion,
-  Sentry, Stripe, Figma, Supabase, Cloudflare and more) connects it as a
-  [connector](/guides/customize/#connectors): an owner signs in with the
-  browser or pastes a key, g1t lists its tools, and they are given to
-  agents with a level each. The integrations below have setup pages of
-  their own.
 
-The tags on a card say what an integration lets g1t do: **Agents can
-read** (agents fetch what work refers to), **Opens issues**, **Writes
-back** (the other system hears when work lands), **Mirrors repositories**,
-**Runs models**, **Sets your status**, and so on.
+The tags on a card say what an integration lets g1t do: **Opens issues**,
+**Writes back** (the other system hears when work lands), **Mirrors
+repositories**, **Sets your status**, and so on.
 
 ## Available today
 
 | Category | Workspace | Personal |
 | --- | --- | --- |
-| Code & CI | [GitHub](/guides/github/) import and mirroring, [webhooks](/guides/webhooks/) | [Signing in with GitHub](/guides/github/#link-and-unlink-github) |
+| Code & CI | [GitHub](/guides/github/) import and mirroring, [webhooks](/guides/webhooks/) | [Signing in with GitHub](/guides/github/#link-and-unlink-github); [MCP clients](/guides/authentication/#signing-in-with-oauth): your [coding agent](/guides/bring-your-own-agent/), connected to g1t as you |
 | Issues & projects | [Jira and Linear](#trackers) | |
 | Monitoring & incidents | [Sentry, Datadog, and any system that sends a webhook](#alerts) | |
-| AI models | [Model providers](/guides/models/): Anthropic, OpenAI, Google Gemini, xAI, Mistral, DeepSeek, Azure OpenAI, OpenRouter, Groq, Together AI, Fireworks AI, Cerebras, and any Anthropic- or OpenAI-compatible endpoint; the [AI Gateway](/guides/ai-gateway/) | [MCP clients](/guides/authentication/#signing-in-with-oauth): your own agent, connected to g1t as you |
 
-Model providers, alerts and trackers each have a setup page under the
-directory: `-/integrations/models`, `-/integrations/alerts` and
-`-/integrations/trackers`. GitHub, webhooks and the AI Gateway keep their
-own pages; the directory links to them.
-
-Tools that publish a remote MCP server are connected from Customize rather
-than from a setup page; see [connectors](/guides/customize/#connectors).
+Alerts and trackers each have a setup page under the directory:
+`-/integrations/alerts` and `-/integrations/trackers`. GitHub and webhooks
+keep their own pages; the directory links to them.
 
 Secrets are sealed when they are saved and never shown again, to anyone.
 A setup page shows the last four characters of a key, so you can tell keys
-apart. Agents never see a connection's secrets.
+apart.
 
 ## Coming soon
 
@@ -85,7 +71,7 @@ Every category has integrations on the way, among them Slack, Microsoft
 Teams, Notion, Confluence, PagerDuty, Cloudflare, AWS, Figma, Okta and
 Google Drive for workspaces. For you: **Google Calendar** and **Outlook
 Calendar** will set your [status](/guides/chat/#presence-and-status) to *In a meeting* while
-you are in one, and let agents find a time that suits everyone; **Zoom**
+you are in one; **Zoom**
 and **Google Meet** will set it to *On a call*. A status you set by hand
 always wins over one an integration sets.
 
@@ -113,16 +99,8 @@ one issue:
   linking the new occurrence.
 - **A recovery** (Datadog) is noted on the issue.
 
-Turn on **Assign each new issue to g1t** and g1t starts on the
-issue as soon as it opens: it makes the change, is reviewed, revises, and
-lands through your repository's rules, often before anyone has looked. A
-reopened issue gets an agent again. Agents need a way to reach a model:
-[your own provider](/guides/models/), or g1t's hosted models where they are
-open. Without one, the issue says why no agent started.
-
 Text in an alert can include what your users typed, such as an error
-message built from a request. Issues opened from alerts say so, and agents
-treat that text as a description of the problem, never as instructions.
+message built from a request. Issues opened from alerts say so.
 
 Each alert connection shows its last five deliveries: what arrived, and
 whether g1t opened, updated, reopened, ignored or refused it.
@@ -145,7 +123,7 @@ Then:
 - New Sentry issues open g1t issues. So does any alert rule whose action
   sends a notification to the integration.
 - With the token, g1t adds the latest event's stack trace, in-app frames
-  first, so the agent starts at the failing line.
+  first, so whoever picks it up starts at the failing line.
 - When the fix merges, g1t resolves the Sentry issue and comments with the
   pull request. If Sentry sees it again, the g1t issue reopens.
 
@@ -214,23 +192,17 @@ that is not signed, and `200` with the reason to one it ignores.
 
 ## Trackers
 
-Connect Jira or Linear and tickets become something agents and people can
-reach from g1t.
+Connect Jira or Linear and tickets become something people and your
+coding agents can reach from g1t.
 
-### Agents read tickets the work mentions
+### Look up a ticket
 
-When g1t starts on an issue, or plans an outcome, g1t looks for
-ticket keys and addresses in the text (`TECH-1234`,
+Give a ticket key or address (`TECH-1234`,
 `https://acme.atlassian.net/browse/TECH-1234`,
 `https://linear.app/acme/issue/ENG-42/…`, a Sentry issue's address) and
-fetches each from the system it lives in. The agent gets their titles,
-statuses and descriptions as reference material, and its session notes
-what it read.
-
-So a brief of "Accomplish TECH-1234" works: the planner reads the ticket.
-
-Agents, and your own agent through MCP, can also look a reference up with
-the `search` tool's `ticket` action:
+g1t fetches it from the system it lives in, with its title, status and
+description as they are now. Your coding agent looks one up over MCP with
+the `search` tool's `ticket` action, or through the API:
 
 ```sh
 curl "https://api.g1t.sh/repos/acme/web/context?reference=TECH-1234" \
@@ -241,15 +213,14 @@ curl "https://api.g1t.sh/repos/acme/web/context?reference=TECH-1234" \
 
 On a repository's **New issue** page, give a key or paste an address under
 **Bring one in**. g1t opens an issue with the ticket's title and
-description, linked to it. Tick **Put an agent on it** to start one at
-once. Importing the same ticket again opens the issue already made.
+description, linked to it. Importing the same ticket again opens the issue already made.
 
-From the API or an agent:
+From the API or MCP:
 
 ```sh
 curl -X POST https://api.g1t.sh/repos/acme/web/issues/import \
   -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
-  -d '{"reference": "TECH-1234", "assign": true}'
+  -d '{"reference": "TECH-1234"}'
 ```
 
 An issue tied to something outside g1t shows it under **From outside g1t**,
@@ -283,7 +254,7 @@ its project first.
 ## From the API
 
 Owners can manage integrations through the API and MCP, with a person's
-token (a workspace token or an agent cannot):
+token (a workspace token cannot):
 
 | MCP tool and action | Route |
 | --- | --- |
@@ -301,12 +272,8 @@ curl -X POST https://api.g1t.sh/workspaces/acme/integrations \
   -d '{"provider": "jira", "config": {"site": "https://acme.atlassian.net", "email": "dev@acme.com", "keys": ["TECH"]}, "secret": "<api token>"}'
 ```
 
-Connectors (MCP servers) and their grants are the
-[`customize`](/guides/customize/#api) resource's, not the integrations'.
-
-`provider` is one of the [model providers](/guides/models/#from-the-api),
-or `sentry`, `datadog`, `webhook`, `jira` or `linear`. `config` takes `repo`, `assign`, `label`,
-`write_back`, `organization`, `site`, `email`, `keys`, `base_url`,
-`auth_header` and `model`; each provider uses the ones above. For `datadog`
+`provider` is `sentry`, `datadog`, `webhook`, `jira` or `linear`.
+`config` takes `repo`, `label`, `write_back`, `organization`, `site`,
+`email` and `keys`; each provider uses the ones above. For `datadog`
 and `webhook`, the response's `signing_secret` is the only time the secret
 is shown.

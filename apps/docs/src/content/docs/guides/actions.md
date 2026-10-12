@@ -597,8 +597,8 @@ self-hosted Arm runner runs it on Arm.
 
 ### What a job can reach
 
-A job's network is restricted, as an agent's is (see
-[guardrails](/guides/guardrails/)): it reaches the hosts its project's
+A job's network is restricted by its project's
+[guardrails](/guides/guardrails/): it reaches the hosts its project's
 guardrails allow, g1t itself, and what builds need, and nothing else.
 What builds need is the package registries (npm, PyPI, crates.io, the Go
 proxy, RubyGems, Packagist, NuGet, Maven and Gradle, Debian's mirrors),
@@ -618,8 +618,7 @@ A host only workflows should reach, such as the API a deploy uploads to,
 goes in **Workflow-only domains** instead, limited to the workflows and
 environments that need it: `api.cloudflare.com | deploy.yml | production`
 lets only `deploy.yml`'s jobs with `environment: production` reach it.
-Agents never reach those hosts, and neither do runs of pull requests from
-forks. See [workflow-only domains](/guides/guardrails/#workflow-only-domains).
+Runs of pull requests from forks never reach those hosts. See [workflow-only domains](/guides/guardrails/#workflow-only-domains).
 
 ### Brokered secrets
 
@@ -1096,8 +1095,8 @@ Asking for the token goes to `api.g1t.sh`, which every job reaches. Trading
 it for credentials goes to your cloud's token service, which a job reaches
 only when its project allows it (see [what a job can reach](#what-a-job-can-reach)).
 Add the hosts under **Settings → Guardrails → Workflow-only domains**,
-limited to the workflow and environment that deploy, so agents and other
-workflows never reach them:
+limited to the workflow and environment that deploy, so other workflows
+never reach them:
 
 ```text
 sts.us-east-1.amazonaws.com | deploy.yml | production
@@ -1546,10 +1545,8 @@ in.
 
 ## Pull requests
 
-A pull request's workflows run on each new head: when it is opened, when
-a commit is pushed to it, and, for one g1t makes, when g1t
-marks it ready, which on g1t is when it first has code. Each head runs
-each workflow once.
+A pull request's workflows run on each new head: when it is opened and
+when a commit is pushed to it. Each head runs each workflow once.
 
 They also start on the activity types `reopened` (also run by
 default, as `opened` and `synchronize` are), `converted_to_draft`,
@@ -1586,7 +1583,7 @@ runs build the same commit. `pull_request_target` runs are unchanged: they
 build the base branch, never the pull request's code.
 
 g1t keeps two refs in the repository for every open pull request, from a
-branch, a fork or a pull request g1t made: `refs/pull/<number>/head` at
+branch or a fork: `refs/pull/<number>/head` at
 its head (a fork's head commit is copied into the repository), and
 `refs/pull/<number>/merge` at its test merge commit. Both move each time
 the head is pushed to, the pull request is opened or reopened, or its
@@ -1614,11 +1611,8 @@ run builds the head commit instead, as it did before.
 A pull request from outside the workspace may wait for approval before
 its workflows run: see [pull requests from outside](#pull-requests-from-outside).
 
-`github.event.pull_request` reads as it does on GitHub. For a pull request
-g1t made, `pull_request.user` is g1t (`login` `g1t`, `type` `Bot`), and
-`pull_request.requested_by` names the person who asked for it; it is `null`
-on anyone else's. `github.event.issue.requested_by` does the same for an
-issue g1t's agent filed. `sender` is whoever caused the event.
+`github.event.pull_request` reads as it does on GitHub. `sender` is
+whoever caused the event.
 
 ## The event payload
 
@@ -1690,11 +1684,6 @@ is a [check run](/guides/checks/) on the commit, shown as
   builds, on the branch `g1t-queue/<entry>`, and the state lands only if
   they and every required check pass on it. A workflow behind a required
   check needs `merge_group` in its `on:`.
-- **A pull request g1t is working on** goes back to g1t when
-  a check fails, with the end of each failed job's log. The agent reads the
-  run and its logs with the same tools you have, fixes the cause, and
-  pushes; the workflows run again. See
-  [seeing it through](/guides/working-with-g1t/#seeing-it-through).
 
 ```yaml
 name: CI
@@ -1748,9 +1737,7 @@ and trade its [OIDC token](#oidc-tokens) for short-lived credentials.
 Every job also gets `${{ secrets.G1T_TOKEN }}`, [its own token](#the-jobs-token),
 with `GITHUB_TOKEN` as its alias. A pull request's runs get secrets only
 when its author has the Write [role](/guides/access-and-roles/) or higher
-on the repository, a member or an outside collaborator, or is g1t working
-on its own. For a pull request g1t made, its author is g1t and the person
-who asked for it is the one whose role counts. Anyone else's, such as one
+on the repository, a member or an outside collaborator. Anyone else's, such as one
 from a fork or by someone with Read or Triage, runs without secrets and
 with a token that can only read. See
 [who gets secrets](/guides/secrets-and-variables/#who-gets-secrets).
@@ -1775,13 +1762,6 @@ Each job gets a token of its own, `${{ secrets.G1T_TOKEN }}`
   or a comment made with it runs nothing, so a workflow cannot set itself
   off. `workflow_dispatch` and [`repository_dispatch`](#repository-dispatch)
   are the exceptions, for a workflow that means to start another.
-- It **never puts g1t to work**. A comment it posts that mentions
-  `@g1t` starts nothing, and it cannot assign an issue or a plan to g1t,
-  queue one for it, hand it work or ask it for a review. Otherwise a
-  workflow that asks g1t to fix a failing check would run again on g1t's
-  push, and ask again, without end. A step that should put g1t to work
-  uses a token of a person's own, stored as a
-  [secret](/guides/secrets-and-variables/).
 
 `permissions:` goes at the top of the workflow, for every job, or on a job,
 which then ignores the workflow's. Once either is written, every permission
@@ -1927,9 +1907,7 @@ handed out.
 | **Outside contributors** (the default) | Those, and everyone outside the workspace who cannot push here: pull requests from forks, and from people with Read or Triage. |
 | **All external contributors** | Everyone outside the workspace, [outside collaborators](/guides/access-and-roles/#outside-collaborators) with Write included. |
 
-Members' pull requests never wait, nor do pull requests g1t opens on its
-own. For a pull request g1t made for someone, that person is the one whose
-policy counts. Each new push to the pull request waits again.
+Members' pull requests never wait. Each new push to the pull request waits again.
 `pull_request_target` runs, which run the default branch's workflow and
 code, never wait.
 

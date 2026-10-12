@@ -1,12 +1,10 @@
 ---
 title: Audit log
-description: Every action agents take with their run credentials, and every change people and tokens make, with whether it was allowed and the rule that decided.
+description: Every change people and tokens make through the API, the MCP server and git, with whether it was allowed and the rule that decided.
 ---
 
 Every workspace keeps an audit log. It records:
 
-- **Everything an agent does** with its [run credentials](/guides/working-with-g1t/#credentials),
-  reads included: every API and MCP call, every clone and fetch, every push.
 - **Every change people and workspace tokens make** through the API, the
   MCP server and git: opening and closing issues, comments, merges,
   settings, pushes. Reads by people are not recorded. A workflow job's
@@ -73,19 +71,15 @@ only ever added: nothing edits or removes one.
 | Field | What it is |
 | --- | --- |
 | Time | When it happened, to the millisecond. |
-| Actor | Who did it: a person, an agent, or a workspace token. |
-| On behalf of | For an agent, the person it worked for: `g1t on behalf of syntaqx`. |
-| Run | The agent run, with its kind: `implement`, `review`, `update` and so on; or the workflow run whose job's token did it, as `workflow_job`. |
+| Actor | Who did it: a person or a workspace token. |
+| Run | The workflow run whose job's token did it, as `workflow_job`. |
 | Credential | The id of the token used: on the API, the MCP server or git, or on g1t.sh by a token [used on the website](/guides/authentication/#use-a-token-on-the-website). Empty for a person signed in on g1t.sh. |
 | Action | The API or MCP operation, such as `create_issue`, or `git.push` and `git.fetch`. |
 | Target | The repository, the issue or pull request number, and for git the refs it moved. |
 | Outcome | `allowed` or `denied`. |
-| Rule | What decided it: the run's scope, such as `run:implement/tools`; a refusal rule, such as `scope:repository`, or `token:repository` for a workflow job's token used on another repository; or, for people, their own access. A refusal by the repository's own rules is `service` (or `repository` for git). |
+| Rule | What decided it: a refusal rule, such as `scope:repository`, or `token:repository` for a workflow job's token used on another repository; or, for people, their own access. A refusal by the repository's own rules is `service` (or `repository` for git). |
 | Result | `ok`, or the reason it failed. |
 | Request id | The request's id, the same one Cloudflare logs it under. |
-
-The rules that refuse an agent are listed under
-[credentials](/guides/working-with-g1t/#credentials).
 
 ## Read the log
 
@@ -94,17 +88,13 @@ Open the workspace's settings and choose **Audit log**, or go to
 
 - **Owners** see everything in the workspace.
 - **Members** see what was done to the workspace's projects, and anything
-  they did, or had done on their behalf. Changes owners made to the
+  they did. Changes owners made to the
   workspace itself are for owners.
 
-Filter by actor (a person matches what they did and what agents did for
-them), agent, action, project, outcome, who acted, and a range of days.
+Filter by actor, action, project, outcome, who acted (people or workspace
+tokens), and a range of days.
 The filters are part of the page's address, so a filtered view can be
 shared with anyone who can see it.
-
-Each agent run's page has a **What it did** section listing its entries in
-order, and a pull request's **Agent** panel shows the latest of what its
-runs did. Both link to the full log, filtered to the run.
 
 ## How long it is kept
 
@@ -143,5 +133,5 @@ written as text.
   and git are recorded, and so are the changes to members, roles, access,
   tokens, keys, applications, two-factor authentication and workspace
   settings in the table above, wherever they are made.
-- What g1t does on its own, such as closing a pull request whose agent
-  failed. Those changes are in the pull request's timeline.
+- What g1t does on its own, such as closing a dependency update that is no
+  longer needed. Those changes are in the pull request's timeline.

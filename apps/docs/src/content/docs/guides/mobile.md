@@ -1,13 +1,12 @@
 ---
 title: The phone app
-description: g1t on Android and iOS, built with Expo. Chat with people and agents, live, with notifications on your phone, and Code and Customize, signed in with g1t's own OAuth. Android first, downloaded from g1t.sh while it waits for Google Play.
+description: g1t on Android and iOS, built with Expo. Chat with your team, live, with notifications on your phone, and Code, signed in with g1t's own OAuth. Android first, downloaded from g1t.sh while it waits for Google Play.
 ---
 
 The phone app is g1t on Android and iOS, with its own screens for what
-you do away from a desk: talking with your team and its agents in Chat,
-with notifications on your phone, reviewing what agents made in Code,
-and seeing the skills, connectors and plugins your workspace can use in
-Customize. Everything else opens on the site, in your phone's browser.
+you do away from a desk: talking with your team in Chat, with
+notifications on your phone, and reviewing pull requests in Code.
+Everything else opens on the site, in your phone's browser.
 
 ## Install it
 
@@ -42,9 +41,8 @@ The bar along the bottom is the site's phone bar:
 | **Home** | Coming. Opens Home on the site meanwhile. |
 | **Chat** | Your starred conversations, channels and direct messages, with what is unread, moving live. See [Chat](#chat). |
 | **Notifications** | Coming. Opens your notifications on the site meanwhile; messages to you already arrive [on the phone](#notifications). |
-| **Agents** | Coming. Opens Agents on the site meanwhile; message any agent from Chat. |
 | **Code** | The workspace's repositories, each with its pull requests and issues. A pull request shows its description, checks, conversation and changed files, and you can approve it or ask for changes. An issue shows the pull requests made for it, and you can comment. Shown when you use Code in the workspace. |
-| **More** | **Customize** (skills, connectors and plugins), whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
+| **More** | Whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
 
 ## Chat
 
@@ -60,16 +58,13 @@ happen.
   the list and on the **Chat** tab move as messages arrive anywhere.
 - **Sending** shows your message at once. If it doesn't reach g1t, it
   stays, marked **Not sent**: tap it to try again.
-- **Agents' cards** work: their buttons (approve more budget, stop a
-  session, file a draft issue) act from the phone, asking first or asking
-  for an amount when the card does, and the card updates in place.
 - **Long-press a message** to react, reply in a thread, copy it, or edit
   or delete your own. Tap a reaction to add yours or take it back.
 - **Threads** open from a message's replies, with the message they are
   under at the top.
 - **⋯** on a conversation stars, mutes or leaves it.
-- **New message** (the pen at the top of Chat) messages a person or an
-  agent, or a few of them together, or makes a channel. **Browse** at the
+- **New message** (the pen at the top of Chat) messages a person, or a few
+  people together, or makes a channel. **Browse** at the
   foot of the list joins public channels.
 
 A notification for a conversation you have open is not shown; one for
@@ -78,8 +73,8 @@ another shows as a banner at the top of the screen.
 ## Notifications
 
 The phone gets the same notifications as [browser push](/guides/notifications/#on-your-phone):
-messages to you, mentions, replies in threads you are in, and agents
-waiting on you, under the same rules. Nothing comes while you are using
+messages to you, mentions and replies in threads you are in, under the
+same rules. Nothing comes while you are using
 g1t in a browser or in the app itself, and nothing in
 [Do not disturb](/guides/chat/#sounds-and-do-not-disturb). Tapping one
 opens the conversation or thread it is about.
@@ -102,8 +97,8 @@ once.
 
 The approval page lists what the app asks for: reading your account,
 workspaces, repositories, checks and workflows, reading and writing
-issues, pull requests and notifications, recalling memory, reading
-artifacts, and putting agents to work. Untick what you would rather it
+issues, pull requests and notifications, recalling memory, and reading
+artifacts. Untick what you would rather it
 could not do.
 
 **Use an access token** signs in with a
@@ -126,7 +121,6 @@ pages it has screens for:
 | `g1t://<workspace>/-/chat`, `…/-/chat/<channel>`, `…/-/chat/dm/<id>` | Chat, or the conversation, in that workspace |
 | `g1t://<owner>/<repo>` | The repository |
 | `g1t://<owner>/<repo>/pull/<number>`, `…/issues/<number>` | The pull request or issue |
-| `g1t://<workspace>/-/customize…`, `…/-/agents/skills` | [Customize](/guides/customize/). The old `…/-/marketplace…` links open it too |
 
 Any other page opens on the site, in the browser.
 
@@ -165,7 +159,7 @@ on.
 - **Google Play and the App Store**, once Flagon's D-U-N-S number
   arrives ([above](#install-it)). Until then, Android from the download
   page; iOS waits for the App Store.
-- **Home, Notifications, Agents and Artifacts** as tabs of their own.
+- **Home, Notifications and Artifacts** as tabs of their own.
   Their pages open on the site meanwhile.
 - **Formatting in Code.** Descriptions and comments show their Markdown
   as written; messages in Chat are formatted.

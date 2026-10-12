@@ -1,6 +1,6 @@
 ---
 title: Access and roles
-description: The five repository roles and what each can do, the base permission members get, the Admin role a repository's creator gets, security managers, roles through teams, outside collaborators and invitations, who may manage deploy keys, and what agents may do on a person's behalf.
+description: The five repository roles and what each can do, the base permission members get, the Admin role a repository's creator gets, security managers, roles through teams, outside collaborators and invitations, and who may manage deploy keys.
 ---
 
 Everyone who can work in a repository has a role on it. The role says what
@@ -16,7 +16,7 @@ there, or someone outside the workspace, and it can give a
 | --- | --- |
 | **Read** | Read and clone; open issues and pull requests, and comment. |
 | **Triage** | Read, and manage issues and pull requests: apply labels and milestones, assign, close. |
-| **Write** | Triage, and push, merge, manage labels and milestones, see security alerts, and put agents to work. |
+| **Write** | Triage, and push, merge, manage labels and milestones, and see security alerts. |
 | **Maintain** | Write, and manage the repository's settings and topics. |
 | **Admin** | Everything: branch protection and rulesets, webhooks, secrets, deployments, security settings, who has access, and the repository's name, visibility and archiving. |
 
@@ -33,8 +33,8 @@ Each role has everything the one above it has.
 | Merge pull requests and use the merge queue | | | Yes | Yes | Yes |
 | Create, edit and delete labels and milestones | | | Yes | Yes | Yes |
 | See and dismiss security alerts | | | Yes | Yes | Yes |
-| Assign agents and start runs, plans and workflows | | | Yes | Yes | Yes |
-| Change the description, topics, and pull request and agent settings | | | | Yes | Yes |
+| Start workflows | | | Yes | Yes | Yes |
+| Change the description, topics, and pull request settings | | | | Yes | Yes |
 | Change branch protection, rulesets and guardrails | | | | | Yes |
 | Change security settings, custom patterns and bypass reviews | | | | | Yes |
 | Manage webhooks, secrets, variables, deployments and domains | | | | | Yes |
@@ -63,8 +63,8 @@ Some things work a little differently on g1t:
 - Applying a label the repository does not have yet creates it, for
   someone with Write.
 
-Read and Triage cannot put agents to work, or start anything else that
-spends compute: runs, plans, workflows and deployments need Write.
+Read and Triage cannot start anything that spends compute: workflows and
+deployments need Write.
 
 ## How your role is worked out
 
@@ -165,8 +165,8 @@ the base permission it had, **Write** unless an owner changed it.
 
 Before roles, every member of a workspace could also change a repository's
 settings, its branch protection and guardrails, webhooks, secrets and
-variables, deployments and domains. With Write, members keep pushing,
-merging and putting agents to work; changing settings now needs Maintain,
+variables, deployments and domains. With Write, members keep pushing
+and merging; changing settings now needs Maintain,
 and branch protection, rulesets, guardrails and the rest Admin. Owners
 have Admin, so they keep all of it.
 
@@ -249,11 +249,6 @@ without being a member of it. They:
 - are held to whatever the workspace asks of its members, checked when
   they are added, when they accept, and on every request after.
 
-- can put agents to work where they have Write; the runs are charged to
-  the repository's workspace, and they do not see which model ran or what
-  it cost. An agent working for them is told the project's memory, never
-  the workspace's.
-
 Owners see every outside collaborator, and the repositories and roles each
 has, on the **Outside collaborators** tab of the workspace's
 **Members** page, `g1t.sh/<workspace>/-/members`. **Invite as a member** sends one an invitation to join the
@@ -282,24 +277,6 @@ answered, it is listed as pending on the repository's **Settings → Access**,
 where someone with Admin can change its role or **Revoke** it. To invite
 someone again after an expired or declined invitation, add them again.
 
-## Agents
-
-An agent works with the role of the person it acts for, on the
-repository it works in, and never more than Write. An owner's agent has
-Write, not Admin. So an agent working for you can push, open and merge
-pull requests where you can, and cannot change settings, protection,
-webhooks or secrets, even when you can.
-
-An agent's credential can never change who has access: it cannot add,
-remove or invite anyone, answer an invitation, or change the base
-permission. When the person it works for loses their role on the
-repository, or leaves the workspace, the agent loses it too. See
-[credentials](/guides/working-with-g1t/#credentials).
-
-Because putting agents to work spends compute, it needs Write. Someone with
-Read or Triage who mentions or assigns an agent is told so, and nothing
-starts.
-
 ## Deploy keys
 
 A [deploy key](/guides/git/#deploy-keys) is an SSH key that lets a machine
@@ -311,7 +288,6 @@ deploy keys needs the Admin role:
 | --- | --- |
 | Someone with the Admin role on it, owners included | Yes |
 | Someone with Maintain or less | No |
-| An agent, whoever it works for | No |
 | A workspace's [access token](/guides/workspaces/#workspace-access-tokens) | Only when an owner gave it Admin |
 | A deploy key | No |
 

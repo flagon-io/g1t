@@ -135,7 +135,8 @@ a branch, or force-pushing over commits, does not lower it.
 You can't fork a repository into your own workspace. On g1t, a fork is a
 pull request's own working copy, made when the pull request is opened.
 
-- **Why.** We built forks to isolate agents' work, one per pull request.
+- **Why.** We built forks to isolate each pull request's work, so many
+  people and agents can work at once.
   See [Forks and branches](/concepts/forks/).
 - **Instead.** To contribute, open a pull request: it gets its own fork. To
   start a copy of your own, clone the repository and push it to a new one
@@ -178,7 +179,7 @@ act on all of them yet:
 
 You can't resolve a merge conflict on the pull request's page.
 
-- **Instead.** Ask g1t to resolve it, or fix it on the command line.
+- **Instead.** Fix it on the command line.
   See [Conflicts](/guides/pull-requests/#conflicts).
 - **Status.** Planned.
 
@@ -452,40 +453,7 @@ billable operation.
 ### Payments are in test mode
 
 While payments are in test mode, no real card is charged, so a card check
-proves nothing. g1t's hosted models are open only to a few invited
-workspaces, g1t's own among them. Every other workspace, trial or not,
-runs its agents on its own model provider; without one, assigning an agent
-is refused with a message that says so.
-
-- **Instead.** Connect your own [model provider](/guides/models/). Your
-  agents then run on your keys, and the provider bills you directly.
-- **Status.** Planned: hosted models for every workspace once payments go
-  live.
-
-## Agents
-
-### Confidence is a judgement, not a guarantee
-
-The confidence g1t gives an agent's change, high, medium or low, is
-worked out from what g1t can observe: checks, reviews, revisions, the size
-and reach of the change. It cannot tell whether the change is correct.
-
-- **Instead.** Keep **Ask a person before merging low-confidence changes**
-  on, and make your workflows required checks. A high rating on a
-  repository with weak tests means less. See
-  [How sure the agent is](/guides/working-with-g1t/#how-sure-the-agent-is).
-- **Status.** The signals and their weights may change as we learn from
-  real changes.
-
-### Agents' model calls go through g1t
-
-An agent's model requests always pass through g1t's model proxy,
-`models.g1t.sh`, with your keys or g1t's. You can't point an agent's sandbox
-straight at a provider.
-
-- **Why.** So that no key is ever inside a sandbox, and so budgets, caps and
-  the audit log hold. See [Your keys never reach a sandbox](/guides/models/#your-keys-never-reach-a-sandbox).
-- **Status.** Not planned. This is by design.
+proves nothing. **Status.** Live payments are planned.
 
 ## Accounts, status and self-hosting
 
@@ -516,8 +484,8 @@ the beta.
 ### Self-hosting is early
 
 [Running g1t yourself](/guides/self-hosting/) gives you the core forge:
-accounts, repositories over HTTP, issues and pull requests. g1t's agent,
-Actions, deployments, git over SSH, the REST API and MCP are off, and it is
+accounts, repositories over HTTP, issues and pull requests. Actions,
+deployments, git over SSH, the REST API and MCP are off, and it is
 not ready for the open internet. **Status.** Planned, in phases.
 
 ### Not built yet

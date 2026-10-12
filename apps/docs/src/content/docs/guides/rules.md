@@ -1,14 +1,13 @@
 ---
 title: Rules
-description: Rulesets decide what may happen to a repository's branches and tags, and what a pull request needs before it merges, for people and agents alike.
+description: Rulesets decide what may happen to a repository's branches and tags, and what a pull request needs before it merges.
 ---
 
 A **ruleset** says what may happen to some of a repository's branches or
 tags, and what a pull request into them needs before it merges. Every push,
 every merge, and every branch renamed or commit made through g1t is checked
-against the rulesets that cover it. Agents, g1t's own included, follow the
-same rules as people. Only people, teams, tokens or g1t that a ruleset
-lists as able to bypass it are let through.
+against the rulesets that cover it. Only the people, teams, tokens or g1t
+processes that a ruleset lists as able to bypass it are let through.
 
 A ruleset belongs to a repository, or to a workspace. A workspace's ruleset
 holds in every repository it selects. When several rulesets cover a branch,
@@ -24,7 +23,7 @@ all of their rules hold, so the strictest one wins.
 | Branches or tags | `include` and `exclude` patterns. A name is covered when it matches an include pattern and no exclude pattern. |
 | Repositories | A workspace's ruleset only: which of its repositories it holds in. |
 | Bypass list | Who these rules do not hold for. Nobody is on it unless listed. |
-| Rules | What holds, each with its parameters, and whose changes it holds for. |
+| Rules | What holds, each with its parameters. |
 
 ### Patterns
 
@@ -67,8 +66,7 @@ repository's ruleset. For a workspace's, you need to be an owner.
 4. Choose its enforcement. To try it without refusing anything, choose
    **Evaluate** and watch Insights.
 5. Add people, teams, roles, tokens or g1t who may bypass it, if anyone.
-6. Choose **Add a rule** for each rule. Set its parameters, and whether it
-   holds for **Everyone**, **Agents' changes** or **People's changes**.
+6. Choose **Add a rule** for each rule, and set its parameters.
 7. Choose **Create ruleset**.
 
 **Export JSON** downloads a ruleset. **Import JSON** fills the form from a
@@ -94,16 +92,12 @@ what to do about it.
 | `team` | `team` or `workspace/team` | The team's people, child teams included. |
 | `user` | A username | One person. |
 | `token` | A token's id, or `workspace` | That access token, or any of the workspace's own tokens. |
-| `g1t` | None | g1t's agents, and g1t acting on its own, such as the merge queue and security updates. |
+| `g1t` | None | g1t acting on its own, such as the merge queue and security updates. |
 
 Each entry has a `mode`:
 
 - `always`: pushes and merges both go through.
 - `pull_requests`: only merges go through. Their pushes follow the rules.
-
-An agent never gets its person's role. An agent acting for an admin still
-follows a ruleset that lets admins bypass it. Only a `g1t` or `token` entry
-lets an agent through.
 
 When a person who may bypass merges a pull request that does not meet the
 rules, the merge box offers **Bypass the rules**. Through the API, pass
@@ -114,12 +108,7 @@ itself, since git has no box to tick. Every bypass is recorded in
 ## Rules
 
 Each rule has a `type` and `parameters`. A parameter you leave out takes its
-default. `applies_to` is `everyone` (the default), `agents` or `people`.
-
-A change counts as an agent's when it is pushed with an agent's token, or
-when its pull request was made by g1t, opened with an agent's token, or opened
-naming an agent (`agent`) through the API or MCP. A pull request a person
-opens on the site, or through the API without naming an agent, is a person's.
+default.
 
 ### Branches and tags
 
@@ -145,8 +134,7 @@ opens on the site, or through the API without naming an agent, is a person's.
 
 | Parameter | Default | What it does |
 | --- | --- | --- |
-| `required_approvals` | `0` | Approving reviews needed, 0 to 10. A reviewer who has since asked for changes blocks the merge. Nobody approves their own pull request, or one g1t made for them. |
-| `count_agent_approvals` | `true` | Whether an agent's approval counts toward `required_approvals`. |
+| `required_approvals` | `0` | Approving reviews needed, 0 to 10. A reviewer who has since asked for changes blocks the merge. Nobody approves their own pull request. |
 | `dismiss_stale_reviews_on_push` | `false` | Approvals given before the latest push no longer count. |
 | `require_code_owner_review` | `false` | The [code owners](/guides/codeowners/) of every file it changes must approve. |
 | `require_last_push_approval` | `false` | Someone other than whoever pushed last must approve after that push. |
@@ -236,26 +224,12 @@ example, conventional commits:
 | Restrict files changed | `max_files_changed` | A commit may change at most this many files. | `max_files` |
 | Block pushes that add secrets | `secret_scanning` | Every push to the branch is scanned by [push protection](/guides/security/secret-protection/). A push too large to scan is refused rather than let through unscanned. | None |
 
-### Agents, review and timing
-
-These rules exist for teams where agents write much of the code.
+### Review and timing
 
 | Rule | `type` | What it does | Parameters |
 | --- | --- | --- | --- |
-| Confidence threshold | `confidence_threshold` | An agent's change that g1t [rates](/guides/working-with-g1t/#how-sure-the-agent-is) below `minimum` needs approvals from people before it merges. A change not rated yet counts as below. | `minimum` (`low`, `medium`, `high`), `required_approvals` |
-| Cost cap | `cost_cap` | Once agents have spent more than `max_usd` on a pull request, it does not merge, and its agent is not sent back to revise, until a person approves it. | `max_usd` |
 | Review for sensitive paths | `path_review` | A pull request that changes a matching file needs approvals from people since its latest push, from `team` when one is named. | `paths`, `required_approvals`, `team` |
 | Merge window | `merge_window` | When pull requests may merge into the branch. | See below |
-| Agent auto-merge | `agent_auto_merge` | Whether g1t lands an agent's ready pull request into the branch without a person, and how sure g1t must be first. The repository's **Merge automatically when ready** setting must be on too. | `allowed`, `minimum_confidence` |
-
-Rules that hold only for agents' changes cover the rest of what an
-agent-first team needs. For example:
-
-- Agents' pull requests need one approval from a person: `pull_request`
-  with `required_approvals` `1`, `count_agent_approvals` `false`, and
-  `applies_to` `agents`.
-- Agents may not change workflows or code owners: `file_path_restriction`
-  with `.g1t/workflows/**` and `CODEOWNERS`, and `applies_to` `agents`.
 
 `merge_window` parameters:
 
@@ -280,8 +254,8 @@ only what it should.
 
 **Settings → Rules → Insights** lists how the rules judged each push, merge,
 branch creation, deletion, rename and commit made on the site, newest first.
-Each entry shows the ruleset, the ref, who made the change, whether they are
-a person or an agent, and every rule broken with the reason. Totals cover
+Each entry shows the ruleset, the ref, who made the change, and every rule
+broken with the reason. Totals cover
 the last 30 days: **Passed**, **Blocked** (refused by an active ruleset),
 **Would block** and **Bypassed**, with the rules broken most. A workspace's
 Insights covers all of its repositories. Evaluations are kept for 90 days.
@@ -313,7 +287,7 @@ remote:
  ! [remote rejected] main -> main (declined by ruleset "Protect main" (pull_request))
 ```
 
-A pull request's fork, where g1t's agents work, has no rules of its own.
+A pull request's fork has no rules of its own.
 What it brings is checked against the base branch's rules when it merges.
 
 ## Rulesets and branch protection
@@ -326,7 +300,7 @@ exactly what they held:
 | Setting | Becomes |
 | --- | --- |
 | Require a pull request to change the default branch | `pull_request` |
-| Required approvals, g1t's approval counts, require review from code owners | `pull_request`'s `required_approvals`, `count_agent_approvals`, `require_code_owner_review` |
+| Required approvals, require review from code owners | `pull_request`'s `required_approvals`, `require_code_owner_review` |
 | Required status checks, require branches to be up to date, allow bypassing required checks | `required_status_checks`'s `checks`, `strict`, `allow_bypass_on_merge` |
 | Merge through a queue | `merge_queue` |
 
@@ -376,16 +350,14 @@ curl -X POST https://api.g1t.sh/repos/acme/web/rulesets \
       { "type": "deletion" },
       { "type": "non_fast_forward" },
       { "type": "pull_request", "parameters": { "required_approvals": 1, "dismiss_stale_reviews_on_push": true } },
-      { "type": "required_status_checks", "parameters": { "checks": [{ "context": "CI", "integration": "actions" }], "strict": true } },
-      { "type": "pull_request", "parameters": { "required_approvals": 1, "count_agent_approvals": false }, "applies_to": "agents" },
-      { "type": "file_path_restriction", "parameters": { "restricted_file_paths": [".g1t/workflows/**"] }, "applies_to": "agents" }
+      { "type": "required_status_checks", "parameters": { "checks": [{ "context": "CI", "integration": "actions" }], "strict": true } }
     ]
   }'
 ```
 
 Reading rulesets takes the `repo:read` or `workspace:read`
 [scope](/guides/authentication/). Changing them takes `repo:admin` or
-`workspace:admin`, since it changes what everyone, agents included, may do.
+`workspace:admin`, since it changes what everyone may do.
 [`merge_pull_request`](/reference/api/pull-requests/merge-pull-request/)
 takes `bypass_rules`. [`get_pull_request`](/reference/api/pull-requests/get-pull-request/)
 returns `rules`: what is `unmet`, what you may bypass (`bypassable`),

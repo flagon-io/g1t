@@ -40,7 +40,7 @@ counts by the link, at the token rate, rather than by address: jobs that
 share an address, as g1t's own machines do, each download their tarball
 without using up each other's limit.
 
-Agents' sandboxes and workflow jobs report to g1t with their own
+Workflow jobs report to g1t with their own
 credentials. Those reports are not rate limited.
 
 ## When you are limited

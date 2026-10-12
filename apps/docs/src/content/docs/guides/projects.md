@@ -37,7 +37,7 @@ your [pinned and recent projects](/guides/workspaces/#pinned-and-recent-projects
 | --- | --- | --- |
 | **Overview** | `g1t.sh/<workspace>/<project>` | What it is and its links; production wherever it is deployed, or for a library its packages; what is in progress, active branches, the latest commits, and its About. See [the overview](#the-overview). |
 | **Code** | `…/code` | The repository's files, commits and branches. |
-| **Issues**, **Pull requests**, **Merge queue**, **Plan** | `…/issues` and so on | As they always were. |
+| **Issues**, **Pull requests**, **Merge queue** | `…/issues` and so on | As they always were. |
 | **Actions** | `…/actions` | [GitHub Actions workflows](/guides/actions/). |
 | **Deployments** | `…/deployments` | What is up now and every build. |
 | **Settings** | `…/settings` | See below. |
@@ -57,7 +57,7 @@ else sees what the project shares publicly.
 | **Production** | [Production's picture](#productions-picture), which opens the live site, beside the rest. For an app [deployed on g1t](/guides/deployments/): its address, the commit it runs and when it went up; **Visit** and **Redeploy**. For an app deployed elsewhere: production's address and **Visit**, with its latest reported production deployment or the default branch's latest commit. For an app nobody has placed yet: one question, where it runs. |
 | **Packages** | For a library or a tool, in place of Production: the packages its repository publishes, each with its latest version and how to install it, or how to publish a first one. |
 | **Documentation**, **Homepage** | For docs, where they are read; for anything else, its homepage. |
-| **Right now** | Agents at work, and open pull requests moving from working to landed. |
+| **Right now** | Open pull requests moving from working to landed. |
 | **Needs you** | What is waiting on a person: a failed production build, a pull request to merge or review, a stuck run. |
 | **Active branches** | Branches other than the default, newest first. See [active branches](#active-branches). |
 | **Recent changes**, **Latest on main**, **Activity**, **Previews** | What landed, the default branch's latest commits, what happened (pull requests opened, readied and merged, issues opened and closed, checks, reviews, comments, pushes to the default branch and production deploys), and the previews that are up. |
@@ -232,14 +232,13 @@ A project's **Settings** has a tab for each part:
 | **General** | The project's name and description, its source, its **root directory**, [what it is](#what-a-project-is), its [links](#links), and its [production image](#uploading-an-image). A project shows its repository's description, and follows it as it changes, until you give the project one of its own; **Use the repository's description** goes back. |
 | **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
 | **Domains** | Custom domains for production. See [custom domains](/guides/deployments/#custom-domains). |
-| **Agents** | How g1t's agents pick up work here, and what they read first. |
-| **Guardrails** | What agents may reach, run and spend while they work here. See [guardrails](/guides/guardrails/). |
+| **Guardrails** | What g1t's sandboxes may reach while they work here. See [guardrails](/guides/guardrails/). |
 | **Repository** | The repository's name, description, website, [topics](/guides/search/#what-is-indexed) and default branch, and its danger zone: visibility, archive, transfer and delete. See [Managing a repository](/guides/managing-repositories/). |
 | **Access** | Who has a [role](/guides/access-and-roles/) on the repository, and invitations. |
-| **Branches and merging** | Auto-merge, how g1t's agents review and revise, the CODEOWNERS file's errors, and what the rules hold for the default branch. |
-| **Rules** | [Rulesets](/guides/rules/): branch and tag protection, [required status checks](/guides/pull-requests/#required-status-checks), approvals, the merge queue, and rules for agents' changes, with Insights. |
+| **Branches and merging** | Auto-merge, the CODEOWNERS file's errors, and what the rules hold for the default branch. |
+| **Rules** | [Rulesets](/guides/rules/): branch and tag protection, [required status checks](/guides/pull-requests/#required-status-checks), approvals and the merge queue, with Insights. |
 | **Secrets and variables** | The project's rows. See [Secrets and variables](/guides/secrets-and-variables/). |
-| **Runners** | The project's own [self-hosted runners](/guides/self-hosted-runners/), and where its agents' work runs. |
+| **Runners** | The project's own [self-hosted runners](/guides/self-hosted-runners/). |
 | **Webhooks** | The repository's [webhooks](/guides/webhooks/). |
 
 The **root directory** says where in the repository the project lives,
@@ -251,7 +250,7 @@ repository:
 
 | Tab | Needs |
 | --- | --- |
-| **General**, **Dependencies**, **Agents**, **Branches and merging**, and on **Repository** its description, website and topics | Maintain |
+| **General**, **Dependencies**, **Branches and merging**, and on **Repository** its description, website and topics | Maintain |
 | **Rules**, **Guardrails** | Admin |
 | **Access**: seeing who has a role; changing it | Write; Admin |
 | **Deployments**, **Domains**, **Secrets and variables**, **Runners**, **Webhooks** | Admin |
@@ -286,8 +285,8 @@ git push https://g1t.sh/acme/my-app.git main
 
 A project's source is a repository hosted on g1t. A repository can be a
 **mirror of one on GitHub**: the code stays there, every push to GitHub is
-fetched into g1t, and the project gets g1t's deployments, secrets and
-agents on it. See [GitHub](/guides/github/#import-mirror-or-move-a-repository).
+fetched into g1t, and the project gets g1t's deployments and secrets on
+it. See [GitHub](/guides/github/#import-mirror-or-move-a-repository).
 
 Coming next:
 

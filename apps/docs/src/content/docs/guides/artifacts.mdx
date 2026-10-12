@@ -1,6 +1,6 @@
 ---
 title: Artifacts
-description: Make docs with your workspace and its agents, live. Keep them private, share them with people, agents and teams, put them in spaces, or open them to the workspace. Comments, suggestions from agents, docs that cite code, history, templates, search and Markdown export.
+description: Make docs with your workspace, live. Keep them private, share them with people and teams, put them in spaces, or open them to the workspace. Comments, suggestions, docs that cite code, history, templates, search and Markdown export.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
@@ -8,9 +8,9 @@ import Soon from '../../../components/Soon.astro';
 import Aside from '../../../components/Aside.astro';
 
 **Artifacts are what your workspace makes together**: docs now, and slides,
-designs and dashboards soon. People and agents edit them live. Each one is
-private until you share it, and agents read only what the people they work
-for can read.
+designs and dashboards soon. Your team edits them live, and the coding
+agents you connect read and change them as you. Each one is private until
+you share it.
 
 Open **Artifacts** in the rail on the left, or go to
 `g1t.sh/<workspace>/-/artifacts`. On a phone, it's under **More** in the bar
@@ -21,11 +21,10 @@ plan.
 
 | | |
 | --- | --- |
-| **Artifacts** | A doc today. Each has one owner, the person who made it (or the person an agent made it for), and an address that ends in its id. |
+| **Artifacts** | A doc today. Each has one owner, the person who made it, and an address that ends in its id. |
 | **Private** | What you make starts in your **Private** section, where only you can see it. A lock on it means only you can open it. |
-| **Sharing** | Share an artifact with people, agents and teams, each with a role, or open it to everyone in the workspace or to anyone in it with the link. |
+| **Sharing** | Share an artifact with people and teams, each with a role, or open it to everyone in the workspace or to anyone in it with the link. |
 | **Spaces** | Where a team, a project or a topic keeps its artifacts. What is in a space follows the space's access, unless it's set to only people invited. |
-| **Agents** | Read what the person they work for can read, narrowed to what everyone in the conversation can read. They suggest changes you accept or reject, or edit directly where that's allowed. |
 
 ## Home
 
@@ -83,7 +82,7 @@ is the folder.
 
 <Steps>
 
-1. Choose people, agents or teams in the workspace, and a role.
+1. Choose people or teams in the workspace, and a role.
 2. Add a message if you want one, then press **Invite**. People you add get
    a notification with the link.
 
@@ -109,13 +108,10 @@ inside, with a link to where that's set.
   with the link**, each with a role (never full access). This is set on an
   artifact at the top of its tree, or on one that's only for people invited;
   what's inside follows it.
-- **Anyone in the workspace with the link** keeps it out of lists, search and
-  agents' answers until a member opens the link. After that, it's under their
+- **Anyone in the workspace with the link** keeps it out of lists and search
+  until a member opens the link. After that, it's under their
   **Shared with you**.
 - Links for people outside the workspace aren't available.
-
-**Agents may** says how agents change it: as its space says, **Suggest
-changes**, or **Edit directly**.
 
 Only people with full access share an artifact, unless its space lets editors
 share (see [Spaces](#spaces)). Anyone else sees the dialog read-only.
@@ -150,15 +146,14 @@ artifacts in no space live in their owners' **Private**.
 | --- | --- |
 | **Open** (everyone in the workspace) | Every member, with the space's base role. Join it to see it in your sidebar. |
 | **Team** | Members of that team, with the space's base role. |
-| **Members only** | The people, agents and teams listed in the space, and nobody else. |
+| **Members only** | The people and teams listed in the space, and nobody else. |
 
 **Browse spaces** lists every space you can open; **Join** or **Leave** an
 open one. Whoever makes a space has full access to it. Workspace owners have
 full access to open and team spaces.
 
 A space's **Settings** (the gear beside it) change its name, address, who it's
-for, the base role, its members and their roles, how agents work in it, and
-the projects it's about. **Editors can share**, off by default, lets people
+for, the base role, its members and their roles, and the projects it's about. **Editors can share**, off by default, lets people
 who can edit what's in the space share it too, up to **Can edit**. Only
 people with full access give full access, change general access, or change
 someone else's full access.
@@ -200,14 +195,14 @@ anywhere for the block menu.
 | Date | `/date` | the date |
 | Cite code | `/cite`: a repository, a path, and what there the doc describes | a link to the file |
 
-- **`@`** mentions a person or an agent. **`[[`** links to another artifact
+- **`@`** mentions a person. **`[[`** links to another artifact
   by title; it lists yours under **Linked from**.
 - **Add icon** above the title gives the doc an emoji.
 - Images and files are served from `g1tusercontent.com`, never from `g1t.sh`,
   up to 25 MB each.
 
 Docs are live: everyone on one sees each other's changes and cursors, and the
-faces at the top are who's there now, agents included. When your connection
+faces at the top are who's there now. When your connection
 drops, the header says **Offline, changes will sync** and sends your changes
 when you're back.
 
@@ -245,50 +240,20 @@ When a pull request that changes code a doc cites is merged, or a commit is
 pushed to the default branch, the doc is marked **possibly out of date**: a
 banner on it, a dot in the sidebar, and **Possibly out of date** in the
 sidebar listing every such doc you can open. Its owner is told. Read what
-changed, update it, then press **It's current**. Or ask an agent to keep the
-docs current: it finds the docs marked out of date, and its update clears
-the mark when it's applied or accepted.
+changed, update it, then press **It's current**.
 
-## Agents and artifacts
+## Suggestions
 
-Agents work for a person, never on their own authority. An agent asked by
-you:
+A coding agent you connect works on artifacts as you, through the
+`artifact` MCP tool, so it opens only what you can open. Where you can
+edit, its change is made as a new version. Where you can only comment, or
+when it asks only to suggest, the change is filed as a suggestion: the
+blocks it would replace are struck through in place, beside a card with
+what it would write. Anyone who can edit the doc chooses **Accept**,
+**Reject** or **Accept all**. See
+[Connect a coding agent](/guides/bring-your-own-agent/#artifacts).
 
-- **finds and reads** only what you can open, narrowed to what everyone in
-  the conversation can open. In a public channel that's only what the whole
-  workspace can open. When it reads something not everyone there can open,
-  it doesn't quote or name it there, and sends you the link directly.
-- **suggests** a change where you can comment or edit. The blocks it would
-  replace are struck through in place, beside a card with what it would
-  write. **Accept**, **Reject** or **Accept all**.
-- **edits directly** only where you can edit and **Agents may** (or the
-  space) says **Edit directly**.
-- **makes** a doc for you: you own it, it's marked as made by the agent, and
-  the agent can keep editing it.
-- **shares** with people already in the conversation, view or comment only,
-  when you have full access. Anything wider is yours to do from **Share**.
-
-Before an agent answers, it recalls the passages of artifacts and projects'
-docs closest in meaning to what it was asked, from what everyone in the
-conversation can open. See [What agents can do for whom](/guides/agent-access/)
-and [Working with g1t](/guides/working-with-g1t/).
-
-### Write a thread up
-
-In chat, **⋯ → Write this up as an artifact** on a message or an open thread
-asks an agent for a doc about the thread:
-
-| Field | What it is |
-| --- | --- |
-| **Where** | **Shared with this conversation** (in a DM or a private channel: your Private, shared with its people), **Private (just me)**, or a space you can add to. In a public channel it starts on the General space. |
-| **Title** | Optional. |
-| **Written by** | @g1t, or another agent in the conversation. |
-
-The ask is posted in the thread, as you, with the thread's link. The agent
-writes what was decided, why, and what's next, links the thread as its
-source (the doc shows **From a conversation**), and replies with the link.
-
-### Links in chat
+## Links in chat
 
 A link to an artifact in a message shows a card with its title, where it is
 and when it was last edited, to each person who can open it. Anyone who
@@ -297,8 +262,8 @@ card doesn't count as opening a link-shared artifact.
 
 ## History
 
-**History** at the top of an artifact lists every version: when, who (people
-and agents), and what kind of change. Choose one to see what changed in it,
+**History** at the top of an artifact lists every version: when, who, and what
+kind of change. Choose one to see what changed in it,
 line by line. **Restore this version** makes it what it was then, as a new
 version, so nothing is lost. Restoring needs edit access.
 
@@ -360,7 +325,7 @@ embeds and links as links.
 
 From your own agent or code, the `artifact` MCP tool and the REST API read,
 make and change artifacts as you. See
-[Bring your own agent](/guides/bring-your-own-agent/#artifacts).
+[Connect a coding agent](/guides/bring-your-own-agent/#artifacts).
 
 ## Coming soon <Soon />
 
@@ -373,5 +338,4 @@ make and change artifacts as you. See
 ## Pricing
 
 Artifacts are included on every plan, with no seats. Files in docs count
-toward storage. Agents' work on artifacts is charged to the agent, like any
-of its work; see [what an agent costs](/guides/agents/#what-an-agent-costs).
+toward storage.

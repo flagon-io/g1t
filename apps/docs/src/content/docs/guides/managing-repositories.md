@@ -98,7 +98,7 @@ stars on a private repository are seen only by people who can read it.
 | --- | --- |
 | **Name** | The repository's name, the second part of its address. |
 | **Details** | Its description, website and topics, shown on its page, in [search and Explore](/guides/search/). |
-| **Branches** | The default branch, renaming a branch, and a link to **Branches and merging**: [branch protection](/guides/git/#protected-branches), [required status checks](/guides/pull-requests/#required-status-checks), required approvals, the [merge queue](/guides/merge-queue/) and what agents do. What a sandbox may reach is under **Guardrails**; see [guardrails](/guides/guardrails/). |
+| **Branches** | The default branch, renaming a branch, and a link to **Branches and merging**: [branch protection](/guides/git/#protected-branches), [required status checks](/guides/pull-requests/#required-status-checks), required approvals, and the [merge queue](/guides/merge-queue/). What a sandbox may reach is under **Guardrails**; see [guardrails](/guides/guardrails/). |
 | **Artifacts** | How many days the files workflow runs upload are kept, 1 to 90 (14 unless changed). See [artifacts](/guides/actions/#artifacts). |
 | **Danger zone** | Change visibility, archive, [transfer](/guides/transferring-repositories/) and delete. Shown to people with the Admin role. |
 
@@ -127,8 +127,6 @@ Owners of its workspace have Admin on it.
 
 Renaming the repository or its default branch, changing its visibility
 and archiving it are done by a person, not a workspace token.
-g1t's token can never use the tools that make these changes,
-whatever its run. See [credentials](/guides/working-with-g1t/#credentials).
 
 ## Edit the details
 
@@ -331,7 +329,7 @@ While it is archived:
 | --- | --- |
 | Pushes and merges | Refused, whatever your role, and for agents too. |
 | Issues and pull requests | Locked. They stay readable. |
-| Agents and workflows | Do not run. |
+| Workflows | Do not run. |
 | Settings | The ones that change the repository are turned off. |
 | Deployments | Keep serving. |
 | Who can see it | Unchanged. Anyone who could see it still can, and clone it. |
@@ -339,8 +337,8 @@ While it is archived:
 Its page says it is archived, and so do its project's card on the
 workspace overview and its card on [Explore](/guides/search/#explore),
 with an **archived** label. To undo it, someone with Admin chooses **Unarchive**
-in the same place. Pushes, merges, issues, pull requests, agents and
-workflows work again; nothing that was refused while it was archived runs
+in the same place. Pushes, merges, issues, pull requests and workflows
+work again; nothing that was refused while it was archived runs
 by itself.
 
 From the API, call
@@ -372,7 +370,7 @@ Deleting takes a repository away at once, but an owner can restore it for
 | --- | --- | --- |
 | Its pages, git remote and API | Answer as if it did not exist, for everyone. | The same. |
 | Its name | Stays taken: no repository can be made at its address. | Free to use again. |
-| Agents and workflows | Stop, and do not start. | |
+| Workflows | Stop, and do not start. | |
 | Deployments | Taken down. Its `g1t.page` addresses stop serving. | Removed. |
 | Custom domains | Kept, and serve nothing. | Removed. |
 | Search | Drops it. | |
@@ -414,8 +412,8 @@ it will be purged.
 It comes back at the address it had, as it was when it was deleted: git
 data, issues, pull requests, settings, secrets and webhooks. Its
 deployments are built again, and its custom domains serve them once they
-are live. Agents and workflows run again for new work; they do not catch
-up on what they missed.
+are live. Workflows run again for new work; they do not catch up on what
+they missed.
 
 From the API, list them with
 [`GET /workspaces/{workspace}/repos/deleted`](/reference/api/repositories/list-deleted-repos/)

@@ -4,8 +4,8 @@ description: What needs you, and what you follow, as it happens. One thread per 
 ---
 
 **Notifications** tell you when something needs you, or when something
-happens to work you answer for or follow: an agent is waiting on you,
-someone asked you to review a pull request, checks failed on your pull
+happens to work you answer for or follow: someone asked you to review a
+pull request, checks failed on your pull
 request, a deployment failed, someone mentioned you. You are never told
 about what you did yourself.
 
@@ -48,7 +48,6 @@ table is shown.
 
 | Reason | Shown as | Why you were told |
 | --- | --- | --- |
-| `agent` | agent waiting | An agent is waiting on you: it asked a question, or it stopped until a person steps in. |
 | `review_requested` | review requested | Someone asked you, or a team you are in, to review a pull request; it changes files you own; or you are one of its reviewers. Also a workflow run waiting for you, as one of an [environment's reviewers](/guides/actions/#environments), to approve its deployment, and, for a workspace's owners, a member's token made for the workspace waiting for [approval](/guides/authentication/#a-workspaces-rules-for-tokens) (in Notifications only, never emailed). |
 | `assign` | assigned | You were assigned, or you are an assignee. |
 | `mention` | mentioned | Someone mentioned you with `@username`, or you were mentioned on it before. |
@@ -56,7 +55,7 @@ table is shown.
 | `ci_activity` | CI activity | A check, workflow or deployment on your work finished badly, or recovered. |
 | `security_alert` | security alert | A scan found new secrets, code scanning alerts or vulnerable dependencies on a repository you look after (one thread per repository and kind; see [Security](#security)), a push of yours that push protection refused, a [vulnerability report](/guides/security/advisories/#private-vulnerability-reporting) sent to a repository you look after, a [bypass request](/guides/security/secret-protection/#delegated-bypass) to review or its answer, or your security digest. The workspace's owners and security managers hear of these; watchers who chose **Security alerts** do too, if they can see findings. |
 | `state_change` | state changed | It was closed, reopened or merged. |
-| `author` | your work | You opened it, or you asked g1t for it. Also an owner's answer to your [token made for a workspace](/guides/authentication/#create-a-token) waiting for approval, or its revocation. |
+| `author` | your work | You opened it. Also an owner's answer to your [token made for a workspace](/guides/authentication/#create-a-token) waiting for approval, or its revocation. |
 | `comment` | commented | You commented on it. |
 | `manual` | subscribed | You subscribed to it yourself. |
 | `subscribed` | watching | You watch its repository. |
@@ -68,8 +67,6 @@ what it was:
 
 | What happened | Who is told | Reason | Shown as |
 | --- | --- | --- | --- |
-| An agent asked a question of the agent on a pull request, or handed it work | The person the pull request belongs to, and its issue's author and assignees | `agent` | Needs you |
-| g1t stopped on a pull request until a person steps in | The same people | `agent` | Needs you |
 | Someone asked for reviews on a pull request, or opened one with reviewers | The reviewers asked | `review_requested` | Needs you |
 | Someone asked a team to review a pull request | Everyone in the team and its child teams, or, with [review assignment](/guides/teams/#review-assignment), the people picked | `review_requested` | Needs you |
 | A workflow run's jobs wait for an [environment's reviewers](/guides/actions/#environments) | Each reviewer, and everyone in a reviewing team ("Deploy is waiting for your review to deploy to production in acme/api"), but not whoever started the run when it may not approve it | `review_requested` | Needs you |
@@ -81,29 +78,19 @@ what it was:
 | A preview of a pull request failed to deploy | The person the pull request belongs to, and people watching deployments | `ci_activity`, or `subscribed` for watchers | Error |
 | Production failed to deploy | Whoever pushed or started it, and people watching deployments | `ci_activity`, or `subscribed` for watchers | Error |
 | A deployment went live | People watching deployments; after a failure, also whoever was told of the failure | `ci_activity`, or `subscribed` for watchers | Success |
-| g1t finished a change and marked it ready for review | The person who asked g1t for it | `author` | Success |
-| g1t reviewed a pull request | The person the pull request belongs to | `author` | Success when approved, Info when it asks for changes |
 | A pull request was merged | Everyone subscribed to it, and people watching pull requests | `state_change`, or `subscribed` for watchers | Success |
 | An issue or pull request was closed, or an issue was reopened | Everyone subscribed to it, and people watching its kind | `state_change`, or `subscribed` for watchers | Info |
 | Someone mentioned you with `@username` in a comment | You | `mention` | Info |
 | Someone mentioned a team with `@workspace/team` in a comment, or in an issue or pull request they opened | Everyone in the team and its child teams, when the team's notifications are on and the writer can see the team | `team_mention` | Info |
 | Someone commented on an issue or pull request | Everyone subscribed to it, and people watching its kind | Why each is subscribed, or `subscribed` for watchers | Info, or Success for an approval |
-| One of your workspace's agents commented on or reviewed an issue or pull request, as itself | The same people, and the person the pull request belongs to for a review; shown as from "Margo (agent)", with "(advisory)" on a review. See [agent reviews](/guides/pull-requests/#agent-reviews) | Why each is subscribed, or `author` for a review | Info, or Success for an approval |
 | An issue or pull request was opened | People watching its kind | `subscribed` | Info |
 
-"The person a pull request belongs to" is its author, or, for a change g1t
-made, the person who asked for it. An approval or a request for changes
-always reaches that person. g1t itself is never told. A mention in code or
-in a quoted line does not count.
+"The person a pull request belongs to" is its author. An approval or a
+request for changes always reaches that person. A mention in code or in a
+quoted line does not count.
 
-Some threads close themselves once they no longer need you:
-
-- When an agent was waiting on you, the thread moves to Done as soon as the
-  agent picks back up: it resumes, its pull request changes, a merge is
-  asked for, or the pull request is merged or closed.
-- When a review request to you is removed, that thread moves to Done.
-
-New activity brings either back, as with any thread.
+When a review request to you is removed, that thread moves to Done, since
+it no longer needs you. New activity brings it back, as with any thread.
 
 You only see items about repositories you can read. If you lose access to a
 repository, its items leave your notifications the next time you open them.
@@ -125,7 +112,7 @@ unsubscribe from one.
 | You are | You hear of |
 | --- | --- |
 | Subscribed | Everything in [What lands there](#what-lands-there) that goes to everyone subscribed: comments, closes, reopens and merges. |
-| Unsubscribed | Only what is asked of you or is about your own work: an agent waiting on you, a review request, an assignment, a mention of you or your team, and failed checks, workflows and deployments. Commenting on it, or being mentioned in it, subscribes you again. |
+| Unsubscribed | Only what is asked of you or is about your own work: a review request, an assignment, a mention of you or your team, and failed checks, workflows and deployments. Commenting on it, or being mentioned in it, subscribes you again. |
 | Ignoring it | Nothing on it at all, not even a mention. Only you can undo this. |
 
 To subscribe to an issue or pull request, or unsubscribe:
@@ -141,7 +128,7 @@ you're mentioned or asked to review." or "You ignore this thread."
 To ignore an issue or pull request, use the API:
 `PUT /repos/{owner}/{name}/issues/{number}/subscription` with
 `"ignored": true`, or the `notifications` tool's `subscribe` action with
-`ignored`. See [from the API and agents](#from-the-api-and-agents). While
+`ignored`. See [from the API](#from-the-api). While
 you ignore one, its button reads **Stop ignoring**, which puts you back to
 the default: subscribed only while you take part.
 
@@ -242,8 +229,8 @@ themselves are always on each repository's [Security page](/guides/security/).
 ## Email
 
 You can also be emailed when you are told of something. By default, g1t
-emails you for four reasons: **agent waiting**, **review requested**,
-**mentioned** and **security alert**. Each time you are told of something
+emails you for three reasons: **review requested**, **mentioned** and
+**security alert**. Each time you are told of something
 for a reason you chose, g1t sends one email with what happened and a link
 to it; a security digest is one email.
 
@@ -287,7 +274,7 @@ holds your choices:
 | **Do not disturb** | Silences sounds, pop-ups, and browser and phone notifications until a time you choose. | Off |
 | **Desktop notifications** | A system notification from an open tab for a message to you while the window is behind another. In [the desktop app](/guides/desktop/) it is on, and the app shows them itself. | Off |
 | **Notify me about**, **Browser notifications** | What pops up and is pushed; see [chat notifications](/guides/chat/#notifications). | DMs and mentions; off |
-| **Email** | One checkbox per reason: you are also emailed when you are told of something for it. | agent waiting, review requested, mentioned, security alert |
+| **Email** | One checkbox per reason: you are also emailed when you are told of something for it. | review requested, mentioned, security alert |
 | **Security: Critical and high alerts at once** | Whether urgent alerts on repositories you watch for security reach you at once. The workspaces you own or manage security for tell you whatever this says. | On |
 | **Security: Medium and low alerts** | In a daily digest, in a weekly digest, at once, or not at all. | Daily digest |
 | **Repositories you create** | How you watch a new repository you create: **Participating and @mentions** or **All activity**. | All activity |
@@ -298,9 +285,9 @@ holds your choices:
 | Tab | Shows |
 | --- | --- |
 | **All** | Everything, with what is waiting on you first |
-| **Needs you** | What is waiting on you: an agent, or a review asked of you |
+| **Needs you** | What is waiting on you, such as a review asked of you |
 | **Errors** | Failed checks, workflows and deployments |
-| **Success** | Merges, approvals, finished agent work, and deployments that went live |
+| **Success** | Merges, approvals, and deployments that went live |
 | **Info** | Mentions, comments, assignments, and what you watch |
 
 The count beside each tab is what is unread under it.
@@ -346,11 +333,11 @@ menu above the list.
 [Home](/guides/home/) shows the unread warnings and failures waiting on you,
 with what else needs you across the workspace.
 
-## From the API and agents
+## From the API
 
 Everything here is also in the REST API and the MCP server, for a personal
-access token or an OAuth sign-in. A workspace's token cannot use it, and
-neither can g1t's own agents: they act as `g1t`, which has no notifications.
+access token or an OAuth sign-in, so a coding agent you connect can work
+through your notifications as you. A workspace's token cannot use it.
 Reading needs the `notifications:read` scope, and changing anything
 `notifications:write`; the Agent [preset](/guides/authentication/#presets)
 has both.

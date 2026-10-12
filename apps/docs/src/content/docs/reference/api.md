@@ -109,11 +109,11 @@ results and [webhook](/guides/webhooks/) payloads. Request bodies take the
 same names as the MCP tools, and also accept the `camelCase` spelling:
 
 ```sh
-# Both turn off counting agents' approvals.
+# Both require pull requests to be up to date before they merge.
 curl -X PATCH https://api.g1t.sh/repos/flagon-io/hello/settings \
-  -H "Authorization: Bearer $G1T_TOKEN" -d '{"count_agent_approvals": false}'
+  -H "Authorization: Bearer $G1T_TOKEN" -d '{"require_up_to_date": true}'
 curl -X PATCH https://api.g1t.sh/repos/flagon-io/hello/settings \
-  -H "Authorization: Bearer $G1T_TOKEN" -d '{"countAgentApprovals": false}'
+  -H "Authorization: Bearer $G1T_TOKEN" -d '{"requireUpToDate": true}'
 ```
 
 When a body gives a field both ways, the `snake_case` one is used.
@@ -155,7 +155,7 @@ Errors are JSON with a stable `code` and a human-readable `message`.
 | Status | Code | Meaning |
 | --- | --- | --- |
 | 401 | `unauthenticated` | A token is required, or the one sent is not valid. |
-| 402 | `payment_required` | The workspace cannot pay for this: to start an agent it needs the g1t plan or a card check, or it is at a limit; to make a repository private, or move a private one in, a free workspace needs room in its free private storage. Only endpoints that start an agent, change a repository's visibility or transfer it answer this. See [usage and billing](/guides/usage-and-billing/#when-work-is-stopped). |
+| 402 | `payment_required` | The workspace's plan or limits do not allow this: for example, a free workspace inviting someone, or making a repository private, or moving a private one in, without room in its free private storage. See [usage and billing](/guides/usage-and-billing/#when-work-is-stopped). |
 | 403 | `forbidden` | You are signed in but not allowed to do this: your role is not enough, or the token lacks a scope, which `needed_scope` names. |
 | 404 | `not_found` | It does not exist, or you cannot see it. A path that is not an endpoint answers this too. |
 | 409 | `conflict` | The request conflicts with the current state. |
@@ -229,21 +229,20 @@ Times are RFC 3339 in UTC, with milliseconds, such as
 | [Accounts](/reference/api/accounts/whoami/) | Signing in from a tool, and who a token acts as. Accounts are made and [deleted](/guides/authentication/#deleting-your-account) only in a browser: there is no route for either. |
 | [Workspaces](/reference/api/workspaces/create-workspace/) | Creating a workspace. |
 | [Notifications](/reference/api/notifications/list-notifications/) | Your notifications: their threads, why you were told of each, marking them read, done, saved or snoozed, and what you subscribe to and watch. See [notifications](/guides/notifications/). |
-| [Billing](/reference/api/billing/get-usage/) | A workspace's usage by product, project and day, its budget, its AI credit, its invoices and its [AI Gateway](/guides/ai-gateway/) requests. See [usage and billing](/guides/usage-and-billing/). |
+| [Billing](/reference/api/billing/get-usage/) | A workspace's usage by product, project and day, its budget, its AI credit, and its invoices. See [usage and billing](/guides/usage-and-billing/). |
 | [Invites](/reference/api/invites/list-invites/) | Your invites while g1t is invite-only, and inviting people into a workspace by email. |
 | [Repositories](/reference/api/repositories/list-repos/) | A repository, how it handles pull requests, and its timeline. |
 | [Access](/reference/api/access/list-collaborators/) | Who has which role on a repository, invitations, outside collaborators, and a workspace's base permission. |
 | [Secret scanning](/reference/api/secret-scanning/list-secret-scanning-alerts/) | Secrets found in pushes and history, where each one is, bypassing push protection and reviewing bypass requests, validity checks, and custom patterns. See [secret protection](/guides/security/secret-protection/). |
-| [Code scanning](/reference/api/code-scanning/list-code-scanning-alerts/) | SARIF uploads, the alerts and analyses they make, and fixing an alert with g1t. See [code scanning](/guides/security/code-scanning/). |
+| [Code scanning](/reference/api/code-scanning/list-code-scanning-alerts/) | SARIF uploads, and the alerts and analyses they make. See [code scanning](/guides/security/code-scanning/). |
 | [Supply chain](/reference/api/supply-chain/list-vulnerability-alerts/) | Vulnerability alerts, the dependency graph, its SPDX SBOM, and comparing dependencies. See [supply chain](/guides/security/supply-chain/). |
 | [Security settings](/reference/api/security-settings/get-security-settings/) | When pull request checks fail, dependency review's policy, delegated bypass, validity checks and a workspace's overview. |
-| [Issues](/reference/api/issues/list-issues/) | What should change, with labels and comments, and assigning it to g1t. |
-| [Plans](/reference/api/plans/plan-work/) | An [outcome](/guides/outcomes/) turned into issues. |
-| [Pull requests](/reference/api/pull-requests/list-pull-requests/) | Proposed changes: reviews, merging, the merge queue, and messages to the agent at work. |
-| [Sessions](/reference/api/sessions/read-session/) | The record of how a pull request was made. |
+| [Issues](/reference/api/issues/list-issues/) | What should change, with labels and comments. |
+| [Pull requests](/reference/api/pull-requests/list-pull-requests/) | Proposed changes: reviews, merging and the merge queue. |
+| [Sessions](/reference/api/sessions/read-session/) | The record of how a pull request was made, written by the coding agent that made it. See [sessions and why-blame](/guides/why-blame/). |
+| [Memory](/reference/api/memory/recall/) | What a project and its workspace remember for whoever works on it next. See [memory](/guides/memory/). |
 | [Actions](/reference/api/actions/list-workflows/) | Workflows, their runs and their logs. |
 | [Run protection](/reference/api/run-protection/update-environment/) | Environments' protection rules and the reviews of the jobs they hold, approving a pull request's run from outside, a job token's default permissions, and repository dispatch. See [GitHub Actions](/guides/actions/#environments). |
 | [Secrets and variables](/reference/api/secrets-and-variables/list-actions-secrets/) | Values workflows and deployments read. |
 | [Webhooks](/reference/api/webhooks/list-webhooks/) | Events sent to your own address. |
-| [Integrations](/reference/api/integrations/list-integrations/) | Model providers, alert sources and issue trackers. |
-| [Customize](/reference/api/customize/list-marketplaces/) | What shapes a workspace's agents, in the formats Claude Code reads: the marketplaces it reads plugins from, Discover, installed plugins, connectors with their keys and grants, and the bundle a run's Claude Code loads. See [Customize](/guides/customize/). |
+| [Integrations](/reference/api/integrations/list-integrations/) | Alert sources and issue trackers. |

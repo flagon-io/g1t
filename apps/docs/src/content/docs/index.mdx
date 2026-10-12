@@ -1,6 +1,6 @@
 ---
 title: What is g1t?
-description: g1t is where your company's people and agents work together. Chat, a front page for the day, agents that do the work on runners, and Code and Deployments for everything they build. In alpha, with every feature marked Live, Preview or Coming.
+description: g1t is the code platform your team and your own coding agents work on. Repositories, pull requests, Actions and Deployments, with Chat, Artifacts and a front page for the day, and an MCP server, API and webhooks for the agents you bring. In alpha, with every feature marked Live, Preview or Coming.
 tableOfContents: false
 prev: false
 ---
@@ -11,12 +11,17 @@ import Card from '../../components/Card.astro';
 import LinkCard from '../../components/LinkCard.astro';
 import Status from '../../components/Status.astro';
 
-People and agents are members of the same workspace: they talk in channels
-and direct messages, and they sit on the same teams. You hand an agent work, it does it
-on a runner, and it comes back with something you can act on: a pull request
-to merge, a document, a reply to approve. **Home** tells you where you are
-needed and what happened while you were away. **Code** and **Deployments** are built in,
-because what agents make has to be reviewed, tested and shipped somewhere.
+g1t is the code platform your team and your own coding agents work on.
+**Code** holds your repositories, issues and pull requests, with required
+checks, the merge queue and Actions; **Deployments** puts every pull request
+live on a preview and ships production on merge. Your team talks in
+**Chat**, writes docs together in **Artifacts**, and **Home** tells you
+where you're needed and what happened while you were away.
+
+Bring the coding agents you already use, such as Claude Code, Codex,
+Cursor or OpenCode. They connect over [MCP](/guides/bring-your-own-agent/)
+and work as you: they pick up issues, open pull requests, run your checks,
+record their sessions, and read and write the project's memory.
 
 g1t is MIT-licensed. You can use it on g1t.sh, or run it yourself.
 
@@ -37,14 +42,14 @@ is marked with where it stands:
 	<LinkCard
 		title="Quickstart"
 		icon="rocket"
-		description="Create a workspace, open Chat and talk to your first agent in a few minutes. Then put one on your code."
+		description="Create a workspace, push a repository and connect your coding agent in a few minutes."
 		href="/quickstart/"
 	/>
 	<LinkCard
-		title="Hire an agent"
+		title="Connect a coding agent"
 		icon="bot"
-		description="Pick a role, give it a name, a team and a voice, and set its budget."
-		href="/guides/agents/#hire-an-agent"
+		description="Claude Code, Codex, Cursor or any MCP client, signed in once and working on your repositories as you."
+		href="/guides/bring-your-own-agent/"
 	/>
 	<LinkCard
 		title="Bring a repository"
@@ -57,54 +62,32 @@ is marked with where it stands:
 ## The workspace
 
 Everything happens in a workspace: your company, or one team in it. The
-rail down the left holds Home, Chat, Notifications, Agents, Code and
-Artifacts, the apps you pin, and People, Workspace and your account at its
+rail down the left holds Home, Chat, Notifications, Code and Artifacts, the apps you pin, and People, Workspace and your account at its
 foot. On a phone it is a bar along the bottom.
 
 | Feature | What it does | Status |
 | --- | --- | --- |
 | [Home](/guides/home/) | The front page: where you're needed now, what happened since you were last here, what is running, and where to start. | <Status is="preview" /> |
-| [Chat](/guides/chat/) | Channels, direct messages and threads, live. People and agents are members alike. No seats and no history limit. | <Status is="live" /> |
+| [Chat](/guides/chat/) | Channels, direct messages and threads, live. No seats and no history limit. | <Status is="live" /> |
 | [Notifications](/guides/notifications/) | Everything waiting on you: mentions, reviews, approvals and alerts, with browser push. | <Status is="live" /> |
-| [People and teams](/guides/people-and-teams/) | Everyone in the workspace in one search, with profiles and teams that include agents beside people. Members, roles, nested teams and invites. | <Status is="live" /> |
-| [Artifacts](/guides/artifacts/) | Documents written together, live, by people and agents. Private until you share them. | <Status is="live" /> |
+| [People and teams](/guides/people-and-teams/) | Everyone in the workspace in one search, with profiles and teams. Members, roles, nested teams and invites. | <Status is="live" /> |
+| [Artifacts](/guides/artifacts/) | Documents written together, live, by your team and the coding agents you connect. Private until you share them. | <Status is="live" /> |
 | More kinds of artifact | Slides, designs and dashboards that keep the query behind every number. | <Status is="coming" /> |
-| Scratchpads | Tools, reports and agents anyone can build on a copy of the data, used in production only after review. | <Status is="coming" /> |
+| Scratchpads | Tools and reports anyone can build on a copy of the data, used in production only after review. | <Status is="coming" /> |
 | [The desktop app](/guides/desktop/) | g1t in a window of its own for Windows, macOS and Linux, with notifications from your system. | <Status is="preview" /> |
-| [The phone app](/guides/mobile/) | Chat with your team and its agents, live, with notifications on the phone; review pull requests. Android first, for g1t.sh or your own g1t; not in the stores yet. | <Status is="preview" /> |
+| [The phone app](/guides/mobile/) | Chat with your team, live, with notifications on the phone; review pull requests. Android first, for g1t.sh or your own g1t; not in the stores yet. | <Status is="preview" /> |
 | [A runner in the desktop app](/guides/desktop/#the-runner) | Your workspace's self-hosted jobs on your computer while g1t is open, registered and kept up to date by the app, sandboxed by default: Linux jobs in a sandbox of the runner's own on Windows, macOS and Linux, and Windows jobs in Windows Sandbox on Windows 11 Pro and up. | <Status is="preview" /> |
-
-## Agents
-
-| Feature | What it does | Status |
-| --- | --- | --- |
-| [Agents](/guides/agents/) | Colleagues hired into a role, each with responsibilities, a voice, the models it may use and a budget. DM one, or mention it in a thread. | <Status is="live" /> |
-| [g1t, the orchestrator](/guides/agents/) | Every workspace's own agent. It knows the others, answers or brings in the right one, and keeps you in the conversation. | <Status is="live" /> |
-| [Model providers](/guides/models/) | Agents use your own provider's key, or g1t's hosted models through the [AI Gateway](/guides/ai-gateway/). | <Status is="live" /> |
-| g1t's hosted models | Models g1t runs for you, billed on your workspace. Open to invited workspaces during the alpha; everyone else connects a provider. | <Status is="preview" /> |
-| [Budgets](/guides/agent-budgets/) and [guardrails](/guides/guardrails/) | Spend limits per workspace, person, agent and task, checked before work starts, and what an agent may do alone. | <Status is="live" /> |
-| [Spend](/guides/spend/) | Where the money went, by agent, person, channel, model and product; every budget with what happens at 100%; a receipt for each task; your own spend in the top bar. | <Status is="preview" /> |
-| [Acting for the asker](/guides/agent-access/) | Agents act with the access of the person who asked, and answer with only what their audience may see. | <Status is="live" /> |
-| [Memory](/guides/agent-memory/), [sessions](/guides/agent-sessions/) and [routines](/guides/agent-routines/) | What an agent keeps, every run with its steps and cost, and work on a schedule. | <Status is="live" /> |
-| [Agent templates](/guides/agents/#role-templates) | Starting points for a new agent in Agents, each with responsibilities, a voice and the helpers it works with, configured once you start one. | <Status is="live" /> |
-| [Agents from plugins](/guides/customize/#plugins) | Subagents a plugin brings, listed under Templates → From plugins and hired like any template. | <Status is="live" /> |
-| [Foundational skills](/guides/agent-skills/) | Every agent makes PDFs, Word documents and spreadsheets, writes reports with sources, charts data, reviews code and summarizes threads, with the tools it already has. Owners turn skills off per agent. | <Status is="live" /> |
-| [Skill library](/guides/agent-skills/#the-skill-library) | Your own skills in the open SKILL.md format: written in g1t, imported from a file or a repository, or saved from a finished session; attached to agents, teams or every agent at a pinned version, optionally kept in `.claude/skills/` in a repository. | <Status is="live" /> |
-| [Plugin skills](/guides/customize/#skills) | Every skill published in a marketplace, added to the library in a click as `plugin:skill` and made available to every agent, a team or one. | <Status is="live" /> |
-| Web research, skill scripts | Research on the open web, set per team; scripts run on an agent's own computer. | <Status is="coming" /> |
-| Agents on runners | Every agent's machine is a runner: g1t's, one of yours, or your desktop, with sessions that last between tasks. | <Status is="coming" /> |
-| [Agents in your chat app](/guides/chat-app/) | The same agents, answering in the chat app your team already uses. | <Status is="coming" /> |
 
 ## Code and Deployments
 
 | Feature | What it does | Status |
 | --- | --- | --- |
 | [Repositories](/guides/managing-repositories/) and [git](/guides/git/) | Public and private repositories over HTTPS, with creating one by pushing to it. | <Status is="live" /> |
-| [Issues and pull requests](/guides/pull-requests/) | Issues, pull requests, line comments and reviews from people and agents. | <Status is="live" /> |
+| [Issues and pull requests](/guides/pull-requests/) | Issues, pull requests, line comments and reviews. | <Status is="live" /> |
 | [Checks](/guides/checks/), [rules](/guides/rules/) and the [merge queue](/guides/merge-queue/) | Required checks, protected branches, code owners, and changes tested together before they land. | <Status is="live" /> |
 | [Workflows](/guides/actions/) | Workflows from `.g1t/workflows`, most unchanged, on g1t's runners or [your own](/guides/self-hosted-runners/). | <Status is="live" /> |
-| [g1t's agent on an issue](/guides/working-with-g1t/) | Assign an issue to g1t: it opens a pull request, runs your checks, gets a review and revises until they pass. Open to invited workspaces during the alpha. | <Status is="preview" /> |
-| [Bring your own agent](/guides/bring-your-own-agent/) | Any coding agent or MCP client works on g1t and records its session onto its pull requests. | <Status is="live" /> |
+| [Connect a coding agent](/guides/bring-your-own-agent/) | Any coding agent or MCP client works on g1t as you and records its session onto its pull requests. | <Status is="live" /> |
+| [Memory](/guides/memory/) | What a project and a workspace remember, read and written by people and by your coding agents. | <Status is="live" /> |
 | [Packages](/guides/packages/) | npm, Cargo, Composer, Maven, NuGet, RubyGems, Go modules and container images. | <Status is="live" /> |
 | [Security](/guides/security/) | Secret push protection, history scanning and pull requests that upgrade vulnerable dependencies. | <Status is="live" /> |
 | [Deployments](/guides/deployments/) | A live preview of every pull request on g1t.page, production on merge, and custom domains. | <Status is="live" /> |
@@ -121,11 +104,8 @@ foot. On a phone it is a bar along the bottom.
 | --- | --- | --- |
 | [Integrations](/guides/integrations/) | The GitHub App, Sentry, Datadog, Jira, Linear and alerts. | <Status is="live" /> |
 | [API](/reference/api/), [MCP](/reference/mcp/) and [webhooks](/guides/webhooks/) | Everything as a REST endpoint and an MCP tool, and a webhook for every event. | <Status is="live" /> |
-| [Customize](/guides/customize/) | Skills, Connectors and Plugins, each with Yours and Discover: marketplaces, plugins, skills, subagents and MCP servers in the formats Claude Code reads, added by owners; members ask for what they need. | <Status is="live" /> |
-| [Connectors](/guides/customize/#connectors) | Remote MCP servers from the directory, a plugin or an address, signed in once with the browser or a key and given to every agent, a team or one, with a level per tool. | <Status is="live" /> |
-| g1t's own plugins | Mail, Support, CRM, Recruiting, On-call and bridges to a helpdesk, CRM or ERP, listed in the `g1t` marketplace and installable from their first release. | <Status is="coming" /> |
-| More integrations | Drive, Gmail, Calendar, Slack and Microsoft 365, each listing what it lets agents do. | <Status is="coming" /> |
-| Mail | Email on your own domain, with shared inboxes that agents work in. | <Status is="coming" /> |
+| More integrations | Drive, Gmail, Calendar, Slack and Microsoft 365. | <Status is="coming" /> |
+| Mail | Email on your own domain, with shared inboxes. | <Status is="coming" /> |
 
 ## Your workspace
 
@@ -136,7 +116,7 @@ foot. On a phone it is a bar along the bottom.
 | [Usage and billing](/guides/usage-and-billing/) | No seats. Usage at what it costs, a spend limit, and itemised invoices. | <Status is="live" /> |
 | Storage | Databases and buckets your teams can create, at a level each team is given, with copies of production data for anything not yet reviewed. | <Status is="coming" /> |
 | [Audit log](/guides/audit-log/) | Every change to the workspace, with export. | <Status is="live" /> |
-| [Run g1t yourself](/guides/self-hosting/) | The core forge in Docker. Agents, deployments and context search are off in this version. | <Status is="preview" /> |
+| [Run g1t yourself](/guides/self-hosting/) | The core forge in Docker. Deployments are off in this version. | <Status is="preview" /> |
 
 ## Bring a repository
 
@@ -203,12 +183,12 @@ foot. On a phone it is a bar along the bottom.
 	/>
 	<LinkCard
 		title="Teams"
-		description="Group people and agents into teams, give a team a role on repositories, mention it, and have it pick who reviews."
+		description="Group people into teams, give a team a role on repositories, mention it, and have it pick who reviews."
 		href="/guides/teams/"
 	/>
 	<LinkCard
 		title="People and teams"
-		description="Find anyone, person or agent, see what they own, and read what agents are told about their teams."
+		description="Find anyone in the workspace, see their teams and what they own."
 		href="/guides/people-and-teams/"
 	/>
 	<LinkCard
@@ -218,7 +198,7 @@ foot. On a phone it is a bar along the bottom.
 	/>
 	<LinkCard
 		title="Rules"
-		description="Protect branches and tags with rulesets: pull requests, checks, signed commits, merge windows, and rules for agents' changes."
+		description="Protect branches and tags with rulesets: pull requests, checks, signed commits and merge windows."
 		href="/guides/rules/"
 	/>
 	<LinkCard
@@ -241,6 +221,7 @@ hit today, why it exists, what to do instead, and whether it is planned.
 ## Using an AI assistant?
 
 Give it [g1t.sh/llms.txt](https://g1t.sh/llms.txt), which describes g1t for
-agents, and ask it to set you up. Every page here also has **Copy page** at
+agents, and ask it to set you up, or [connect it](/guides/bring-your-own-agent/)
+so it can work on g1t itself. Every page here also has **Copy page** at
 the top, to paste into a conversation, and a plain Markdown version at its
 address plus `.md`.

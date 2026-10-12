@@ -34,7 +34,7 @@ the API it called elsewhere are one trace.
 | **Requests** | Every request, newest first: status, method and address, duration, CPU time, region and deployment. Narrow by status, failed only, a route, or search |
 | **Logs** | Every line, newest first. Search words, a level or an attribute; follow it live |
 | **Traces** | Each trace, with the services it touched, its spans and errors. A trace opens as a waterfall, with each span's attributes and events, and the logs written under it |
-| **Errors** | Exceptions grouped by what they are and where they were thrown, with how often and since which deployment. Each can become an issue, with g1t assigned |
+| **Errors** | Exceptions grouped by what they are and where they were thrown, with how often and since which deployment. Each can become an issue |
 | **Metrics** | Every metric sent over OpenTelemetry, over time, averaged, summed or as a percentile, and grouped by service or any attribute |
 | **Settings** | Ingest tokens, exports, retention, and what the project used this month |
 
@@ -74,7 +74,7 @@ user 41`, `… of user 977` are one group with a count.
 
 **Make an issue** opens an issue with the error, its stack, how often it
 happened, the deployment it began with, and links to its latest request
-and trace. With **Assign g1t** checked, g1t starts on it at once. An error
+and trace. An error
 marked **Resolve** opens again if it happens again; **Ignore** keeps it
 quiet.
 
@@ -244,7 +244,7 @@ to 4 GB; past that, its oldest day goes first.
 | --- | --- |
 | See the pages | People with a role on the project's repository, even when its code is public: logs and addresses can hold what only the people running it should read |
 | Resolve, ignore or reopen errors | Triage and up |
-| Make an issue of an error | Anyone who can open issues; with g1t assigned, Write and up |
+| Make an issue of an error | Anyone who can open issues |
 | Tokens, exports, retention and the g1t.page switch | Admin |
 
 ## The API and MCP
@@ -253,10 +253,10 @@ Everything on the pages is in the [REST API](/reference/api/), under
 **Observability**, with the `observability:read` scope, and
 `observability:write` to change errors, settings, tokens and exports.
 
-Agents read it through the `observability` tool of the
+Coding agents read it through the `observability` tool of the
 [MCP server](/reference/mcp/): the overview, requests, logs, traces,
-errors and metrics. An agent fixing an error reads its stack, its request
-and its trace the same way you do.
+errors and metrics. A coding agent fixing an error reads its stack, its
+request and its trace the same way you do.
 
 ## What it costs
 

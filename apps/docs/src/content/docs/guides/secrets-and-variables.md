@@ -62,7 +62,7 @@ choose; blank lines and `#` comments are skipped.
 | A workflow job | Rows available to Workflows: secrets as `${{ secrets.KEY }}`, config as `${{ vars.KEY }}` | The job's `environment:`, if it has one |
 | A deploy build | Rows available to Deployments, as environment variables | `production` or `preview` |
 | A running app | The same rows, as bindings: `env.KEY` (a secret as a secret binding) | `production` or `preview` |
-| An agent, the merge queue's builds | Nothing | |
+| The merge queue's builds | Nothing | |
 
 For each key, a reader gets the row for its environment if there is one,
 else the row for all environments. A row only for other environments gives
@@ -83,8 +83,7 @@ Secrets go only to trusted runs:
 - pushes, schedules, manual runs and the merge queue;
 - pull requests whose author has the Write [role](/guides/access-and-roles/)
   or higher on the repository, a member or an
-  [outside collaborator](/guides/access-and-roles/#outside-collaborators).
-  For one g1t made, that is whoever asked for it;
+  [outside collaborator](/guides/access-and-roles/#outside-collaborators);
 - pull requests g1t opened on its own, such as a security update.
 
 Anyone else's pull request, such as one from a fork or by someone with

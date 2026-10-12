@@ -86,8 +86,6 @@ same label.
 
 ## Labels and g1t
 
-- An [agent rule](/guides/working-with-g1t/) can queue an issue for g1t
-  when it is given a label.
 - [Dependency updates](/guides/dependency-updates/) carry `dependencies`
   and their ecosystem's label (`javascript`, `rust`, `go`, `python`, …)
   unless `labels` in the file says otherwise. Labels the repository lacks

@@ -19,16 +19,14 @@ a private network, not yet for an installation on the open internet.
 | Workspaces, members, access tokens | Works |
 | Repositories: create, push and clone over HTTP, browse code, commits | Works. A fresh clone's pack is kept in the bundled object store, so the next clone of the same commit is served from there. |
 | Issues, comments, labels | Works |
-| Pull requests from a branch or from a fork, merged onto the default branch | Works, when the pull request is up to date with the default branch. Bringing one up to date first needs g1t's agent, which is off. |
-| The merge queue | Takes pull requests and shows them waiting. Testing and landing them needs g1t's agent, which is off: take a pull request out of the queue, or turn the queue off, to merge it. |
+| Pull requests from a branch or from a fork, merged onto the default branch | Works, when the pull request is up to date with the default branch. |
+| The merge queue | Takes pull requests and shows them waiting. Testing and landing them needs g1t's runner, which is off: take a pull request out of the queue, or turn the queue off, to merge it. |
 | [The REST API](/reference/api/), OAuth and [MCP](/reference/mcp/) | Work, on a port of their own: `http://localhost:8789`, with the MCP server at `http://localhost:8789/mcp` |
 | [Container images](/guides/containers/): `docker login`, push and pull at your `PUBLIC_URL` | Works, kept in the bundled object store, with no limit on a layer's size or on pulls |
 | Site search | Works |
 | A status page of your own | Works, at `http://localhost:8788` ([below](#the-status-page)) |
 | Webhooks, integrations | Work, retries included |
 | Sign in with GitHub, import from GitHub | Off until you register a GitHub App of your own ([below](#sign-in-with-github-and-import-from-github)). Mirrors sync on GitHub's webhook once GitHub can reach your API, and with **Sync now** either way. |
-| g1t's agent: changes, plans and reviews | Off |
-| Context hub search | Off |
 | Deployments on `g1t.page` | Off |
 | [Observability](/guides/observability/): logs, traces, metrics and errors sent with OpenTelemetry | Works. Send OTLP to `http://localhost:8789/otlp` with a project's ingest token. |
 | Billing | Off. Nothing is charged, and no usage limit stops work. |
@@ -99,9 +97,9 @@ access token under **Settings → Access tokens**, then:
 curl -H "Authorization: Bearer $G1T_TOKEN" http://localhost:8789/user
 ```
 
-The MCP server is at `http://localhost:8789/mcp`. Connect an agent to it
-as [Bring your own agent](/guides/bring-your-own-agent/) shows, with this
-address in place of `https://mcp.g1t.sh`:
+The MCP server is at `http://localhost:8789/mcp`. Connect a coding agent
+to it as [Connect a coding agent](/guides/bring-your-own-agent/) shows,
+with this address in place of `https://mcp.g1t.sh`:
 
 ```sh
 claude mcp add --transport http g1t http://localhost:8789/mcp
@@ -210,8 +208,8 @@ answering when the site does not. Open
 Every minute it loads the site's sign-in page from inside Compose, and,
 with `STATUS_PROBE_REPO` set, lists that repository's branches. It keeps
 90 days of history on its own volume, `g1t-status`. Parts an installation
-of your own does not check (the API, MCP, docs, deployments, the model
-proxy and billing) are left off its page.
+of your own does not check (the API, MCP, docs, deployments and billing)
+are left off its page.
 
 The links to **Status** in the site's footer and account menu still point
 to status.g1t.sh; pointing them at your own status page is not a setting
@@ -268,17 +266,6 @@ g1t makes its own key for the GitHub tokens it keeps (`IDENTITY_KEY`, in
 the `g1t-data` volume) on first start. What the app can do, and what comes
 across from GitHub, is in [GitHub](/guides/github/).
 
-## Customize
-
-[Customize](/guides/customize/) works on a g1t you run yourself:
-marketplaces and plugins are read from public repositories on GitHub and
-from repositories on your installation, and connectors sign in to MCP
-servers from your installation's address. The agents service's
-`CONNECTORS_KEY` seals connectors' keys and OAuth tokens; `start.sh` makes
-it on first start, in `keys.env` beside the other sealing keys, and adds
-it to a `keys.env` from before it existed. Without it, open MCP servers
-work and nothing that signs in can be kept.
-
 ## Where your data lives
 
 | Volume | Holds |
@@ -297,8 +284,8 @@ docker run --rm -v g1t_g1t-data:/data -v g1t_g1t-git:/git -v "$PWD":/backup \
 docker compose -f deploy/self-host/docker-compose.yml start
 ```
 
-Keep `keys.env` with the backup. Without it, saved webhook, integration,
-connector and Actions secrets cannot be opened.
+Keep `keys.env` with the backup. Without it, saved webhook, integration
+and Actions secrets cannot be opened.
 
 ## Upgrade
 

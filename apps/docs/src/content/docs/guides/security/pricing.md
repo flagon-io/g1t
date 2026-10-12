@@ -21,7 +21,6 @@ quality**, on private ones.
 | Code scanning | Free | With the plan |
 | Dependency review | Free | With the plan |
 | Security overview | Free | With the plan |
-| Fix with g1t | Agent usage | Agent usage |
 
 ## Security and quality
 
@@ -31,6 +30,9 @@ and what it runs is charged like everything else g1t runs: security scans
 at what they cost g1t plus 20%, from the plan's included usage first. There
 is nothing to turn on.
 
+Scanning itself (history scans and dependency reads) is metered, and
+covered by g1t on free workspaces.
+
 A Security and quality subscription a workspace has at Stripe is ended by g1t,
 without a charge for the next month. Workspaces whose billing g1t covers,
 and an enterprise's workspaces, have it included.
@@ -38,12 +40,3 @@ and an enterprise's workspaces, have it included.
 Without the plan, a private repository's paid features say what they need
 and who can start the plan; nothing is started without an owner choosing
 it.
-
-## Fixes are agent usage
-
-**Fix with g1t** puts g1t's agent on an issue. Its run is charged as any
-agent's: the model at the provider's price with the agent rate, and sandbox
-time at cost plus 20%, from the plan's included usage first. See [Usage and billing](/guides/usage-and-billing/).
-
-Scanning itself (history scans and dependency reads) is metered as before,
-and covered by g1t on free workspaces.

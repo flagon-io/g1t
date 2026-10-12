@@ -226,7 +226,7 @@ already holds add nothing. On the plan nothing is refused: storage past
 the free amounts is charged.
 
 Anonymous pulls are limited to 300 requests a minute from each address, and
-signed-in ones to 5,000 a minute for each person, workspace or agent.
+signed-in ones to 5,000 a minute for each person or workspace.
 Past the limit, requests are answered `429` with `TOOMANYREQUESTS` and a
 `Retry-After`; docker waits and tries again. Signing in raises the limit.
 

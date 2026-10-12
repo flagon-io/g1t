@@ -49,14 +49,6 @@ pull requests into `release/1.x` just as one that targets
 Merging still needs the Write role. Under **Settings → Rules**, **What holds
 for a branch** shows every rule that covers a branch.
 
-## g1t's agent and other branches
-
-When you assign an issue to g1t, its pull request merges into the default
-branch. Change the base on its pull request and g1t works against that
-branch from then on: it catches up with it, resolves conflicts with it,
-and its reviewer compares the change with it. `@g1t` on such a pull
-request works against its base too.
-
 ## From the API
 
 - `base` on `POST /repos/{owner}/{name}/pulls` (`pull_request` `create`)

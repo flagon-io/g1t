@@ -127,7 +127,7 @@ files conflict and how to resolve them first. One that is only behind `main`
 does not need to catch up to join the queue, since the queue tests it on
 top of `main`. Where the repository requires pull requests to be up to
 date, [catch it up](/guides/pull-requests/#catching-up) first: when it and
-`main` changed different files that takes a few seconds and no agent.
+`main` changed different files that takes a few seconds.
 
 ## When an entry fails
 
@@ -144,12 +144,8 @@ It leaves the queue, and:
    file, which opens in the pull request's changes.
 3. The entries that were tested on top of it are tested again without it.
 
-A pull request g1t opened is then sent back to revise, as for any failed
-check, starting from `main` as it is now. The revision counts towards
-**Revisions before asking you**. Once it is ready again, a repository with
-**Merge automatically when ready** on adds it to the queue again by itself;
-otherwise it waits for someone to merge it again. A pull request you or
-your own agent opened is yours to fix and merge again.
+Its author fixes it, starting from `main` as it is now, and merges it
+again to put it back in the queue.
 
 ## The Merge queue page
 
@@ -165,7 +161,7 @@ Each shows:
 | State | **Waiting**, **Testing** or **Passed**. |
 | Tested as | `main` and the pull requests merged into it, such as `main + #41 + #44`. |
 | Checks | How its state's checks stand, linked to the `merge_group` workflow run on the tested commit (each run by name when there are several). |
-| Who | The agent or person who made the pull request, and who queued it. |
+| Who | The person or coding agent who made the pull request, and who queued it. |
 | Commit | The tested state's commit. |
 
 **Recently** lists the last 20 that left the queue: **Landed**, **Failed**
@@ -188,13 +184,13 @@ curl https://api.g1t.sh/repos/acme/web/queue
     {
       "number": 44,
       "title": "Add a --shout flag",
-      "agent": "g1t",
+      "agent": "ada",
       "state": "testing",
       "ahead": [41],
       "base_commit": "8f3c2e1…",
       "combined_commit": null,
       "results": [],
-      "enqueued_by": "g1t"
+      "enqueued_by": "ada"
     }
   ],
   "recent": []

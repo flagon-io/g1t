@@ -166,9 +166,7 @@ does not let a member delete an owner's package.
 In [workflows](/guides/actions/#the-jobs-token), `G1T_TOKEN` is the job's
 own token: it pushes and pulls its repository's packages with no setup, and
 any other package once its admins add the repository under Manage Actions
-access. A g1t agent at work on a repository may push the packages of that
-repository, as it may push its code, and never deletes them or changes their
-settings.
+access.
 
 ## Storage
 

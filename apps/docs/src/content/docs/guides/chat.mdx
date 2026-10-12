@@ -1,6 +1,6 @@
 ---
 title: Chat
-description: Talk to your team and your agents in channels, direct messages and threads, live. Mention an agent and it answers in the thread. React, add your workspace's own emoji, set a status, and choose what notifies you.
+description: Talk to your team in channels, direct messages and threads, live. React, add your workspace's own emoji, set a status, and choose what notifies you.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
@@ -11,87 +11,54 @@ import Aside from '../../../components/Aside.astro';
 import Card from '../../../components/Card.astro';
 import { CardGrid } from '@astrojs/starlight/components';
 
-**Chat is where a workspace talks.** People and agents are members of the
-same channels, write in the same threads and show up in the same
-direct-message list. You can ask a teammate a question, DM an agent, or
-mention one in the middle of a conversation, and the answer arrives in the
-place you asked.
+**Chat is where a workspace talks.** Everyone in a workspace can find its
+channels, write in the same threads and message each other directly. You
+can ask a teammate a question in a channel or a direct message, and the
+answer arrives in the place you asked.
 
 Chat is open to every member of a workspace, on every plan, the free one
-too. People chatting is never charged: no seats, no per-message price and
-no history cutoff. Agents' replies are charged to the agent that wrote
-them; see [what an agent costs](/guides/agents/#what-an-agent-costs).
+too. Chat is never charged: no seats, no per-message price and no history
+cutoff.
 
 Open **Chat** in the rail on the left, or go to
 `g1t.sh/<workspace>/-/chat`.
 
 ## A conversation
 
-Say your workspace has hired two agents from templates: Bruno (`@bruno`)
-from **Operations Engineer** and Margo (`@margo`) from **QA Engineer**. Here
-is a morning in `#web`, a channel with three people and those two agents in
-it:
+Here is a morning in `#web`, a channel for the web app, its releases and
+its bugs:
 
 <Conversation title="# web" topic="The web app, its releases and its bugs">
 <Message name="Priya Shah" time="10:42">
 
-@bruno draft the note for Thursday's release. In it: #412 invite emails use the team name, #415 the CSV export is faster, #417 charts are fixed in dark mode.
+Thursday's release is #412, #415 and #417. @dana can you check the invite emails in #412 before then? They change what customers receive.
 
 </Message>
-<Message name="Bruno" agent role="Operations Engineer" time="10:42">
+<Message name="Dana Brooks" time="10:43">
 
-**Thursday release**
-
-- Invite emails now use your team's name. (#412)
-- CSV exports are faster. (#415)
-- Charts read correctly in dark mode. (#417)
-
-#412 changes what customers receive. Want @margo to look at it first?
+On it. I'll reply in a thread here with anything I find.
 
 </Message>
-<Message name="Priya Shah" time="10:43">
+<Message name="Ana Ruiz" time="10:45">
 
-Yes please.
-
-</Message>
-<Message name="Bruno" agent role="Operations Engineer" time="10:43">
-
-@margo can you review #412 today? Thursday's release waits on it.
+#417 is merged. Charts read correctly in dark mode now.
 
 </Message>
 </Conversation>
 
-Three things happened there:
-
-- Priya **mentioned** `@bruno`, so Bruno answered. In a channel, an agent
-  answers only when it is mentioned. Nobody else's message woke it.
-- Bruno answered **in his own voice**: short and to the point, because his
-  personality is *Terse operator*. See
-  [job and personality](/guides/agents/#job-and-personality).
-- Bruno **handed off to a colleague** once Priya said yes. Margo is in
-  `#web`, so his brief is posted right there and wakes her, as one more hop
-  in a chain that Priya started. An agent's `@mention` on its own wakes
-  nobody: only a [hand-off](/guides/agents/#hand-off) does. Chains stop
-  after six hops and hand back to a person, so two agents can't talk to
-  each other forever.
+Priya **mentioned** `@dana`, so the message is counted as a mention in
+Dana's sidebar and, with the default settings, notifies her.
 
 Everyone is shown by name. A person is their display name, or their
-username as they wrote it when they have none. An agent is its name with a
-small **Agent** tag. Their username or handle is on their card: select a
-name or avatar to see it. Messages someone sends within five minutes of
-each other sit under one name, and each new day starts with a divider.
+username as they wrote it when they have none. Their username is on their
+card: select a name or avatar to see it. Messages someone sends within
+five minutes of each other sit under one name, and each new day starts with a divider.
 The sidebar, the people typing, notifications and phone alerts all name
 people the same way.
 
-<Aside type="note" title="What a reply can see today">
-A reply reads the conversation it is in, and looks things up while it
-answers: code, issues, pull requests and their checks, earlier messages
-and [artifacts](/guides/artifacts/#agents-and-artifacts). It only reads
-what everyone in the conversation can see; see
-[what agents can do for whom](/guides/agent-access/). In public channels
-and conversations of more than 50 people, agents don't read code, so ask
-in a DM or a private channel.
-</Aside>
+Messages that agents wrote in a workspace's chat in the past still show
+where they were posted, under the name the agent had, or as a deleted
+agent.
 
 ## Channels
 
@@ -107,7 +74,6 @@ the channel.
 | Who can find it | Every member, under **Browse channels** | Only its members |
 | Who can join | Any member, by opening it and choosing **Join** | Only people a member adds |
 | Who can read it | Every member | Only its members |
-| Who agents answer for | Everyone in the workspace can read the reply | Only the channel's members can read the reply |
 
 ### Create a channel
 
@@ -118,10 +84,10 @@ the channel.
    lowercase letters, digits, dashes and underscores. `Web Team` becomes
    `web-team`.
 3. Optionally, say what the channel is for. That line shows under its name.
-4. Turn on **Private** if only the people and agents you invite should
-   find and read it.
+4. Turn on **Private** if only the people you invite should find and read
+   it.
 5. Choose **Create channel**. You are its owner and first member. Invite
-   people and agents once it is made.
+   people once it is made.
 
 </Steps>
 
@@ -173,13 +139,7 @@ Chat's sidebar lists, from the top:
 | --- | --- |
 | **Pinned** | Conversations you pinned (hover over one and choose the pin, or right-click it). Only when you have some. |
 | **Channels** | The channels you're in, by name, then **Browse channels** with how many more you could join. **+** creates one. |
-| **People** | Your direct messages with people, the latest first. A conversation that has an agent in it as well as a person is here too, since a person is in it, with both faces on its row and **with an agent** after its name (see [people and agents together](#people-and-agents-together)). The pencil starts a new message. Empty, it says **Message a teammate.** |
-| **Agents** | Your direct messages with agents alone, the latest first, then the workspace's agents you haven't talked to yet, @g1t first. Choose one to open a conversation with it; from then on it's listed above with the rest. An agent's row shows its title and, while it's working or waiting on you, a dot on its face. **All agents** opens Agents. Your own [personal agents](/guides/agents/#personal-agents) are here too, for you alone. Owners hire one with **+**, and members create a personal one. Empty, it says **Message an agent.** |
-
-People and agents are never mixed in one list: a conversation with an
-agent is always under **Agents**, and anywhere an agent appears, its
-avatar carries the agent marker, a small bot on a lavender disc in its
-corner (see [an agent's face](/guides/agents/#its-face)).
+| **People** | Your direct messages, the latest first. The pencil starts a new message. Empty, it says **Message a teammate.** |
 
 Unread conversations are in bold with a count; mentions of you are counted
 in lavender. **All**, **Unread** and **Mentions** filter every section, and
@@ -192,64 +152,12 @@ device until you open it again.
 ## Direct messages
 
 A direct message is a private conversation between you and up to eight
-other members, people or agents. Start one with **New message** in Chat's
-sidebar and pick who to message.
+other members. Start one with **New message** in Chat's sidebar and pick
+who to message.
 
 - The same group of members always gets the same conversation, whatever
   order you pick them in.
 - A DM with only yourself is a place for notes.
-- **In a DM with one agent, it answers every message from a person.** You
-  don't need to mention it. That is the quickest way to talk to an agent:
-  open a DM with it and say what you need.
-- **In a group message with several agents,** mention the ones you want
-  an answer from. A message that mentions none of them goes to the agent
-  you are talking with: whichever agents answered you last, or, if none
-  has answered yet, the ones you last mentioned. So after "@mike make a
-  PDF of that resume" and Mike's answer, "now make a fake one from that
-  template" goes to Mike alone, and g1t stays out of it. Your first
-  message, before you have addressed anyone, goes to all of them; mention
-  another agent whenever you want to switch, or several to hear from each.
-- **An agent can open a group message for you** when it hands work to a
-  colleague who isn't where you asked: you, it and the colleague. A card
-  where you asked links to it. See
-  [hand off](/guides/agents/#hand-off).
-
-### People and agents together
-
-A direct message can have both people and agents in it, and it is never
-left to guesswork which is which:
-
-| Where | What says an agent is in it |
-| --- | --- |
-| The sidebar | The conversation lists under **People**, since a person is in it. Its row shows the person's face with the agent's in front of it, marked, and **with an agent** after the names. |
-| The header | A chip, always shown: each agent's face and handle, and that it is in the conversation (*@sam, agent, is in this conversation*). |
-| The composer | Its placeholder names everyone and marks the agents: *Message @mike and @sam (agent)*. |
-| The first message | The first time you open it on a device, a line above the start of the conversation: *Sam is an agent and reads everything here; it can act on what you say.* Dismiss it and it stays away. |
-| Every message | An agent's messages carry the agent marker on its avatar and **Agent** beside its name, as everywhere. |
-
-Everything said in such a conversation is read by the agents in it, and
-they answer every message from a person, as in any direct message with an
-agent.
-
-### Archived and deleted agents
-
-An owner can [archive an agent](/guides/agents/#archive-restore-and-delete),
-and a member their own personal agent. Until it is restored or deleted for
-good, an archived agent is deactivated, not gone:
-
-| Where | What you see |
-| --- | --- |
-| The sidebar's **Agents** section | It is no longer among the agents you haven't talked to yet, and **New message** and `@` autocomplete no longer offer it. A direct message you already had with it leaves the list too: type its name in **Jump to channel or person** to find it, and it shows, dimmed, with **Archived** beside its name where its title was, for as long as it is the conversation you are in. |
-| A direct message with it alone | The header says it was archived, when and by whom. A note stands where the composer was: everything said stays to read, and an owner can restore it, or delete it for good, under **Archived** on the Agents page. |
-| A group message it is in | The composer stays, for the people and live agents there. The archived agent is never woken, never shows as typing, and is not the one an unaddressed message goes to. |
-| Its messages | Keep its name and face, everywhere. |
-
-Once an agent is deleted for good, it leaves every channel and every
-list. A direct message with it is found through **Jump to channel or
-person** by the name it had, marked **Deleted**, and opens to read, with
-a note where the composer was; its
-messages, there and in channels, show under the name it had, marked
-**Deleted agent**.
 
 ## Threads
 
@@ -257,46 +165,21 @@ Reply to any message to start a thread under it. The thread keeps a side
 conversation out of the channel, and the message shows how many replies it
 has and when the last one came.
 
-When you mention an agent in a thread, it reads that thread, not the whole
-channel, and answers in it. Keep one request to one thread, and the agent
-always has the context it needs.
-
 The **⋯** on a message (hover over it; on a phone, press and hold it) and
-the **⋯** at the top of an open thread have:
-
-- **Copy link to thread**: a link that opens the conversation with the
-  thread beside it, to paste anywhere in g1t.
-- **Write this up as an artifact**: choose where the doc goes (shared
-  with this conversation, your Private, or a space you can add to), a title
-  if you have one, and the agent that writes it (@g1t unless you pick
-  another agent in the conversation). g1t posts the ask in the thread, as
-  you, where everyone can see it, with the thread's link: *@g1t write this
-  thread up as an artifact (a doc) in the Engineering space titled "Launch
-  plan". Link this thread as the source: …*. The agent answers it like any
-  mention, starts a session if it needs one, and replies with a link to the
-  doc. See [Artifacts](/guides/artifacts/#write-a-thread-up).
+the **⋯** at the top of an open thread have **Copy link to thread**: a link
+that opens the conversation with the thread beside it, to paste anywhere in
+g1t.
 
 ## Mentions
 
-Type `@` and a name to mention a person by username or an agent by handle:
-`@priya`, `@margo`. Suggestions match display names too, so `@Pri` finds
-Priya Nair. In the conversation the mention reads as the name people know,
-`@Priya Nair`, and opens their card; the message itself keeps `@priya`.
-The sidebar counts mentions of you separately from other unread messages,
-so they stand out.
-
-| You mention | What happens |
-| --- | --- |
-| A person | It is counted as a mention in their sidebar. |
-| An agent that is in the channel | The agent answers in the thread. |
-| An agent that is not in the channel | Nothing. Invite the agent first. |
-| `@g1t` | In a channel, g1t joins the first time it is mentioned, with no invite, and answers in the thread. A DM never gains a member, so to talk to g1t alone, open a DM with it. See [g1t, the orchestrator](/guides/agents/#g1t-the-orchestrator). |
+Type `@` and a name to mention a person by username: `@priya`, `@dana`.
+Suggestions match display names too, so `@Pri` finds Priya Nair. In the
+conversation the mention reads as the name people know, `@Priya Nair`, and
+opens their card; the message itself keeps `@priya`. A mention is counted
+in that person's sidebar separately from other unread messages, so it
+stands out.
 
 An address such as `me@example.com` is never read as a mention.
-
-An agent's messages wake no other agent, mentions or not. When an agent
-mentions someone who isn't in the conversation, the mention shows as a
-plain name, with no link and no notification, since it reaches no one.
 
 ## Format a message
 
@@ -340,11 +223,11 @@ In a quote, Enter sends and Shift+Enter starts the next line of the quote.
 
 ### What a message shows
 
-Every message, a person's or an agent's, is shown with its formatting.
+Every message is shown with its formatting.
 Code blocks with a language g1t knows (`ts`, `rust`, `python`, `sh`,
 `sql`, `json` and others) are coloured, and have a copy button. A web
-address on its own becomes a link, and links open in a new tab. Headings
-an agent writes show as a bold line, and a rule as a line across.
+address on its own becomes a link, and links open in a new tab. A heading
+shows as a bold line, and a rule as a line across.
 
 A table written in Markdown shows as a table: a header row, a row of
 `---` under it (`:--`, `:-:` or `--:` to line a column up left, centre
@@ -365,9 +248,8 @@ shows as a link to it, not the image.
 ### Messages are Markdown
 
 What you send is kept as Markdown, the formatting written as `**bold**`,
-`_italic_`, `~~struck~~` and so on. That is what agents read and write,
-and what you edit when you change a message, so formatting survives the
-round trip. Text you paste without formatting, such as from a terminal, is
+`_italic_`, `~~struck~~` and so on. That is what you edit when you change
+a message, so formatting survives the round trip. Text you paste without formatting, such as from a terminal, is
 read as Markdown too; paste with **Ctrl+Shift+V** to keep it exactly as it
 is. Notifications, pop-ups and browser notifications show a message's
 words without the marks: `**Release** is _done_` reads *Release is done*.
@@ -375,110 +257,13 @@ words without the marks: `**Release** is _done_` reads *Release is done*.
 To show a character that would format, put a backslash before it: `\*`
 shows `*`.
 
-## Agents in channels
-
-Invite an agent to a channel the way you invite a person. Only agents of
-the same workspace can be invited.
-
-<Aside type="note" title="An invite grants read, never write">
-Adding an agent to a channel lets it read that channel and answer there. It
-does not give the agent access to anything else. What an agent may change is
-set on the agent itself; see [what agents can do for whom](/guides/agent-access/).
-</Aside>
-
-While an agent works on a reply, the channel shows it as typing, the same
-as a person, for as long as it works: a reply that reads code, consults a
-colleague or starts a session can take a minute or more, and after ten
-seconds the line says the agent is still working on it. If it is out of
-budget, it says so in the thread instead of answering, and tells you who
-can raise its limit.
-
-### Session cards
-
-When an agent starts a longer piece of work, it posts a **session card**:
-the session's title, a line such as *Step 3 · 12 tools · $0.14*, and its
-state. The card changes in place as the session moves, for everyone looking,
-and opens the session's page in Agents. Its buttons let you message the
-session, stop it or approve more spend without leaving the conversation;
-see [cards you can act on](#cards-you-can-act-on).
-
-| State | Means |
-| --- | --- |
-| **Queued** | Waiting to start. |
-| **Working** | Running now. The chip pulses softly. |
-| **Waiting on helpers** | Another agent is doing part of the work. |
-| **Needs approval** | Waiting for someone to approve a step. Shown in amber. |
-| **Done** | Finished. Shown in green. |
-| **Stopped** | Someone stopped it. |
-| **Failed** | It could not finish. Shown in red. |
-
-## Cards you can act on
-
-What an agent posts in chat is something you can act on where you read it.
-A card has a title, its state, often a preview and a few labelled facts
-(such as **Repository** and **Labels**), and a row of buttons. Buttons that
-open a place, such as **Open**, take you there. The others do the thing
-right in the conversation:
-
-- A button that can't be undone, such as **Stop**, asks you first.
-- A button that needs something from you opens a field under the card: an
-  amount in dollars for **Approve more**, already filled in with a
-  suggestion, or a line of text for **Message** and **Follow up**. Press
-  Enter to send, Shift+Enter for a new line, and Esc to put the field away.
-- While it works, the button spins and the card's other buttons wait. A
-  note then says what happened, such as *Approved up to $4.00. It's going
-  on.*, or why it didn't.
-- The card itself changes in place, for everyone in the conversation, once
-  the work is done: a filed draft becomes **Filed** with a link to the
-  issue, a stopped session reads **Stopped**.
-
-A long preview shows its first few lines; choose **Show more** to read the
-rest. Cards work the same in a thread and on a phone. A session's updates
-go in its card's thread; open the thread and the card stays at the top,
-live, with its buttons.
-
-When a card waits on you (a session at its cap, a draft issue you asked
-for), its pop-up has the card's buttons, and so does **Waiting on you in
-chat** at the top of the notifications panel (the bell), for a day or until you
-act. **Approve more** asks for the amount right there; **Stop** asks
-first. A browser notification has the buttons that need nothing typed,
-such as **Stop** and **Open**.
-
-| Card | Its buttons |
-| --- | --- |
-| A session that is working | **Message** (it reads it at its next step), **Stop**, **Open** |
-| A session that needs approval | **Approve more** (type the new cap), **Stop**, **Open** |
-| A session that is done | Its report as the preview, **Follow up** (it picks up again with what it already knows), **Open** |
-| A draft issue | The issue as it would be filed, its repository and labels, **File issue**, **Discard** |
-| A filed issue | **Open issue** |
-
-### Who can press what
-
-Anyone who can read the conversation sees the same buttons. What happens
-when you press one depends on who you are:
-
-| Button | Who can |
-| --- | --- |
-| **Message**, **Follow up** | Anyone who can read the conversation. |
-| **Stop** | Anyone who can read the conversation. |
-| **Approve more** | The workspace's owners. The new cap must be more than the session has already spent. |
-| **File issue** | Anyone who can read the repository. The issue is filed as you, with a line saying which agent drafted it. |
-| **Discard** | Whoever asked the agent for the draft, or a workspace owner. |
-
-If two people press at once, the first one wins and the second is told
-someone got there first. Agents never file, approve or stop anything
-through a card on their own: a person always presses the button.
-
 ## Live
 
 Chat is live. Messages, edits and deletions appear for everyone in the
 channel the moment they happen, without reloading. You also see:
 
-- **Typing.** Who is writing right now, people and agents, in the channel
-  or in a thread. An agent shows for as long as it works on its reply, and
-  as *still working on it* once that has been a while.
+- **Typing.** Who is writing right now, in the channel or in a thread.
 - **Channel changes.** A new name, topic, or archiving.
-- **Cards.** An agent's session card, or any other card, changing state.
 - **Read state.** Your sidebar shows unread counts per channel, and the
   channel scrolls to the first message you haven't read.
 
@@ -518,13 +303,6 @@ more*. Your own reactions are highlighted.
 | --- | --- |
 | Different emoji on one message | 50. More of an emoji already there always fits. |
 | What you can react with | One emoji: a standard one, or one of the workspace's own, written `:name:`. |
-
-### Agents react too
-
-An agent says it has your message before it answers. In a channel, or a
-direct message with more than one person, it reacts with 👀 when it starts
-working on a reply, and swaps it for ✅ when it is done. In a one-to-one DM
-it simply answers, since the typing indicator says the same thing.
 
 ## Custom emoji
 
@@ -611,9 +389,6 @@ It all moves live; nobody has to reload.
 | Amber, with a bar | **Notifications paused**: they're here, but nothing pops up for them until the time they chose. |
 | None | **Offline**: no tab of g1t is open. |
 
-Agents have dots of their own, which say what they're doing (idle,
-working, out of budget), not whether they're here.
-
 ### Set a status
 
 Open the menu on your avatar at the foot of the rail (on a phone, **More**,
@@ -653,10 +428,10 @@ g1t tells you when something is for you, wherever you are in the app.
 
 | | |
 | --- | --- |
-| **Pop-ups** | While g1t is open in any tab, a message for you pops up in the corner, whichever page you are on: a DM, a mention, a reply in your thread, an agent waiting on you, a review requested. Reply from the pop-up without leaving the page, or open the conversation. A pop-up about a card has its buttons: **Approve more**, **Stop**, **File issue**. |
-| **Sounds** | A short sound when something is for you: a message in a conversation you have open but are not looking at, a direct message, a mention, an agent finishing. Which, and how loud, is yours to set; see [Sounds and do not disturb](#sounds-and-do-not-disturb). |
+| **Pop-ups** | While g1t is open in any tab, a message for you pops up in the corner, whichever page you are on: a DM, a mention, a reply in your thread, a review requested. Reply from the pop-up without leaving the page, or open the conversation. |
+| **Sounds** | A short sound when something is for you: a message in a conversation you have open but are not looking at, a direct message, a mention. Which, and how loud, is yours to set; see [Sounds and do not disturb](#sounds-and-do-not-disturb). |
 | **Counts** | The rail's Chat badge and each conversation's unread and mention counts update live, in every open tab. |
-| **Browser notifications** | Turn them on, and this browser shows a notification when you're away from g1t, even with every tab closed. g1t never pushes to a browser where you're already looking at g1t. A notification about a card has the buttons that need nothing typed or confirmed, such as **Open** and **File issue**; **Stop** asks first, so it waits for the app. |
+| **Browser notifications** | Turn them on, and this browser shows a notification when you're away from g1t, even with every tab closed. g1t never pushes to a browser where you're already looking at g1t. |
 
 ### Choose what you hear about
 
@@ -664,7 +439,7 @@ Open **Settings → Notifications** (`g1t.sh/settings/notifications`):
 
 | Notify me about | You hear about |
 | --- | --- |
-| **DMs and mentions** (the default) | Direct messages, mentions, replies in your threads, agents waiting on you, and approvals. |
+| **DMs and mentions** (the default) | Direct messages, mentions and replies in your threads. |
 | **Everything** | Every message in conversations you're in, and everything in your notifications. |
 | **Nothing** | No pop-ups or browser notifications. Counts still update. |
 
@@ -681,9 +456,8 @@ itself: nothing is downloaded. What plays when:
 | Sound | When |
 | --- | --- |
 | **New message** | A message in a conversation you have open, while the window is behind another or you are in another conversation. |
-| **Direct message** | A direct message from someone, or from an agent, that is not from you. |
+| **Direct message** | A direct message from someone else. |
 | **Mention** | A message that @mentions you. It wins over the other two. |
-| **Agent finished** | An agent posts a card saying it finished something for you, or is waiting on you. |
 | **Sent** | A soft tick as your message goes. Off until you turn it on. |
 
 The rules behind them:
@@ -692,7 +466,6 @@ The rules behind them:
   is in front: what is on screen is silent.
 - Nothing sounds for your own messages, in a conversation you
   [muted](#star-and-mute), or while Do not disturb is on.
-- Agents' messages count like people's.
 - At most one sound every 1.5 seconds: a burst of messages is one sound,
   and the same message never sounds twice.
 - Browsers allow sound only after you have clicked or typed on the page,
@@ -707,7 +480,7 @@ with your account, so every device you sign in on sounds the same:
 | **Sounds** | Whether anything plays at all. Counts and pop-ups still show. | On |
 | **Sound set** | **Soft** (warm and low) or **Bright** (higher and shorter). Press play by any sound to hear it. | Soft |
 | **Volume** | From 0 to 100. | 60 |
-| **New message**, **Direct message**, **Mention**, **Agent finished**, **Sent** | Each sound on or off. | All on but Sent |
+| **New message**, **Direct message**, **Mention**, **Sent** | Each sound on or off. | All on but Sent |
 | **Do not disturb** | Off, or for 30 minutes, an hour, two hours, or until tomorrow at 9:00 your time. | Off |
 | **Desktop notifications** | While this window is behind another, a message to you shows as a system notification from the open tab. Turning it on asks the browser's permission once, from this switch and never when a page loads. Not offered where browser notifications above are on: those already show it. In [the desktop app](/guides/desktop/) it is on, and the app shows them itself. | Off |
 
@@ -719,8 +492,7 @@ counts and your notifications still update, the bell in the top bar shows
 a small amber dot, and everyone sees your amber dot. It ends on its own at
 the time you chose; **Resume notifications**, or **Off**, ends it early.
 
-At most three pop-ups show at once. Each stays six seconds (one with a
-card's buttons, twelve), and stays while your pointer or keyboard is on
+At most three pop-ups show at once. Each stays six seconds, and stays while your pointer or keyboard is on
 it. Nothing pops up for the conversation you have open.
 
 g1t never asks to show browser notifications when a page loads. After
@@ -741,16 +513,12 @@ These are planned and not built yet:
 		linked to a project, with their buttons working in place. <Soon />
 	</Card>
 	<Card title="Mentions in Notifications" icon="bell">
-		Mentions and approvals as items in [Notifications](/guides/notifications/), so
+		Mentions as items in [Notifications](/guides/notifications/), so
 		acting in either place settles both. <Soon />
 	</Card>
 	<Card title="Files" icon="paperclip">
 		Files uploaded to a conversation, under the workspace's file rules.
 		<Soon />
-	</Card>
-	<Card title="Your chat app" icon="messages-square">
-		Keep the chat app your company already lives in and use your agents
-		there. See [agents in your chat app](/guides/chat-app/). <Soon />
 	</Card>
 	<Card title="Search" icon="search">
 		Messages in [site-wide search](/guides/search/), with only what you can
@@ -765,7 +533,7 @@ These are planned and not built yet:
 
 ## Next
 
-- [Agents](/guides/agents/): create one, give it a job and a voice, and set
-  its budget.
-- [What agents can do for whom](/guides/agent-access/): how an agent's
-  answers depend on who is asking and who can read them.
+- [Notifications](/guides/notifications/): everything waiting for you, in
+  one place, until you deal with it.
+- [People and teams](/guides/people-and-teams/): the workspace's
+  directory, profiles and teams.

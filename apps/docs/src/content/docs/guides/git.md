@@ -141,7 +141,7 @@ Uploaded avatars are on the same host, at
 
 Public projects, Explore, Search and profiles are open to everyone, in the
 same sidebar members use. Signed out, the sidebar has Explore and Search,
-and in a project its Code, Issues, Pull requests, Agents, Workflows and
+and in a project its Code, Issues, Pull requests, Workflows and
 Deployments; pages only people with a role on the repository see, such as
 Security and Settings, are left out. **Sign in** and **Sign up** sit at the bottom, and both bring you
 back to the page you were on.
@@ -150,8 +150,8 @@ back to the page you were on.
 
 A repository protects its branches and tags with [rulesets](/guides/rules/),
 under **Settings → Rules**. A push that breaks a rule is refused for
-everyone, whatever their role, and for agents, unless a ruleset lists them
-as able to bypass it. Git prints which ruleset and rule refused it, and how
+everyone, whatever their role, unless a ruleset lists them as able to
+bypass it. Git prints which ruleset and rule refused it, and how
 to fix it:
 
 ```text
@@ -365,9 +365,8 @@ and [status.g1t.sh](https://status.g1t.sh) shows **Git storage**.
 
 ### Git operations
 
-Each clone, fetch and push is a git operation, your agents' included:
-their sandboxes use the same git endpoints you do, and a pull request's
-working copy counts for its repository's workspace. Every workspace has 50,000
+Each clone, fetch and push is a git operation, your coding agents' and
+workflow jobs' included. Every workspace has 50,000
 a month included. Past that, a workspace on the g1t plan pays $0.18 per
 1,000, and a free workspace is never charged: past 50,000 in a month, its
 git requests past 60 in an hour are answered `429` with when to try again,
@@ -533,7 +532,7 @@ To remove a key, choose **Delete** beside it and confirm. Anything using
 it stops at once.
 
 Only people with the Admin role on the repository see the page and
-manage its keys. An agent's token never can, and neither can a deploy key.
+manage its keys. A deploy key never can.
 A workspace's own access token can only when an owner gave it Admin. See
 [access and roles](/guides/access-and-roles/#deploy-keys). Adding and
 deleting a key is recorded in the workspace's

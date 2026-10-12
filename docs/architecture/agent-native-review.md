@@ -4,6 +4,21 @@ Status: proposal, not built. Written 2026-10-12 from the code at `bba76b3`.
 Nothing here is documented behaviour; `apps/docs` remains the description of
 what g1t does.
 
+**Decision, 2026-10-12 (later the same day):** g1t no longer hosts agents.
+The @g1t platform agent (assigning issues to g1t, @g1t mentions, plans,
+reviews and revisions by g1t) and the workspace agents (personas, chat DMs,
+skills, abilities, routines, computers, budgets, Customize), with the
+models, context and agents services, were removed. g1t is the platform
+coding agents integrate with: the MCP server, the REST API, OAuth apps,
+access tokens, webhooks and runners. What this review calls managed
+execution (option A, §II.3, Part XI, the runtime parts of Part XV and
+Phase 4) is out of scope; read those parts as history. The harness-first
+pieces it recommends that exist today stay: pull request sessions
+(`record_session` / `read_session`), memory (`recall` / `remember`, without
+automatic capture), overlaps, the merge queue, required checks and
+coding-agent attribution. Where a row below says **[built]** about a hosted
+agent, that code is gone.
+
 Labels used throughout:
 
 | Label | Meaning |

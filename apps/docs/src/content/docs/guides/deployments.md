@@ -6,7 +6,7 @@ description: A project's production on every push and a live preview of every br
 Deployments put your [project](/guides/projects/) on the web. They are off
 for every project until you turn them on. Once they are on, every branch
 with a pull request gets its own live preview, linked on the pull request,
-and the default branch goes to production on every push. Reviewers, and the agents reviewing for you,
+and the default branch goes to production on every push. Reviewers
 click through the change instead of reading a diff. A [mirror](/guides/mirroring/)
 deploys nothing while the remote leads it: pushes copied in from the remote
 don't build, and its **Deployments** page comes with a takeover.
@@ -21,7 +21,7 @@ Cloudflare Containers behind one; see [Docker deployments](#docker-deployments):
 | Preview of the branch `fix-login` | `https://<project>-git-fix-login-<workspace>.g1t.page` |
 
 A preview's address follows its branch, so it stays the same for every push
-to it. A pull request from a fork, as g1t's agents make them, is named
+to it. A pull request from a fork, as coding agents make them, is named
 `pr-<number>` in place of the branch. A name too long for an address, or
 one another app already has, is shortened or given a short suffix.
 
@@ -285,8 +285,8 @@ What Deployments cannot run yet is on
 ## Previews of branches
 
 A preview is built when a pull request is opened, when it is marked ready,
-and on every push to it, including an agent's. Pull requests from forks,
-which is how g1t's agents work, are built from the fork.
+and on every push to it. Pull requests from forks are built from the
+fork.
 
 The pull request shows the deployment as a check named **g1t / deploy**:
 
@@ -658,8 +658,7 @@ rather than the build; a container gets them as its environment variables
 when it starts, and its image's build gets none. Secrets reach a preview only when the pull
 request's author has Write or higher on the repository, whether a member
 or an [outside collaborator](/guides/access-and-roles/#outside-collaborators),
-or it is g1t working on its own. For a pull request g1t made, whoever
-asked for it is the one whose role counts. A preview of anyone else's pull request, such as
+or it is g1t working on its own. A preview of anyone else's pull request, such as
 one from a fork or by someone with Read or Triage, is built and runs with
 variables only, no secrets.
 
@@ -769,7 +768,7 @@ Usage from the month that is under way is still charged once it ends.
    build does not start: the deployment's status is **Skipped** with the
    reason and what to do, and **Redeploy** shows the same reason.
 2. It starts a build in a sandbox of its own, the same machines that run
-   [GitHub Actions](/guides/actions/) and agents. The sandbox checks out
+   [GitHub Actions](/guides/actions/). The sandbox checks out
    the commit with a read-only token that expires in 30 minutes. Its
    network is restricted to the project's allowed domains, the package
    registries, GitHub and Cloudflare's API, as

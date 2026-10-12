@@ -100,8 +100,8 @@ If you're in the European Economic Area or the United Kingdom, our legal bases a
 
 We share information only to run g1t, at your direction, or when the law requires it.
 
-- **Service providers ("subprocessors")** that run parts of g1t for us, under contracts that limit them to doing so: Cloudflare (hosting, storage, databases, sandboxes, email, search and the AI gateway), Stripe (payments), Anthropic (the model behind hosted agents) and HeyCatch (site analytics). The [subprocessors](/policies/subprocessors) page lists them and what each receives.
-- **Services you connect.** When you connect your own model provider, an issue tracker, error tracking or a webhook, or let your sandboxes reach a host, we send them what that connection needs, because you asked us to.
+- **Service providers ("subprocessors")** that run parts of g1t for us, under contracts that limit them to doing so: Cloudflare (hosting, storage, databases, sandboxes, email and search), Stripe (payments) and HeyCatch (site analytics). The [subprocessors](/policies/subprocessors) page lists them and what each receives.
+- **Services you connect.** When you connect an issue tracker, error tracking or a webhook, or let your sandboxes reach a host, we send them what that connection needs, because you asked us to.
 - **Other people on g1t**, as your settings allow: your workspace's members, and everyone for public projects and your public profile.
 - **Vulnerability databases.** To find vulnerable dependencies, we send the names and versions of packages in your lockfiles to OSV.dev, an open database run by Google. Nothing else about you or your repository is sent.
 - **The law.** We disclose information when we must by law, such as a valid court order, and when we need to protect the rights, property or safety of our users, the public or Flagon. Where we can, we tell you first.

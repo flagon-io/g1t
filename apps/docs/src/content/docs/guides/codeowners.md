@@ -143,7 +143,6 @@ part of a directory no owner, add a later rule with no owners instead.
 | `@ana` | The person with that username. | Have the Write [role](/guides/access-and-roles/) or higher on the repository. |
 | `@acme/backend` | Everyone in the [team](/guides/teams/), and in its child teams. | Be a team of the repository's workspace, with the Write role or higher on the repository. |
 | `ana@example.com` | The g1t account that has confirmed that address. | Have the Write role or higher on the repository. |
-| `@g1t` | g1t's agent. | |
 
 A file written for another host may name teams under an organization that
 is not a g1t workspace, such as `@acme-corp/backend`. g1t reads those as
@@ -214,8 +213,7 @@ who owns the files it changes and asks them to review it:
   where the team's review assignment decides who is picked;
 - each owner once: someone who was asked and removed is not asked again on
   the next push;
-- never the pull request's author, or whoever asked g1t for it, and never
-  g1t's agent;
+- never the pull request's author;
 - owners of optional sections too;
 - a draft once it is marked ready.
 
@@ -255,15 +253,13 @@ What counts:
 | | Counts |
 | --- | --- |
 | An approval from someone the rule names, or from anyone in a team it names or that team's child teams | Yes |
-| An approval from the pull request's author, or from whoever asked g1t for it | Never |
-| An approval from g1t's agent | Only for a rule that names `@g1t`. **g1t's approval counts** does not change this. |
+| An approval from the pull request's author | Never |
 | A code owner who asked for changes | Holds the merge until that person approves. Only each reviewer's latest verdict counts. |
 | An owner that did not resolve | Owns nothing, so nothing is waited for. |
 
 It holds wherever a pull request merges: the merge button,
 [`merge_pull_request`](/reference/api/pull-requests/merge-pull-request/),
-a g1t agent's [automatic merge](/guides/working-with-g1t/#merging-automatically),
-and the [merge queue](/guides/merge-queue/). It holds pull requests g1t
+an automatic merge and the [merge queue](/guides/merge-queue/). It holds pull requests g1t
 opens by itself too, such as [security updates](/guides/security/), which
 then need a person who owns the files. **Allow bypassing required checks**
 does not bypass it.

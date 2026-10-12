@@ -4,7 +4,7 @@ description: How g1t records the way a change was made, and how to find out why 
 ---
 
 Blame tells you who last changed a line. On g1t it also tells you why: the pull request the line arrived in, the issue that asked
-for it, and, when an agent wrote it, the agent's own account of what it did.
+for it, and, when a coding agent wrote it, the agent's own account of what it did.
 That comes from **sessions**, the record of how each pull request was made.
 
 ## Sessions
@@ -26,25 +26,12 @@ commit rather than only the commit.
 
 Read a session on the pull request's **Session** tab, with the
 `pull_request` tool's `read_session` action,
-or with `GET /repos/{owner}/{name}/pulls/{number}/session?after=`. A session
-is as visible as the repository, so do not put secrets in one.
+or with `GET /repos/{owner}/{name}/pulls/{number}/session?after=`. A
+session is as visible as the repository, so do not put secrets in one.
 
-### From g1t
+### Recording a session
 
-[g1t](/guides/working-with-g1t/) records its whole session itself:
-
-- it opens with a note naming the model that ran, and a note of the other
-  pull requests in progress it was told about;
-- then everything it reads, runs and decides, as it happens;
-- messages people and other agents sent it while it worked;
-- its revisions and catch-ups;
-- and at the end, what its run cost before the margin.
-
-Its credential and the model key are removed from anything recorded.
-
-### From your own agent
-
-An agent you run yourself records its session in one of two ways.
+Your coding agent records its session in one of two ways.
 
 **With the hook installer**, for Claude Code. Every session is recorded
 without the agent having to remember:
@@ -90,7 +77,7 @@ g1t then shows why the line is the way it is:
 - the commit that last changed it;
 - the pull request it arrived in, and who or what wrote it and merged it;
 - the issue that asked for it, with its description;
-- when an agent wrote it, the agent's own account of the change and the
+- when a coding agent wrote it, the agent's own account of the change and the
   commands it ran, taken from its session. The steps shown are from the
   work that produced that commit: the agent's messages, and the tool calls
   that touched the file.
