@@ -1,7 +1,7 @@
 # g1t for Android and iOS
 
 The phone app: [Expo](https://expo.dev) (SDK 57, React Native 0.86) with
-Expo Router, in TypeScript. Chat, Code and Customize, signed in with g1t's
+Expo Router, in TypeScript. Chat and Code, signed in with g1t's
 own OAuth. Android is the first target. What it does for people is in the
 guide, [The phone app](../docs/src/content/docs/guides/mobile.md).
 
@@ -19,9 +19,8 @@ src/
     (app)/             signed in: the tabs
       chat/            the list, a conversation, a thread, new, browse
       code/            repositories, pull requests, issues, diffs
-      more/            Customize, notifications, workspaces, sign out
-      customize/       Skills, Connectors, Plugins (from More)
-      home/, notifications/, agents/  coming: they open the site
+      more/            notifications, workspaces, sign out
+      home/, notifications/  coming: they open the site
     +native-intent.tsx g1t:// links to screens (lib/links.ts)
   components/        the building blocks, themed (ui.tsx); chat/ and Code's
   lib/
@@ -34,14 +33,11 @@ src/
     live.ts            the site's live sockets, with tickets, kept open
     feed.tsx           counts, banners and presence while the app is open
     push.ts            notifications on the phone
-    customize.ts       Customize's listings, from @g1t/contracts' catalogs
   theme/             packages/theme/tokens.css's colours, for React Native
 ```
 
 Shared types and catalogs come from `@g1t/contracts` (by subpath, such as
 `@g1t/contracts/oauth`, so the app does not bundle every module).
-Customize's three parts are defined there too (`customize.ts`), so the
-site can move the Marketplace onto the same model.
 
 ## How it talks to g1t
 
@@ -260,8 +256,6 @@ and self-hosting's "The phone app"):
 - **The brand's faces**: TTF copies of Hanken Grotesk, Bricolage
   Grotesque and IBM Plex Mono (packages/theme ships woff2), loaded with
   `expo-font`.
-- **Agents' faces**: `components/ui.tsx`'s `Avatar` draws a letter for an
-  agent; the site's `AgentFace` should be shared and drawn here.
 - **The store listing**: screenshots, a privacy policy URL, and Play's
   data safety form (the app keeps the server and credentials in the
   keystore, registers a push token with the g1t it is pointed at, and

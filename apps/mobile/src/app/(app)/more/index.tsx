@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
-import { Stack, router } from "expo-router";
+import { Stack } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { Bell, BellRing, Blocks, Check, ExternalLink, LogOut } from "lucide-react-native";
+import { Bell, BellRing, Check, ExternalLink, LogOut } from "lucide-react-native";
 import { Linking, View } from "react-native";
 
 import { Avatar, Badge, Button, Row, Screen, SectionHeader, Text } from "@/components/ui";
@@ -11,7 +11,7 @@ import { isHosted, siteUrl } from "@/lib/server";
 import { useSignedIn } from "@/lib/session";
 import { space, useColors } from "@/theme";
 
-/** More: Customize, your workspaces, notifications on this phone, how you signed in, and signing out. */
+/** More: your workspaces, notifications on this phone, how you signed in, and signing out. */
 export default function More() {
   const { me, workspace, server, client, selectWorkspace, signOut } = useSignedIn();
   const colors = useColors();
@@ -25,8 +25,8 @@ export default function More() {
     unsupported: { label: "Not here", detail: "Notifications need a build of the app on a phone: not Expo Go on Android, nor a simulator." },
     off: { label: "Off", detail: `${new URL(server.site).host} sends no notifications to phones. Chat still updates while the app is open.` },
     denied: { label: "Off", detail: "Turned off for g1t in your phone's settings. Tap to open them." },
-    undetermined: { label: "Off", detail: "Tap to get notified of messages to you, mentions and agents waiting on you." },
-    granted: { label: "On", detail: "Messages to you, mentions, replies and agents waiting on you, when you're not at g1t elsewhere." },
+    undetermined: { label: "Off", detail: "Tap to get notified of messages to you, mentions and replies." },
+    granted: { label: "On", detail: "Messages to you, mentions and replies, when you're not at g1t elsewhere." },
   }[push.data ?? "undetermined"];
 
   return (
@@ -43,7 +43,6 @@ export default function More() {
       </View>
 
       <View>
-        <Row leading={<Blocks size={22} color={colors.accent} />} title="Customize" subtitle="Skills, connectors and plugins for your agents" onPress={() => router.push("/customize")} />
         <Row
           leading={<Bell size={22} color={colors.accent} />}
           title="Notifications on this phone"

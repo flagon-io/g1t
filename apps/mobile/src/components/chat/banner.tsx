@@ -39,12 +39,7 @@ export function Banner() {
   return (
     <Animated.View pointerEvents="box-none" style={[styles.wrap, { top: insets.top + space.sm, transform: [{ translateY: offset }] }]}>
       <Pressable onPress={go} style={[styles.banner, { backgroundColor: colors.raised, borderColor: colors.lineStrong }]}>
-        <Avatar
-          name={banner.actor.name}
-          uri={banner.actor.avatar ? `${server.site}/avatars/${banner.actor.avatar}` : null}
-          agent={banner.actor.kind === "agent"}
-          size={36}
-        />
+        <Avatar name={banner.actor.name} uri={banner.actor.avatar ? `${server.site}/avatars/${banner.actor.avatar}` : null} size={36} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontWeight: "700" }} numberOfLines={1}>
             {banner.title}

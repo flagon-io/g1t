@@ -91,7 +91,7 @@ export default function ChatList() {
             search ? (
               <Empty title="Nothing matches" />
             ) : (
-              <Empty icon={MessagesSquare} title="No conversations yet" body="Message a person or an agent, or join a channel." action={<Button title="New message" onPress={() => router.push("/chat/new")} />} />
+              <Empty icon={MessagesSquare} title="No conversations yet" body="Message a person, or join a channel." action={<Button title="New message" onPress={() => router.push("/chat/new")} />} />
             )
           }
           ListFooterComponent={
@@ -151,7 +151,7 @@ function Conversation({ entry }: { entry: ChatSidebarEntry }) {
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
           <Text size="small" tone="muted" numberOfLines={1} style={{ flex: 1 }}>
-            {dm ? (other?.kind === "agent" ? (other.title ?? other.role ?? "Agent") : `@${other?.name ?? ""}`) : (channel.topic ?? (entry.muted ? "Muted" : " "))}
+            {dm ? (other?.kind === "agent" ? "Deleted agent" : `@${other?.name ?? ""}`) : (channel.topic ?? (entry.muted ? "Muted" : " "))}
           </Text>
           {entry.mentions > 0 ? <Badge label={`@ ${entry.mentions}`} tone="accent" /> : loud ? <View style={[styles.dot, { backgroundColor: colors.accent }]} /> : null}
         </View>

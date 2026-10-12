@@ -239,12 +239,6 @@ export function useChatActions(channelId: string) {
     onError: () => queries.invalidateQueries({ queryKey: ["chat", slug, "messages", channelId] }),
   });
 
-  /** Presses a button on an agent's card: approve, stop, file. */
-  const cardAction = useMutation({
-    mutationFn: ({ message, action, input }: { message: ChatMessage; action: string; input?: string | null }) =>
-      sendIntent<{ ok: boolean; message: string | null }>(client, slug, "card_action", { channel_id: channelId, message_id: message.id, action_id: action, input: input ?? null }),
-  });
-
   const preferences = useMutation({
     mutationFn: (change: { starred?: boolean; muted?: boolean }) => sendIntent(client, slug, "preferences", { channel_id: channelId, ...change }),
     onSettled: () => queries.invalidateQueries({ queryKey: chatKeys.sidebar(slug) }),
@@ -255,7 +249,7 @@ export function useChatActions(channelId: string) {
     onSettled: () => queries.invalidateQueries({ queryKey: chatKeys.sidebar(slug) }),
   });
 
-  return { react, edit, remove, cardAction, preferences, leave };
+  return { react, edit, remove, preferences, leave };
 }
 
 /** Marks a conversation read up to a message; the sidebar's counts follow. */
@@ -271,7 +265,7 @@ export function useStartConversation() {
   const queries = useQueryClient();
   const slug = workspace?.slug ?? "";
   return {
-    /** Opens (or finds) a direct message with these members: `user:<username>` or `agent:<id>`. */
+    /** Opens (or finds) a direct message with these people: `user:<username>`. */
     dm: useMutation({
       mutationFn: (members: string[]) => sendIntent<{ channel: Channel }>(client, slug, "dm", { members }),
       onSuccess: () => queries.invalidateQueries({ queryKey: chatKeys.sidebar(slug) }),

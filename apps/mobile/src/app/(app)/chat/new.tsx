@@ -1,4 +1,3 @@
-import type { MemberProfile } from "@g1t/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Stack, router } from "expo-router";
 import { Check, Hash, Search } from "lucide-react-native";
@@ -7,23 +6,21 @@ import { FlatList, Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { PromptSheet } from "@/components/chat/sheet";
 import { Avatar, Button, Loading, Row, Screen, SectionHeader, Text } from "@/components/ui";
-import { useChatSidebar, useStartConversation } from "@/lib/chat";
+import { useStartConversation } from "@/lib/chat";
 import { useSignedIn } from "@/lib/session";
 import { radius, space, useColors } from "@/theme";
 
-type Person = { key: string; name: string; handle: string; avatar: string | null; agent: boolean; detail: string | null };
+type Person = { key: string; name: string; handle: string; avatar: string | null };
 
 /**
- * A new conversation: pick people and agents for a direct message (one,
- * or a group), or make a channel. People come from the workspace's
- * members (`GET /workspaces/<ws>/members`); agents from the conversations
- * you already have with them.
+ * A new conversation: pick people for a direct message (one, or a
+ * group), or make a channel. People come from the workspace's members
+ * (`GET /workspaces/<ws>/members`).
  */
 export default function NewConversation() {
   const { client, workspace, me, server } = useSignedIn();
   const slug = workspace?.slug ?? "";
   const colors = useColors();
-  const sidebar = useChatSidebar();
   const start = useStartConversation();
   const [search, setSearch] = useState("");
   const [picked, setPicked] = useState<Person[]>([]);
@@ -38,8 +35,6 @@ export default function NewConversation() {
   });
 
   const everyone = useMemo(() => {
-    const agents = new Map<string, MemberProfile>();
-    for (const entry of sidebar.data?.entries ?? []) for (const other of entry.others) if (other.kind === "agent") agents.set(other.id, other);
     const people: Person[] = (members.data ?? [])
       .filter((member) => member.username.toLowerCase() !== me.username.toLowerCase())
       .map((member) => ({
@@ -47,20 +42,10 @@ export default function NewConversation() {
         name: member.name || member.display_username || member.username,
         handle: member.display_username ?? member.username,
         avatar: member.avatar ?? null,
-        agent: false,
-        detail: null,
       }));
-    const bots: Person[] = [...agents.values()].map((agent) => ({
-      key: `agent:${agent.id}`,
-      name: agent.display_name,
-      handle: agent.name,
-      avatar: agent.avatar,
-      agent: true,
-      detail: agent.title ?? agent.role,
-    }));
     const words = search.trim().toLowerCase();
-    return [...bots, ...people].filter((one) => !words || `${one.name} ${one.handle}`.toLowerCase().includes(words));
-  }, [members.data, sidebar.data, me.username, search]);
+    return people.filter((one) => !words || `${one.name} ${one.handle}`.toLowerCase().includes(words));
+  }, [members.data, me.username, search]);
 
   const toggle = (person: Person) =>
     setPicked((now) => (now.some((one) => one.key === person.key) ? now.filter((one) => one.key !== person.key) : [...now, person]));
@@ -85,7 +70,7 @@ export default function NewConversation() {
           autoFocus
           value={search}
           onChangeText={setSearch}
-          placeholder="Find a person or an agent"
+          placeholder="Find a person"
           placeholderTextColor={colors.faint}
           style={{ flex: 1, color: colors.fg, fontSize: 15, paddingVertical: 8 }}
           autoCorrect={false}
@@ -107,20 +92,20 @@ export default function NewConversation() {
           ListHeaderComponent={
             <>
               <Row leading={<Hash size={20} color={colors.accent} />} title="Make a channel" subtitle="A conversation for a team or a topic" onPress={() => setMaking(true)} />
-              <SectionHeader title="People and agents" />
+              <SectionHeader title="People" />
             </>
           }
           renderItem={({ item }) => {
             const on = picked.some((one) => one.key === item.key);
             return (
               <Pressable onPress={() => toggle(item)} style={({ pressed }) => [styles.person, { backgroundColor: pressed ? colors.raised : "transparent" }]}>
-                <Avatar name={item.name} uri={item.avatar ? `${server.site}/avatars/${item.avatar}` : null} agent={item.agent} size={36} />
+                <Avatar name={item.name} uri={item.avatar ? `${server.site}/avatars/${item.avatar}` : null} size={36} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: "600" }} numberOfLines={1}>
                     {item.name}
                   </Text>
                   <Text size="small" tone="muted" numberOfLines={1}>
-                    {item.agent ? (item.detail ?? "Agent") : `@${item.handle}`}
+                    @{item.handle}
                   </Text>
                 </View>
                 <View style={[styles.check, { borderColor: on ? colors.accent : colors.lineStrong, backgroundColor: on ? colors.accent : "transparent" }]}>

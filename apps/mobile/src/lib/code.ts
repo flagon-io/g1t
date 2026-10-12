@@ -9,6 +9,7 @@ import { useSignedIn } from "./session";
  * fields the app shows are named.
  */
 
+/** `agent` only on what g1t's own agents wrote before they were retired; shown with an Agent badge. */
 export type ApiUser = { id: string; username: string; display_username?: string; kind?: "user" | "workspace" | "agent" | "system" };
 
 export type ApiRepo = {
@@ -45,7 +46,8 @@ export type ApiPull = {
   issue: number | null;
   title: string;
   body: string | null;
-  agent: string;
+  /** The coding agent it was made with (`claude-code`, `codex`), from the session recorded on it; null when none was. */
+  agent: string | null;
   status: "draft" | "open" | "merged" | "closed";
   branch: string | null;
   base: string;

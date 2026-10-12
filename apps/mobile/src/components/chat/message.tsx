@@ -1,13 +1,12 @@
-import type { CardAction, ChatMessage, MessageCard } from "@g1t/contracts";
+import type { ChatMessage, MessageCard } from "@g1t/contracts";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { AlertCircle, Clock, MessageSquareReply } from "lucide-react-native";
-import { memo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from "react-native";
+import { memo } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 
 import { Markdown } from "@/components/chat/markdown";
-import { PromptSheet } from "@/components/chat/sheet";
 import { Avatar, Badge, Text } from "@/components/ui";
 import type { Shown } from "@/lib/chat";
 import { routeFor } from "@/lib/links";
@@ -25,15 +24,15 @@ type Props = {
   onLongPress: (message: Shown) => void;
   onReact: (message: ChatMessage, emoji: string, add: boolean) => void;
   onRetry: (message: Shown) => void;
-  onCardAction: (message: ChatMessage, action: CardAction, input?: string | null) => Promise<string | null>;
 };
 
 /**
  * One message in a conversation. Messages by the same author within a few
- * minutes run together under one name, as on the site; an agent carries
- * its marker and an Agent badge, and its cards' buttons work here.
+ * minutes run together under one name, as on the site. A message an agent
+ * posted before g1t's own agents were retired still shows, under the name
+ * chat gives it, with its marker and a Deleted agent badge.
  */
-export const Message = memo(function Message({ message, head, inThread, onLongPress, onReact, onRetry, onCardAction }: Props) {
+export const Message = memo(function Message({ message, head, inThread, onLongPress, onReact, onRetry }: Props) {
   const colors = useColors();
   const { server } = useSignedIn();
   const { author } = message;
@@ -65,7 +64,7 @@ export const Message = memo(function Message({ message, head, inThread, onLongPr
             <Text style={{ fontWeight: "700" }} numberOfLines={1}>
               {author.display_name}
             </Text>
-            {agent ? <Badge label={author.title ?? "Agent"} tone="accent" /> : null}
+            {agent ? <Badge label="Deleted agent" tone="neutral" /> : null}
             <Text size="small" tone="faint">
               {clock(message.created_at)}
             </Text>
@@ -77,7 +76,7 @@ export const Message = memo(function Message({ message, head, inThread, onLongPr
             (edited)
           </Text>
         ) : null}
-        {message.kind === "card" && message.card ? <Card card={message.card} message={message} onAction={onCardAction} site={server.site} /> : null}
+        {message.kind === "card" && message.card ? <Card card={message.card} site={server.site} /> : null}
         {message.reactions && message.reactions.length > 0 ? (
           <View style={styles.reactions}>
             {message.reactions.map((reaction) => (
@@ -130,58 +129,18 @@ export const Message = memo(function Message({ message, head, inThread, onLongPr
 });
 
 /**
- * An agent's card: what it is about, its state, and the buttons that act
- * on it (approve more budget, stop a session, file a draft issue). A button
- * may ask first, or ask for a value; its owner answers, and the card
- * updates in place through the live socket.
+ * A card an agent posted before g1t's own agents were retired: what it was
+ * about, its state, and its links. Its other buttons no longer do anything,
+ * so they are not drawn.
  */
-function Card({
-  card,
-  message,
-  onAction,
-  site,
-}: {
-  card: MessageCard;
-  message: ChatMessage;
-  onAction: Props["onCardAction"];
-  site: string;
-}) {
+function Card({ card, site }: { card: MessageCard; site: string }) {
   const colors = useColors();
-  const [busy, setBusy] = useState<string | null>(null);
-  const [asking, setAsking] = useState<CardAction | null>(null);
-  const [said, setSaid] = useState<string | null>(null);
+  const links = (card.actions ?? []).filter((action) => !!action.href);
 
   const open = (href: string) => {
     const route = href.startsWith("/") ? routeFor(href) : null;
     if (route) router.push(route as never);
     else void WebBrowser.openBrowserAsync(href.startsWith("/") ? siteUrl({ site, api: "" }, href) : href);
-  };
-
-  const run = async (action: CardAction, input?: string | null) => {
-    setBusy(action.id);
-    setSaid(null);
-    try {
-      const answer = await onAction(message, action, input);
-      if (answer) setSaid(answer);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-    } catch (error) {
-      setSaid(error instanceof Error ? error.message : "That didn't work.");
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const press = (action: CardAction) => {
-    if (action.href) return open(action.href);
-    if (action.input) return setAsking(action);
-    if (action.confirm) {
-      return Alert.alert(action.label, action.confirm, [
-        { text: "Cancel", style: "cancel" },
-        { text: action.label, style: action.style === "danger" ? "destructive" : "default", onPress: () => void run(action) },
-      ]);
-    }
-    void run(action);
   };
 
   return (
@@ -212,57 +171,22 @@ function Card({
           </View>
         ) : null}
       </Pressable>
-      {card.actions?.length ? (
+      {links.length ? (
         <View style={styles.actions}>
-          {card.actions.map((action) => {
-            const primary = action.style === "primary";
-            const danger = action.style === "danger";
-            return (
-              <Pressable
-                key={action.id}
-                disabled={!!busy}
-                onPress={() => press(action)}
-                style={({ pressed }) => [
-                  styles.action,
-                  {
-                    backgroundColor: primary ? colors.accent : colors.bg,
-                    borderColor: primary ? colors.accent : danger ? colors.danger : colors.lineStrong,
-                    opacity: pressed || (busy && busy !== action.id) ? 0.6 : 1,
-                  },
-                ]}
-              >
-                {busy === action.id ? (
-                  <ActivityIndicator size="small" color={primary ? colors.onAccent : colors.accent} />
-                ) : (
-                  <Text size="small" style={{ fontWeight: "700", color: primary ? colors.onAccent : danger ? colors.danger : colors.fg }}>
-                    {action.label}
-                  </Text>
-                )}
-              </Pressable>
-            );
-          })}
+          {links.map((action) => (
+            <Pressable
+              key={action.id}
+              accessibilityRole="link"
+              onPress={() => action.href && open(action.href)}
+              style={({ pressed }) => [styles.action, { backgroundColor: colors.bg, borderColor: colors.lineStrong, opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Text size="small" style={{ fontWeight: "700", color: colors.fg }}>
+                {action.label}
+              </Text>
+            </Pressable>
+          ))}
         </View>
       ) : null}
-      {said ? (
-        <Text size="small" tone="muted">
-          {said}
-        </Text>
-      ) : null}
-      <PromptSheet
-        visible={!!asking}
-        title={asking?.label ?? ""}
-        label={asking?.input?.label ?? ""}
-        placeholder={asking?.input?.placeholder ?? undefined}
-        initial={asking?.input?.initial ?? ""}
-        numeric={asking?.input?.kind === "money"}
-        confirm={asking?.label ?? "Done"}
-        onCancel={() => setAsking(null)}
-        onDone={(value) => {
-          const action = asking;
-          setAsking(null);
-          if (action) void run(action, value);
-        }}
-      />
     </View>
   );
 }

@@ -50,7 +50,7 @@ export default function SignIn() {
           <View style={{ gap: space.md }}>
             <G1tMark size={44} />
             <Text size="title">{hosted ? "Sign in to g1t" : `Sign in to ${host}`}</Text>
-            <Text tone="muted">Chat with your team and its agents, and review and merge what they make.</Text>
+            <Text tone="muted">Chat with your team, and review and merge what you and your coding agents make.</Text>
           </View>
 
           {mode === "oauth" ? (

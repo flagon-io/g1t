@@ -21,7 +21,7 @@ export default function Repos() {
     return (
       <Screen>
         <Stack.Screen options={{ title: "Code" }} />
-        <Empty icon={Code2} title="Code is not on for you here" body={`${workspace.name ?? workspace.slug} gives you Chat, Docs and agents. Ask an owner for Code.`} />
+        <Empty icon={Code2} title="Code is not on for you here" body={`${workspace.name ?? workspace.slug} gives you Chat and Docs. Ask an owner for Code.`} />
       </Screen>
     );
   }
