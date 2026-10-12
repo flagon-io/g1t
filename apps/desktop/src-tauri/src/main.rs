@@ -25,7 +25,7 @@ mod settings;
 mod tray;
 mod updates;
 
-use tauri::webview::WebviewBuilder;
+use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{RunEvent, WebviewUrl, WindowEvent};
 use tauri_plugin_window_state::{StateFlags, WindowExt};
 
@@ -87,6 +87,7 @@ fn main() {
             bridge::runner_offer,
             bridge::runner_register,
             bridge::runner_control,
+            bridge::site_ready,
         ])
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .setup(|app| {
@@ -106,7 +107,7 @@ fn main() {
                 })
                 .on_page_load({
                     let handle = handle.clone();
-                    move |_webview, payload| config::at(&handle, payload.url().clone())
+                    move |_webview, payload| config::at(&handle, payload.url().clone(), matches!(payload.event(), PageLoadEvent::Started))
                 });
             let builder = frame::main_window(app, custom)?;
             // macOS has one menu bar, the app's; elsewhere the menu is the window's own.

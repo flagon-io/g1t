@@ -140,10 +140,10 @@ pub fn handle(app: &AppHandle, id: &str) {
     match id {
         "open" => tray::show(app),
         "settings" => settings::open(app),
-        "runner-status" => settings::open_runner(app),
+        "runner-status" => settings::runner_menu(app, false, None),
         "runner-toggle" => crate::runner::toggle(app),
         "server" => tray::launcher(app, "change"),
-        // The settings window asks, and shows the answer where it cannot be missed.
+        // The settings ask, and show the answer where it cannot be missed.
         "check" => settings::open_and_check(app),
         "restart" => updates::restart(app),
         "quit" => updates::quit(app),

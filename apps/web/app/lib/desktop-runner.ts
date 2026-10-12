@@ -22,8 +22,16 @@ import type { DesktopBackend, DesktopCapability, DesktopCapabilityState, Desktop
 
 import { agentRunHref, workflowRunHref } from "./runners.ts";
 
-/** A fix, as a button: its id is the app's (`runner_control`). */
-export type DesktopRunnerAction = { id: string; label: string };
+/**
+ * A fix, as a button: its id is the app's (`runner_control`). `waits`: its
+ * button stays busy until the runner's status that follows (lib/busy.ts);
+ * `confirm`: what the person is asked first. Both are the app's, from its
+ * one catalogue of the runner's words (src/runner/diagnosis.rs).
+ */
+export type DesktopRunnerAction = { id: string; label: string; waits?: boolean; confirm?: string | null };
+
+/** The runner in a few words, as the title bar's dot says it (`diagnosis::Chip`). */
+export type DesktopRunnerChip = { tone: DesktopDiagnosis["tone"]; label: string };
 
 /**
  * A kind of job the sandbox runs, with its fixes' buttons
@@ -67,7 +75,25 @@ export type DesktopRunnerView = {
   machine: string;
   platform: string;
   log: string[];
+  /** Absent from an app older than the dot. */
+  chip?: DesktopRunnerChip;
 };
+
+/**
+ * The whole runner's status, as far as a button waits on it: a press of
+ * Start, Stop, Retry or Check for runner updates is done when any of it
+ * changes (lib/busy.ts).
+ */
+export function runnerStatusKey(view: DesktopRunnerView): string {
+  const { diagnosis } = view;
+  const update = diagnosis.update;
+  return JSON.stringify([diagnosis.code, diagnosis.tone, diagnosis.title, diagnosis.cause, view.chip?.label, view.enabled, view.paused, update?.checking, update?.checked_at, update?.ready]);
+}
+
+/** One kind of job's status, with the whole runner's, for its own buttons. */
+export function kindStatusKey(kind: DesktopRunnerCapability, view: DesktopRunnerView | null): string {
+  return JSON.stringify([view ? runnerStatusKey(view) : null, kind.state, kind.enabled, kind.tone, kind.title, kind.cause]);
+}
 
 export type DesktopRunnerOffer = { signedIn: boolean; workspaces: { slug: string; name: string | null }[]; current: string | null };
 

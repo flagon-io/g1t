@@ -223,6 +223,9 @@ pub struct Page {
     pub can_go_back: Option<bool>,
     pub can_go_forward: Option<bool>,
     pub colors: Option<Colors>,
+    /// The runner menu the site draws under the bar's dot is open.
+    #[serde(default)]
+    pub runner_menu: bool,
 }
 
 /// The page as last reported, kept for a bar that loads after it.
@@ -255,22 +258,24 @@ pub fn current(app: &AppHandle) -> Page {
 }
 
 /// A button on the bar that acts on the page: `back`, `forward`, `search`,
-/// or `focus`, which hands the keyboard back to the page after a click on
-/// the bar.
-pub fn act(app: &AppHandle, action: &str) -> Result<(), String> {
+/// `settings`, `runner` (the dot beside the settings, `at` where it is
+/// across the bar), or `focus`, which hands the keyboard back to the page
+/// after a click on the bar.
+pub fn act(app: &AppHandle, action: &str, at: Option<f64>) -> Result<(), String> {
     let site = site(app).ok_or("there is no page")?;
     match action {
         "back" => site.eval("history.back()").map_err(|error| error.to_string())?,
         "forward" => site.eval("history.forward()").map_err(|error| error.to_string())?,
         "search" => app.emit_to(EventTarget::webview(SITE), SEARCH_EVENT, ()).map_err(|error| error.to_string())?,
-        // The app's settings, a click away rather than only in its menu.
+        // The app's settings, a click away rather than only in its menu:
+        // a dialog the site draws over itself.
         "settings" => {
             crate::settings::open(app);
             return Ok(());
         }
-        // The runner on its own: the chip beside the settings button.
+        // The runner's menu, hanging under its dot beside the settings button.
         "runner" => {
-            crate::settings::open_runner(app);
+            crate::settings::runner_menu(app, true, at);
             return Ok(());
         }
         "focus" => {}

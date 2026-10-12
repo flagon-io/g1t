@@ -1,7 +1,10 @@
 // The settings window's work: show what the app has, and keep each change
 // the moment it is made. Everything it asks is a command in
-// src/bridge.rs, answered only to this window. The runner has a window of
-// its own (runner.html); here it is a line that opens it.
+// src/bridge.rs. The settings usually open over the site, which draws
+// them (apps/web components/desktop-settings.tsx); this window is for when
+// the window shows no page of the site's. The runner has a window of its
+// own (runner.html); here it is a line that opens it. A button that asks
+// the app for something is busy until it is done (busy.js).
 (function () {
   var SWITCHES = ["startHidden", "closeToTray", "notifications", "flash", "badge", "systemTitleBar", "autoUpdate"];
   // The settings the app keeps (src/settings.rs Settings); a save sends them all.
@@ -98,7 +101,9 @@
   }
 
   byId("open-runner").addEventListener("click", function () {
-    invoke("runner_control", { action: "open_runner" }).catch(fail);
+    window.g1tBusy.run(byId("open-runner"), "open-runner", "", false, function () {
+      return invoke("runner_control", { action: "open_runner" });
+    }, fail);
   });
 
   SWITCHES.forEach(function (key) {
@@ -143,7 +148,7 @@
     checking = true;
     var button = byId("check");
     var status = byId("update-status");
-    button.disabled = true;
+    window.g1tBusy.start(button);
     status.textContent = "Checking, and downloading any new version…";
     invoke("check_for_updates")
       .then(function (answer) {
@@ -158,16 +163,16 @@
       })
       .then(function () {
         checking = false;
-        button.disabled = false;
+        window.g1tBusy.stop(button);
       });
   }
 
   byId("check").addEventListener("click", check);
   byId("restart").addEventListener("click", function () {
-    byId("restart").disabled = true;
+    window.g1tBusy.start(byId("restart"));
     byId("update-status").textContent = "Installing…";
     invoke("restart_to_update").catch(function (error) {
-      byId("restart").disabled = false;
+      window.g1tBusy.stop(byId("restart"));
       fail(error);
     });
   });
@@ -191,15 +196,17 @@
   }
 
   byId("restart-app").addEventListener("click", function () {
-    byId("restart-app").disabled = true;
+    window.g1tBusy.start(byId("restart-app"));
     invoke("restart").catch(function (error) {
-      byId("restart-app").disabled = false;
+      window.g1tBusy.stop(byId("restart-app"));
       fail(error);
     });
   });
 
   byId("change-server").addEventListener("click", function () {
-    invoke("change_server").catch(fail);
+    window.g1tBusy.run(byId("change-server"), "change-server", "", false, function () {
+      return invoke("change_server");
+    }, fail);
   });
 
   // Links out, in the system's browser (src/bridge.js does the same on the site).

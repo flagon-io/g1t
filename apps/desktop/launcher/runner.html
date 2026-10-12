@@ -1,8 +1,10 @@
 <!doctype html>
 <!--
   The runner, in a window of its own, apart from the settings: opened from
-  the chip beside the title bar's settings button, the tray, or the menu
-  (src/settings.rs open_runner). What it is doing, each kind of job it
+  the dot beside the title bar's settings button, or the tray, while the
+  window shows no page of the site's to draw the runner menu, and where
+  jobs are taken out of the sandbox, which only a page bundled with the
+  app may do (src/settings.rs runner_menu). What it is doing, each kind of job it
   runs and the job each is running, how jobs run and for which workspace,
   its updates and its log, live (runner.js). Its words are the app's
   (src/runner/diagnosis.rs).
@@ -101,6 +103,7 @@
 				<p class="muted small foot"><a href="https://docs.g1t.sh/guides/desktop/#the-runner">About the runner</a></p>
 			</main>
 		</div>
+		<script src="busy.js"></script>
 		<script src="runner.js"></script>
 	</body>
 </html>

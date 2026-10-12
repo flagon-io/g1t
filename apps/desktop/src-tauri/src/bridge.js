@@ -106,10 +106,60 @@
     checkForUpdates: function () {
       return invoke("check_for_updates");
     },
-    // The app's own settings, in a window of their own.
+    // The app's own settings: the dialog this page draws (`settings.onOpen`),
+    // or their own window when the page can't.
     openSettings: function () {
       quietly(invoke("open_settings"));
     },
+    // The app's settings, for the dialog the site draws over itself, and
+    // the runner's menu under the title bar's dot (src/settings.rs). The
+    // page says it draws them with `ready`; until then they open in windows
+    // of their own.
+    settings: Object.freeze({
+      ready: function (ready) {
+        return invoke("site_ready", { ready: ready !== false });
+      },
+      get: function () {
+        return invoke("get_settings");
+      },
+      // Every setting but opening at sign-in, as `get` has them (camelCase).
+      save: function (settings) {
+        return invoke("save_settings", { settings: settings });
+      },
+      setOpenAtLogin: function (on) {
+        return invoke("set_open_at_login", { on: !!on });
+      },
+      // "current", "ready:<version>", or rejects with why; the dialog says it, so no notification.
+      checkForUpdates: function () {
+        return invoke("check_for_updates", { shown: true });
+      },
+      restart: function () {
+        return invoke("restart");
+      },
+      restartToUpdate: function () {
+        return invoke("restart_to_update");
+      },
+      changeServer: function () {
+        return invoke("change_server");
+      },
+      // Open the dialog: { section: "runner" | "updates" | null, check: boolean }.
+      onOpen: function (listener) {
+        return on("g1t-open-settings", listener);
+      },
+      // The runner menu: { action: "toggle" | "open", at: share of the bar's width | null }.
+      onRunnerMenu: function (listener) {
+        return on("g1t-runner-menu", listener);
+      },
+      // An update finished downloading, with its version.
+      onUpdateReady: function (listener) {
+        return on("g1t-update-ready", listener);
+      },
+      // Whether the runner menu is open, which the title bar's dot shows.
+      setRunnerMenuOpen: function (open) {
+        runnerMenu = !!open;
+        report();
+      },
+    }),
     // The title bar's search, in its middle: the site hands it a label
     // ("Search Flagon") and what opens its search. Returns what takes it away.
     setSearch: function (label, open) {
@@ -224,10 +274,12 @@
   // ── The title bar ─────────────────────────────────────────────────────
   // What the bar above the page shows of it: the title, the search the
   // site handed over (`setSearch`), whether there is a page to go back or
-  // forward to, and the page's colours, so the bar is the colour of g1t's
-  // rail, light or dark, or of whatever page is showing. Sent whenever any
-  // of it changes; the bar's search comes back as an event.
+  // forward to, the page's colours, so the bar is the colour of g1t's
+  // rail, light or dark, or of whatever page is showing, and whether the
+  // runner menu is open under the bar's dot. Sent whenever any of it
+  // changes; the bar's search comes back as an event.
   var search = null;
+  var runnerMenu = false;
   var report = function () {};
   if (FRAME !== "custom") return;
 
@@ -285,6 +337,7 @@
         canGoBack: nav && typeof nav.canGoBack === "boolean" ? nav.canGoBack : null,
         canGoForward: nav && typeof nav.canGoForward === "boolean" ? nav.canGoForward : null,
         colors: colors(),
+        runnerMenu: runnerMenu,
       };
       var text = JSON.stringify(page);
       if (text === sent) return;

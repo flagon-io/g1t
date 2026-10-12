@@ -79,13 +79,21 @@
   });
   left.append(back, forward);
 
-  // The runner, in a few words beside the settings, as Docker Desktop shows
-  // its engine: what it is doing, live, and a click opens its window
-  // (runner.html). The words are the app's (diagnosis.rs chip).
-  var chip = button("chip", "Runner", null, function () {
-    act("runner");
+  // The runner, as a dot right beside the settings: its colour says what
+  // it is doing, live, and a wide window says it in words too. A click
+  // opens its menu, which the site draws under the dot (or, with no page
+  // of the site's to draw it, the Runner window). The words are the app's
+  // (diagnosis.rs chip).
+  var chip = button("chip", "Runner", null, function (b) {
+    var box = b.getBoundingClientRect();
+    var width = document.documentElement.clientWidth || window.innerWidth || 1;
+    // Where the dot's right edge is, as a share of the bar, so the menu
+    // lines up under it whatever the site's zoom.
+    quietly(invoke("title_bar_act", { action: "runner", at: box.right / width }));
   });
   chip.hidden = true;
+  chip.setAttribute("aria-haspopup", "dialog");
+  chip.setAttribute("aria-expanded", "false");
   var chipDot = document.createElement("span");
   chipDot.className = "chip-dot";
   var chipText = document.createElement("span");
@@ -96,8 +104,8 @@
     chip.hidden = false;
     chip.dataset.tone = said.tone;
     chipText.textContent = said.label;
-    chip.setAttribute("aria-label", said.label + ": open the runner");
-    chip.title = "Open the runner";
+    chip.setAttribute("aria-label", /runner/i.test(said.label) ? said.label : "Runner: " + said.label);
+    chip.title = said.label;
   }
   // The app's settings, at the right of the bar, before the window's
   // buttons: where they are found without the menu.
@@ -188,6 +196,7 @@
       title.textContent = page.title || "g1t";
       middle.append(title);
     }
+    chip.setAttribute("aria-expanded", page.runnerMenu ? "true" : "false");
     back.disabled = page.canGoBack === false;
     forward.disabled = page.canGoForward === false;
     setColors(page.colors);
